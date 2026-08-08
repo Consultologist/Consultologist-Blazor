@@ -306,6 +306,30 @@ public class TemplatesEditorTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void PublishWarnings_AreShownAlongsideSuccess()
+    {
+        // #310's warning arrives *with* a successful publish, and the version
+        // it describes is already immutable — so this render is the only
+        // moment it can be read. Without it the warning dies in the browser.
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V6WithValue());
+        WorkflowService.PublishPackageAsync(Arg.Any<Consultologist.Web.Services.Workflow.WorkflowPackagePublishRequest>())
+            .Returns(new Consultologist.Web.Services.Workflow.WorkflowPublishOutcome(
+                new Consultologist.Web.Services.Workflow.WorkflowPackagePublishResponse(
+                    "acct-1234567890ab", "v2026.07.2", "acct-1234567890ab@v2026.07.2",
+                    new List<string> { "Value 'specialty' changed but no data collection did." }),
+                Array.Empty<string>()));
+
+        var page = Render<Templates>();
+        page.Find("fluent-text-area").Change("Document the presenting illness, chronologically.");
+        Publish(page);
+
+        Assert.Contains("Published, with something worth checking", page.Markup);
+        Assert.Contains("no data collection did", page.Markup);
+        // Advisory, not a rejection — the success banner stands too.
+        Assert.Contains("Published acct-1234567890ab@v2026.07.2", page.Markup);
+    }
+
+    [Fact]
     public void AValueIdMayContainAnUnderscore()
     {
         // note_type is published and running. CollectionIdPattern forbids '_'

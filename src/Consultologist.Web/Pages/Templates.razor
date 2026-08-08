@@ -90,6 +90,21 @@
                 <FluentMessageBar Intent="MessageIntent.Success" AllowDismiss="false">@publishSuccess</FluentMessageBar>
             }
 
+            @* The publish succeeded and the version is immutable, so a warning
+               here is about what to do next, not about what to fix now. *@
+            @if (publishWarnings.Count > 0)
+            {
+                <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">
+                    <strong>Published, with something worth checking.</strong>
+                    <ul>
+                        @foreach (var warning in publishWarnings)
+                        {
+                            <li>@warning</li>
+                        }
+                    </ul>
+                </FluentMessageBar>
+            }
+
             @if (publishErrors.Count > 0)
             {
                 <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false">
@@ -992,6 +1007,7 @@
         newScalarId = null;
         newScalarError = null;
         publishSuccess = null;
+        publishWarnings.Clear();
         selectedKey = ScalarPath(id);
         await PersistDraftAsync();
     }
@@ -1006,6 +1022,7 @@
         addedScalars.Remove(scalarId);
         edits.Remove(path);
         publishSuccess = null;
+        publishWarnings.Clear();
 
         if (selectedKey == path)
         {
@@ -1039,6 +1056,7 @@
         newCollectionId = null;
         newCollectionError = null;
         publishSuccess = null;
+        publishWarnings.Clear();
         // Land on the folder's "+ Add item" pane — the first item is the next step.
         selectedKey = NewKeyFor(id);
         await PersistDraftAsync();
@@ -1050,6 +1068,7 @@
         addedCollections.Remove(collectionId);
         addedItems.RemoveAll(a => a.Collection == collectionId);
         publishSuccess = null;
+        publishWarnings.Clear();
 
         if (selectedKey == NewKeyFor(collectionId) || (selectedKey != null && itsItemKeys.Contains(selectedKey)))
         {
@@ -1101,6 +1120,7 @@
         newItemId = newItemName = newItemContent = null;
         newItemError = null;
         publishSuccess = null;
+        publishWarnings.Clear();
         selectedKey = added.Key;
         await PersistDraftAsync();
     }
@@ -1110,6 +1130,7 @@
         removedFiles.Add(file);
         edits.Remove(file);
         publishSuccess = null;
+        publishWarnings.Clear();
 
         if (selectedKey == file)
         {
@@ -1270,6 +1291,7 @@
     {
         declaredError = null;
         publishSuccess = null;
+        publishWarnings.Clear();
         await PersistDraftAsync();
     }
 
@@ -1679,6 +1701,7 @@
     private async Task OnAggregateChangedAsync(WorkflowNodeSummary.AggregateChange change)
     {
         publishSuccess = null;
+        publishWarnings.Clear();
 
         if (addedNodes.FirstOrDefault(a => a.Id == change.NodeId) is { } addedAggregator)
         {
@@ -1711,6 +1734,7 @@
         }
 
         publishSuccess = null;
+        publishWarnings.Clear();
         resultEdit = selected == WorkflowManifestReader.ReadResultRef(content!.Manifest) ? null : selected;
         await PersistDraftAsync();
     }
@@ -1865,6 +1889,7 @@
         newNodePrompt = string.Empty;
         newNodeError = null;
         publishSuccess = null;
+        publishWarnings.Clear();
         // Land on the next step: the aggregator's source list or an existing
         // prompt's bindings on the node card, or the new prompt's text.
         selectedKey = aggregator || promptRef != null ? NodeKeyFor(id) : AddedPromptFile(id);
@@ -1874,6 +1899,7 @@
     private async Task RemoveNodeAsync(string nodeId)
     {
         publishSuccess = null;
+        publishWarnings.Clear();
         var added = addedNodes.FirstOrDefault(a => a.Id == nodeId);
         var promptId = added != null
             ? added.PromptRef ?? added.Id
@@ -1922,6 +1948,7 @@
     {
         removedNodeIds.Remove(nodeId);
         publishSuccess = null;
+        publishWarnings.Clear();
         await PersistDraftAsync();
     }
 
@@ -1943,6 +1970,7 @@
             }
 
             publishSuccess = null;
+        publishWarnings.Clear();
             await PersistDraftAsync();
             return;
         }
@@ -1968,6 +1996,7 @@
         }
 
         publishSuccess = null;
+        publishWarnings.Clear();
         await PersistDraftAsync();
     }
 
@@ -1992,6 +2021,7 @@
         newPromptId = null;
         newPromptError = null;
         publishSuccess = null;
+        publishWarnings.Clear();
         // Land on the new prompt's pane — writing its text is the next step.
         selectedKey = AddedStandalonePromptFile(id);
         await PersistDraftAsync();
@@ -2002,6 +2032,7 @@
         addedPrompts.Remove(pending);
         variableAdds.Remove(pending.Id);
         publishSuccess = null;
+        publishWarnings.Clear();
 
         if (selectedKey == AddedStandalonePromptFile(pending.Id))
         {
@@ -2085,6 +2116,7 @@
     private async Task AddVariableFromPromptAsync(WorkflowManifestReader.PromptView prompt)
     {
         publishSuccess = null;
+        publishWarnings.Clear();
         newVariableError = TryDeclareVariable(prompt.Id, newVariableName ?? string.Empty, out var name);
 
         if (newVariableError != null)
@@ -2131,6 +2163,7 @@
     private async Task RemoveVariableAsync(WorkflowManifestReader.PromptView prompt, string variable)
     {
         publishSuccess = null;
+        publishWarnings.Clear();
 
         if (variableAdds.TryGetValue(prompt.Id, out var adds) && adds.Remove(variable))
         {
@@ -2160,6 +2193,7 @@
     private async Task RestoreVariableAsync(WorkflowManifestReader.PromptView prompt, string variable)
     {
         publishSuccess = null;
+        publishWarnings.Clear();
 
         if (variableRemovals.TryGetValue(prompt.Id, out var removed))
         {
@@ -2255,6 +2289,7 @@
     private async Task OnVariableAddedAsync(WorkflowNodeSummary.VariableAdd add)
     {
         publishSuccess = null;
+        publishWarnings.Clear();
         var node = EffectiveNodes.FirstOrDefault(n => n.Id == add.NodeId);
 
         if (node?.Prompt == null || TryDeclareVariable(node.Prompt, add.Variable, out var name) != null)
@@ -2275,6 +2310,7 @@
     private async Task OnBindingChangedAsync(WorkflowNodeSummary.BindingChange change)
     {
         publishSuccess = null;
+        publishWarnings.Clear();
 
         var original = nodes.FirstOrDefault(n => n.Id == change.NodeId)?
             .Bindings.FirstOrDefault(b => b.Variable == change.Variable);
@@ -2297,6 +2333,10 @@
     private string? loadError;
     private string? publishSuccess;
     private List<string> publishErrors = new();
+
+    // Advisory, and only readable at the moment of a successful
+    // publish — the version it describes is already immutable (#310).
+    private List<string> publishWarnings = new();
 
     // Master–detail selection: a file path or GraphKey (#110).
     private string? selectedKey;
@@ -3037,6 +3077,7 @@
     private async Task OnTextChangedAsync(string path, string value)
     {
         publishSuccess = null;
+        publishWarnings.Clear();
 
         // A pending node's or standalone pending prompt's text lives on its
         // draft object, not in edits.
@@ -3121,6 +3162,7 @@
         isPublishing = true;
         publishErrors = new List<string>();
         publishSuccess = null;
+        publishWarnings.Clear();
 
         try
         {
@@ -3297,8 +3339,13 @@
 
             await JS.InvokeVoidAsync("localStorage.removeItem", DraftKey);
             var publishedRef = outcome.Response!.Ref;
+            // Warnings arrive with a *successful* publish and the version is
+            // immutable, so this is the only moment they can be read. Held
+            // across LoadAsync, which resets the rest of the page state.
+            var warnings = outcome.Response.Warnings ?? new List<string>();
             await LoadAsync();
             publishSuccess = $"Published {publishedRef} and switched your consults to it.";
+            publishWarnings = warnings;
         }
         catch (AccessTokenNotAvailableException exception)
         {
@@ -3354,6 +3401,7 @@
         newNodeError = null;
         publishErrors = new List<string>();
         publishSuccess = null;
+        publishWarnings.Clear();
         await JS.InvokeVoidAsync("localStorage.removeItem", DraftKey);
     }
 
@@ -3709,6 +3757,7 @@
 
         publishErrors = new List<string>();
         publishSuccess = null;
+        publishWarnings.Clear();
 
         try
         {
