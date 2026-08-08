@@ -139,11 +139,13 @@ public class WorkflowPackagePublisherTests
 
     private static (WorkflowPackagePublisher Publisher, FakeRegistryWriter Writer, FakeSettingsStore Settings) CreatePublisher(
         DateTimeOffset? nowUtc = null,
-        FakeRegistryWriter? writer = null)
+        FakeRegistryWriter? writer = null,
+        WorkflowPackageManifest? parentManifest = null,
+        Dictionary<string, string>? parentFiles = null)
     {
         writer ??= new FakeRegistryWriter();
         var settings = new FakeSettingsStore();
-        var store = new FakePackageStore(SourceRef);
+        var store = new FakePackageStore(SourceRef, parentManifest, parentFiles);
         var publisher = new WorkflowPackagePublisher(
             store,
             writer,
@@ -326,6 +328,97 @@ public class WorkflowPackagePublisherTests
         Assert.Equal(
             files["data/guidelines/neutropenic-fever.md"],
             writer.Blobs[$"{AccountName}/v2026.07.1/data/guidelines/neutropenic-fever.md"]);
+    }
+
+    // #310: values name the note a package produces; the knowledge is in the
+    // collections. A fork relabelled without its content changed says
+    // "cardiology" over oncology standards — coherent English, wrong at the
+    // source. Warned, not blocked: relabelling first and replacing standards
+    // next is legitimate staged authoring, and versions are immutable.
+
+    /// <summary>A parent and a child differing only as the test states.</summary>
+    private static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) WithValue(string? text)
+    {
+        var manifest = V5Fixtures.Manifest();
+        manifest = manifest with
+        {
+            Data = new Dictionary<string, string>(manifest.Data!) { ["specialty"] = "data/specialty.txt" }
+        };
+        var files = V5Fixtures.Files(manifest);
+
+        if (text != null)
+        {
+            files["data/specialty.txt"] = text;
+        }
+
+        return (manifest, files);
+    }
+
+    [Fact]
+    public async Task Publish_WarnsWhenAValueIsRelabelledButNoCollectionChanged()
+    {
+        var (parentManifest, parentFiles) = WithValue("oncology");
+        var (childManifest, childFiles) = WithValue("cardiology");
+        var (publisher, _, _) = CreatePublisher(parentManifest: parentManifest, parentFiles: parentFiles);
+
+        var result = await publisher.PublishAsync(
+            OwnerId, Request(manifest: childManifest, files: childFiles), CancellationToken.None);
+
+        // A warning, never a rejection.
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        Assert.Contains(result.Response!.Warnings!, w => w.Contains("'specialty'") && w.Contains("no data collection did"));
+    }
+
+    [Fact]
+    public async Task Publish_DoesNotWarnWhenAValueIsAdded()
+    {
+        // Measured against acct-7bca2dcc1ed4@v2026.08.3: adding note_type left
+        // the standards untouched, and the rule as first written would have
+        // warned. A warning that fires on ordinary authoring is ignored.
+        var parentManifest = V5Fixtures.Manifest();
+        var (childManifest, childFiles) = WithValue("oncology");
+        var (publisher, _, _) = CreatePublisher(
+            parentManifest: parentManifest, parentFiles: V5Fixtures.Files(parentManifest));
+
+        var result = await publisher.PublishAsync(
+            OwnerId, Request(manifest: childManifest, files: childFiles), CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        Assert.DoesNotContain(result.Response!.Warnings ?? new List<string>(), w => w.Contains("no data collection did"));
+    }
+
+    [Fact]
+    public async Task Publish_DoesNotWarnWhenAnEmptyValueIsFilledIn()
+    {
+        // acct-7bca2dcc1ed4@v2026.08.4: note_type went from "" to real text.
+        // A blank prior is not a label being changed.
+        var (parentManifest, parentFiles) = WithValue(string.Empty);
+        var (childManifest, childFiles) = WithValue("oncology");
+        var (publisher, _, _) = CreatePublisher(parentManifest: parentManifest, parentFiles: parentFiles);
+
+        var result = await publisher.PublishAsync(
+            OwnerId, Request(manifest: childManifest, files: childFiles), CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        Assert.DoesNotContain(result.Response!.Warnings ?? new List<string>(), w => w.Contains("no data collection did"));
+    }
+
+    [Fact]
+    public async Task Publish_DoesNotWarnWhenTheContentChangedToo()
+    {
+        // The whole point: relabel plus new standards is a real re-specialisation.
+        var (parentManifest, parentFiles) = WithValue("oncology");
+        var (childManifest, childFiles) = WithValue("cardiology");
+        var standard = childFiles.Keys.First(k => k.StartsWith("data/standards/") && k.EndsWith(".md"));
+        childFiles[standard] = "Cardiology-specific guidance for this section.";
+
+        var (publisher, _, _) = CreatePublisher(parentManifest: parentManifest, parentFiles: parentFiles);
+
+        var result = await publisher.PublishAsync(
+            OwnerId, Request(manifest: childManifest, files: childFiles), CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        Assert.DoesNotContain(result.Response!.Warnings ?? new List<string>(), w => w.Contains("no data collection did"));
     }
 
     [Fact]
@@ -556,10 +649,17 @@ internal sealed class FakeRegistryWriter : IWorkflowPackageRegistryWriter
 internal sealed class FakePackageStore : IWorkflowPackageStore
 {
     private readonly string _knownRef;
+    private readonly WorkflowPackageManifest _manifest;
+    private readonly Dictionary<string, string> _files;
 
-    public FakePackageStore(string knownRef)
+    public FakePackageStore(
+        string knownRef,
+        WorkflowPackageManifest? manifest = null,
+        Dictionary<string, string>? files = null)
     {
         _knownRef = knownRef;
+        _manifest = manifest ?? V5Fixtures.Manifest();
+        _files = files ?? V5Fixtures.Files(_manifest);
     }
 
     public Task<WorkflowPackage> ResolveAsync(WorkflowPackageRef packageRef, CancellationToken cancellationToken)
@@ -569,8 +669,13 @@ internal sealed class FakePackageStore : IWorkflowPackageStore
             throw new InvalidOperationException($"Workflow package blob '{packageRef}' was not found (fake).");
         }
 
-        var manifest = V5Fixtures.Manifest();
-        return Task.FromResult(new WorkflowPackage(manifest, SourceFiles: V5Fixtures.Files(manifest)));
+        // Resolve the data table as the real store does. It used to come back
+        // null, which made the parent unusable for anything that compares a
+        // fork against its origin (#310).
+        var errors = new List<string>();
+        var data = WorkflowDataResolver.Resolve(_manifest, _files, errors);
+
+        return Task.FromResult(new WorkflowPackage(_manifest, Data: data, SourceFiles: _files));
     }
 }
 

@@ -145,9 +145,11 @@ public sealed class WorkflowPackagePublisher
         // The fork origin must actually exist and be executable — resolving it
         // applies the registry 404, spec-floor, and validation gates (and is
         // usually a cache hit, since the editor just loaded it).
+        WorkflowPackage parent;
+
         try
         {
-            await _packageStore.ResolveAsync(sourceRef, cancellationToken);
+            parent = await _packageStore.ResolveAsync(sourceRef, cancellationToken);
         }
         catch (InvalidOperationException ex)
         {
@@ -180,6 +182,8 @@ public sealed class WorkflowPackagePublisher
         {
             return new WorkflowPackagePublishResult(null, validation.Errors);
         }
+
+        validation.Warnings.AddRange(RelabelledWithoutContentChange(parent, stamped, files));
 
         for (var attempt = 1; ; attempt++)
         {
@@ -245,6 +249,102 @@ public sealed class WorkflowPackagePublisher
     {
         var latestText = await _writer.ReadLatestVersionAsync(name, cancellationToken);
         return latestText != null && CalVerVersion.TryParse(latestText, out var latest) ? latest : null;
+    }
+
+    /// <summary>
+    /// A fork whose values were **relabelled** while its data collections were
+    /// not (#310).
+    ///
+    /// Package values name the note a package produces — specialty, note_type —
+    /// but the knowledge lives in the collections. So a fork that sets
+    /// specialty to "cardiology" and stops produces prompts saying cardiology
+    /// over oncology standards: coherent English, wrong at the source. Before
+    /// values existed, forgetting to edit a prompt left the old wording visible
+    /// in the output; values removed that smell, which is what this replaces.
+    ///
+    /// **Relabelled means one non-blank text became a different non-blank
+    /// text.** Adding a value has no prior and filling an empty one has a blank
+    /// prior — both are ordinary authoring, and warning on them was measured
+    /// against three real publishes before this rule was narrowed. A warning
+    /// that fires on normal work is not there when it matters.
+    ///
+    /// A warning rather than a rejection: relabelling first and replacing
+    /// standards next is legitimate staged authoring, and versions are
+    /// immutable so it cannot be staged inside one.
+    /// </summary>
+    internal static IEnumerable<string> RelabelledWithoutContentChange(
+        WorkflowPackage parent,
+        WorkflowPackageManifest stamped,
+        IReadOnlyDictionary<string, string> files)
+    {
+        if (parent.Data is not { } was)
+        {
+            return Array.Empty<string>();
+        }
+
+        var now = WorkflowDataResolver.Resolve(stamped, files, new List<string>());
+
+        var relabelled = now.Scalars
+            .Where(pair => was.Scalars.TryGetValue(pair.Key, out var before)
+                && !string.IsNullOrWhiteSpace(before)
+                && !string.IsNullOrWhiteSpace(pair.Value)
+                && !string.Equals(before, pair.Value, StringComparison.Ordinal))
+            .Select(pair => pair.Key)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        if (relabelled.Count == 0 || !CollectionsMatch(was, now))
+        {
+            return Array.Empty<string>();
+        }
+
+        return new[]
+        {
+            $"Value{(relabelled.Count == 1 ? "" : "s")} {string.Join(", ", relabelled.Select(id => $"'{id}'"))} "
+            + "changed but no data collection did — the package now describes itself differently while the standards it "
+            + "draws from are unchanged. If that is deliberate, nothing is wrong; if not, the prompts will name a "
+            + "specialty the standards do not carry."
+        };
+    }
+
+    /// <summary>
+    /// Whether the two resolved data tables carry the same collections, item
+    /// for item. Compares the resolved form rather than raw files because the
+    /// parent arrives resolved — its items already carry their content.
+    /// </summary>
+    private static bool CollectionsMatch(WorkflowPackageData was, WorkflowPackageData now)
+    {
+        if (was.Collections.Count != now.Collections.Count
+            || !was.Collections.Keys.OrderBy(k => k, StringComparer.Ordinal)
+                .SequenceEqual(now.Collections.Keys.OrderBy(k => k, StringComparer.Ordinal), StringComparer.Ordinal))
+        {
+            return false;
+        }
+
+        foreach (var (id, before) in was.Collections)
+        {
+            var after = now.Collections[id];
+
+            if (!before.Fields.SequenceEqual(after.Fields, StringComparer.Ordinal)
+                || before.Items.Count != after.Items.Count)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < before.Items.Count; i++)
+            {
+                if (!string.Equals(before.Items[i].Id, after.Items[i].Id, StringComparison.Ordinal)
+                    || before.Items[i].Fields.Count != after.Items[i].Fields.Count
+                    || before.Items[i].Fields.Any(field =>
+                        !after.Items[i].Fields.TryGetValue(field.Key, out var value)
+                        || !string.Equals(field.Value, value, StringComparison.Ordinal)))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     private static void ValidateFilePaths(IReadOnlyDictionary<string, string> files, List<string> errors)
