@@ -977,10 +977,22 @@
     private bool ScalarHasPending(WorkflowManifestReader.ScalarView scalar) =>
         edits.ContainsKey(scalar.Path) || addedScalars.ContainsKey(scalar.Id);
 
+    // The nodes holding a value. The single answer to "is this value bound?" —
+    // the hint and, once deletion exists, the guard that refuses it both read
+    // this, because two predicates answering one question is what shipped #322.
+    //
+    // Effective, not published (#321): a pending rebind onto a value binds it
+    // now, and a pending node removal releases it now. EffectiveNodes +
+    // RowsFor is the same idiom DeclaredSectionErrors and CascadeInputRename
+    // use for input: refs.
+    private IReadOnlyList<string> NodesBinding(string scalarId) =>
+        EffectiveNodes.Where(n => RowsFor(n).Any(row => row.From == $"data:{scalarId}"))
+            .Select(n => n.Id)
+            .ToList();
+
     // A collection is unused when nothing forEaches it; a value when nothing
     // binds it. Different edge kinds, same question.
-    private bool ScalarIsUnused(string scalarId) =>
-        !nodes.Any(n => n.Bindings.Any(binding => binding.From == $"data:{scalarId}"));
+    private bool ScalarIsUnused(string scalarId) => NodesBinding(scalarId).Count == 0;
 
     private async Task AddScalarAsync()
     {
