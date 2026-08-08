@@ -87,6 +87,47 @@ public static class EditorFixtures
         return package with { Files = files };
     }
 
+    /// <summary>
+    /// v6 with two published values: specialty, which the fan node binds, and
+    /// urgency, which nothing binds (#321). Deleting a published value is only
+    /// offered for the unbound case, so the two have to coexist — and
+    /// V6WithValue cannot grow an unbound one without breaking the test that
+    /// asserts nothing is flagged unused there.
+    /// </summary>
+    public static WorkflowPackageContentResponse V6WithUnusedValue()
+    {
+        var package = Package("""
+            {
+              "name": "acct-1234567890ab",
+              "version": "v2026.07.1",
+              "specVersion": 6,
+              "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
+              "data": { "standards": "data/standards/", "specialty": "data/specialty.txt",
+                        "urgency": "data/urgency.txt" },
+              "prompts": [
+                { "id": "draft-section", "file": "prompts/draft-section.md",
+                  "variables": ["section_name", "consult_draft", "specialty"] }
+              ],
+              "result": "node:assemble-note",
+              "nodes": [
+                { "id": "draft-section", "forEach": "data:standards", "label": "Drafting section",
+                  "prompt": "draft-section",
+                  "bindings": { "section_name": "item:name", "consult_draft": "input:consult_draft",
+                                "specialty": "data:specialty" } },
+                { "id": "assemble-note", "label": "Assembling note", "aggregate": ["node:draft-section"] }
+              ]
+            }
+            """, 6);
+
+        var files = new Dictionary<string, string>(package.Files, StringComparer.Ordinal)
+        {
+            ["data/specialty.txt"] = "oncology",
+            ["data/urgency.txt"] = "routine"
+        };
+
+        return package with { Files = files };
+    }
+
     /// <summary>The v7 shape: declared inputs and a results list.</summary>
     public static WorkflowPackageContentResponse V7() => Package("""
         {

@@ -188,4 +188,26 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         Assert.Equal("data/specialty.txt", data.GetProperty("specialty").GetString());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
+
+    [Fact]
+    public async Task DeletedPublishedValue_LosesBothItsFileAndItsDataMapEntry()
+    {
+        // #321 needs both halves, and this is the only place that can prove
+        // it: the validator resolves every data entry against the files, so a
+        // map still naming the deleted value fails here with "is missing from
+        // the package" — the composed manifest looks fine on its own.
+        var (result, sent) = await PublishAndCaptureAsync(page =>
+        {
+            Navigate(page, "urgency");
+            page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "Remove").Click();
+            return Task.CompletedTask;
+        }, EditorFixtures.V6WithUnusedValue());
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+        Assert.DoesNotContain("data/urgency.txt", sent.Files.Keys);
+
+        // One key leaves, not the map: the bound value and the collection stay.
+        var data = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement.GetProperty("data");
+        Assert.Equal(new[] { "standards", "specialty" }, data.EnumerateObject().Select(p => p.Name).ToArray());
+    }
 }

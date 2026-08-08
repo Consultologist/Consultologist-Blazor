@@ -213,18 +213,29 @@
                        group rather than as a folder with nothing inside. *@
                     @foreach (var scalar in EffectiveScalars)
                     {
-                        <button type="button"
-                                class="editor-nav__item editor-nav__value @(selectedKey == scalar.Path ? "editor-nav__item--selected" : "")"
-                                @onclick="() => Select(scalar.Path)">
-                            <span class="editor-nav__dot">@(ScalarHasPending(scalar) ? "●" : "")</span>
-                            <span>@scalar.Id</span>
-                        </button>
-                        @if (ScalarIsUnused(scalar.Id))
+                        @if (ScalarIsRemoved(scalar))
                         {
-                            <div class="editor-nav__item editor-nav__item--nested">
+                            <div class="editor-nav__item editor-nav__value editor-nav__item--removed">
                                 <span class="editor-nav__dot"></span>
-                                <span class="muted-text">not bound by any workflow node yet</span>
+                                <span class="editor-nav__strike">@scalar.Id</span>
+                                <button type="button" class="editor-nav__restore" @onclick="() => RestoreScalarAsync(scalar.Id)">(restore)</button>
                             </div>
+                        }
+                        else
+                        {
+                            <button type="button"
+                                    class="editor-nav__item editor-nav__value @(selectedKey == scalar.Path ? "editor-nav__item--selected" : "")"
+                                    @onclick="() => Select(scalar.Path)">
+                                <span class="editor-nav__dot">@(ScalarHasPending(scalar) ? "●" : "")</span>
+                                <span>@scalar.Id</span>
+                            </button>
+                            @if (ScalarIsUnused(scalar.Id))
+                            {
+                                <div class="editor-nav__item editor-nav__item--nested">
+                                    <span class="editor-nav__dot"></span>
+                                    <span class="muted-text">not bound by any workflow node yet</span>
+                                </div>
+                            }
                         }
                     }
                     <button type="button"
@@ -389,14 +400,26 @@
                                             Modified="@ScalarHasPending(scalar)"
                                             TextChanged="@(value => OnTextChangedAsync(scalar.Path, value))">
                             <HeaderActions>
-                                @if (addedScalars.ContainsKey(scalar.Id))
-                                {
-                                    <FluentButton Appearance="Appearance.Outline" @onclick="() => RemoveScalarAsync(scalar.Id)">
-                                        Remove
-                                    </FluentButton>
-                                }
+                                @{ var holders = NodesBinding(scalar.Id); }
+                                <FluentButton Appearance="Appearance.Outline"
+                                              Disabled="@(holders.Count > 0)"
+                                              @onclick="() => RemoveScalarAsync(scalar.Id)">
+                                    Remove
+                                </FluentButton>
                             </HeaderActions>
                             <ChildContent>
+                                @* Said before the button is reached for, not after
+                                   it is pressed: deleting a bound value produces a
+                                   package the server refuses to publish. *@
+                                @if (NodesBinding(scalar.Id) is { Count: > 0 } bindingNodes)
+                                {
+                                    <p class="muted-text">
+                                        Bound by @(bindingNodes.Count == 1 ? "node" : "nodes")
+                                        @(string.Join(", ", bindingNodes.Select(id => $"'{id}'"))) —
+                                        rebind or remove @(bindingNodes.Count == 1 ? "that node" : "those nodes")
+                                        first to delete this value.
+                                    </p>
+                                }
                                 <p class="muted-text">
                                     Bound as <code>data:@scalar.Id</code>. Inserted into prompts exactly as
                                     typed — a trailing newline becomes a line break mid-sentence.
@@ -977,10 +1000,33 @@
     private bool ScalarHasPending(WorkflowManifestReader.ScalarView scalar) =>
         edits.ContainsKey(scalar.Path) || addedScalars.ContainsKey(scalar.Id);
 
+    // The nodes holding a value. The single answer to "is this value bound?" —
+    // the hint, the delete guard and the refusal message all read it, because
+    // two predicates answering one question is what shipped #322.
+    //
+    // Effective, not published (#321): this gates deletion, so reading the
+    // manifest alone is wrong in both directions — a pending rebind onto the
+    // value would let it be deleted into a package the server then rejects,
+    // and a pending node removal would refuse a value nothing will bind.
+    // EffectiveNodes + RowsFor is the same idiom DeclaredSectionErrors and
+    // CascadeInputRename use for input: refs.
+    private IReadOnlyList<string> NodesBinding(string scalarId) =>
+        EffectiveNodes.Where(n => RowsFor(n).Any(row => row.From == $"data:{scalarId}"))
+            .Select(n => n.Id)
+            .ToList();
+
     // A collection is unused when nothing forEaches it; a value when nothing
     // binds it. Different edge kinds, same question.
-    private bool ScalarIsUnused(string scalarId) =>
-        !nodes.Any(n => n.Bindings.Any(binding => binding.From == $"data:{scalarId}"));
+    private bool ScalarIsUnused(string scalarId) => NodesBinding(scalarId).Count == 0;
+
+    // Published values marked for deletion. Derived from removedFiles rather
+    // than tracked separately, so PendingCount, Discard, Load and the draft
+    // carry it already (#326: nine hand-maintained lists, not ten).
+    private IEnumerable<string> RemovedScalarIds =>
+        scalarEntries.Where(s => removedFiles.Contains(s.Path)).Select(s => s.Id);
+
+    private bool ScalarIsRemoved(WorkflowManifestReader.ScalarView scalar) =>
+        removedFiles.Contains(scalar.Path);
 
     private async Task AddScalarAsync()
     {
@@ -996,6 +1042,10 @@
             return;
         }
 
+        // A value pending removal still counts as existing. Reusing its id
+        // before the deletion publishes would make the composed data map
+        // depend on whether the add or the remove ran last, which is not a
+        // question a manifest should be able to ask (#321).
         if (collections.Any(c => c.Id == id) || addedCollections.Contains(id)
             || scalarEntries.Any(s => s.Id == id) || addedScalars.ContainsKey(id))
         {
@@ -1012,14 +1062,26 @@
         await PersistDraftAsync();
     }
 
-    // Pending only, which is true parity: RemoveCollectionAsync un-adds a
-    // pending folder and a published collection cannot be removed at all.
-    // Deleting a published value needs its data-map entry removed too, and a
-    // guard against removing one a node still binds — its own issue.
+    // A pending value un-adds; a published one is marked removed, which takes
+    // its file away at publish and its data-map entry in ComposeManifest
+    // (#321). Both halves or neither: a data entry naming a file that is gone
+    // fails the resolver.
     private async Task RemoveScalarAsync(string scalarId)
     {
+        // The button is already disabled while a node binds it; this is the
+        // same check standing behind it, so no path deletes a bound value.
+        if (!ScalarIsUnused(scalarId))
+        {
+            return;
+        }
+
         var path = ScalarPath(scalarId);
-        addedScalars.Remove(scalarId);
+
+        if (!addedScalars.Remove(scalarId))
+        {
+            removedFiles.Add(path);
+        }
+
         edits.Remove(path);
         publishSuccess = null;
         publishWarnings.Clear();
@@ -1029,6 +1091,13 @@
             selectedKey = collections.SelectMany(c => c.Items).FirstOrDefault(i => !removedFiles.Contains(i.File))?.File ?? GraphKey;
         }
 
+        await PersistDraftAsync();
+    }
+
+    // Reversible until publish, the same deal a removed item file gets.
+    private async Task RestoreScalarAsync(string scalarId)
+    {
+        removedFiles.Remove(ScalarPath(scalarId));
         await PersistDraftAsync();
     }
 
@@ -1808,7 +1877,11 @@
     // can be forEached the moment it exists; a pending value has to be
     // bindable the same way, or authoring one takes two publishes — which is
     // exactly what it took before this.
-    private IReadOnlyList<string> ScalarIds => EffectiveScalars.Select(s => s.Id).ToList();
+    // Pending removals drop out (#321): offering a value you just deleted
+    // would build a binding the server rejects, which is the delete guard's
+    // mirror image. Pending additions stay in — that is #322.
+    private IReadOnlyList<string> ScalarIds =>
+        EffectiveScalars.Where(s => !ScalarIsRemoved(s)).Select(s => s.Id).ToList();
 
     // Output-contract choices are the package's own schema ids — their files
     // are present and already validated as canonical catalog matches.
@@ -3416,11 +3489,13 @@
         // Every kind of pending change that writes into the manifest has to
         // appear here, or it is composed into `files` and then silently
         // dropped from the document that describes them (#309).
+        // removedFiles earns its place here only through values (#321): every
+        // other removal takes a file the manifest never named.
         if (bindingEdits.Count == 0 && VariableAddCount == 0 && VariableRemovalCount == 0
             && addedCollections.Count == 0 && addedScalars.Count == 0 && nodeEdits.Count == 0
             && addedNodes.Count == 0 && removedNodeIds.Count == 0 && addedPrompts.Count == 0
             && aggregateEdits.Count == 0 && resultEdit == null
-            && inputsEdit == null && resultsEdit == null)
+            && inputsEdit == null && resultsEdit == null && !RemovedScalarIds.Any())
         {
             return content!.Manifest;
         }
@@ -3429,7 +3504,7 @@
 
         // New folders (#154): one data-map entry per pending collection; the
         // directory value's trailing slash is what marks it as a collection.
-        if (addedCollections.Count > 0 || addedScalars.Count > 0)
+        if (addedCollections.Count > 0 || addedScalars.Count > 0 || RemovedScalarIds.Any())
         {
             var dataKey = root["Data"] is not null ? "Data" : "data";
             if (root[dataKey] is not System.Text.Json.Nodes.JsonObject dataObject)
@@ -3449,6 +3524,15 @@
             foreach (var scalarId in addedScalars.Keys)
             {
                 dataObject[scalarId] = ScalarPath(scalarId);
+            }
+
+            // The other half of a deletion (#321). The file leaves through
+            // removedFiles at publish; without this the data map keeps naming
+            // it and the resolver fails on a package that looks fine here.
+            // Casing follows the entry as read, not the key we would write.
+            foreach (var scalarId in RemovedScalarIds)
+            {
+                dataObject.Remove(scalarId);
             }
         }
 

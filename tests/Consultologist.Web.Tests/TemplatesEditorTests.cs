@@ -1,3 +1,4 @@
+using AngleSharp.Dom;
 using Bunit;
 using Consultologist.Web.Pages;
 using NSubstitute;
@@ -327,6 +328,111 @@ public class TemplatesEditorTests : ClientRenderTestContext
         Assert.Contains("no data collection did", page.Markup);
         // Advisory, not a rejection — the success banner stands too.
         Assert.Contains("Published acct-1234567890ab@v2026.07.2", page.Markup);
+    }
+
+    // #321: deleting a *published* value. Two halves — the file leaves through
+    // removedFiles, the data-map entry leaves through ComposeManifest — and a
+    // guard, because a value a node still binds cannot be deleted into a
+    // package the server will accept.
+
+    private IRenderedComponent<Templates> RenderWithUnusedValue()
+    {
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V6WithUnusedValue());
+        return Render<Templates>();
+    }
+
+    private static IElement RemoveButton(IRenderedComponent<Templates> page) =>
+        page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "Remove");
+
+    [Fact]
+    public void AnUnboundPublishedValue_RemovesAndRestores()
+    {
+        var page = RenderWithUnusedValue();
+
+        Navigate(page, "urgency");
+        RemoveButton(page).Click();
+
+        // Struck through with a way back, the same deal a removed item file
+        // gets — the deletion is not final until it publishes.
+        Assert.Contains("editor-nav__strike", page.Markup);
+        Assert.Contains("(restore)", page.Markup);
+        Assert.Contains("−1", page.Markup);
+
+        page.FindAll("button.editor-nav__restore").First().Click();
+
+        Assert.DoesNotContain("(restore)", page.Markup);
+        Assert.DoesNotContain("−1", page.Markup);
+    }
+
+    [Fact]
+    public void ABoundValue_CannotBeRemovedAndTheReasonNamesTheNode()
+    {
+        var page = RenderWithUnusedValue();
+
+        Navigate(page, "specialty");
+
+        Assert.True(RemoveButton(page).HasAttribute("disabled"));
+        Assert.Contains("draft-section", page.Markup);
+        Assert.Contains("rebind or remove", page.Markup);
+    }
+
+    [Fact]
+    public void APendingRebindOntoAValue_MakesItUndeletable()
+    {
+        // The false-allow the published-only predicate would have given:
+        // binding urgency here and deleting it in the same session publishes a
+        // package the server rejects with "unknown data entry".
+        var page = RenderWithUnusedValue();
+
+        Navigate(page, "Graph");
+        // binding-row__select is shared with the deliverable, prompt and
+        // forEach selects; the aria-label is what distinguishes a source row.
+        page.FindAll("select.binding-row__select")
+            .First(s => s.GetAttribute("aria-label") == "Source for section_name")
+            .Change("data:urgency");
+
+        Navigate(page, "urgency");
+
+        Assert.True(RemoveButton(page).HasAttribute("disabled"));
+        // One predicate: the shipped hint answers the same question the guard
+        // does, so a pending binding clears it without publishing.
+        Assert.DoesNotContain("not bound by any workflow node yet", page.Markup);
+    }
+
+    [Fact]
+    public void PendingRemovalOfTheOnlyBindingNode_MakesTheValueDeletable()
+    {
+        // The false-refuse, the same mistake mirrored: nothing binds specialty
+        // in the version about to publish, so nothing should stop its deletion.
+        var page = RenderWithUnusedValue();
+
+        Navigate(page, "Graph");
+        // draft-section is the only removable node — the deliverable's root
+        // never offers it.
+        page.FindAll("button").First(b => b.TextContent.Contains("Remove node")).Click();
+
+        Navigate(page, "specialty");
+
+        Assert.False(RemoveButton(page).HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void ADeletedValue_IsNoLongerOfferedAsABindingSource()
+    {
+        // The guard's mirror image: binding to a value just deleted builds the
+        // same broken package from the other direction.
+        var page = RenderWithUnusedValue();
+
+        Navigate(page, "urgency");
+        RemoveButton(page).Click();
+        Navigate(page, "Graph");
+
+        var options = page.FindAll("select.binding-row__select option")
+            .Select(option => option.GetAttribute("value"))
+            .ToList();
+
+        Assert.DoesNotContain("data:urgency", options);
+        Assert.Contains("data:specialty", options);
     }
 
     [Fact]
