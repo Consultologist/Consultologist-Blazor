@@ -436,6 +436,31 @@ public class TemplatesEditorTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void AnEditAfterPublishing_DropsTheStaleSuccessBanner()
+    {
+        // #326: 22 handlers each cleared this by hand, and the 23rd could
+        // forget. The invariant now lives in PendingChangedAsync, which every
+        // edit already calls — a banner describing a published version must
+        // not stand over work that version does not contain.
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V6WithValue());
+        WorkflowService.PublishPackageAsync(Arg.Any<Consultologist.Web.Services.Workflow.WorkflowPackagePublishRequest>())
+            .Returns(new Consultologist.Web.Services.Workflow.WorkflowPublishOutcome(
+                new Consultologist.Web.Services.Workflow.WorkflowPackagePublishResponse(
+                    "acct-1234567890ab", "v2026.07.2", "acct-1234567890ab@v2026.07.2", null),
+                Array.Empty<string>()));
+
+        var page = Render<Templates>();
+        page.Find("fluent-text-area").Change("Document the presenting illness, chronologically.");
+        Publish(page);
+
+        Assert.Contains("Published acct-1234567890ab@v2026.07.2", page.Markup);
+
+        page.Find("fluent-text-area").Change("A different revision entirely.");
+
+        Assert.DoesNotContain("Published acct-1234567890ab@v2026.07.2", page.Markup);
+    }
+
+    [Fact]
     public void AValueIdMayContainAnUnderscore()
     {
         // note_type is published and running. CollectionIdPattern forbids '_'
