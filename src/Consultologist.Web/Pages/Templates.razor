@@ -434,7 +434,7 @@
                                             EditLabel="Standard"
                                             Text="@addedItem.Content"
                                             Modified="true"
-                                            TextChanged="@(async value => { addedItem.Content = value; await PersistDraftAsync(); })">
+                                            TextChanged="@(async value => { addedItem.Content = value; await PendingChangedAsync(); })">
                             <HeaderActions>
                                 <FluentButton Appearance="Appearance.Outline" @onclick="() => RemoveAddedAsync(addedItem)">
                                     Remove
@@ -1077,6 +1077,18 @@
     private bool ScalarIsRemoved(WorkflowManifestReader.ScalarView scalar) =>
         removedFiles.Contains(scalar.Path);
 
+    /// <summary>
+    /// Every id the data map holds or is about to: folders and values,
+    /// published and pending. One map cannot carry two entries under one key,
+    /// so both new-entry forms ask this rather than each naming the four
+    /// sources (#326) — two lists answering one question is #322's shape.
+    ///
+    /// A pending-removed value still counts, deliberately: it exists until the
+    /// deletion publishes (#321).
+    /// </summary>
+    private IEnumerable<string> DataEntryIds =>
+        EffectiveCollections.Select(c => c.Id).Concat(EffectiveScalars.Select(s => s.Id));
+
     private async Task AddScalarAsync()
     {
         var id = newScalarId?.Trim() ?? string.Empty;
@@ -1091,12 +1103,7 @@
             return;
         }
 
-        // A value pending removal still counts as existing. Reusing its id
-        // before the deletion publishes would make the composed data map
-        // depend on whether the add or the remove ran last, which is not a
-        // question a manifest should be able to ask (#321).
-        if (collections.Any(c => c.Id == id) || addedCollections.Contains(id)
-            || scalarEntries.Any(s => s.Id == id) || addedScalars.ContainsKey(id))
+        if (DataEntryIds.Contains(id, StringComparer.Ordinal))
         {
             newScalarError = $"A data entry named '{id}' already exists.";
             return;
@@ -1105,10 +1112,8 @@
         addedScalars[id] = string.Empty;
         newScalarId = null;
         newScalarError = null;
-        publishSuccess = null;
-        publishWarnings.Clear();
         selectedKey = ScalarPath(id);
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     // A pending value un-adds; a published one is marked removed, which takes
@@ -1132,22 +1137,20 @@
         }
 
         edits.Remove(path);
-        publishSuccess = null;
-        publishWarnings.Clear();
 
         if (selectedKey == path)
         {
             selectedKey = collections.SelectMany(c => c.Items).FirstOrDefault(i => !removedFiles.Contains(i.File))?.File ?? GraphKey;
         }
 
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     // Reversible until publish, the same deal a removed item file gets.
     private async Task RestoreScalarAsync(string scalarId)
     {
         removedFiles.Remove(ScalarPath(scalarId));
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private async Task AddCollectionAsync()
@@ -1160,11 +1163,7 @@
             return;
         }
 
-        // Pending values count too: one data map cannot hold a folder and a
-        // value under the same key, and both sides of that check have to look
-        // at pending state or the collision only surfaces at publish.
-        if (collections.Any(c => c.Id == id) || addedCollections.Contains(id)
-            || publishedScalarIds.Contains(id, StringComparer.Ordinal) || addedScalars.ContainsKey(id))
+        if (DataEntryIds.Contains(id, StringComparer.Ordinal))
         {
             newCollectionError = $"A data entry named '{id}' already exists.";
             return;
@@ -1173,11 +1172,9 @@
         addedCollections.Add(id);
         newCollectionId = null;
         newCollectionError = null;
-        publishSuccess = null;
-        publishWarnings.Clear();
         // Land on the folder's "+ Add item" pane — the first item is the next step.
         selectedKey = NewKeyFor(id);
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private async Task RemoveCollectionAsync(string collectionId)
@@ -1185,15 +1182,13 @@
         var itsItemKeys = addedItems.Where(a => a.Collection == collectionId).Select(a => a.Key).ToHashSet(StringComparer.Ordinal);
         addedCollections.Remove(collectionId);
         addedItems.RemoveAll(a => a.Collection == collectionId);
-        publishSuccess = null;
-        publishWarnings.Clear();
 
         if (selectedKey == NewKeyFor(collectionId) || (selectedKey != null && itsItemKeys.Contains(selectedKey)))
         {
             selectedKey = collections.SelectMany(c => c.Items).FirstOrDefault(i => !removedFiles.Contains(i.File))?.File ?? GraphKey;
         }
 
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private string CollectionCount(WorkflowManifestReader.CollectionView collection)
@@ -1237,18 +1232,14 @@
         addedItems.Add(added);
         newItemId = newItemName = newItemContent = null;
         newItemError = null;
-        publishSuccess = null;
-        publishWarnings.Clear();
         selectedKey = added.Key;
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private async Task RemoveItemAsync(string file)
     {
         removedFiles.Add(file);
         edits.Remove(file);
-        publishSuccess = null;
-        publishWarnings.Clear();
 
         if (selectedKey == file)
         {
@@ -1257,13 +1248,13 @@
                 ?? GraphKey;
         }
 
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private async Task RestoreItem(string file)
     {
         removedFiles.Remove(file);
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private async Task RemoveAddedAsync(AddedItem item)
@@ -1275,7 +1266,7 @@
             selectedKey = collections.SelectMany(c => c.Items).FirstOrDefault(i => !removedFiles.Contains(i.File))?.File ?? GraphKey;
         }
 
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private WorkflowPackageContentResponse? content;
@@ -1408,9 +1399,7 @@
     private async Task CommitDeclarationAsync()
     {
         declaredError = null;
-        publishSuccess = null;
-        publishWarnings.Clear();
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     // The author-facing half of the server's v7 rules, checked before publish
@@ -1818,13 +1807,11 @@
 
     private async Task OnAggregateChangedAsync(WorkflowNodeSummary.AggregateChange change)
     {
-        publishSuccess = null;
-        publishWarnings.Clear();
 
         if (addedNodes.FirstOrDefault(a => a.Id == change.NodeId) is { } addedAggregator)
         {
             addedAggregator.Aggregate = change.Sources;
-            await PersistDraftAsync();
+            await PendingChangedAsync();
             return;
         }
 
@@ -1839,7 +1826,7 @@
             aggregateEdits[change.NodeId] = change.Sources;
         }
 
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private async Task OnResultChangedAsync(ChangeEventArgs args)
@@ -1851,10 +1838,8 @@
             return;
         }
 
-        publishSuccess = null;
-        publishWarnings.Clear();
         resultEdit = selected == WorkflowManifestReader.ReadResultRef(content!.Manifest) ? null : selected;
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     // The live guardrail from v6 on: reverse BFS from the effective
@@ -2010,18 +1995,14 @@
         newNodeKind = "prompt";
         newNodePrompt = string.Empty;
         newNodeError = null;
-        publishSuccess = null;
-        publishWarnings.Clear();
         // Land on the next step: the aggregator's source list or an existing
         // prompt's bindings on the node card, or the new prompt's text.
         selectedKey = aggregator || promptRef != null ? NodeKeyFor(id) : AddedPromptFile(id);
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private async Task RemoveNodeAsync(string nodeId)
     {
-        publishSuccess = null;
-        publishWarnings.Clear();
         var added = addedNodes.FirstOrDefault(a => a.Id == nodeId);
         var promptId = added != null
             ? added.PromptRef ?? added.Id
@@ -2063,15 +2044,13 @@
             selectedKey = GraphKey;
         }
 
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private async Task RestoreNodeAsync(string nodeId)
     {
         removedNodeIds.Remove(nodeId);
-        publishSuccess = null;
-        publishWarnings.Clear();
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private async Task OnNodeChangedAsync(WorkflowNodeSummary.NodeChange change)
@@ -2091,9 +2070,7 @@
                 addedNode.PromptRef = change.Prompt == addedNode.Id ? null : change.Prompt;
             }
 
-            publishSuccess = null;
-        publishWarnings.Clear();
-            await PersistDraftAsync();
+                await PendingChangedAsync();
             return;
         }
 
@@ -2117,9 +2094,7 @@
             nodeEdits[change.NodeId] = change;
         }
 
-        publishSuccess = null;
-        publishWarnings.Clear();
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private async Task AddPromptAsync()
@@ -2142,26 +2117,22 @@
         addedPrompts.Add(pending);
         newPromptId = null;
         newPromptError = null;
-        publishSuccess = null;
-        publishWarnings.Clear();
         // Land on the new prompt's pane — writing its text is the next step.
         selectedKey = AddedStandalonePromptFile(id);
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private async Task RemoveAddedPromptAsync(AddedPrompt pending)
     {
         addedPrompts.Remove(pending);
         variableAdds.Remove(pending.Id);
-        publishSuccess = null;
-        publishWarnings.Clear();
 
         if (selectedKey == AddedStandalonePromptFile(pending.Id))
         {
             selectedKey = prompts.FirstOrDefault()?.File ?? GraphKey;
         }
 
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     // Pending prompt-variable declarations and removals (#140), keyed by
@@ -2237,8 +2208,6 @@
 
     private async Task AddVariableFromPromptAsync(WorkflowManifestReader.PromptView prompt)
     {
-        publishSuccess = null;
-        publishWarnings.Clear();
         newVariableError = TryDeclareVariable(prompt.Id, newVariableName ?? string.Empty, out var name);
 
         if (newVariableError != null)
@@ -2258,7 +2227,7 @@
 
         newVariableName = null;
         newVariableSource = string.Empty;
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private WorkflowNodeSummary.BindingRow RowFor(WorkflowManifestReader.NodeView node, string variable)
@@ -2284,8 +2253,6 @@
 
     private async Task RemoveVariableAsync(WorkflowManifestReader.PromptView prompt, string variable)
     {
-        publishSuccess = null;
-        publishWarnings.Clear();
 
         if (variableAdds.TryGetValue(prompt.Id, out var adds) && adds.Remove(variable))
         {
@@ -2309,13 +2276,11 @@
             bindingEdits.Remove(BindingKey(node.Id, variable));
         }
 
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private async Task RestoreVariableAsync(WorkflowManifestReader.PromptView prompt, string variable)
     {
-        publishSuccess = null;
-        publishWarnings.Clear();
 
         if (variableRemovals.TryGetValue(prompt.Id, out var removed))
         {
@@ -2327,7 +2292,7 @@
             }
         }
 
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private static string BindingKey(string nodeId, string variable) => nodeId + "\n" + variable;
@@ -2410,8 +2375,6 @@
 
     private async Task OnVariableAddedAsync(WorkflowNodeSummary.VariableAdd add)
     {
-        publishSuccess = null;
-        publishWarnings.Clear();
         var node = EffectiveNodes.FirstOrDefault(n => n.Id == add.NodeId);
 
         if (node?.Prompt == null || TryDeclareVariable(node.Prompt, add.Variable, out var name) != null)
@@ -2426,13 +2389,11 @@
             bindingEdits[BindingKey(node.Id, name)] = (add.From, add.As);
         }
 
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private async Task OnBindingChangedAsync(WorkflowNodeSummary.BindingChange change)
     {
-        publishSuccess = null;
-        publishWarnings.Clear();
 
         var original = nodes.FirstOrDefault(n => n.Id == change.NodeId)?
             .Bindings.FirstOrDefault(b => b.Variable == change.Variable);
@@ -2447,7 +2408,7 @@
             bindingEdits[key] = (change.From, change.As);
         }
 
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private bool isLoading;
@@ -2760,36 +2721,8 @@
     {
         isLoading = true;
         loadError = null;
-        edits.Clear();
-        addedItems.Clear();
-        addedCollections.Clear();
-        addedScalars.Clear();
-        removedFiles.Clear();
-        bindingEdits.Clear();
-        nodeEdits.Clear();
-        addedNodes.Clear();
-        removedNodeIds.Clear();
-        aggregateEdits.Clear();
-        resultEdit = null;
-        inputsEdit = null;
-        resultsEdit = null;
-        declaredError = null;
-        addedPrompts.Clear();
-        newPromptId = null;
-        newPromptError = null;
-        variableAdds.Clear();
-        variableRemovals.Clear();
-        newVariableName = null;
-        newVariableSource = string.Empty;
-        newVariableError = null;
-        newItemError = null;
-        newCollectionId = null;
-        newCollectionError = null;
-        newNodeId = newNodeLabel = null;
-        newNodeForEach = string.Empty;
-        newNodeOutput = string.Empty;
-        newNodeKind = "prompt";
-        newNodeError = null;
+        ClearPending();
+        ResetFormScratch();
 
         // The diagram belongs to the loaded version: drop it so package
         // switches and post-publish reloads never show a stale graph.
@@ -3163,8 +3096,21 @@
         }
     }
 
-    private async Task PersistDraftAsync()
+    /// <summary>
+    /// Every edit ends here, so this is where "the pending state changed"
+    /// belongs: the draft is saved, and the banner describing a *previous*
+    /// publish stops standing over work it does not describe (#326). Twenty-two
+    /// handlers used to repeat those two lines, and the twenty-third could
+    /// forget them.
+    ///
+    /// Publish errors are deliberately not cleared here — they name what to
+    /// fix, and fixing it is an edit.
+    /// </summary>
+    private async Task PendingChangedAsync()
     {
+        publishSuccess = null;
+        publishWarnings.Clear();
+
         if (PendingCount == 0)
         {
             await JS.InvokeVoidAsync("localStorage.removeItem", DraftKey);
@@ -3198,22 +3144,20 @@
 
     private async Task OnTextChangedAsync(string path, string value)
     {
-        publishSuccess = null;
-        publishWarnings.Clear();
 
         // A pending node's or standalone pending prompt's text lives on its
         // draft object, not in edits.
         if (AddedNodeForPromptFile(path) is { } addedNode)
         {
             addedNode.PromptText = value;
-            await PersistDraftAsync();
+            await PendingChangedAsync();
             return;
         }
 
         if (AddedPromptForFile(path) is { } addedPrompt)
         {
             addedPrompt.Text = value;
-            await PersistDraftAsync();
+            await PendingChangedAsync();
             return;
         }
 
@@ -3222,7 +3166,7 @@
         if (AddedScalarIdForPath(path) is { } pendingScalar)
         {
             addedScalars[pendingScalar] = value;
-            await PersistDraftAsync();
+            await PendingChangedAsync();
             return;
         }
 
@@ -3235,7 +3179,7 @@
             edits[path] = value;
         }
 
-        await PersistDraftAsync();
+        await PendingChangedAsync();
     }
 
     private bool CollectionHasMembershipChanges(WorkflowManifestReader.CollectionView collection) =>
@@ -3282,9 +3226,7 @@
         }
 
         isPublishing = true;
-        publishErrors = new List<string>();
-        publishSuccess = null;
-        publishWarnings.Clear();
+        ResetPublishFeedback();
 
         try
         {
@@ -3490,41 +3432,58 @@
             return;
         }
 
-        edits.Clear();
-        addedItems.Clear();
-        addedCollections.Clear();
-        addedScalars.Clear();
-        removedFiles.Clear();
-        bindingEdits.Clear();
-        nodeEdits.Clear();
-        addedNodes.Clear();
-        removedNodeIds.Clear();
-        aggregateEdits.Clear();
-        resultEdit = null;
-        inputsEdit = null;
-        resultsEdit = null;
+        ClearPending();
+        ResetFormScratch();
+        ResetPublishFeedback();
+
+        // Nothing is pending now, and that branch of PendingChangedAsync is
+        // exactly the localStorage.removeItem this used to call by hand.
+        await PendingChangedAsync();
+    }
+
+    private void ClearPending()
+    {
+        foreach (var kind in PendingKinds)
+        {
+            kind.Clear();
+        }
+    }
+
+    /// <summary>
+    /// The half-typed contents of the "new item", "new folder", "new value",
+    /// "new node", "new prompt" and "new variable" forms. Not pending state —
+    /// none of it publishes — but it belongs to the version being left, so
+    /// loading and discarding both drop it.
+    ///
+    /// Shared because the two had already drifted (#326): Load kept a
+    /// half-typed item, and neither cleared the value form.
+    /// </summary>
+    private void ResetFormScratch()
+    {
         declaredError = null;
-        addedPrompts.Clear();
-        newPromptId = null;
-        newPromptError = null;
-        variableAdds.Clear();
-        variableRemovals.Clear();
-        newVariableName = null;
+        newPromptId = newPromptError = null;
+        newVariableName = newVariableError = null;
         newVariableSource = string.Empty;
-        newVariableError = null;
-        newItemId = newItemName = newItemContent = null;
-        newItemError = null;
-        newCollectionId = null;
-        newCollectionError = null;
-        newNodeId = newNodeLabel = null;
+        newItemId = newItemName = newItemContent = newItemError = null;
+        newCollectionId = newCollectionError = null;
+        newScalarId = newScalarError = null;
+        newNodeId = newNodeLabel = newNodeError = null;
         newNodeForEach = string.Empty;
         newNodeOutput = string.Empty;
         newNodeKind = "prompt";
-        newNodeError = null;
+    }
+
+    /// <summary>
+    /// An operation is starting, so the previous one's outcome goes — errors
+    /// included, unlike an ordinary edit, which leaves them standing while you
+    /// fix what they name. Publish and Revert only; both set new feedback when
+    /// they finish.
+    /// </summary>
+    private void ResetPublishFeedback()
+    {
         publishErrors = new List<string>();
         publishSuccess = null;
         publishWarnings.Clear();
-        await JS.InvokeVoidAsync("localStorage.removeItem", DraftKey);
     }
 
     // The manifest rides opaque except for this one surgical write: pending
@@ -3883,9 +3842,7 @@
             return;
         }
 
-        publishErrors = new List<string>();
-        publishSuccess = null;
-        publishWarnings.Clear();
+        ResetPublishFeedback();
 
         try
         {

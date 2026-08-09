@@ -326,7 +326,7 @@ public class TemplatesPendingStateTests : ClientRenderTestContext
     public async Task EveryPendingChangeReachesTheSavedDraft()
     {
         // The failure this catches is silent: a field missing from
-        // DraftPayload or from PersistDraftAsync is simply gone on reload,
+        // DraftPayload or from PendingChangedAsync is simply gone on reload,
         // with a pending badge that still counts it.
         //
         // Only the persist half is asserted. Restore deliberately drops
@@ -340,7 +340,7 @@ public class TemplatesPendingStateTests : ClientRenderTestContext
             var original = field.GetValue(page.Instance);
             TryMakePending(page.Instance, field);
 
-            await Invoke(page, "PersistDraftAsync");
+            await Invoke(page, "PendingChangedAsync");
 
             var saved = JSInterop.Invocations["localStorage.setItem"];
             var json = (string)saved[^1].Arguments[1]!;
