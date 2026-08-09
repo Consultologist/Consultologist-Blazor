@@ -35,5 +35,6 @@ builder.Services.AddHttpClient<ISseDiagnosticsService, SseDiagnosticsService>();
 builder.Services.AddHttpClient<IWorkflowEndpointService, WorkflowEndpointService>();
 builder.Services.AddHttpClient<IDocumentEndpointService, DocumentEndpointService>();
 builder.Services.AddScoped<Consultologist.Web.Services.AI.ConsultJobSession>();
+builder.Services.AddScoped<Consultologist.Web.Services.Workflow.WorkflowEditorSession>();
 
 await builder.Build().RunAsync();

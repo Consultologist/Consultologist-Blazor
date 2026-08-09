@@ -51,6 +51,51 @@ public class TemplatesEditorTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void LeavingTemplatesAndReturning_ReopensTheSamePane()
+    {
+        // Reported from real use: pick a pane, visit another page, come back,
+        // and you were on Graph again. The component is rebuilt on navigation,
+        // so the pane has to live in the tab session — the shape ConsultJobSession
+        // (#207) already uses for a run you navigated away from.
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V6WithValue());
+
+        var first = Render<Templates>();
+        Navigate(first, "specialty");
+        Assert.Contains("data/specialty.txt", first.Markup);
+
+        // A second render is the same tab arriving back at /templates: new
+        // component, same session.
+        var second = Render<Templates>();
+
+        Assert.Contains("data/specialty.txt", second.Markup);
+    }
+
+    [Fact]
+    public void ARememberedPaneTheNewPackageLacks_FallsBackToGraph()
+    {
+        // Remembering the pane across page switches means it can now outlive a
+        // package switch too, so the staleness guard started mattering where it
+        // never had to before: before this, a rebuilt component always began
+        // with no selection at all.
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V6WithValue());
+
+        var first = Render<Templates>();
+        Navigate(first, "specialty");
+        Assert.Contains("data/specialty.txt", first.Markup);
+
+        // v6 carries no values, so the remembered key names nothing.
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V6());
+        var second = Render<Templates>();
+
+        Assert.DoesNotContain("data/specialty.txt", second.Markup);
+        Assert.Equal(
+            new[] { "Graph" },
+            second.FindAll("button.editor-nav__item--selected")
+                .Select(button => button.TextContent.Replace("●", string.Empty).Trim())
+                .ToList());
+    }
+
+    [Fact]
     public void NodeCards_RenderOnePerManifestNode()
     {
         var page = RenderEditor();
