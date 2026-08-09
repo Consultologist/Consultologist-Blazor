@@ -95,6 +95,55 @@ public class TemplatesEditorTests : ClientRenderTestContext
                 .ToList());
     }
 
+    private static string NavLabel(IElement button) =>
+        button.TextContent.Replace("●", string.Empty).Trim();
+
+    private static string? SelectedPane(IRenderedComponent<Templates> page) =>
+        page.FindAll("button.editor-nav__item--selected").Select(NavLabel).FirstOrDefault();
+
+    [Fact]
+    public void EveryNavPane_SurvivesLeavingAndReturning()
+    {
+        // Derived from the nav rather than restated: whatever the editor offers
+        // as a pane has to come back. The guard used to keep two of eleven
+        // kinds — a published file and a published node — so the declaration
+        // panes, the "+" forms and anything pending all dropped to Graph.
+        //
+        // Listing the kinds in the test would make a second list to keep in
+        // step with PaneStillExists, which is the failure #326 is about. The
+        // rendered nav is the only honest source.
+        // Pending panes are out of reach here rather than out of scope: a
+        // second render restores its pending state from the draft, and bUnit's
+        // localStorage returns nothing, so a pending value would legitimately
+        // read as gone. PaneStillExists covers them through EffectiveScalars,
+        // EffectiveNodes and addedItems; the browser is what proves it.
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
+
+        var page = Render<Templates>();
+        var labels = page.FindAll("button.editor-nav__item").Select(NavLabel).Distinct().ToList();
+        Assert.True(labels.Count >= 8, $"only {labels.Count} panes in the nav: {string.Join(", ", labels)}");
+
+        var checkedPanes = 0;
+
+        foreach (var label in labels)
+        {
+            Navigate(page, label);
+
+            if (SelectedPane(page) != label)
+            {
+                // Not every nav button selects a pane of its own.
+                continue;
+            }
+
+            // A second render is the same tab arriving back at /templates.
+            page = Render<Templates>();
+            Assert.Equal(label, SelectedPane(page));
+            checkedPanes++;
+        }
+
+        Assert.True(checkedPanes >= 8, $"only {checkedPanes} panes actually round-tripped");
+    }
+
     [Fact]
     public void NodeCards_RenderOnePerManifestNode()
     {

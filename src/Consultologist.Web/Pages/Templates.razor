@@ -1014,6 +1014,39 @@
 
     private static string NewKeyFor(string collectionId) => NewKeyPrefix + collectionId;
 
+    /// <summary>
+    /// Whether a remembered pane is still one the nav offers. The session keeps
+    /// the open pane across page switches (#207's shape), so this decides what
+    /// survives the trip — and it has to answer for the *whole* key space, not
+    /// just published files.
+    ///
+    /// It used to ask content.Files.ContainsKey, which kept two of the eleven
+    /// pane kinds: a published file and a published node. Everything else — the
+    /// declaration panes, the "+" forms, and anything pending — read as stale
+    /// and fell back to Graph, which was most visible when the pane you were
+    /// mid-way through creating vanished.
+    ///
+    /// Effective, not published, for the same reason ScalarIsUnused is (#321):
+    /// a pending node's pane is real, and a pending removal's is not. Runs
+    /// after RestoreDraftAsync, so pending state is loaded by the time it is
+    /// asked.
+    ///
+    /// EveryNavPane_SurvivesLeavingAndReturning walks the rendered nav and
+    /// holds this to it, so a new kind of pane fails there rather than silently
+    /// dropping people on Graph.
+    /// </summary>
+    private bool PaneStillExists(string key) =>
+        key is GraphKey or InputsKey or ResultsKey
+            or AddCollectionKey or AddScalarKey or AddNodeKey or AddPromptKey
+        || (key.StartsWith(NewKeyPrefix, StringComparison.Ordinal)
+            && EffectiveCollections.Any(c => NewKeyFor(c.Id) == key))
+        || (key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)
+            && EffectiveNodes.Any(n => NodeKeyFor(n.Id) == key))
+        || content!.Files.ContainsKey(key)
+        || EffectiveScalars.Any(scalar => scalar.Path == key)
+        || EffectivePrompts.Any(prompt => prompt.File == key)
+        || addedItems.Any(added => added.Key == key);
+
     private string AddedPath(AddedItem item) => $"data/{item.Collection}/{item.Id}.md";
 
     private AddedItem? SelectedAdded() => addedItems.FirstOrDefault(a => a.Key == selectedKey);
@@ -2749,22 +2782,11 @@
             schemaIds = WorkflowManifestReader.ReadSchemaIds(content.Manifest);
             await RestoreDraftAsync();
 
-            // Keep the selection when it still exists in the loaded version;
-            // otherwise open on Graph.
-            if (selectedKey != null
-                && selectedKey.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)
-                && nodes.Any(n => NodeKeyFor(n.Id) == selectedKey))
+            // Keep the selection when the pane still exists; otherwise open on
+            // Graph — the overview, and the right landing for a cold load or a
+            // package switch.
+            if (selectedKey == null || !PaneStillExists(selectedKey))
             {
-                // A still-existing node pane survives reloads.
-            }
-            else if (selectedKey != GraphKey && (selectedKey == null || !content.Files.ContainsKey(selectedKey)))
-            {
-                // Graph is the overview; the first standard was only ever
-                // wherever the collection happened to start, which says
-                // nothing about the package. This fires on a cold load, a
-                // package switch, or a selection the loaded version does not
-                // have — including the synthetic "+ Data value" key, which is
-                // what a refresh mid-typing used to land on.
                 selectedKey = GraphKey;
             }
 
