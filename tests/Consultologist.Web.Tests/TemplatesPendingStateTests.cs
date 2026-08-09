@@ -153,6 +153,15 @@ public class TemplatesPendingStateTests : ClientRenderTestContext
         if (type == typeof(bool)) return true;
         if (type == typeof(int)) return 1;
 
+        // A delegate's only constructor is (object target, IntPtr method), and
+        // the generic path below would happily satisfy it with a bogus pointer.
+        // Invoking what comes back kills the test host rather than throwing —
+        // found when the pending registry (#326) put Func<int> in a field.
+        if (typeof(Delegate).IsAssignableFrom(type) || type.IsPointer || type == typeof(IntPtr))
+        {
+            throw new InvalidOperationException($"{type.Name} is not safely probeable");
+        }
+
         if (Nullable.GetUnderlyingType(type) is { } underlying)
         {
             return Probe(underlying, depth + 1);
@@ -219,6 +228,64 @@ public class TemplatesPendingStateTests : ClientRenderTestContext
         Assert.True(
             counted.Count >= 16,
             $"discovery found only {counted.Count}: {string.Join(", ", counted.Select(f => f.Name))}");
+    }
+
+    /// <summary>
+    /// Reads the registry itself (#326) so the test still names no fields: the
+    /// entries answer for their own counts.
+    /// </summary>
+    private static List<(string Name, Func<int> Count)> RegistryEntries(Templates editor)
+    {
+        var kinds = (System.Collections.IEnumerable)typeof(Templates)
+            .GetProperty("PendingKinds", Members)!.GetValue(editor)!;
+
+        var entries = new List<(string, Func<int>)>();
+
+        foreach (var kind in kinds)
+        {
+            var type = kind!.GetType();
+            var name = (string)type.GetProperty("Name")!.GetValue(kind)!;
+            var counter = (Delegate)type.GetProperty("Count")!.GetValue(kind)!;
+            entries.Add((name, () => (int)counter.DynamicInvoke()!));
+        }
+
+        return entries;
+    }
+
+    [Fact]
+    public async Task EveryPendingFieldIsCoveredByExactlyOneRegistryEntry()
+    {
+        // Holds the registry to a 1:1 mapping: no field wired into two entries,
+        // double-counting the badge and the publish gate.
+        //
+        // What it deliberately does NOT claim: that a *new* field must be
+        // registered. PendingCount is now derived from the registry, so an
+        // unregistered field moves nothing and is invisible to discovery. No
+        // test can force registration, because "is this pending state?" is only
+        // answerable by the registry itself. The win is that there is one place
+        // to forget instead of nine — ProbingFindsThePendingFields catches an
+        // entry going missing.
+        var page = RenderEditor();
+        var editor = page.Instance;
+
+        foreach (var field in CountedFields(editor))
+        {
+            var entries = RegistryEntries(editor);
+            var before = entries.Select(entry => entry.Count()).ToList();
+
+            TryMakePending(editor, field);
+
+            var moved = entries
+                .Where((entry, index) => entry.Count() != before[index])
+                .Select(entry => entry.Name)
+                .ToList();
+
+            Assert.True(
+                moved.Count == 1,
+                $"{field.Name} moved {moved.Count} registry entries ({string.Join(", ", moved)}); expected exactly one");
+
+            await Invoke(page, "DiscardAsync");
+        }
     }
 
     [Fact]

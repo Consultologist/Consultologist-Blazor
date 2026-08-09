@@ -929,37 +929,86 @@
     private static readonly System.Text.RegularExpressions.Regex CollectionIdPattern =
         new("^[a-z0-9][a-z0-9-]*$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    private int PendingCount => edits.Count + addedItems.Count + addedCollections.Count + addedScalars.Count + removedFiles.Count
-        + bindingEdits.Count + nodeEdits.Count + addedNodes.Count + removedNodeIds.Count
-        + aggregateEdits.Count + (resultEdit != null ? 1 : 0) + addedPrompts.Count
-        + VariableAddCount + VariableRemovalCount
-        + (inputsEdit != null ? 1 : 0) + (resultsEdit != null ? 1 : 0);
+    /// <summary>
+    /// One kind of unpublished change (#326). The editor used to name each of
+    /// these by hand in nine places, and missing one compiled: a pending value
+    /// once reached the uploaded files but never the data map, and #322 shipped
+    /// because two lists disagreed about the same question.
+    ///
+    /// <c>AffectsManifest</c> is a predicate rather than a flag on purpose. The
+    /// no-change guard ignores text edits and added items entirely, and reacts
+    /// to removals only through the values among them — a flag would force
+    /// recomposition of a manifest that should ride through untouched.
+    /// </summary>
+    private sealed record PendingKind(
+        string Name,
+        Func<int> Count,
+        Action Clear,
+        Func<string> Fragment,
+        Func<bool> AffectsManifest);
+
+    private IReadOnlyList<PendingKind>? pendingKinds;
+
+    // Lazy because an instance field initializer cannot capture `this`.
+    private IReadOnlyList<PendingKind> PendingKinds => pendingKinds ??= BuildPendingKinds();
+
+    // Order is PendingSummary's reading order; PendingCount is a sum and does
+    // not care. A new kind of pending change belongs here and nowhere else —
+    // TemplatesPendingStateTests fails if one is missing.
+    private IReadOnlyList<PendingKind> BuildPendingKinds()
+    {
+        static string Plural(int n, string word) => $"{word}{(n == 1 ? "" : "s")}";
+
+        return new List<PendingKind>
+        {
+            new("edits", () => edits.Count, edits.Clear,
+                () => $"{edits.Count} edited", () => false),
+            new("addedCollections", () => addedCollections.Count, addedCollections.Clear,
+                () => $"+{addedCollections.Count} {Plural(addedCollections.Count, "folder")}", () => addedCollections.Count > 0),
+            new("addedScalars", () => addedScalars.Count, addedScalars.Clear,
+                () => $"+{addedScalars.Count} {Plural(addedScalars.Count, "value")}", () => addedScalars.Count > 0),
+            new("addedItems", () => addedItems.Count, addedItems.Clear,
+                () => $"+{addedItems.Count}", () => false),
+
+            // Removing a file touches the manifest only when the file is a
+            // single-value data entry, which also owns a data-map key (#321).
+            new("removedFiles", () => removedFiles.Count, removedFiles.Clear,
+                () => $"−{removedFiles.Count}", () => RemovedScalarIds.Any()),
+
+            new("bindingEdits", () => bindingEdits.Count, bindingEdits.Clear,
+                () => $"{bindingEdits.Count} rebound", () => bindingEdits.Count > 0),
+            new("nodeEdits", () => nodeEdits.Count, nodeEdits.Clear,
+                () => $"{nodeEdits.Count} {Plural(nodeEdits.Count, "node")}", () => nodeEdits.Count > 0),
+            new("addedNodes", () => addedNodes.Count, addedNodes.Clear,
+                () => $"+{addedNodes.Count} {Plural(addedNodes.Count, "node")}", () => addedNodes.Count > 0),
+            new("removedNodeIds", () => removedNodeIds.Count, removedNodeIds.Clear,
+                () => $"−{removedNodeIds.Count} {Plural(removedNodeIds.Count, "node")}", () => removedNodeIds.Count > 0),
+            new("aggregateEdits", () => aggregateEdits.Count, aggregateEdits.Clear,
+                () => $"{aggregateEdits.Count} aggregate", () => aggregateEdits.Count > 0),
+            new("addedPrompts", () => addedPrompts.Count, addedPrompts.Clear,
+                () => $"+{addedPrompts.Count} {Plural(addedPrompts.Count, "prompt")}", () => addedPrompts.Count > 0),
+
+            new("resultEdit", () => resultEdit != null ? 1 : 0, () => resultEdit = null,
+                () => "deliverable", () => resultEdit != null),
+            new("inputsEdit", () => inputsEdit != null ? 1 : 0, () => inputsEdit = null,
+                () => "inputs", () => inputsEdit != null),
+            new("resultsEdit", () => resultsEdit != null ? 1 : 0, () => resultsEdit = null,
+                () => "documents", () => resultsEdit != null),
+
+            new("variableAdds", () => VariableAddCount, variableAdds.Clear,
+                () => $"+{VariableAddCount} var", () => VariableAddCount > 0),
+            new("variableRemovals", () => VariableRemovalCount, variableRemovals.Clear,
+                () => $"−{VariableRemovalCount} var", () => VariableRemovalCount > 0),
+        };
+    }
+
+    private int PendingCount => PendingKinds.Sum(kind => kind.Count());
 
     private string PendingSummary()
     {
-        if (PendingCount == 0)
-        {
-            return string.Empty;
-        }
+        var parts = PendingKinds.Where(kind => kind.Count() > 0).Select(kind => kind.Fragment()).ToList();
 
-        var parts = new List<string>();
-        if (edits.Count > 0) parts.Add($"{edits.Count} edited");
-        if (addedCollections.Count > 0) parts.Add($"+{addedCollections.Count} folder{(addedCollections.Count == 1 ? "" : "s")}");
-        if (addedScalars.Count > 0) parts.Add($"+{addedScalars.Count} value{(addedScalars.Count == 1 ? "" : "s")}");
-        if (addedItems.Count > 0) parts.Add($"+{addedItems.Count}");
-        if (removedFiles.Count > 0) parts.Add($"−{removedFiles.Count}");
-        if (bindingEdits.Count > 0) parts.Add($"{bindingEdits.Count} rebound");
-        if (nodeEdits.Count > 0) parts.Add($"{nodeEdits.Count} node{(nodeEdits.Count == 1 ? "" : "s")}");
-        if (addedNodes.Count > 0) parts.Add($"+{addedNodes.Count} node{(addedNodes.Count == 1 ? "" : "s")}");
-        if (removedNodeIds.Count > 0) parts.Add($"−{removedNodeIds.Count} node{(removedNodeIds.Count == 1 ? "" : "s")}");
-        if (aggregateEdits.Count > 0) parts.Add($"{aggregateEdits.Count} aggregate");
-        if (addedPrompts.Count > 0) parts.Add($"+{addedPrompts.Count} prompt{(addedPrompts.Count == 1 ? "" : "s")}");
-        if (resultEdit != null) parts.Add("deliverable");
-        if (inputsEdit != null) parts.Add("inputs");
-        if (resultsEdit != null) parts.Add("documents");
-        if (VariableAddCount > 0) parts.Add($"+{VariableAddCount} var");
-        if (VariableRemovalCount > 0) parts.Add($"−{VariableRemovalCount} var");
-        return $" ({string.Join(" · ", parts)})";
+        return parts.Count == 0 ? string.Empty : $" ({string.Join(" · ", parts)})";
     }
 
     private static string NewKeyFor(string collectionId) => NewKeyPrefix + collectionId;
@@ -3486,16 +3535,11 @@
     private JsonElement ComposeManifest()
     {
         // Nothing structural pending: send the manifest through untouched.
-        // Every kind of pending change that writes into the manifest has to
-        // appear here, or it is composed into `files` and then silently
-        // dropped from the document that describes them (#309).
-        // removedFiles earns its place here only through values (#321): every
-        // other removal takes a file the manifest never named.
-        if (bindingEdits.Count == 0 && VariableAddCount == 0 && VariableRemovalCount == 0
-            && addedCollections.Count == 0 && addedScalars.Count == 0 && nodeEdits.Count == 0
-            && addedNodes.Count == 0 && removedNodeIds.Count == 0 && addedPrompts.Count == 0
-            && aggregateEdits.Count == 0 && resultEdit == null
-            && inputsEdit == null && resultsEdit == null && !RemovedScalarIds.Any())
+        // This used to be a thirteen-term boolean that every new kind of
+        // pending change had to be added to, and #309 shipped because one was
+        // not — the value reached `files` and vanished from the document
+        // describing them. Each kind now answers for itself (#326).
+        if (!PendingKinds.Any(kind => kind.AffectsManifest()))
         {
             return content!.Manifest;
         }
