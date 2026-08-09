@@ -116,10 +116,11 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
     [Fact]
     public async Task V6Package_StillComposesAValidManifest()
     {
-        // Publish is gated on pending edits, so this needs a real one: the
-        // editor opens on the first data item's text.
+        // Publish is gated on pending edits, so this needs a real one — hence
+        // the trip to a standard, since the editor opens on Graph.
         var result = await PublishAndValidateAsync(page =>
         {
+            Navigate(page, "History");
             page.Find("fluent-text-area").Change("Document the presenting illness, chronologically.");
             return Task.CompletedTask;
         }, v7: false);
@@ -161,6 +162,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         // edits, so this makes one that has nothing to do with the data map.
         var (result, sent) = await PublishAndCaptureAsync(page =>
         {
+            Navigate(page, "History");
             page.Find("fluent-text-area").Change("Document the presenting illness, chronologically.");
             return Task.CompletedTask;
         }, EditorFixtures.V6());
