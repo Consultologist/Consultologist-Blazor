@@ -2741,7 +2741,7 @@
             await RestoreDraftAsync();
 
             // Keep the selection when it still exists in the loaded version;
-            // otherwise land on the first standard.
+            // otherwise open on Graph.
             if (selectedKey != null
                 && selectedKey.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)
                 && nodes.Any(n => NodeKeyFor(n.Id) == selectedKey))
@@ -2750,9 +2750,13 @@
             }
             else if (selectedKey != GraphKey && (selectedKey == null || !content.Files.ContainsKey(selectedKey)))
             {
-                selectedKey = collections.SelectMany(c => c.Items).FirstOrDefault()?.File
-                    ?? prompts.FirstOrDefault()?.File
-                    ?? GraphKey;
+                // Graph is the overview; the first standard was only ever
+                // wherever the collection happened to start, which says
+                // nothing about the package. This fires on a cold load, a
+                // package switch, or a selection the loaded version does not
+                // have — including the synthetic "+ Data value" key, which is
+                // what a refresh mid-typing used to land on.
+                selectedKey = GraphKey;
             }
 
             if (selectedKey == GraphKey)

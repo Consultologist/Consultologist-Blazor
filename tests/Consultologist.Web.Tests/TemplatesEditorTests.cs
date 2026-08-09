@@ -13,9 +13,8 @@ namespace Consultologist.Web.Tests;
 public class TemplatesEditorTests : ClientRenderTestContext
 {
     /// <summary>
-    /// The editor opens on the first data file, so every test that wants the
-    /// node cards or the deliverable selector navigates to the Graph pane
-    /// first — the same click a user makes.
+    /// The editor now opens on Graph, but these click through to it anyway:
+    /// a test should assert from the pane it chose, not the one it inherited.
     /// </summary>
     private IRenderedComponent<Templates> RenderEditor(bool v7 = false)
     {
@@ -29,6 +28,26 @@ public class TemplatesEditorTests : ClientRenderTestContext
             .Click();
 
         return page;
+    }
+
+    [Fact]
+    public void TheEditorOpensOnGraph()
+    {
+        // Graph is the overview. The old default was the first standard, which
+        // is only wherever the collection happened to start — and a refresh
+        // while typing into "+ Data value" landed there too, which is how this
+        // surfaced.
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V6());
+
+        var page = Render<Templates>();
+
+        var selected = page.FindAll("button.editor-nav__item--selected")
+            .Select(button => button.TextContent.Replace("●", string.Empty).Trim())
+            .ToList();
+
+        Assert.Equal(new[] { "Graph" }, selected);
+        // The first standard's pane would bring a text area with it.
+        Assert.Empty(page.FindAll("fluent-text-area"));
     }
 
     [Fact]
@@ -300,6 +319,7 @@ public class TemplatesEditorTests : ClientRenderTestContext
         WorkflowService.GetCurrentPackageContentAsync().Returns(package with { Files = files });
 
         var page = Render<Templates>();
+        Navigate(page, "History");
         page.Find("fluent-text-area").Change("Document the presenting illness, chronologically.");
         Publish(page);
 
@@ -321,6 +341,7 @@ public class TemplatesEditorTests : ClientRenderTestContext
                 Array.Empty<string>()));
 
         var page = Render<Templates>();
+        Navigate(page, "History");
         page.Find("fluent-text-area").Change("Document the presenting illness, chronologically.");
         Publish(page);
 
@@ -450,6 +471,7 @@ public class TemplatesEditorTests : ClientRenderTestContext
                 Array.Empty<string>()));
 
         var page = Render<Templates>();
+        Navigate(page, "History");
         page.Find("fluent-text-area").Change("Document the presenting illness, chronologically.");
         Publish(page);
 
