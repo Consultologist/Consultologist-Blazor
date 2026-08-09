@@ -4,6 +4,7 @@
 @inject IWorkflowEndpointService WorkflowService
 @inject IAccountEndpointService AccountService
 @inject IJSRuntime JS
+@inject WorkflowEditorSession EditorSession
 @attribute [Authorize]
 
 @page "/templates"
@@ -2422,7 +2423,15 @@
     private List<string> publishWarnings = new();
 
     // Master–detail selection: a file path or GraphKey (#110).
-    private string? selectedKey;
+    // Held in the tab session rather than the component (#207's shape), so
+    // leaving Templates for another page and coming back returns to this pane
+    // instead of starting over. A fresh session — including a refresh — has no
+    // key, and LoadAsync opens on Graph.
+    private string? selectedKey
+    {
+        get => EditorSession.SelectedKey;
+        set => EditorSession.SelectedKey = value;
+    }
 
     protected override async Task OnInitializedAsync()
     {

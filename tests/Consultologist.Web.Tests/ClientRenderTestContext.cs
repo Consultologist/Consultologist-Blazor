@@ -28,6 +28,8 @@ public abstract class ClientRenderTestContext : BunitContext
 
     protected ConsultJobSession JobSession { get; } = new();
 
+    protected WorkflowEditorSession EditorSession { get; } = new();
+
     protected ClientRenderTestContext()
     {
         // Fluent components resolve LibraryConfiguration from DI and fail
@@ -50,6 +52,10 @@ public abstract class ClientRenderTestContext : BunitContext
         Services.AddSingleton(DocumentService);
         Services.AddSingleton(Substitute.For<ISseDiagnosticsService>());
         Services.AddSingleton(JobSession);
+
+        // One per test context, the same way it is one per browser tab: the
+        // editor keeps its open pane here so a page switch returns to it.
+        Services.AddSingleton(EditorSession);
 
         // History.LoadAgentNamesAsync and WorkflowPackagePicker.OnInitializedAsync
         // have no try/catch around these, so a throwing substitute fails the
