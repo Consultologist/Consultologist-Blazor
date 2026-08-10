@@ -31,6 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           SWEPT=0
+          FAILED=0
           while IFS=$'\t' read -r NAME BRANCH; do
             [ "$NAME" = "default" ] && continue
             [ -z "$NAME" ] && continue
@@ -47,10 +48,36 @@ jobs:
 
             if [ -z "$OPEN" ]; then
               echo "Sweeping environment '$NAME' (branch: ${BRANCH:-?}) — no open PR"
-              az staticwebapp environment delete -n consultologist-blazor --environment-name "$NAME" --yes
-              SWEPT=$((SWEPT + 1))
+
+              # The delete lands; what fails is the CLI polling the operation
+              # status afterwards, which lives under
+              # /subscriptions/.../locations/<region>/staticSitesOperationStatuses
+              # — a scope this principal is not granted, and not worth widening
+              # it to subscription level for a status read.
+              #
+              # So the environment listing is the arbiter, not the exit code:
+              # losing the poll must not be read as losing the deletion, and
+              # must not abandon every environment after this one (#182 was
+              # about leaks surviving unnoticed, which is exactly what an
+              # aborted loop would cause).
+              az staticwebapp environment delete -n consultologist-blazor \
+                --environment-name "$NAME" --yes || true
+
+              REMAINING=$(az staticwebapp environment list -n consultologist-blazor \
+                --query "length([?name=='$NAME'])" -o tsv 2>/dev/null || echo "?")
+
+              if [ "$REMAINING" = "0" ]; then
+                echo "  removed."
+                SWEPT=$((SWEPT + 1))
+              else
+                echo "::error::environment '$NAME' is still present after the delete (remaining: $REMAINING)"
+                FAILED=$((FAILED + 1))
+              fi
             else
               echo "Keeping environment '$NAME' (branch: $BRANCH) — PR open"
             fi
           done < <(az staticwebapp environment list -n consultologist-blazor --query "[].[name, sourceBranch]" -o tsv)
-          echo "Sweep complete: $SWEPT environment(s) removed."
+          echo "Sweep complete: $SWEPT environment(s) removed, $FAILED failed."
+
+          # Fail only on an environment that is genuinely still there.
+          [ "$FAILED" -eq 0 ]
