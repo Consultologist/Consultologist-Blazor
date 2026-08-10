@@ -329,6 +329,6 @@ would drift, so this section keeps only the forward glance:
   enforced per deliverable ("**each** result must transitively include at
   least one forEach source", § 4) but justified per package. The full
   argument, both sides, is in
-  [package-format-v8-design.md](package-format-v8-design.md) § 3.5; it
-  needs a **v8** or an explicitly documented **v7 erratum**, never a quiet
-  loosening.
+  [package-format-v8-design.md](package-format-v8-design.md) § 11; it
+  needs a rule change or an explicitly documented **erratum**, never a quiet
+  loosening. v8 was cut and deliberately left it unchanged.
