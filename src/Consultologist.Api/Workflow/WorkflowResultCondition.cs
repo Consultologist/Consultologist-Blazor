@@ -1,3 +1,5 @@
+using Consultologist.Api.Models;
+
 namespace Consultologist.Api.Workflow;
 
 /// <summary>
@@ -93,5 +95,63 @@ public static class WorkflowResultConditions
 
         condition = new WorkflowResultCondition(id, literal, negated);
         return true;
+    }
+
+    /// <summary>
+    /// Whether a deliverable fires for these supplied inputs. Pure, and
+    /// evaluated once at job start — the fire set is knowable before anything
+    /// runs, which is what keeps TotalBlockCount a stored scalar (#176).
+    ///
+    /// A null condition always fires: a deliverable without a `when` is
+    /// unconditional.
+    /// </summary>
+    public static bool Holds(
+        WorkflowResultCondition? condition,
+        IReadOnlyDictionary<string, ConsultInputValue>? suppliedInputs)
+    {
+        if (condition is null)
+        {
+            return true;
+        }
+
+        // Absence is not falsity. An optional input nobody supplied has not
+        // answered the question, so the condition does not hold — including
+        // the negated form, which would otherwise fire on every job that left
+        // the slot blank (package-format-v8-design.md § 4).
+        if (suppliedInputs is null
+            || !suppliedInputs.TryGetValue(condition.InputId, out var value)
+            || value.IsBlank)
+        {
+            return false;
+        }
+
+        var matches = condition.Literal is null
+            ? value.Canonical == "true"
+            : string.Equals(value.Canonical, condition.Literal, StringComparison.Ordinal);
+
+        return condition.Negated ? !matches : matches;
+    }
+
+    /// <summary>
+    /// Why a deliverable did not fire, in the words a reader needs: the input,
+    /// what it was, and what the condition wanted. Safe on every surface —
+    /// the label and enum values are authored package content and a boolean is
+    /// true or false, so none of it is free text.
+    /// </summary>
+    public static string Explain(
+        WorkflowResultCondition condition,
+        IReadOnlyDictionary<string, ConsultInputValue>? suppliedInputs)
+    {
+        var supplied = suppliedInputs is not null
+            && suppliedInputs.TryGetValue(condition.InputId, out var value)
+            && !value.IsBlank
+                ? $"'{value.Canonical}'"
+                : "not supplied";
+
+        var wanted = condition.Literal is null
+            ? "true"
+            : $"{(condition.Negated ? "not " : string.Empty)}'{condition.Literal}'";
+
+        return $"needs {condition.InputId} to be {wanted}; it is {supplied}";
     }
 }

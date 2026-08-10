@@ -110,7 +110,9 @@ public record ConsultGenerationJobResponse(
     // #238: per-slot record of where the input text came from, as the server
     // observed it. Null when nothing was recorded — which is every job before
     // this field existed and every job whose inputs were typed.
-    IReadOnlyDictionary<string, ConsultInputOrigin>? InputOrigins = null);
+    IReadOnlyDictionary<string, ConsultInputOrigin>? InputOrigins = null,
+    // #315: declared deliverables this job's inputs excluded, with the reason.
+    IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
@@ -153,6 +155,20 @@ public sealed record ConsultNodeBindingDescriptor(string From, string? As = null
 /// payloads.
 /// </summary>
 public sealed record ConsultResultDescriptor(string Id, string NodeId, string Label);
+
+/// <summary>
+/// A deliverable the package declared and this job did not produce, because its
+/// condition did not hold (package-format-v8-design.md § 5).
+///
+/// Recorded rather than omitted. A job that produces fewer documents than its
+/// package declares and says nothing is indistinguishable from a deliverable
+/// that silently failed — which is the failure #315 was written against.
+///
+/// Reason names the input, its supplied value and what the condition wanted.
+/// Safe on every surface: labels and enum values are authored package content,
+/// a boolean is true or false, and none of it is free text.
+/// </summary>
+public sealed record ConsultSkippedDocument(string ResultId, string Label, string Reason);
 
 /// <summary>
 /// Per-node run status and provenance exposed on the job response — the hashes form

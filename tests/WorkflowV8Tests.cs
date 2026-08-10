@@ -299,6 +299,66 @@ public class WorkflowV8ConditionTests
     }
 }
 
+public class WorkflowResultConditionEvaluationTests
+{
+    private static Dictionary<string, ConsultInputValue> Inputs(params (string Id, ConsultInputValue Value)[] pairs)
+        => pairs.ToDictionary(p => p.Id, p => p.Value, StringComparer.Ordinal);
+
+    private static WorkflowResultCondition Parse(string when)
+    {
+        Assert.True(WorkflowResultConditions.TryParse(when, out var condition, out _));
+        return condition!;
+    }
+
+    [Fact]
+    public void NoCondition_AlwaysFires()
+        => Assert.True(WorkflowResultConditions.Holds(null, Inputs()));
+
+    [Theory]
+    [InlineData("billable", true, true)]
+    [InlineData("billable", false, false)]
+    public void TheBareForm_TestsTruth(string when, bool supplied, bool expected)
+        => Assert.Equal(expected, WorkflowResultConditions.Holds(
+            Parse(when), Inputs(("billable", ConsultInputValue.OfBoolean(supplied)))));
+
+    [Theory]
+    [InlineData("encounter_kind == follow_up", "follow_up", true)]
+    [InlineData("encounter_kind == follow_up", "new_patient", false)]
+    [InlineData("encounter_kind != follow_up", "new_patient", true)]
+    [InlineData("encounter_kind != follow_up", "follow_up", false)]
+    public void EqualityAndItsNegation(string when, string supplied, bool expected)
+        => Assert.Equal(expected, WorkflowResultConditions.Holds(
+            Parse(when), Inputs(("encounter_kind", supplied))));
+
+    [Theory]
+    [InlineData("billable")]
+    [InlineData("billable == true")]
+    // The negated form too: without this it would fire on every job that left
+    // the slot blank, which is the opposite of what an author means.
+    [InlineData("billable != true")]
+    public void AnAbsentOptionalInput_DoesNotSatisfyAnything(string when)
+    {
+        Assert.False(WorkflowResultConditions.Holds(Parse(when), Inputs()));
+        Assert.False(WorkflowResultConditions.Holds(Parse(when), Inputs(("billable", ""))));
+    }
+
+    [Fact]
+    public void TheReason_NamesTheInputTheWantAndTheValue()
+    {
+        var reason = WorkflowResultConditions.Explain(
+            Parse("encounter_kind == follow_up"), Inputs(("encounter_kind", "new_patient")));
+
+        Assert.Contains("encounter_kind", reason);
+        Assert.Contains("'follow_up'", reason);
+        Assert.Contains("'new_patient'", reason);
+    }
+
+    [Fact]
+    public void TheReason_SaysWhenNothingWasSupplied()
+        => Assert.Contains("not supplied",
+            WorkflowResultConditions.Explain(Parse("billable"), Inputs()));
+}
+
 public class ConsultInputValueWireTests
 {
     private static ConsultInputValue? Read(string json)

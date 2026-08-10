@@ -691,7 +691,8 @@ public sealed class ConsultGenerationOrchestrator
                     finalStatus,
                     input.AppUserId,
                     assembledDocument,
-                    documents),
+                    documents,
+                    input.SkippedDocuments),
                 new TaskOptions(new TaskRetryOptions(new RetryPolicy(3, TimeSpan.FromSeconds(10), 2.0))));
         }
         catch (Exception replyEx)

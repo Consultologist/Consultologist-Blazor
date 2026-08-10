@@ -285,6 +285,18 @@
                                         }
                                     </FluentTabs>
                                 }
+
+                                @* #315: the person who just ran the consult is
+                                   the one most likely to wonder where the second
+                                   document went. Labels and declared values are
+                                   authored package content, so this carries no
+                                   clinical detail. *@
+                                @foreach (var skipped in skippedDocuments)
+                                {
+                                    <p class="muted-text" data-skipped-result="@skipped.ResultId">
+                                        <strong>@skipped.Label</strong> was not produced: it @skipped.Reason.
+                                    </p>
+                                }
                             </div>
                         }
                         else if (generatedBlocks.Count > 0)
@@ -496,6 +508,9 @@
   private string? copyFeedback;
   private int copyFeedbackToken;
   private IReadOnlyList<ConsultGenerationResultDocumentResponse> assembledDocuments = Array.Empty<ConsultGenerationResultDocumentResponse>();
+
+  // #315: declared deliverables this job's inputs excluded.
+  private IReadOnlyList<ConsultSkippedDocumentResponse> skippedDocuments = Array.Empty<ConsultSkippedDocumentResponse>();
   private string? activeDocumentId;
   private List<PackageBlock> packageBlocks = new();
   private string? workflowPackageRef;
@@ -1176,6 +1191,13 @@
     if (response.AssembledDocuments is { Count: > 0 })
     {
       assembledDocuments = response.AssembledDocuments;
+    }
+
+    // Kept once seen, like the documents: a later poll that omits them must
+    // not make the explanation disappear.
+    if (response.SkippedDocuments is { Count: > 0 })
+    {
+      skippedDocuments = response.SkippedDocuments;
     }
     else if (response.AssembledDocument != null)
     {

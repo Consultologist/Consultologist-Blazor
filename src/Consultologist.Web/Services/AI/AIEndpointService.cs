@@ -353,7 +353,13 @@ public record ConsultGenerationJobResponse(
     // workflowOutputHash v3 covers exactly these documents' digests).
     IReadOnlyList<ConsultGenerationResultDocumentResponse>? AssembledDocuments = null,
     // #238: where each input's text came from, as the server observed it.
-    IReadOnlyDictionary<string, ConsultInputOrigin>? InputOrigins = null);
+    IReadOnlyDictionary<string, ConsultInputOrigin>? InputOrigins = null,
+    // #315: declared deliverables this job's inputs excluded, with the reason.
+    // Silence here is the failure mode the issue was written against.
+    IReadOnlyList<ConsultSkippedDocumentResponse>? SkippedDocuments = null);
+
+/// <summary>Mirrors Consultologist.Api.Models.ConsultSkippedDocument.</summary>
+public record ConsultSkippedDocumentResponse(string ResultId, string Label, string Reason);
 
 /// <summary>One v7 deliverable: authored identity, the document, and its digest.</summary>
 public record ConsultGenerationResultDocumentResponse(
