@@ -84,6 +84,47 @@
                                         Looks wrong? Remove the file and paste the text instead.
                                     </span>
                                 }
+                                else if (field.Type == WorkflowInputTypes.Date)
+                                {
+                                    @* v8: the control's value IS the contract. The server
+                                       accepts only ISO YYYY-MM-DD and rejects rather than
+                                       normalises, so this is not a display preference.
+                                       Empty until chosen — never today's date. *@
+                                    <input type="date"
+                                           class="node-field__input"
+                                           value="@field.Value"
+                                           @onchange="args => field.Value = args.Value?.ToString() ?? string.Empty"
+                                           aria-label="@field.Label" />
+                                }
+                                else if (field.Type == WorkflowInputTypes.Enum)
+                                {
+                                    @* No selection until one is made: a plausible default
+                                       is still a value nobody chose. *@
+                                    <select class="node-field__input"
+                                            value="@field.Value"
+                                            @onchange="args => field.Value = args.Value?.ToString() ?? string.Empty"
+                                            aria-label="@field.Label">
+                                        <option value="">choose…</option>
+                                        @foreach (var option in field.Values)
+                                        {
+                                            <option value="@option">@option</option>
+                                        }
+                                    </select>
+                                }
+                                else if (field.Type == WorkflowInputTypes.Boolean)
+                                {
+                                    @* Tri-state on purpose: unanswered is not false, and a
+                                       required boolean nobody touched must block the run
+                                       rather than quietly submit false. *@
+                                    <select class="node-field__input"
+                                            value="@(field.Flag is null ? string.Empty : field.Flag.Value ? "true" : "false")"
+                                            @onchange="args => SetFlag(field, args.Value?.ToString())"
+                                            aria-label="@field.Label">
+                                        <option value="">choose…</option>
+                                        <option value="true">Yes</option>
+                                        <option value="false">No</option>
+                                    </select>
+                                }
                                 else
                                 {
                                     @* Bound to the field object's own property: Blazor's
@@ -1282,7 +1323,7 @@
     inputFields = (declaration is { Count: > 0 } ? declaration : LegacyInputs)
       .Select(input =>
       {
-        var field = new ConsultInputField(input.Id, input.Label, input.Required);
+        var field = new ConsultInputField(input.Id, input.Label, input.Required, input.Type, input.Values);
 
         if (carried.TryGetValue(input.Id, out var previous))
         {
@@ -1405,10 +1446,21 @@
   // typing. Blank optional inputs are omitted, not sent empty — the API
   // rejects blank values, and the effective-input hash covers exactly what
   // was supplied.
-  private Dictionary<string, string> SuppliedInputs() =>
+  // Tri-state, so an untouched required boolean blocks the run instead of
+  // quietly submitting false. Razor cannot parse a switch expression inside an
+  // inline lambda, which is the only reason this is a method.
+  private static void SetFlag(ConsultInputField field, string? choice) =>
+    field.Flag = choice switch
+    {
+      "true" => true,
+      "false" => false,
+      _ => null
+    };
+
+  private Dictionary<string, ConsultInputValue> SuppliedInputs() =>
     inputFields
-      .Where(field => !field.HasFile && !string.IsNullOrWhiteSpace(field.Value))
-      .ToDictionary(field => field.Id, field => field.Value, StringComparer.Ordinal);
+      .Where(field => !field.HasFile && field.Supplied is not null)
+      .ToDictionary(field => field.Id, field => field.Supplied!, StringComparer.Ordinal);
 
   // #236: the attached documents. The file travels rather than its text, so
   // the server extracts it and the record says what read it.
@@ -1769,16 +1821,35 @@
   /// </summary>
   private sealed class ConsultInputField
   {
-    public ConsultInputField(string id, string label, bool required)
+    public ConsultInputField(string id, string label, bool required,
+      string? type = null, IReadOnlyList<string>? values = null)
     {
       Id = id;
       Label = label;
       Required = required;
+      Type = type ?? WorkflowInputTypes.Text;
+      Values = values ?? Array.Empty<string>();
     }
 
     public string Id { get; }
     public string Label { get; }
     public bool Required { get; }
+
+    // v8: what control this slot renders and, for an enum, its choices.
+    public string Type { get; }
+    public IReadOnlyList<string> Values { get; }
+
+    /// <summary>
+    /// A boolean's value, held apart from Value so an untouched checkbox is
+    /// distinguishable from a false one. Explicit initialisation: null until
+    /// the clinician chooses, never defaulted to false.
+    /// </summary>
+    public bool? Flag { get; set; }
+
+    /// <summary>What this slot sends, or null when nothing was chosen.</summary>
+    public ConsultInputValue? Supplied => Type == WorkflowInputTypes.Boolean
+      ? Flag.HasValue ? ConsultInputValue.OfBoolean(Flag.Value) : null
+      : string.IsNullOrWhiteSpace(Value) ? null : ConsultInputValue.OfText(Value);
     public string Value { get; set; } = string.Empty;
 
     // #208: why a load was refused. Per-field so a failed upload names the
@@ -1808,7 +1879,9 @@
     /// What this slot contributes, whichever way it was filled — the one
     /// question every gate should be asking.
     /// </summary>
-    public bool IsFilled => HasFile || !string.IsNullOrWhiteSpace(Value);
+    // Supplied rather than Value, so a chosen checkbox counts as filled: a
+    // boolean's answer lives in Flag and its Value stays empty.
+    public bool IsFilled => HasFile || Supplied is not null;
 
     /// <summary>The text that ran, for display surfaces that show inputs.</summary>
     public string EffectiveText => HasFile ? PreviewText : Value;

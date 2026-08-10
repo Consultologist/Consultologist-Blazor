@@ -244,10 +244,10 @@ public class ConsultsSetupTests : ClientRenderTestContext
             });
         WithExtraction("Old records, as read.");
 
-        IReadOnlyDictionary<string, string>? sentInputs = null;
+        IReadOnlyDictionary<string, ConsultInputValue>? sentInputs = null;
         IReadOnlyDictionary<string, InputFilePayload>? sentFiles = null;
         AIService.StartConsultGenerationJobAsync(
-                Arg.Do<IReadOnlyDictionary<string, string>>(value => sentInputs = value),
+                Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sentInputs = value),
                 Arg.Any<string?>(),
                 Arg.Any<DateTimeOffset?>(),
                 Arg.Do<IReadOnlyDictionary<string, InputFilePayload>?>(value => sentFiles = value))
@@ -280,5 +280,142 @@ public class ConsultsSetupTests : ClientRenderTestContext
         Assert.Contains("9 sections", page.Find(".setup-context").TextContent);
         Assert.DoesNotContain("documents", page.Find(".setup-context").TextContent);
         Assert.Empty(page.FindAll(".setup-sections__group-label"));
+    }
+}
+
+/// <summary>
+/// v8 intake (#316): a declared type decides the control, and — for boolean —
+/// what the wire carries. Typed inputs are strict, so sending "true" for a
+/// boolean slot is a 422; this is the surface that makes such a package
+/// submittable at all.
+/// </summary>
+public class ConsultsTypedIntakeTests : ClientRenderTestContext
+{
+    private static WorkflowPackageInputResponse[] TypedInputs() => new[]
+    {
+        new WorkflowPackageInputResponse("consult_draft", "Consult draft", true),
+        new WorkflowPackageInputResponse("seen_on", "Date seen", true, WorkflowInputTypes.Date),
+        new WorkflowPackageInputResponse("encounter_kind", "Encounter kind", true, WorkflowInputTypes.Enum,
+            new[] { "new_patient", "follow_up" }),
+        new WorkflowPackageInputResponse("billable", "Billable", false, WorkflowInputTypes.Boolean)
+    };
+
+    [Fact]
+    public void EachDeclaredType_RendersItsOwnControl()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: TypedInputs());
+
+        var page = Render<Consults>();
+
+        // text keeps the textarea; date, enum and boolean each get their own.
+        Assert.Single(page.FindAll("fluent-text-area"));
+        Assert.Single(page.FindAll("input[type=date]"));
+        Assert.Equal(2, page.FindAll("select.node-field__input").Count);
+    }
+
+    [Fact]
+    public void AnEnumOffersNoSelectionUntilOneIsMade()
+    {
+        // Explicit initialisation: a plausible default is still a value nobody
+        // chose, and a consult is not the place to guess.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: TypedInputs());
+
+        var page = Render<Consults>();
+        var kind = page.FindAll("select.node-field__input")[0];
+
+        Assert.Equal(string.Empty, kind.GetAttribute("value"));
+        Assert.Equal("", kind.QuerySelectorAll("option")[0].GetAttribute("value"));
+    }
+
+    [Fact]
+    public void ABooleanTravelsAsAJsonBoolean_AndADateAsItsCanonicalString()
+    {
+        // The reason this issue blocked the demo package: the form used to send
+        // a string map, and a boolean slot rejects "true" with a 422.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: TypedInputs());
+
+        IReadOnlyDictionary<string, ConsultInputValue>? sent = null;
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sent = value),
+                Arg.Any<string?>(),
+                Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, InputFilePayload>?>())
+            .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
+
+        var page = Render<Consults>();
+        page.Find("fluent-text-area").Change("Referral.");
+        page.Find("input[type=date]").Change("2026-08-10");
+        page.FindAll("select.node-field__input")[0].Change("follow_up");
+        page.FindAll("select.node-field__input")[1].Change("true");
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.NotNull(sent);
+        Assert.True(sent!["billable"].IsBoolean);
+        Assert.Equal("true", sent["billable"].Canonical);
+        Assert.False(sent["seen_on"].IsBoolean);
+        Assert.Equal("2026-08-10", sent["seen_on"].Canonical);
+        Assert.Equal("follow_up", sent["encounter_kind"].Canonical);
+    }
+
+    [Fact]
+    public void AnUntouchedBoolean_IsOmittedRatherThanSentAsFalse()
+    {
+        // Absence and falsity are different, all the way down: #315's condition
+        // evaluation depends on an unanswered optional not reading as false.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: TypedInputs());
+
+        IReadOnlyDictionary<string, ConsultInputValue>? sent = null;
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sent = value),
+                Arg.Any<string?>(),
+                Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, InputFilePayload>?>())
+            .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
+
+        var page = Render<Consults>();
+        page.Find("fluent-text-area").Change("Referral.");
+        page.Find("input[type=date]").Change("2026-08-10");
+        page.FindAll("select.node-field__input")[0].Change("follow_up");
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.NotNull(sent);
+        Assert.False(sent!.ContainsKey("billable"));
+    }
+
+    [Fact]
+    public void AnUnchosenRequiredEnum_BlocksTheRun()
+    {
+        // The same gate a blank textarea hits: IsFilled asks whether the slot
+        // would supply anything, so "chose nothing" and "typed nothing" are one
+        // rule rather than two. The run button is disabled rather than the
+        // click being refused — the control says so before it is pressed.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: TypedInputs());
+
+        var page = Render<Consults>();
+        page.Find("fluent-text-area").Change("Referral.");
+        page.Find("input[type=date]").Change("2026-08-10");
+
+        var run = page.FindAll("fluent-button").Last();
+        Assert.True(run.HasAttribute("disabled"));
+
+        // Choosing the enum releases it; the optional boolean is not required.
+        page.FindAll("select.node-field__input")[0].Change("follow_up");
+
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void AV7Package_RendersExactlyAsItDid()
+    {
+        // Every v5-v7 input is a text slot, so nothing about the old form moves.
+        WithPinnedPackage(
+            blocks: new[] { Block("s:hpi", "History") },
+            inputs: new[] { new WorkflowPackageInputResponse("consult_draft", "Consult draft", true) });
+
+        var page = Render<Consults>();
+
+        Assert.Single(page.FindAll("fluent-text-area"));
+        Assert.Empty(page.FindAll("input[type=date]"));
+        Assert.Empty(page.FindAll("select.node-field__input"));
     }
 }

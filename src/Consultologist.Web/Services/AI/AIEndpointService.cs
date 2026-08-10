@@ -17,7 +17,7 @@ public interface IAIEndpointService
     /// there is one client path across both eras (package-format-v7.md).
     /// </summary>
     Task<ConsultGenerationJobStartResponse> StartConsultGenerationJobAsync(
-        IReadOnlyDictionary<string, string> inputs,
+        IReadOnlyDictionary<string, ConsultInputValue> inputs,
         string? workflowPackage = null,
         DateTimeOffset? scheduledAtUtc = null,
         IReadOnlyDictionary<string, InputFilePayload>? files = null);
@@ -56,7 +56,7 @@ public class AIEndpointService : IAIEndpointService
     }
 
     public async Task<ConsultGenerationJobStartResponse> StartConsultGenerationJobAsync(
-        IReadOnlyDictionary<string, string> inputs,
+        IReadOnlyDictionary<string, ConsultInputValue> inputs,
         string? workflowPackage = null,
         DateTimeOffset? scheduledAtUtc = null,
         IReadOnlyDictionary<string, InputFilePayload>? files = null)
@@ -86,7 +86,9 @@ public class AIEndpointService : IAIEndpointService
                 "Starting consult generation job at {Url}. InputCount={InputCount}, InputLength={InputLength}",
                 functionUrl,
                 inputs.Count,
-                inputs.Values.Sum(value => value.Length));
+                // Canonical, so a boolean counts 4 or 5 rather than throwing:
+                // this is a log line, not the size cap.
+                inputs.Values.Sum(value => value.Canonical.Length));
 
             using var httpRequest = new HttpRequestMessage(HttpMethod.Post, functionUrl)
             {
@@ -291,7 +293,10 @@ public record ConsultGenerationRequest(
     string? ConsultDraft,
     string? WorkflowPackage = null,
     DateTimeOffset? ScheduledAtUtc = null,
-    Dictionary<string, string>? Inputs = null,
+    // v8: typed on the wire — a JSON string for text, date and enum, a JSON
+    // boolean for boolean. A bare string still means text, so the v7 shape is
+    // unchanged for every package that declares no types.
+    Dictionary<string, ConsultInputValue>? Inputs = null,
     // #238: a slot filled by a document instead of text. The server extracts
     // it at job start, so origin is observed rather than asserted. Nothing in
     // the UI sends these yet — #236 is what attaches a file.

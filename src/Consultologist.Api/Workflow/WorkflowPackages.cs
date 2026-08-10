@@ -108,7 +108,14 @@ public sealed class WorkflowPackages
                 .Select(block => new WorkflowPackageBlockResponse(block.Id, block.Name))
                 .ToList(),
             package.Manifest.Inputs?
-                .Select(input => new WorkflowPackageInputResponse(input.Id, input.Label, input.Required))
+                .Select(input => new WorkflowPackageInputResponse(
+                    input.Id,
+                    input.Label,
+                    input.Required,
+                    // Only a declared type travels: text is the default, so a
+                    // v7 package's response is byte-identical to before.
+                    input.Type,
+                    input.Values))
                 .ToList(),
             package.Results?
                 .Select(result => new WorkflowPackageResultResponse(result.Id, result.Label))
