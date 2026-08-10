@@ -56,13 +56,24 @@ public sealed record ConsultInputValue(string? Text, bool? Flag)
 /// </summary>
 public sealed class ConsultInputValueConverter : JsonConverter<ConsultInputValue>
 {
+    /// <summary>
+    /// Without this, System.Text.Json short-circuits a null token and never
+    /// calls Read — putting a null into the map that every downstream check
+    /// dereferences.
+    /// </summary>
+    public override bool HandleNull => true;
+
     public override ConsultInputValue? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         => reader.TokenType switch
         {
             JsonTokenType.String => ConsultInputValue.OfText(reader.GetString() ?? string.Empty),
             JsonTokenType.True => ConsultInputValue.OfBoolean(true),
             JsonTokenType.False => ConsultInputValue.OfBoolean(false),
-            JsonTokenType.Null => null,
+            // Blank text, not a C# null. A null value used to arrive as a
+            // null string and read as blank — "required input missing" — and
+            // handing back null instead would put a null into the map that
+            // every downstream check dereferences.
+            JsonTokenType.Null => ConsultInputValue.OfText(string.Empty),
             _ => throw new JsonException(
                 $"An input value must be a JSON string or boolean; got {reader.TokenType}.")
         };

@@ -192,6 +192,31 @@ public class ConsultInputValueWireTests
     }
 
     [Fact]
+    public void AJsonNullIsBlankText_NotANull()
+    {
+        // A null in the map would be dereferenced by every downstream check.
+        // Before typing, a null value arrived as a null string and read as
+        // blank, so blank text is what preserves that.
+        var value = Read("""{"v":null}""");
+
+        Assert.NotNull(value);
+        Assert.True(value!.IsBlank);
+    }
+
+    [Fact]
+    public void ANullValue_IsRejectedAsMissing_NotThrown()
+    {
+        var supplied = JsonSerializer.Deserialize<Dictionary<string, ConsultInputValue>>(
+            """{"consult_draft":null}""")!;
+
+        var resolution = Consultologist.Api.Jobs.ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new Consultologist.Api.Models.ConsultGenerationRequest(null, Inputs: supplied),
+            V8Fixtures.Minimal());
+
+        Assert.Contains("missing", resolution.Error);
+    }
+
+    [Fact]
     public void ItRoundTripsAsTheSameJson()
     {
         // The durable payload is replayed from this JSON, so the written form
