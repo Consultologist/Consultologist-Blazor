@@ -235,7 +235,14 @@ public sealed record WorkflowPackageBlockResponse(string Id, string Name);
 /// setup form renders a field for (package-format-v7.md § inputs). Null on
 /// v5/v6 packages, whose single slot is the frozen consult_draft convention.
 /// </summary>
-public sealed record WorkflowPackageInputResponse(string Id, string Label, bool Required);
+public sealed record WorkflowPackageInputResponse(
+    string Id,
+    string Label,
+    bool Required,
+    // v8: what the setup form renders. Trailing optionals — a v5-v7 package
+    // sends null and the form draws the textarea it always did.
+    string? Type = null,
+    IReadOnlyList<string>? Values = null);
 
 /// <summary>
 /// One declared deliverable on the current-package response: the authored

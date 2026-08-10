@@ -51,7 +51,25 @@ public record PublicContractView(string? AgentName);
 public record WorkflowPackageBlockResponse(string Id, string Name);
 
 /// <summary>One declared input slot — the setup form renders a field per entry.</summary>
-public record WorkflowPackageInputResponse(string Id, string Label, bool Required);
+public record WorkflowPackageInputResponse(
+    string Id,
+    string Label,
+    bool Required,
+    // v8: the declared type and, for an enum, its values — what the setup form
+    // renders a control from. Null on v5-v7 packages.
+    string? Type = null,
+    IReadOnlyList<string>? Values = null);
+
+/// <summary>Mirrors Consultologist.Api.Workflow.WorkflowInputTypes.</summary>
+public static class WorkflowInputTypes
+{
+    public const string Text = "text";
+    public const string Date = "date";
+    public const string Enum = "enum";
+    public const string Boolean = "boolean";
+
+    public static string Of(WorkflowPackageInputResponse input) => input.Type ?? Text;
+}
 
 /// <summary>One declared deliverable — blocks and result tabs group by these.</summary>
 public record WorkflowPackageResultResponse(string Id, string Label);
