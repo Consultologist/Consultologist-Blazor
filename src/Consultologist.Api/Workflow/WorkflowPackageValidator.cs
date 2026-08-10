@@ -530,8 +530,10 @@ public static class WorkflowPackageValidator
 
     /// <summary>The v7 result set: authored ids and labels over distinct aggregator nodes (package-format-v7.md § 3).</summary>
     private static void ValidateResultSet(
+        WorkflowPackageManifest manifest,
         List<WorkflowResultSpec> results,
         IReadOnlyDictionary<string, WorkflowNodeSpec> nodesById,
+        IReadOnlyDictionary<string, WorkflowInputSpec> declaredInputs,
         List<string> errors)
     {
         if (results.Count == 0)
@@ -584,6 +586,85 @@ public static class WorkflowPackageValidator
             {
                 errors.Add($"Results '{nodeOwners[nodeId]}' and '{result.Id}' share node '{nodeId}': each deliverable needs its own aggregator.");
             }
+        }
+
+        foreach (var result in results)
+        {
+            ValidateResultCondition(manifest, result, declaredInputs, errors);
+        }
+    }
+
+    /// <summary>
+    /// The vocabulary closure over a deliverable's condition
+    /// (package-format-v8-design.md § 5). The parser has already settled the
+    /// syntax; what is checked here needs the declaration.
+    ///
+    /// Conditions read <c>enum</c> and <c>boolean</c> inputs only. Date
+    /// equality asks merely "was it exactly this day" until ordering exists
+    /// (#338), and text equality compares a referral byte for byte — neither
+    /// is a choice, which is what a condition is for. Widening this is
+    /// additive and safe; narrowing it later would strand published packages,
+    /// so the narrow rule comes first.
+    /// </summary>
+    private static void ValidateResultCondition(
+        WorkflowPackageManifest manifest,
+        WorkflowResultSpec result,
+        IReadOnlyDictionary<string, WorkflowInputSpec> declaredInputs,
+        List<string> errors)
+    {
+        if (result.When is null)
+        {
+            return;
+        }
+
+        if (manifest.SpecVersion < 8)
+        {
+            errors.Add($"Result '{result.Id}' declares when, which requires specVersion 8.");
+            return;
+        }
+
+        if (!WorkflowResultConditions.TryParse(result.When, out var condition, out var syntaxError))
+        {
+            errors.Add($"Result '{result.Id}' condition {syntaxError}");
+            return;
+        }
+
+        if (!declaredInputs.TryGetValue(condition!.InputId, out var input))
+        {
+            errors.Add($"Result '{result.Id}' condition reads undeclared input '{condition.InputId}' (declared: {string.Join(", ", declaredInputs.Keys.Order(StringComparer.Ordinal))}).");
+            return;
+        }
+
+        var type = WorkflowInputTypes.Of(input);
+
+        if (type is not (WorkflowInputTypes.Enum or WorkflowInputTypes.Boolean))
+        {
+            errors.Add($"Result '{result.Id}' condition reads input '{condition.InputId}', which is a {type}: only enum and boolean inputs can be tested.");
+            return;
+        }
+
+        if (condition.Literal is null)
+        {
+            // The bare form asks "is this true", which only a boolean answers.
+            if (type != WorkflowInputTypes.Boolean)
+            {
+                errors.Add($"Result '{result.Id}' condition '{condition.InputId}' tests an enum for truth; compare it to one of its values instead.");
+            }
+
+            return;
+        }
+
+        if (type == WorkflowInputTypes.Boolean && condition.Literal is not ("true" or "false"))
+        {
+            errors.Add($"Result '{result.Id}' condition compares boolean '{condition.InputId}' to '{condition.Literal}'; use true or false.");
+            return;
+        }
+
+        if (type == WorkflowInputTypes.Enum && input.Values?.Contains(condition.Literal, StringComparer.Ordinal) != true)
+        {
+            // An undeclared value is an authoring error, not a condition that
+            // silently never holds.
+            errors.Add($"Result '{result.Id}' condition compares '{condition.InputId}' to '{condition.Literal}', which it does not declare (values: {string.Join(", ", input.Values ?? new List<string>())}).");
         }
     }
 
@@ -747,7 +828,16 @@ public static class WorkflowPackageValidator
                 return;
             }
 
-            ValidateResultSet(manifest.Results, nodesById, errors);
+            // Built here rather than threaded from ValidateInputs, which
+            // returns the id set the binding checks close over. Conditions
+            // need the declaration itself — the type and, for an enum, its
+            // values.
+            var declaredInputs = (manifest.Inputs ?? new List<WorkflowInputSpec>())
+                .Where(input => WorkflowDeclaredIds.IsValid(input.Id))
+                .GroupBy(input => input.Id, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+
+            ValidateResultSet(manifest, manifest.Results, nodesById, declaredInputs, errors);
             return;
         }
 
