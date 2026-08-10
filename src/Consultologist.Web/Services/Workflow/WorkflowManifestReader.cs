@@ -27,11 +27,26 @@ public static class WorkflowManifestReader
         string? OutputSchema = null,
         string? FailIfEmpty = null);
 
-    /// <summary>One declared input slot of a specVersion-7 package.</summary>
-    public sealed record InputView(string Id, string Label, bool Required);
+    /// <summary>
+    /// One declared input slot. v8 types it: <c>Type</c> null means text, which
+    /// is what keeps a v7 declaration valid. <c>Values</c> belongs to enum.
+    /// </summary>
+    public sealed record InputView(
+        string Id,
+        string Label,
+        bool Required,
+        string? Type = null,
+        IReadOnlyList<string>? Values = null);
 
-    /// <summary>One declared deliverable: authored id and label over an aggregator node.</summary>
-    public sealed record ResultView(string Id, string Node, string Label);
+    /// <summary>
+    /// One declared deliverable: authored id and label over an aggregator node.
+    ///
+    /// v8's <c>When</c> is held as the raw string rather than a parsed
+    /// structure, so a row nobody edited round-trips exactly as authored — a
+    /// manifest written elsewhere as <c>when: billable</c> is not rewritten to
+    /// <c>billable == true</c> by an editor that only passed it through.
+    /// </summary>
+    public sealed record ResultView(string Id, string Node, string Label, string? When = null);
 
     public sealed record DataItemView(string Id, string Name, string File);
 
@@ -251,7 +266,12 @@ public static class WorkflowManifestReader
             var required = !TryGetProperty(input, "required", out var requiredElement)
                 || requiredElement.ValueKind != JsonValueKind.False;
 
-            inputs.Add(new InputView(id, ReadString(input, "label") ?? id, required));
+            inputs.Add(new InputView(
+                id,
+                ReadString(input, "label") ?? id,
+                required,
+                ReadString(input, "type"),
+                ReadStringArray(input, "values")));
         }
 
         return inputs;
@@ -273,7 +293,11 @@ public static class WorkflowManifestReader
         foreach (var result in array.EnumerateArray())
         {
             var id = ReadString(result, "id") ?? string.Empty;
-            results.Add(new ResultView(id, ReadString(result, "node") ?? string.Empty, ReadString(result, "label") ?? id));
+            results.Add(new ResultView(
+                id,
+                ReadString(result, "node") ?? string.Empty,
+                ReadString(result, "label") ?? id,
+                ReadString(result, "when")));
         }
 
         return results;
@@ -342,4 +366,18 @@ public static class WorkflowManifestReader
         TryGetProperty(element, property, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+
+    /// <summary>An enum input's declared values; null when the property is absent.</summary>
+    private static IReadOnlyList<string>? ReadStringArray(JsonElement element, string property)
+    {
+        if (!TryGetProperty(element, property, out var array) || array.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        return array.EnumerateArray()
+            .Where(item => item.ValueKind == JsonValueKind.String)
+            .Select(item => item.GetString()!)
+            .ToList();
+    }
 }

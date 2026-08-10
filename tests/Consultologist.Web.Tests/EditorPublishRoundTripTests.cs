@@ -212,4 +212,61 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         var data = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement.GetProperty("data");
         Assert.Equal(new[] { "standards", "specialty" }, data.EnumerateObject().Select(p => p.Name).ToArray());
     }
+
+    [Fact]
+    public async Task V8Authoring_ComposesAManifestTheValidatorAccepts()
+    {
+        // #316: the point of doing this here rather than asserting on JSON is
+        // that the composed payload goes through the SERVER's validator — the
+        // difference between "the JSON looks right" and "the registry would
+        // accept this".
+        var (result, sent) = await PublishAndCaptureAsync(page =>
+        {
+            Navigate(page, "Inputs");
+            page.FindAll("select.declared-row__type")[1].Change("enum");
+            page.Find("li.declared-row__values input").Change("new_patient");
+            page.Find("li.declared-row__values input").Change("follow_up");
+
+            Navigate(page, "Documents");
+            page.Find("li.declared-row__when select").Change("prior_notes");
+            return Task.CompletedTask;
+        }, EditorFixtures.V8());
+
+        var root = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement;
+
+        var typed = root.GetProperty("inputs").EnumerateArray()
+            .First(i => i.GetProperty("id").GetString() == "prior_notes");
+        Assert.Equal("enum", typed.GetProperty("type").GetString());
+        Assert.Equal(
+            new[] { "new_patient", "follow_up" },
+            typed.GetProperty("values").EnumerateArray().Select(v => v.GetString()).ToArray());
+
+        var conditional = root.GetProperty("results").EnumerateArray()
+            .First(r => r.GetProperty("when").ValueKind != JsonValueKind.Undefined);
+        Assert.Contains("prior_notes", conditional.GetProperty("when").GetString());
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public async Task AV7Package_ComposesTheSameBytesItAlwaysDid()
+    {
+        // type omitted means text, so an untouched v7 declaration must not
+        // gain the word — the migration story depends on this.
+        var (result, sent) = await PublishAndCaptureAsync(page =>
+        {
+            Navigate(page, "Inputs");
+            page.FindAll("li.declared-row input")[1].Change("Referral letter");
+            return Task.CompletedTask;
+        }, EditorFixtures.V7());
+
+        var inputs = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement.GetProperty("inputs");
+
+        Assert.All(inputs.EnumerateArray(), input =>
+        {
+            Assert.False(input.TryGetProperty("type", out _));
+            Assert.False(input.TryGetProperty("values", out _));
+        });
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
 }
