@@ -69,6 +69,9 @@ public static class WorkflowInputTypes
     public const string Boolean = "boolean";
 
     public static string Of(WorkflowPackageInputResponse input) => input.Type ?? Text;
+
+    /// <summary>The same default for the editor's view of a declaration.</summary>
+    public static string Of(WorkflowManifestReader.InputView input) => input.Type ?? Text;
 }
 
 /// <summary>One declared deliverable — blocks and result tabs group by these.</summary>

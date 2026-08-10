@@ -478,10 +478,44 @@
                                                aria-label="@($"Required for input {slot.Id}")" />
                                         required
                                     </label>
+                                    @* v8: the declared type decides the intake control and,
+                                       for enum and boolean, what a condition can read. *@
+                                    <select class="node-field__input declared-row__type"
+                                            value="@WorkflowInputTypes.Of(slot)"
+                                            @onchange="args => RetypeInputAsync(slot, args.Value?.ToString())"
+                                            aria-label="@($"Type for input {slot.Id}")">
+                                        <option value="@WorkflowInputTypes.Text">text</option>
+                                        <option value="@WorkflowInputTypes.Date">date</option>
+                                        <option value="@WorkflowInputTypes.Enum">enum</option>
+                                        <option value="@WorkflowInputTypes.Boolean">boolean</option>
+                                    </select>
                                     <button type="button" class="aggregate-row__button" title="Remove input"
-                                            disabled="@(EffectiveInputs.Count == 1)"
+                                            disabled="@(EffectiveInputs.Count == 1 || ConditionLock(slot) != null)"
                                             @onclick="() => RemoveInputAsync(slot)">×</button>
                                 </li>
+
+                                @if (WorkflowInputTypes.Of(slot) == WorkflowInputTypes.Enum)
+                                {
+                                    <li class="declared-row__values">
+                                        @foreach (var value in slot.Values ?? Array.Empty<string>())
+                                        {
+                                            var declaredValue = value;
+                                            <span class="input-field__chip" data-enum-value="@declaredValue">
+                                                @declaredValue
+                                                <button type="button" class="aggregate-row__button" title="Remove value"
+                                                        @onclick="() => RemoveEnumValueAsync(slot, declaredValue)">×</button>
+                                            </span>
+                                        }
+                                        <input class="node-field__input" placeholder="follow_up"
+                                               @onchange="args => AddEnumValueAsync(slot, args.Value?.ToString())"
+                                               aria-label="@($"Add a value to {slot.Id}")" />
+                                    </li>
+                                }
+
+                                @if (ConditionLock(slot) is { } lockedBy)
+                                {
+                                    <li class="declared-row__note"><span class="muted-text">@lockedBy</span></li>
+                                }
                             }
                         </ul>
                         <div class="add-variable__form">
@@ -544,6 +578,62 @@
                                         <button type="button" class="aggregate-row__button" title="Remove document"
                                                 disabled="@(EffectiveResults.Count == 1)"
                                                 @onclick="() => RemoveResultAsync(deliverable)">×</button>
+                                    </li>
+
+                                    @* v8: when this document is produced. Three controls
+                                       rather than a text field — the literal follows the
+                                       chosen input's type, which is what makes the closed
+                                       grammar authorable instead of a string to get wrong. *@
+                                    <li class="declared-row__when" data-when-for="@deliverable.Id">
+                                        @if (ConditionableInputs.Count == 0)
+                                        {
+                                            <span class="muted-text">
+                                                Always produced. Declare an enum or boolean input to make it conditional.
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            var conditionInput = WorkflowResultConditionText.InputOf(deliverable.When);
+                                            var conditionOn = ConditionableInputs.FirstOrDefault(i => i.Id == conditionInput);
+                                            <select class="node-field__input"
+                                                    value="@(conditionOn?.Id ?? string.Empty)"
+                                                    @onchange="args => SetResultConditionAsync(deliverable, args.Value?.ToString())"
+                                                    aria-label="@($"Condition input for {deliverable.Id}")">
+                                                <option value="">always produced</option>
+                                                @foreach (var candidate in ConditionableInputs)
+                                                {
+                                                    <option value="@candidate.Id">when @candidate.Id</option>
+                                                }
+                                            </select>
+
+                                            @if (conditionOn is { } tested)
+                                            {
+                                                <select class="node-field__input"
+                                                        value="@(WorkflowResultConditionText.IsNegated(deliverable.When) ? "not" : "is")"
+                                                        @onchange="args => SetConditionOperatorAsync(deliverable, tested.Id, args.Value?.ToString())"
+                                                        aria-label="@($"Condition operator for {deliverable.Id}")">
+                                                    <option value="is">is</option>
+                                                    <option value="not">is not</option>
+                                                </select>
+                                                <select class="node-field__input"
+                                                        value="@(WorkflowResultConditionText.LiteralOf(deliverable.When) ?? string.Empty)"
+                                                        @onchange="args => SetResultConditionAsync(deliverable, tested.Id, null, args.Value?.ToString())"
+                                                        aria-label="@($"Condition value for {deliverable.Id}")">
+                                                    @if (WorkflowInputTypes.Of(tested) == WorkflowInputTypes.Boolean)
+                                                    {
+                                                        <option value="true">true</option>
+                                                        <option value="false">false</option>
+                                                    }
+                                                    else
+                                                    {
+                                                        @foreach (var option in tested.Values ?? Array.Empty<string>())
+                                                        {
+                                                            <option value="@option">@option</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            }
+                                        }
                                     </li>
                                 }
                             </ul>
@@ -1532,8 +1622,41 @@
         await CommitDeclarationAsync();
     }
 
+    /// <summary>
+    /// The deliverables whose condition reads this input. Returned rather than
+    /// a bool so a refusal can name them — the same shape NodesBinding uses for
+    /// a bound data value (#321).
+    /// </summary>
+    private IReadOnlyList<string> ResultsConditionedOn(string inputId) =>
+        EffectiveResults
+            .Where(result => !string.IsNullOrWhiteSpace(result.When)
+                && WorkflowResultConditionText.ReadsInput(result.When!, inputId))
+            .Select(result => result.Label)
+            .ToList();
+
+    /// <summary>
+    /// Only enum and boolean inputs can be tested (#314), so retyping one a
+    /// condition reads, or removing it, would compose a package the validator
+    /// rejects. Refused here rather than at publish, naming the document that
+    /// depends on it.
+    /// </summary>
+    private string? ConditionLock(WorkflowManifestReader.InputView input)
+    {
+        var dependents = ResultsConditionedOn(input.Id);
+
+        return dependents.Count == 0
+            ? null
+            : $"Input '{input.Id}' is tested by {string.Join(", ", dependents.Select(d => $"'{d}'"))}; change that document's condition first.";
+    }
+
     private async Task RemoveInputAsync(WorkflowManifestReader.InputView input)
     {
+        if (ConditionLock(input) is { } locked)
+        {
+            declaredError = locked;
+            return;
+        }
+
         var inputs = MutableInputs();
         inputs.RemoveAll(existing => existing.Id == input.Id);
         await CommitDeclarationAsync();
@@ -1589,6 +1712,147 @@
             }
         }
     }
+
+    /// <summary>
+    /// Retyping a slot. Leaving enum/boolean while a condition reads it is
+    /// refused for the same reason removal is: only those two can be tested.
+    /// </summary>
+    private async Task RetypeInputAsync(WorkflowManifestReader.InputView input, string? value)
+    {
+        var type = string.IsNullOrWhiteSpace(value) ? WorkflowInputTypes.Text : value!.Trim();
+
+        if (type is not (WorkflowInputTypes.Enum or WorkflowInputTypes.Boolean)
+            && ConditionLock(input) is { } locked)
+        {
+            declaredError = locked;
+            return;
+        }
+
+        var inputs = MutableInputs();
+        var index = inputs.FindIndex(existing => existing.Id == input.Id);
+
+        if (index >= 0)
+        {
+            inputs[index] = inputs[index] with
+            {
+                // text is the default, so it is written as absence rather than
+                // as the word — a v7 declaration stays byte-identical.
+                Type = type == WorkflowInputTypes.Text ? null : type,
+                // Values belong to enum and to nothing else.
+                Values = type == WorkflowInputTypes.Enum ? inputs[index].Values ?? new List<string>() : null
+            };
+            declaredError = null;
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    private async Task AddEnumValueAsync(WorkflowManifestReader.InputView input, string? value)
+    {
+        var candidate = (value ?? string.Empty).Trim();
+
+        if (!DeclaredIdPattern.IsMatch(candidate))
+        {
+            declaredError = $"Value '{candidate}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
+            return;
+        }
+
+        var inputs = MutableInputs();
+        var index = inputs.FindIndex(existing => existing.Id == input.Id);
+
+        if (index >= 0)
+        {
+            var values = (inputs[index].Values ?? Array.Empty<string>()).ToList();
+
+            if (values.Contains(candidate, StringComparer.Ordinal))
+            {
+                declaredError = $"Input '{input.Id}' already declares '{candidate}'.";
+                return;
+            }
+
+            values.Add(candidate);
+            inputs[index] = inputs[index] with { Values = values };
+            declaredError = null;
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    private async Task RemoveEnumValueAsync(WorkflowManifestReader.InputView input, string value)
+    {
+        var inputs = MutableInputs();
+        var index = inputs.FindIndex(existing => existing.Id == input.Id);
+
+        if (index >= 0)
+        {
+            var values = (inputs[index].Values ?? Array.Empty<string>()).Where(v => v != value).ToList();
+            inputs[index] = inputs[index] with { Values = values };
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    /// <summary>
+    /// The deliverable's condition, composed from the three controls. Null
+    /// input clears it — an unconditional deliverable always fires.
+    /// </summary>
+    private async Task SetResultConditionAsync(
+        WorkflowManifestReader.ResultView result,
+        string? inputId,
+        bool? negated = null,
+        string? literal = null)
+    {
+        var results = MutableResults();
+        var index = results.FindIndex(existing => existing.Id == result.Id);
+
+        if (index < 0)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(inputId))
+        {
+            results[index] = results[index] with { When = null };
+            await CommitDeclarationAsync();
+            return;
+        }
+
+        var input = EffectiveInputs.FirstOrDefault(i => i.Id == inputId);
+        var isNegated = negated ?? WorkflowResultConditionText.IsNegated(results[index].When);
+        var value = literal ?? WorkflowResultConditionText.LiteralOf(results[index].When);
+
+        // A literal the new input cannot take is dropped rather than carried:
+        // switching from one enum to another must not leave the old value.
+        if (input != null && WorkflowInputTypes.Of(input) == WorkflowInputTypes.Enum
+            && (value is null || input.Values?.Contains(value, StringComparer.Ordinal) != true))
+        {
+            value = input.Values?.FirstOrDefault();
+        }
+        else if (input != null && WorkflowInputTypes.Of(input) == WorkflowInputTypes.Boolean
+            && value is not ("true" or "false"))
+        {
+            value = "true";
+        }
+
+        results[index] = results[index] with
+        {
+            When = WorkflowResultConditionText.Compose(inputId!.Trim(), isNegated, value)
+        };
+
+        await CommitDeclarationAsync();
+    }
+
+    // Razor cannot parse a nested string literal inside an attribute lambda,
+    // which is the only reason this is a method rather than inline.
+    private Task SetConditionOperatorAsync(
+        WorkflowManifestReader.ResultView result, string inputId, string? choice) =>
+        SetResultConditionAsync(result, inputId, choice == "not");
+
+    /// <summary>Inputs a condition may read: enum and boolean only (#314).</summary>
+    private IReadOnlyList<WorkflowManifestReader.InputView> ConditionableInputs =>
+        EffectiveInputs
+            .Where(input => WorkflowInputTypes.Of(input) is WorkflowInputTypes.Enum or WorkflowInputTypes.Boolean)
+            .ToList();
 
     private async Task RelabelInputAsync(WorkflowManifestReader.InputView input, string? value)
     {
@@ -2843,9 +3107,12 @@
         // discipline: a draft written before this restores with it null.
         Dictionary<string, string>? AddedScalars = null);
 
-    private sealed record DraftInput(string Id, string Label, bool Required);
+    // #316: Type and Values ride here or a typed input is silently untyped on
+    // reload. Trailing optionals — a draft written before v8 restores with null.
+    private sealed record DraftInput(
+        string Id, string Label, bool Required, string? Type = null, List<string>? Values = null);
 
-    private sealed record DraftResult(string Id, string Node, string Label);
+    private sealed record DraftResult(string Id, string Node, string Label, string? When = null);
 
     private async Task RestoreDraftAsync()
     {
@@ -3077,7 +3344,7 @@
         if (IsV7 && draftInputs is { Count: > 0 })
         {
             inputsEdit = draftInputs
-                .Select(input => new WorkflowManifestReader.InputView(input.Id, input.Label, input.Required))
+                .Select(input => new WorkflowManifestReader.InputView(input.Id, input.Label, input.Required, input.Type, input.Values))
                 .ToList();
         }
 
@@ -3085,7 +3352,7 @@
             && draftResults.All(result => EffectiveNodes.Any(node => $"node:{node.Id}" == result.Node)))
         {
             resultsEdit = draftResults
-                .Select(result => new WorkflowManifestReader.ResultView(result.Id, result.Node, result.Label))
+                .Select(result => new WorkflowManifestReader.ResultView(result.Id, result.Node, result.Label, result.When))
                 .ToList();
         }
 
@@ -3171,8 +3438,8 @@
             aggregateEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             resultEdit,
             addedPrompts.Select(p => new DraftAddedPrompt(p.Id, p.Text)).ToList(),
-            inputsEdit?.Select(i => new DraftInput(i.Id, i.Label, i.Required)).ToList(),
-            resultsEdit?.Select(r => new DraftResult(r.Id, r.Node, r.Label)).ToList(),
+            inputsEdit?.Select(i => new DraftInput(i.Id, i.Label, i.Required, i.Type, i.Values?.ToList())).ToList(),
+            resultsEdit?.Select(r => new DraftResult(r.Id, r.Node, r.Label, r.When)).ToList(),
             new Dictionary<string, string>(addedScalars, StringComparer.Ordinal));
         await JS.InvokeVoidAsync("localStorage.setItem", DraftKey, JsonSerializer.Serialize(payload));
     }
@@ -3700,11 +3967,29 @@
         {
             root[root["Inputs"] is not null ? "Inputs" : "inputs"] = new System.Text.Json.Nodes.JsonArray(
                 inputsEdit
-                    .Select(input => (System.Text.Json.Nodes.JsonNode?)new System.Text.Json.Nodes.JsonObject
+                    .Select(input =>
                     {
-                        ["id"] = input.Id,
-                        ["label"] = input.Label,
-                        ["required"] = input.Required
+                        var node = new System.Text.Json.Nodes.JsonObject
+                        {
+                            ["id"] = input.Id,
+                            ["label"] = input.Label,
+                            ["required"] = input.Required
+                        };
+
+                        // Omitted when absent, so a v7 package composes exactly
+                        // the bytes it composes today: type null means text.
+                        if (input.Type != null)
+                        {
+                            node["type"] = input.Type;
+                        }
+
+                        if (input.Values is { Count: > 0 })
+                        {
+                            node["values"] = new System.Text.Json.Nodes.JsonArray(
+                                input.Values.Select(v => (System.Text.Json.Nodes.JsonNode?)v).ToArray());
+                        }
+
+                        return (System.Text.Json.Nodes.JsonNode?)node;
                     })
                     .ToArray());
         }
@@ -3715,11 +4000,23 @@
             root.AsObject().Remove("Result");
             root[root["Results"] is not null ? "Results" : "results"] = new System.Text.Json.Nodes.JsonArray(
                 resultsEdit
-                    .Select(result => (System.Text.Json.Nodes.JsonNode?)new System.Text.Json.Nodes.JsonObject
+                    .Select(result =>
                     {
-                        ["id"] = result.Id,
-                        ["node"] = result.Node,
-                        ["label"] = result.Label
+                        var node = new System.Text.Json.Nodes.JsonObject
+                        {
+                            ["id"] = result.Id,
+                            ["node"] = result.Node,
+                            ["label"] = result.Label
+                        };
+
+                        // The raw string as authored: a row nobody edited keeps
+                        // its original text rather than being normalised.
+                        if (!string.IsNullOrWhiteSpace(result.When))
+                        {
+                            node["when"] = result.When;
+                        }
+
+                        return (System.Text.Json.Nodes.JsonNode?)node;
                     })
                     .ToArray());
         }

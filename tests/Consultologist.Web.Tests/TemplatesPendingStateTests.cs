@@ -191,6 +191,21 @@ public class TemplatesPendingStateTests : ClientRenderTestContext
             {
                 return Activator.CreateInstance(type, arguments.Select(a => Probe(a, depth + 1)).ToArray());
             }
+
+            // A collection interface has no constructor, so the ctor fallback
+            // below would throw and the whole field would drop out of
+            // discovery — silently, since TryMakePending swallows it. Found
+            // when InputView gained an IReadOnlyList<string> member (#316).
+            if (type.IsInterface
+                && (definition == typeof(IReadOnlyList<>) || definition == typeof(IReadOnlyCollection<>)
+                    || definition == typeof(IList<>) || definition == typeof(ICollection<>)
+                    || definition == typeof(IEnumerable<>)))
+            {
+                var listType = typeof(List<>).MakeGenericType(arguments[0]);
+                var list = Activator.CreateInstance(listType)!;
+                listType.GetMethod("Add", arguments)!.Invoke(list, new[] { Probe(arguments[0], depth + 1) });
+                return list;
+            }
         }
 
         // Records expose a protected copy constructor taking themselves;

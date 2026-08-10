@@ -1,6 +1,7 @@
 using AngleSharp.Dom;
 using Bunit;
 using Consultologist.Web.Pages;
+using Consultologist.Web.Services.Workflow;
 using NSubstitute;
 
 namespace Consultologist.Web.Tests;
@@ -138,5 +139,130 @@ public class TemplatesV7AuthoringTests : ClientRenderTestContext
         Assert.False(
             page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish")).HasAttribute("disabled"),
             "a pending document edit should enable Publish");
+    }
+}
+
+/// <summary>
+/// The v8 authoring surfaces (#316): a type on an input, values on an enum, and
+/// a condition on a document. The literal control follows the chosen input's
+/// type, which is what makes #314's closed grammar authorable rather than a
+/// string to get wrong.
+/// </summary>
+public class TemplatesV8AuthoringTests : ClientRenderTestContext
+{
+    private IRenderedComponent<Templates> RenderEditor()
+    {
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
+        return Render<Templates>();
+    }
+
+    private static void Navigate(IRenderedComponent<Templates> page, string label) =>
+        page.FindAll("button.editor-nav__item")
+            .First(button => button.TextContent.Replace("\u25CF", string.Empty).Trim() == label)
+            .Click();
+
+    /// <summary>Types consult_draft as an enum with two values.</summary>
+    private static void DeclareEnum(IRenderedComponent<Templates> page, string id = "prior_notes")
+    {
+        Navigate(page, "Inputs");
+        var row = page.FindAll("select.declared-row__type")[1];
+        row.Change(WorkflowInputTypes.Enum);
+        page.Find("li.declared-row__values input").Change("new_patient");
+        page.Find("li.declared-row__values input").Change("follow_up");
+    }
+
+    [Fact]
+    public void AnInputCanBeTyped_AndTextIsWrittenAsAbsence()
+    {
+        var page = RenderEditor();
+        Navigate(page, "Inputs");
+
+        Assert.Equal(2, page.FindAll("select.declared-row__type").Count);
+        // Every v7 input opens as text, which is the default the format states.
+        Assert.All(page.FindAll("select.declared-row__type"),
+            select => Assert.Equal(WorkflowInputTypes.Text, select.GetAttribute("value")));
+    }
+
+    [Fact]
+    public void AnEnumAuthorsItsValues()
+    {
+        var page = RenderEditor();
+        DeclareEnum(page);
+
+        var chips = page.FindAll("[data-enum-value]").Select(c => c.GetAttribute("data-enum-value")).ToList();
+        Assert.Equal(new[] { "new_patient", "follow_up" }, chips);
+    }
+
+    [Fact]
+    public void AValueBreakingTheIdRule_IsRefusedInline()
+    {
+        // The validator is the authority; the editor is the early warning.
+        var page = RenderEditor();
+        Navigate(page, "Inputs");
+        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Enum);
+        page.Find("li.declared-row__values input").Change("Follow Up");
+
+        Assert.Contains("must be snake_case", page.Markup);
+    }
+
+    [Fact]
+    public void OnlyEnumAndBooleanInputsAreOfferedAsConditions()
+    {
+        // #314's narrowing, surfaced: a date or text input cannot be tested, so
+        // it never appears in the picker.
+        var page = RenderEditor();
+        DeclareEnum(page);
+        Navigate(page, "Documents");
+
+        var picker = page.Find("li.declared-row__when select");
+        var options = picker.QuerySelectorAll("option").Select(o => o.GetAttribute("value")).ToList();
+
+        Assert.Equal(new[] { "", "prior_notes" }, options);
+    }
+
+    [Fact]
+    public void WithNoTestableInput_TheRowSaysSoRatherThanOfferingNothing()
+    {
+        var page = RenderEditor();
+        Navigate(page, "Documents");
+
+        Assert.Contains("Declare an enum or boolean input", page.Markup);
+        Assert.Empty(page.FindAll("li.declared-row__when select"));
+    }
+
+    [Fact]
+    public void ChoosingAnInput_ComposesAConditionWithATypedLiteral()
+    {
+        var page = RenderEditor();
+        DeclareEnum(page);
+        Navigate(page, "Documents");
+
+        page.Find("li.declared-row__when select").Change("prior_notes");
+
+        // Three controls now: input, operator, literal — and the literal offers
+        // exactly the enum's declared values.
+        var selects = page.FindAll("li.declared-row__when select");
+        Assert.Equal(3, selects.Count);
+
+        var literals = selects[2].QuerySelectorAll("option").Select(o => o.GetAttribute("value")).ToList();
+        Assert.Equal(new[] { "new_patient", "follow_up" }, literals);
+    }
+
+    [Fact]
+    public void AnInputAConditionReads_CannotBeRetypedOrRemoved()
+    {
+        // Mirrors #321's delete guard: the alternative is composing a package
+        // the validator rejects and finding out at publish.
+        var page = RenderEditor();
+        DeclareEnum(page);
+        Navigate(page, "Documents");
+        page.Find("li.declared-row__when select").Change("prior_notes");
+
+        Navigate(page, "Inputs");
+        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Date);
+
+        Assert.Contains("is tested by", page.Markup);
+        // Still an enum: the retype was refused, not applied and warned about.
+        Assert.Equal(WorkflowInputTypes.Enum, page.FindAll("select.declared-row__type")[1].GetAttribute("value"));
     }
 }

@@ -128,6 +128,23 @@ public static class EditorFixtures
         return package with { Files = files };
     }
 
+    /// <summary>
+    /// The v7 package at specVersion 8 — the manifest JSON itself, not just the
+    /// response record, because the validator reads the manifest. Nothing else
+    /// changes: both v8 additions are optional over a v7 declaration.
+    /// </summary>
+    public static WorkflowPackageContentResponse V8()
+    {
+        var v7 = V7();
+        var json = v7.Manifest.GetRawText().Replace("\"specVersion\": 7", "\"specVersion\": 8");
+
+        return v7 with
+        {
+            SpecVersion = 8,
+            Manifest = JsonDocument.Parse(json).RootElement.Clone()
+        };
+    }
+
     /// <summary>The v7 shape: declared inputs and a results list.</summary>
     public static WorkflowPackageContentResponse V7() => Package("""
         {
