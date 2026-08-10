@@ -814,6 +814,35 @@ public class ConsultDeliverablesTests
             deliverables, oneProduced, new Dictionary<string, string>());
         Assert.Equal("The assembled documents could not be produced.", fallback);
     }
+
+    [Fact]
+    public void AFilteredResultSet_IsCompletedByWhatItContains()
+    {
+        // #315's central distinction, and the reason filtering the package
+        // rather than teaching the engine about conditions works: a deliverable
+        // that legitimately does not exist is not in the list at all, so it
+        // cannot read as missing. One that SHOULD have existed and did not
+        // still fails the job.
+        var oneResult = TwoResults.Take(1).ToList();
+        var deliverables = ConsultDeliverables.Resolve(oneResult, null, NodesById);
+
+        var noteOnly = new Dictionary<string, NodeRunResult>(StringComparer.Ordinal)
+        {
+            ["note"] = new("n", null, "i", "o")
+        };
+
+        // The letter was filtered out, so producing only the note is Completed.
+        Assert.Equal(
+            (ConsultGenerationJobStatuses.Completed, (string?)null),
+            ConsultDeliverables.FinalOutcome(deliverables, noteOnly, new Dictionary<string, string>()));
+
+        // And a deliverable that IS in the filtered set still has to produce.
+        var (status, _) = ConsultDeliverables.FinalOutcome(
+            deliverables,
+            new Dictionary<string, NodeRunResult>(StringComparer.Ordinal),
+            new Dictionary<string, string>());
+        Assert.Equal(ConsultGenerationJobStatuses.Failed, status);
+    }
 }
 
 public class SectionProseStepEventTests

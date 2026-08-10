@@ -43,7 +43,11 @@ public enum ConsultGenerationJobStartError
     // #291: the referral is behind a link we cannot open. Distinct from
     // InputWithoutContent because the remedy differs -- there IS a document,
     // it just never arrived.
-    InputBehindACloudLink
+    InputBehindACloudLink,
+    // #315: every declared deliverable's condition is false for these inputs,
+    // so the job would produce nothing. Knowable at start because conditions
+    // read declared inputs only — refused rather than run.
+    NoApplicableDeliverable
 }
 
 /// <summary>
@@ -303,6 +307,55 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // expansion — WorkflowPackageBlocks dispatches the id scheme by spec)
         // and Collections carries one item set per fanned collection
         // (package-format-v6-design.md §§ 4–5; package-format-v7.md).
+        // v8: the fire set, decided once, here. Conditions read declared inputs
+        // only, so this is knowable before anything runs — which is what lets
+        // the block skeleton still be built up front and TotalBlockCount stay
+        // the stored scalar #176 made it.
+        //
+        // Filtering the PACKAGE rather than teaching the engine about
+        // conditions is the whole trick: block expansion, deliverable
+        // resolution and the outcome rule all walk the result list and need no
+        // change at all.
+        var skipped = new List<ConsultSkippedDocument>();
+
+        if (package.Results is { Count: > 0 })
+        {
+            var firing = new List<WorkflowResolvedResult>();
+
+            foreach (var result in package.Results)
+            {
+                if (WorkflowResultConditions.Holds(result.Condition, inputs.Supplied))
+                {
+                    firing.Add(result);
+                    continue;
+                }
+
+                skipped.Add(new ConsultSkippedDocument(
+                    result.Id,
+                    result.Label,
+                    WorkflowResultConditions.Explain(result.Condition!, inputs.Supplied)));
+            }
+
+            if (firing.Count == 0)
+            {
+                // Knowable before any model call, so the job is never created
+                // and nothing is spent. The email door needs nothing extra:
+                // every start-failure path already replies and moves the
+                // message to Rejected.
+                _logger.LogWarning(
+                    "Rejected job start: no deliverable applies to these inputs. Package={Package}, Declared={Declared}",
+                    package.Ref,
+                    skipped.Count);
+                return new ConsultGenerationJobStartOutcome(
+                    null,
+                    ConsultGenerationJobStartError.NoApplicableDeliverable,
+                    "No document applies to these inputs. "
+                        + string.Join(" ", skipped.Select(s => $"'{s.Label}' {s.Reason}.")));
+            }
+
+            package = package with { Results = firing };
+        }
+
         IReadOnlyList<IReadOnlyDictionary<string, string>> items;
         IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? collectionSets = null;
 
@@ -407,7 +460,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 EffectiveInputHashVersion: effectiveInputHashVersion,
                 Source: origin.Source,
                 ScheduledAtUtc: request.ScheduledAtUtc,
-                InputOrigins: inputOrigins));
+                InputOrigins: inputOrigins,
+                SkippedDocuments: skipped.Count > 0 ? skipped : null));
 
         var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(
             nameof(ConsultGenerationOrchestrator),
@@ -423,6 +477,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 dataScalars,
                 EffectiveInputHashVersion: effectiveInputHashVersion,
                 InputTypes: declaredInputTypes,
+                SkippedDocuments: skipped.Count > 0 ? skipped : null,
                 CatalogRef: _catalog.ResolvedRef,
                 Collections: collectionSets,
                 Source: origin.Source,

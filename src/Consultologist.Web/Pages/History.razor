@@ -153,6 +153,17 @@
                                                     <dt class="provenance-list__nested">@document.Label</dt>
                                                     <dd class="hash-text">@(document.DocumentHash ?? "—")</dd>
                                                 }
+                                                @* #315: a deliverable the package
+                                                   declared and this job's inputs
+                                                   excluded. It belongs beside the
+                                                   evidence for the ones that exist —
+                                                   a shorter list with no explanation
+                                                   reads as a document that failed. *@
+                                                @foreach (var skipped in detail.SkippedDocuments ?? Array.Empty<ConsultSkippedDocumentResponse>())
+                                                {
+                                                    <dt class="provenance-list__nested">@skipped.Label</dt>
+                                                    <dd>not produced — it @skipped.Reason</dd>
+                                                }
                                                 @if (LineageFor(detail.WorkflowPackage) is { Count: > 1 } lineage)
                                                 {
                                                     <dt>Lineage</dt>

@@ -250,6 +250,163 @@ public class ConsultGenerationJobStarterTests
             orchestrationInput.InputTypes);
     }
 
+    // #315: the fire set is decided at start, and the package is filtered
+    // before blocks and descriptors are built. The engine never learns what a
+    // condition is.
+
+    private static WorkflowPackage ConditionalPackage()
+    {
+        var manifest = V8Fixtures.Conditional();
+        var files = V6Fixtures.Files(manifest);
+        var errors = new List<string>();
+        var data = WorkflowDataResolver.Resolve(manifest, files, errors);
+        Assert.Empty(errors);
+
+        return new WorkflowPackage(
+            manifest,
+            Nodes: manifest.Nodes,
+            SchemaContracts: TestOutputContracts.CatalogSchemas,
+            Data: data,
+            ResultNodeId: null,
+            Results: new List<WorkflowResolvedResult>
+            {
+                new("consult_note", "assemble-note", "Consultation note"),
+                new("patient_letter", "assemble-letter", "Patient letter",
+                    new WorkflowResultCondition("encounter_kind", "follow_up", false))
+            });
+    }
+
+    private async Task<(ConsultGenerationJobStartOutcome Outcome,
+                        ConsultGenerationJobInitialize? Initialize,
+                        ConsultGenerationOrchestrationInput? Input)> StartConditionalAsync(string encounterKind)
+    {
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ConditionalPackage());
+
+        ConsultGenerationJobInitialize? initialize = null;
+        await _entities.SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(),
+            nameof(ConsultGenerationJobEntity.Initialize),
+            Arg.Do<object>(payload => initialize = payload as ConsultGenerationJobInitialize));
+
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(null, Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["consult_draft"] = Referral,
+                ["seen_on"] = "2026-08-10",
+                ["encounter_kind"] = encounterKind
+            }),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        return (outcome, initialize, orchestrationInput);
+    }
+
+    [Fact]
+    public async Task ANonFiringDeliverable_ContributesNoBlocks()
+    {
+        // The assertion that pins #176 surviving: TotalBlockCount is stamped
+        // once from this list, so filtering the package before expansion is
+        // what keeps it a stored scalar rather than something recomputed.
+        var (firing, firingInit, _) = await StartConditionalAsync("follow_up");
+        var (skipping, skippingInit, _) = await StartConditionalAsync("new_patient");
+
+        Assert.Null(firing.Error);
+        Assert.Null(skipping.Error);
+
+        Assert.Contains(firingInit!.Items, item => item["id"].StartsWith("patient_letter:", StringComparison.Ordinal));
+        Assert.DoesNotContain(skippingInit!.Items, item => item["id"].StartsWith("patient_letter:", StringComparison.Ordinal));
+        Assert.True(skippingInit.Items.Count < firingInit.Items.Count);
+
+        // The note's blocks are untouched either way.
+        Assert.Contains(skippingInit.Items, item => item["id"].StartsWith("consult_note:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ASkippedDeliverable_IsRecordedWithItsReason()
+    {
+        var (_, initialize, orchestrationInput) = await StartConditionalAsync("new_patient");
+
+        var skipped = Assert.Single(initialize!.SkippedDocuments!);
+        Assert.Equal("patient_letter", skipped.ResultId);
+        Assert.Equal("Patient letter", skipped.Label);
+        Assert.Contains("encounter_kind", skipped.Reason);
+        Assert.Contains("'new_patient'", skipped.Reason);
+
+        // And it reaches the orchestration input, so the completion reply can
+        // say it too.
+        Assert.Single(orchestrationInput!.SkippedDocuments!);
+    }
+
+    [Fact]
+    public async Task AFiringJob_RecordsNoSkips()
+    {
+        var (_, initialize, _) = await StartConditionalAsync("follow_up");
+
+        Assert.Null(initialize!.SkippedDocuments);
+    }
+
+    [Fact]
+    public async Task WhenNoDeliverableApplies_TheJobIsRefusedAtStart()
+    {
+        // Knowable before any model call, so nothing is created and nothing is
+        // spent. The message names each deliverable and what it wanted.
+        var manifest = V8Fixtures.Conditional();
+        var files = V6Fixtures.Files(manifest);
+        var errors = new List<string>();
+        var data = WorkflowDataResolver.Resolve(manifest, files, errors);
+
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackage(
+                manifest,
+                Nodes: manifest.Nodes,
+                SchemaContracts: TestOutputContracts.CatalogSchemas,
+                Data: data,
+                Results: new List<WorkflowResolvedResult>
+                {
+                    // Both read the optional boolean, which is not supplied:
+                    // absence satisfies nothing, so the fire set is empty. Using
+                    // an undeclared enum value instead would be refused earlier,
+                    // by the canonical-form check, and prove nothing about this.
+                    new("consult_note", "assemble-note", "Consultation note",
+                        new WorkflowResultCondition("billable", null, false)),
+                    new("patient_letter", "assemble-letter", "Patient letter",
+                        new WorkflowResultCondition("billable", "true", false))
+                }));
+
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(null, Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["consult_draft"] = Referral,
+                ["seen_on"] = "2026-08-10",
+                ["encounter_kind"] = "follow_up"
+            }),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        Assert.Equal(ConsultGenerationJobStartError.NoApplicableDeliverable, outcome.Error);
+        Assert.Null(outcome.JobId);
+        Assert.Contains("Consultation note", outcome.ErrorDetail);
+        Assert.Contains("Patient letter", outcome.ErrorDetail);
+        Assert.Contains("not supplied", outcome.ErrorDetail);
+    }
+
     [Fact]
     public void TypedAndStringForms_HashDifferently()
     {

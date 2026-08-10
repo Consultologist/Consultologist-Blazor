@@ -18,7 +18,8 @@ public class ConsultsResultTests : ClientRenderTestContext
 
     private void WithCompletedJob(
         string? assembledDocument = null,
-        IReadOnlyList<ConsultGenerationResultDocumentResponse>? documents = null)
+        IReadOnlyList<ConsultGenerationResultDocumentResponse>? documents = null,
+        IReadOnlyList<ConsultSkippedDocumentResponse>? skipped = null)
     {
         WithPinnedPackage(blocks: new[] { Block("section-instructions:hpi", "History of Present Illness") });
 
@@ -35,7 +36,8 @@ public class ConsultsResultTests : ClientRenderTestContext
             FailedBlocks: new Dictionary<string, string>(),
             Success: true,
             AssembledDocument: assembledDocument,
-            AssembledDocuments: documents));
+            AssembledDocuments: documents,
+            SkippedDocuments: skipped));
     }
 
     [Fact]
@@ -53,6 +55,45 @@ public class ConsultsResultTests : ClientRenderTestContext
         // The strip only exists for several documents — Fluent's element is the
         // only hook here, since the component owns that markup.
         Assert.Empty(page.FindAll("fluent-tab"));
+    }
+
+    [Fact]
+    public void ADeliverableThatDidNotFire_IsNamedBesideTheDocuments()
+    {
+        // #315's failure mode: a job producing fewer documents than the package
+        // declares, saying nothing about which was skipped, is
+        // indistinguishable from one that silently failed. The person who just
+        // ran the consult is the one most likely to wonder.
+        WithCompletedJob(
+            documents: new[]
+            {
+                new ConsultGenerationResultDocumentResponse("consult_note", "Consultation note", "The assembled note.")
+            },
+            skipped: new[]
+            {
+                new ConsultSkippedDocumentResponse("billing_summary", "Billing summary",
+                    "needs billable to be true; it is 'false'")
+            });
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var note = page.Find("[data-skipped-result='billing_summary']").TextContent;
+        Assert.Contains("Billing summary", note);
+        Assert.Contains("was not produced", note);
+        Assert.Contains("needs billable to be true", note);
+    }
+
+    [Fact]
+    public void WithNothingSkipped_NoNoteAppears()
+    {
+        WithCompletedJob(documents: new[]
+        {
+            new ConsultGenerationResultDocumentResponse("consult_note", "Consultation note", "The assembled note.")
+        });
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Empty(page.FindAll("[data-skipped-result]"));
     }
 
     [Fact]

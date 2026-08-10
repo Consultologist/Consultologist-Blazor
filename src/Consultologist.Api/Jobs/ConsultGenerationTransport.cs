@@ -176,6 +176,9 @@ public sealed class ConsultGenerationJobs
                     // input declaration — 422, not 400 (the request-shape rules
                     // in ValidateRequest are the 400s).
                     ConsultGenerationJobStartError.InputsMismatch => HttpStatusCode.UnprocessableEntity,
+                    // #315: well-formed, satisfiable against the declaration,
+                    // and still nothing to produce. Same 422 family.
+                    ConsultGenerationJobStartError.NoApplicableDeliverable => HttpStatusCode.UnprocessableEntity,
                     // #238: likewise — the request was well formed, the
                     // document inside it could not be read. Same status the
                     // preview endpoint returns for the same cause.

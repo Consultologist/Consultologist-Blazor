@@ -67,6 +67,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             pair => pair.Key,
             pair => pair.Value,
             StringComparer.Ordinal);
+        State.SkippedDocuments ??= input.SkippedDocuments?.ToList();
 
         // #157: a future schedule shows as Scheduled until MarkRunning; entities
         // run exactly once per signal, so the wall clock is safe here.
@@ -308,6 +309,8 @@ public sealed record ConsultGenerationOrchestrationInput(
     // DateOnly or bool instead of a string. Trailing optional, null for jobs
     // already in flight (#215/#217).
     IReadOnlyDictionary<string, string>? InputTypes = null,
+    // #315: carried so the completion reply can name them.
+    IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null,
     string? CatalogRef = null,
     // v6 (package-format-v6-design.md): one item set per fanned collection,
     // keyed by collection id. Non-null selects the v6 path; Items then carries
@@ -344,7 +347,9 @@ public sealed record ConsultGenerationJobInitialize(
     string? Source = null,
     DateTimeOffset? ScheduledAtUtc = null,
     // #238: see ConsultGenerationOrchestrationInput.InputOrigins.
-    IReadOnlyDictionary<string, ConsultInputOrigin>? InputOrigins = null);
+    IReadOnlyDictionary<string, ConsultInputOrigin>? InputOrigins = null,
+    // #315: deliverables the package declared and this job will not produce.
+    IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -446,6 +451,10 @@ public sealed class ConsultGenerationJobState
     // v7: one entry per completed deliverable, ordered by result-set position.
     // Never set on the same record as AssembledDocument.
     public List<ConsultGenerationResultDocumentState>? AssembledDocuments { get; set; }
+
+    // #315: the deliverables this job's inputs excluded. Recorded, so a
+    // reader is never left inferring a missing document from a shorter list.
+    public List<ConsultSkippedDocument>? SkippedDocuments { get; set; }
 
     // #158: how the job was submitted ("app" | "email"; null = pre-#158 record).
     public string? Source { get; set; }
@@ -579,6 +588,7 @@ public sealed class ConsultGenerationJobState
             WorkflowPackage: WorkflowPackage,
             EffectiveInputHash: EffectiveInputHash,
             InputOrigins: InputOrigins,
+            SkippedDocuments: SkippedDocuments,
             Source: Source,
             ScheduledAtUtc: ScheduledAtUtc,
             ItemSteps: ItemSteps,

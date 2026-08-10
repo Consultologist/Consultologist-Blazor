@@ -3,6 +3,7 @@ using Consultologist.Api.Jobs;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Consultologist.Api.Models;
 
 namespace Consultologist.Api.Email;
 
@@ -17,7 +18,10 @@ public sealed record EmailIntakeReplyInput(
     string? AssembledDocument = null,
     // v7: the deliverable set in result-set order, one attachment each.
     // v5/v6 jobs leave it null and travel the AssembledDocument path.
-    IReadOnlyList<EmailIntakeReplyDocument>? Documents = null);
+    IReadOnlyList<EmailIntakeReplyDocument>? Documents = null,
+    // #315: declared deliverables this job's inputs excluded. Trailing
+    // optional — a job already in flight replies exactly as it did.
+    IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null);
 
 /// <summary>One deliverable bound for the reply: authored identity plus its text.</summary>
 public sealed record EmailIntakeReplyDocument(string ResultId, string Label, string Text);
@@ -78,7 +82,8 @@ public sealed class SendEmailIntakeReplyActivity
             input.JobId,
             input.FinalStatus,
             outcome.Labels,
-            outcome.OmittedForSize);
+            outcome.OmittedForSize,
+            input.SkippedDocuments);
         await _mail.SendMailAsync(mailbox, input.ToAddress, subject, body, cancellationToken, outcome.Attachments);
 
         _logger.LogInformation(
@@ -208,7 +213,8 @@ internal static class EmailIntakeReply
         string jobId,
         string finalStatus,
         IReadOnlyList<string>? attachedLabels = null,
-        bool omittedForSize = false)
+        bool omittedForSize = false,
+        IReadOnlyList<ConsultSkippedDocument>? skippedDocuments = null)
     {
         var link = $"{appBaseUrl.TrimEnd('/')}/history/{jobId}";
         var labels = attachedLabels ?? Array.Empty<string>();
@@ -228,10 +234,19 @@ internal static class EmailIntakeReply
                 _ => $"{string.Join(", ", labels)} are attached, encrypted with your delivery password.\n\n"
             };
 
+            // #315: a shorter attachment list with no explanation reads as a
+            // document that failed. Labels and the reason are authored package
+            // content and declared values, so this carries no clinical detail.
+            var skippedNote = skippedDocuments is { Count: > 0 }
+                ? string.Join(string.Empty, skippedDocuments.Select(
+                    d => $"{d.Label} was not produced: it {d.Reason}.\n")) + "\n"
+                : string.Empty;
+
             return (
                 "Your consult is ready",
                 "Your consult has finished processing.\n\n"
                 + attachmentNote
+                + skippedNote
                 + "View the result in Consultologist History (sign-in required):\n"
                 + link + "\n\n"
                 + (includesAttachment

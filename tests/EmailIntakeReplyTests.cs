@@ -1,4 +1,5 @@
 using Consultologist.Api.Email;
+using Consultologist.Api.Models;
 
 namespace Consultologist.Api.Tests;
 
@@ -12,6 +13,40 @@ public class EmailIntakeReplyTests
         Assert.Equal("Your consult is ready", subject);
         Assert.Contains("https://app.example.com/history/job-1", body);
         Assert.Contains("no clinical content", body);
+    }
+
+    [Fact]
+    public void Compose_NamesADeliverableThatDidNotFire()
+    {
+        // #315: one fewer attachment with no explanation reads as a document
+        // that failed. The label and the reason are authored package content
+        // and declared values, so this stays within the no-clinical-content
+        // rule the reply is built around.
+        var (_, body) = EmailIntakeReply.Compose(
+            "https://app.example.com", "job-1", "Completed",
+            new[] { "Consultation note" },
+            skippedDocuments: new[]
+            {
+                new ConsultSkippedDocument("billing_summary", "Billing summary",
+                    "needs billable to be true; it is 'false'")
+            });
+
+        Assert.Contains("Billing summary was not produced", body);
+        Assert.Contains("needs billable to be true", body);
+        Assert.Contains("no clinical content", body);
+    }
+
+    [Fact]
+    public void Compose_WithNothingSkipped_IsUnchanged()
+    {
+        var (_, withNone) = EmailIntakeReply.Compose(
+            "https://app.example.com", "job-1", "Completed", new[] { "Consultation note" });
+        var (_, withEmpty) = EmailIntakeReply.Compose(
+            "https://app.example.com", "job-1", "Completed", new[] { "Consultation note" },
+            skippedDocuments: Array.Empty<ConsultSkippedDocument>());
+
+        Assert.Equal(withNone, withEmpty);
+        Assert.DoesNotContain("was not produced", withNone);
     }
 
     [Fact]

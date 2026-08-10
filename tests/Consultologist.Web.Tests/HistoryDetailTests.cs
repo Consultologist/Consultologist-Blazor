@@ -19,7 +19,8 @@ public class HistoryDetailTests : ClientRenderTestContext
     private void WithJob(
         int outputHashVersion,
         IReadOnlyList<ConsultGenerationResultDocumentResponse>? documents = null,
-        IReadOnlyDictionary<string, ConsultInputOrigin>? inputOrigins = null)
+        IReadOnlyDictionary<string, ConsultInputOrigin>? inputOrigins = null,
+        IReadOnlyList<ConsultSkippedDocumentResponse>? skipped = null)
     {
         // Terminal status only: a non-terminal row would start the page's real
         // 5-second polling loop.
@@ -47,7 +48,29 @@ public class HistoryDetailTests : ClientRenderTestContext
             WorkflowOutputHash: "bbbb",
             WorkflowOutputHashVersion: outputHashVersion,
             AssembledDocuments: documents,
-            InputOrigins: inputOrigins));
+            InputOrigins: inputOrigins,
+            SkippedDocuments: skipped));
+    }
+
+    [Fact]
+    public void ADeliverableThatDidNotFire_IsRecordedBesideTheDigests()
+    {
+        // The absence belongs next to the evidence for the documents that do
+        // exist: History is where a reader goes to ask what this job actually
+        // produced, and a shorter list with no explanation answers wrongly.
+        WithJob(3,
+            new[] { new ConsultGenerationResultDocumentResponse("consult_note", "Consultation note", "Note.", "hash-note") },
+            skipped: new[]
+            {
+                new ConsultSkippedDocumentResponse("billing_summary", "Billing summary",
+                    "needs billable to be true; it is 'false'")
+            });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Contains("Billing summary", page.Markup);
+        Assert.Contains("not produced", page.Markup);
+        Assert.Contains("needs billable to be true", page.Markup);
     }
 
     [Fact]
