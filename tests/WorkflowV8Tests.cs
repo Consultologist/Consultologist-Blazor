@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Consultologist.Api.Models;
 using Consultologist.Api.Workflow;
 
 namespace Consultologist.Api.Tests;
@@ -161,5 +163,42 @@ public class WorkflowV8ValidationTests
         Assert.Contains(
             V8Fixtures.Validate(V8Fixtures.Minimal() with { SpecVersion = 9 }).Errors,
             e => e.Contains("accepts specVersion 5, 6, 7 or 8"));
+    }
+}
+
+public class ConsultInputValueWireTests
+{
+    private static ConsultInputValue? Read(string json)
+        => JsonSerializer.Deserialize<Dictionary<string, ConsultInputValue>>(json)!["v"];
+
+    [Fact]
+    public void AJsonStringIsText_AndAJsonBooleanIsAFlag()
+    {
+        Assert.Equal(ConsultInputValue.OfText("2026-08-10"), Read("""{"v":"2026-08-10"}"""));
+        Assert.Equal(ConsultInputValue.OfBoolean(true), Read("""{"v":true}"""));
+        Assert.Equal(ConsultInputValue.OfBoolean(false), Read("""{"v":false}"""));
+    }
+
+    [Theory]
+    [InlineData("""{"v":20260810}""")]
+    [InlineData("""{"v":{"nested":1}}""")]
+    [InlineData("""{"v":["a"]}""")]
+    public void ATokenJsonShouldNotCarry_IsMalformed(string json)
+    {
+        // A shape error, so the HTTP door answers 400. A value that is the
+        // right SHAPE but disagrees with the declaration is the 422, and that
+        // check lives in the starter where the slot can be named.
+        Assert.Throws<JsonException>(() => Read(json));
+    }
+
+    [Fact]
+    public void ItRoundTripsAsTheSameJson()
+    {
+        // The durable payload is replayed from this JSON, so the written form
+        // has to be the read form.
+        Assert.Equal("""{"v":true}""", JsonSerializer.Serialize(
+            new Dictionary<string, ConsultInputValue> { ["v"] = ConsultInputValue.OfBoolean(true) }));
+        Assert.Equal("""{"v":"text"}""", JsonSerializer.Serialize(
+            new Dictionary<string, ConsultInputValue> { ["v"] = "text" }));
     }
 }

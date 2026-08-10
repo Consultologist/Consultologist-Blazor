@@ -196,6 +196,17 @@ internal static class InputContent
                 continue;
             }
 
+            // #290 asks "is there a referral in here", which is a question
+            // about prose. A typed value is short by nature — a date is ten
+            // characters, an enum value a word, a boolean four letters — and
+            // measuring it against a referral's minimum would reject every v8
+            // package that declares one (#313). Its own type already
+            // constrains it far more tightly than a length ever could.
+            if (WorkflowInputTypes.Of(declared) != WorkflowInputTypes.Text)
+            {
+                continue;
+            }
+
             if (MeaningfulLength(effective.GetValueOrDefault(declared.Id)) < minimum)
             {
                 return declared.Id;

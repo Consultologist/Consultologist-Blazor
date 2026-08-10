@@ -167,6 +167,11 @@ public sealed class ConsultGenerationOrchestrator
             var variables = ConsultNodeVariableResolver.Resolve(
                 node, effectiveInputs, item, input.DataScalars, nodesById, outputs);
 
+            // v8: which of this node's variables are bound to a typed input.
+            // Only declared inputs carry a type — item:, node: and data:
+            // sources are strings by nature.
+            var variableTypes = ConsultNodeVariableResolver.TypedVariables(node, input.InputTypes);
+
             pendingTasks[context.CallActivityAsync<NodeRunResult>(
                 ConsultGenerationActivityNames.RunPromptNode,
                 new ConsultPromptNodeActivityInput(
@@ -175,7 +180,8 @@ public sealed class ConsultGenerationOrchestrator
                     variables,
                     input.WorkflowPackage,
                     node.OutputContract,
-                    node.ConceptSource),
+                    node.ConceptSource,
+                    variableTypes),
                 AgentActivityRetryOptions)] = (node.Id, item?["id"]);
         }
 
@@ -863,6 +869,39 @@ internal static class ConsultDeliverables
 /// </summary>
 internal static class ConsultNodeVariableResolver
 {
+    /// <summary>
+    /// The node's variables that are bound to a typed declared input, as
+    /// variable name -> type. Null when nothing is typed, so a v5-v7 job
+    /// carries no new payload at all and replays byte-identically.
+    /// </summary>
+    public static Dictionary<string, string>? TypedVariables(
+        ConsultNodeDescriptor node,
+        IReadOnlyDictionary<string, string>? inputTypes)
+    {
+        if (inputTypes is not { Count: > 0 } || node.Bindings is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        Dictionary<string, string>? typed = null;
+
+        foreach (var (variable, binding) in node.Bindings)
+        {
+            if (!binding.From.StartsWith(WorkflowNodeBindingSources.InputPrefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var id = binding.From[WorkflowNodeBindingSources.InputPrefix.Length..];
+            if (inputTypes.TryGetValue(id, out var type) && type != WorkflowInputTypes.Text)
+            {
+                (typed ??= new Dictionary<string, string>(StringComparer.Ordinal))[variable] = type;
+            }
+        }
+
+        return typed;
+    }
+
     public static Dictionary<string, string> Resolve(
         ConsultNodeDescriptor node,
         IReadOnlyDictionary<string, string> inputs,

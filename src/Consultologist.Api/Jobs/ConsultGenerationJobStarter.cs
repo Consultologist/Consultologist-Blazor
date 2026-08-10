@@ -54,7 +54,7 @@ public enum ConsultGenerationJobStartError
 /// </summary>
 internal sealed record EffectiveInputsResolution(
     IReadOnlyDictionary<string, string>? Effective,
-    IReadOnlyDictionary<string, string>? Supplied,
+    IReadOnlyDictionary<string, ConsultInputValue>? Supplied,
     string? Error);
 
 public sealed record ConsultGenerationJobStartOutcome(
@@ -283,7 +283,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // the draft field, so everything downstream sees the v5/v6 shape.
         if (package.Manifest.SpecVersion < 7 && request.Inputs is { Count: > 0 })
         {
-            request = request with { ConsultDraft = request.Inputs[ConsultDraftInputId], Inputs = null };
+            request = request with { ConsultDraft = request.Inputs[ConsultDraftInputId].Canonical, Inputs = null };
         }
 
         // A multi-deliverable v7 package resolves ResultNodeId null by design —
@@ -355,21 +355,40 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // workflowPackage ref; agent identities are covered by catalogRef — the
         // record stores refs, not copies (#105).
         // See docs/customizable-workflow/provenance.md.
-        var isV7 = package.Manifest.SpecVersion >= 7;
-        var effectiveInputHash = isV7
-            ? ConsultGenerationProvenance.ComputeDeclaredInputsHash(inputs.Supplied!)
-            : ConsultGenerationProvenance.ComputeDraftOnlyHash(request);
+        // Three definitions, and under v8 genuinely three functions. v8 hashes
+        // the TYPED map, so a boolean hashes as `true` and not as `"true"` —
+        // which is why the version had to move (package-format-v8-design.md
+        // § 6). v7 keeps hashing canonical strings; v5/v6 keep the draft-only
+        // definition. Never compared across versions.
+        var specVersion = package.Manifest.SpecVersion;
+        var effectiveInputHash = specVersion switch
+        {
+            >= 8 => ConsultGenerationProvenance.ComputeTypedInputsHash(inputs.Supplied!),
+            >= 7 => ConsultGenerationProvenance.ComputeDeclaredInputsHash(
+                inputs.Supplied!.ToDictionary(pair => pair.Key, pair => pair.Value.Canonical, StringComparer.Ordinal)),
+            _ => ConsultGenerationProvenance.ComputeDraftOnlyHash(request)
+        };
 
-        // One function, three definitions. v8 reuses v7's bytes exactly and
-        // stamps 4, because the definition — not the computation — is what
-        // changed: a 4 asserts every value was checked against a declared type
-        // (package-format-v8-design.md § 6).
-        var effectiveInputHashVersion = package.Manifest.SpecVersion switch
+        var effectiveInputHashVersion = specVersion switch
         {
             >= 8 => ConsultGenerationProvenance.TypedInputsHashVersion,
             >= 7 => ConsultGenerationProvenance.DeclaredInputsHashVersion,
             _ => 2
         };
+
+        // Only v8 has types, and only the non-text ones are worth carrying:
+        // null here means a v5-v7 job's payload is byte-identical to before.
+        var declaredInputTypes = specVersion >= 8
+            ? package.Manifest.Inputs?
+                .Where(input => WorkflowInputTypes.Of(input) != WorkflowInputTypes.Text)
+                .ToDictionary(input => input.Id, WorkflowInputTypes.Of, StringComparer.Ordinal)
+            : null;
+
+        if (declaredInputTypes is { Count: 0 })
+        {
+            declaredInputTypes = null;
+        }
+
         var resultDescriptors = package.Results?
             .Select(result => new ConsultResultDescriptor(result.Id, result.NodeId, result.Label))
             .ToList();
@@ -403,6 +422,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 items,
                 dataScalars,
                 EffectiveInputHashVersion: effectiveInputHashVersion,
+                InputTypes: declaredInputTypes,
                 CatalogRef: _catalog.ResolvedRef,
                 Collections: collectionSets,
                 Source: origin.Source,
@@ -474,9 +494,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             return new InputFileExtraction(request, null, null, null);
         }
 
+        // An extracted document is always text: a file fills a text slot.
         var inputs = request.Inputs is { Count: > 0 }
-            ? new Dictionary<string, string>(request.Inputs, StringComparer.Ordinal)
-            : new Dictionary<string, string>(StringComparer.Ordinal);
+            ? new Dictionary<string, ConsultInputValue>(request.Inputs, StringComparer.Ordinal)
+            : new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal);
         var origins = new Dictionary<string, ConsultInputOrigin>(StringComparer.Ordinal);
 
         foreach (var (id, file) in request.InputFiles.OrderBy(pair => pair.Key, StringComparer.Ordinal))
@@ -492,7 +513,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     result.Outcome);
             }
 
-            inputs[id] = result.Text!;
+            inputs[id] = ConsultInputValue.OfText(result.Text!);
             origins[id] = new ConsultInputOrigin(
                 ConsultInputOriginKinds.Document,
                 result.ExtractorId,
@@ -535,11 +556,15 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             return request with { ConsultDraft = draft };
         }
 
-        var normalized = new Dictionary<string, string>(StringComparer.Ordinal);
+        var normalized = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal);
 
         foreach (var (id, value) in request.Inputs)
         {
-            normalized[id] = CanonicalText.Normalize(value);
+            // Only text carries whitespace worth normalising; a boolean has
+            // none, and normalising it would erase the type.
+            normalized[id] = value.IsBoolean
+                ? value
+                : ConsultInputValue.OfText(CanonicalText.Normalize(value.Text ?? string.Empty));
         }
 
         return request with { ConsultDraft = draft, Inputs = normalized };
@@ -571,7 +596,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var supplied = request.Inputs is { Count: > 0 }
             ? request.Inputs
             : !string.IsNullOrWhiteSpace(request.ConsultDraft)
-                ? new Dictionary<string, string>(StringComparer.Ordinal) { [ConsultDraftInputId] = request.ConsultDraft }
+                ? new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+                    { [ConsultDraftInputId] = ConsultInputValue.OfText(request.ConsultDraft) }
                 : null;
 
         if (supplied is null)
@@ -592,7 +618,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         var missing = declared
             .Where(input => input.Required
-                && (!supplied.TryGetValue(input.Id, out var value) || string.IsNullOrWhiteSpace(value)))
+                && (!supplied.TryGetValue(input.Id, out var value) || value.IsBlank))
             .Select(input => input.Id)
             .ToList();
         if (missing.Count > 0)
@@ -608,7 +634,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // is not checked: absence is not a malformed value.
         foreach (var input in declared)
         {
-            if (!supplied.TryGetValue(input.Id, out var value) || string.IsNullOrEmpty(value))
+            if (!supplied.TryGetValue(input.Id, out var value) || value.IsBlank)
             {
                 continue;
             }
@@ -625,7 +651,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var effective = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var input in declared)
         {
-            effective[input.Id] = supplied.GetValueOrDefault(input.Id, string.Empty);
+            // The resolver map is canonical strings: item:, node: and data:
+            // bindings are strings too, and the renderer re-types the declared
+            // inputs from VariableTypes rather than carrying a union here.
+            effective[input.Id] = supplied.TryGetValue(input.Id, out var value)
+                ? value.Canonical
+                : string.Empty;
         }
 
         return new EffectiveInputsResolution(effective, supplied, null);
@@ -637,21 +668,37 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// always names the slot — a message that says only "invalid date" makes
     /// the author hunt for which field.
     /// </summary>
-    private static string? CanonicalFormComplaint(WorkflowInputSpec input, string value) =>
-        WorkflowInputTypes.Of(input) switch
+    private static string? CanonicalFormComplaint(WorkflowInputSpec input, ConsultInputValue value)
+    {
+        var type = WorkflowInputTypes.Of(input);
+
+        // Shape first: the JSON kind and the declared type must agree. This is
+        // the 422 half of the strictness — a well-formed request whose value
+        // disagrees with the declaration. A token JSON has no business holding
+        // at all (a number, an object) never reaches here: the converter
+        // rejects it as malformed, which is a 400.
+        if (type == WorkflowInputTypes.Boolean && !value.IsBoolean)
+        {
+            return $"is a boolean and must be sent as JSON true or false, not a string; got '{value.Canonical}'.";
+        }
+
+        if (type != WorkflowInputTypes.Boolean && value.IsBoolean)
+        {
+            return $"is a {type} and must be sent as a JSON string; got a boolean.";
+        }
+
+        return type switch
         {
             WorkflowInputTypes.Date when !DateOnly.TryParseExact(
-                value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _) =>
-                $"is a date and must be written YYYY-MM-DD; got '{value}'.",
+                value.Canonical, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _) =>
+                $"is a date and must be written YYYY-MM-DD; got '{value.Canonical}'.",
 
-            WorkflowInputTypes.Boolean when value is not ("true" or "false") =>
-                $"is a boolean and must be 'true' or 'false'; got '{value}'.",
-
-            WorkflowInputTypes.Enum when input.Values?.Contains(value, StringComparer.Ordinal) != true =>
-                $"accepts {string.Join(", ", (input.Values ?? new List<string>()).Select(v => $"'{v}'"))}; got '{value}'.",
+            WorkflowInputTypes.Enum when input.Values?.Contains(value.Canonical, StringComparer.Ordinal) != true =>
+                $"accepts {string.Join(", ", (input.Values ?? new List<string>()).Select(v => $"'{v}'"))}; got '{value.Canonical}'.",
 
             _ => null
         };
+    }
 
     internal static ConsultNodeDescriptor DescribeNode(
         WorkflowNodeSpec node,

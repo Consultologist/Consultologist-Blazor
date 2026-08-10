@@ -320,7 +320,14 @@ public sealed class EmailIntakeProcessor
             new ConsultGenerationRequest(
                 null,
                 Inputs: resolution.Inputs is { Count: > 0 }
-                    ? resolution.Inputs.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
+                    // Every emailed value is text — a body or a .txt
+                    // attachment. A v8 package with a required boolean input
+                    // is therefore unreachable by email, which is correct and
+                    // named in package-format-v8-design.md § 4.
+                    ? resolution.Inputs.ToDictionary(
+                        pair => pair.Key,
+                        pair => ConsultInputValue.OfText(pair.Value),
+                        StringComparer.Ordinal)
                     : null,
                 InputFiles: resolution.Files is { Count: > 0 }
                     ? resolution.Files.ToDictionary(

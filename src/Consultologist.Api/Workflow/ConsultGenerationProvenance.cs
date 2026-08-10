@@ -39,21 +39,27 @@ internal static class ConsultGenerationProvenance
     public const int DeclaredInputsHashVersion = 3;
 
     /// <summary>
-    /// The effective-input hash, definition version 4 (v8 jobs). The
-    /// **function is unchanged** from 3 — ComputeDeclaredInputsHash serves
-    /// both — and the definition moves because the input space is now typed:
-    /// a version-4 hash asserts every value was canonical for its declared
-    /// type, which a version-3 hash does not
+    /// The effective-input hash, definition version 4 (v8 jobs): SHA-256 of
+    /// the canonical JSON of the supplied inputs **as typed values** — a
+    /// boolean serialises as <c>true</c>, not <c>"true"</c>
     /// (package-format-v8-design.md § 6).
     ///
-    /// So the same supplied map hashes to the same bytes under 3 and 4, and
-    /// means something different. That is the point of recording which
-    /// definition produced it, and it is why there is no separate v4
-    /// function to write: non-canonical input is rejected at start rather
-    /// than normalised, so nothing ever reaches this that a v3 hash could
-    /// not have covered.
+    /// A genuinely different function from 3, not the same bytes under a new
+    /// name: `{"billable": true}` and `{"billable": "true"}` hash differently,
+    /// which is exactly the property that makes the version move necessary
+    /// rather than ceremonial. v7 keeps hashing canonical strings; the two are
+    /// never compared, per provenance.md.
     /// </summary>
     public const int TypedInputsHashVersion = 4;
+
+    public static string ComputeTypedInputsHash(IReadOnlyDictionary<string, ConsultInputValue> suppliedInputs)
+    {
+        var canonical = suppliedInputs
+            .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
+
+        return Sha256Hex(JsonSerializer.Serialize(canonical, CanonicalJsonOptions));
+    }
 
     public static string ComputeDeclaredInputsHash(IReadOnlyDictionary<string, string> suppliedInputs)
     {

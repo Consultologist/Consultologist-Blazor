@@ -304,6 +304,10 @@ public sealed record ConsultGenerationOrchestrationInput(
     IReadOnlyList<IReadOnlyDictionary<string, string>>? Items = null,
     IReadOnlyDictionary<string, string>? DataScalars = null,
     int EffectiveInputHashVersion = 2,
+    // v8: declared input id -> type, so the renderer can hand Scriban a real
+    // DateOnly or bool instead of a string. Trailing optional, null for jobs
+    // already in flight (#215/#217).
+    IReadOnlyDictionary<string, string>? InputTypes = null,
     string? CatalogRef = null,
     // v6 (package-format-v6-design.md): one item set per fanned collection,
     // keyed by collection id. Non-null selects the v6 path; Items then carries
