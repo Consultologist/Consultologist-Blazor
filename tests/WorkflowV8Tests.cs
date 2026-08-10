@@ -163,14 +163,16 @@ public class WorkflowV8ValidationTests
     }
 
     [Fact]
-    public void TheEngineDoesNotRunV8Yet()
+    public void TheEngineRunsV8()
     {
-        // The sequencing, pinned rather than left to a comment: the validator
-        // accepts 8 (so v8 publishes) while the engine still refuses, which is
-        // what makes the intermediate state honest. #317 moves this line and
-        // this assertion together — if it changes early, a half-built v8
-        // becomes runnable and the >= 7 gates would treat it as v7.
-        Assert.Equal(new[] { 5, 6, 7 }, WorkflowPackageStore.SupportedSpecVersions);
+        // #313 pinned {5,6,7} so the engine could not run a half-built v8 while
+        // the validator already accepted it. #317 moves the line and this
+        // assertion together, as that comment promised.
+        //
+        // v5 and v6 stay: an engine that accepts four versions is the claim,
+        // and the unmigrated example-two-documents package is the standing
+        // evidence that v7 still runs.
+        Assert.Equal(new[] { 5, 6, 7, 8 }, WorkflowPackageStore.SupportedSpecVersions);
     }
 
     [Fact]
@@ -184,6 +186,94 @@ public class WorkflowV8ValidationTests
         Assert.Contains(
             V8Fixtures.Validate(V8Fixtures.Minimal() with { SpecVersion = 9 }).Errors,
             e => e.Contains("accepts specVersion 5, 6, 7 or 8"));
+    }
+}
+
+/// <summary>
+/// The proving migration (#317). `general` moves to v8 by changing one
+/// character, so anything that breaks is the engine and not the manifest.
+///
+/// #317 asked to verify this by diffing the rendered *document* against a run
+/// on the previous version — which cannot work: the document is model output
+/// and varies between runs. What that claim is really about is that nothing
+/// the engine does differs, and that is provable here without a model.
+/// </summary>
+public class MinimalV8MigrationTests
+{
+    private static WorkflowPackage Resolve(WorkflowPackageManifest manifest)
+    {
+        var files = V6Fixtures.Files(manifest);
+        var errors = new List<string>();
+        var data = WorkflowDataResolver.Resolve(manifest, files, errors);
+        Assert.Empty(errors);
+
+        return new WorkflowPackage(
+            manifest,
+            Nodes: manifest.Nodes,
+            SchemaContracts: TestOutputContracts.CatalogSchemas,
+            Data: data,
+            ResultNodeId: null,
+            Results: new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") });
+    }
+
+    [Fact]
+    public void MinimalV8_ExpandsTheSameBlocksAsItsV7Self()
+    {
+        // The block list is what TotalBlockCount is stamped from and what the
+        // run rail renders, so identical ids in identical order is the whole
+        // migration claim. This is also the test that fails if any of the
+        // nineteen dispatch points routes v8 down a different arm —
+        // WorkflowPackageBlocks.Resolve's `>= 7` being the one the design
+        // flagged as v8's sharp edge.
+        var v7 = WorkflowPackageBlocks.Resolve(Resolve(V7Fixtures.Minimal()));
+        var v8 = WorkflowPackageBlocks.Resolve(Resolve(V8Fixtures.Minimal()));
+
+        Assert.Equal(
+            v7.Select(b => (b.Id, b.Name, b.Content)).ToArray(),
+            v8.Select(b => (b.Id, b.Name, b.Content)).ToArray());
+    }
+
+    [Fact]
+    public void MinimalV8_RendersTheSamePromptBytes()
+    {
+        // A typed input renders as its canonical string and this package
+        // declares none, so every prompt must come out byte-identical. If a
+        // future change makes v8 render differently by default, this is what
+        // catches it.
+        var template = new WorkflowPromptTemplate(
+            "draft", "Draft from {{ consult_draft }} for {{ section_name }}.",
+            new[] { "consult_draft", "section_name" }, null);
+
+        var variables = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = "Referral text.",
+            ["section_name"] = "History"
+        };
+
+        // v7 carries no variable types; minimal v8 declares none, so it carries
+        // none either. Same inputs, same bytes.
+        Assert.Equal(
+            PromptTemplateRenderer.Render(template, variables),
+            PromptTemplateRenderer.Render(template, variables, variableTypes: null));
+    }
+
+    [Fact]
+    public void MinimalV8_KeepsItsResultSetAndDeclaration()
+    {
+        // The manifest differs in exactly one field. Stating it as an assertion
+        // means a future fixture change cannot quietly make this migration
+        // bigger than one character.
+        var options = new JsonSerializerOptions { WriteIndented = false };
+        var v7 = JsonSerializer.Serialize(V7Fixtures.Minimal(), options);
+        var v8 = JsonSerializer.Serialize(V8Fixtures.Minimal(), options);
+
+        Assert.Contains("\"SpecVersion\":7", v7);
+        Assert.Contains("\"SpecVersion\":8", v8);
+
+        // Everything else is byte-identical: the migration is one field, and
+        // saying so as an assertion means a fixture change cannot quietly make
+        // it bigger.
+        Assert.Equal(v7, v8.Replace("\"SpecVersion\":8", "\"SpecVersion\":7"));
     }
 }
 
