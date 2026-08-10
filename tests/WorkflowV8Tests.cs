@@ -41,6 +41,27 @@ public static class V8Fixtures
         return Typed() with { Inputs = inputs };
     }
 
+    /// <summary>
+    /// The v7 two-deliverable package at 8, with the typed declaration so a
+    /// condition has something to read. The letter is conditional; the note is
+    /// not.
+    /// </summary>
+    public static WorkflowPackageManifest Conditional(string? when = "encounter_kind == follow_up")
+    {
+        var baseline = V7Fixtures.MultiDeliverable();
+
+        return baseline with
+        {
+            SpecVersion = 8,
+            Inputs = Typed().Inputs,
+            Results = new List<WorkflowResultSpec>
+            {
+                new("consult_note", "node:assemble-note", "Consultation note"),
+                new("patient_letter", "node:assemble-letter", "Patient letter", When: when)
+            }
+        };
+    }
+
     public static WorkflowPackageValidator.ValidationResult Validate(WorkflowPackageManifest manifest)
         => WorkflowPackageValidator.Validate(manifest, V6Fixtures.Files(manifest), TestOutputContracts.CatalogSchemas);
 }
@@ -163,6 +184,118 @@ public class WorkflowV8ValidationTests
         Assert.Contains(
             V8Fixtures.Validate(V8Fixtures.Minimal() with { SpecVersion = 9 }).Errors,
             e => e.Contains("accepts specVersion 5, 6, 7 or 8"));
+    }
+}
+
+public class WorkflowV8ConditionTests
+{
+    private static IReadOnlyList<string> Errors(string? when)
+        => V8Fixtures.Validate(V8Fixtures.Conditional(when)).Errors;
+
+    [Theory]
+    [InlineData("billable")]
+    [InlineData("encounter_kind == follow_up")]
+    [InlineData("encounter_kind != new_patient")]
+    [InlineData("  encounter_kind  ==  follow_up  ")]
+    public void TheGrammarAccepts(string when)
+    {
+        Assert.Empty(Errors(when));
+    }
+
+    [Theory]
+    // Undeclared id, and the message lists what is declared.
+    [InlineData("urgency == high", "undeclared input 'urgency'")]
+    // An enum value the input does not declare is an authoring error, not a
+    // condition that silently never holds.
+    [InlineData("encounter_kind == procedure", "which it does not declare")]
+    // The bare form asks "is this true", which only a boolean answers.
+    [InlineData("encounter_kind", "tests an enum for truth")]
+    [InlineData("billable == yes", "use true or false")]
+    [InlineData("== follow_up", "is not an input id")]
+    [InlineData("encounter_kind ==", "compares against nothing")]
+    public void TheGrammarRejects(string when, string expected)
+    {
+        Assert.Contains(Errors(when), e => e.Contains(expected));
+    }
+
+    [Theory]
+    [InlineData("seen_on == 2026-08-10", "which is a date")]
+    [InlineData("consult_draft == \"urgent\"", "which is a text")]
+    public void OnlyEnumAndBooleanInputsCanBeTested(string when, string expected)
+    {
+        // The narrowing (#314): a date asks only "was it exactly this day"
+        // until ordering exists (#338), and text equality compares a referral
+        // byte for byte. The message names the TYPE, so an author learns why
+        // rather than hunting a syntax error.
+        var errors = Errors(when);
+
+        Assert.Contains(errors, e => e.Contains(expected) && e.Contains("only enum and boolean"));
+    }
+
+    [Fact]
+    public void WhenOnAV7Manifest_IsRejected()
+    {
+        var manifest = V8Fixtures.Conditional() with { SpecVersion = 7 };
+
+        Assert.Contains(V7Fixtures.Validate(manifest).Errors,
+            e => e.Contains("declares when, which requires specVersion 8"));
+    }
+
+    [Fact]
+    public void AConditionalResult_MustStillReachAForEachSource()
+    {
+        // The rule #314 asked to pin rather than assume. A conditional
+        // deliverable is still a deliverable: "a deliverable with no fan has no
+        // consult" applies to it unchanged. Point the conditional result at an
+        // aggregator over a non-fanned node and the rule must still fire, and
+        // must name that result.
+        var baseline = V8Fixtures.Conditional();
+        var nodes = new List<WorkflowNodeSpec>(baseline.Nodes!);
+
+        // A prompt node reading only the frozen input: no fan, and no path to
+        // one. contextualize would not do — it reaches the guidelines fan
+        // transitively, which is exactly what the rule is about.
+        nodes.Add(new WorkflowNodeSpec("standalone", "Standalone summary",
+            Prompt: "contextualize",
+            Bindings: new Dictionary<string, WorkflowBindingValue>(StringComparer.Ordinal)
+            {
+                ["guideline_summaries"] = new("input:consult_draft")
+            }));
+
+        var letterIndex = nodes.FindIndex(n => n.Id == "assemble-letter");
+        nodes[letterIndex] = nodes[letterIndex] with
+        {
+            Aggregate = new List<string> { "node:standalone" }
+        };
+
+        var errors = V8Fixtures.Validate(baseline with { Nodes = nodes }).Errors;
+
+        Assert.Contains(errors,
+            e => e.Contains("patient_letter") && e.Contains("at least one forEach source"));
+    }
+
+    [Fact]
+    public void EveryDeliverableMayBeConditional()
+    {
+        // Decided in #314: no publish-time rule forcing an unconditional
+        // deliverable. Conditions can be legitimately exhaustive, proving that
+        // in general is a satisfiability question, and an empty fire set is
+        // refused at start with a named reason (#315).
+        var baseline = V8Fixtures.Conditional();
+        var manifest = baseline with
+        {
+            Results = new List<WorkflowResultSpec>
+            {
+                new("consult_note", "node:assemble-note", "Consultation note",
+                    When: "encounter_kind == new_patient"),
+                new("patient_letter", "node:assemble-letter", "Patient letter",
+                    When: "encounter_kind != new_patient")
+            }
+        };
+
+        var result = V8Fixtures.Validate(manifest);
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
 }
 

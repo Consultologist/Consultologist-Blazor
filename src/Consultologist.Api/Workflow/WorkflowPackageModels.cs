@@ -67,7 +67,11 @@ public static class WorkflowInputTypes
 public sealed record WorkflowResultSpec(
     string Id,
     string Node,
-    string Label);
+    string Label,
+    // v8: produced only when this holds (package-format-v8-design.md § 5).
+    // Trailing optional — a v7 results block stays valid, and a deliverable
+    // without one always fires.
+    string? When = null);
 
 public sealed record WorkflowTemplatingSpec(
     string Engine,
@@ -201,7 +205,13 @@ public sealed record WorkflowPromptTemplate(
 /// label with the aggregator node it names. v5/v6 packages resolve with a null
 /// set — ResultNodeId remains their single-result contract.
 /// </summary>
-public sealed record WorkflowResolvedResult(string Id, string NodeId, string Label);
+public sealed record WorkflowResolvedResult(
+    string Id,
+    string NodeId,
+    string Label,
+    // Parsed at load so the engine evaluates a structure rather than
+    // re-parsing a string. Null = always produced.
+    WorkflowResultCondition? Condition = null);
 
 public sealed record WorkflowPackage(
     WorkflowPackageManifest Manifest,

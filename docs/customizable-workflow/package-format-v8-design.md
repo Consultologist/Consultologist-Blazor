@@ -19,6 +19,14 @@ than run; the type set is **text, date, enum, boolean**.
 > number — `{"billable": true}` and `{"billable": "true"}` hash differently,
 > which is what makes version 4 load-bearing.
 
+> **Erratum, 2026-08-10 (#314).** § 5's literal grammar admitted `"<text>"`
+> and `YYYY-MM-DD`. Conditions now read **`enum` and `boolean` inputs only**.
+> Date equality asks merely "was it exactly this day" until ordering exists
+> (#338), and text equality compares a referral byte for byte — neither is a
+> choice, which is what a condition is for. The direction is deliberate:
+> widening this later is additive, while narrowing later would strand
+> published packages, which are immutable.
+
 ## 1. Motivation
 
 Two ceilings, one format revision:
@@ -199,9 +207,18 @@ results:
 A **closed grammar over one declared input**, not an expression language:
 
 ```
-when := <input-id> | <input-id> == <literal> | <input-id> != <literal>
-literal := true | false | <enum-value> | "<text>" | YYYY-MM-DD
+when    := <input-id> | <input-id> == <literal> | <input-id> != <literal>
+literal := true | false | <enum-value>
 ```
+
+The input must be an **`enum` or a `boolean`** — the two types that express a
+choice. A condition on a date or a text input is refused at publish with a
+message naming the type, so an author learns why rather than hunting a syntax
+error.
+
+The parser accepts the wider form (quoted strings, bare tokens) and the
+**validator** carries the narrowing, so widening later is one guard and a
+literal rule, never a parser change.
 
 - The bare form `when: billable` is truthy-tests a `boolean` only.
 - Both sides are validated at publish: the id must be declared, and the

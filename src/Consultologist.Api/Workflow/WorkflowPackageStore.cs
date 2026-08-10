@@ -127,7 +127,16 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
                 .Select(result => new WorkflowResolvedResult(
                     result.Id,
                     result.Node[WorkflowNodeBindingSources.NodePrefix.Length..],
-                    result.Label))
+                    result.Label,
+                    // Parsed once here; the engine evaluates the structure.
+                    // No `when` fails to parse and lands as null, which is
+                    // exactly right: a deliverable without a condition always
+                    // fires. Anything malformed was refused at publish, so a
+                    // parse failure here means an unconditional deliverable
+                    // either way.
+                    WorkflowResultConditions.TryParse(result.When, out var condition, out _)
+                        ? condition
+                        : null))
                 .ToList();
         }
 
