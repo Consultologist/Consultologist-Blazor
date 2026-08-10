@@ -151,6 +151,157 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
+    public async Task SpecVersion8Package_StampsHashVersion4()
+    {
+        // A text-only v8 package hashes to the same bytes a v7 one would,
+        // because a text value serialises identically either way. What version
+        // 4 buys shows up once a value is NOT text — pinned separately in
+        // TypedAndStringForms_HashDifferently.
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V8Fixtures.Minimal(),
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(Referral),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        Assert.Null(outcome.Error);
+        Assert.NotNull(orchestrationInput);
+        Assert.Equal(4, orchestrationInput.EffectiveInputHashVersion);
+        Assert.Equal(
+            ConsultGenerationProvenance.ComputeTypedInputsHash(
+                new Dictionary<string, ConsultInputValue> { ["consult_draft"] = Referral }),
+            orchestrationInput.EffectiveInputHash);
+    }
+
+    [Fact]
+    public async Task SpecVersion8Package_WithABoolean_HashesTheTypedForm()
+    {
+        // The text-only case above cannot tell the two hash functions apart —
+        // a text value serialises identically either way. A boolean is what
+        // makes version 4 observable end to end.
+        var supplied = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = Referral,
+            ["seen_on"] = "2026-08-10",
+            ["encounter_kind"] = "follow_up",
+            ["billable"] = ConsultInputValue.OfBoolean(true)
+        };
+
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V8Fixtures.Typed(),
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(null, Inputs: supplied),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        Assert.Null(outcome.Error);
+        Assert.NotNull(orchestrationInput);
+        Assert.Equal(4, orchestrationInput.EffectiveInputHashVersion);
+        Assert.Equal(
+            ConsultGenerationProvenance.ComputeTypedInputsHash(supplied),
+            orchestrationInput.EffectiveInputHash);
+
+        // And it is NOT what v7's function would have produced from the same
+        // values flattened to strings — the whole reason the version moved.
+        Assert.NotEqual(
+            ConsultGenerationProvenance.ComputeDeclaredInputsHash(
+                supplied.ToDictionary(pair => pair.Key, pair => pair.Value.Canonical, StringComparer.Ordinal)),
+            orchestrationInput.EffectiveInputHash);
+
+        // The declared types reach the orchestrator so the renderer can type
+        // the variables; text slots are omitted, so a v7 job carries nothing.
+        Assert.Equal(
+            new Dictionary<string, string>
+            {
+                ["seen_on"] = WorkflowInputTypes.Date,
+                ["encounter_kind"] = WorkflowInputTypes.Enum,
+                ["billable"] = WorkflowInputTypes.Boolean
+            },
+            orchestrationInput.InputTypes);
+    }
+
+    [Fact]
+    public void TypedAndStringForms_HashDifferently()
+    {
+        // This is the test #313's body asked for, and it is only correct
+        // because inputs are typed on the wire: {"billable": true} and
+        // {"billable": "true"} are different JSON and hash differently. Under
+        // an untyped wire there would be nothing to tell apart, which is why
+        // the hash definition had to move (package-format-v8-design.md § 6).
+        var flag = ConsultGenerationProvenance.ComputeTypedInputsHash(
+            new Dictionary<string, ConsultInputValue> { ["billable"] = ConsultInputValue.OfBoolean(true) });
+        var text = ConsultGenerationProvenance.ComputeTypedInputsHash(
+            new Dictionary<string, ConsultInputValue> { ["billable"] = "true" });
+
+        Assert.NotEqual(flag, text);
+
+        // And a text value still hashes as v7 computed it, so the two
+        // definitions agree wherever they can — they are just never compared.
+        Assert.Equal(
+            ConsultGenerationProvenance.ComputeDeclaredInputsHash(
+                new Dictionary<string, string> { ["consult_draft"] = "Draft." }),
+            ConsultGenerationProvenance.ComputeTypedInputsHash(
+                new Dictionary<string, ConsultInputValue> { ["consult_draft"] = "Draft." }));
+    }
+
+    [Fact]
+    public async Task APackageTheEngineWillNotRun_IsNotReportedAsARegistryOutage()
+    {
+        // The package is there and readable; this engine does not run that
+        // version. Before #313 this arrived as RegistryUnavailable — "the
+        // registry is unavailable" — for a package sitting perfectly readable,
+        // logged as an error. SpecVersionNotYetExecutable existed for it and
+        // was raised nowhere.
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns<Task<WorkflowPackage>>(_ => throw new WorkflowPackageSpecVersionException(
+                "general@v2026.08.1", 8, new[] { 5, 6, 7 }));
+
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(Referral),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        Assert.Equal(ConsultGenerationJobStartError.SpecVersionNotYetExecutable, outcome.Error);
+        Assert.Contains("specVersion 8", outcome.ErrorDetail);
+        // A genuine registry failure keeps its own error.
+        Assert.NotEqual(ConsultGenerationJobStartError.RegistryUnavailable, outcome.Error);
+    }
+
+    [Fact]
     public async Task SpecVersion7Package_StartsWithPrefixedBlocksAndInputMap()
     {
         // The legacy draft field back-fills the consult_draft slot; the
@@ -212,7 +363,7 @@ public class ConsultGenerationJobStarterTests
         // set itself is the executability signal.
         var request = new ConsultGenerationRequest(
             null,
-            Inputs: new Dictionary<string, string> { ["consult_draft"] = Referral });
+            Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = Referral });
         _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
             .Returns(new WorkflowPackageRef("general", "latest"));
         _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
@@ -264,7 +415,7 @@ public class ConsultGenerationJobStarterTests
 
         var outcome = await CreateStarter().StartAsync(
             _client,
-            new ConsultGenerationRequest(null, Inputs: new Dictionary<string, string> { ["labs"] = "CBC normal." }),
+            new ConsultGenerationRequest(null, Inputs: new Dictionary<string, ConsultInputValue> { ["labs"] = "CBC normal." }),
             "user-1",
             new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
             CancellationToken.None);
@@ -369,7 +520,7 @@ public class ConsultGenerationJobStarterTests
         // until #237, and every job predating this field has none either.
         var request = new ConsultGenerationRequest(
             null,
-            Inputs: new Dictionary<string, string> { ["consult_draft"] = Referral });
+            Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = Referral });
 
         var captured = await StartV7AndCaptureAsync(request);
 
@@ -426,14 +577,14 @@ public class ConsultGenerationJobStarterTests
         // record for a reason no reader of it could see.
         var windows = ConsultGenerationJobStarter.NormalizeInputs(new ConsultGenerationRequest(
             null,
-            Inputs: new Dictionary<string, string> { ["consult_draft"] = "One.\r\nTwo.\r\n" }));
+            Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = "One.\r\nTwo.\r\n" }));
         var unix = ConsultGenerationJobStarter.NormalizeInputs(new ConsultGenerationRequest(
             null,
-            Inputs: new Dictionary<string, string> { ["consult_draft"] = "One.\nTwo." }));
+            Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = "One.\nTwo." }));
 
         Assert.Equal(
-            ConsultGenerationProvenance.ComputeDeclaredInputsHash(windows.Inputs!),
-            ConsultGenerationProvenance.ComputeDeclaredInputsHash(unix.Inputs!));
+            ConsultGenerationProvenance.ComputeTypedInputsHash(windows.Inputs!),
+            ConsultGenerationProvenance.ComputeTypedInputsHash(unix.Inputs!));
     }
 
     [Fact]
@@ -447,14 +598,14 @@ public class ConsultGenerationJobStarterTests
         // could see.
         var mac = ConsultGenerationJobStarter.NormalizeInputs(new ConsultGenerationRequest(
             null,
-            Inputs: new Dictionary<string, string> { ["consult_draft"] = "One.\rTwo.\r" }));
+            Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = "One.\rTwo.\r" }));
         var unix = ConsultGenerationJobStarter.NormalizeInputs(new ConsultGenerationRequest(
             null,
-            Inputs: new Dictionary<string, string> { ["consult_draft"] = "One.\nTwo." }));
+            Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = "One.\nTwo." }));
 
         Assert.Equal(
-            ConsultGenerationProvenance.ComputeDeclaredInputsHash(mac.Inputs!),
-            ConsultGenerationProvenance.ComputeDeclaredInputsHash(unix.Inputs!));
+            ConsultGenerationProvenance.ComputeTypedInputsHash(mac.Inputs!),
+            ConsultGenerationProvenance.ComputeTypedInputsHash(unix.Inputs!));
     }
 
     [Fact]
@@ -840,7 +991,7 @@ public class ResolveEffectiveInputsTests
     public void LegacyPackage_ForeignInputId_IsRejected()
     {
         var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
-            new ConsultGenerationRequest(null, Inputs: new Dictionary<string, string>
+            new ConsultGenerationRequest(null, Inputs: new Dictionary<string, ConsultInputValue>
             {
                 ["consult_draft"] = "Draft.",
                 ["labs"] = "CBC normal."
@@ -858,7 +1009,7 @@ public class ResolveEffectiveInputsTests
             new ConsultGenerationRequest("Draft."), V7Fixtures.Minimal());
 
         Assert.Null(resolution.Error);
-        Assert.Equal(new Dictionary<string, string> { ["consult_draft"] = "Draft." }, resolution.Supplied);
+        Assert.Equal(new Dictionary<string, ConsultInputValue> { ["consult_draft"] = "Draft." }, resolution.Supplied);
         Assert.Equal(new Dictionary<string, string> { ["consult_draft"] = "Draft." }, resolution.Effective);
     }
 
@@ -866,7 +1017,7 @@ public class ResolveEffectiveInputsTests
     public void V7_AbsentOptionalInput_IsEmptyInEffectiveAndOmittedInSupplied()
     {
         var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
-            new ConsultGenerationRequest(null, Inputs: new Dictionary<string, string> { ["consult_draft"] = "Draft." }),
+            new ConsultGenerationRequest(null, Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = "Draft." }),
             V7Fixtures.MultiDeliverable());
 
         Assert.Null(resolution.Error);
@@ -875,11 +1026,112 @@ public class ResolveEffectiveInputsTests
         Assert.Equal("Draft.", resolution.Effective["consult_draft"]);
     }
 
+    // #313: v8 types a slot, and a supplied value must be canonical for its
+    // type — rejected, never normalised, so provenance records what arrived.
+
+    private static Dictionary<string, ConsultInputValue> TypedInputs(
+        params (string Id, ConsultInputValue Value)[] overrides)
+    {
+        var inputs = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = "Draft.",
+            ["seen_on"] = "2026-08-10",
+            ["encounter_kind"] = "follow_up"
+        };
+
+        foreach (var (id, value) in overrides)
+        {
+            inputs[id] = value;
+        }
+
+        return inputs;
+    }
+
+    [Fact]
+    public void V8_CanonicalTypedValues_AreAccepted()
+    {
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new ConsultGenerationRequest(null, Inputs: TypedInputs(("billable", ConsultInputValue.OfBoolean(true)))),
+            V8Fixtures.Typed());
+
+        Assert.Null(resolution.Error);
+        Assert.Equal("2026-08-10", resolution.Effective!["seen_on"]);
+    }
+
+    [Theory]
+    // Valid-but-different is still rejected: normalising it would hash a value
+    // nobody sent.
+    [InlineData("seen_on", "2026-8-1", "must be written YYYY-MM-DD")]
+    [InlineData("seen_on", "10/08/2026", "must be written YYYY-MM-DD")]
+    // A string for a boolean slot is now a TYPE error, not a spelling one:
+    // the wire carries JSON true/false, so any string is the wrong shape.
+    [InlineData("billable", "yes", "must be sent as JSON true or false")]
+    [InlineData("billable", "true", "must be sent as JSON true or false")]
+    [InlineData("encounter_kind", "procedure", "'new_patient', 'follow_up'")]
+    public void V8_NonCanonicalValue_IsRejectedAndNamesTheInput(string id, string value, string expected)
+    {
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new ConsultGenerationRequest(null, Inputs: TypedInputs((id, value))),
+            V8Fixtures.Typed());
+
+        Assert.Contains($"Input '{id}'", resolution.Error);
+        Assert.Contains(expected, resolution.Error);
+    }
+
+    [Fact]
+    public void V8_BooleanSentAsJsonBoolean_IsAccepted()
+    {
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new ConsultGenerationRequest(null, Inputs: TypedInputs(("billable", ConsultInputValue.OfBoolean(false)))),
+            V8Fixtures.Typed());
+
+        Assert.Null(resolution.Error);
+        // false is an answer, not an absence: it survives the required/blank
+        // check and reaches the resolver map as "false".
+        Assert.Equal("false", resolution.Effective!["billable"]);
+    }
+
+    [Fact]
+    public void V8_StringForANonBooleanSlot_IsStillRequired()
+    {
+        // The mirror of the boolean rule: a JSON boolean in a text, date or
+        // enum slot is the wrong shape too.
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new ConsultGenerationRequest(null, Inputs: TypedInputs(("seen_on", ConsultInputValue.OfBoolean(true)))),
+            V8Fixtures.Typed());
+
+        Assert.Contains("Input 'seen_on'", resolution.Error);
+        Assert.Contains("must be sent as a JSON string", resolution.Error);
+    }
+
+    [Fact]
+    public void V8_AbsentOptionalTypedInput_IsNotCheckedForCanonicalForm()
+    {
+        // Absence is not a malformed value; the v7 resolution rule stands.
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new ConsultGenerationRequest(null, Inputs: TypedInputs()),
+            V8Fixtures.Typed());
+
+        Assert.Null(resolution.Error);
+        Assert.Equal(string.Empty, resolution.Effective!["billable"]);
+    }
+
+    [Fact]
+    public void V8_UntypedInputs_BehaveExactlyAsV7()
+    {
+        // The minimal-v8 migration: same declaration, same acceptance.
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new ConsultGenerationRequest("Draft."), V8Fixtures.Minimal());
+
+        Assert.Null(resolution.Error);
+        Assert.Equal(new Dictionary<string, ConsultInputValue> { ["consult_draft"] = "Draft." }, resolution.Supplied);
+    }
+
     [Fact]
     public void V7_MissingRequiredInput_IsRejected()
     {
         var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
-            new ConsultGenerationRequest(null, Inputs: new Dictionary<string, string> { ["prior_notes"] = "Old notes." }),
+            new ConsultGenerationRequest(null, Inputs: new Dictionary<string, ConsultInputValue> { ["prior_notes"] = "Old notes." }),
             V7Fixtures.MultiDeliverable());
 
         Assert.Contains("Required input(s) 'consult_draft' missing", resolution.Error);
@@ -889,7 +1141,7 @@ public class ResolveEffectiveInputsTests
     public void V7_UnknownInput_IsRejectedListingTheDeclaration()
     {
         var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
-            new ConsultGenerationRequest(null, Inputs: new Dictionary<string, string>
+            new ConsultGenerationRequest(null, Inputs: new Dictionary<string, ConsultInputValue>
             {
                 ["consult_draft"] = "Draft.",
                 ["labs"] = "CBC normal."

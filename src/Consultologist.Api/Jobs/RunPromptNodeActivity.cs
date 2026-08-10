@@ -18,7 +18,11 @@ public sealed record ConsultPromptNodeActivityInput(
     Dictionary<string, string> Variables,
     string? WorkflowPackage = null,
     string? OutputContract = null,
-    string? ConceptSource = null);
+    string? ConceptSource = null,
+    // v8: variable name -> declared input type, for the variables bound to a
+    // typed input. Trailing optional; a v5-v7 job replays with null and the
+    // renderer behaves exactly as it did.
+    Dictionary<string, string>? VariableTypes = null);
 
 /// <summary>
 /// One node run. Deserialized concepts ride the recorded activity result so Durable
@@ -86,7 +90,7 @@ public sealed class RunPromptNodeActivity
                     $"Workflow package {package.Ref} has no prompt '{input.PromptId}' for node '{input.NodeId}'.");
             }
 
-            var rendered = PromptTemplateRenderer.Render(prompt, input.Variables);
+            var rendered = PromptTemplateRenderer.Render(prompt, input.Variables, input.VariableTypes);
             var inputHash = ConsultGenerationProvenance.Sha256Hex(rendered);
 
             var entry = _catalog.GetEntry(input.OutputContract ?? OutputContracts.Text);

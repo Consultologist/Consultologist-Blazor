@@ -10,6 +10,15 @@ Decisions taken with the operator: conditions read **declared inputs
 only**; a job with **no** applicable deliverable is refused at start rather
 than run; the type set is **text, date, enum, boolean**.
 
+> **Erratum, 2026-08-10 (#313).** As first written, §§ 4 and 6 said input
+> values travel as **text** and the effective-input hash keeps v3's function.
+> The operator's decision on review was stronger: values are typed **on the
+> wire** as real JSON, and typed all the way into the prompt templates. Both
+> sections are corrected below. The consequence worth stating plainly is that
+> the hash is now a **different function**, not the same one under a new
+> number — `{"billable": true}` and `{"billable": "true"}` hash differently,
+> which is what makes version 4 load-bearing.
+
 ## 1. Motivation
 
 Two ceilings, one format revision:
@@ -94,16 +103,22 @@ inputs:
 
 ### Canonical form and validation
 
-Typed inputs remain **text on the wire**. The request contract is unchanged
-— `{"inputs": {"<id>": "<text>"}}` — and the type decides which text is
-accepted, checked at job start against the resolved package:
+Typed inputs are **typed on the wire**. JSON's types are string, number,
+boolean, null, object and array — **there is no date** — so of the four
+declared types only `boolean` travels as something other than a string:
 
-| type | canonical form | rejected |
+| type | wire form | rejected |
 |---|---|---|
-| `text` | any string within the 256 KB cap | — |
-| `date` | ISO 8601 calendar date, `YYYY-MM-DD` | any other spelling, including valid-but-different (`2026-8-1`) |
-| `enum` | exactly one of the declared `values` | anything else |
-| `boolean` | `true` or `false`, lowercase | `yes`, `1`, `True` |
+| `text` | JSON string, within the 256 KB cap | a JSON boolean |
+| `date` | JSON string, ISO 8601 calendar date `YYYY-MM-DD` | a boolean; any other spelling, including valid-but-different (`2026-8-1`) |
+| `enum` | JSON string, exactly one of the declared `values` | a boolean; anything outside the set |
+| `boolean` | JSON `true` / `false` | **a string, including `"true"`** |
+
+Two failures, two answers. A token JSON should not carry at all — a number, an
+object, an array — is a **shape** error and answers **400**, in keeping with
+the existing rule that request-shape problems are the 400s. A well-formed
+value that disagrees with the *declaration* answers **422** and names the
+slot, because that check needs the package and the slot id.
 
 **Rejecting at the door rather than canonicalising** is the deliberate
 choice. A silent normalisation of `2026-8-1` into `2026-08-01` would mean
@@ -118,15 +133,37 @@ midnight it is, and no workflow has asked for one.
 
 ### Rendering
 
-A typed value interpolates into Scriban as **its canonical form** —
-`{{ seen_on }}` renders `2026-08-10`. No per-input display format in v8:
-formats are a localisation decision, ISO is unambiguous to a model, and an
-author wanting prose can say so in the prompt around it.
+A typed value enters Scriban **as its own type**, so a template can format
+and branch:
+
+```
+Seen {{ seen_on | date.to_string "%d %B %Y" }}
+{{ if billable }}Include the billing summary.{{ end }}
+```
+
+No per-input *default* display format: `{{ seen_on }}` still renders
+`2026-08-10`, because ISO is unambiguous to a model and a default format
+would be a localisation decision. The author asks for a format when they want
+one.
+
+This is the half that makes typing visible to an author. Without it, typed
+JSON would change the spelling of one value and nothing else.
 
 An **optional, absent** input still resolves to the empty string, unchanged
 from v7 § 3. This is why an absent `boolean` is not `false` — absence and
 falsity are different, and a condition testing an absent input does not
 hold (§ 5).
+
+### Two constraints typed values create
+
+- **Email cannot fill a boolean slot.** That door only ever has text — a
+  message body or a `.txt` attachment — so a v8 package with a required
+  boolean input is unreachable by email. Correct rather than unfortunate: the
+  alternative is guessing that "yes" in a body means `true`.
+- **The intake form is a prerequisite, not a nicety.** Until it renders a
+  checkbox (#316), the app cannot submit a package with a boolean input.
+  Harmless while v8 is not executable, and it fixes the order of the
+  remaining milestone work.
 
 ### Intake
 
@@ -233,17 +270,15 @@ rather than silence.
 Per provenance.md's discipline — definitions are versioned, added beside
 their predecessors, never compared across versions:
 
-- **Effective-input hash v4**: the *function* is unchanged from v3 (SHA-256
-  of canonical JSON of the supplied inputs as an ordinal-sorted
-  `{id: text}` map, absent optionals omitted). The **definition** moves to 4
-  because the input space is now typed: a v4 hash asserts that every value
-  was canonical for its declared type, which a v3 hash does not. v8 jobs
-  stamp `effectiveInputHashVersion: 4`; v5/v6 keep 2, v7 keeps 3.
+- **Effective-input hash v4**: SHA-256 of the canonical JSON of the supplied
+  inputs as an ordinal-sorted map of **typed values** — a boolean serialises
+  as `true`, not `"true"` — with absent optionals omitted. v8 jobs stamp
+  `effectiveInputHashVersion: 4`; v5/v6 keep 2, v7 keeps 3.
 
-  This is the reason the bump is not cosmetic. Two identical strings hashed
-  under v3 and v4 give the same bytes — and mean different things, because
-  only one of them was checked. Recording *which definition produced it* is
-  the whole point of a version.
+  A genuinely different function from v3, not the same bytes under a new
+  number: `{"billable": true}` and `{"billable": "true"}` hash differently.
+  Where a value is text the two definitions agree byte for byte, which is
+  fine — they are never compared, per provenance.md.
 - **Workflow-output hash**: unchanged. `ResultSetHashVersion` 3 covers v8;
   a fire set is a set of produced documents like any other.
 - **No new hash for the fire set.** The condition results are derivable from

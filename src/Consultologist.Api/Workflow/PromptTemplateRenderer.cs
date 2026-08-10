@@ -1,3 +1,4 @@
+using System.Globalization;
 using Scriban;
 using Scriban.Runtime;
 
@@ -10,7 +11,10 @@ namespace Consultologist.Api.Workflow;
 /// </summary>
 public static class PromptTemplateRenderer
 {
-    public static string Render(WorkflowPromptTemplate prompt, IReadOnlyDictionary<string, string> variables)
+    public static string Render(
+        WorkflowPromptTemplate prompt,
+        IReadOnlyDictionary<string, string> variables,
+        IReadOnlyDictionary<string, string>? variableTypes = null)
     {
         var declared = new HashSet<string>(prompt.Variables, StringComparer.Ordinal);
         if (!declared.SetEquals(variables.Keys))
@@ -33,7 +37,11 @@ public static class PromptTemplateRenderer
             var scriptObject = new ScriptObject();
             foreach (var (name, value) in variables)
             {
-                scriptObject.Add(name, value);
+                // v8: a typed input enters the template as its own type, so a
+                // date can be formatted and a boolean can drive {{ if }}.
+                // Everything else — and every v5-v7 job, which carries no
+                // types at all — enters as the string it always did.
+                scriptObject.Add(name, TypedOrString(name, value, variableTypes));
             }
 
             var context = new TemplateContext { StrictVariables = true };
@@ -48,5 +56,32 @@ public static class PromptTemplateRenderer
         return string.IsNullOrEmpty(prompt.PreludeText)
             ? rendered
             : $"{prompt.PreludeText.TrimEnd()}\n\n{rendered}";
+    }
+
+    /// <summary>
+    /// A declared input's value as its own type, or the string when it has no
+    /// type. Parsing cannot fail here: the job starter already refused any
+    /// value that was not canonical for its declared type, so a bad date never
+    /// reaches a template. A defensive fall back to the string keeps a replay
+    /// of an older job honest rather than throwing on it.
+    /// </summary>
+    private static object TypedOrString(
+        string name,
+        string value,
+        IReadOnlyDictionary<string, string>? variableTypes)
+    {
+        if (variableTypes is null || !variableTypes.TryGetValue(name, out var type))
+        {
+            return value;
+        }
+
+        return type switch
+        {
+            WorkflowInputTypes.Date when DateOnly.TryParseExact(
+                value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+                => date.ToDateTime(TimeOnly.MinValue),
+            WorkflowInputTypes.Boolean when bool.TryParse(value, out var flag) => flag,
+            _ => value
+        };
     }
 }

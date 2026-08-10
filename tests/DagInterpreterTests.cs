@@ -288,10 +288,10 @@ public class StartRequestValidationTests
             "Send ConsultDraft or Inputs, not both.",
             ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
                 "Draft.",
-                Inputs: new Dictionary<string, string> { ["consult_draft"] = "Draft." })));
+                Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = "Draft." })));
         Assert.Null(ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
             null,
-            Inputs: new Dictionary<string, string> { ["consult_draft"] = "Draft." })));
+            Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = "Draft." })));
     }
 
     [Fact]
@@ -304,7 +304,7 @@ public class StartRequestValidationTests
             "Input 'consult_draft' was supplied as both text and a file.",
             ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
                 null,
-                Inputs: new Dictionary<string, string> { ["consult_draft"] = "Typed." },
+                Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = "Typed." },
                 InputFiles: new Dictionary<string, InputFilePayload>
                 {
                     ["consult_draft"] = new("text/plain", "From a file."u8.ToArray())
@@ -349,15 +349,15 @@ public class StartRequestValidationTests
         Assert.Equal(
             "Inputs contains a blank id.",
             ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
-                null, Inputs: new Dictionary<string, string> { [" "] = "text" })));
+                null, Inputs: new Dictionary<string, ConsultInputValue> { [" "] = "text" })));
         Assert.Equal(
             "Input 'prior_notes' is blank.",
             ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
-                null, Inputs: new Dictionary<string, string> { ["prior_notes"] = " " })));
+                null, Inputs: new Dictionary<string, ConsultInputValue> { ["prior_notes"] = " " })));
         Assert.Equal(
             "Input 'consult_draft' exceeds 256 KB.",
             ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
-                null, Inputs: new Dictionary<string, string> { ["consult_draft"] = new string('x', ConsultGenerationJobs.MaxInputLength + 1) })));
+                null, Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = new string('x', ConsultGenerationJobs.MaxInputLength + 1) })));
     }
 }
 

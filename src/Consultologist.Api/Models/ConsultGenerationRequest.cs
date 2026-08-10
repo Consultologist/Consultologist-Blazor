@@ -11,9 +11,14 @@ public record ConsultGenerationRequest(
     // #157: run later — the orchestrator sleeps on a durable timer until
     // this time. Null = run immediately; past values also run immediately.
     DateTimeOffset? ScheduledAtUtc = null,
-    // v7: the named-input map (declared id → text). Validated against the
+    // v7: the named-input map (declared id → value). Validated against the
     // package declaration at job start.
-    Dictionary<string, string>? Inputs = null,
+    //
+    // v8 types the value on the wire: a JSON string for text, date and enum,
+    // a JSON boolean for boolean (package-format-v8-design.md § 4). A v7
+    // caller's {"id": "text"} is unchanged and still valid — every v5–v7
+    // input is a text slot.
+    Dictionary<string, ConsultInputValue>? Inputs = null,
     // #238: the same slots, filled by a document instead of text. The server
     // extracts these at job start (docs/DOCUMENT_INPUT.md § 5), so a slot's
     // origin is something the server observed rather than something the

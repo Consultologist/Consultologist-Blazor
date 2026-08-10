@@ -23,11 +23,41 @@ public sealed record WorkflowPackageManifest(
 /// One declared input slot of a specVersion-7 package: the id nodes bind as
 /// "input:&lt;id&gt;" and callers supply per job
 /// (docs/customizable-workflow/package-format-v7.md § 2).
+///
+/// v8 types the slot. <c>Type</c> is optional and absent means "text", so a
+/// v7 declaration is a valid v8 one and the minimal migration is the
+/// specVersion line alone (package-format-v8-design.md § 4). <c>Values</c>
+/// belongs to <c>enum</c> and to nothing else.
+///
+/// Both are trailing optionals: a v5–v7 manifest deserialises unchanged.
+/// Nothing here travels into the orchestrator — a typed value renders as its
+/// canonical string, so the resolver and every durable payload are untouched.
 /// </summary>
 public sealed record WorkflowInputSpec(
     string Id,
     string Label,
-    bool Required = true);
+    bool Required = true,
+    string? Type = null,
+    List<string>? Values = null);
+
+/// <summary>
+/// The declared input types (package-format-v8-design.md § 4). Typed values
+/// travel as text; the type decides which text is accepted, checked at job
+/// start against the canonical form and rejected — never normalised — when
+/// it does not match.
+/// </summary>
+public static class WorkflowInputTypes
+{
+    public const string Text = "text";
+    public const string Date = "date";
+    public const string Enum = "enum";
+    public const string Boolean = "boolean";
+
+    public static readonly IReadOnlyList<string> All = new[] { Text, Date, Enum, Boolean };
+
+    /// <summary>An absent type is text — the default that keeps v7 declarations valid.</summary>
+    public static string Of(WorkflowInputSpec input) => input.Type ?? Text;
+}
 
 /// <summary>
 /// One declared deliverable of a specVersion-7 package: an authored id and

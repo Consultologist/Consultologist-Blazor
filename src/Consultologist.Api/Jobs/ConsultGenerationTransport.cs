@@ -653,12 +653,14 @@ public sealed class ConsultGenerationJobs
                     return "Inputs contains a blank id.";
                 }
 
-                if (string.IsNullOrWhiteSpace(value))
+                if (value is null || value.IsBlank)
                 {
                     return $"Input '{id}' is blank.";
                 }
 
-                if (value.Length > MaxInputLength)
+                // The cap is about text: a boolean has no length to run away
+                // with, and Canonical would report 4 or 5 characters.
+                if (!value.IsBoolean && (value.Text?.Length ?? 0) > MaxInputLength)
                 {
                     return $"Input '{id}' exceeds {MaxInputLength / 1024} KB.";
                 }

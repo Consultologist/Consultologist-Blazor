@@ -12,6 +12,28 @@ public interface IWorkflowPackageStore
     Task<WorkflowPackage> ResolveAsync(WorkflowPackageRef packageRef, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// A well-formed package this engine will not run: pre-v5 (archived), or a
+/// version validated and published ahead of the engine accepting it — which is
+/// how v8 lands, validator gate first (package-format-v8-design.md § 8).
+///
+/// Distinct from a registry failure on purpose. Both used to arrive as a bare
+/// InvalidOperationException, so the starter reported "the registry is
+/// unavailable" for a package that was sitting there perfectly readable, and
+/// logged it as an error. SpecVersionNotYetExecutable already existed for this
+/// and was raised nowhere.
+/// </summary>
+public sealed class WorkflowPackageSpecVersionException : Exception
+{
+    public WorkflowPackageSpecVersionException(string packageRef, int specVersion, IReadOnlyList<int> supported)
+        : base($"Workflow package {packageRef} is specVersion {specVersion}; this engine runs specVersion {string.Join(" or ", supported)}. Pre-v5 packages are archived and not executable.")
+    {
+        SpecVersion = specVersion;
+    }
+
+    public int SpecVersion { get; }
+}
+
 public sealed class WorkflowPackageStore : IWorkflowPackageStore
 {
     private const string ContainerName = WorkflowPackageBlobContainerFactory.ContainerName;
@@ -64,8 +86,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         // (the v5-only rebase; see registry-operations.md).
         if (!SupportedSpecVersions.Contains(manifest.SpecVersion))
         {
-            throw new InvalidOperationException(
-                $"Workflow package {cacheKey} is specVersion {manifest.SpecVersion}; this engine accepts specVersion {string.Join(" or ", SupportedSpecVersions)}. Pre-v5 packages are archived and not executable.");
+            throw new WorkflowPackageSpecVersionException(cacheKey, manifest.SpecVersion, SupportedSpecVersions);
         }
 
         var loaded = await LoadPromptsAsync(packageRef.Name, version, manifest, cancellationToken);
