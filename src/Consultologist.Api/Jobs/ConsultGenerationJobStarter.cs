@@ -1,3 +1,4 @@
+using System.Globalization;
 using Consultologist.Api.Agents;
 using Consultologist.Api.Documents;
 using Consultologist.Api.Models;
@@ -169,6 +170,20 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         try
         {
             package = await _packageStore.ResolveAsync(packageRef!, cancellationToken);
+        }
+        catch (WorkflowPackageSpecVersionException ex)
+        {
+            // The package is there and readable; this engine will not run that
+            // version. A warning, not an error — nothing is broken, and calling
+            // it a registry outage sent people looking in the wrong place.
+            _logger.LogWarning(
+                "Rejected job start: the pinned package is a specVersion this engine does not run. Pin={Pin}, SpecVersion={SpecVersion}",
+                packageRef,
+                ex.SpecVersion);
+            return new ConsultGenerationJobStartOutcome(
+                null,
+                ConsultGenerationJobStartError.SpecVersionNotYetExecutable,
+                ex.Message);
         }
         catch (InvalidOperationException ex)
         {
@@ -344,9 +359,17 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var effectiveInputHash = isV7
             ? ConsultGenerationProvenance.ComputeDeclaredInputsHash(inputs.Supplied!)
             : ConsultGenerationProvenance.ComputeDraftOnlyHash(request);
-        var effectiveInputHashVersion = isV7
-            ? ConsultGenerationProvenance.DeclaredInputsHashVersion
-            : 2;
+
+        // One function, three definitions. v8 reuses v7's bytes exactly and
+        // stamps 4, because the definition — not the computation — is what
+        // changed: a 4 asserts every value was checked against a declared type
+        // (package-format-v8-design.md § 6).
+        var effectiveInputHashVersion = package.Manifest.SpecVersion switch
+        {
+            >= 8 => ConsultGenerationProvenance.TypedInputsHashVersion,
+            >= 7 => ConsultGenerationProvenance.DeclaredInputsHashVersion,
+            _ => 2
+        };
         var resultDescriptors = package.Results?
             .Select(result => new ConsultResultDescriptor(result.Id, result.NodeId, result.Label))
             .ToList();
@@ -578,6 +601,25 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 $"Required input(s) {string.Join(", ", missing.Select(id => $"'{id}'"))} missing.");
         }
 
+        // v8: a supplied value must be canonical for its declared type
+        // (package-format-v8-design.md § 4). Rejected, never normalised —
+        // silently rewriting '2026-8-1' would hash a value nobody sent, and
+        // provenance would record input that never arrived. An absent optional
+        // is not checked: absence is not a malformed value.
+        foreach (var input in declared)
+        {
+            if (!supplied.TryGetValue(input.Id, out var value) || string.IsNullOrEmpty(value))
+            {
+                continue;
+            }
+
+            var expected = CanonicalFormComplaint(input, value);
+            if (expected != null)
+            {
+                return new EffectiveInputsResolution(null, null, $"Input '{input.Id}' {expected}");
+            }
+        }
+
         // The resolver map covers every declared id — an absent optional input
         // renders as empty (package-format-v7-design.md § 3 resolution rule).
         var effective = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -588,6 +630,28 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         return new EffectiveInputsResolution(effective, supplied, null);
     }
+
+    /// <summary>
+    /// What is wrong with a supplied value for its declared type, or null when
+    /// nothing is. Phrased to complete "Input '&lt;id&gt;' …" so the caller
+    /// always names the slot — a message that says only "invalid date" makes
+    /// the author hunt for which field.
+    /// </summary>
+    private static string? CanonicalFormComplaint(WorkflowInputSpec input, string value) =>
+        WorkflowInputTypes.Of(input) switch
+        {
+            WorkflowInputTypes.Date when !DateOnly.TryParseExact(
+                value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _) =>
+                $"is a date and must be written YYYY-MM-DD; got '{value}'.",
+
+            WorkflowInputTypes.Boolean when value is not ("true" or "false") =>
+                $"is a boolean and must be 'true' or 'false'; got '{value}'.",
+
+            WorkflowInputTypes.Enum when input.Values?.Contains(value, StringComparer.Ordinal) != true =>
+                $"accepts {string.Join(", ", (input.Values ?? new List<string>()).Select(v => $"'{v}'"))}; got '{value}'.",
+
+            _ => null
+        };
 
     internal static ConsultNodeDescriptor DescribeNode(
         WorkflowNodeSpec node,

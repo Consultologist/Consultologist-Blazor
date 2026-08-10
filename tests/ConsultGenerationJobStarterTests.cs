@@ -151,6 +151,74 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
+    public async Task SpecVersion8Package_StampsHashVersion4_FromTheSameFunctionAsV7()
+    {
+        // #313's own body asked for a test that a typed value and its string
+        // form hash DIFFERENTLY. The design settled the opposite and this pins
+        // it: the function is unchanged, so the bytes are identical to what a
+        // v7 job would produce, and only the stamped version moves. What a 4
+        // asserts is that every value was checked against a declared type —
+        // and non-canonical input never reaches here, because it is rejected
+        // rather than normalised (package-format-v8-design.md § 6).
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V8Fixtures.Minimal(),
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(Referral),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        Assert.Null(outcome.Error);
+        Assert.NotNull(orchestrationInput);
+        Assert.Equal(4, orchestrationInput.EffectiveInputHashVersion);
+        Assert.Equal(
+            ConsultGenerationProvenance.ComputeDeclaredInputsHash(
+                new Dictionary<string, string> { ["consult_draft"] = Referral }),
+            orchestrationInput.EffectiveInputHash);
+    }
+
+    [Fact]
+    public async Task APackageTheEngineWillNotRun_IsNotReportedAsARegistryOutage()
+    {
+        // The package is there and readable; this engine does not run that
+        // version. Before #313 this arrived as RegistryUnavailable — "the
+        // registry is unavailable" — for a package sitting perfectly readable,
+        // logged as an error. SpecVersionNotYetExecutable existed for it and
+        // was raised nowhere.
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns<Task<WorkflowPackage>>(_ => throw new WorkflowPackageSpecVersionException(
+                "general@v2026.08.1", 8, new[] { 5, 6, 7 }));
+
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(Referral),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        Assert.Equal(ConsultGenerationJobStartError.SpecVersionNotYetExecutable, outcome.Error);
+        Assert.Contains("specVersion 8", outcome.ErrorDetail);
+        // A genuine registry failure keeps its own error.
+        Assert.NotEqual(ConsultGenerationJobStartError.RegistryUnavailable, outcome.Error);
+    }
+
+    [Fact]
     public async Task SpecVersion7Package_StartsWithPrefixedBlocksAndInputMap()
     {
         // The legacy draft field back-fills the consult_draft slot; the
@@ -873,6 +941,78 @@ public class ResolveEffectiveInputsTests
         Assert.False(resolution.Supplied!.ContainsKey("prior_notes"));
         Assert.Equal(string.Empty, resolution.Effective!["prior_notes"]);
         Assert.Equal("Draft.", resolution.Effective["consult_draft"]);
+    }
+
+    // #313: v8 types a slot, and a supplied value must be canonical for its
+    // type — rejected, never normalised, so provenance records what arrived.
+
+    private static Dictionary<string, string> TypedInputs(params (string Id, string Value)[] overrides)
+    {
+        var inputs = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = "Draft.",
+            ["seen_on"] = "2026-08-10",
+            ["encounter_kind"] = "follow_up"
+        };
+
+        foreach (var (id, value) in overrides)
+        {
+            inputs[id] = value;
+        }
+
+        return inputs;
+    }
+
+    [Fact]
+    public void V8_CanonicalTypedValues_AreAccepted()
+    {
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new ConsultGenerationRequest(null, Inputs: TypedInputs(("billable", "true"))),
+            V8Fixtures.Typed());
+
+        Assert.Null(resolution.Error);
+        Assert.Equal("2026-08-10", resolution.Effective!["seen_on"]);
+    }
+
+    [Theory]
+    // Valid-but-different is still rejected: normalising it would hash a value
+    // nobody sent.
+    [InlineData("seen_on", "2026-8-1", "must be written YYYY-MM-DD")]
+    [InlineData("seen_on", "10/08/2026", "must be written YYYY-MM-DD")]
+    [InlineData("billable", "yes", "must be 'true' or 'false'")]
+    [InlineData("billable", "True", "must be 'true' or 'false'")]
+    [InlineData("encounter_kind", "procedure", "'new_patient', 'follow_up'")]
+    public void V8_NonCanonicalValue_IsRejectedAndNamesTheInput(string id, string value, string expected)
+    {
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new ConsultGenerationRequest(null, Inputs: TypedInputs((id, value))),
+            V8Fixtures.Typed());
+
+        Assert.Contains($"Input '{id}'", resolution.Error);
+        Assert.Contains(expected, resolution.Error);
+    }
+
+    [Fact]
+    public void V8_AbsentOptionalTypedInput_IsNotCheckedForCanonicalForm()
+    {
+        // Absence is not a malformed value; the v7 resolution rule stands.
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new ConsultGenerationRequest(null, Inputs: TypedInputs()),
+            V8Fixtures.Typed());
+
+        Assert.Null(resolution.Error);
+        Assert.Equal(string.Empty, resolution.Effective!["billable"]);
+    }
+
+    [Fact]
+    public void V8_UntypedInputs_BehaveExactlyAsV7()
+    {
+        // The minimal-v8 migration: same declaration, same acceptance.
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new ConsultGenerationRequest("Draft."), V8Fixtures.Minimal());
+
+        Assert.Null(resolution.Error);
+        Assert.Equal(new Dictionary<string, string> { ["consult_draft"] = "Draft." }, resolution.Supplied);
     }
 
     [Fact]

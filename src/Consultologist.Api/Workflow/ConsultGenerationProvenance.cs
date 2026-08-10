@@ -38,6 +38,23 @@ internal static class ConsultGenerationProvenance
     /// </summary>
     public const int DeclaredInputsHashVersion = 3;
 
+    /// <summary>
+    /// The effective-input hash, definition version 4 (v8 jobs). The
+    /// **function is unchanged** from 3 — ComputeDeclaredInputsHash serves
+    /// both — and the definition moves because the input space is now typed:
+    /// a version-4 hash asserts every value was canonical for its declared
+    /// type, which a version-3 hash does not
+    /// (package-format-v8-design.md § 6).
+    ///
+    /// So the same supplied map hashes to the same bytes under 3 and 4, and
+    /// means something different. That is the point of recording which
+    /// definition produced it, and it is why there is no separate v4
+    /// function to write: non-canonical input is rejected at start rather
+    /// than normalised, so nothing ever reaches this that a v3 hash could
+    /// not have covered.
+    /// </summary>
+    public const int TypedInputsHashVersion = 4;
+
     public static string ComputeDeclaredInputsHash(IReadOnlyDictionary<string, string> suppliedInputs)
     {
         var canonical = suppliedInputs

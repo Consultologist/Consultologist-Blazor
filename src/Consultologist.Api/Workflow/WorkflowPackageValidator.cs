@@ -86,9 +86,13 @@ public static class WorkflowPackageValidator
             }
         }
 
-        if (manifest.SpecVersion is not (5 or 6 or 7))
+        // v8 validates and publishes here before it executes: the engine's own
+        // gate (WorkflowPackageStore.SupportedSpecVersions) moves last, so a v8
+        // package is well-formedness-checked while running it still refuses
+        // with SpecVersionNotYetExecutable (package-format-v8-design.md § 8).
+        if (manifest.SpecVersion is not (5 or 6 or 7 or 8))
         {
-            errors.Add($"specVersion {manifest.SpecVersion} is not supported: this engine accepts specVersion 5, 6 or 7 (pre-v5 packages are archived; see registry-operations.md).");
+            errors.Add($"specVersion {manifest.SpecVersion} is not supported: this engine accepts specVersion 5, 6, 7 or 8 (pre-v5 packages are archived; see registry-operations.md).");
         }
         else
         {
@@ -445,9 +449,83 @@ public static class WorkflowPackageValidator
             {
                 errors.Add($"Input '{input.Id}' has no label.");
             }
+
+            ValidateInputType(manifest, input, errors);
         }
 
         return declared;
+    }
+
+    /// <summary>
+    /// v8 types an input slot (package-format-v8-design.md § 4). An absent type
+    /// is text, which is what keeps every v7 declaration valid — so the minimal
+    /// v8 migration is the specVersion line and nothing else.
+    /// </summary>
+    private static void ValidateInputType(WorkflowPackageManifest manifest, WorkflowInputSpec input, List<string> errors)
+    {
+        if (manifest.SpecVersion < 8)
+        {
+            // Mirrors "inputs requires specVersion 7": a section the version
+            // does not have is an error, never a silently ignored field.
+            if (input.Type != null)
+            {
+                errors.Add($"Input '{input.Id}' declares a type, which requires specVersion 8.");
+            }
+
+            if (input.Values != null)
+            {
+                errors.Add($"Input '{input.Id}' declares values, which requires specVersion 8.");
+            }
+
+            return;
+        }
+
+        var type = WorkflowInputTypes.Of(input);
+
+        if (!WorkflowInputTypes.All.Contains(type, StringComparer.Ordinal))
+        {
+            errors.Add($"Input '{input.Id}' declares unknown type '{type}' (accepted: {string.Join(", ", WorkflowInputTypes.All)}).");
+            return; // An unknown type says nothing about whether values belong.
+        }
+
+        if (type != WorkflowInputTypes.Enum)
+        {
+            if (input.Values != null)
+            {
+                errors.Add($"Input '{input.Id}' is type '{type}' and may not declare values.");
+            }
+
+            return;
+        }
+
+        if (input.Values is not { Count: > 0 })
+        {
+            errors.Add($"Input '{input.Id}' is type 'enum' and must declare values.");
+            return;
+        }
+
+        if (input.Values.Count < 2)
+        {
+            errors.Add($"Input '{input.Id}' declares one enum value; an enum with one value is a constant, not a choice.");
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var value in input.Values)
+        {
+            // Enum values share the declared-id rule, so they are safe wherever
+            // result ids are: authored package content, never patient data.
+            if (!WorkflowDeclaredIds.IsValid(value))
+            {
+                errors.Add($"Input '{input.Id}' enum value '{value}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).");
+                continue;
+            }
+
+            if (!seen.Add(value))
+            {
+                errors.Add($"Input '{input.Id}' declares duplicate enum value '{value}'.");
+            }
+        }
     }
 
     /// <summary>The v7 result set: authored ids and labels over distinct aggregator nodes (package-format-v7.md § 3).</summary>
