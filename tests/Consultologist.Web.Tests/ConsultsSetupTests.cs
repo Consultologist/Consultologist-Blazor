@@ -1,3 +1,4 @@
+using System.Net;
 using AngleSharp.Dom;
 using Bunit;
 using Consultologist.Web.Pages;
@@ -280,6 +281,61 @@ public class ConsultsSetupTests : ClientRenderTestContext
         Assert.Contains("9 sections", page.Find(".setup-context").TextContent);
         Assert.DoesNotContain("documents", page.Find(".setup-context").TextContent);
         Assert.Empty(page.FindAll(".setup-sections__group-label"));
+    }
+
+    // #348: what the form does with a start refusal. The service now carries
+    // the server's reason; these hold the page to showing it.
+
+    private const string Refusal =
+        "No document applies to these inputs. 'Consultation note' needs billable to be 'true'; it is 'false'.";
+
+    private void WhenSubmitThrows(Exception failure) =>
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Any<IReadOnlyDictionary<string, ConsultInputValue>>(),
+                Arg.Any<string?>(),
+                Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, InputFilePayload>?>())
+            .Returns<Task<ConsultGenerationJobStartResponse>>(_ => throw failure);
+
+    private IRenderedComponent<Consults> SubmitOneDraft()
+    {
+        WithPinnedPackage(
+            blocks: NineSections(),
+            inputs: new[] { new WorkflowPackageInputResponse("consult_draft", "Consult draft", true) });
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Chest pain, rule out ACS.");
+        page.FindAll("fluent-button").Last().Click();
+
+        return page;
+    }
+
+    [Fact]
+    public void AStartRefusal_IsShownAsTheServerWroteIt()
+    {
+        WhenSubmitThrows(new ConsultGenerationRefusedException(HttpStatusCode.UnprocessableEntity, Refusal));
+
+        var page = SubmitOneDraft();
+
+        Assert.Contains(Refusal, page.Markup, StringComparison.Ordinal);
+
+        // The prefix describes a fault that did not occur: nothing was called,
+        // the request was declined. It also pushed the actionable half of the
+        // sentence past where anyone reads.
+        Assert.DoesNotContain("Error calling agent", page.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ARealFailure_KeepsItsPrefix()
+    {
+        // The narrow half: a transport fault is still a fault, and saying so
+        // is what distinguishes "we could not reach the service" from "the
+        // service considered this and said no".
+        WhenSubmitThrows(new HttpRequestException("Azure Function call failed: BadGateway"));
+
+        var page = SubmitOneDraft();
+
+        Assert.Contains("Error calling agent", page.Markup, StringComparison.Ordinal);
     }
 }
 
