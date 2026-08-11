@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net.ServerSentEvents;
+using System.Text.Json;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.WebAssembly.Authentication;
 using Microsoft.AspNetCore.Components.WebAssembly.Http;
@@ -55,6 +56,71 @@ public class AIEndpointService : IAIEndpointService
         _logger = logger;
     }
 
+    /// <summary>
+    /// What to throw for a non-success response (#348).
+    ///
+    /// The transport answers a refusal with <c>{ "error": "…" }</c>, and that
+    /// string is the whole point of the refusal — it names the input, the
+    /// document or the wait. Discarding it left every 422 on screen as the
+    /// word "UnprocessableEntity", which cannot be acted on and cannot be
+    /// told apart from the five other refusals sharing that status.
+    ///
+    /// Anything that is not that shape stays a transport failure: an
+    /// infrastructure 502 carries an HTML page, not an answer, and putting it
+    /// in front of a clinician would be worse than the status code.
+    /// </summary>
+    private async Task<Exception> DescribeFailureAsync(HttpResponseMessage response, string operation)
+    {
+        var body = await response.Content.ReadAsStringAsync();
+
+        _logger.LogError(
+            "{Operation} failed with status {StatusCode}: {Error}",
+            operation,
+            response.StatusCode,
+            body);
+
+        return ReadErrorDetail(body) is { } detail
+            ? new ConsultGenerationRefusedException(response.StatusCode, detail)
+            : new HttpRequestException($"Azure Function call failed: {response.StatusCode}");
+    }
+
+    private static string? ReadErrorDetail(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            // Matched case-insensitively: the property is written lowercase by
+            // the transport, but the same shape reaches here from middleware
+            // whose serializer casing is not ours to assume.
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (string.Equals(property.Name, "error", StringComparison.OrdinalIgnoreCase)
+                    && property.Value.ValueKind == JsonValueKind.String
+                    && !string.IsNullOrWhiteSpace(property.Value.GetString()))
+                {
+                    return property.Value.GetString();
+                }
+            }
+
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     public async Task<ConsultGenerationJobStartResponse> StartConsultGenerationJobAsync(
         IReadOnlyDictionary<string, ConsultInputValue> inputs,
         string? workflowPackage = null,
@@ -100,13 +166,7 @@ public class AIEndpointService : IAIEndpointService
 
             if (!response.IsSuccessStatusCode)
             {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                _logger.LogError(
-                    "Consult generation job start failed with status {StatusCode}: {Error}",
-                    response.StatusCode,
-                    errorContent);
-
-                throw new HttpRequestException($"Azure Function call failed: {response.StatusCode}");
+                throw await DescribeFailureAsync(response, "Consult generation job start");
             }
 
             var result = await response.Content.ReadFromJsonAsync<ConsultGenerationJobStartResponse>();
@@ -162,13 +222,7 @@ public class AIEndpointService : IAIEndpointService
 
             if (!response.IsSuccessStatusCode)
             {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                _logger.LogError(
-                    "Consult generation job poll failed with status {StatusCode}: {Error}",
-                    response.StatusCode,
-                    errorContent);
-
-                throw new HttpRequestException($"Azure Function call failed: {response.StatusCode}");
+                throw await DescribeFailureAsync(response, "Consult generation job poll");
             }
 
             var result = await response.Content.ReadFromJsonAsync<ConsultGenerationJobResponse>();
