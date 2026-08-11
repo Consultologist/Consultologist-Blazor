@@ -792,6 +792,13 @@
         runOvernight = false;
         ClearInputs();
       }
+      // #348: the server's own words, unprefixed. "Error scheduling consult"
+      // in front of "no document applies to these inputs" describes a fault
+      // that did not occur — the schedule was declined, not attempted.
+      catch (ConsultGenerationRefusedException refusal)
+      {
+        aiRequestError = refusal.Message;
+      }
       catch (Exception ex)
       {
         aiRequestError = $"Error scheduling consult: {ex.Message}";
@@ -829,6 +836,10 @@
         blockSnapshots.Select(block => new ConsultJobBlock(block.Id, block.Name)).ToList());
 
       await RunAttachedJobAsync(job.JobId, blockSnapshots);
+    }
+    catch (ConsultGenerationRefusedException refusal)
+    {
+      aiRequestError = refusal.Message;
     }
     catch (Exception ex)
     {
