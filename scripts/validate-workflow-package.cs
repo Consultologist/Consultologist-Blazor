@@ -9,8 +9,12 @@
 // anything is tagged (#345).
 //
 // Usage:
-//   dotnet run --file scripts/validate-workflow-package.cs -- <package-dir>
-//   dotnet run --file scripts/validate-workflow-package.cs -- <package-dir> --dag
+//   dotnet run -v q --file scripts/validate-workflow-package.cs -- <package-dir>
+//   dotnet run -v q --file scripts/validate-workflow-package.cs -- <package-dir> --dag > <package-dir>/dag.mmd
+//
+// The -v q is load-bearing for --dag: MSBuild writes build warnings to stdout,
+// so a redirect without it captures them into the diagram. Found the hard way,
+// by doing exactly that.
 //
 // WHY THIS EXISTS. The content repo's CI globs packages/*/manifest.json and
 // checks the CalVer regex and that every referenced file exists. It never reads
