@@ -248,6 +248,65 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
 
+    // #350: the three edits that change a condition's operands after it
+    // exists. Every other v8 authoring test builds the condition last and
+    // never touches it again, which is why none of these was reachable.
+
+    private static void ConditionOnABoolean(IRenderedComponent<Templates> page)
+    {
+        Navigate(page, "Inputs");
+        page.FindAll("select.declared-row__type")[1].Change("boolean");
+
+        Navigate(page, "Documents");
+        page.Find("li.declared-row__when select").Change("prior_notes");
+    }
+
+    [Fact]
+    public async Task RenamingATestedInput_CarriesTheConditionWithIt()
+    {
+        // The cascade already followed bindings; a condition names its input
+        // the same way, and did not move — the composed package then read an
+        // input that no longer existed.
+        var (result, sent) = await PublishAndCaptureAsync(page =>
+        {
+            ConditionOnABoolean(page);
+
+            Navigate(page, "Inputs");
+            page.FindAll("li.declared-row")[1].QuerySelector("input.declared-row__id")!.Change("billable");
+            return Task.CompletedTask;
+        }, EditorFixtures.V8());
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+
+        var when = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement
+            .GetProperty("results").EnumerateArray()
+            .Select(r => r.TryGetProperty("when", out var value) ? value.GetString() : null)
+            .First(value => value != null);
+
+        Assert.Contains("billable", when!, StringComparison.Ordinal);
+        Assert.DoesNotContain("prior_notes", when!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ARenameNoConditionReads_LeavesTheDocumentsAlone()
+    {
+        // The guard on the guard: touching MutableResults() unconditionally
+        // would mark every document pending for a rename that has nothing to
+        // do with them, and publish two changes where the author made one.
+        var (result, sent) = await PublishAndCaptureAsync(page =>
+        {
+            Navigate(page, "Inputs");
+            page.FindAll("li.declared-row")[1].QuerySelector("input.declared-row__id")!.Change("referral");
+            return Task.CompletedTask;
+        }, EditorFixtures.V8());
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+
+        Assert.All(
+            JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement.GetProperty("results").EnumerateArray(),
+            deliverable => Assert.False(deliverable.TryGetProperty("when", out _)));
+    }
+
     [Fact]
     public async Task AV7Package_ComposesTheSameBytesItAlwaysDid()
     {
