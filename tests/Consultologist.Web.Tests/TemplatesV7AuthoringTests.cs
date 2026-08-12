@@ -307,6 +307,42 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ARenameNoConditionReads_LeavesTheDocumentsUnpending()
+    {
+        // The guard on the guard. Calling MutableResults() unconditionally
+        // composes the same bytes, so no round-trip test can see it — what it
+        // does is mark every document changed, publishing two edits where the
+        // author made one and putting a dot on a pane nobody touched.
+        var page = RenderEditor();
+        Navigate(page, "Inputs");
+        page.FindAll("li.declared-row")[1].QuerySelector("input.declared-row__id")!.Change("referral");
+
+        var documents = page.FindAll("button.editor-nav__item")
+            .First(button => button.TextContent.Contains("Documents"));
+
+        Assert.DoesNotContain("●", documents.TextContent);
+    }
+
+    [Fact]
+    public void ARenameAConditionReads_DoesMarkTheDocumentsPending()
+    {
+        // The other side of it: when the cascade really does rewrite a
+        // condition, that IS a change to the document and has to show.
+        var page = RenderEditor();
+        DeclareEnum(page);
+        Navigate(page, "Documents");
+        page.Find("li.declared-row__when select").Change("prior_notes");
+
+        Navigate(page, "Inputs");
+        page.FindAll("li.declared-row")[1].QuerySelector("input.declared-row__id")!.Change("encounter_kind");
+
+        var documents = page.FindAll("button.editor-nav__item")
+            .First(button => button.TextContent.Contains("Documents"));
+
+        Assert.Contains("●", documents.TextContent);
+    }
+
+    [Fact]
     public void AnEnumBelowTwoValues_IsRefusedAtPublish()
     {
         // Reachable without removing anything: retyping to enum starts at

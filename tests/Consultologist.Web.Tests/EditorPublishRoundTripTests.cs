@@ -288,11 +288,12 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
     }
 
     [Fact]
-    public async Task ARenameNoConditionReads_LeavesTheDocumentsAlone()
+    public async Task ARenameNoConditionReads_ComposesNoCondition()
     {
-        // The guard on the guard: touching MutableResults() unconditionally
-        // would mark every document pending for a rename that has nothing to
-        // do with them, and publish two changes where the author made one.
+        // The composed half only: the cascade must not invent a when clause
+        // for documents that never had one. Whether it marks them *pending*
+        // is invisible here — the manifest is identical either way — so
+        // TemplatesV8AuthoringTests asserts that separately.
         var (result, sent) = await PublishAndCaptureAsync(page =>
         {
             Navigate(page, "Inputs");
