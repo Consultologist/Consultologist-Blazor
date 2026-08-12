@@ -23,7 +23,7 @@ public static class WorkflowDagDiagram
 
         // External sources first, in first-reference order: engine inputs, scalar
         // data entries, and forEach collections all render as stadiums.
-        foreach (var source in CollectExternalSources(nodes))
+        foreach (var source in CollectExternalSources(manifest))
         {
             sb.Append($"    {Sanitize(source)}([\"{source}\"])\n");
         }
@@ -127,7 +127,85 @@ public static class WorkflowDagDiagram
             }
         }
 
+        AppendDeliverables(sb, manifest);
+
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// The result set, as its own terminal shape (#353). Without this the
+    /// diagram cannot say which aggregator is a deliverable — and for v8 it
+    /// cannot say that a deliverable is conditional, in a format whose whole
+    /// point is that some of them are not always produced.
+    ///
+    /// A condition renders as a dotted edge from the input it reads, because
+    /// that edge is a predicate rather than data flow: nothing of the input's
+    /// value travels along it.
+    /// </summary>
+    private static void AppendDeliverables(StringBuilder sb, WorkflowPackageManifest manifest)
+    {
+        var deliverables = Deliverables(manifest);
+
+        if (deliverables.Count == 0)
+        {
+            return;
+        }
+
+        sb.Append('\n');
+
+        foreach (var (id, label, nodeRef, when) in deliverables)
+        {
+            var boxId = id is null ? "result" : $"result_{Sanitize(id)}";
+            var caption = id is null ? "result" : $"{id}<br/>{label}";
+
+            // Hexagon: distinct from a node's rectangle and a source's stadium,
+            // so a deliverable never reads as one more aggregator.
+            sb.Append($"    {boxId}{{{{\"{caption}\"}}}}\n");
+
+            var nodeId = nodeRef.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
+                ? nodeRef[WorkflowNodeBindingSources.NodePrefix.Length..]
+                : nodeRef;
+            sb.Append($"    {Sanitize(nodeId)} --> {boxId}\n");
+
+            if (when is null)
+            {
+                continue;
+            }
+
+            // Unparseable conditions cannot reach a published package — the
+            // validator parses the same grammar — but the diagram is generated
+            // for drafts too, so the raw text is drawn rather than dropped.
+            if (!WorkflowResultConditions.TryParse(when, out var condition, out _) || condition is null)
+            {
+                sb.Append($"    {boxId} -.->|\"when {when}\"| {boxId}\n");
+                continue;
+            }
+
+            var test = condition.Literal is null
+                ? "when true"
+                : $"when {(condition.Negated ? WorkflowResultConditions.NotEqualsOperator : WorkflowResultConditions.EqualsOperator)} {condition.Literal}";
+
+            sb.Append($"    {Sanitize($"input:{condition.InputId}")} -.->|\"{test}\"| {boxId}\n");
+        }
+    }
+
+    /// <summary>
+    /// Both result shapes as one list: v7's declared entries, or v6's single
+    /// string, which carries neither an id nor a label.
+    /// </summary>
+    private static IReadOnlyList<(string? Id, string? Label, string Node, string? When)> Deliverables(
+        WorkflowPackageManifest manifest)
+    {
+        if (manifest.Results is { Count: > 0 })
+        {
+            return manifest.Results
+                .Select(result => ((string?)result.Id, (string?)result.Label, result.Node, result.When))
+                .ToList();
+        }
+
+        return manifest.Result is { } single
+            ? new[] { ((string?)null, (string?)null, single, (string?)null) }
+            : Array.Empty<(string?, string?, string, string?)>();
     }
 
     private static void AppendEdge(
@@ -157,8 +235,9 @@ public static class WorkflowDagDiagram
         sb.Append($"{indent}{sourceId} -->|\"{label}\"| {targetId}\n");
     }
 
-    private static IReadOnlyList<string> CollectExternalSources(IReadOnlyList<WorkflowNodeSpec> nodes)
+    private static IReadOnlyList<string> CollectExternalSources(WorkflowPackageManifest manifest)
     {
+        var nodes = manifest.Nodes ?? new List<WorkflowNodeSpec>();
         var sources = new List<string>();
 
         void Add(string? from)
@@ -179,6 +258,20 @@ public static class WorkflowDagDiagram
             }
 
             Add(node.ForEach);
+        }
+
+        // #353: an input only a condition reads is bound by nothing, so the
+        // loop above never sees it — and it would be missing from the diagram
+        // of the very package whose deliverables turn on it. Added after the
+        // bound sources so a package with no conditions draws exactly as before.
+        foreach (var result in manifest.Results ?? new List<WorkflowResultSpec>())
+        {
+            if (result.When != null
+                && WorkflowResultConditions.TryParse(result.When, out var condition, out _)
+                && condition != null)
+            {
+                Add($"input:{condition.InputId}");
+            }
         }
 
         return sources;
