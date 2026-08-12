@@ -1572,7 +1572,42 @@
             }
         }
 
+        // #350: an enum below two values is reachable several ways — retyping
+        // to enum starts at none, and removing gets there one click at a time.
+        // Checked here rather than refused at the click because the in-progress
+        // state is legitimate; what is not legitimate is publishing it.
+        errors.AddRange(inputs
+            .Where(input => WorkflowInputTypes.Of(input) == WorkflowInputTypes.Enum
+                && (input.Values?.Count ?? 0) < 2)
+            .Select(input => $"Input '{input.Id}' declares {input.Values?.Count ?? 0} enum "
+                + $"value{((input.Values?.Count ?? 0) == 1 ? string.Empty : "s")}; an enum needs at least two."));
+
         var results = EffectiveResults;
+
+        // The condition's twin of the binding check above: whatever path left
+        // it inconsistent, it is caught at the desk rather than after minting
+        // a version.
+        foreach (var conditioned in results.Where(result => !string.IsNullOrWhiteSpace(result.When)))
+        {
+            var testedId = WorkflowResultConditionText.InputOf(conditioned.When);
+            var tested = inputs.FirstOrDefault(input => input.Id == testedId);
+
+            if (tested == null)
+            {
+                errors.Add($"Result '{conditioned.Id}' condition reads undeclared input '{testedId}'.");
+                continue;
+            }
+
+            var literal = WorkflowResultConditionText.LiteralOf(conditioned.When);
+
+            if (WorkflowInputTypes.Of(tested) == WorkflowInputTypes.Enum
+                && literal != null
+                && tested.Values?.Contains(literal, StringComparer.Ordinal) != true)
+            {
+                errors.Add(
+                    $"Result '{conditioned.Id}' condition compares '{tested.Id}' to '{literal}', which it does not declare.");
+            }
+        }
 
         foreach (var duplicate in results.GroupBy(result => result.Id).Where(group => group.Count() > 1))
         {
@@ -1711,6 +1746,33 @@
                 }
             }
         }
+
+        // #350: a condition names its input the same way a binding does, so a
+        // rename has to reach both. Only touched when a condition actually
+        // reads the old id — MutableResults() would otherwise mark the
+        // documents pending for a rename that has nothing to do with them.
+        if (!EffectiveResults.Any(result => WorkflowResultConditionText.ReadsInput(result.When, oldId)))
+        {
+            return;
+        }
+
+        var results = MutableResults();
+
+        for (var index = 0; index < results.Count; index++)
+        {
+            if (!WorkflowResultConditionText.ReadsInput(results[index].When, oldId))
+            {
+                continue;
+            }
+
+            results[index] = results[index] with
+            {
+                When = WorkflowResultConditionText.Compose(
+                    newId,
+                    WorkflowResultConditionText.IsNegated(results[index].When),
+                    WorkflowResultConditionText.LiteralOf(results[index].When))
+            };
+        }
     }
 
     /// <summary>
@@ -1778,8 +1840,29 @@
         await CommitDeclarationAsync();
     }
 
+    /// <summary>
+    /// The deliverables whose condition compares this input to this value
+    /// (#350). Removing it would leave the condition naming a value the input
+    /// no longer declares — the value-side twin of <see cref="ConditionLock"/>,
+    /// which already refuses removing or retyping the input itself.
+    /// </summary>
+    private IReadOnlyList<string> ResultsComparedTo(string inputId, string value) =>
+        EffectiveResults
+            .Where(result => WorkflowResultConditionText.ReadsInput(result.When, inputId)
+                && WorkflowResultConditionText.LiteralOf(result.When) == value)
+            .Select(result => result.Label)
+            .ToList();
+
     private async Task RemoveEnumValueAsync(WorkflowManifestReader.InputView input, string value)
     {
+        if (ResultsComparedTo(input.Id, value) is { Count: > 0 } dependents)
+        {
+            declaredError =
+                $"Value '{value}' is what {string.Join(", ", dependents.Select(d => $"'{d}'"))} tests for; "
+                + "change that document's condition first.";
+            return;
+        }
+
         var inputs = MutableInputs();
         var index = inputs.FindIndex(existing => existing.Id == input.Id);
 

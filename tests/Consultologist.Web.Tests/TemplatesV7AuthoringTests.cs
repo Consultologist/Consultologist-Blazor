@@ -265,4 +265,96 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         // Still an enum: the retype was refused, not applied and warned about.
         Assert.Equal(WorkflowInputTypes.Enum, page.FindAll("select.declared-row__type")[1].GetAttribute("value"));
     }
+
+    // #350: the guard above covered the input. Its value and its name were
+    // two more ways to break the same condition, and neither was guarded.
+
+    [Fact]
+    public void TheValueAConditionTestsFor_CannotBeRemoved()
+    {
+        var page = RenderEditor();
+        DeclareEnum(page);
+        Navigate(page, "Documents");
+        page.Find("li.declared-row__when select").Change("prior_notes");
+
+        // The condition's literal defaults to the first declared value.
+        Navigate(page, "Inputs");
+        page.FindAll("li.declared-row__values button").First().Click();
+
+        Assert.Contains("tests for", page.Markup);
+
+        // Refused, not applied and warned about: both chips are still there.
+        Assert.Equal(
+            new[] { "new_patient", "follow_up" },
+            page.FindAll("[data-enum-value]").Select(chip => chip.GetAttribute("data-enum-value")).ToArray());
+    }
+
+    [Fact]
+    public void AValueNoConditionTestsFor_IsStillRemovable()
+    {
+        // The narrow half — the guard names one value, not the whole list.
+        var page = RenderEditor();
+        DeclareEnum(page);
+        Navigate(page, "Documents");
+        page.Find("li.declared-row__when select").Change("prior_notes");
+
+        Navigate(page, "Inputs");
+        page.FindAll("li.declared-row__values button").Last().Click();
+
+        Assert.Equal(
+            new[] { "new_patient" },
+            page.FindAll("[data-enum-value]").Select(chip => chip.GetAttribute("data-enum-value")).ToArray());
+    }
+
+    [Fact]
+    public void ARenameNoConditionReads_LeavesTheDocumentsUnpending()
+    {
+        // The guard on the guard. Calling MutableResults() unconditionally
+        // composes the same bytes, so no round-trip test can see it — what it
+        // does is mark every document changed, publishing two edits where the
+        // author made one and putting a dot on a pane nobody touched.
+        var page = RenderEditor();
+        Navigate(page, "Inputs");
+        page.FindAll("li.declared-row")[1].QuerySelector("input.declared-row__id")!.Change("referral");
+
+        var documents = page.FindAll("button.editor-nav__item")
+            .First(button => button.TextContent.Contains("Documents"));
+
+        Assert.DoesNotContain("●", documents.TextContent);
+    }
+
+    [Fact]
+    public void ARenameAConditionReads_DoesMarkTheDocumentsPending()
+    {
+        // The other side of it: when the cascade really does rewrite a
+        // condition, that IS a change to the document and has to show.
+        var page = RenderEditor();
+        DeclareEnum(page);
+        Navigate(page, "Documents");
+        page.Find("li.declared-row__when select").Change("prior_notes");
+
+        Navigate(page, "Inputs");
+        page.FindAll("li.declared-row")[1].QuerySelector("input.declared-row__id")!.Change("encounter_kind");
+
+        var documents = page.FindAll("button.editor-nav__item")
+            .First(button => button.TextContent.Contains("Documents"));
+
+        Assert.Contains("●", documents.TextContent);
+    }
+
+    [Fact]
+    public void AnEnumBelowTwoValues_IsRefusedAtPublish()
+    {
+        // Reachable without removing anything: retyping to enum starts at
+        // none. Caught before a version is minted rather than at the click,
+        // because a half-authored enum is a legitimate intermediate state.
+        var page = RenderEditor();
+        Navigate(page, "Inputs");
+        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Enum);
+
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Publish")).Click();
+
+        Assert.Contains("an enum needs at least two", page.Markup);
+        WorkflowService.DidNotReceive().PublishPackageAsync(Arg.Any<WorkflowPackagePublishRequest>());
+    }
 }
