@@ -412,9 +412,9 @@
                                     for (var i = 0; i < workflowNodes.Count; i++)
                                     {
                                         var node = workflowNodes[i];
-                                        var done = completedAnalysisStageCount > i;
-                                        var current = !done && completedAnalysisStageCount == i && isAiRequestLoading;
-                                        var stageStatus = done ? "Completed" : current ? "Running" : null;
+                                        var stageStatus = NodeRowStatus(node, i);
+                                        var done = stageStatus == "Completed";
+                                        var current = stageStatus == "Running";
 
                                         if (node.ForEach != null)
                                         {
@@ -565,6 +565,13 @@
   private IReadOnlyList<WorkflowManifestReader.NodeView>? workflowNodes;
   private IReadOnlyList<WorkflowManifestReader.CollectionView> workflowCollections = Array.Empty<WorkflowManifestReader.CollectionView>();
   private HashSet<string> completedNodeItems = new();
+
+  // #356: node id -> the status the JOB reports for it. The rail used to mark
+  // rows by position against a count, so a job that completed two nodes turned
+  // the first two rows green whatever actually ran. Identity was on the wire the
+  // whole time: node-completed carries NodeId, and the job response's NodeOutputs
+  // is keyed by node id and carries a real status.
+  private Dictionary<string, string> nodeStatuses = new(StringComparer.Ordinal);
   private Dictionary<string, string> generatedBlocks = new();
   private Dictionary<string, string> failedBlockErrors = new();
   private bool isBlocksLoading;
@@ -769,6 +776,7 @@
     assembledDocuments = Array.Empty<ConsultGenerationResultDocumentResponse>();
     activeDocumentId = null;
     completedNodeItems = new();
+    nodeStatuses = new(StringComparer.Ordinal);
     aiRequestError = null;
     aiProgressNotice = null;
     scheduleConfirmation = null;
@@ -1165,6 +1173,9 @@
           if (nodeEvent != null)
           {
             aiProgressNotice = string.IsNullOrWhiteSpace(nodeEvent.Label) ? "Generating consult" : nodeEvent.Label;
+            // #356: the id is what the rail marks on. The counts stay for the
+            // manifest-less fallback branch, which has no ids to match.
+            nodeStatuses[nodeEvent.NodeId] = "Completed";
             // Node events are per-key deduped server-side; keep counts monotonic.
             completedAnalysisStageCount = Math.Max(completedAnalysisStageCount, nodeEvent.CompletedNodeCount);
             totalAnalysisStageCount = nodeEvent.TotalNodeCount;
@@ -1279,13 +1290,29 @@
     totalBlockCount = response.TotalBlockCount == 0 ? blockSnapshots.Count : response.TotalBlockCount;
     completedBlockCount = response.CompletedBlockCount + response.FailedBlockCount;
 
+    // #356: the job's own per-node verdict, keyed by node id. Composite
+    // "nodeId:itemId" entries are fan instances and belong to the item rows, not
+    // to a node row. This is the authoritative source and covers snapshot, poll,
+    // done and re-attach alike.
+    if (response.NodeOutputs is { Count: > 0 })
+    {
+      foreach (var (key, output) in response.NodeOutputs.Where(entry => !entry.Key.Contains(':', StringComparison.Ordinal)))
+      {
+        nodeStatuses[key] = output.Status;
+      }
+    }
+
     if (response.Status != "Failed"
         && response.Nodes is { Count: > 0 }
         && response.CompletedStageCount.HasValue
         && response.CompletedStageCount.Value < response.Nodes.Count)
     {
-      // The next in-flight node's package-declared label is the progress notice.
-      aiProgressNotice = response.Nodes[response.CompletedStageCount.Value].Label;
+      // The next in-flight node's package-declared label is the progress notice
+      // — the first node the job has not reported complete, not the one at the
+      // completed count's index (#356).
+      aiProgressNotice = (response.Nodes.FirstOrDefault(node =>
+          !nodeStatuses.TryGetValue(node.Id, out var status) || status != "Completed")
+        ?? response.Nodes[response.CompletedStageCount.Value]).Label;
     }
 
     if (response.CompletedStageCount.HasValue)
@@ -1604,6 +1631,38 @@
 
   // Per-item status under one forEach node, keyed by the plain item id (the
   // prose-step events' currency). Pair ticks come from those events; a done
+  /// <summary>
+  /// #356: a row's glyph comes from what the job says about THAT node, matched
+  /// by id — never from its position against a count. The count could not carry
+  /// the information: the node-completed event's CompletedNodeCount is a rank
+  /// among completed nodes in manifest order, recomputed at synthesis, so a DAG
+  /// that finishes its third node first reports 1 and the rail ticked the first.
+  ///
+  /// Running is the one status the server cannot tell us mid-run: node outputs
+  /// are written on completion, and the snapshot event is deduped under a fixed
+  /// key so only the first is ever sent. So it is inferred — the earliest
+  /// unsettled row while the job is in flight — and kept deliberately as a guess
+  /// about WHERE work is, never a claim that anything finished.
+  /// </summary>
+  private string? NodeRowStatus(WorkflowManifestReader.NodeView node, int index)
+  {
+    if (nodeStatuses.TryGetValue(node.Id, out var status))
+    {
+      return status;
+    }
+
+    if (!isAiRequestLoading || workflowNodes is null)
+    {
+      return null;
+    }
+
+    var earliestUnsettled = workflowNodes
+      .TakeWhile(candidate => nodeStatuses.ContainsKey(candidate.Id))
+      .Count();
+
+    return index == earliestUnsettled ? "Running" : null;
+  }
+
   // node covers items whose events were missed (polling fallback), and failed
   // sections — keyed by composite block ids in v6 — skip their remaining steps.
   private string? NodeItemStatus(WorkflowManifestReader.NodeView node, bool nodeDone, bool nodeCurrent, string itemId)
@@ -1654,11 +1713,16 @@
     return null;
   }
 
+  // ⊘ is Skipped and ○ is not-started: a node the job decided against and one it
+  // has not reached yet are different facts, and after #356 the rail can tell
+  // them apart. History spends ○ on Skipped and · on not-started; the rail keeps
+  // ○ where it has always been, so no existing row's glyph moves.
   private static string RunStatusGlyph(string? status) => status switch
   {
     "Completed" => "✓",
     "Failed" => "✗",
     "Running" => "●",
+    "Skipped" => "⊘",
     _ => "○"
   };
 
@@ -1667,6 +1731,7 @@
     "Completed" => "node-status--success",
     "Failed" => "node-status--failure",
     "Running" => "node-status--current",
+    "Skipped" => "node-status--skipped",
     _ => "node-status--muted"
   };
 
