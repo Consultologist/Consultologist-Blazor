@@ -156,7 +156,13 @@ public static class WorkflowPackageValidator
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
         var nodesById = new Dictionary<string, WorkflowNodeSpec>(StringComparer.Ordinal);
         var promptReferenceCounts = new Dictionary<string, int>(StringComparer.Ordinal);
-        var edges = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+
+        // #355: one definition of the node→node edges, shared with the job
+        // starter's prune. Built up front from the declaration rather than
+        // accumulated as validation proceeds, so reachability and the cycle
+        // check see the graph the engine will walk — not the subset that
+        // happened to pass the checks above them.
+        var edges = WorkflowNodeClosure.Edges(nodes);
 
         foreach (var node in nodes)
         {
@@ -242,9 +248,6 @@ public static class WorkflowPackageValidator
                         return;
                     }
 
-                    edges.TryAdd(node.Id, new HashSet<string>(StringComparer.Ordinal));
-                    edges[node.Id].Add(target.NodeId);
-
                     var rendersConcepts = binding.As != null || conceptListNodeIds.Contains(target.NodeId);
                     if (binding.As != null && !WorkflowConceptRenderers.All.Contains(binding.As))
                     {
@@ -298,8 +301,6 @@ public static class WorkflowPackageValidator
                     continue;
                 }
 
-                edges.TryAdd(node.Id, new HashSet<string>(StringComparer.Ordinal));
-                edges[node.Id].Add(sourceId);
             }
         }
 
@@ -733,7 +734,7 @@ public static class WorkflowPackageValidator
 
         foreach (var (resultId, rootId) in roots)
         {
-            var reachable = WalkDependencies(rootId, edges);
+            var reachable = WorkflowNodeClosure.Reachable(new[] { rootId }, edges);
             reachableFromAny.UnionWith(reachable);
 
             if (!reachable.Any(id => nodesById.TryGetValue(id, out var reached) && reached.ForEach != null))
@@ -755,33 +756,6 @@ public static class WorkflowPackageValidator
                     : $"Node '{node.Id}' does not feed any result: every node must transitively reach a result node in specVersion {manifest.SpecVersion}. Bind it into a node that does, or add it to a result's aggregator.");
             }
         }
-    }
-
-    private static HashSet<string> WalkDependencies(string rootId, IReadOnlyDictionary<string, HashSet<string>> edges)
-    {
-        var reachable = new HashSet<string>(StringComparer.Ordinal) { rootId };
-        var frontier = new Queue<string>();
-        frontier.Enqueue(rootId);
-
-        while (frontier.Count > 0)
-        {
-            var current = frontier.Dequeue();
-
-            if (!edges.TryGetValue(current, out var dependencies))
-            {
-                continue;
-            }
-
-            foreach (var dependency in dependencies)
-            {
-                if (reachable.Add(dependency))
-                {
-                    frontier.Enqueue(dependency);
-                }
-            }
-        }
-
-        return reachable;
     }
 
     private static bool TryResolveForEachCollection(
