@@ -67,14 +67,19 @@ public abstract class ClientRenderTestContext : BunitContext
     /// <summary>
     /// The pinned package Consults renders its setup form from. Inputs and
     /// Results null = the frozen v5/v6 shape.
+    ///
+    /// The version is a parameter because #360 is a version-mismatch bug: with
+    /// one hard-coded ref, "sent the current pin" and "sent the previous job's"
+    /// are the same string and no test can tell them apart.
     /// </summary>
     protected void WithPinnedPackage(
         IReadOnlyList<WorkflowPackageBlockResponse>? blocks = null,
         IReadOnlyList<WorkflowPackageInputResponse>? inputs = null,
-        IReadOnlyList<WorkflowPackageResultResponse>? results = null)
+        IReadOnlyList<WorkflowPackageResultResponse>? results = null,
+        string version = "v2026.07.10")
     {
         WorkflowService.GetCurrentPackageAsync().Returns(new WorkflowPackageResponse(
-            "general", "v2026.07.10", inputs is null ? 6 : 7, blocks, inputs, results));
+            "general", version, inputs is null ? 6 : 7, blocks, inputs, results));
 
         // The run rail's enrichment; failures here are swallowed by the page,
         // so a rejected task is a legitimate "content endpoint unavailable".

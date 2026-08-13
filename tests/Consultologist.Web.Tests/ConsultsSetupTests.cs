@@ -475,3 +475,163 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         Assert.Empty(page.FindAll("select.node-field__input"));
     }
 }
+
+/// <summary>
+/// #360: which package version a submit runs against. The page holds one
+/// resolved ref — the current pin's, the same package its input fields were
+/// built from — and re-attaching to an earlier job must not move it.
+///
+/// In production it did. Publishing from the editor repins server-side without
+/// navigating, so the next visit to Consults built the new version's fields and
+/// then submitted them against the previous run's version: "Unknown input(s)
+/// 'include_billing_rename' (declared: consult_draft, encounter_kind,
+/// include_billing, seen_on)". When the two versions happen to declare the same
+/// ids there is no error at all and the run silently uses the older package —
+/// the case that needs a test, because nothing else would ever report it.
+///
+/// These are also the first tests to execute the session-matched re-attach
+/// branch; ConsultsResultTests reaches re-attach by route id only, which takes
+/// the other one.
+/// </summary>
+public class ConsultsPackageRefTests : ClientRenderTestContext
+{
+    private const string EarlierJobId = "0123456789abcdef0123456789abcdef";
+    private const string CurrentRef = "general@v2026.08.02";
+
+    private void WithTheCurrentPin() =>
+        WithPinnedPackage(
+            blocks: new[] { Block("consult:hpi", "History") },
+            inputs: new[] { new WorkflowPackageInputResponse("consult_draft", "Consult draft", true) },
+            version: "v2026.08.02");
+
+    /// <summary>
+    /// The tab state publishing leaves behind: a memento for a job this tab ran
+    /// under the previous version, terminal on arrival — which is where the
+    /// person stands when they edit the draft and run it again.
+    /// </summary>
+    private void WithARunFromTheEarlierPackage()
+    {
+        JobSession.Current = new ConsultJobMemento(
+            EarlierJobId,
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["consult_draft"] = "Chest pain, rule out ACS." },
+            new[] { new ConsultJobBlock("consult:hpi", "History") });
+
+        AIService.GetConsultGenerationJobAsync(EarlierJobId).Returns(new ConsultGenerationJobResponse(
+            EarlierJobId,
+            "user-1",
+            "Completed",
+            TotalBlockCount: 1,
+            CompletedBlockCount: 1,
+            FailedBlockCount: 0,
+            GeneratedBlocks: new Dictionary<string, string> { ["consult:hpi"] = "Section prose." },
+            FailedBlocks: new Dictionary<string, string>(),
+            Success: true,
+            AssembledDocument: "The note.",
+            // The job's own version — the server's record of it, and the only
+            // place this page should ever learn it from.
+            WorkflowPackage: "general@v2026.07.10"));
+    }
+
+    private string? CaptureSentRef()
+    {
+        var sent = new string?[1];
+
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Any<IReadOnlyDictionary<string, ConsultInputValue>>(),
+                Arg.Do<string?>(value => sent[0] = value),
+                Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, InputFilePayload>?>())
+            .Returns(new ConsultGenerationJobStartResponse("job-2", "https://example/status"));
+
+        return sent[0];
+    }
+
+    [Fact]
+    public void ASubmit_SendsTheResolvedRefOfThePackageItsFieldsCameFrom()
+    {
+        // The control: no memento, nothing to confuse it. Holds the deliberate
+        // half of the behaviour — the ref is sent rather than left null for the
+        // server to re-resolve, so a floating @latest pin cannot move between
+        // the form's render and its submit.
+        WithTheCurrentPin();
+
+        string? sentRef = null;
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Any<IReadOnlyDictionary<string, ConsultInputValue>>(),
+                Arg.Do<string?>(value => sentRef = value),
+                Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, InputFilePayload>?>())
+            .Returns(new ConsultGenerationJobStartResponse("job-2", "https://example/status"));
+
+        var page = Render<Consults>();
+        page.Find("fluent-text-area").Change("Chest pain, rule out ACS.");
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.Equal(CurrentRef, sentRef);
+    }
+
+    [Fact]
+    public void AReattachedRunFromAnEarlierPackage_DoesNotMoveTheRefTheNextSubmitSends()
+    {
+        WithTheCurrentPin();
+        WithARunFromTheEarlierPackage();
+
+        string? sentRef = null;
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Any<IReadOnlyDictionary<string, ConsultInputValue>>(),
+                Arg.Do<string?>(value => sentRef = value),
+                Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, InputFilePayload>?>())
+            .Returns(new ConsultGenerationJobStartResponse("job-2", "https://example/status"));
+
+        var page = Render<Consults>();
+
+        // Re-attach lands on the finished run; editing is the way back to the
+        // form. One declared input, so the control reads "Edit draft".
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Edit draft")).Click();
+
+        page.Find("fluent-text-area").Change("Chest pain, rule out ACS.");
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.Equal(CurrentRef, sentRef);
+    }
+
+    [Fact]
+    public void AnOvernightSubmit_SendsTheCurrentPinToo()
+    {
+        // The scheduled path writes no memento but read the same field, and it
+        // is the worse place to be wrong: the run happens hours later with
+        // nobody watching, so a version mismatch surfaces as an email.
+        WithTheCurrentPin();
+        WithARunFromTheEarlierPackage();
+
+        string? sentRef = null;
+        DateTimeOffset? sentSchedule = null;
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Any<IReadOnlyDictionary<string, ConsultInputValue>>(),
+                Arg.Do<string?>(value => sentRef = value),
+                Arg.Do<DateTimeOffset?>(value => sentSchedule = value),
+                Arg.Any<IReadOnlyDictionary<string, InputFilePayload>?>())
+            .Returns(new ConsultGenerationJobStartResponse("job-2", "https://example/status"));
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Edit draft")).Click();
+        page.Find("fluent-text-area").Change("Chest pain, rule out ACS.");
+        // FluentSwitch raises onswitchcheckedchange carrying Fluent's own
+        // CheckboxChangeEventArgs — .Change() and a plain ChangeEventArgs both
+        // throw rather than silently doing nothing, which is why this is
+        // spelled out.
+        page.Find("fluent-switch").TriggerEvent(
+            "onswitchcheckedchange",
+            new Microsoft.FluentUI.AspNetCore.Components.CheckboxChangeEventArgs { Checked = true });
+
+        // The switch is the entire difference between the two paths. Assert it
+        // took, or this silently re-runs the immediate one.
+        Assert.Contains("Schedule consult", page.FindAll("fluent-button").Last().TextContent);
+
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.Equal(CurrentRef, sentRef);
+        Assert.NotNull(sentSchedule);
+    }
+}
