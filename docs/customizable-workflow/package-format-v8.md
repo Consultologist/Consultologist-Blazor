@@ -138,6 +138,12 @@ inputs. Consequences that are part of the contract:
 - Blocks are expanded over the fire set, so a deliverable that will not
   fire contributes none. `TotalBlockCount` remains a stored scalar stamped
   once.
+- The **node set is pruned to the fire set's transitive closure**: a node
+  that feeds only a deliverable which did not fire never runs. The closure
+  is over the two node→node edges — a binding's `node:` source and an
+  aggregator's source list — rooted at the firing deliverables' nodes. A
+  package with nothing skipped prunes to itself, since every node must
+  already reach some deliverable.
 - **Absence is not falsity**: an optional input nobody supplied satisfies
   no condition, including the negated form.
 - An **empty fire set is refused at start**, naming each deliverable and
