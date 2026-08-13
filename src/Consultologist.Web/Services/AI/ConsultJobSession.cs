@@ -7,11 +7,18 @@ public sealed record ConsultJobBlock(string Id, string Name);
 /// the job record carries no input text, so the supplied inputs (and the exact
 /// block roster the run was submitted with) live only here. Keyed by declared
 /// input id — v5/v6 runs carry the single consult_draft entry.
+///
+/// #360: deliberately no package ref. The job's own resolved version is on its
+/// snapshot (ConsultGenerationJobResponse.WorkflowPackage — what History renders
+/// as the provenance chip), which is present on every re-attach path including
+/// the route-only one, across tabs, and after a reload. The copy that used to
+/// live here was none of those things, and had exactly one reader: it overwrote
+/// the page's current-pin ref, so the next submit ran against the previous
+/// job's package. With the field gone that is no longer expressible.
 /// </summary>
 public sealed record ConsultJobMemento(
     string JobId,
     IReadOnlyDictionary<string, string> Inputs,
-    string? WorkflowPackageRef,
     IReadOnlyList<ConsultJobBlock> Blocks);
 
 /// <summary>

@@ -611,8 +611,19 @@
 
     if (sessionMatches)
     {
+      // Inputs only. ApplyInputValues fills values into the fields
+      // SyncInputFields already built from the current pin; it never rebuilds
+      // the field set.
+      //
+      // #360: this used to adopt the job's package ref as well, which then went
+      // out with the NEXT submit — sending the current package's input ids to
+      // the previous package. That announced itself only when an id had been
+      // renamed ("Unknown input(s) 'include_billing_rename'"); when the two
+      // declarations happened to agree it silently ran the older version while
+      // the form displayed the newer one. The version a running job used is not
+      // this page's to remember: it is on the job's own snapshot, fetched below
+      // and rendered by History as its provenance chip.
       ApplyInputValues(memento!.Inputs);
-      workflowPackageRef = memento.WorkflowPackageRef ?? workflowPackageRef;
     }
 
     var blockSnapshots = sessionMatches
@@ -832,7 +843,6 @@
       JobSession.Current = new ConsultJobMemento(
         job.JobId,
         textSnapshot,
-        workflowPackageRef,
         blockSnapshots.Select(block => new ConsultJobBlock(block.Id, block.Name)).ToList());
 
       await RunAttachedJobAsync(job.JobId, blockSnapshots);
