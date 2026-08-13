@@ -177,7 +177,7 @@
                             <div class="setup-context">
                                 <span class="setup-context__line">
                                     Runs
-                                    <WorkflowPackagePicker @key="workflowPackageRef"
+                                    <WorkflowPackagePicker @key="currentPackageRef"
                                                            Disabled="@isAiRequestLoading"
                                                            OnPinned="OnPackagePinnedAsync" />
                                     <span class="muted-text">· @SectionSummary</span>
@@ -554,7 +554,14 @@
   private IReadOnlyList<ConsultSkippedDocumentResponse> skippedDocuments = Array.Empty<ConsultSkippedDocumentResponse>();
   private string? activeDocumentId;
   private List<PackageBlock> packageBlocks = new();
-  private string? workflowPackageRef;
+  // #360: the CURRENT pin, resolved to a concrete name@vYYYY.MM.N. One meaning,
+  // written in one place — beside SyncInputFields, from the same package — so
+  // the ref and the form's field ids cannot disagree. Sending it is deliberate
+  // rather than incidental: it pins the version the fields were built from,
+  // closing the race where a floating @latest pin moves between render and
+  // submit. The version a *running* job used is not this; that is on the job's
+  // own snapshot (ConsultGenerationJobResponse.WorkflowPackage).
+  private string? currentPackageRef;
   private IReadOnlyList<WorkflowManifestReader.NodeView>? workflowNodes;
   private IReadOnlyList<WorkflowManifestReader.CollectionView> workflowCollections = Array.Empty<WorkflowManifestReader.CollectionView>();
   private HashSet<string> completedNodeItems = new();
@@ -611,8 +618,19 @@
 
     if (sessionMatches)
     {
+      // Inputs only. ApplyInputValues fills values into the fields
+      // SyncInputFields already built from the current pin; it never rebuilds
+      // the field set.
+      //
+      // #360: this used to adopt the job's package ref as well, which then went
+      // out with the NEXT submit — sending the current package's input ids to
+      // the previous package. That announced itself only when an id had been
+      // renamed ("Unknown input(s) 'include_billing_rename'"); when the two
+      // declarations happened to agree it silently ran the older version while
+      // the form displayed the newer one. The version a running job used is not
+      // this page's to remember: it is on the job's own snapshot, fetched below
+      // and rendered by History as its provenance chip.
       ApplyInputValues(memento!.Inputs);
-      workflowPackageRef = memento.WorkflowPackageRef ?? workflowPackageRef;
     }
 
     var blockSnapshots = sessionMatches
@@ -704,7 +722,7 @@
       // spec version. The account standards override retired with the v5 input
       // model; customization returns as package forking (the in-app editor).
       var package = await WorkflowService.GetCurrentPackageAsync();
-      workflowPackageRef = package.Ref;
+      currentPackageRef = package.Ref;
 
       packageBlocks = (package.Blocks ?? Array.Empty<WorkflowPackageBlockResponse>())
         .Select(block => new PackageBlock(block.Id, block.Name))
@@ -786,7 +804,7 @@
         isSchedulingRequest = true;
         var scheduledAtUtc = NextOvernightRunUtc();
         var job = await AIService.StartConsultGenerationJobAsync(
-          SuppliedInputs(), workflowPackageRef, scheduledAtUtc, SuppliedFiles());
+          SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles());
         scheduleConfirmation =
           $"Consult scheduled for {scheduledAtUtc.ToLocalTime():MMM d, h:mm tt} — it will appear in History, and you'll receive an email when it's ready.";
         runOvernight = false;
@@ -826,13 +844,12 @@
       // Sections are package data resolved server-side; the request carries only
       // the declared inputs (and the resolved package ref).
       var job = await AIService.StartConsultGenerationJobAsync(
-        inputSnapshot, workflowPackageRef, files: fileSnapshot);
+        inputSnapshot, currentPackageRef, files: fileSnapshot);
 
       // #207: remember the job per-tab so navigating away and back re-attaches.
       JobSession.Current = new ConsultJobMemento(
         job.JobId,
         textSnapshot,
-        workflowPackageRef,
         blockSnapshots.Select(block => new ConsultJobBlock(block.Id, block.Name)).ToList());
 
       await RunAttachedJobAsync(job.JobId, blockSnapshots);
