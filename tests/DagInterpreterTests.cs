@@ -379,6 +379,39 @@ public class ConsultGenerationNodeEntityTests
     }
 
     [Fact]
+    public async Task Initialize_StampsTheFanRosterOnceAndItReachesTheResponse()
+    {
+        // #361: the rail reads this off the response, so the hop that matters is
+        // ToResponse, not the entity field. Stamped write-once beside Nodes: a
+        // job's graph is the one it started with, not the one a later signal
+        // happens to carry.
+        var (entity, state) = CreateEntity();
+
+        await entity.Initialize(new ConsultGenerationJobInitialize(
+            "job-1",
+            "user-1",
+            new[] { Item("hpi", "History of Present Illness") },
+            Collections: new[]
+            {
+                new ConsultCollectionRoster("standards", new[] { new ConsultCollectionItem("hpi", "History of Present Illness") })
+            }));
+
+        await entity.Initialize(new ConsultGenerationJobInitialize(
+            "job-1",
+            "user-1",
+            new[] { Item("hpi", "History of Present Illness") },
+            Collections: new[]
+            {
+                new ConsultCollectionRoster("standards", new[] { new ConsultCollectionItem("later", "Added afterwards") })
+            }));
+
+        var roster = Assert.Single(state().ToResponse().Collections!);
+
+        Assert.Equal("standards", roster.CollectionId);
+        Assert.Equal(new[] { "hpi" }, roster.Items.Select(item => item.Id).ToArray());
+    }
+
+    [Fact]
     public void MarkNodeCompleted_RecordsOutputAndCounts()
     {
         var (entity, state) = CreateEntity();
