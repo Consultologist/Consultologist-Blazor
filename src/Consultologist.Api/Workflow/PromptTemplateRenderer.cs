@@ -65,7 +65,7 @@ public static class PromptTemplateRenderer
     /// reaches a template. A defensive fall back to the string keeps a replay
     /// of an older job honest rather than throwing on it.
     /// </summary>
-    private static object TypedOrString(
+    private static object? TypedOrString(
         string name,
         string value,
         IReadOnlyDictionary<string, string>? variableTypes)
@@ -73,6 +73,26 @@ public static class PromptTemplateRenderer
         if (variableTypes is null || !variableTypes.TryGetValue(name, out var type))
         {
             return value;
+        }
+
+        // #358: an unanswered optional of a CONVERTED type is null, not the
+        // empty string. Scriban's only falsy values are null,
+        // EmptyScriptObject.Default and bool false, so the empty string was
+        // truthy and {{ if billable }} fired for a question nobody answered —
+        // on every emailed job, since a boolean cannot be supplied by email at
+        // all (a string in a boolean slot is a 422).
+        //
+        // null rather than false: false is an ANSWER, and it renders the five
+        // characters "false" wherever the variable is interpolated bare. null
+        // is falsy and renders nothing, which is v7 § 3's rule unchanged.
+        //
+        // text and enum stay strings — both are JSON strings on the wire, and
+        // the `(x | string.strip) == ""` idiom the published packages use to
+        // test absence would silently stop firing on null.
+        if (string.IsNullOrWhiteSpace(value)
+            && type is WorkflowInputTypes.Boolean or WorkflowInputTypes.Date)
+        {
+            return null;
         }
 
         return type switch
