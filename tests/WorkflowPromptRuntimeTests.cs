@@ -66,6 +66,133 @@ public class PromptTemplateRendererTests
         Assert.Equal("Bill it.", result);
     }
 
+    // #358: an unanswered optional is *absent*, and the resolver map spells
+    // absence as the empty string. Scriban's only falsy values are null,
+    // EmptyScriptObject.Default and bool false — so the empty string was
+    // truthy, and every emailed job took the true branch of every boolean it
+    // could not answer. A boolean cannot be supplied by email at all.
+
+    private const string Absent = "";
+
+    private static Dictionary<string, string> Typed(string name, string type) =>
+        new(StringComparer.Ordinal) { [name] = type };
+
+    [Fact]
+    public void Render_AnAbsentOptionalBoolean_IsFalsy()
+    {
+        var result = PromptTemplateRenderer.Render(
+            TypedTemplate("{{ if billable }}Bill it.{{ else }}No charge.{{ end }}", "billable"),
+            new Dictionary<string, string> { ["billable"] = Absent },
+            Typed("billable", WorkflowInputTypes.Boolean));
+
+        Assert.Equal("No charge.", result);
+    }
+
+    [Fact]
+    public void Render_AnAbsentOptionalBoolean_RendersNothing()
+    {
+        // Why null rather than false: false is falsy too, but it renders five
+        // characters wherever the variable is interpolated bare, putting a word
+        // nobody supplied into a prompt. An absent optional renders empty
+        // (package-format-v7.md § 3), and null is the only falsy value that
+        // keeps that promise.
+        var result = PromptTemplateRenderer.Render(
+            TypedTemplate("[{{ billable }}]", "billable"),
+            new Dictionary<string, string> { ["billable"] = Absent },
+            Typed("billable", WorkflowInputTypes.Boolean));
+
+        Assert.Equal("[]", result);
+    }
+
+    [Fact]
+    public void Render_ASuppliedFalse_IsFalsyAndStillPrints()
+    {
+        // The distinction the fix turns on: false is an answer. It branches the
+        // same way absence does and renders differently, which is what lets a
+        // template tell them apart at all.
+        var result = PromptTemplateRenderer.Render(
+            TypedTemplate("{{ if billable }}Bill it.{{ else }}No charge.{{ end }} [{{ billable }}]", "billable"),
+            new Dictionary<string, string> { ["billable"] = "false" },
+            Typed("billable", WorkflowInputTypes.Boolean));
+
+        Assert.Equal("No charge. [false]", result);
+    }
+
+    [Fact]
+    public void Render_AnAbsentOptionalBoolean_MatchesNeitherLiteral()
+    {
+        // The == true workaround keeps working, and so does its mirror:
+        // absence answers neither question. An author who needs the three-way
+        // distinction tests the value rather than negating it.
+        var variables = new Dictionary<string, string> { ["billable"] = Absent };
+        var types = Typed("billable", WorkflowInputTypes.Boolean);
+
+        Assert.Equal(string.Empty, PromptTemplateRenderer.Render(
+            TypedTemplate("{{ if billable == true }}yes{{ end }}", "billable"), variables, types));
+        Assert.Equal(string.Empty, PromptTemplateRenderer.Render(
+            TypedTemplate("{{ if billable == false }}no{{ end }}", "billable"), variables, types));
+    }
+
+    [Fact]
+    public void Render_AnAbsentOptionalBoolean_SatisfiesTheNegatedForm()
+    {
+        // Pinned deliberately, because it is the one place a template and a
+        // `when` condition disagree and cannot be reconciled:
+        // WorkflowResultConditions.Holds is three-valued, so
+        // `billable != true` does NOT hold on absence, while Scriban has one
+        // falsy null and no third value to offer.
+        var result = PromptTemplateRenderer.Render(
+            TypedTemplate("{{ if !billable }}Not billed.{{ end }}", "billable"),
+            new Dictionary<string, string> { ["billable"] = Absent },
+            Typed("billable", WorkflowInputTypes.Boolean));
+
+        Assert.Equal("Not billed.", result);
+    }
+
+    [Fact]
+    public void Render_AnAbsentOptionalDate_IsFalsyAndRendersNothing()
+    {
+        // The same defect one type over: a DateTime is truthy too, including
+        // DateTime.MinValue, which would also render a year-1 date.
+        var result = PromptTemplateRenderer.Render(
+            TypedTemplate("[{{ seen_on }}]{{ if seen_on }} seen{{ end }}", "seen_on"),
+            new Dictionary<string, string> { ["seen_on"] = Absent },
+            Typed("seen_on", WorkflowInputTypes.Date));
+
+        Assert.Equal("[]", result);
+    }
+
+    [Theory]
+    [InlineData(WorkflowInputTypes.Enum)]
+    [InlineData(WorkflowInputTypes.Text)]
+    public void Render_AnAbsentOptionalStringType_IsStillTheEmptyString(string type)
+    {
+        // enum and text are JSON strings on the wire and stay strings here, so
+        // the `== ""` idiom both published packages use to test absence keeps
+        // working. Only the two converted types change.
+        var result = PromptTemplateRenderer.Render(
+            TypedTemplate(
+                "{{ if (encounter_kind | string.strip) == \"\" }}unset{{ else }}{{ encounter_kind }}{{ end }}",
+                "encounter_kind"),
+            new Dictionary<string, string> { ["encounter_kind"] = Absent },
+            Typed("encounter_kind", type));
+
+        Assert.Equal("unset", result);
+    }
+
+    [Fact]
+    public void Render_WithoutTypes_AnAbsentOptionalIsStillTruthy()
+    {
+        // Replay safety as an assertion: a v5-v7 job carries no VariableTypes,
+        // so #358 must not reach it. The empty string stays the empty string
+        // and stays truthy, exactly as the recorded run rendered.
+        var result = PromptTemplateRenderer.Render(
+            TypedTemplate("{{ if billable }}Bill it.{{ else }}No charge.{{ end }}", "billable"),
+            new Dictionary<string, string> { ["billable"] = Absent });
+
+        Assert.Equal("Bill it.", result);
+    }
+
     [Fact]
     public void Render_PrependsPreludeWithBlankLine()
     {
