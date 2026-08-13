@@ -62,12 +62,168 @@ public static class V8Fixtures
         };
     }
 
+    /// <summary>
+    /// #357: a package whose prompt actually READS a typed input. Typed() only
+    /// declares the inputs — nothing binds them — so it cannot exercise the
+    /// probe. This adds a scalar prompt node whose one variable is bound to
+    /// whatever source the caller names, and a hand-written template, since
+    /// every generated fixture template is a bare {{ variable }}.
+    /// </summary>
+    public static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) Reading(
+        string template,
+        string source = "input:seen_on",
+        string? alsoBoundBy = null)
+    {
+        var manifest = Typed();
+        var prompts = new List<WorkflowPromptSpec>(manifest.Prompts!)
+        {
+            new("stamp", "prompts/stamp.md", new List<string> { "seen" })
+        };
+
+        var nodes = new List<WorkflowNodeSpec>(manifest.Nodes!);
+        var reader = new WorkflowNodeSpec("stamp", "Stamping the note",
+            Prompt: "stamp",
+            Bindings: new Dictionary<string, WorkflowBindingValue>(StringComparer.Ordinal)
+            {
+                ["seen"] = new(source)
+            });
+
+        // The aggregator must still reach it, or reachability fails for a reason
+        // that has nothing to do with the probe.
+        var resultIndex = nodes.FindIndex(node => node.Id == "assemble-note");
+        nodes[resultIndex] = nodes[resultIndex] with
+        {
+            Aggregate = new List<string> { "node:section-instructions", "node:stamp" }
+        };
+        nodes.Insert(resultIndex, reader);
+
+        if (alsoBoundBy != null)
+        {
+            // A second node sharing the same prompt, binding the same variable
+            // to a different source — legal since v6, and the case a prompt-wide
+            // type environment cannot describe.
+            nodes.Insert(resultIndex + 1, new WorkflowNodeSpec("stamp-again", "Stamping again",
+                Prompt: "stamp",
+                Bindings: new Dictionary<string, WorkflowBindingValue>(StringComparer.Ordinal)
+                {
+                    ["seen"] = new(alsoBoundBy)
+                },
+                ForEach: "data:standards"));
+
+            nodes[nodes.FindIndex(node => node.Id == "assemble-note")] = nodes[nodes.FindIndex(node => node.Id == "assemble-note")] with
+            {
+                Aggregate = new List<string> { "node:section-instructions", "node:stamp", "node:stamp-again" }
+            };
+        }
+
+        manifest = manifest with { Prompts = prompts, Nodes = nodes };
+
+        var files = V6Fixtures.Files(manifest);
+        files["prompts/stamp.md"] = template;
+
+        return (manifest, files);
+    }
+
     public static WorkflowPackageValidator.ValidationResult Validate(WorkflowPackageManifest manifest)
         => WorkflowPackageValidator.Validate(manifest, V6Fixtures.Files(manifest), TestOutputContracts.CatalogSchemas);
 }
 
 public class WorkflowV8ValidationTests
 {
+    // #357: the validator probes every prompt by rendering it. It used to hand
+    // each variable the string "placeholder", so the format's own documented
+    // idiom — {{ seen_on | date.to_string "%d %B %Y" }} — could not publish:
+    // Scriban refuses string → DateTime. It types from the BINDINGS, which is
+    // where a variable's type actually comes from.
+
+    private static WorkflowPackageValidator.ValidationResult ValidateReading(
+        string template,
+        string source = "input:seen_on",
+        string? alsoBoundBy = null)
+    {
+        var (manifest, files) = V8Fixtures.Reading(template, source, alsoBoundBy);
+        return WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas);
+    }
+
+    [Fact]
+    public void ADateFilter_OnADateBoundVariable_Validates()
+    {
+        var result = ValidateReading("Seen {{ seen | date.to_string \"%d %B %Y\" }}");
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void ADateFilter_OnAStringBoundVariable_StillFails()
+    {
+        // The type comes from the binding, not from the variable's name or from
+        // the template's hopes: item:name is a string at runtime, so formatting
+        // it as a date would throw there.
+        var result = ValidateReading(
+            "Seen {{ seen | date.to_string \"%d %B %Y\" }}",
+            source: "item:name");
+
+        Assert.Contains(result.Errors, error => error.Contains("failed strict rendering", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ASharedPromptWithDivergentBindings_KeepsTheVariableAString()
+    {
+        // A prompt may be shared since v6, and each node binds every variable
+        // itself with no rule forcing agreement. So there is no single type for
+        // the variable, and the template is genuinely invalid for the node
+        // passing a string — refusing it is the right verdict.
+        var result = ValidateReading(
+            "Seen {{ seen | date.to_string \"%d %B %Y\" }}",
+            source: "input:seen_on",
+            alsoBoundBy: "item:name");
+
+        Assert.Contains(result.Errors, error => error.Contains("failed strict rendering", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ABooleanBoundVariable_ProbesAsABoolean()
+    {
+        // Not a filter but the same principle: the probe hands Scriban the type
+        // the runtime will, so a branch is a branch rather than a truthy string.
+        var result = ValidateReading(
+            "{{ if seen }}Billable.{{ end }}",
+            source: "input:billable");
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AVariableNamedForABuiltin_Warns()
+    {
+        // Shadowing `date` makes EVERY date in the template render as a .NET
+        // default — including ones this variable has nothing to do with. A
+        // warning, not an error: this validator runs at load too, and a new
+        // error would strand an already-published package.
+        var (manifest, files) = V8Fixtures.Reading("{{ seen }}");
+        var prompts = new List<WorkflowPromptSpec>(manifest.Prompts!);
+        var index = prompts.FindIndex(prompt => prompt.Id == "stamp");
+        prompts[index] = prompts[index] with { Variables = new List<string> { "date" } };
+
+        var nodes = new List<WorkflowNodeSpec>(manifest.Nodes!);
+        var reader = nodes.FindIndex(node => node.Id == "stamp");
+        nodes[reader] = nodes[reader] with
+        {
+            Bindings = new Dictionary<string, WorkflowBindingValue>(StringComparer.Ordinal)
+            {
+                ["date"] = new("input:seen_on")
+            }
+        };
+
+        files["prompts/stamp.md"] = "{{ date }}";
+
+        var result = WorkflowPackageValidator.Validate(
+            manifest with { Prompts = prompts, Nodes = nodes }, files, TestOutputContracts.CatalogSchemas);
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+        Assert.Contains(result.Warnings, warning => warning.Contains("shadows Scriban's built-in", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void MinimalV8_IsValid_WithNoTypesDeclared()
     {
