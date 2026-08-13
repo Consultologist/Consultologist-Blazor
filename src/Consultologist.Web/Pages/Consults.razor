@@ -177,7 +177,7 @@
                             <div class="setup-context">
                                 <span class="setup-context__line">
                                     Runs
-                                    <WorkflowPackagePicker @key="workflowPackageRef"
+                                    <WorkflowPackagePicker @key="currentPackageRef"
                                                            Disabled="@isAiRequestLoading"
                                                            OnPinned="OnPackagePinnedAsync" />
                                     <span class="muted-text">· @SectionSummary</span>
@@ -554,7 +554,14 @@
   private IReadOnlyList<ConsultSkippedDocumentResponse> skippedDocuments = Array.Empty<ConsultSkippedDocumentResponse>();
   private string? activeDocumentId;
   private List<PackageBlock> packageBlocks = new();
-  private string? workflowPackageRef;
+  // #360: the CURRENT pin, resolved to a concrete name@vYYYY.MM.N. One meaning,
+  // written in one place — beside SyncInputFields, from the same package — so
+  // the ref and the form's field ids cannot disagree. Sending it is deliberate
+  // rather than incidental: it pins the version the fields were built from,
+  // closing the race where a floating @latest pin moves between render and
+  // submit. The version a *running* job used is not this; that is on the job's
+  // own snapshot (ConsultGenerationJobResponse.WorkflowPackage).
+  private string? currentPackageRef;
   private IReadOnlyList<WorkflowManifestReader.NodeView>? workflowNodes;
   private IReadOnlyList<WorkflowManifestReader.CollectionView> workflowCollections = Array.Empty<WorkflowManifestReader.CollectionView>();
   private HashSet<string> completedNodeItems = new();
@@ -715,7 +722,7 @@
       // spec version. The account standards override retired with the v5 input
       // model; customization returns as package forking (the in-app editor).
       var package = await WorkflowService.GetCurrentPackageAsync();
-      workflowPackageRef = package.Ref;
+      currentPackageRef = package.Ref;
 
       packageBlocks = (package.Blocks ?? Array.Empty<WorkflowPackageBlockResponse>())
         .Select(block => new PackageBlock(block.Id, block.Name))
@@ -797,7 +804,7 @@
         isSchedulingRequest = true;
         var scheduledAtUtc = NextOvernightRunUtc();
         var job = await AIService.StartConsultGenerationJobAsync(
-          SuppliedInputs(), workflowPackageRef, scheduledAtUtc, SuppliedFiles());
+          SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles());
         scheduleConfirmation =
           $"Consult scheduled for {scheduledAtUtc.ToLocalTime():MMM d, h:mm tt} — it will appear in History, and you'll receive an email when it's ready.";
         runOvernight = false;
@@ -837,7 +844,7 @@
       // Sections are package data resolved server-side; the request carries only
       // the declared inputs (and the resolved package ref).
       var job = await AIService.StartConsultGenerationJobAsync(
-        inputSnapshot, workflowPackageRef, files: fileSnapshot);
+        inputSnapshot, currentPackageRef, files: fileSnapshot);
 
       // #207: remember the job per-tab so navigating away and back re-attaches.
       JobSession.Current = new ConsultJobMemento(
