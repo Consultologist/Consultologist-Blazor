@@ -20,6 +20,21 @@ public static class WorkflowPackageValidator
     /// <summary>The Scriban version this engine renders with (Major.Minor.Patch).</summary>
     public static readonly Version EngineScribanVersion = GetScribanVersion();
 
+    /// <summary>
+    /// #357: the probe's stand-in for a date-typed variable. Any real date does;
+    /// what matters is that it is a DateTime, so a template may format it.
+    /// </summary>
+    private static readonly DateTime ProbeDate = new(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>
+    /// Scriban globals a prompt variable would shadow. Only the ones whose loss
+    /// is silent rather than loud are worth warning about — a shadowed `date`
+    /// makes every date in the template render as a .NET default instead of the
+    /// format the package declares.
+    /// </summary>
+    private static readonly HashSet<string> ScribanBuiltinNames =
+        new(StringComparer.Ordinal) { "date", "string", "array", "math", "object", "regex", "timespan", "html" };
+
     public sealed record ValidationResult(List<string> Errors, List<string> Warnings)
     {
         public bool IsValid => Errors.Count == 0;
@@ -75,7 +90,7 @@ public static class WorkflowPackageValidator
                 continue;
             }
 
-            ValidateTemplate(prompt, templateText, errors, warnings);
+            ValidateTemplate(prompt, templateText, ProbeTypes(manifest), errors, warnings);
         }
 
         foreach (var (preludeId, preludePath) in manifest.Preludes ?? new Dictionary<string, string>())
@@ -967,9 +982,83 @@ public static class WorkflowPackageValidator
         }
     }
 
+    /// <summary>
+    /// Variable name → the declared input type the probe should render it as
+    /// (#357).
+    ///
+    /// The runtime types per NODE — a node's bindings say which of its
+    /// variables read a typed input. A prompt has no such environment of its
+    /// own: from v6 a prompt may be shared, and each using node binds every
+    /// variable itself, with no rule forcing two nodes to agree. So a variable
+    /// is typed here only when every binding that reaches it agrees; anything
+    /// else stays the string it has always been, and a template that formats it
+    /// as a date fails — correctly, because it would be wrong for the node
+    /// passing a string.
+    ///
+    /// This runs before ValidateNodes and before the specVersion gate, so
+    /// nothing here may assume the declaration is well formed: an unknown type
+    /// string, a duplicate id or a binding naming no declared input all fall
+    /// back to a string rather than throwing.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> ProbeTypes(WorkflowPackageManifest manifest)
+    {
+        var declared = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var input in manifest.Inputs ?? new List<WorkflowInputSpec>())
+        {
+            var type = WorkflowInputTypes.Of(input);
+
+            // Only the two converted types change what the probe hands Scriban;
+            // text and enum are strings at runtime too.
+            if (type is WorkflowInputTypes.Date or WorkflowInputTypes.Boolean)
+            {
+                declared[input.Id] = type;
+            }
+        }
+
+        if (declared.Count == 0)
+        {
+            return declared;
+        }
+
+        var typed = new Dictionary<string, string>(StringComparer.Ordinal);
+        var conflicted = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
+        {
+            foreach (var (variable, binding) in node.Bindings ?? new Dictionary<string, WorkflowBindingValue>())
+            {
+                var type = binding.From.StartsWith(WorkflowNodeBindingSources.InputPrefix, StringComparison.Ordinal)
+                    ? declared.GetValueOrDefault(binding.From[WorkflowNodeBindingSources.InputPrefix.Length..])
+                    : null;
+
+                if (typed.TryGetValue(variable, out var seen) && seen != type)
+                {
+                    conflicted.Add(variable);
+                }
+                else if (type != null)
+                {
+                    typed[variable] = type;
+                }
+                else if (typed.ContainsKey(variable))
+                {
+                    conflicted.Add(variable);
+                }
+            }
+        }
+
+        foreach (var variable in conflicted)
+        {
+            typed.Remove(variable);
+        }
+
+        return typed;
+    }
+
     private static void ValidateTemplate(
         WorkflowPromptSpec prompt,
         string templateText,
+        IReadOnlyDictionary<string, string> probeTypes,
         List<string> errors,
         List<string> warnings)
     {
@@ -987,7 +1076,17 @@ public static class WorkflowPackageValidator
             var probe = new ScriptObject();
             foreach (var variable in prompt.Variables)
             {
-                probe.Add(variable, "placeholder");
+                // #357: typed where the bindings agree, so a template may format
+                // a date it was given as a date. Before this every variable was
+                // the string "placeholder", and the format's own documented
+                // idiom — {{ seen_on | date.to_string "%d %B %Y" }} — could not
+                // publish, because Scriban refuses string → DateTime.
+                probe.Add(variable, probeTypes.GetValueOrDefault(variable) switch
+                {
+                    WorkflowInputTypes.Date => ProbeDate,
+                    WorkflowInputTypes.Boolean => true,
+                    _ => "placeholder"
+                });
             }
 
             var context = new TemplateContext { StrictVariables = true };
@@ -997,6 +1096,21 @@ public static class WorkflowPackageValidator
         catch (Exception ex)
         {
             errors.Add($"Prompt '{prompt.Id}' failed strict rendering with its declared variables: {ex.Message}");
+        }
+
+        // #357: a variable named for a Scriban builtin shadows it. `date` is the
+        // one that bites: with it shadowed, Scriban finds no date functions and
+        // EVERY date in the template silently renders as 08/12/2026 00:00:00 —
+        // including ones the shadowing variable has nothing to do with.
+        //
+        // A warning rather than an error because this validator also runs at
+        // load: a new error would make an already-published package that trips
+        // it unresolvable, and published versions are immutable.
+        foreach (var variable in prompt.Variables.Where(v => ScribanBuiltinNames.Contains(v)))
+        {
+            warnings.Add(
+                $"Prompt '{prompt.Id}' declares variable '{variable}', which shadows Scriban's built-in "
+                    + $"'{variable}' object — dates in this template will not render as the format specifies.");
         }
 
         // Unused-declaration heuristic (warning only): the variable name never appears

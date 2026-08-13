@@ -1,5 +1,6 @@
 using System.Globalization;
 using Scriban;
+using Scriban.Functions;
 using Scriban.Runtime;
 
 namespace Consultologist.Api.Workflow;
@@ -45,6 +46,18 @@ public static class PromptTemplateRenderer
             }
 
             var context = new TemplateContext { StrictVariables = true };
+
+            // #357: a date renders as the ISO calendar date it was supplied as.
+            // Scriban's own default is "%d %b %Y", so a value the format
+            // rejects rather than normalises on the way in — 2026-8-1 is a
+            // 422 — was being silently reformatted on the way out.
+            //
+            // This is the only knob Scriban consults when stringifying a
+            // DateTime, it leaves date.to_string with an explicit pattern
+            // alone, and it is per-context: each TemplateContext deep-clones
+            // the builtins, and this method builds a fresh one per render.
+            ((DateTimeFunctions)context.BuiltinObject[DateTimeFunctions.DateVariable.Name]!).Format = "%Y-%m-%d";
+
             context.PushGlobal(scriptObject);
             rendered = template.Render(context);
         }

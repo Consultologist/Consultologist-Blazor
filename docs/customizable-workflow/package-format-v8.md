@@ -83,8 +83,22 @@ Seen {{ seen_on | date.to_string "%d %B %Y" }}
 {{ if billable }}Include the billing summary.{{ end }}
 ```
 
-There is no per-input default format: `{{ seen_on }}` renders
-`2026-08-10`.
+There is no per-input default format. A bare `{{ seen_on }}` renders the
+**ISO calendar date it was supplied as** — `2026-08-10` — which is the
+same spelling the wire form requires. A value the format rejects rather
+than normalises on the way in should not be silently reformatted on the
+way out.
+
+`date.to_string` is how a prompt asks for anything else, and its pattern
+is Scriban's `%`-syntax rather than .NET's. Do not reach for
+`date.parse_to_string` without an output pattern: it is broken in Scriban
+itself, passing a `%`-pattern to .NET's formatter.
+
+A prompt must not declare a variable named **`date`** — or `string`,
+`array`, `math`, `object`, `regex`, `timespan`, `html`. Each shadows a
+Scriban built-in, and a shadowed `date` makes *every* date in that
+template render as a .NET default instead of the form above. Publishing
+one warns.
 
 An **absent optional** input of a *converted* type — `boolean` or `date` —
 enters the template as **null**. It renders as nothing, which is v7's rule

@@ -42,6 +42,21 @@ than run; the type set is **text, date, enum, boolean**.
 > `when: billable != true` does not hold, because a condition is three-valued
 > and Scriban has one falsy null.
 
+> **Erratum, 2026-08-13 (#357).** § 4's Rendering printed
+> `{{ seen_on | date.to_string "%d %B %Y" }}` as the way to format a date, and
+> said a bare `{{ seen_on }}` renders `2026-08-10`. Neither was true. The
+> validator probes every prompt by rendering it with the string `"placeholder"`
+> for each declared variable, and Scriban refuses `string` → `DateTime`, so the
+> printed idiom **could not publish** — and the same validator runs at load, so
+> such a package would have been unresolvable anyway. Meanwhile the bare form
+> rendered `10 Aug 2026`, Scriban's default, not the ISO wire form. Between
+> them a package could not render an ISO date at all. The renderer now sets the
+> date format on its context, so a bare interpolation is the ISO date the value
+> was supplied as; and the probe types each variable from the **bindings** that
+> reach it, so the documented idiom publishes. A variable shared by nodes that
+> bind it differently stays a string, which refuses a template that really is
+> invalid for one of them.
+
 ## 1. Motivation
 
 Two ceilings, one format revision:
