@@ -59,6 +59,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.EffectiveInputHash ??= input.EffectiveInputHash;
         State.ItemSteps ??= input.ItemSteps?.ToList();
         State.Nodes ??= input.Nodes?.ToList();
+        State.Collections ??= input.Collections?.ToList();
         State.EffectiveInputHashVersion ??= input.EffectiveInputHashVersion;
         State.CatalogRef ??= input.CatalogRef;
         State.Source ??= input.Source;
@@ -349,7 +350,9 @@ public sealed record ConsultGenerationJobInitialize(
     // #238: see ConsultGenerationOrchestrationInput.InputOrigins.
     IReadOnlyDictionary<string, ConsultInputOrigin>? InputOrigins = null,
     // #315: deliverables the package declared and this job will not produce.
-    IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null);
+    IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null,
+    // #361: see ConsultGenerationJobResponse.Collections.
+    IReadOnlyList<ConsultCollectionRoster>? Collections = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -442,6 +445,10 @@ public sealed class ConsultGenerationJobState
     public string? CatalogRef { get; set; }
     public List<ConsultItemStepDescriptor>? ItemSteps { get; set; }
     public List<ConsultNodeDescriptor>? Nodes { get; set; }
+
+    // #361: the job's own fan rosters, stamped once beside Nodes. Null on every
+    // job recorded before the field existed, which the client falls back from.
+    public List<ConsultCollectionRoster>? Collections { get; set; }
     public Dictionary<string, ConsultNodeOutputState>? NodeOutputs { get; set; }
 
     // v6: the result aggregator's rendered output — the deliverable itself
@@ -593,6 +600,7 @@ public sealed class ConsultGenerationJobState
             ScheduledAtUtc: ScheduledAtUtc,
             ItemSteps: ItemSteps,
             Nodes: Nodes,
+            Collections: Collections,
             NodeOutputs: NodeOutputs?.ToDictionary(
                 pair => pair.Key,
                 pair => new ConsultGenerationNodeStatusResponse(

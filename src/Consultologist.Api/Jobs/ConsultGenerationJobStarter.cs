@@ -397,6 +397,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         IReadOnlyList<IReadOnlyDictionary<string, string>> items;
         IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? collectionSets = null;
+        IReadOnlyList<ConsultCollectionRoster>? collectionRosters = null;
 
         if (package.Manifest.SpecVersion >= 6)
         {
@@ -420,6 +421,20 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                         .Select(item => (IReadOnlyDictionary<string, string>)item.Fields)
                         .ToList(),
                     StringComparer.Ordinal);
+
+            // #361: the same rosters, slimmed to what a run rail needs. The
+            // orchestrator's copy above carries every field including content —
+            // the whole standards text — and none of that belongs on a status
+            // response the client polls.
+            collectionRosters = collectionSets
+                .Select(entry => new ConsultCollectionRoster(
+                    entry.Key,
+                    entry.Value
+                        .Select(item => new ConsultCollectionItem(
+                            item.GetValueOrDefault("id", string.Empty),
+                            item.GetValueOrDefault("name", item.GetValueOrDefault("id", string.Empty))))
+                        .ToList()))
+                .ToList();
         }
         else
         {
@@ -500,7 +515,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 Source: origin.Source,
                 ScheduledAtUtc: request.ScheduledAtUtc,
                 InputOrigins: inputOrigins,
-                SkippedDocuments: skipped.Count > 0 ? skipped : null));
+                SkippedDocuments: skipped.Count > 0 ? skipped : null,
+                Collections: collectionRosters));
 
         var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(
             nameof(ConsultGenerationOrchestrator),

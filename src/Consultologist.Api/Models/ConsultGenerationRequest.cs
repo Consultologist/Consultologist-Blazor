@@ -112,7 +112,11 @@ public record ConsultGenerationJobResponse(
     // this field existed and every job whose inputs were typed.
     IReadOnlyDictionary<string, ConsultInputOrigin>? InputOrigins = null,
     // #315: declared deliverables this job's inputs excluded, with the reason.
-    IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null);
+    IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null,
+    // #361: each forEach collection's items as this job's package declared
+    // them, so the run rail draws a fan from the job rather than from whatever
+    // is pinned now. Null on every job recorded before the field existed.
+    IReadOnlyList<ConsultCollectionRoster>? Collections = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
@@ -130,6 +134,19 @@ public sealed record ConsultGenerationResultDocumentResponse(
 /// job's workflow package at start.
 /// </summary>
 public sealed record ConsultItemStepDescriptor(string Id, string Label);
+
+/// <summary>
+/// One forEach collection's items as the job's package declared them, snapshotted
+/// at start (#361): the run rail draws a fan's rows from this rather than from
+/// whatever package happens to be pinned when someone looks at the run.
+///
+/// Deliberately slim — id and display name only. The orchestrator's copy of a
+/// collection carries every field including <c>content</c>, which is the whole
+/// standards text; none of that belongs on a status response.
+/// </summary>
+public sealed record ConsultCollectionRoster(string CollectionId, IReadOnlyList<ConsultCollectionItem> Items);
+
+public sealed record ConsultCollectionItem(string Id, string Name);
 
 /// <summary>
 /// One node of the job's workflow DAG, snapshotted from the pinned package at start —

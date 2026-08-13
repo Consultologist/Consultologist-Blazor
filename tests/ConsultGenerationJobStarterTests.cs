@@ -418,6 +418,25 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
+    public async Task TheJobRecordsItsOwnFanRoster()
+    {
+        // #361: the rail draws a fan's rows from the job, so the job has to
+        // carry them. Slim on purpose — the orchestrator's copy of a collection
+        // carries every field including content, which is the whole standards
+        // text, and none of that belongs on a status response.
+        var (_, initialize, _) = await StartConditionalAsync("new_patient");
+
+        var roster = Assert.Single(initialize!.Collections!);
+
+        Assert.Equal("standards", roster.CollectionId);
+        Assert.Equal(new[] { "hpi", "pmh" }, roster.Items.Select(item => item.Id).ToArray());
+
+        // Names, not just ids: they are what the rail's item rows read, and the
+        // reason the roster cannot be recovered from the block list alone.
+        Assert.All(roster.Items, item => Assert.False(string.IsNullOrWhiteSpace(item.Name)));
+    }
+
+    [Fact]
     public async Task WhenEveryDeliverableFires_EveryNodeIsShipped()
     {
         var (_, initialize, orchestrationInput) = await StartConditionalAsync("follow_up");
