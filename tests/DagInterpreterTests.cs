@@ -847,10 +847,31 @@ public class ConsultDeliverablesTests
 
 public class SectionProseStepEventTests
 {
+    /// <summary>
+    /// #356: the completed (node, item) pairs are what the events are built
+    /// from, so the fixture states them. They are spelled as the node outputs
+    /// spell them — "nodeId:itemId" — because that composite key IS the record
+    /// that a given node finished a given item.
+    /// </summary>
     private static ConsultGenerationJobResponse Response(
         IReadOnlyList<ConsultItemStepDescriptor>? sectionSteps,
         int completedStepCount,
-        int totalStepCount)
+        int totalStepCount,
+        params string[] completedPairs)
+    {
+        return Response(
+            sectionSteps,
+            new Dictionary<string, ConsultGenerationItemProgress>
+            {
+                ["hpi"] = new("hpi", "History of Present Illness", null, completedStepCount, totalStepCount)
+            },
+            completedPairs);
+    }
+
+    private static ConsultGenerationJobResponse Response(
+        IReadOnlyList<ConsultItemStepDescriptor>? sectionSteps,
+        IReadOnlyDictionary<string, ConsultGenerationItemProgress> itemProgress,
+        params string[] completedPairs)
     {
         return new ConsultGenerationJobResponse(
             "job-1",
@@ -862,11 +883,15 @@ public class SectionProseStepEventTests
             new Dictionary<string, string>(),
             new Dictionary<string, string>(),
             false,
-            ItemProgress: new Dictionary<string, ConsultGenerationItemProgress>
-            {
-                ["hpi"] = new("hpi", "History of Present Illness", null, completedStepCount, totalStepCount)
-            },
-            ItemSteps: sectionSteps);
+            ItemProgress: itemProgress,
+            ItemSteps: sectionSteps,
+            NodeOutputs: completedPairs.ToDictionary(
+                pair => pair,
+                pair => new ConsultGenerationNodeStatusResponse(
+                    pair[..pair.LastIndexOf(':')],
+                    pair,
+                    ConsultGenerationNodeStatuses.Completed),
+                StringComparer.Ordinal));
     }
 
     [Fact]
@@ -878,7 +903,7 @@ public class SectionProseStepEventTests
             new ConsultItemStepDescriptor("tighten", "Tightening prose")
         };
 
-        var candidates = ConsultGenerationJobs.CreateSemanticEventCandidates(Response(steps, 2, 2))
+        var candidates = ConsultGenerationJobs.CreateSemanticEventCandidates(Response(steps, 2, 2, "draft:hpi", "tighten:hpi"))
             .Where(candidate => candidate.EventType == ConsultGenerationItemSteps.EventName)
             .ToList();
 
@@ -894,6 +919,70 @@ public class SectionProseStepEventTests
         Assert.Equal("Tightening prose completed.", payload.Message);
         Assert.Equal(2, payload.CompletedStepCount);
         Assert.Equal(2, payload.TotalStepCount);
+    }
+
+    [Fact]
+    public void Candidates_NameTheNodeThatRanIt_NotTheOneAtThatPosition()
+    {
+        // #356, the case the positional version cannot get right. ItemSteps is
+        // every forEach node in the package, while CompletedStepCount is
+        // counted over ONE collection's chain — so a guideline that has
+        // finished its only step scored 1, indexed ItemSteps[0], and was
+        // reported as having run 'draft', a node from the standards chain it
+        // never touches.
+        var steps = new[]
+        {
+            new ConsultItemStepDescriptor("draft", "Drafting section"),
+            new ConsultItemStepDescriptor("tighten", "Tightening prose"),
+            new ConsultItemStepDescriptor("summarize-guideline", "Summarizing guideline")
+        };
+
+        var progress = new Dictionary<string, ConsultGenerationItemProgress>
+        {
+            ["hpi"] = new("hpi", "History of Present Illness", null, 2, 2),
+            ["dka"] = new("dka", "DKA guideline", null, 1, 1)
+        };
+
+        var candidates = ConsultGenerationJobs.CreateSemanticEventCandidates(
+                Response(steps, progress, "draft:hpi", "tighten:hpi", "summarize-guideline:dka"))
+            .Where(candidate => candidate.EventType == ConsultGenerationItemSteps.EventName)
+            .ToList();
+
+        Assert.Equal(
+            new[] { "item-step:dka:summarize-guideline", "item-step:hpi:draft", "item-step:hpi:tighten" },
+            candidates.Select(candidate => candidate.EventKey).ToArray());
+
+        var guideline = JsonSerializer.Deserialize<ConsultGenerationItemStepEvent>(
+            candidates[0].PayloadJson,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+
+        Assert.Equal("summarize-guideline", guideline.Step);
+        Assert.Equal("Summarizing guideline", guideline.Label);
+        Assert.Equal("DKA guideline", guideline.ItemName);
+    }
+
+    [Fact]
+    public void Candidates_IgnoreAnItemStepThatHasNotCompleted()
+    {
+        // Only completed pairs are events. A node still running for an item has
+        // an entry too, and it must not be reported as finished.
+        var steps = new[]
+        {
+            new ConsultItemStepDescriptor("draft", "Drafting section"),
+            new ConsultItemStepDescriptor("tighten", "Tightening prose")
+        };
+
+        var response = Response(steps, 1, 2, "draft:hpi");
+        var running = new Dictionary<string, ConsultGenerationNodeStatusResponse>(response.NodeOutputs!, StringComparer.Ordinal)
+        {
+            ["tighten:hpi"] = new("tighten", "tighten:hpi", ConsultGenerationNodeStatuses.Running)
+        };
+
+        var candidates = ConsultGenerationJobs.CreateSemanticEventCandidates(response with { NodeOutputs = running })
+            .Where(candidate => candidate.EventType == ConsultGenerationItemSteps.EventName)
+            .ToList();
+
+        Assert.Equal(new[] { "item-step:hpi:draft" }, candidates.Select(candidate => candidate.EventKey).ToArray());
     }
 
     [Fact]

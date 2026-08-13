@@ -255,6 +255,12 @@
 	opacity: 0.6;
 }
 
+/* Skipped is muted but not faded: the job decided against this node, which is a
+   fact about the run rather than something still pending (#356). */
+.node-status--skipped {
+	color: var(--consultologist-text-muted);
+}
+
 .node-status--current {
 	color: var(--consultologist-accent);
 }

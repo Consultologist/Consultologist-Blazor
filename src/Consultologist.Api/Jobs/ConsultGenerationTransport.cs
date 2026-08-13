@@ -1263,28 +1263,48 @@ public sealed class ConsultGenerationJobs
             return;
         }
 
-        foreach (var progress in response.ItemProgress.Values.OrderBy(progressRow => progressRow.ItemId, StringComparer.Ordinal))
+        // #356: which (node, item) pairs completed is recorded exactly — the
+        // node outputs are keyed "nodeId:itemId", one entry per completed fan
+        // instance. This used to emit one event per step 1..CompletedStepCount
+        // and take the node id from ItemSteps[stepCount - 1], which invents the
+        // identity the client keys its per-item ticks on: ItemSteps is every
+        // forEach node in the package, while CompletedStepCount is counted over
+        // one collection's chain, so a multi-collection package named a node
+        // from the wrong collection. Math.Clamp hid the overflow, not the
+        // mismatch.
+        var labels = steps.ToDictionary(step => step.Id, step => step.Label, StringComparer.Ordinal);
+
+        var completed = (response.NodeOutputs ?? new Dictionary<string, ConsultGenerationNodeStatusResponse>())
+            .Where(entry => entry.Value.Status == ConsultGenerationNodeStatuses.Completed)
+            .Select(entry => (Key: entry.Key, Separator: entry.Key.LastIndexOf(':')))
+            .Where(entry => entry.Separator > 0)
+            .Select(entry => (
+                NodeId: entry.Key[..entry.Separator],
+                ItemId: entry.Key[(entry.Separator + 1)..]))
+            .Where(entry => labels.ContainsKey(entry.NodeId))
+            .OrderBy(entry => entry.ItemId, StringComparer.Ordinal)
+            .ThenBy(entry => entry.NodeId, StringComparer.Ordinal);
+
+        foreach (var (nodeId, itemId) in completed)
         {
-            var completedStepCount = Math.Clamp(progress.CompletedStepCount, 0, steps.Count);
-
-            for (var stepCount = 1; stepCount <= completedStepCount; stepCount++)
+            if (!response.ItemProgress.TryGetValue(itemId, out var progress))
             {
-                var step = steps[stepCount - 1];
-
-                AddEventCandidate(
-                    candidates,
-                    ConsultGenerationItemSteps.EventName,
-                    $"item-step:{progress.ItemId}:{step.Id}",
-                    new ConsultGenerationItemStepEvent(
-                        response.JobId,
-                        progress.ItemId,
-                        progress.ItemName,
-                        step.Id,
-                        step.Label,
-                        $"{step.Label} completed.",
-                        stepCount,
-                        progress.TotalStepCount));
+                continue;
             }
+
+            AddEventCandidate(
+                candidates,
+                ConsultGenerationItemSteps.EventName,
+                $"item-step:{itemId}:{nodeId}",
+                new ConsultGenerationItemStepEvent(
+                    response.JobId,
+                    itemId,
+                    progress.ItemName,
+                    nodeId,
+                    labels[nodeId],
+                    $"{labels[nodeId]} completed.",
+                    progress.CompletedStepCount,
+                    progress.TotalStepCount));
         }
     }
 
