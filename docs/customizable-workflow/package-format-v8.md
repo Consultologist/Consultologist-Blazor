@@ -84,8 +84,27 @@ Seen {{ seen_on | date.to_string "%d %B %Y" }}
 ```
 
 There is no per-input default format: `{{ seen_on }}` renders
-`2026-08-10`. An **absent optional** input still resolves to the empty
-string, unchanged from v7.
+`2026-08-10`.
+
+An **absent optional** input of a *converted* type — `boolean` or `date` —
+enters the template as **null**. It renders as nothing, which is v7's rule
+unchanged, and it is **falsy**, so `{{ if billable }}` does not fire for a
+question nobody answered. An absent `text` or `enum` input is still the
+empty string: both are JSON strings on the wire and both stay strings in a
+template, so absence is tested there as
+`{{ if (x | string.strip) == "" }}`.
+
+An absent optional is **not `false`**. `false` is a supplied answer and
+renders the word `false`; absence renders nothing. A template that must
+tell the two apart tests the value — `{{ if billable == true }}`,
+`{{ if billable == false }}` — since both are false on absence.
+
+**A `when` condition and a template do not agree on negation, and cannot.**
+A condition is three-valued: `when: billable != true` does *not* hold for
+an absent input (§ Evaluation). A template is two-valued, so
+`{{ if !billable }}` **is** true for an absent input — Scriban has one
+falsy null and no third value to offer. Where the distinction matters,
+test the value rather than negate it.
 
 ### Content minimums
 

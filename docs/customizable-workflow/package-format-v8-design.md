@@ -27,6 +27,21 @@ than run; the type set is **text, date, enum, boolean**.
 > widening this later is additive, while narrowing later would strand
 > published packages, which are immutable.
 
+> **Erratum, 2026-08-13 (#358).** § 4's Rendering said an absent optional
+> input "still resolves to the empty string, unchanged from v7 § 3", and
+> reasoned from that to "an absent `boolean` is not `false`". The reasoning
+> holds; the mechanism did not. Scriban's empty string is **truthy** — its
+> only falsy values are `null`, `EmptyScriptObject.Default` and `bool false`
+> — so `{{ if billable }}` fired for every input nobody answered. Every
+> emailed job is that case, since a boolean cannot be supplied by email at
+> all. An absent optional `boolean` or `date` now enters the template as
+> **null**: falsy, and still rendering nothing, which is the promise the old
+> wording was making. `text` and `enum` are unchanged, both being strings on
+> the wire and in the template. The residual asymmetry is stated rather than
+> hidden: `{{ if !billable }}` is *true* on absence where
+> `when: billable != true` does not hold, because a condition is three-valued
+> and Scriban has one falsy null.
+
 ## 1. Motivation
 
 Two ceilings, one format revision:
@@ -157,10 +172,18 @@ one.
 This is the half that makes typing visible to an author. Without it, typed
 JSON would change the spelling of one value and nothing else.
 
-An **optional, absent** input still resolves to the empty string, unchanged
-from v7 § 3. This is why an absent `boolean` is not `false` — absence and
-falsity are different, and a condition testing an absent input does not
-hold (§ 5).
+An **optional, absent** input still renders as nothing, unchanged from
+v7 § 3 — but for `boolean` and `date`, the two types that convert, the value
+reaching the template is **null** rather than the empty string. Scriban's
+empty string is truthy, so the empty string made `{{ if billable }}` fire on
+absence: the opposite of § 5's rule. null is falsy and renders nothing, so
+both halves of the promise hold (#358).
+
+An absent input is still **not `false`** — absence and falsity are
+different, `false` renders as the word `false`, and a condition testing an
+absent input does not hold (§ 5). The one place the two languages cannot be
+reconciled is negation: `when: billable != true` does not hold on absence,
+while a template's `{{ if !billable }}` does. Scriban has no third value.
 
 ### Two constraints typed values create
 
