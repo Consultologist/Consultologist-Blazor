@@ -254,9 +254,24 @@ public class ConsultGenerationJobStarterTests
     // before blocks and descriptors are built. The engine never learns what a
     // condition is.
 
-    private static WorkflowPackage ConditionalPackage()
+    private static WorkflowPackage ConditionalPackage(bool theNoteAlsoTakesTheGuidelines = false)
     {
         var manifest = V8Fixtures.Conditional();
+
+        if (theNoteAlsoTakesTheGuidelines)
+        {
+            // MultiCollection's original shape, which MultiDeliverable narrowed:
+            // the note aggregates BOTH chains. That makes the letter's chain
+            // shared rather than private, so skipping the letter may drop its
+            // aggregator and nothing else.
+            var shared = new List<WorkflowNodeSpec>(manifest.Nodes!);
+            var noteIndex = shared.FindIndex(node => node.Id == "assemble-note");
+            shared[noteIndex] = shared[noteIndex] with
+            {
+                Aggregate = new List<string> { "node:section-instructions", "node:contextualize" }
+            };
+            manifest = manifest with { Nodes = shared };
+        }
         var files = V6Fixtures.Files(manifest);
         var errors = new List<string>();
         var data = WorkflowDataResolver.Resolve(manifest, files, errors);
@@ -278,12 +293,14 @@ public class ConsultGenerationJobStarterTests
 
     private async Task<(ConsultGenerationJobStartOutcome Outcome,
                         ConsultGenerationJobInitialize? Initialize,
-                        ConsultGenerationOrchestrationInput? Input)> StartConditionalAsync(string encounterKind)
+                        ConsultGenerationOrchestrationInput? Input)> StartConditionalAsync(
+        string encounterKind,
+        bool theNoteAlsoTakesTheGuidelines = false)
     {
         _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
             .Returns(new WorkflowPackageRef("general", "latest"));
         _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
-            .Returns(ConditionalPackage());
+            .Returns(ConditionalPackage(theNoteAlsoTakesTheGuidelines));
 
         ConsultGenerationJobInitialize? initialize = null;
         await _entities.SignalEntityAsync(
@@ -332,6 +349,144 @@ public class ConsultGenerationJobStarterTests
 
         // The note's blocks are untouched either way.
         Assert.Contains(skippingInit.Items, item => item["id"].StartsWith("consult_note:", StringComparison.Ordinal));
+    }
+
+    // #355: the fire set decides which NODES run, not only which deliverables
+    // assemble. There is no orchestrator harness in this repo, so "did not run"
+    // is asserted as "was never handed to the engine" — sound because the
+    // engine's scheduling loop iterates exactly the list shipped here.
+
+    private static string[] NodeIds(IReadOnlyList<ConsultNodeDescriptor>? nodes) =>
+        nodes!.Select(node => node.Id).ToArray();
+
+    [Fact]
+    public async Task ASkippedDeliverablesNodes_ReachNeitherPayload()
+    {
+        // Both payloads, because the entity stamps State.Nodes first-writer-wins
+        // and the orchestration input is what replays: a prune that reached one
+        // and not the other would leave the two disagreeing about the same job.
+        var (_, initialize, orchestrationInput) = await StartConditionalAsync("new_patient");
+
+        var dead = new[] { "assemble-letter", "contextualize", "agg-guidelines", "summarize-guideline" };
+
+        foreach (var payload in new[] { NodeIds(initialize!.Nodes), NodeIds(orchestrationInput!.Nodes) })
+        {
+            Assert.All(dead, id => Assert.DoesNotContain(id, payload));
+        }
+
+        Assert.Equal(NodeIds(initialize.Nodes), NodeIds(orchestrationInput.Nodes));
+    }
+
+    [Fact]
+    public async Task TheFiringDeliverablesNodes_AreShippedAndTransitivelyClosed()
+    {
+        // Under-inclusion is the fatal direction: the engine indexes nodesById
+        // without a guard and ExpandAggregator throws on an unknown node. So the
+        // closure is asserted as a property over both edge kinds rather than as
+        // a list that would still pass if the walk stopped one hop early.
+        var (_, _, orchestrationInput) = await StartConditionalAsync("new_patient");
+        var shipped = orchestrationInput!.Nodes!;
+        var ids = shipped.Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(8, shipped.Count);
+        Assert.Contains("assemble-note", ids);
+
+        foreach (var node in shipped)
+        {
+            var references = (node.Bindings ?? new Dictionary<string, ConsultNodeBindingDescriptor>())
+                .Values.Select(binding => binding.From)
+                .Concat(node.Aggregate ?? new List<string>())
+                .Where(from => from.StartsWith("node:", StringComparison.Ordinal))
+                .Select(from => from["node:".Length..]);
+
+            Assert.All(references, reference => Assert.Contains(reference, ids));
+        }
+    }
+
+    [Fact]
+    public async Task TheCollectionsAndItemStepsNarrowWithTheNodes()
+    {
+        // These are derived from the same package, so they narrow together — the
+        // SSE synthesizer indexes ItemSteps while the engine counts its own
+        // chain nodes, and the two would disagree if only one side were pruned.
+        var (_, _, orchestrationInput) = await StartConditionalAsync("new_patient");
+
+        Assert.Equal(new[] { "standards" }, orchestrationInput!.Collections!.Keys.ToArray());
+        Assert.Equal(
+            new[] { "standard-section-draft", "patient-section-draft", "section-instructions" },
+            orchestrationInput.ItemSteps!.Select(step => step.Id).ToArray());
+    }
+
+    [Fact]
+    public async Task WhenEveryDeliverableFires_EveryNodeIsShipped()
+    {
+        var (_, initialize, orchestrationInput) = await StartConditionalAsync("follow_up");
+
+        Assert.Equal(12, orchestrationInput!.Nodes!.Count);
+        Assert.Equal(12, initialize!.Nodes!.Count);
+        Assert.Contains("assemble-letter", NodeIds(orchestrationInput.Nodes));
+    }
+
+    [Fact]
+    public async Task ANodeFeedingBothDeliverables_SurvivesTheSkip()
+    {
+        // The over-pruning guard, and a sharp one: a skip HAS happened, so the
+        // closure genuinely runs — and only the dead aggregator itself may go,
+        // because the note reaches everything else the letter did.
+        var (_, _, orchestrationInput) = await StartConditionalAsync(
+            "new_patient", theNoteAlsoTakesTheGuidelines: true);
+        var ids = NodeIds(orchestrationInput!.Nodes);
+
+        Assert.DoesNotContain("assemble-letter", ids);
+        Assert.Contains("contextualize", ids);
+        Assert.Contains("agg-guidelines", ids);
+        Assert.Contains("summarize-guideline", ids);
+        Assert.Equal(11, ids.Length);
+
+        // Both collections are still shipped, because the note now fans both.
+        Assert.Equal(
+            new[] { "guidelines", "standards" },
+            orchestrationInput.Collections!.Keys.OrderBy(id => id, StringComparer.Ordinal).ToArray());
+    }
+
+    [Fact]
+    public async Task AnUnconditionalPackage_ShipsEveryDeclaredNode()
+    {
+        // The gate. A v7 package cannot declare a condition, so nothing can be
+        // skipped and the prune never runs — the whole pre-v8 world in one
+        // assertion.
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V7Fixtures.MultiDeliverable(),
+                new List<WorkflowResolvedResult>
+                {
+                    new("consult_note", "assemble-note", "Consultation note"),
+                    new("patient_letter", "assemble-letter", "Patient letter")
+                }));
+
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(null, Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["consult_draft"] = Referral
+            }),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        Assert.Equal(
+            V7Fixtures.MultiDeliverable().Nodes!.Select(node => node.Id).ToArray(),
+            NodeIds(orchestrationInput!.Nodes));
     }
 
     [Fact]

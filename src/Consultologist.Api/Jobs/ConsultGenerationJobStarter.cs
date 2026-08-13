@@ -354,6 +354,45 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             }
 
             package = package with { Results = firing };
+
+            // #355: the fire set decides which NODES run, not only which
+            // deliverables assemble. Filtering Results alone left a node whose
+            // only deliverable was skipped executing anyway — paid for, and the
+            // document it assembled discarded. Worse, a scalar prompt node's
+            // await in the engine is unguarded, so a failure in that dead branch
+            // failed a job whose every firing deliverable was assemblable.
+            //
+            // Pruning the package's nodes here, beside its results, is the
+            // follow-through on filtering the package rather than teaching the
+            // engine about conditions: block expansion, the collection sets, the
+            // item steps and the node descriptors all derive from `package` and
+            // need no change of their own.
+            //
+            // Gated on a skip having happened. With nothing skipped the closure
+            // is the identity — the validator requires every node to reach some
+            // result — so v5-v7 and every all-firing v8 job keeps a
+            // byte-identical durable payload by control flow rather than by an
+            // argument, and a package that slipped past that rule still runs its
+            // orphan node loudly instead of having it silently pruned away.
+            if (skipped.Count > 0)
+            {
+                var reachable = WorkflowNodeClosure.Reachable(
+                    firing.Select(result => result.NodeId),
+                    WorkflowNodeClosure.Edges(package.Nodes!));
+                var live = package.Nodes!.Where(node => reachable.Contains(node.Id)).ToList();
+
+                if (live.Count < package.Nodes!.Count)
+                {
+                    _logger.LogInformation(
+                        "Pruned nodes outside the fire set. Package={Package}, Firing={Firing}, Skipped={Skipped}, Dropped={Dropped}",
+                        package.Ref,
+                        firing.Count,
+                        skipped.Count,
+                        string.Join(", ", package.Nodes!.Where(node => !reachable.Contains(node.Id)).Select(node => node.Id)));
+                }
+
+                package = package with { Nodes = live };
+            }
         }
 
         IReadOnlyList<IReadOnlyDictionary<string, string>> items;
