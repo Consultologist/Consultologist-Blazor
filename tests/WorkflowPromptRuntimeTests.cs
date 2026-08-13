@@ -52,6 +52,50 @@ public class PromptTemplateRendererTests
             new Dictionary<string, string> { ["billable"] = WorkflowInputTypes.Boolean }));
     }
 
+    // #357: a package could not render an ISO date at all. Bare interpolation
+    // reformatted it through Scriban's default %d %b %Y, and the documented
+    // escape hatch — date.to_string — could not publish, because the
+    // validator's probe renders every variable as a string.
+
+    [Fact]
+    public void Render_ABareTypedDate_IsTheIsoWireForm()
+    {
+        // The value is rejected rather than normalised on the way in — 2026-8-1
+        // is a 422 — so silently reformatting it on the way out was the odd half.
+        var result = PromptTemplateRenderer.Render(
+            TypedTemplate("Seen {{ seen_on }}", "seen_on"),
+            new Dictionary<string, string> { ["seen_on"] = "2026-08-10" },
+            new Dictionary<string, string> { ["seen_on"] = WorkflowInputTypes.Date });
+
+        Assert.Equal("Seen 2026-08-10", result);
+    }
+
+    [Fact]
+    public void Render_AnExplicitFormat_StillWins()
+    {
+        // The default is a default, not a ceiling: a letter that wants prose
+        // still asks for it. Render_FormatsATypedDate above covers the same
+        // filter; this one exists to prove the new default did not remove it.
+        var result = PromptTemplateRenderer.Render(
+            TypedTemplate("Seen {{ seen_on | date.to_string \"%d %B %Y\" }}", "seen_on"),
+            new Dictionary<string, string> { ["seen_on"] = "2026-08-10" },
+            new Dictionary<string, string> { ["seen_on"] = WorkflowInputTypes.Date });
+
+        Assert.Equal("Seen 10 August 2026", result);
+    }
+
+    [Fact]
+    public void Render_AnUntypedDateLikeString_IsUntouched()
+    {
+        // The format applies to DateTime rendering and nothing else, so a v5-v7
+        // job — which carries no types — is byte-identical.
+        var result = PromptTemplateRenderer.Render(
+            TypedTemplate("Seen {{ seen_on }}", "seen_on"),
+            new Dictionary<string, string> { ["seen_on"] = "10 August 2026" });
+
+        Assert.Equal("Seen 10 August 2026", result);
+    }
+
     [Fact]
     public void Render_WithoutTypes_IsUnchanged()
     {
