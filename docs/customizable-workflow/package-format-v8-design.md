@@ -250,6 +250,29 @@ until mid-run, forcing `TotalBlockCount` to become mutable or to over-count
 and correct. That is a materially different engine, for expressiveness
 nothing has asked for. **Inputs only.**
 
+**Erratum, 2026-08-12 (#355).** "Filtering the package rather than teaching
+the engine about conditions" was implemented as filtering the *result set*
+alone, and that was not the whole package. The node list was still built
+from every declared node, so a node feeding only a skipped deliverable ran
+anyway and the document it assembled was discarded — observed twice in
+production during #345's verification. Cost was the smaller half: a scalar
+prompt node's await is unguarded, so a failure in a branch that was never
+going to be delivered failed the whole job.
+
+The starter now also prunes `package.Nodes` to the transitive closure of the
+firing deliverables' nodes, over the two node→node edges (a binding's
+`node:` source and an aggregator's source list). Everything downstream —
+block expansion, the collection sets, the item steps, the node descriptors —
+derives from `package`, so one prune covers them all and the entity signal
+and the orchestration payload cannot disagree.
+
+The prune is **gated on a deliverable actually having been skipped**. With
+nothing skipped the closure is the identity, because the validator already
+requires every node to reach some deliverable; the gate makes that a
+property of control flow rather than an argument, and it leaves a package
+that slipped past that rule failing loudly instead of being silently
+trimmed.
+
 ### The empty case
 
 If **no** deliverable's condition holds, the job is **refused at start**,
