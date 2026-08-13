@@ -42,6 +42,35 @@ public class ConsultsRunRailTests : ClientRenderTestContext
         WorkflowService.Configure().GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
     }
 
+    /// <summary>
+    /// #361: the graph the JOB declared, which is not the pinned package's. The
+    /// pin (EditorFixtures.V7) declares draft-section and assemble-note; a job
+    /// may name entirely different nodes, and the rail must draw the job's.
+    /// </summary>
+    private void WithJobDeclaring(
+        IReadOnlyList<ConsultGenerationNodeDescriptor> nodes,
+        IReadOnlyList<ConsultCollectionRoster>? collections = null,
+        params (string NodeId, string Label, string Status)[] statuses)
+    {
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
+            JobId,
+            "user-1",
+            "Completed",
+            TotalBlockCount: 1,
+            CompletedBlockCount: 1,
+            FailedBlockCount: 0,
+            GeneratedBlocks: new Dictionary<string, string>(),
+            FailedBlocks: new Dictionary<string, string>(),
+            Success: true,
+            Nodes: nodes,
+            NodeOutputs: statuses.ToDictionary(
+                node => node.NodeId,
+                node => new ConsultGenerationNodeStatus(node.NodeId, node.Label, node.Status, null, null, null, null),
+                StringComparer.Ordinal),
+            AssembledDocument: "The note.",
+            Collections: collections));
+    }
+
     private void WithJobReporting(
         params (string NodeId, string Label, string Status)[] nodes)
     {
@@ -155,5 +184,86 @@ public class ConsultsRunRailTests : ClientRenderTestContext
         Assert.All(
             page.FindAll(".node-row--item"),
             item => Assert.Equal("○", item.QuerySelector(".node-row__status")!.TextContent.Trim()));
+    }
+
+    [Fact]
+    public void TheRailDrawsTheJobsNodes_NotThePinnedPackages()
+    {
+        // The reported defect: an earlier run rendered against whatever was
+        // published since. The pin declares draft-section/assemble-note; this
+        // job ran neither.
+        WithTwoNodePackage();
+        WithJobDeclaring(
+            new[]
+            {
+                new ConsultGenerationNodeDescriptor("triage", "Triaging the referral"),
+                new ConsultGenerationNodeDescriptor("compose", "Composing the letter", Aggregate: new[] { "node:triage" })
+            },
+            collections: null,
+            statuses: ("triage", "Triaging the referral", "Completed"));
+
+        var page = RenderRail();
+        var labels = page.FindAll(".node-row__label").Select(row => row.TextContent.Trim()).ToList();
+
+        Assert.Contains("Triaging the referral", labels);
+        Assert.Contains("Composing the letter", labels);
+        Assert.DoesNotContain("Drafting section", labels);
+        Assert.DoesNotContain("Assembling note", labels);
+        Assert.Equal("✓", GlyphFor(page, "Triaging the referral"));
+    }
+
+    [Fact]
+    public void AFansItemRows_ComeFromTheJobsRoster()
+    {
+        // The pinned collection declares one item, 'History'. This job's package
+        // declared two different ones — editing a standards folder and
+        // republishing must not relabel an earlier run's sections.
+        WithTwoNodePackage();
+        WithJobDeclaring(
+            new[] { new ConsultGenerationNodeDescriptor("fan", "Drafting", ForEach: "data:standards") },
+            collections: new[]
+            {
+                new ConsultCollectionRoster("standards", new[]
+                {
+                    new ConsultCollectionItem("intro", "Introduction"),
+                    new ConsultCollectionItem("plan", "Plan")
+                })
+            });
+
+        var page = RenderRail();
+        var items = page.FindAll(".node-row--item .node-row__label").Select(row => row.TextContent.Trim()).ToList();
+
+        Assert.Equal(new[] { "Introduction", "Plan" }, items);
+    }
+
+    [Fact]
+    public void WithNoRosterOnTheJob_ThePinnedCollectionIsStillUsed()
+    {
+        // The pre-#361 record. Falling back is what keeps an older job legible
+        // at all, and it is the behaviour every job recorded before the field
+        // existed will keep forever.
+        WithTwoNodePackage();
+        WithJobDeclaring(
+            new[] { new ConsultGenerationNodeDescriptor("draft-section", "Drafting section", ForEach: "data:standards") });
+
+        var page = RenderRail();
+        var items = page.FindAll(".node-row--item .node-row__label").Select(row => row.TextContent.Trim()).ToList();
+
+        Assert.NotEmpty(items);
+        Assert.DoesNotContain("Introduction", items);
+    }
+
+    [Fact]
+    public void WithNoNodesOnTheJob_ThePinnedGraphIsStillDrawn()
+    {
+        // Same fallback one level up: a job record with no node list at all.
+        WithTwoNodePackage();
+        WithJobReporting(("assemble-note", "Assembling note", "Completed"));
+
+        var page = RenderRail();
+        var labels = page.FindAll(".node-row__label").Select(row => row.TextContent.Trim()).ToList();
+
+        Assert.Contains("Drafting section", labels);
+        Assert.Contains("Assembling note", labels);
     }
 }

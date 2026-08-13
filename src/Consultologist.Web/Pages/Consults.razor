@@ -405,13 +405,13 @@
                                     <span class="node-row__label">Setup</span>
                                 </div>
 
-                                @if (workflowNodes is { Count: > 0 })
+                                @if (RailNodes is { Count: > 0 } railNodes)
                                 {
                                     @* The manifest node map, loaded at page init: every node named and every
                                        forEach group's sections listed before the first event arrives. *@
-                                    for (var i = 0; i < workflowNodes.Count; i++)
+                                    for (var i = 0; i < railNodes.Count; i++)
                                     {
-                                        var node = workflowNodes[i];
+                                        var node = railNodes[i];
                                         var stageStatus = NodeRowStatus(node, i);
                                         var done = stageStatus == "Completed";
                                         var current = stageStatus == "Running";
@@ -564,6 +564,24 @@
   private string? currentPackageRef;
   private IReadOnlyList<WorkflowManifestReader.NodeView>? workflowNodes;
   private IReadOnlyList<WorkflowManifestReader.CollectionView> workflowCollections = Array.Empty<WorkflowManifestReader.CollectionView>();
+
+  // #361: the graph the RUNNING job declared, adopted from its snapshot. The
+  // fields above are the pinned package's, which is right before a job exists
+  // and wrong afterwards: re-attaching to an earlier run drew it against
+  // whatever had been published since. Null until a snapshot arrives, and null
+  // for a job recorded before the job carried its own roster.
+  private IReadOnlyList<RailNode>? jobNodes;
+  private IReadOnlyList<ConsultCollectionRoster>? jobCollections;
+
+  /// <summary>
+  /// What a rail row needs, from either source. IsResult has no wire form, but
+  /// an aggregator is what a result node is in every package the block resolver
+  /// accepts, and Aggregate was already being serialized.
+  /// </summary>
+  private sealed record RailNode(string Id, string Label, string? ForEach, bool IsResult);
+
+  private IReadOnlyList<RailNode>? RailNodes =>
+    jobNodes ?? workflowNodes?.Select(node => new RailNode(node.Id, node.Label, node.ForEach, node.IsResult)).ToList();
   private HashSet<string> completedNodeItems = new();
 
   // #356: node id -> the status the JOB reports for it. The rail used to mark
@@ -705,12 +723,24 @@
 
   // A forEach node's rail items are its own collection's; the blocks list is
   // the fallback only when the collection cannot be resolved.
-  private IReadOnlyList<(string Id, string Name)> ItemsFor(WorkflowManifestReader.NodeView node)
+  //
+  // #361: the JOB's roster wins when it has one. The collections below belong
+  // to the pinned package, which is the right answer only before a job exists —
+  // afterwards it describes whatever has been published since.
+  private IReadOnlyList<(string Id, string Name)> ItemsFor(RailNode node)
   {
     const string dataPrefix = "data:";
     var collectionId = node.ForEach != null && node.ForEach.StartsWith(dataPrefix, StringComparison.Ordinal)
       ? node.ForEach[dataPrefix.Length..]
       : node.ForEach;
+
+    var recorded = jobCollections?.FirstOrDefault(roster => roster.CollectionId == collectionId);
+
+    if (recorded != null)
+    {
+      return recorded.Items.Select(item => (item.Id, item.Name)).ToList();
+    }
+
     var collection = workflowCollections.FirstOrDefault(c => c.Id == collectionId);
 
     return collection != null
@@ -777,6 +807,8 @@
     activeDocumentId = null;
     completedNodeItems = new();
     nodeStatuses = new(StringComparer.Ordinal);
+    jobNodes = null;
+    jobCollections = null;
     aiRequestError = null;
     aiProgressNotice = null;
     scheduleConfirmation = null;
@@ -1290,6 +1322,21 @@
     totalBlockCount = response.TotalBlockCount == 0 ? blockSnapshots.Count : response.TotalBlockCount;
     completedBlockCount = response.CompletedBlockCount + response.FailedBlockCount;
 
+    // #361: the job's own graph. One seam covers the SSE snapshot and done
+    // events, every poll and the re-attach fetch; for a new job it is a no-op,
+    // since its package and the pin are the same package.
+    if (response.Nodes is { Count: > 0 })
+    {
+      jobNodes = response.Nodes
+        .Select(node => new RailNode(node.Id, node.Label, node.ForEach, node.Aggregate is { Count: > 0 }))
+        .ToList();
+    }
+
+    if (response.Collections is { Count: > 0 })
+    {
+      jobCollections = response.Collections;
+    }
+
     // #356: the job's own per-node verdict, keyed by node id. Composite
     // "nodeId:itemId" entries are fan instances and belong to the item rows, not
     // to a node row. This is the authoritative source and covers snapshot, poll,
@@ -1644,19 +1691,19 @@
   /// unsettled row while the job is in flight — and kept deliberately as a guess
   /// about WHERE work is, never a claim that anything finished.
   /// </summary>
-  private string? NodeRowStatus(WorkflowManifestReader.NodeView node, int index)
+  private string? NodeRowStatus(RailNode node, int index)
   {
     if (nodeStatuses.TryGetValue(node.Id, out var status))
     {
       return status;
     }
 
-    if (!isAiRequestLoading || workflowNodes is null)
+    if (!isAiRequestLoading || RailNodes is not { } railNodes)
     {
       return null;
     }
 
-    var earliestUnsettled = workflowNodes
+    var earliestUnsettled = railNodes
       .TakeWhile(candidate => nodeStatuses.ContainsKey(candidate.Id))
       .Count();
 
@@ -1665,7 +1712,7 @@
 
   // node covers items whose events were missed (polling fallback), and failed
   // sections — keyed by composite block ids in v6 — skip their remaining steps.
-  private string? NodeItemStatus(WorkflowManifestReader.NodeView node, bool nodeDone, bool nodeCurrent, string itemId)
+  private string? NodeItemStatus(RailNode node, bool nodeDone, bool nodeCurrent, string itemId)
   {
     if (completedNodeItems.Contains($"{node.Id}:{ItemPart(itemId)}")
         || completedNodeItems.Contains($"{node.Id}:{itemId}")
