@@ -415,7 +415,11 @@ public record ConsultGenerationJobResponse(
     IReadOnlyDictionary<string, ConsultInputOrigin>? InputOrigins = null,
     // #315: declared deliverables this job's inputs excluded, with the reason.
     // Silence here is the failure mode the issue was written against.
-    IReadOnlyList<ConsultSkippedDocumentResponse>? SkippedDocuments = null);
+    IReadOnlyList<ConsultSkippedDocumentResponse>? SkippedDocuments = null,
+    // #361: each forEach collection's items as this job's package declared
+    // them, so the run rail draws a fan from the job rather than from whatever
+    // is pinned now. Null on every job recorded before the field existed.
+    IReadOnlyList<ConsultCollectionRoster>? Collections = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultSkippedDocument.</summary>
 public record ConsultSkippedDocumentResponse(string ResultId, string Label, string Reason);
@@ -436,9 +440,18 @@ public record ConsultGenerationNodeDescriptor(
     string Label,
     string? PromptId = null,
     string? OutputContract = null,
-    string? ForEach = null);
+    string? ForEach = null,
+    // #361: already serialized by the API, merely undeclared here. An
+    // aggregator is what a result node is in every package the block resolver
+    // accepts, which is the one thing the rail needed and the wire lacked.
+    IReadOnlyList<string>? Aggregate = null);
 
 public record ConsultItemStepDescriptor(string Id, string Label);
+
+/// <summary>#361: one forEach collection's items as the job's package declared them.</summary>
+public record ConsultCollectionRoster(string CollectionId, IReadOnlyList<ConsultCollectionItem> Items);
+
+public record ConsultCollectionItem(string Id, string Name);
 
 /// <summary>One chain entry: keyed "nodeId" (node level) or "nodeId:itemId" (per item).</summary>
 public record ConsultGenerationNodeStatus(
