@@ -123,6 +123,23 @@ files: `src/Consultologist.Api/Email/*`, settings in
   reply now names the cause — a scan, a size, an ambiguous assignment —
   because that describes a file's format rather than its contents. The
   fax bridge (#188) stays blocked on OCR (#239) alone.
+- **A refusal carries its reason when the reason is authored** (#369).
+  The starter marks each start-failure sentence `SenderSafeDetail` when it
+  is composed of manifest content and request structure — declared input
+  ids, result labels, condition literals — and leaves it null when the
+  sentence quotes a **supplied value**. The email door forwards that and
+  nothing else. This is not an allowlist over error kinds and cannot be:
+  `InputsMismatch` is safe as *"Required input(s) 'seen_on' missing"* and
+  unsafe as *"…must be written YYYY-MM-DD; got '1965-03-02x'"*, a date of
+  service being the plain case. An input id is likewise unsafe when it is
+  the **caller's** — on this door an id is an attachment's filename stem,
+  and a filename can itself be PHI (#217). Before this, three error kinds
+  were allowlisted and the rest replied with no cause at all, so a refused
+  fire set (#315) arrived as "could not be processed" while the server
+  held the sentence naming every deliverable and what its condition
+  wanted. Its claim outcome is `rejected-no-deliverable`, kept apart from
+  `start-failed`: nothing went wrong, the package simply declares no
+  document for those inputs.
 - **Replies**: sent for Completed AND Failed from the orchestrator
   (activity after FinalizeJob); always a fresh message, never a Graph
   /reply (which would quote the PHI-bearing original); fixed subjects;

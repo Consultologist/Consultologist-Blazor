@@ -325,6 +325,68 @@ public class EmailIntakeProcessorTests
             Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// #369: the refusal the sender receives is whatever the starter marked
+    /// sender-safe, and nothing else. Before this the door allowlisted three
+    /// error kinds, so a refused fire set came back as "could not be processed"
+    /// with no cause — while the server held the sentence naming every
+    /// deliverable and what its condition wanted.
+    /// </summary>
+    private void SetupStartFailure(ConsultGenerationJobStartOutcome outcome)
+    {
+        SetupSingleUnread();
+        _claims.TryClaimAsync(Arg.Any<EmailIntakeClaim>(), Arg.Any<CancellationToken>()).Returns(true);
+        _mail.GetMessageAsync(Mailbox, "g-1", Arg.Any<CancellationToken>()).Returns(Message());
+        _senderResolver.ResolveAsync("doc@example.com", Arg.Any<CancellationToken>())
+            .Returns(new EmailSenderMatch(EmailSenderMatchOutcome.Matched, "user-1"));
+        _starter.StartAsync(default!, default!, default!, default!, default).ReturnsForAnyArgs(outcome);
+    }
+
+    [Fact]
+    public async Task NoApplicableDeliverable_TellsTheSenderWhichDocumentsWantedWhat()
+    {
+        const string detail = "No document applies to these inputs. "
+            + "'Consultation note' needs billable to be 'true'; it is not supplied.";
+        SetupStartFailure(new ConsultGenerationJobStartOutcome(
+            null, ConsultGenerationJobStartError.NoApplicableDeliverable, detail, SenderSafeDetail: detail));
+
+        var summary = await CreateProcessor().RunOnceAsync(_client, CancellationToken.None);
+
+        Assert.Equal(1, summary.Rejected);
+        await _mail.Received(1).SendMailAsync(
+            Mailbox,
+            "doc@example.com",
+            Arg.Any<string>(),
+            Arg.Is<string>(body => body.Contains("needs billable to be 'true'")),
+            Arg.Any<CancellationToken>());
+        // Nothing went wrong here — the package simply declares no document for
+        // these inputs — so it is not filed under start-failed.
+        await _claims.Received(1).UpdateAsync(
+            Arg.Is<EmailIntakeClaim>(c => c.Outcome == EmailIntakeOutcomes.RejectedNoDeliverable),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AnUnsafeDetail_IsNotQuotedBackToTheSender()
+    {
+        // The starter withheld it because the sentence quotes a supplied value.
+        // The door must not second-guess that from the error code: this is the
+        // same InputsMismatch whose missing-input form IS forwarded.
+        SetupStartFailure(new ConsultGenerationJobStartOutcome(
+            null,
+            ConsultGenerationJobStartError.InputsMismatch,
+            "Input 'seen_on' is a date and must be written YYYY-MM-DD; got '1965-03-02x'."));
+
+        await CreateProcessor().RunOnceAsync(_client, CancellationToken.None);
+
+        await _mail.Received(1).SendMailAsync(
+            Mailbox,
+            "doc@example.com",
+            Arg.Any<string>(),
+            Arg.Is<string>(body => !body.Contains("1965-03-02x") && !body.Contains("seen_on")),
+            Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task StarterError_RejectsAndSendsOneGenericReply()
     {
@@ -365,7 +427,10 @@ public class EmailIntakeProcessorTests
             .ReturnsForAnyArgs(new ConsultGenerationJobStartOutcome(
                 null,
                 ConsultGenerationJobStartError.InputFileUnreadable,
-                "This PDF has no text layer, so it is a scan or a fax."));
+                "This PDF has no text layer, so it is a scan or a fax.",
+                // #369: the door forwards what the starter authorised, so the
+                // double has to mark it the way the starter does.
+                SenderSafeDetail: "This PDF has no text layer, so it is a scan or a fax."));
 
         var summary = await CreateProcessor().RunOnceAsync(_client, CancellationToken.None);
 
@@ -690,7 +755,8 @@ public class EmailIntakeProcessorTests
             .Returns(new ConsultGenerationJobStartOutcome(
                 null,
                 ConsultGenerationJobStartError.InputWithoutContent,
-                "'consult_draft' does not contain a referral to work from. If the document was attached as a cloud link, please attach the file itself and re-send."));
+                "'consult_draft' does not contain a referral to work from. If the document was attached as a cloud link, please attach the file itself and re-send.",
+                SenderSafeDetail: "'consult_draft' does not contain a referral to work from. If the document was attached as a cloud link, please attach the file itself and re-send."));
 
         string? body = null;
         await _mail.SendMailAsync(Mailbox, "doc@example.com", Arg.Any<string>(),
@@ -740,7 +806,7 @@ public class EmailIntakeProcessorTests
                 null,
                 ConsultGenerationJobStartError.RateLimited,
                 "over the limit",
-                TimeSpan.FromMinutes(37)));
+                RetryAfter: TimeSpan.FromMinutes(37)));
 
     [Fact]
     public async Task RateLimited_ParksTheMessageInQueuedAndTellsTheSenderOnce()

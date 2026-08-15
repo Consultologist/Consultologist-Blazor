@@ -38,6 +38,11 @@ public static class EmailIntakeOutcomes
     // #266: terminal, and the only rate-limit outcome that ends a message.
     // Reached when a queued message outlives MaxEmailDeferral.
     public const string RejectedRateLimit = "rejected-rate-limit";
+    // #369: every deliverable's condition was false for these inputs, so the
+    // package would have produced nothing (#315). Distinct from start-failed:
+    // the message parsed, the inputs satisfied the declaration, and the
+    // package answered that none of its documents applies.
+    public const string RejectedNoDeliverable = "rejected-no-deliverable";
     // #291: the referral was attached as a cloud link, so it never arrived.
     // Its own value because the claim table is the audit surface and this is
     // the disposition anyone will actually come looking for.
