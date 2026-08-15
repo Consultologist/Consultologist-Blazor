@@ -366,6 +366,11 @@ public sealed class EmailIntakeProcessor
                 // referral in it to generate from.
                 ConsultGenerationJobStartError.InputWithoutContent => EmailIntakeOutcomes.RejectedEmpty,
                 ConsultGenerationJobStartError.InputBehindACloudLink => EmailIntakeOutcomes.RejectedCloudLink,
+                // #369: the message and its inputs were all fine — the package
+                // simply declares no document for them. Recorded distinctly
+                // because "start-failed" reads as a fault, and this is the one
+                // rejection where nothing went wrong.
+                ConsultGenerationJobStartError.NoApplicableDeliverable => EmailIntakeOutcomes.RejectedNoDeliverable,
                 _ => EmailIntakeOutcomes.StartFailed
             };
             await _claims.UpdateAsync(
@@ -375,14 +380,16 @@ public sealed class EmailIntakeProcessor
             await SendStartFailureReplyAsync(
                 mailbox,
                 message.FromAddress!,
-                // #290 joins #238 here: both are causes the sender can act
-                // on, so both carry their sentence. The detail names an
-                // authored input id, never a filename (#217).
-                start.Error is ConsultGenerationJobStartError.InputFileUnreadable
-                    or ConsultGenerationJobStartError.InputWithoutContent
-                    or ConsultGenerationJobStartError.InputBehindACloudLink
-                    ? start.ErrorDetail
-                    : null,
+                // #369: whatever the starter authorised for the sender, and
+                // nothing else. This used to allowlist three error kinds, which
+                // silently withheld the reason for the rest — a refused fire set
+                // arrived as "could not be processed" and nothing more, though
+                // the server had composed the sentence naming every deliverable
+                // and what its condition wanted. An allowlist over kinds also
+                // cannot express the actual rule: InputsMismatch is safe when it
+                // names a missing declared input and unsafe when it quotes a
+                // malformed value.
+                start.SenderSafeDetail,
                 cancellationToken);
             return MessageOutcome.Rejected;
         }
