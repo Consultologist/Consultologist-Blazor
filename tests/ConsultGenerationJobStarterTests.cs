@@ -579,6 +579,94 @@ public class ConsultGenerationJobStarterTests
         Assert.Contains("Consultation note", outcome.ErrorDetail);
         Assert.Contains("Patient letter", outcome.ErrorDetail);
         Assert.Contains("not supplied", outcome.ErrorDetail);
+
+        // #369: and it may be quoted back to whoever sent it. Labels and
+        // condition literals are authored package content; the supplied-value
+        // branch of Explain can only ever print a declared enum value or a
+        // boolean, because anything else was refused before conditions ran.
+        Assert.Equal(outcome.ErrorDetail, outcome.SenderSafeDetail);
+    }
+
+    /// <summary>
+    /// #369: the pinned package for the sender-safety tests — the typed v8
+    /// declaration, whose consult_draft, seen_on and encounter_kind are all
+    /// required and whose seen_on is a date.
+    /// </summary>
+    private void WithTypedPackage()
+    {
+        var manifest = V8Fixtures.Typed();
+        var errors = new List<string>();
+
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackage(
+                manifest,
+                Nodes: manifest.Nodes,
+                SchemaContracts: TestOutputContracts.CatalogSchemas,
+                Data: WorkflowDataResolver.Resolve(manifest, V6Fixtures.Files(manifest), errors),
+                Results: new List<WorkflowResolvedResult> { new("consult_note", "assemble-note", "Consultation note") }));
+    }
+
+    private Task<ConsultGenerationJobStartOutcome> StartWithAsync(
+        params (string Id, ConsultInputValue Value)[] inputs)
+        => CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(null, Inputs: inputs.ToDictionary(
+                input => input.Id, input => input.Value, StringComparer.Ordinal)),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+    [Fact]
+    public async Task AMissingRequiredInput_MayBeToldToTheSender()
+    {
+        // The commonest emailed refusal there is, and the one that cost two
+        // round trips to diagnose: the id is read off the MANIFEST — it is
+        // missing from the request — so nothing the caller wrote appears in it.
+        WithTypedPackage();
+
+        var outcome = await StartWithAsync(("consult_draft", Referral));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, outcome.Error);
+        Assert.Contains("'seen_on'", outcome.SenderSafeDetail);
+        Assert.Equal(outcome.ErrorDetail, outcome.SenderSafeDetail);
+    }
+
+    [Fact]
+    public async Task AMalformedValue_IsNeverToldToTheSender()
+    {
+        // Same error code as the test above, opposite answer — which is the
+        // whole reason this cannot be an allowlist over ConsultGenerationJobStartError.
+        // The complaint ends in got '<the supplied value>', and a date slot's
+        // rejected value is a date of service.
+        WithTypedPackage();
+
+        var outcome = await StartWithAsync(
+            ("consult_draft", Referral),
+            ("seen_on", "1965-03-02x"),
+            ("encounter_kind", "follow_up"));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, outcome.Error);
+        Assert.Null(outcome.SenderSafeDetail);
+        // The web door still gets it: this is a withholding, not a redaction.
+        Assert.Contains("1965-03-02x", outcome.ErrorDetail);
+    }
+
+    [Fact]
+    public async Task AnUndeclaredInputId_IsNeverToldToTheSender()
+    {
+        // An input id is an attachment's filename stem on the email door, and a
+        // filename can itself be PHI. Email cannot reach this branch — it only
+        // assigns slots it matched against declared ids — but the guarantee is
+        // about the sentence, not about the door that produced it.
+        WithTypedPackage();
+
+        var outcome = await StartWithAsync(("Smith_John_referral", Referral));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, outcome.Error);
+        Assert.Null(outcome.SenderSafeDetail);
+        Assert.Contains("Smith_John_referral", outcome.ErrorDetail);
     }
 
     [Fact]
