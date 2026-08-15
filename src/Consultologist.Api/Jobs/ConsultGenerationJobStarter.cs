@@ -59,12 +59,26 @@ public enum ConsultGenerationJobStartError
 internal sealed record EffectiveInputsResolution(
     IReadOnlyDictionary<string, string>? Effective,
     IReadOnlyDictionary<string, ConsultInputValue>? Supplied,
-    string? Error);
+    string? Error,
+    // #369: Error when it names only declared ids and declared values, so the
+    // email door may quote it back to the sender. Null for the canonical-form
+    // complaints, which end in got '<supplied value>'.
+    string? SenderSafeError = null);
 
 public sealed record ConsultGenerationJobStartOutcome(
     string? JobId,
     ConsultGenerationJobStartError? Error = null,
     string? ErrorDetail = null,
+    // #369: the same sentence when — and only when — it is composed of
+    // AUTHORED package content and request structure: input ids, result
+    // labels, condition literals, declared enum values. Null whenever the
+    // detail quotes a SUPPLIED value, because the email door replies to the
+    // sender and a supplied value can be PHI (a date of service is the plain
+    // case). Safety is a property of the sentence, not of the error kind —
+    // InputsMismatch composes both sorts — so it is decided here, at the one
+    // place that knows how the string was built, rather than re-derived
+    // downstream from an error code that cannot express it.
+    string? SenderSafeDetail = null,
     // #266: how long until the caller's window resets. Only set on
     // RateLimited, and only the HTTP door renders it — as Retry-After.
     TimeSpan? RetryAfter = null);
@@ -133,7 +147,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 null,
                 ConsultGenerationJobStartError.RateLimited,
                 $"This account has submitted {decision.Limit} consults in the past hour, which is its limit. Please try again shortly.",
-                decision.RetryAfter);
+                // No SenderSafeDetail: the email door never replies to this at
+                // all — it queues the message (EmailIntakeProcessor) — so there
+                // is no sender-facing sentence to authorise.
+                RetryAfter: decision.RetryAfter);
         }
 
         var jobId = Guid.NewGuid().ToString("N");
@@ -209,10 +226,13 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             _logger.LogWarning(
                 "Rejected job start: an attached document could not be read. Outcome={Outcome}",
                 extraction.Outcome);
+            // #217: the extraction complaint names an authored input id, never
+            // the attachment's filename — a filename can itself be PHI.
             return new ConsultGenerationJobStartOutcome(
                 null,
                 ConsultGenerationJobStartError.InputFileUnreadable,
-                extraction.Error);
+                extraction.Error,
+                SenderSafeDetail: extraction.Error);
         }
 
         request = NormalizeInputs(extraction.Request);
@@ -228,7 +248,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             return new ConsultGenerationJobStartOutcome(
                 null,
                 ConsultGenerationJobStartError.InputsMismatch,
-                inputs.Error);
+                inputs.Error,
+                // Set for some mismatches and not others — the single clearest
+                // reason this cannot be an allowlist over error kinds.
+                SenderSafeDetail: inputs.SenderSafeError);
         }
 
         // #290: present is not the same as filled. ResolveEffectiveInputs has
@@ -252,11 +275,17 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     inputs.Effective?.GetValueOrDefault(withoutContent) ?? request.ConsultDraft),
                 InputContent.MinimumCharacters);
 
+            var withoutContentDetail =
+                $"'{withoutContent}' does not contain a referral to work from. "
+                    + "If the document was attached as a cloud link, please attach the file itself and re-send.";
+
             return new ConsultGenerationJobStartOutcome(
                 null,
                 ConsultGenerationJobStartError.InputWithoutContent,
-                $"'{withoutContent}' does not contain a referral to work from. "
-                    + "If the document was attached as a cloud link, please attach the file itself and re-send.");
+                withoutContentDetail,
+                // An authored input id and fixed prose; the input's CONTENT —
+                // the thing that was too short — is never quoted.
+                SenderSafeDetail: withoutContentDetail);
         }
 
         // #291: #290's content floor is necessary but not sufficient. A body
@@ -276,11 +305,17 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 package.Ref,
                 behindLink);
 
+            var behindLinkDetail =
+                $"'{behindLink}' refers to a file stored in the cloud rather than containing the referral itself. "
+                    + "We cannot open linked files — please attach the document to the message and re-send.";
+
             return new ConsultGenerationJobStartOutcome(
                 null,
                 ConsultGenerationJobStartError.InputBehindACloudLink,
-                $"'{behindLink}' refers to a file stored in the cloud rather than containing the referral itself. "
-                    + "We cannot open linked files — please attach the document to the message and re-send.");
+                behindLinkDetail,
+                // An authored input id and fixed prose; the link itself, which
+                // may carry a filename, is not quoted.
+                SenderSafeDetail: behindLinkDetail);
         }
 
         // A consult_draft-only Inputs map against a legacy package folds into
@@ -346,11 +381,20 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     "Rejected job start: no deliverable applies to these inputs. Package={Package}, Declared={Declared}",
                     package.Ref,
                     skipped.Count);
+                var noneApplyDetail = "No document applies to these inputs. "
+                    + string.Join(" ", skipped.Select(s => $"'{s.Label}' {s.Reason}."));
+
                 return new ConsultGenerationJobStartOutcome(
                     null,
                     ConsultGenerationJobStartError.NoApplicableDeliverable,
-                    "No document applies to these inputs. "
-                        + string.Join(" ", skipped.Select(s => $"'{s.Label}' {s.Reason}.")));
+                    noneApplyDetail,
+                    // #369: authored throughout. Labels and condition literals
+                    // come from the manifest, and WorkflowResultCondition.Explain's
+                    // supplied-value branch can only ever print a DECLARED enum
+                    // value or true/false — a condition reads an enum or a boolean
+                    // only (v8 grammar), and any other value was already refused
+                    // by CanonicalFormComplaint before conditions were evaluated.
+                    SenderSafeDetail: noneApplyDetail);
             }
 
             package = package with { Results = firing };
@@ -712,7 +756,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         if (supplied is null)
         {
-            return new EffectiveInputsResolution(null, null, "No inputs were supplied.");
+            const string noneSupplied = "No inputs were supplied.";
+            return new EffectiveInputsResolution(null, null, noneSupplied, noneSupplied);
         }
 
         var declaredIds = declared.Select(input => input.Id).ToHashSet(StringComparer.Ordinal);
@@ -722,6 +767,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             .ToList();
         if (unknown.Count > 0)
         {
+            // No SenderSafeError, deliberately: these ids are the CALLER's, and
+            // on the email door an input id is an attachment's filename stem —
+            // "Smith_John_referral" (EmailAttachmentInputs). Email cannot in
+            // fact reach this branch, since it only ever assigns slots it
+            // matched against declared ids, but the guarantee is about the
+            // sentence rather than the door that produced it.
             return new EffectiveInputsResolution(null, null,
                 $"Unknown input(s) {string.Join(", ", unknown.Select(id => $"'{id}'"))} (declared: {string.Join(", ", declaredIds.Order(StringComparer.Ordinal))}).");
         }
@@ -733,8 +784,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             .ToList();
         if (missing.Count > 0)
         {
-            return new EffectiveInputsResolution(null, null,
-                $"Required input(s) {string.Join(", ", missing.Select(id => $"'{id}'"))} missing.");
+            // Every id here is DECLARED — it is missing from the request, so it
+            // was read off the manifest, not out of the caller's message. This
+            // is the sentence an emailed refusal most often needs.
+            var missingDetail = $"Required input(s) {string.Join(", ", missing.Select(id => $"'{id}'"))} missing.";
+            return new EffectiveInputsResolution(null, null, missingDetail, missingDetail);
         }
 
         // v8: a supplied value must be canonical for its declared type
@@ -752,6 +806,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             var expected = CanonicalFormComplaint(input, value);
             if (expected != null)
             {
+                // No SenderSafeError: every canonical-form complaint ends in
+                // got '<the supplied value>'. A date slot's rejected value is a
+                // date of service — the plain case for why a refusal reply may
+                // not quote what was sent. The web door still shows it.
                 return new EffectiveInputsResolution(null, null, $"Input '{input.Id}' {expected}");
             }
         }
