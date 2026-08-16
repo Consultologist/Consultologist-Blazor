@@ -224,6 +224,104 @@ public class WorkflowV8ValidationTests
         Assert.Contains(result.Warnings, warning => warning.Contains("shadows Scriban's built-in", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// #370: the two declarations that make a package unreachable by email. Both
+    /// are checkable from the manifest alone, and both work perfectly in the app
+    /// — the author sees it run, publishes, and has produced something one of the
+    /// two intake doors can never accept.
+    /// </summary>
+    private static WorkflowPackageValidator.ValidationResult ValidateWithBoolean(bool required)
+        => V8Fixtures.Validate(V8Fixtures.WithInput(
+            new WorkflowInputSpec("billable", "Billable encounter", Required: required, Type: WorkflowInputTypes.Boolean)));
+
+    [Fact]
+    public void ARequiredBoolean_WarnsThatEmailCannotStartIt()
+    {
+        // An emailed value is always text and a string in a boolean slot is a
+        // 422, so the slot can never be filled through that door.
+        var result = ValidateWithBoolean(required: true);
+
+        Assert.Contains(result.Warnings, w => w.Contains("'billable' is a required boolean", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ARequiredBoolean_IsAWarningAndNotAnError()
+    {
+        // The property that keeps already-published packages loading. This
+        // validator runs at LOAD as well as publish, versions are immutable, and
+        // acct-* versions declaring a required boolean are live — an error here
+        // would strand them (#357's reasoning, #374's failure mode).
+        var result = ValidateWithBoolean(required: true);
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AnOptionalBoolean_WarnsNothing()
+    {
+        var result = ValidateWithBoolean(required: false);
+
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("required boolean", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(WorkflowInputTypes.Date)]
+    [InlineData(WorkflowInputTypes.Text)]
+    public void ARequiredInputEmailCanSupply_WarnsNothing(string type)
+    {
+        // Decided rather than overlooked (#370 asks): a date and a text input are
+        // JSON strings on the wire and email fills them — a seen_on.txt holding
+        // 2026-08-10 is a verified path. The boolean is the only type the door
+        // cannot express at all.
+        var result = V8Fixtures.Validate(V8Fixtures.WithInput(
+            new WorkflowInputSpec("seen_on", "Date seen", Required: true, Type: type)));
+
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void EveryDeliverableConditionedOnABoolean_WarnsThatNoDocumentCouldApply()
+    {
+        // The second shape, and the one #369's body asked for: inputs resolve,
+        // but absence satisfies no condition, so the fire set is always empty and
+        // every emailed job is refused at start.
+        var manifest = V8Fixtures.Conditional(when: "billable");
+        var results = manifest.Results!.Select(r => r with { When = "billable" }).ToList();
+
+        var result = V8Fixtures.Validate(manifest with { Results = results });
+
+        Assert.Contains(result.Warnings, w => w.Contains("Every deliverable's condition reads a boolean", StringComparison.Ordinal));
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void OneUnconditionalDeliverable_IsEnoughToBeReachable()
+    {
+        // The default fixture: consult_note has no condition, so it always fires
+        // however the enum lands. Reachability needs one deliverable, not all.
+        var result = V8Fixtures.Validate(V8Fixtures.Conditional(when: "billable"));
+
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("Every deliverable", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void DeliverablesConditionedOnAnEnum_AreReachable()
+    {
+        // The live shape: acct-7bca2dcc1ed4@v2026.08.13 gates both deliverables
+        // on encounter_kind, which an emailed .txt can answer. Verified this
+        // session by an emailed consult that reached the fire-set evaluation.
+        var manifest = V8Fixtures.Conditional();
+        var results = new List<WorkflowResultSpec>
+        {
+            manifest.Results![0] with { When = "encounter_kind == new_patient" },
+            manifest.Results![1] with { When = "encounter_kind == follow_up" }
+        };
+
+        var result = V8Fixtures.Validate(manifest with { Results = results });
+
+        Assert.Empty(result.Warnings);
+    }
+
     [Fact]
     public void MinimalV8_IsValid_WithNoTypesDeclared()
     {
