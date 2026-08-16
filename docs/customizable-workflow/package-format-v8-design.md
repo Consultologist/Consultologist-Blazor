@@ -206,6 +206,20 @@ while a template's `{{ if !billable }}` does. Scriban has no third value.
   message body or a `.txt` attachment — so a v8 package with a required
   boolean input is unreachable by email. Correct rather than unfortunate: the
   alternative is guessing that "yes" in a body means `true`.
+
+  > **Erratum, 2026-08-16 (#370).** This was recorded here and enforced
+  > nowhere, so a package could be published unreachable by email and nothing
+  > said so — reproduced by accident while verifying #358, and it cost two
+  > round trips because the emailed refusal also would not say why (#369).
+  > Publishing now **warns**, on two shapes: a required boolean, and a results
+  > set every member of which conditions on a boolean, where inputs resolve but
+  > absence satisfies nothing so the fire set is always empty. A required
+  > `date` or `enum` warns nothing — both are JSON strings on the wire and
+  > email supplies them. Warnings rather than errors for § 8's reason: this
+  > validator runs at load, published versions are immutable, and versions
+  > declaring a required boolean are live. What makes the check worth having
+  > is that neither shape misbehaves in the app — the author tests there, sees
+  > it run, and publishes something one of the two doors cannot accept.
 - **The intake form is a prerequisite, not a nicety.** Until it renders a
   checkbox (#316), the app cannot submit a package with a boolean input.
   Harmless while v8 is not executable, and it fixes the order of the

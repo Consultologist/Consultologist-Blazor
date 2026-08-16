@@ -120,6 +120,26 @@ an absent input (§ Evaluation). A template is two-valued, so
 falsy null and no third value to offer. Where the distinction matters,
 test the value rather than negate it.
 
+### Reachability by email (warning)
+
+An emailed value is always text, and a string in a `boolean` slot is a 422
+(§ Wire form). So a boolean slot cannot be filled through that door at all,
+and two declarations make a package **unreachable by email by construction**.
+Publishing warns on each:
+
+- a **required `boolean`** input — inputs never resolve;
+- a results set where **every** deliverable's `when` reads a boolean — inputs
+  resolve, but absence satisfies no condition (§ Evaluation), so the fire set
+  is always empty and the job is refused at start.
+
+One deliverable is enough to be reachable: an unconditional one always fires,
+and an enum condition is answerable in text. A required `date` or `enum`
+warns nothing.
+
+These are **warnings, not errors**. The validator runs at load as well as
+publish, and published versions are immutable, so an error would make an
+already-published package unresolvable.
+
 ### Content minimums
 
 The referral-content check (#290) applies to **text inputs only**. A typed
