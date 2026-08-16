@@ -986,6 +986,10 @@ public class ConsultGenerationJobStarterTests
         Assert.Equal(
             DocumentExtractionCopy.For(DocumentExtractionOutcomes.UnsupportedType),
             captured.Outcome.ErrorDetail);
+        // #369: and the sender may be told it — the copy describes a format,
+        // never the file's name or contents (#217). This path replied with its
+        // cause before SenderSafeDetail existed and must keep doing so.
+        Assert.Equal(captured.Outcome.ErrorDetail, captured.Outcome.SenderSafeDetail);
     }
 
     [Fact]
@@ -1312,6 +1316,9 @@ public class ConsultGenerationJobStarterTests
         Assert.Null(outcome.JobId);
         // The sentence has to tell them what to do differently.
         Assert.Contains("attach the file itself", outcome.ErrorDetail);
+        // #369: it names an authored input id and quotes none of the content
+        // that was too short, so it is the sender's to read.
+        Assert.Equal(outcome.ErrorDetail, outcome.SenderSafeDetail);
         await _client.DidNotReceiveWithAnyArgs().ScheduleNewOrchestrationInstanceAsync(
             default, default, default, default);
     }
@@ -1337,6 +1344,9 @@ public class ConsultGenerationJobStarterTests
 
         Assert.Equal(ConsultGenerationJobStartError.InputBehindACloudLink, outcome.Error);
         Assert.Contains("attach the document", outcome.ErrorDetail);
+        // #369: an authored input id and fixed prose — the link, which may
+        // carry a filename, is not quoted.
+        Assert.Equal(outcome.ErrorDetail, outcome.SenderSafeDetail);
         await _client.DidNotReceiveWithAnyArgs().ScheduleNewOrchestrationInstanceAsync(
             default, default, default, default);
     }
