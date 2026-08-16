@@ -1115,11 +1115,14 @@ public static class WorkflowPackageValidator
         // Reachable the moment ONE deliverable can fire: an unconditional one
         // always does, and an enum condition is answerable in text. Only when
         // every deliverable is gated on a boolean is the fire set always empty.
-        // Malformed conditions are somebody else's error and must not be read
-        // as unreachable here.
+        //
+        // Both a MISSING condition and a MALFORMED one fail TryParse — it
+        // answers false with "is blank." for the first — so either makes All
+        // false and warns nothing. That is right for both: an unconditional
+        // deliverable is genuinely reachable, and a malformed one is an error
+        // being reported elsewhere, which must not also be read as unreachable.
         var everyResultNeedsABoolean = results.All(result =>
-            !string.IsNullOrWhiteSpace(result.When)
-            && WorkflowResultConditions.TryParse(result.When, out var condition, out _)
+            WorkflowResultConditions.TryParse(result.When, out var condition, out _)
             && inputsById.TryGetValue(condition!.InputId, out var input)
             && WorkflowInputTypes.Of(input) == WorkflowInputTypes.Boolean);
 
