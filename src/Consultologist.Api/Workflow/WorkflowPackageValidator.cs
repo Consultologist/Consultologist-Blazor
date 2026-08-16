@@ -113,6 +113,7 @@ public static class WorkflowPackageValidator
         {
             ValidateDerivedFrom(manifest, errors);
             ValidateNodes(manifest, files, catalogSchemas, errors);
+            WarnUnreachableByEmail(manifest, warnings);
         }
 
         return new ValidationResult(errors, warnings);
@@ -1053,6 +1054,81 @@ public static class WorkflowPackageValidator
         }
 
         return typed;
+    }
+
+    /// <summary>
+    /// #370: a package the email door can never start, said at publish rather
+    /// than left for a sender to discover.
+    ///
+    /// An emailed value is always text — a body or a .txt attachment — and a
+    /// string in a boolean slot is a 422 by design (package-format-v8.md § wire
+    /// form), deliberately, since the alternative is guessing that "yes" in a
+    /// body means true. So a boolean slot cannot be filled through that door at
+    /// all, and two declarations make a package unreachable by construction:
+    /// a REQUIRED boolean (inputs never resolve), and every deliverable
+    /// conditioned on a boolean (inputs resolve, but no condition can hold —
+    /// absence satisfies nothing, including the negated form — so the fire set
+    /// is always empty and the job is refused at start, #315).
+    ///
+    /// Neither is caught by testing in the app, where both work perfectly.
+    /// That is what makes this worth saying: the author sees it run, publishes,
+    /// and has silently produced something one of the two doors cannot accept.
+    ///
+    /// A date or an enum gets no warning. Both are JSON strings on the wire and
+    /// email supplies them fine — a seen_on.txt holding 2026-08-10 is a
+    /// verified path. The boolean is the only type the door cannot express.
+    ///
+    /// Warnings rather than errors, for #357's reason: this validator also runs
+    /// at LOAD, so a new error would make an already-published package that
+    /// trips it unresolvable, and published versions are immutable. Not
+    /// hypothetical — acct-* versions declaring a required boolean are live.
+    /// </summary>
+    private static void WarnUnreachableByEmail(WorkflowPackageManifest manifest, List<string> warnings)
+    {
+        // Booleans arrive with v8; before it there is nothing to say.
+        if (manifest.SpecVersion < 8)
+        {
+            return;
+        }
+
+        var inputs = manifest.Inputs ?? new List<WorkflowInputSpec>();
+
+        foreach (var input in inputs.Where(input =>
+            input.Required && WorkflowInputTypes.Of(input) == WorkflowInputTypes.Boolean))
+        {
+            warnings.Add(
+                $"Input '{input.Id}' is a required boolean. Email can only supply text, so this package "
+                + "cannot be started from the email door.");
+        }
+
+        var results = manifest.Results ?? new List<WorkflowResultSpec>();
+
+        if (results.Count == 0)
+        {
+            return;
+        }
+
+        var inputsById = inputs
+            .GroupBy(input => input.Id, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+
+        // Reachable the moment ONE deliverable can fire: an unconditional one
+        // always does, and an enum condition is answerable in text. Only when
+        // every deliverable is gated on a boolean is the fire set always empty.
+        // Malformed conditions are somebody else's error and must not be read
+        // as unreachable here.
+        var everyResultNeedsABoolean = results.All(result =>
+            !string.IsNullOrWhiteSpace(result.When)
+            && WorkflowResultConditions.TryParse(result.When, out var condition, out _)
+            && inputsById.TryGetValue(condition!.InputId, out var input)
+            && WorkflowInputTypes.Of(input) == WorkflowInputTypes.Boolean);
+
+        if (everyResultNeedsABoolean)
+        {
+            warnings.Add(
+                "Every deliverable's condition reads a boolean, which email cannot supply, so no document "
+                + "would ever apply to an emailed consult and this package cannot be started from the email door.");
+        }
     }
 
     private static void ValidateTemplate(
