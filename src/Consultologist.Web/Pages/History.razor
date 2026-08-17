@@ -83,9 +83,10 @@
                                            a Scheduled job (#157), which the guard missed entirely. The route
                                            never had the restriction: TryReattachAsync handles a terminal
                                            snapshot deliberately. *@
+                                        @* stopPropagation is load-bearing: the row is the summary of an
+                                           expandable panel, so without it the click toggles the panel
+                                           instead of navigating. *@
                                         <a class="run-view-link" href="/consults/@job.JobId"
-                                           @* The row is the <summary> of a <details>: without this the click
-                                              toggles the panel instead of navigating. *@
                                            @onclick:stopPropagation="true"
                                            title="@(IsTerminal(job.Status) ? "Open this run's steps in Consults" : "Open the live run view in Consults")">@(IsTerminal(job.Status) ? "view run" : "watch live")</a>
                                     </div>
