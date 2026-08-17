@@ -254,6 +254,23 @@ public class ConsultsRunRailTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void AReattachedRun_LinksBackToItsHistoryRow()
+    {
+        // #367: the run view had no navigation out at all — no anchor to
+        // History, only the global header. Linking into it routinely from
+        // History made that a one-way trip.
+        //
+        // /history/{jobId} rather than /history: that route opens the job's
+        // detail panel expanded, so the round trip lands where it started.
+        WithTwoNodePackage();
+        WithJobReporting(("assemble-note", "Assembling note", "Completed"));
+
+        var link = RenderRail().Find(".back-to-history-link");
+
+        Assert.Equal($"/history/{JobId}", link.GetAttribute("href"));
+    }
+
+    [Fact]
     public void WithNoNodesOnTheJob_ThePinnedGraphIsStillDrawn()
     {
         // Same fallback one level up: a job record with no node list at all.
