@@ -72,12 +72,23 @@
                                         {
                                             <span class="muted-text">@job.FailedBlockCount failed</span>
                                         }
-                                        @if (job.Status is "Running" or "Queued")
-                                        {
-                                            <a class="watch-live-link" href="/consults/@job.JobId"
-                                               @onclick:stopPropagation="true"
-                                               title="Open the live run view in Consults">watch live</a>
-                                        }
+                                        @* #367: the run view is the only place a job's RAIL is drawn —
+                                           its nodes, their per-item rows, and the statuses the job itself
+                                           reported (#356, #361). The section below lists the nodes that
+                                           produced output, which cannot show a node that was skipped or one
+                                           that failed before recording anything.
+
+                                           This link used to be guarded on Running or Queued, so that surface
+                                           was unreachable for every job a minute after it finished — and for
+                                           a Scheduled job (#157), which the guard missed entirely. The route
+                                           never had the restriction: TryReattachAsync handles a terminal
+                                           snapshot deliberately. *@
+                                        @* stopPropagation is load-bearing: the row is the summary of an
+                                           expandable panel, so without it the click toggles the panel
+                                           instead of navigating. *@
+                                        <a class="run-view-link" href="/consults/@job.JobId"
+                                           @onclick:stopPropagation="true"
+                                           title="@(IsTerminal(job.Status) ? "Open this run's steps in Consults" : "Open the live run view in Consults")">@(IsTerminal(job.Status) ? "view run" : "watch live")</a>
                                     </div>
                                     <div class="job-history-item__id">
                                         <span class="muted-text">@job.JobId[..8]&hellip;</span>

@@ -64,13 +64,13 @@
 	font-size: 0.8rem;
 }
 
-.watch-live-link {
+.run-view-link {
 	font-size: 0.8rem;
 	color: var(--consultologist-accent);
 	text-decoration: none;
 }
 
-.watch-live-link:hover {
+.run-view-link:hover {
 	text-decoration: underline;
 }
 
