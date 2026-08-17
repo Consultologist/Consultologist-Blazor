@@ -64,6 +64,17 @@
 	min-width: 0;
 }
 
+.back-to-history-link {
+	font-size: 0.85rem;
+	color: var(--consultologist-accent);
+	text-decoration: none;
+	align-self: flex-start;
+}
+
+.back-to-history-link:hover {
+	text-decoration: underline;
+}
+
 .draft-bar {
 	border: 1px solid var(--consultologist-border);
 	border-radius: var(--consultologist-radius-sm);

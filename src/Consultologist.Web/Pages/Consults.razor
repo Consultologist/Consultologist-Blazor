@@ -248,6 +248,18 @@
         else
         {
             <div class="consult-run">
+                @* #367: the way back. Only when JobId is set — that means the page
+                   was reached by re-attaching to a recorded job, so there is a
+                   History row to return to. A run started in this session has no
+                   "back", and the header's History link already covers it.
+
+                   /history/{jobId} opens that job's detail panel expanded, so the
+                   round trip lands where it started rather than at the top of the
+                   list. *@
+                @if (!string.IsNullOrWhiteSpace(JobId))
+                {
+                    <a class="back-to-history-link" href="/history/@JobId">&#x2039; Back to this job in History</a>
+                }
                 <details class="draft-bar">
                     <summary class="draft-bar__summary">
                         <span class="draft-bar__chevron" aria-hidden="true">&#x203A;</span>
