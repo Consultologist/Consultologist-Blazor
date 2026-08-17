@@ -53,6 +53,19 @@ bundled like the agent manifests. Requirements that matter more than the spellin
    canonical schema" to "every schema canonically matches *a catalog entry*" — the
    closure becomes data-shaped. (The catalog must be an input to validation, which it
    already implicitly is via `ConceptOutputContract.SchemaJson`.)
+
+   > **The closure has two directions, and both are now checked at publish
+   > (2026-08-17).** Package→catalog: a package cannot publish declaring a schema
+   > no contract matches (#185 runs the engine validator in the workflows repo's
+   > CI). Catalog→packages: a catalog cannot publish if it would leave an
+   > already-published package's schema matching nothing (#374 runs
+   > `check-catalog-strands-packages.cs` in the agents repo's CI).
+   >
+   > The second direction exists because the match is re-evaluated at **every
+   > load** while a published version is **immutable** — so a contract change can
+   > strand a package that was valid when published, and the remedy would be a new
+   > package version rather than a fix. The check covers public packages only;
+   > `acct-*` forks live in the private account a public CI job cannot read.
 3. **Attestation iterates the catalog**: every entry's agent is attested against its
    `agents/{name}.yaml`, including the embedded-schema comparison — an entry whose
    agent schema drifts from the catalog schema is a startup failure.
