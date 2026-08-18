@@ -28,6 +28,12 @@ public interface IAIEndpointService
     /// <summary>#202: call off a scheduled run before its timer fires.</summary>
     Task CancelConsultGenerationJobAsync(string jobId);
 
+    /// <summary>
+    /// #390: move a scheduled run to a different time. Returns the NEW job id —
+    /// rescheduling cancels and re-creates, so the old id is gone.
+    /// </summary>
+    Task<string> RescheduleConsultGenerationJobAsync(string jobId, DateTimeOffset scheduledAtUtc);
+
     string GetConsultGenerationJobEventsUrl(string jobId, string attemptId, string? lastEventId = null);
 
     IAsyncEnumerable<ConsultGenerationJobSseEvent> StreamConsultGenerationJobEventsAsync(
@@ -198,6 +204,36 @@ public class AIEndpointService : IAIEndpointService
 
             throw;
         }
+    }
+
+    public async Task<string> RescheduleConsultGenerationJobAsync(string jobId, DateTimeOffset scheduledAtUtc)
+    {
+        var functionUrl = _configuration["AzureFunction:ConsultGenerationJobsUrl"];
+
+        if (string.IsNullOrEmpty(functionUrl))
+        {
+            throw new InvalidOperationException("Azure Function consult generation jobs URL is not configured");
+        }
+
+        var url = $"{functionUrl.TrimEnd('/')}/{Uri.EscapeDataString(jobId)}/Reschedule";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = JsonContent.Create(new { scheduledAtUtc })
+        };
+        await AddAuthorizationAsync(request);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await DescribeFailureAsync(response, "Consult reschedule");
+        }
+
+        var payload = await response.Content.ReadFromJsonAsync<RescheduleConsultResponse>();
+
+        return payload?.JobId
+            ?? throw new InvalidOperationException("Reschedule succeeded but returned no job id.");
     }
 
     public async Task CancelConsultGenerationJobAsync(string jobId)
@@ -395,6 +431,9 @@ public sealed record ConsultInputOrigin(
     int? PageCount = null,
     bool TrackedChangesResolved = false);
 public record ConsultGenerationJobStartResponse(string JobId, string StatusUrl);
+
+/// <summary>#390: the new job a reschedule created, and the one it replaced.</summary>
+public record RescheduleConsultResponse(string JobId, string CancelledJobId, DateTimeOffset ScheduledAtUtc);
 public record ConsultGenerationJobSseEvent(string EventName, string Json, string? EventId = null);
 public record ConsultGenerationJobResponse(
     string JobId,
