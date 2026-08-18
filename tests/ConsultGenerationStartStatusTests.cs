@@ -76,4 +76,29 @@ public class ConsultGenerationStartStatusTests
 
         Assert.Contains(expectedFragment, refusal, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void AScheduleTimeInsideTheHorizon_IsAccepted()
+    {
+        Assert.Null(ConsultGenerationJobs.RefusalForScheduleTime(DateTimeOffset.UtcNow.AddDays(6)));
+    }
+
+    [Fact]
+    public void AScheduleTimeBeyondTheHorizon_IsRefused()
+    {
+        // #390: a reschedule must not put a job somewhere a fresh submit could
+        // not — the start endpoint enforces the same seven days.
+        var refusal = ConsultGenerationJobs.RefusalForScheduleTime(DateTimeOffset.UtcNow.AddDays(8));
+
+        Assert.NotNull(refusal);
+        Assert.Contains("7 days", refusal, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void APastScheduleTime_IsStillAccepted()
+    {
+        // Deliberate, and inherited from #157: a past time runs immediately,
+        // which is a legitimate way to say "actually, now".
+        Assert.Null(ConsultGenerationJobs.RefusalForScheduleTime(DateTimeOffset.UtcNow.AddHours(-1)));
+    }
 }

@@ -201,6 +201,9 @@ public sealed record ConsultGenerationNodeStatusResponse(
     DateTimeOffset? CompletedAtUtc = null,
     string? Error = null);
 
+/// <summary>#390: the body of a reschedule — a job id in the route, a time here.</summary>
+public sealed record RescheduleConsultRequest(DateTimeOffset? ScheduledAtUtc);
+
 public record JobHistoryEvent(string Kind, string Label, string? Detail, DateTimeOffset OccurredAt);
 
 public record BlockGenerationResult(

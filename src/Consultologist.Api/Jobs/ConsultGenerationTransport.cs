@@ -300,6 +300,159 @@ public sealed class ConsultGenerationJobs
     }
 
     /// <summary>
+    /// #390: move a scheduled run to a different time.
+    ///
+    /// This cannot be a record update. The fire time comes from the
+    /// ORCHESTRATION INPUT, fixed once the instance starts
+    /// (ConsultGenerationEngine's CreateTimer), so writing a new time to the
+    /// entity would change what History displays while the timer still fired at
+    /// the old one — worse than not offering the edit.
+    ///
+    /// So it cancels and re-creates. Server-side, because the client has
+    /// nothing to re-create FROM: no response carries the inputs, the entity and
+    /// index store none, and the per-tab memento is never set on the scheduled
+    /// path. The only copy is the sleeping instance's own input, read here. The
+    /// consult text never re-enters the browser.
+    /// </summary>
+    [Function("RescheduleConsultGenerationJob")]
+    public async Task<HttpResponseData> RescheduleAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", "options", Route = "ConsultGenerationJobs/{jobId}/Reschedule")] HttpRequestData req,
+        [DurableClient] DurableTaskClient client,
+        string jobId)
+    {
+        var cancellationToken = req.FunctionContext.CancellationToken;
+
+        if (IsOptions(req))
+        {
+            return CreateEmptyResponse(req, HttpStatusCode.OK);
+        }
+
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest, new { error = "JobId is required." }, cancellationToken);
+        }
+
+        var account = await _authorizer.AuthorizeAsync(req, cancellationToken);
+
+        if (account == null)
+        {
+            return AccountAuthorizer.CreateUnauthorizedResponse(req);
+        }
+
+        if (!AccountAuthorizer.CanUseApp(account))
+        {
+            return AccountAuthorizer.CreateForbiddenResponse(req);
+        }
+
+        RescheduleConsultRequest? body;
+
+        try
+        {
+            body = JsonSerializer.Deserialize<RescheduleConsultRequest>(
+                await new StreamReader(req.Body).ReadToEndAsync(cancellationToken), JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest, new { error = "Request body is not valid JSON." }, cancellationToken);
+        }
+
+        if (body?.ScheduledAtUtc is not { } newTime)
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest, new { error = "ScheduledAtUtc is required." }, cancellationToken);
+        }
+
+        if (RefusalForScheduleTime(newTime) is { } timeRefusal)
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.UnprocessableEntity, new { error = timeRefusal }, cancellationToken);
+        }
+
+        // Entity-backed only, for the reason CancelAsync gives.
+        var response = await GetEntityBackedJobResponseAsync(client, jobId, cancellationToken);
+
+        if (response == null
+            || !string.Equals(response.AppUserId, account.AppUserId, StringComparison.Ordinal))
+        {
+            return await CreateJsonResponseAsync(
+                req, HttpStatusCode.NotFound, new { error = "Consult generation job was not found." }, cancellationToken);
+        }
+
+        if (RefusalForCancel(response.Status) is { } refusal)
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.Conflict, new { error = refusal }, cancellationToken);
+        }
+
+        var instance = await client.GetInstancesAsync(jobId, getInputsAndOutputs: true, cancellationToken);
+        var original = instance?.ReadInputAs<ConsultGenerationOrchestrationInput>();
+
+        if (original?.Request == null)
+        {
+            // Nothing to re-create from. Refusing beats cancelling a job we
+            // cannot replace.
+            _logger.LogWarning("Reschedule found no orchestration input. JobId={JobId}", jobId);
+            return await CreateJsonResponseAsync(
+                req, HttpStatusCode.Conflict, new { error = "This consult can no longer be rescheduled. Cancel it and submit a new one." }, cancellationToken);
+        }
+
+        // Cancel first: a failure here must not leave two live jobs for one
+        // consult. The reverse order could double-run it.
+        var entityId = new EntityInstanceId(nameof(ConsultGenerationJobEntity), jobId);
+        await client.Entities.SignalEntityAsync(
+            entityId, nameof(ConsultGenerationJobEntity.Cancel), cancellation: cancellationToken);
+        await client.TerminateInstanceAsync(jobId, "Rescheduled by the account holder (#390).", cancellationToken);
+
+        var origin = new ConsultGenerationJobOrigin(
+            // Keep where it came from — a rescheduled email consult is still an
+            // email consult — and the reply address a scheduled job always has.
+            original.Request.ScheduledAtUtc != null && response.Source != null ? response.Source : ConsultGenerationJobSources.App,
+            account.Email);
+
+        var outcome = await _jobStarter.StartAsync(
+            client,
+            original.Request with { ScheduledAtUtc = newTime },
+            account.AppUserId,
+            origin,
+            cancellationToken);
+
+        if (outcome.Error != null)
+        {
+            // The old job is already cancelled, so say so rather than implying
+            // nothing happened.
+            _logger.LogError(
+                "Reschedule cancelled the old job but could not start the new one. JobId={JobId}, Error={Error}",
+                jobId,
+                outcome.Error);
+
+            return await CreateJsonResponseAsync(
+                req,
+                StatusFor(outcome.Error.Value),
+                new { error = $"The consult was cancelled but could not be rescheduled: {outcome.ErrorDetail}" },
+                cancellationToken);
+        }
+
+        _logger.LogInformation(
+            "Rescheduled a consult. OldJobId={OldJobId}, NewJobId={NewJobId}, ScheduledAtUtc={ScheduledAtUtc}",
+            jobId,
+            outcome.JobId,
+            newTime);
+
+        return await CreateJsonResponseAsync(
+            req,
+            HttpStatusCode.OK,
+            new { jobId = outcome.JobId, cancelledJobId = jobId, scheduledAtUtc = newTime },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// The same horizon the start endpoint enforces, so a reschedule cannot put
+    /// a job somewhere a fresh submit could not. Past times stay valid — they
+    /// run immediately, which is a legitimate way to say "actually, now".
+    /// </summary>
+    internal static string? RefusalForScheduleTime(DateTimeOffset scheduledAt)
+        => scheduledAt > DateTimeOffset.UtcNow.AddDays(MaxScheduleHorizonDays)
+            ? $"ScheduledAtUtc is more than {MaxScheduleHorizonDays} days out."
+            : null;
+
+    /// <summary>
     /// Why this job may not be cancelled, or null when it may. Only a Scheduled
     /// job qualifies: the deferral in #157 is about a run that has not started,
     /// and stopping one that has is a different decision about work already paid
