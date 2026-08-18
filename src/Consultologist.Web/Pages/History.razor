@@ -449,7 +449,7 @@
 
     // The client refuses what the server would (MaxScheduleHorizonDays).
     private static string MaxScheduleLocal =>
-        DateTime.Now.AddDays(7).ToString("yyyy-MM-ddTHH:mm");
+        ScheduleDefault.LocalInputValueIn(TimeSpan.FromDays(7));
 
     private void BeginEdit(AccountJobSummaryResponse job)
     {

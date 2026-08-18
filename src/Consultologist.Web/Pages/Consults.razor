@@ -657,7 +657,7 @@
   // The client refuses what the server would: ValidateRequest allows only the
   // 7-day maximum (past times run immediately and are not errors).
   private static string MaxScheduleLocal =>
-    DateTime.Now.AddDays(7).ToString("yyyy-MM-ddTHH:mm");
+    ScheduleDefault.LocalInputValueIn(TimeSpan.FromDays(7));
   private bool isSchedulingRequest;
   private string? scheduleConfirmation;
   private string? aiProgressNotice;
