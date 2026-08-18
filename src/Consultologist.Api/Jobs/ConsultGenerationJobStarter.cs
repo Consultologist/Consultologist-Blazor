@@ -28,6 +28,13 @@ public enum ConsultGenerationJobStartError
     RegistryUnavailable,
     PackageNotExecutable,
     SpecVersionNotYetExecutable,
+    // #374: the package resolved and downloaded fine; this engine will not
+    // accept its content. Chiefly a declared schema matching no contract in the
+    // loaded catalog — which can happen to an immutable package that was valid
+    // when published, because the match is re-evaluated at every load and the
+    // catalog moved underneath it. Reported as RegistryUnavailable it sent an
+    // operator to look at storage that was working.
+    PackageContentRejected,
     InputsMismatch,
     // #238: a supplied document could not be read. Well-formed request,
     // unsatisfiable content — 422 like InputsMismatch, not 400.
@@ -204,6 +211,20 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             return new ConsultGenerationJobStartOutcome(
                 null,
                 ConsultGenerationJobStartError.SpecVersionNotYetExecutable,
+                ex.Message);
+        }
+        catch (WorkflowPackageContentException ex)
+        {
+            // A warning, not an error: nothing is broken. The package is there,
+            // the registry is there, and the two disagree — which an operator
+            // can act on only if told so.
+            _logger.LogWarning(
+                "Rejected job start: the pinned package's content is not accepted by this engine. Pin={Pin}, Detail={Detail}",
+                packageRef,
+                ex.Message);
+            return new ConsultGenerationJobStartOutcome(
+                null,
+                ConsultGenerationJobStartError.PackageContentRejected,
                 ex.Message);
         }
         catch (InvalidOperationException ex)

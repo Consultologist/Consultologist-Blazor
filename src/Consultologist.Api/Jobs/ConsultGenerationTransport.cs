@@ -165,34 +165,7 @@ public sealed class ConsultGenerationJobs
 
             if (outcome.Error != null)
             {
-                var status = outcome.Error switch
-                {
-                    ConsultGenerationJobStartError.MalformedPackageRef => HttpStatusCode.BadRequest,
-                    ConsultGenerationJobStartError.ForeignPackageRef => HttpStatusCode.Forbidden,
-                    ConsultGenerationJobStartError.RegistryUnavailable => HttpStatusCode.ServiceUnavailable,
-                    ConsultGenerationJobStartError.PackageNotExecutable => HttpStatusCode.UnprocessableEntity,
-                    ConsultGenerationJobStartError.SpecVersionNotYetExecutable => HttpStatusCode.UnprocessableEntity,
-                    // Well-formed request, unsatisfiable against this package's
-                    // input declaration — 422, not 400 (the request-shape rules
-                    // in ValidateRequest are the 400s).
-                    ConsultGenerationJobStartError.InputsMismatch => HttpStatusCode.UnprocessableEntity,
-                    // #315: well-formed, satisfiable against the declaration,
-                    // and still nothing to produce. Same 422 family.
-                    ConsultGenerationJobStartError.NoApplicableDeliverable => HttpStatusCode.UnprocessableEntity,
-                    // #238: likewise — the request was well formed, the
-                    // document inside it could not be read. Same status the
-                    // preview endpoint returns for the same cause.
-                    ConsultGenerationJobStartError.InputFileUnreadable => HttpStatusCode.UnprocessableEntity,
-                    // #290: present but carrying no referral. Unsatisfiable
-                    // content, not a malformed request.
-                    ConsultGenerationJobStartError.InputWithoutContent => HttpStatusCode.UnprocessableEntity,
-                    ConsultGenerationJobStartError.InputBehindACloudLink => HttpStatusCode.UnprocessableEntity,
-                    // #266: nothing is wrong with the request at all — the
-                    // account has spent its window. 429 is the one status
-                    // that says "the same request will work later".
-                    ConsultGenerationJobStartError.RateLimited => HttpStatusCode.TooManyRequests,
-                    _ => HttpStatusCode.InternalServerError
-                };
+                var status = StatusFor(outcome.Error.Value);
                 return await CreateJsonResponseAsync(
                     req,
                     status,
@@ -1417,6 +1390,46 @@ public sealed class ConsultGenerationJobs
         int EventCount,
         string? LatestEventId,
         string? LatestEventType);
+
+    /// <summary>
+    /// The HTTP status each start refusal answers with. Extracted from the
+    /// endpoint so it can be asserted directly (#374): it was an inline switch
+    /// no test reached, and its default is 500 — so a missing arm turns a
+    /// well-understood refusal into an apparent server fault.
+    /// </summary>
+    internal static HttpStatusCode StatusFor(ConsultGenerationJobStartError error)
+        => error switch
+        {
+            ConsultGenerationJobStartError.MalformedPackageRef => HttpStatusCode.BadRequest,
+            ConsultGenerationJobStartError.ForeignPackageRef => HttpStatusCode.Forbidden,
+            ConsultGenerationJobStartError.RegistryUnavailable => HttpStatusCode.ServiceUnavailable,
+            ConsultGenerationJobStartError.PackageNotExecutable => HttpStatusCode.UnprocessableEntity,
+            ConsultGenerationJobStartError.SpecVersionNotYetExecutable => HttpStatusCode.UnprocessableEntity,
+            // #374: the package is readable and the registry is up, so
+            // this is not a 503. The content and the catalog disagree.
+            ConsultGenerationJobStartError.PackageContentRejected => HttpStatusCode.UnprocessableEntity,
+            // Well-formed request, unsatisfiable against this package's
+            // input declaration — 422, not 400 (the request-shape rules
+            // in ValidateRequest are the 400s).
+            ConsultGenerationJobStartError.InputsMismatch => HttpStatusCode.UnprocessableEntity,
+            // #315: well-formed, satisfiable against the declaration,
+            // and still nothing to produce. Same 422 family.
+            ConsultGenerationJobStartError.NoApplicableDeliverable => HttpStatusCode.UnprocessableEntity,
+            // #238: likewise — the request was well formed, the
+            // document inside it could not be read. Same status the
+            // preview endpoint returns for the same cause.
+            ConsultGenerationJobStartError.InputFileUnreadable => HttpStatusCode.UnprocessableEntity,
+            // #290: present but carrying no referral. Unsatisfiable
+            // content, not a malformed request.
+            ConsultGenerationJobStartError.InputWithoutContent => HttpStatusCode.UnprocessableEntity,
+            ConsultGenerationJobStartError.InputBehindACloudLink => HttpStatusCode.UnprocessableEntity,
+            // #266: nothing is wrong with the request at all — the
+            // account has spent its window. 429 is the one status
+            // that says "the same request will work later".
+            ConsultGenerationJobStartError.RateLimited => HttpStatusCode.TooManyRequests,
+            _ => HttpStatusCode.InternalServerError
+        };
+
 }
 
 public sealed record ConsultGenerationJobBlockCompletedEvent(
