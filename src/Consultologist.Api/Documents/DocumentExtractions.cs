@@ -59,7 +59,7 @@ public sealed class DocumentExtractions
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }

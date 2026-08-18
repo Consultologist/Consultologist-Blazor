@@ -81,6 +81,9 @@ public sealed class TableEmailSenderResolver : IEmailSenderResolver
 
         var candidate = candidates[0];
 
+        // #195: the other consult-creation door, and it asks the same question
+        // the HTTP one now asks — an Unverified account may read what it made
+        // and may not make more, whichever way it arrives.
         return string.Equals(candidate.Status, AccountStatuses.Active, StringComparison.Ordinal)
             ? new EmailSenderMatch(EmailSenderMatchOutcome.Matched, candidate.AppUserId)
             : new EmailSenderMatch(EmailSenderMatchOutcome.NotActive);

@@ -65,7 +65,7 @@ public sealed class WorkflowPackages
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }
@@ -141,7 +141,7 @@ public sealed class WorkflowPackages
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }
@@ -226,7 +226,7 @@ public sealed class WorkflowPackages
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }
@@ -281,7 +281,7 @@ public sealed class WorkflowPackages
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }
@@ -328,7 +328,7 @@ public sealed class WorkflowPackages
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }
@@ -393,7 +393,7 @@ public sealed class WorkflowPackages
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }
@@ -455,7 +455,7 @@ public sealed class WorkflowPackages
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }

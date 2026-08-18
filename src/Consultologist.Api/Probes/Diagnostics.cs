@@ -64,7 +64,7 @@ public sealed class Diagnostics
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }

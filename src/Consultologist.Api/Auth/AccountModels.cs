@@ -7,6 +7,11 @@ public static class AccountStatuses
 {
     public const string Pending = "Pending";
     public const string Active = "Active";
+    // #195: activated once, on evidence since withdrawn — the account
+    // disconnected the LinkedIn identity that justified activating it. Distinct
+    // from Pending, which was never activated: an Unverified account keeps
+    // everything it already made and may not make more.
+    public const string Unverified = "Unverified";
     public const string Disabled = "Disabled";
 }
 

@@ -97,7 +97,7 @@ public sealed class Account
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }
@@ -149,7 +149,7 @@ public sealed class Account
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }
@@ -220,7 +220,7 @@ public sealed class Account
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }
@@ -273,7 +273,7 @@ public sealed class Account
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }
@@ -312,7 +312,7 @@ public sealed class Account
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }
@@ -375,7 +375,7 @@ public sealed class Account
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }
