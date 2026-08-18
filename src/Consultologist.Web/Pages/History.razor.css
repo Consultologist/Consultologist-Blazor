@@ -125,6 +125,34 @@
 	color: var(--consultologist-text-muted);
 }
 
+/* #202: a cancelled run. Muted rather than red — nothing failed, and it must
+   not read like the failure badge above it. */
+.job-status-badge--cancelled {
+	background: color-mix(in srgb, var(--consultologist-text-muted) 14%, transparent);
+	color: var(--consultologist-text-muted);
+}
+
+.cancel-run-button {
+	font-size: 0.8rem;
+	font-family: inherit;
+	color: var(--consultologist-text-muted);
+	background: none;
+	border: none;
+	padding: 0;
+	cursor: pointer;
+	text-decoration: none;
+}
+
+.cancel-run-button:hover:not(:disabled) {
+	color: #a4262c;
+	text-decoration: underline;
+}
+
+.cancel-run-button:disabled {
+	cursor: default;
+	opacity: 0.6;
+}
+
 .job-item__detail {
 	padding: 0 1rem 1rem;
 	border-top: 1px solid var(--consultologist-border);

@@ -25,6 +25,9 @@ public interface IAIEndpointService
 
     Task<ConsultGenerationJobResponse> GetConsultGenerationJobAsync(string jobId);
 
+    /// <summary>#202: call off a scheduled run before its timer fires.</summary>
+    Task CancelConsultGenerationJobAsync(string jobId);
+
     string GetConsultGenerationJobEventsUrl(string jobId, string attemptId, string? lastEventId = null);
 
     IAsyncEnumerable<ConsultGenerationJobSseEvent> StreamConsultGenerationJobEventsAsync(
@@ -194,6 +197,30 @@ public class AIEndpointService : IAIEndpointService
                 stopwatch.ElapsedMilliseconds);
 
             throw;
+        }
+    }
+
+    public async Task CancelConsultGenerationJobAsync(string jobId)
+    {
+        var functionUrl = _configuration["AzureFunction:ConsultGenerationJobsUrl"];
+
+        if (string.IsNullOrEmpty(functionUrl))
+        {
+            throw new InvalidOperationException("Azure Function consult generation jobs URL is not configured");
+        }
+
+        var cancelUrl = $"{functionUrl.TrimEnd('/')}/{Uri.EscapeDataString(jobId)}/Cancel";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, cancelUrl);
+        await AddAuthorizationAsync(request);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // #348/#369: carries the server's sentence when it sent one, so a
+            // 409 says which state refused rather than "the call failed".
+            throw await DescribeFailureAsync(response, "Consult cancel");
         }
     }
 
