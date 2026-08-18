@@ -100,6 +100,49 @@
                                            same reason as the link above — the row is a summary. *@
                                         @if (job.Status == "Scheduled")
                                         {
+                                            @* #390: editing the time cancels and re-creates, so the row
+                                               the user is looking at will be replaced by a new one. Say so
+                                               here rather than letting them find out in the list. *@
+                                            @if (_editing == job.JobId)
+                                            {
+                                                <span @onclick:stopPropagation="true">
+                                                    <input type="datetime-local"
+                                                           class="node-field__input"
+                                                           value="@_editValue"
+                                                           max="@MaxScheduleLocal"
+                                                           disabled="@(_rescheduling == job.JobId)"
+                                                           @onchange="args => _editValue = args.Value?.ToString() ?? string.Empty"
+                                                           aria-label="New time for this consult" />
+                                                </span>
+                                                <button type="button" class="cancel-run-button"
+                                                        disabled="@(_rescheduling == job.JobId)"
+                                                        @onclick:stopPropagation="true"
+                                                        @onclick="() => RescheduleAsync(job)">
+                                                    @(_rescheduling == job.JobId ? "moving…" : "move")
+                                                </button>
+                                                @* The reset: an edit field prefilled from a record is a
+                                                   field you can lose the record in. *@
+                                                <button type="button" class="cancel-run-button"
+                                                        disabled="@(_rescheduling == job.JobId)"
+                                                        @onclick:stopPropagation="true"
+                                                        @onclick="() => ResetEdit(job)">
+                                                    reset
+                                                </button>
+                                                <button type="button" class="cancel-run-button"
+                                                        disabled="@(_rescheduling == job.JobId)"
+                                                        @onclick:stopPropagation="true"
+                                                        @onclick="() => _editing = null">
+                                                    done
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <button type="button" class="cancel-run-button"
+                                                        @onclick:stopPropagation="true"
+                                                        @onclick="() => BeginEdit(job)">
+                                                    change time
+                                                </button>
+                                            }
                                             <button type="button" class="cancel-run-button"
                                                     disabled="@(_cancelling == job.JobId)"
                                                     @onclick:stopPropagation="true"
@@ -398,6 +441,87 @@
 
     private string? _cancelling;
     private string? _cancelError;
+
+    // #390: which row is being edited, and the datetime-local value it holds.
+    private string? _editing;
+    private string? _rescheduling;
+    private string _editValue = string.Empty;
+
+    // The client refuses what the server would (MaxScheduleHorizonDays).
+    private static string MaxScheduleLocal =>
+        DateTime.Now.AddDays(7).ToString("yyyy-MM-ddTHH:mm");
+
+    private void BeginEdit(AccountJobSummaryResponse job)
+    {
+        _editing = job.JobId;
+        _cancelError = null;
+        ResetEdit(job);
+    }
+
+    /// <summary>
+    /// #390: back to the time actually on the job. The button exists because an
+    /// edit field prefilled from a record is a field you can lose the record in
+    /// — once it is typed over, nothing else on the page still shows it.
+    /// </summary>
+    private void ResetEdit(AccountJobSummaryResponse job)
+    {
+        _editValue = job.ScheduledAtUtc is { } scheduledAt
+            ? ScheduleDefault.ToLocalInputValue(scheduledAt)
+            : string.Empty;
+    }
+
+    /// <summary>
+    /// #390: move it. The row cannot be patched in place the way a cancel is —
+    /// rescheduling produces a NEW job id — so the original stays as Cancelled
+    /// (#202's rule: a consult that was submitted and stopped is a fact worth
+    /// keeping) and the new job is fetched and prepended.
+    /// </summary>
+    private async Task RescheduleAsync(AccountJobSummaryResponse job)
+    {
+        if (_rescheduling != null)
+        {
+            return;
+        }
+
+        if (ScheduleDefault.FromLocalInputValue(_editValue) is not { } newTime)
+        {
+            _cancelError = "Enter a date and time for this consult to run.";
+            return;
+        }
+
+        _rescheduling = job.JobId;
+        _cancelError = null;
+
+        try
+        {
+            var newJobId = await AIService.RescheduleConsultGenerationJobAsync(job.JobId, newTime);
+
+            var index = jobs.FindIndex(row => row.JobId == job.JobId);
+
+            if (index >= 0)
+            {
+                jobs[index] = jobs[index] with { Status = "Cancelled" };
+            }
+
+            var detail = await AIService.GetConsultGenerationJobAsync(newJobId);
+            jobs.Insert(0, SummaryFromDetail(detail));
+
+            _editing = null;
+            EnsurePollingStarted();
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            _cancelError = ex.Message;
+        }
+        finally
+        {
+            _rescheduling = null;
+        }
+    }
 
     /// <summary>
     /// #202: call off a scheduled run. The row stays — a consult that was
