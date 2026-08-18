@@ -63,7 +63,24 @@ public sealed class AccountAuthorizer : IAccountAuthorizer
         return response;
     }
 
-    public static bool IsActive(AppAccount account)
+    /// <summary>
+    /// May this account use the app at all? #195 split this from the question
+    /// below, which the single IsActive used to answer at once. An Unverified
+    /// account reads everything it already made — a consult it paid for does
+    /// not stop being readable because the evidence behind its activation was
+    /// withdrawn.
+    /// </summary>
+    public static bool CanUseApp(AppAccount account)
+    {
+        return account.Status is AccountStatuses.Active or AccountStatuses.Unverified;
+    }
+
+    /// <summary>
+    /// May this account start NEW consults? Active only. The one thing an
+    /// Unverified account cannot do, and the reason the two questions are no
+    /// longer the same one.
+    /// </summary>
+    public static bool CanStartConsults(AppAccount account)
     {
         return string.Equals(account.Status, AccountStatuses.Active, StringComparison.Ordinal);
     }

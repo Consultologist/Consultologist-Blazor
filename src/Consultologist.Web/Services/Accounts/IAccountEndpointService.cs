@@ -4,6 +4,9 @@ public interface IAccountEndpointService
 {
     Task<AccountMeResponse> GetCurrentAccountAsync();
     Task<string> StartLinkedInLinkAsync();
+
+    /// <summary>#195: disconnect this account's LinkedIn identity.</summary>
+    Task DisconnectLinkedInAsync();
     Task SetDeliveryPasswordAsync(string password);
     Task ClearDeliveryPasswordAsync();
     Task<AccountSettingResponse?> GetSettingAsync(string key);

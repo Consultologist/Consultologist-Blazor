@@ -78,12 +78,30 @@ public class AccountAuthorizerTests
 
     [Theory]
     [InlineData("Active", true)]
+    // #195: an Unverified account reads everything it already made. A consult
+    // does not stop being readable because the evidence behind the account's
+    // activation was withdrawn.
+    [InlineData("Unverified", true)]
     [InlineData("active", false)]
     [InlineData("Pending", false)]
     [InlineData("Disabled", false)]
     [InlineData("", false)]
-    public void IsActive_ComparesStatusOrdinally(string status, bool expected)
+    public void CanUseApp_AdmitsUnverified(string status, bool expected)
     {
-        Assert.Equal(expected, AccountAuthorizer.IsActive(CreateAccount(status)));
+        Assert.Equal(expected, AccountAuthorizer.CanUseApp(CreateAccount(status)));
+    }
+
+    [Theory]
+    [InlineData("Active", true)]
+    // The one thing it cannot do, and the whole reason the two questions were
+    // separated: the single IsActive answered both at once.
+    [InlineData("Unverified", false)]
+    [InlineData("active", false)]
+    [InlineData("Pending", false)]
+    [InlineData("Disabled", false)]
+    [InlineData("", false)]
+    public void CanStartConsults_IsActiveOnly(string status, bool expected)
+    {
+        Assert.Equal(expected, AccountAuthorizer.CanStartConsults(CreateAccount(status)));
     }
 }

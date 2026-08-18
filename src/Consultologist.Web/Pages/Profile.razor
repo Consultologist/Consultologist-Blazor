@@ -92,6 +92,16 @@
                         </div>
                     }
 
+                    @* #195: an account that may read but not submit has to be
+                       told which it is, and how to get back. *@
+                    @if (account?.Status == "Unverified")
+                    {
+                        <FluentMessageBar Intent="MessageIntent.Warning">
+                            This account can open its existing consults but cannot start new ones.
+                            Reconnect LinkedIn to restore it.
+                        </FluentMessageBar>
+                    }
+
                     <div class="action-row">
                         <FluentButton Appearance="Appearance.Accent"
                                       IconStart="@(new Icons.Regular.Size20.LinkMultiple())"
@@ -99,6 +109,19 @@
                                       @onclick="ConnectLinkedInAsync">
                             @(LinkedInIdentity == null ? "Connect LinkedIn" : "Reconnect LinkedIn")
                         </FluentButton>
+
+                        @* Two clicks rather than a dialog: no FluentDialogProvider is
+                           rendered anywhere in this app, so a real dialog would be new
+                           infrastructure for one button. The label carries the warning
+                           that the second click is the destructive one. *@
+                        @if (LinkedInIdentity != null)
+                        {
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Disabled="@linkedInDisconnectInProgress"
+                                          @onclick="DisconnectLinkedInAsync">
+                                @(disconnectArmed ? "Confirm disconnect" : "Disconnect")
+                            </FluentButton>
+                        }
                     </div>
                 </div>
             </section>
@@ -182,6 +205,10 @@
     private string? linkedInMessage;
     private MessageIntent linkedInMessageIntent = MessageIntent.Info;
     private bool linkedInStartInProgress;
+    private bool linkedInDisconnectInProgress;
+    // #195: the first click arms, the second acts. See the markup for why this
+    // is not a dialog.
+    private bool disconnectArmed;
 
     private AccountIdentity? LinkedInIdentity =>
         account?.LinkedIdentities.FirstOrDefault(identity =>
@@ -313,6 +340,46 @@
         finally
         {
             passwordRequestInProgress = false;
+        }
+    }
+
+    /// <summary>
+    /// #195: disconnect, in two clicks. Reloads rather than patching state
+    /// locally — the unlink also changes the account STATUS, and showing a
+    /// stale one on the page that explains the status would be its own bug.
+    /// </summary>
+    private async Task DisconnectLinkedInAsync()
+    {
+        if (!disconnectArmed)
+        {
+            disconnectArmed = true;
+            linkedInMessage = "Disconnecting removes LinkedIn verification, and this account will not be able to start new consults until it is reconnected.";
+            linkedInMessageIntent = MessageIntent.Warning;
+            return;
+        }
+
+        linkedInDisconnectInProgress = true;
+
+        try
+        {
+            await AccountService.DisconnectLinkedInAsync();
+            await LoadAccountAsync();
+            linkedInMessage = "LinkedIn disconnected.";
+            linkedInMessageIntent = MessageIntent.Success;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            linkedInMessage = $"Unable to disconnect LinkedIn: {ex.Message}";
+            linkedInMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            disconnectArmed = false;
+            linkedInDisconnectInProgress = false;
         }
     }
 

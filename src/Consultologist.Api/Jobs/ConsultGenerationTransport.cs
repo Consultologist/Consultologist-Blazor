@@ -111,9 +111,22 @@ public sealed class ConsultGenerationJobs
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
+        }
+
+        // #195: the one door an Unverified account may not pass. It keeps
+        // everything it already made — this refuses only the making of more,
+        // and says which it is, since a bare 403 here reads as a bug when the
+        // rest of the app plainly works.
+        if (!AccountAuthorizer.CanStartConsults(account))
+        {
+            return await CreateJsonResponseAsync(
+                req,
+                HttpStatusCode.Forbidden,
+                new { error = "This account cannot start new consults until its LinkedIn profile is reconnected. Existing consults remain available." },
+                req.FunctionContext.CancellationToken);
         }
 
         var stopwatch = Stopwatch.StartNew();
@@ -236,7 +249,7 @@ public sealed class ConsultGenerationJobs
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }
@@ -367,7 +380,7 @@ public sealed class ConsultGenerationJobs
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }
@@ -425,7 +438,7 @@ public sealed class ConsultGenerationJobs
             return new UnauthorizedResult();
         }
 
-        if (!AccountAuthorizer.IsActive(account))
+        if (!AccountAuthorizer.CanUseApp(account))
         {
             FunctionCors.Apply(req, req.HttpContext.Response);
             return new ForbidResult();

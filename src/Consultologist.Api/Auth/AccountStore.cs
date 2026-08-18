@@ -29,6 +29,9 @@ public interface IAccountStore
         string? pictureUrl,
         string? verifiedCategories,
         CancellationToken cancellationToken);
+
+    /// <summary>#195: remove a linked identity from the caller's own account.</summary>
+    Task UnlinkIdentityAsync(string appUserId, string provider, CancellationToken cancellationToken);
 }
 
 public sealed class AccountStore : IAccountStore
@@ -199,6 +202,8 @@ public sealed class AccountStore : IAccountStore
         await _identityLinks.UpsertEntityAsync(identityLink, TableUpdateMode.Replace, cancellationToken);
         await _userIdentityLinks.UpsertEntityAsync(ToUserIdentityLink(identityLink), TableUpdateMode.Replace, cancellationToken);
 
+        await ApplyStatusAsync(appUserId, StatusAfterLink, cancellationToken);
+
         _logger.LogInformation(
             "Linked identity to app user. AppUserId={AppUserId}, Provider={Provider}, Outcome={Outcome}",
             appUserId,
@@ -206,6 +211,99 @@ public sealed class AccountStore : IAccountStore
             outcome);
 
         return outcome;
+    }
+
+    public async Task UnlinkIdentityAsync(string appUserId, string provider, CancellationToken cancellationToken)
+    {
+        // The credential identity is how the account signs in. Removing it
+        // would orphan the account from its own sign-in with no way back, so
+        // this is a guard here rather than a caller responsibility.
+        if (string.Equals(provider, IdentityProviders.EntraExternalId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The sign-in identity cannot be unlinked; removing it would orphan the account.");
+        }
+
+        await EnsureTablesAsync(cancellationToken);
+
+        // UserIdentityLinks is the only place the pair of keys can be derived
+        // from: IdentityLinks is keyed by the subject hash, which nothing else
+        // records against the user.
+        var prefix = $"{provider}-";
+        var links = _userIdentityLinks.QueryAsync<UserIdentityLinkEntity>(
+            link => link.PartitionKey == appUserId, cancellationToken: cancellationToken);
+
+        var removed = 0;
+
+        await foreach (var link in links)
+        {
+            if (!link.RowKey.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            // A missing row is success: the caller asked for it to be gone.
+            await _identityLinks.DeleteEntityAsync(provider, link.SubjectHash, cancellationToken: cancellationToken);
+            await _userIdentityLinks.DeleteEntityAsync(appUserId, link.RowKey, cancellationToken: cancellationToken);
+            removed++;
+        }
+
+        if (removed == 0)
+        {
+            return;
+        }
+
+        await ApplyStatusAsync(appUserId, StatusAfterUnlink, cancellationToken);
+
+        _logger.LogInformation(
+            "Unlinked identity from app user. AppUserId={AppUserId}, Provider={Provider}, Rows={Rows}",
+            appUserId,
+            provider,
+            removed);
+    }
+
+    /// <summary>
+    /// #195: linking is the activation signal, so a successful link activates.
+    /// Pending as well as Unverified — the manual operator flip becomes the
+    /// fallback rather than the path (docs/ACCOUNTS.md). Disabled is not
+    /// something a user may lift by linking.
+    /// </summary>
+    internal static string StatusAfterLink(string current) =>
+        current is AccountStatuses.Pending or AccountStatuses.Unverified
+            ? AccountStatuses.Active
+            : current;
+
+    /// <summary>
+    /// #195: withdrawing the evidence withdraws the activation it justified,
+    /// but not the account. Only from Active: an account that was never
+    /// activated does not become Unverified by unlinking, and Disabled stays.
+    /// </summary>
+    internal static string StatusAfterUnlink(string current) =>
+        current == AccountStatuses.Active ? AccountStatuses.Unverified : current;
+
+    private async Task ApplyStatusAsync(
+        string appUserId, Func<string, string> transition, CancellationToken cancellationToken)
+    {
+        var response = await _appUsers.GetEntityAsync<AppUserEntity>(
+            "app-user", appUserId, cancellationToken: cancellationToken);
+
+        var appUser = response.Value;
+        var next = transition(appUser.Status);
+
+        if (string.Equals(next, appUser.Status, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _logger.LogInformation(
+            "Account status changed. AppUserId={AppUserId}, From={From}, To={To}",
+            appUserId,
+            appUser.Status,
+            next);
+
+        appUser.Status = next;
+        appUser.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await _appUsers.UpsertEntityAsync(appUser, TableUpdateMode.Replace, cancellationToken);
     }
 
     internal static IdentityLinkOutcome DecideLinkOutcome(IdentityLinkEntity? existing, string appUserId)
