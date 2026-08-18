@@ -4,6 +4,7 @@
 @using System.Diagnostics
 @using System.Text.Json
 @using Consultologist.Web.Services.AI
+@using Consultologist.Web.Services.Accounts
 @using Consultologist.Web.Services.Diagnostics
 @using Consultologist.Web.Services.Documents
 @inject NavigationManager Navigation
@@ -14,6 +15,7 @@
 @inject ILogger<Consults> Logger
 @inject IWorkflowEndpointService WorkflowService
 @inject ConsultJobSession JobSession
+@inject IAccountEndpointService AccountService
 @attribute [Authorize]
 @implements IAsyncDisposable
 
@@ -226,9 +228,25 @@
                         }
 
                         <div class="action-row">
-                            <FluentSwitch @bind-Value="runOvernight"
-                                          Label="Run overnight (starts ~2:00 AM)"
+                            <FluentSwitch @bind-Value="RunOvernight"
+                                          Label="Run overnight"
                                           Disabled="@(isAiRequestLoading || isSchedulingRequest)" />
+                            @* #390: the time is shown only once the switch is on, seeded from the
+                               account default. The common case stays one click — turn it on, press
+                               Schedule — and the control is there for the case that is not.
+
+                               Native input, matching the v8 date field above: the control's value
+                               IS the contract, and nothing in this app uses a Fluent picker. *@
+                            @if (runOvernight)
+                            {
+                                <input type="datetime-local"
+                                       class="node-field__input"
+                                       value="@scheduledAtLocal"
+                                       max="@MaxScheduleLocal"
+                                       @onchange="args => scheduledAtLocal = args.Value?.ToString() ?? string.Empty"
+                                       disabled="@isSchedulingRequest"
+                                       aria-label="When this consult should run" />
+                            }
                             @if (totalBlockCount > 0)
                             {
                                 <FluentButton Appearance="Appearance.Neutral" @onclick="BackToRun">
@@ -610,7 +628,36 @@
   private string? aiRequestError;
 
   // #157: "run overnight" preset — next 2:00 AM browser-local, sent as UTC.
+  // #390: the time is no longer a preset. scheduledAtLocal is the datetime-local
+  // control's value; the account default seeds it when the switch goes on.
   private bool runOvernight;
+  private string scheduledAtLocal = string.Empty;
+  private string? accountScheduleTime;
+
+  /// <summary>
+  /// #390: turning the switch on seeds the time from the account default, so
+  /// the common case is still one click. It seeds only when empty — a time the
+  /// user already edited survives toggling off and on again.
+  /// </summary>
+  private bool RunOvernight
+  {
+    get => runOvernight;
+    set
+    {
+      runOvernight = value;
+
+      if (value && string.IsNullOrEmpty(scheduledAtLocal))
+      {
+        scheduledAtLocal = ScheduleDefault.ToLocalInputValue(
+          ScheduleDefault.NextOccurrenceUtc(accountScheduleTime, DateTime.Now));
+      }
+    }
+  }
+
+  // The client refuses what the server would: ValidateRequest allows only the
+  // 7-day maximum (past times run immediately and are not errors).
+  private static string MaxScheduleLocal =>
+    DateTime.Now.AddDays(7).ToString("yyyy-MM-ddTHH:mm");
   private bool isSchedulingRequest;
   private string? scheduleConfirmation;
   private string? aiProgressNotice;
@@ -630,6 +677,7 @@
   protected override async Task OnInitializedAsync()
   {
     Navigation.LocationChanged += HandleLocationChanged;
+    await LoadScheduleDefaultAsync();
     await LoadPackageBlocksAsync();
     await LoadWorkflowNodesAsync();
     await TryReattachAsync();
@@ -762,6 +810,29 @@
       : packageBlocks.Select(sec => (sec.Id, sec.Name)).ToList();
   }
 
+  /// <summary>
+  /// #390: the account's preferred time, read the way the workflow pin is —
+  /// tolerantly. A setting that is missing, blank or unreadable leaves the
+  /// fallback in place rather than reporting anything: nobody came to this page
+  /// to be told about a preference.
+  /// </summary>
+  private async Task LoadScheduleDefaultAsync()
+  {
+    try
+    {
+      var setting = await AccountService.GetSettingAsync(ScheduleDefault.SettingKey);
+      accountScheduleTime = ScheduleDefault.Parse(setting?.Value);
+    }
+    catch (AccessTokenNotAvailableException exception)
+    {
+      exception.Redirect();
+    }
+    catch
+    {
+      // Fallback stands.
+    }
+  }
+
   private async Task LoadPackageBlocksAsync()
   {
     isBlocksLoading = true;
@@ -798,18 +869,6 @@
     {
       isBlocksLoading = false;
     }
-  }
-
-  private static DateTimeOffset NextOvernightRunUtc()
-  {
-    var now = DateTime.Now;
-    var next = now.Date.AddHours(2);
-    if (now >= next)
-    {
-      next = next.AddDays(1);
-    }
-
-    return new DateTimeOffset(next).ToUniversalTime();
   }
 
   private async Task CreateConsultAsync()
@@ -856,12 +915,16 @@
       try
       {
         isSchedulingRequest = true;
-        var scheduledAtUtc = NextOvernightRunUtc();
+        // #390: the time the user chose. Falling back keeps a cleared field
+        // from silently scheduling nothing.
+        var scheduledAtUtc = ScheduleDefault.FromLocalInputValue(scheduledAtLocal)
+          ?? ScheduleDefault.NextOccurrenceUtc(accountScheduleTime, DateTime.Now);
         var job = await AIService.StartConsultGenerationJobAsync(
           SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles());
         scheduleConfirmation =
           $"Consult scheduled for {scheduledAtUtc.ToLocalTime():MMM d, h:mm tt} — it will appear in History, and you'll receive an email when it's ready.";
         runOvernight = false;
+        scheduledAtLocal = string.Empty;
         ClearInputs();
       }
       // #348: the server's own words, unprefixed. "Error scheduling consult"

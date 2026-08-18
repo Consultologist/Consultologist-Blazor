@@ -3,6 +3,7 @@ using AngleSharp.Dom;
 using Bunit;
 using Consultologist.Web.Pages;
 using Consultologist.Web.Services.AI;
+using Consultologist.Web.Services.Accounts;
 using Consultologist.Web.Services.Documents;
 using Consultologist.Web.Services.Workflow;
 using NSubstitute;
@@ -633,5 +634,86 @@ public class ConsultsPackageRefTests : ClientRenderTestContext
 
         Assert.Equal(CurrentRef, sentRef);
         Assert.NotNull(sentSchedule);
+    }
+
+    [Fact]
+    public void TurningOnOvernight_SeedsTheTimeFromTheAccountDefault()
+    {
+        // #390: the common case stays one click — the control appears already
+        // holding the account's preferred time, so Schedule is the next action.
+        AccountService.GetSettingAsync(ScheduleDefault.SettingKey)
+            .Returns(new AccountSettingResponse(
+                ScheduleDefault.SettingKey, "06:30", "text/plain", DateTimeOffset.UtcNow));
+        WithTheCurrentPin();
+        WithARunFromTheEarlierPackage();
+
+        var page = Render<Consults>();
+        page.Find("fluent-switch").TriggerEvent(
+            "onswitchcheckedchange",
+            new Microsoft.FluentUI.AspNetCore.Components.CheckboxChangeEventArgs { Checked = true });
+
+        var seeded = page.Find("input[type=datetime-local]").GetAttribute("value");
+
+        Assert.NotNull(seeded);
+        Assert.EndsWith("T06:30", seeded, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WithNoAccountDefault_TheSeedIsStillTwoAm()
+    {
+        // What #157 shipped, unchanged for anyone who never sets a preference.
+        AccountService.GetSettingAsync(ScheduleDefault.SettingKey).Returns((AccountSettingResponse?)null);
+        WithTheCurrentPin();
+        WithARunFromTheEarlierPackage();
+
+        var page = Render<Consults>();
+        page.Find("fluent-switch").TriggerEvent(
+            "onswitchcheckedchange",
+            new Microsoft.FluentUI.AspNetCore.Components.CheckboxChangeEventArgs { Checked = true });
+
+        Assert.EndsWith("T02:00", page.Find("input[type=datetime-local]").GetAttribute("value")!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheTimeControlAppearsOnlyWhenScheduling()
+    {
+        WithTheCurrentPin();
+        WithARunFromTheEarlierPackage();
+
+        var page = Render<Consults>();
+
+        Assert.Empty(page.FindAll("input[type=datetime-local]"));
+    }
+
+    [Fact]
+    public void AnOvernightSubmit_SendsTheChosenTimeRatherThanThePreset()
+    {
+        // The whole issue in one assertion: what the user typed is what is
+        // scheduled. Before #390 this was always the next 2 AM.
+        AccountService.GetSettingAsync(ScheduleDefault.SettingKey).Returns((AccountSettingResponse?)null);
+        WithTheCurrentPin();
+        WithARunFromTheEarlierPackage();
+
+        DateTimeOffset? sentSchedule = null;
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Any<IReadOnlyDictionary<string, ConsultInputValue>>(),
+                Arg.Any<string?>(),
+                Arg.Do<DateTimeOffset?>(value => sentSchedule = value),
+                Arg.Any<IReadOnlyDictionary<string, InputFilePayload>?>())
+            .Returns(new ConsultGenerationJobStartResponse("job-2", "https://example/status"));
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Edit draft")).Click();
+        page.Find("fluent-text-area").Change("Chest pain, rule out ACS.");
+        page.Find("fluent-switch").TriggerEvent(
+            "onswitchcheckedchange",
+            new Microsoft.FluentUI.AspNetCore.Components.CheckboxChangeEventArgs { Checked = true });
+
+        var chosen = DateTime.Now.Date.AddDays(3).AddHours(9).AddMinutes(15);
+        page.Find("input[type=datetime-local]").Change(chosen.ToString("yyyy-MM-ddTHH:mm"));
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.NotNull(sentSchedule);
+        Assert.Equal(chosen, sentSchedule!.Value.ToLocalTime().DateTime);
     }
 }
