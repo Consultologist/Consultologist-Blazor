@@ -176,8 +176,10 @@ linking an identity already attached to a different account is refused
 (`already-linked`). Re-linking the same account is idempotent and
 refreshes the claims. `Account/Me` exposes the link in `LinkedIdentities`
 so both the user and the operator (reviewing a `Pending` account) can see
-it. There is no self-service unlink yet; the operator can delete the two
-table rows if needed.
+it. Since #195 a user can disconnect it themselves
+(`DELETE Account/LinkedIn`), which deletes both rows; the sign-in identity
+(`entra-external-id`) is refused, since removing it would orphan the
+account from its own credentials.
 
 Meaning of "verified", two layers:
 
@@ -195,10 +197,25 @@ Meaning of "verified", two layers:
    app (everyone else gets 403 → categories stay empty, linking still
    succeeds). Apply for the Lite tier before external users.
 
-Both layers are **inputs to the operator's manual activation judgment** —
-never an automated gate. That is also a LinkedIn policy requirement: the
-Verified on LinkedIn API is licensed for trust enhancement, not for
-eligibility decisions, employment screening, or KYC.
+**Changed by #195.** Linking now activates directly: a successful link moves
+`Pending` or `Unverified` to `Active`, and disconnecting moves `Active` to
+`Unverified`. The manual runbook above is the fallback rather than the path.
+
+`Unverified` is the third status — activated once, on evidence since
+withdrawn. It reads everything the account already made and cannot start new
+consults, enforced at the two creation doors (`ConsultGenerationJobs` start
+and `EmailSenderResolver`) via `AccountAuthorizer.CanStartConsults`, while
+everything else takes `CanUseApp`.
+
+> **Open question this raises.** What activates now is the *link* — proof of
+> control over a LinkedIn account — not the Verified on LinkedIn categories,
+> which remain display-only. That distinction matters, because the Verified
+> API is licensed for trust enhancement, **not for eligibility decisions,
+> employment screening, or KYC**, and this document previously read "never an
+> automated gate" partly for that reason. Automating on the link rather than
+> on the verified categories is intended to stay the right side of that line,
+> but it should be confirmed against the current LinkedIn terms before
+> external users arrive.
 
 ## Do Not Do
 
