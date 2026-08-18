@@ -52,6 +52,55 @@ public class ScheduledRunTests
         new(Substitute.For<IConsultGenerationJobIndexStore>());
 
     [Fact]
+    public async Task Cancel_WritesATerminalRecordThatIsNotAFailure()
+    {
+        // #202: nothing went wrong and nothing was spent, so Cancelled is its
+        // own terminal status rather than a flavour of Failed.
+        var entity = CreateEntity();
+        await entity.Initialize(new ConsultGenerationJobInitialize(
+            "job-1", "user-1", Items, ScheduledAtUtc: DateTimeOffset.UtcNow.AddHours(6)));
+
+        await entity.Cancel();
+
+        var state = StateOf(entity);
+        Assert.Equal(ConsultGenerationJobStatuses.Cancelled, state.Status);
+        Assert.NotNull(state.CompletedAtUtc);
+        Assert.Null(state.FailureError);
+        Assert.Contains(state.History, e => e.Label.Contains("Cancelled", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task MarkRunning_AfterCancel_LeavesItCancelled()
+    {
+        // THE race this issue turns on. Terminating the orchestration does not
+        // un-schedule a timer that has already fired, so MarkRunning can arrive
+        // after the cancel — and without the guard the job runs after the user
+        // has been told it will not. A 409 at the endpoint cannot prevent this;
+        // by then the decision has already been made.
+        var entity = CreateEntity();
+        await entity.Initialize(new ConsultGenerationJobInitialize(
+            "job-1", "user-1", Items, ScheduledAtUtc: DateTimeOffset.UtcNow.AddMinutes(2)));
+        await entity.Cancel();
+
+        await entity.MarkRunning();
+
+        Assert.Equal(ConsultGenerationJobStatuses.Cancelled, StateOf(entity).Status);
+    }
+
+    [Fact]
+    public async Task MarkRunning_OnAScheduledJob_StillRuns()
+    {
+        // The guard must not swallow the ordinary path it sits in front of.
+        var entity = CreateEntity();
+        await entity.Initialize(new ConsultGenerationJobInitialize(
+            "job-1", "user-1", Items, ScheduledAtUtc: DateTimeOffset.UtcNow.AddHours(6)));
+
+        await entity.MarkRunning();
+
+        Assert.Equal(ConsultGenerationJobStatuses.Running, StateOf(entity).Status);
+    }
+
+    [Fact]
     public async Task Initialize_FutureSchedule_LandsScheduled()
     {
         var entity = CreateEntity();

@@ -683,7 +683,9 @@
       var snapshot = await AIService.GetConsultGenerationJobAsync(targetJobId);
       ApplyConsultGenerationJobResponse(snapshot, blockSnapshots);
 
-      if (snapshot.Status is "Completed" or "Failed")
+      // #202: Cancelled is terminal too. Without it a re-attach would open an
+      // SSE stream against an orchestration that has been terminated.
+      if (snapshot.Status is "Completed" or "Failed" or "Cancelled")
       {
         runTerminalStatus = snapshot.Status;
         return;
@@ -1141,7 +1143,7 @@
         ApplyConsultGenerationJobResponse(response, blockSnapshots);
         await InvokeAsync(StateHasChanged);
 
-        if (response.Status is "Completed" or "Failed")
+        if (response.Status is "Completed" or "Failed" or "Cancelled")
         {
           runTerminalStatus = response.Status;
           aiProgressNotice = null;

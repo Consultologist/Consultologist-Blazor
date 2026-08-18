@@ -85,6 +85,17 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     public async Task MarkRunning()
     {
         var state = EnsureState();
+
+        // #202: the cancel race. Terminating the orchestration does not
+        // un-schedule a timer that has already fired, so a cancel landing in
+        // that window would otherwise be walked back to Running here — and the
+        // job would run after the user was told it would not. Terminal is
+        // terminal; the orchestration is being torn down regardless.
+        if (IsTerminal(state.Status))
+        {
+            return;
+        }
+
         state.Status = ConsultGenerationJobStatuses.Running;
         state.StartedAtUtc ??= DateTimeOffset.UtcNow;
         State = state;
@@ -238,6 +249,31 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
 
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
     }
+
+    /// <summary>
+    /// #202: called off before it ran. Its own operation rather than
+    /// FinalizeJob, whose body branches on Completed and Failed only — routed
+    /// through there a cancelled job would get no History event at all, and
+    /// would inherit the "section not reached" bookkeeping that belongs to a
+    /// failure. Nothing here ran, so there is nothing to reconcile.
+    /// </summary>
+    public async Task Cancel()
+    {
+        var state = EnsureState();
+        state.Status = ConsultGenerationJobStatuses.Cancelled;
+        state.CompletedAtUtc = DateTimeOffset.UtcNow;
+        state.History.Add(new JobHistoryEvent(
+            "skipped", "Cancelled before the scheduled run.", null, DateTimeOffset.UtcNow));
+        State = state;
+
+        await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+    }
+
+    /// <summary>The states nothing may move a job out of.</summary>
+    internal static bool IsTerminal(string status) =>
+        status is ConsultGenerationJobStatuses.Completed
+            or ConsultGenerationJobStatuses.Failed
+            or ConsultGenerationJobStatuses.Cancelled;
 
     public async Task FinalizeJob(ConsultGenerationJobFinalize input)
     {
@@ -709,6 +745,9 @@ public static class ConsultGenerationJobStatuses
     public const string Running = "Running";
     public const string Completed = "Completed";
     public const string Failed = "Failed";
+    // #202: a Scheduled job called off before its timer fired. Terminal, and
+    // distinct from Failed: nothing went wrong and nothing was spent.
+    public const string Cancelled = "Cancelled";
 }
 
 public static class ConsultGenerationActivityNames

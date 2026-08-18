@@ -1,4 +1,5 @@
 using AngleSharp.Dom;
+using Microsoft.AspNetCore.Components.Web;
 using Bunit;
 using Consultologist.Web.Pages;
 using Consultologist.Web.Services.Accounts;
@@ -72,5 +73,68 @@ public class HistoryRunViewLinkTests : ClientRenderTestContext
         WithJobStatus("Completed");
 
         Assert.DoesNotContain("watch live", RenderList().Markup);
+    }
+
+    [Fact]
+    public void AScheduledRun_OffersToCancel()
+    {
+        // #202: the run has not started, so calling it off costs nothing.
+        WithJobStatus("Scheduled");
+
+        var button = RenderList().Find(".cancel-run-button");
+
+        Assert.Equal("cancel", button.TextContent.Trim());
+    }
+
+    [Theory]
+    [InlineData("Completed")]
+    [InlineData("Failed")]
+    [InlineData("Running")]
+    [InlineData("Cancelled")]
+    public void AnythingElse_OffersNoCancel(string status)
+    {
+        // Running is the one worth naming: stopping work already paid for is a
+        // different decision, and #157 deferred only the unfired-timer case.
+        WithJobStatus(status);
+
+        Assert.Empty(RenderList().FindAll(".cancel-run-button"));
+    }
+
+    [Fact]
+    public void ACancelledRun_ReadsAsTerminal()
+    {
+        // Or the poll loop never stops and the link keeps offering to watch a
+        // run that will not happen.
+        WithJobStatus("Cancelled");
+
+        Assert.Equal("view run", Link(RenderList()).TextContent.Trim());
+    }
+
+    [Fact]
+    public async Task Cancelling_CallsTheEndpointAndUpdatesTheRowInPlace()
+    {
+        WithJobStatus("Scheduled");
+        var page = RenderList();
+
+        await page.Find(".cancel-run-button").ClickAsync(new MouseEventArgs());
+
+        await AIService.Received(1).CancelConsultGenerationJobAsync(JobId);
+        // The row stays — a consult that was submitted and stopped is a fact
+        // worth keeping — and reads Cancelled without a reload.
+        Assert.Contains("Cancelled", page.Find(".job-status-badge").TextContent);
+    }
+
+    [Fact]
+    public async Task ARefusedCancel_SaysWhichStateRefused()
+    {
+        // The whole reason the endpoint answers 409 with a sentence.
+        WithJobStatus("Scheduled");
+        AIService.CancelConsultGenerationJobAsync(JobId)
+            .Returns<Task>(_ => throw new InvalidOperationException("This consult has already started, so it can no longer be cancelled."));
+
+        var page = RenderList();
+        await page.Find(".cancel-run-button").ClickAsync(new MouseEventArgs());
+
+        Assert.Contains("already started", page.Markup, StringComparison.Ordinal);
     }
 }

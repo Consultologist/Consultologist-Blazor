@@ -29,6 +29,13 @@
             <div class="form-stack">
                 <h2 class="panel-title">Recent consult jobs</h2>
 
+                @* #202: a refused cancel has to say which state refused, or the
+                   button just appears not to work. *@
+                @if (!string.IsNullOrWhiteSpace(_cancelError))
+                {
+                    <FluentMessageBar Intent="MessageIntent.Error">@_cancelError</FluentMessageBar>
+                }
+
                 @if (jobsLoading && jobs.Count == 0)
                 {
                     <div class="loading-state">
@@ -89,6 +96,17 @@
                                         <a class="run-view-link" href="/consults/@job.JobId"
                                            @onclick:stopPropagation="true"
                                            title="@(IsTerminal(job.Status) ? "Open this run's steps in Consults" : "Open the live run view in Consults")">@(IsTerminal(job.Status) ? "view run" : "watch live")</a>
+                                        @* #202: only a run that has not started. stopPropagation for the
+                                           same reason as the link above — the row is a summary. *@
+                                        @if (job.Status == "Scheduled")
+                                        {
+                                            <button type="button" class="cancel-run-button"
+                                                    disabled="@(_cancelling == job.JobId)"
+                                                    @onclick:stopPropagation="true"
+                                                    @onclick="() => CancelScheduledRunAsync(job.JobId)">
+                                                @(_cancelling == job.JobId ? "cancelling…" : "cancel")
+                                            </button>
+                                        }
                                     </div>
                                     <div class="job-history-item__id">
                                         <span class="muted-text">@job.JobId[..8]&hellip;</span>
@@ -373,7 +391,55 @@
             detail.Source,
             detail.ScheduledAtUtc);
 
-    private static bool IsTerminal(string status) => status is "Completed" or "Failed";
+    // #202: Cancelled belongs here or the poll loop never stops on a cancelled
+    // row, and #367's link keeps offering to "watch live" a run that will not
+    // happen.
+    private static bool IsTerminal(string status) => status is "Completed" or "Failed" or "Cancelled";
+
+    private string? _cancelling;
+    private string? _cancelError;
+
+    /// <summary>
+    /// #202: call off a scheduled run. The row stays — a consult that was
+    /// submitted and stopped is a fact worth keeping — and updates in place the
+    /// way the poll loop updates it, so the list does not jump.
+    /// </summary>
+    private async Task CancelScheduledRunAsync(string jobId)
+    {
+        if (_cancelling != null)
+        {
+            return;
+        }
+
+        _cancelling = jobId;
+        _cancelError = null;
+
+        try
+        {
+            await AIService.CancelConsultGenerationJobAsync(jobId);
+
+            var index = jobs.FindIndex(job => job.JobId == jobId);
+
+            if (index >= 0)
+            {
+                jobs[index] = jobs[index] with { Status = "Cancelled" };
+            }
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            // The server's sentence when it sent one — a 409 says which state
+            // refused, which is the whole reason it is a 409.
+            _cancelError = ex.Message;
+        }
+        finally
+        {
+            _cancelling = null;
+        }
+    }
 
     // #206: while any loaded row is non-terminal, refresh those jobs from the
     // snapshot endpoint so status/counts tick without a reload. One fetch per
