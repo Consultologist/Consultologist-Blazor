@@ -100,6 +100,21 @@ public sealed class AccountEndpointService : IAccountEndpointService
         }
     }
 
+    public async Task DisconnectLinkedInAsync()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, GetAccountBaseUrl() + "/LinkedIn");
+        await AddAuthorizationAsync(request);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            _logger.LogError("LinkedIn disconnect failed with status {StatusCode}", response.StatusCode);
+            throw new HttpRequestException(ExtractError(error) ?? $"LinkedIn disconnect failed: {response.StatusCode}");
+        }
+    }
+
     public async Task ClearDeliveryPasswordAsync()
     {
         using var request = new HttpRequestMessage(HttpMethod.Delete, GetAccountBaseUrl() + "/DeliveryPassword");
