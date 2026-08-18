@@ -11,11 +11,57 @@ public sealed class AccountLinkedIn
 {
     private readonly IAccountAuthorizer _authorizer;
     private readonly ILinkedInLinkService _linkService;
+    private readonly IAccountStore _accountStore;
 
-    public AccountLinkedIn(IAccountAuthorizer authorizer, ILinkedInLinkService linkService)
+    public AccountLinkedIn(
+        IAccountAuthorizer authorizer,
+        ILinkedInLinkService linkService,
+        IAccountStore accountStore)
     {
         _authorizer = authorizer;
         _linkService = linkService;
+        _accountStore = accountStore;
+    }
+
+    /// <summary>
+    /// #195: disconnect the caller's own LinkedIn identity. Deferred at #133,
+    /// leaving the operator to delete two table rows by hand.
+    ///
+    /// The "options" verb is not decoration: Account/LinkedIn has no other
+    /// handler, so without it the browser's preflight 404s and the DELETE never
+    /// leaves the page. Account/LinkedIn/Start is a different route and does
+    /// not cover it.
+    /// </summary>
+    [Function("AccountLinkedInDisconnect")]
+    public async Task<HttpResponseData> DisconnectAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", "options", Route = "Account/LinkedIn")] HttpRequestData req)
+    {
+        var cancellationToken = req.FunctionContext.CancellationToken;
+
+        if (string.Equals(req.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        {
+            var optionsResponse = req.CreateResponse(HttpStatusCode.OK);
+            FunctionCors.Apply(req, optionsResponse);
+            return optionsResponse;
+        }
+
+        var account = await _authorizer.AuthorizeAsync(req, cancellationToken);
+
+        if (account == null)
+        {
+            return AccountAuthorizer.CreateUnauthorizedResponse(req);
+        }
+
+        // No CanUseApp gate, for the same reason linking has none: a user who
+        // connected the wrong LinkedIn account must be able to undo it whatever
+        // their status — and unlinking is the one action that CHANGES status,
+        // so gating it on status would be circular.
+        await _accountStore.UnlinkIdentityAsync(
+            account.AppUserId, IdentityProviders.LinkedIn, cancellationToken);
+
+        var response = req.CreateResponse(HttpStatusCode.NoContent);
+        FunctionCors.Apply(req, response);
+        return response;
     }
 
     [Function("AccountLinkedInStart")]
