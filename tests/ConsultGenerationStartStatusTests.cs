@@ -53,4 +53,27 @@ public class ConsultGenerationStartStatusTests
         Assert.Contains("output-contracts@v2026.07.3", message);
         Assert.Contains("the catalog moved", message);
     }
+
+    [Theory]
+    // #202: only a run that has not started may be called off. The deferral in
+    // #157 is about an unfired timer; stopping work already paid for is a
+    // different decision.
+    [InlineData(ConsultGenerationJobStatuses.Scheduled, null)]
+    [InlineData(ConsultGenerationJobStatuses.Running, "already started")]
+    [InlineData(ConsultGenerationJobStatuses.Queued, "already started")]
+    [InlineData(ConsultGenerationJobStatuses.Completed, "already completed")]
+    [InlineData(ConsultGenerationJobStatuses.Failed, "already failed")]
+    [InlineData(ConsultGenerationJobStatuses.Cancelled, "already cancelled")]
+    public void OnlyAScheduledRunMayBeCancelled(string status, string? expectedFragment)
+    {
+        var refusal = ConsultGenerationJobs.RefusalForCancel(status);
+
+        if (expectedFragment is null)
+        {
+            Assert.Null(refusal);
+            return;
+        }
+
+        Assert.Contains(expectedFragment, refusal, StringComparison.Ordinal);
+    }
 }

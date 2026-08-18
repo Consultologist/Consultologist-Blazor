@@ -16,6 +16,7 @@ using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.DurableTask;
 using Microsoft.DurableTask.Client;
 using Microsoft.DurableTask.Entities;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Consultologist.Api.Jobs;
@@ -60,17 +61,25 @@ public sealed class ConsultGenerationJobs
     private readonly IAccountAuthorizer _authorizer;
     private readonly IConsultGenerationJobEventStore _eventStore;
     private readonly IConsultGenerationJobStarter _jobStarter;
+    // #202: the cancellation reply. A scheduled job is one the user walked away
+    // from, so calling it off is told the same way its completion would be.
+    private readonly Email.IGraphMailClient _mail;
+    private readonly IConfiguration _configuration;
 
     public ConsultGenerationJobs(
         ILogger<ConsultGenerationJobs> logger,
         IAccountAuthorizer authorizer,
         IConsultGenerationJobEventStore eventStore,
-        IConsultGenerationJobStarter jobStarter)
+        IConsultGenerationJobStarter jobStarter,
+        Email.IGraphMailClient mail,
+        IConfiguration configuration)
     {
         _logger = logger;
         _authorizer = authorizer;
         _eventStore = eventStore;
         _jobStarter = jobStarter;
+        _mail = mail;
+        _configuration = configuration;
     }
 
     [Function("StartConsultGenerationJob")]
@@ -194,6 +203,130 @@ public sealed class ConsultGenerationJobs
                 stopwatch.ElapsedMilliseconds);
 
             return await CreateJsonResponseAsync(req, HttpStatusCode.InternalServerError, new { error = $"Internal error: {ex.Message}" }, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// #202: call off a scheduled run before its timer fires. Deferred at #157
+    /// because "an operator can terminate the orchestration manually" — true
+    /// only while there is an operator to ask.
+    /// </summary>
+    [Function("CancelConsultGenerationJob")]
+    public async Task<HttpResponseData> CancelAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", "options", Route = "ConsultGenerationJobs/{jobId}/Cancel")] HttpRequestData req,
+        [DurableClient] DurableTaskClient client,
+        string jobId)
+    {
+        var cancellationToken = req.FunctionContext.CancellationToken;
+
+        if (IsOptions(req))
+        {
+            return CreateEmptyResponse(req, HttpStatusCode.OK);
+        }
+
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest, new { error = "JobId is required." }, cancellationToken);
+        }
+
+        var account = await _authorizer.AuthorizeAsync(req, cancellationToken);
+
+        if (account == null)
+        {
+            return AccountAuthorizer.CreateUnauthorizedResponse(req);
+        }
+
+        if (!AccountAuthorizer.IsActive(account))
+        {
+            return AccountAuthorizer.CreateForbiddenResponse(req);
+        }
+
+        // The ENTITY-backed read only. GetJobResponseAsync falls back to
+        // synthesizing a response from the orchestration instance using the
+        // CALLER's id when no entity record exists, which carries no ownership
+        // evidence at all — fine for a read that finds nothing, not for a
+        // mutation.
+        var response = await GetEntityBackedJobResponseAsync(client, jobId, cancellationToken);
+
+        if (response == null
+            || !string.Equals(response.AppUserId, account.AppUserId, StringComparison.Ordinal))
+        {
+            // Someone else's job is not found, not forbidden: the 403 would
+            // confirm it exists.
+            return await CreateJsonResponseAsync(
+                req, HttpStatusCode.NotFound, new { error = "Consult generation job was not found." }, cancellationToken);
+        }
+
+        if (RefusalForCancel(response.Status) is { } refusal)
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.Conflict, new { error = refusal }, cancellationToken);
+        }
+
+        // Order is load-bearing. The entity is written FIRST so its terminal
+        // Cancelled wins in MergeEntityAndRuntimeStatus; terminate first and the
+        // runtime status arrives as Terminated, which MapRuntimeStatus reads as
+        // Failed — every cancelled job would read as a failure.
+        var entityId = new EntityInstanceId(nameof(ConsultGenerationJobEntity), jobId);
+        await client.Entities.SignalEntityAsync(
+            entityId, nameof(ConsultGenerationJobEntity.Cancel), cancellation: cancellationToken);
+
+        await client.TerminateInstanceAsync(jobId, "Cancelled by the account holder (#202).", cancellationToken);
+
+        _logger.LogInformation(
+            "Cancelled a scheduled consult run. JobId={JobId}, AppUserId={AppUserId}",
+            jobId,
+            account.AppUserId);
+
+        await TrySendCancellationReplyAsync(jobId, account.Email, cancellationToken);
+
+        return await CreateJsonResponseAsync(
+            req,
+            HttpStatusCode.OK,
+            new { jobId, status = ConsultGenerationJobStatuses.Cancelled },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Why this job may not be cancelled, or null when it may. Only a Scheduled
+    /// job qualifies: the deferral in #157 is about a run that has not started,
+    /// and stopping one that has is a different decision about work already paid
+    /// for. Extracted so it can be asserted directly.
+    /// </summary>
+    internal static string? RefusalForCancel(string status) => status switch
+    {
+        ConsultGenerationJobStatuses.Scheduled => null,
+        ConsultGenerationJobStatuses.Queued or ConsultGenerationJobStatuses.Running =>
+            "This consult has already started, so it can no longer be cancelled.",
+        _ => $"This consult is already {status.ToLowerInvariant()}."
+    };
+
+    /// <summary>
+    /// A fresh no-PHI message, never a Graph /reply — the same rule the intake
+    /// replies follow, for the same reason. A reply that cannot send must not
+    /// fail a cancel that already happened.
+    /// </summary>
+    private async Task TrySendCancellationReplyAsync(string jobId, string? toAddress, CancellationToken cancellationToken)
+    {
+        var mailbox = _configuration["EmailIntake:MailboxAddress"];
+
+        if (string.IsNullOrWhiteSpace(toAddress) || string.IsNullOrWhiteSpace(mailbox))
+        {
+            return;
+        }
+
+        try
+        {
+            var appBaseUrl = _configuration["EmailIntake:AppBaseUrl"]?.TrimEnd('/');
+            var body = "Your scheduled consult was cancelled, and will not run.\n\n"
+                + "You can schedule another from the app"
+                + (appBaseUrl == null ? "." : $":\n{appBaseUrl}/history/{jobId}\n")
+                + "\nThis message intentionally contains no clinical content.";
+
+            await _mail.SendMailAsync(mailbox, toAddress, "Consult cancelled", body, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Cancellation reply could not be sent. JobId={JobId}", jobId);
         }
     }
 
@@ -802,7 +935,12 @@ public sealed class ConsultGenerationJobs
 
     private static bool IsTerminalJobStatus(string status)
     {
-        return status is ConsultGenerationJobStatuses.Completed or ConsultGenerationJobStatuses.Failed;
+        return status is ConsultGenerationJobStatuses.Completed
+            or ConsultGenerationJobStatuses.Failed
+            // #202: load-bearing. Without it MergeEntityAndRuntimeStatus
+            // overrides the entity's Cancelled with the runtime's Terminated,
+            // which MapRuntimeStatus reads as Failed.
+            or ConsultGenerationJobStatuses.Cancelled;
     }
 
     private static bool IsTerminalRuntimeStatus(OrchestrationRuntimeStatus status)
