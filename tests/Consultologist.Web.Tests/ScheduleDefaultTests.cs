@@ -1,3 +1,4 @@
+using System.Globalization;
 using Consultologist.Web.Services.Accounts;
 
 namespace Consultologist.Web.Tests;
@@ -85,5 +86,69 @@ public class ScheduleDefaultTests
     public void AClearedOrHalfTypedInput_IsNull(string? value)
     {
         Assert.Null(ScheduleDefault.FromLocalInputValue(value));
+    }
+
+
+    [Theory]
+    // <input type="time"> sends HH:mm:ss whenever its step admits seconds, and
+    // HH:mm otherwise. Rejecting the first is what made "Enter a time as HH:MM"
+    // appear for a time the user had entered correctly.
+    [InlineData("07:45:00", "07:45")]
+    [InlineData("07:45", "07:45")]
+    [InlineData("23:59:59", "23:59")]
+    public void BothPrecisionsTheControlCanSend_AreAccepted(string sent, string expected)
+    {
+        Assert.Equal(expected, ScheduleDefault.Parse(sent));
+    }
+
+    [Theory]
+    [InlineData("fi-FI")]
+    [InlineData("de-DE")]
+    [InlineData("en-CA")]
+    [InlineData("fr-FR")]
+    public void TheStoredFormIsTheSameInEveryCulture(string culture)
+    {
+        // A custom format's ":" means the CULTURE's time separator, not a
+        // colon. Under fi-FI this parsed 07:45 and handed back "07.45" — a
+        // value nothing could read again, including this same method. Blazor
+        // takes its culture from the browser, so that is a real machine.
+        var previous = CultureInfo.CurrentCulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+
+            Assert.Equal("07:45", ScheduleDefault.Parse("07:45"));
+            Assert.Equal("07:45", ScheduleDefault.Parse(ScheduleDefault.Parse("07:45")));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
+
+    [Theory]
+    [InlineData("fi-FI")]
+    [InlineData("de-DE")]
+    public void TheControlValueIsTheSameInEveryCulture(string culture)
+    {
+        // datetime-local speaks one format. yyyy-MM-ddTHH:mm through a culture
+        // with a "." separator produces something the control silently ignores.
+        var previous = CultureInfo.CurrentCulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+            var instant = new DateTimeOffset(new DateTime(2026, 8, 19, 6, 30, 0, DateTimeKind.Local));
+
+            var value = ScheduleDefault.ToLocalInputValue(instant);
+
+            Assert.Equal("2026-08-19T06:30", value);
+            Assert.Equal(instant.ToUniversalTime(), ScheduleDefault.FromLocalInputValue(value));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
     }
 }
