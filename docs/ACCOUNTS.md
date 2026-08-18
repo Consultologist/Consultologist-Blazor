@@ -207,7 +207,7 @@ consults, enforced at the two creation doors (`ConsultGenerationJobs` start
 and `EmailSenderResolver`) via `AccountAuthorizer.CanStartConsults`, while
 everything else takes `CanUseApp`.
 
-> **Open question this raises.** What activates now is the *link* — proof of
+> **Open question this raises (#388).** What activates now is the *link* — proof of
 > control over a LinkedIn account — not the Verified on LinkedIn categories,
 > which remain display-only. That distinction matters, because the Verified
 > API is licensed for trust enhancement, **not for eligibility decisions,
