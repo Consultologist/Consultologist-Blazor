@@ -172,6 +172,9 @@ public sealed class ConsultGenerationJobs
                     ConsultGenerationJobStartError.RegistryUnavailable => HttpStatusCode.ServiceUnavailable,
                     ConsultGenerationJobStartError.PackageNotExecutable => HttpStatusCode.UnprocessableEntity,
                     ConsultGenerationJobStartError.SpecVersionNotYetExecutable => HttpStatusCode.UnprocessableEntity,
+                    // #374: the package is readable and the registry is up, so
+                    // this is not a 503. The content and the catalog disagree.
+                    ConsultGenerationJobStartError.PackageContentRejected => HttpStatusCode.UnprocessableEntity,
                     // Well-formed request, unsatisfiable against this package's
                     // input declaration — 422, not 400 (the request-shape rules
                     // in ValidateRequest are the 400s).

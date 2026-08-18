@@ -34,6 +34,28 @@ public sealed class WorkflowPackageSpecVersionException : Exception
     public int SpecVersion { get; }
 }
 
+/// <summary>
+/// A package that resolved and downloaded cleanly, and whose CONTENT this
+/// engine will not accept: it fails validation, or a declared schema matches no
+/// contract in the loaded catalog.
+///
+/// The second case is the one worth naming (#374). A published version is
+/// immutable, but the schema-to-catalog match is re-evaluated on every load, so
+/// a catalog change can strand a package that was valid when it was published —
+/// nothing about the package having changed. Reported as "the registry is
+/// unavailable" it sent an operator to look at storage, which is fine, for a
+/// package which is also fine.
+///
+/// Same reasoning as WorkflowPackageSpecVersionException above, and the same
+/// remedy: say what is actually wrong.
+/// </summary>
+public sealed class WorkflowPackageContentException : Exception
+{
+    public WorkflowPackageContentException(string message) : base(message)
+    {
+    }
+}
+
 public sealed class WorkflowPackageStore : IWorkflowPackageStore
 {
     private const string ContainerName = WorkflowPackageBlobContainerFactory.ContainerName;
@@ -185,7 +207,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
 
         if (!result.IsValid)
         {
-            throw new InvalidOperationException(
+            throw new WorkflowPackageContentException(
                 $"Workflow package {name}@{version} failed specVersion-{manifest.SpecVersion} validation: {string.Join(" | ", result.Errors)}");
         }
 
@@ -204,8 +226,9 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         {
             if (!_catalog.TryResolveContract(System.Text.Json.Nodes.JsonNode.Parse(files[path]), out var contractId))
             {
-                throw new InvalidOperationException(
-                    $"Workflow package {name}@{version} schema '{schemaId}' does not canonically match any catalog output contract.");
+                throw new WorkflowPackageContentException(
+                    $"Workflow package {name}@{version} schema '{schemaId}' does not canonically match any contract in "
+                        + $"{_catalog.ResolvedRef}. The package is unchanged and immutable; the catalog moved.");
             }
 
             schemaContracts[schemaId] = contractId;

@@ -694,6 +694,56 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
+    public async Task APackageStrandedByTheCatalog_IsNotReportedAsARegistryOutage()
+    {
+        // #374: the sharp case. A published version is immutable, but the
+        // schema-to-catalog match is re-evaluated on every load — so a catalog
+        // change can strand a package that was valid when published, with
+        // nothing about the package having changed. Reported as
+        // RegistryUnavailable it sent an operator to look at storage that was
+        // working, for a package that was also fine.
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns<Task<WorkflowPackage>>(_ => throw new WorkflowPackageContentException(
+                "Workflow package general@v2026.08.1 schema 'concept-list' does not canonically match any contract in "
+                    + "output-contracts@v2026.07.3. The package is unchanged and immutable; the catalog moved."));
+
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(Referral),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        Assert.Equal(ConsultGenerationJobStartError.PackageContentRejected, outcome.Error);
+        Assert.NotEqual(ConsultGenerationJobStartError.RegistryUnavailable, outcome.Error);
+        // The sentence has to name the catalog, or it does not say what moved.
+        Assert.Contains("output-contracts@v2026.07.3", outcome.ErrorDetail);
+        Assert.Contains("the catalog moved", outcome.ErrorDetail);
+    }
+
+    [Fact]
+    public async Task ARegistryFailure_StillReportsAnOutage()
+    {
+        // The other half of the split: a real storage failure must not be
+        // quietly reclassified as a content disagreement.
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns<Task<WorkflowPackage>>(_ => throw new InvalidOperationException("blob container unreachable"));
+
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(Referral),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        Assert.Equal(ConsultGenerationJobStartError.RegistryUnavailable, outcome.Error);
+    }
+
+    [Fact]
     public async Task APackageTheEngineWillNotRun_IsNotReportedAsARegistryOutage()
     {
         // The package is there and readable; this engine does not run that
