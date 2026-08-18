@@ -129,6 +129,55 @@
             <section class="content-card">
                 <div class="form-stack">
                     <h2 class="panel-title">
+                        Scheduled consults
+                    </h2>
+
+                    <p class="panel-description">
+                        The time of day a scheduled consult runs, unless you choose otherwise
+                        when scheduling it. Your local time. Without one, scheduled consults
+                        run at 2:00 AM.
+                    </p>
+
+                    @if (scheduleMessage != null)
+                    {
+                        <FluentMessageBar Intent="@scheduleMessageIntent">@scheduleMessage</FluentMessageBar>
+                    }
+
+                    <div class="state-panel">
+                        <span class="muted-text">Default time</span>
+                        <strong>@(savedScheduleTime ?? "Not set — 2:00 AM")</strong>
+                    </div>
+
+                    <div class="action-row">
+                        @* #390: native input, matching the v8 date field in Consults. Empty until
+                           chosen — this is a preference, and one nobody set is not 2:00 AM, it is
+                           absent. *@
+                        <input type="time"
+                               class="node-field__input"
+                               value="@scheduleTimeInput"
+                               @onchange="args => scheduleTimeInput = args.Value?.ToString() ?? string.Empty"
+                               disabled="@scheduleRequestInProgress"
+                               aria-label="Default time for scheduled consults" />
+                        <FluentButton Appearance="Appearance.Accent"
+                                      Disabled="@(scheduleRequestInProgress || string.IsNullOrWhiteSpace(scheduleTimeInput))"
+                                      @onclick="SaveScheduleTimeAsync">
+                            @(savedScheduleTime == null ? "Set default" : "Change default")
+                        </FluentButton>
+                        @if (savedScheduleTime != null)
+                        {
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Disabled="@scheduleRequestInProgress"
+                                          @onclick="ClearScheduleTimeAsync">
+                                Clear
+                            </FluentButton>
+                        }
+                    </div>
+                </div>
+            </section>
+
+            <section class="content-card">
+                <div class="form-stack">
+                    <h2 class="panel-title">
                         Encrypted document delivery
                     </h2>
 
@@ -267,6 +316,7 @@
         try
         {
             account = await AccountService.GetCurrentAccountAsync();
+            await LoadScheduleTimeAsync();
         }
         catch (AccessTokenNotAvailableException exception)
         {
@@ -275,6 +325,101 @@
         catch (Exception ex)
         {
             accountErrorMessage = $"Unable to load account information: {ex.Message}";
+        }
+    }
+
+    // #390: the account's default time of day for scheduled consults.
+    // savedScheduleTime is what is stored (null = never set); scheduleTimeInput
+    // is what the control holds.
+    private string? savedScheduleTime;
+    private string scheduleTimeInput = string.Empty;
+    private bool scheduleRequestInProgress;
+    private string? scheduleMessage;
+    private MessageIntent scheduleMessageIntent = MessageIntent.Info;
+
+    /// <summary>
+    /// #390: read tolerantly, the way the workflow pin is. A setting that is
+    /// missing, blank or unreadable leaves the card showing "not set" rather
+    /// than reporting an error nobody came here for.
+    /// </summary>
+    private async Task LoadScheduleTimeAsync()
+    {
+        try
+        {
+            var setting = await AccountService.GetSettingAsync(ScheduleDefault.SettingKey);
+            savedScheduleTime = ScheduleDefault.Parse(setting?.Value);
+            scheduleTimeInput = savedScheduleTime ?? string.Empty;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch
+        {
+            savedScheduleTime = null;
+        }
+    }
+
+    private async Task SaveScheduleTimeAsync()
+    {
+        var normalized = ScheduleDefault.Parse(scheduleTimeInput);
+
+        if (normalized == null)
+        {
+            scheduleMessage = "Enter a time as HH:MM.";
+            scheduleMessageIntent = MessageIntent.Error;
+            return;
+        }
+
+        scheduleRequestInProgress = true;
+
+        try
+        {
+            await AccountService.SaveSettingAsync(
+                ScheduleDefault.SettingKey, normalized, ScheduleDefault.ContentType);
+            savedScheduleTime = normalized;
+            scheduleMessage = $"Scheduled consults will run at {normalized} unless you choose otherwise.";
+            scheduleMessageIntent = MessageIntent.Success;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            scheduleMessage = ex.Message;
+            scheduleMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            scheduleRequestInProgress = false;
+        }
+    }
+
+    private async Task ClearScheduleTimeAsync()
+    {
+        scheduleRequestInProgress = true;
+
+        try
+        {
+            await AccountService.DeleteSettingAsync(ScheduleDefault.SettingKey);
+            savedScheduleTime = null;
+            scheduleTimeInput = string.Empty;
+            scheduleMessage = "Default cleared. Scheduled consults will run at 2:00 AM.";
+            scheduleMessageIntent = MessageIntent.Success;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            scheduleMessage = ex.Message;
+            scheduleMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            scheduleRequestInProgress = false;
         }
     }
 

@@ -648,6 +648,8 @@ public class ConsultsPackageRefTests : ClientRenderTestContext
         WithARunFromTheEarlierPackage();
 
         var page = Render<Consults>();
+        // The fixture opens in the run phase; the switch lives in setup.
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Edit draft")).Click();
         page.Find("fluent-switch").TriggerEvent(
             "onswitchcheckedchange",
             new Microsoft.FluentUI.AspNetCore.Components.CheckboxChangeEventArgs { Checked = true });
@@ -667,6 +669,7 @@ public class ConsultsPackageRefTests : ClientRenderTestContext
         WithARunFromTheEarlierPackage();
 
         var page = Render<Consults>();
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Edit draft")).Click();
         page.Find("fluent-switch").TriggerEvent(
             "onswitchcheckedchange",
             new Microsoft.FluentUI.AspNetCore.Components.CheckboxChangeEventArgs { Checked = true });
@@ -681,7 +684,11 @@ public class ConsultsPackageRefTests : ClientRenderTestContext
         WithARunFromTheEarlierPackage();
 
         var page = Render<Consults>();
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Edit draft")).Click();
 
+        // In setup with the switch OFF — asserting Empty from the run phase
+        // would pass without proving anything.
+        Assert.NotEmpty(page.FindAll("fluent-switch"));
         Assert.Empty(page.FindAll("input[type=datetime-local]"));
     }
 
