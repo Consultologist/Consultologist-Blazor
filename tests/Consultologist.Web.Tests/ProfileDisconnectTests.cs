@@ -99,4 +99,75 @@ public class ProfileDisconnectTests : ClientRenderTestContext
 
         Assert.DoesNotContain("cannot start new ones", RenderProfile().Markup, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void WithNoDefaultSet_TheCardSaysSoAndNamesTheFallback()
+    {
+        // #390: empty until chosen. A preference nobody set is absent, not
+        // 2:00 AM — but the card still has to say what will actually happen.
+        WithAccount("Active", linkedIn: false);
+        AccountService.GetSettingAsync(ScheduleDefault.SettingKey).Returns((AccountSettingResponse?)null);
+
+        var markup = RenderProfile().Markup;
+
+        Assert.Contains("Not set", markup, StringComparison.Ordinal);
+        Assert.Contains("2:00 AM", markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AStoredDefault_IsShownAndSeedsTheControl()
+    {
+        WithAccount("Active", linkedIn: false);
+        AccountService.GetSettingAsync(ScheduleDefault.SettingKey)
+            .Returns(new AccountSettingResponse(
+                ScheduleDefault.SettingKey, "06:30", "text/plain", DateTimeOffset.UtcNow));
+
+        var page = RenderProfile();
+
+        Assert.Equal("06:30", page.Find("input[type=time]").GetAttribute("value"));
+    }
+
+    [Fact]
+    public async Task SavingTheDefault_WritesTheSettingAsPlainText()
+    {
+        WithAccount("Active", linkedIn: false);
+        AccountService.GetSettingAsync(ScheduleDefault.SettingKey).Returns((AccountSettingResponse?)null);
+
+        var page = RenderProfile();
+        page.Find("input[type=time]").Change("07:45");
+        await page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "Set default").ClickAsync(new());
+
+        await AccountService.Received(1).SaveSettingAsync(
+            ScheduleDefault.SettingKey, "07:45", ScheduleDefault.ContentType);
+    }
+
+    [Fact]
+    public async Task ClearingTheDefault_DeletesTheSetting()
+    {
+        WithAccount("Active", linkedIn: false);
+        AccountService.GetSettingAsync(ScheduleDefault.SettingKey)
+            .Returns(new AccountSettingResponse(
+                ScheduleDefault.SettingKey, "06:30", "text/plain", DateTimeOffset.UtcNow));
+
+        var page = RenderProfile();
+        await page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "Clear").ClickAsync(new());
+
+        await AccountService.Received(1).DeleteSettingAsync(ScheduleDefault.SettingKey);
+    }
+
+    [Fact]
+    public void AnUnreadableSetting_LeavesTheCardUsable()
+    {
+        // The tolerant read: a setting nobody can parse must not stop the page
+        // rendering or the user setting a new one.
+        WithAccount("Active", linkedIn: false);
+        AccountService.GetSettingAsync(ScheduleDefault.SettingKey)
+            .Returns(new AccountSettingResponse(
+                ScheduleDefault.SettingKey, "half past six", "text/plain", DateTimeOffset.UtcNow));
+
+        var page = RenderProfile();
+
+        Assert.Contains("Not set", page.Markup, StringComparison.Ordinal);
+        Assert.NotNull(page.Find("input[type=time]"));
+    }
 }
