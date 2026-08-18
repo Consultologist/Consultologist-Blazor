@@ -1,5 +1,6 @@
 using System.Net;
 using Consultologist.Api.Jobs;
+using Consultologist.Api.Workflow;
 
 namespace Consultologist.Api.Tests;
 
@@ -35,5 +36,21 @@ public class ConsultGenerationStartStatusTests
         Assert.All(
             Enum.GetValues<ConsultGenerationJobStartError>(),
             error => Assert.NotEqual(HttpStatusCode.InternalServerError, ConsultGenerationJobs.StatusFor(error)));
+    }
+
+    [Fact]
+    public void TheStrandingSentence_NamesTheCatalogThatMoved()
+    {
+        // #374: an operator reading this needs to know which of the two things
+        // changed. The package cannot have — it is immutable — so the catalog
+        // version is the whole content of the message.
+        var message = WorkflowPackageContentException
+            .SchemaUnmatched("general@v2026.08.1", "concept-list", "output-contracts@v2026.07.3")
+            .Message;
+
+        Assert.Contains("general@v2026.08.1", message);
+        Assert.Contains("concept-list", message);
+        Assert.Contains("output-contracts@v2026.07.3", message);
+        Assert.Contains("the catalog moved", message);
     }
 }

@@ -54,6 +54,17 @@ public sealed class WorkflowPackageContentException : Exception
     public WorkflowPackageContentException(string message) : base(message)
     {
     }
+
+    /// <summary>
+    /// The stranding sentence. It names the CATALOG version because that is the
+    /// thing that moved — the package cannot have, and saying so is the
+    /// difference between an operator checking the pin and an operator checking
+    /// storage that is working.
+    /// </summary>
+    public static WorkflowPackageContentException SchemaUnmatched(
+        string packageRef, string schemaId, string catalogRef)
+        => new($"Workflow package {packageRef} schema '{schemaId}' does not canonically match any contract in "
+            + $"{catalogRef}. The package is unchanged and immutable; the catalog moved.");
 }
 
 public sealed class WorkflowPackageStore : IWorkflowPackageStore
@@ -226,9 +237,8 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         {
             if (!_catalog.TryResolveContract(System.Text.Json.Nodes.JsonNode.Parse(files[path]), out var contractId))
             {
-                throw new WorkflowPackageContentException(
-                    $"Workflow package {name}@{version} schema '{schemaId}' does not canonically match any contract in "
-                        + $"{_catalog.ResolvedRef}. The package is unchanged and immutable; the catalog moved.");
+                throw WorkflowPackageContentException.SchemaUnmatched(
+                    $"{name}@{version}", schemaId, _catalog.ResolvedRef);
             }
 
             schemaContracts[schemaId] = contractId;
