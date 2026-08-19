@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -17,6 +18,30 @@ namespace Consultologist.Api.Workflow;
 /// </summary>
 public static class WorkflowPackageValidator
 {
+    /// <summary>
+    /// The formats a package may be PUBLISHED against, which is deliberately not
+    /// the set WorkflowPackageStore will RUN. The two move independently so a
+    /// format can be published and validated against before the engine executes
+    /// it — that is how v8 shipped (package-format-v8-design.md § 8). The
+    /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
+    /// are checked against the published spec-versions.json there too.
+    /// </summary>
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8 };
+
+    /// <summary>
+    /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
+    /// string.Join produces and not the shape WorkflowPackageSpecVersionException
+    /// uses. Two different sentences about the same set, both asserted verbatim
+    /// by tests, so neither may drift into the other's wording by accident.
+    /// </summary>
+    internal static string DescribeAcceptedSpecVersions()
+    {
+        var accepted = AcceptedSpecVersions.Select(v => v.ToString(CultureInfo.InvariantCulture)).ToList();
+        return accepted.Count == 1
+            ? accepted[0]
+            : $"{string.Join(", ", accepted.Take(accepted.Count - 1))} or {accepted[^1]}";
+    }
+
     /// <summary>The Scriban version this engine renders with (Major.Minor.Patch).</summary>
     public static readonly Version EngineScribanVersion = GetScribanVersion();
 
@@ -105,9 +130,9 @@ public static class WorkflowPackageValidator
         // gate (WorkflowPackageStore.SupportedSpecVersions) moves last, so a v8
         // package is well-formedness-checked while running it still refuses
         // with SpecVersionNotYetExecutable (package-format-v8-design.md § 8).
-        if (manifest.SpecVersion is not (5 or 6 or 7 or 8))
+        if (!AcceptedSpecVersions.Contains(manifest.SpecVersion))
         {
-            errors.Add($"specVersion {manifest.SpecVersion} is not supported: this engine accepts specVersion 5, 6, 7 or 8 (pre-v5 packages are archived; see registry-operations.md).");
+            errors.Add($"specVersion {manifest.SpecVersion} is not supported: this engine accepts specVersion {DescribeAcceptedSpecVersions()} (pre-v5 packages are archived; see registry-operations.md).");
         }
         else
         {

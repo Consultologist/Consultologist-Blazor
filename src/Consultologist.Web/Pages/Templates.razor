@@ -1063,9 +1063,11 @@
     /// <summary>
     /// Mirrors WorkflowPackageStore.SupportedSpecVersions' maximum. The client
     /// has no endpoint for it, and WorkflowPackagePicker already mirrors the
-    /// floor the same way.
+    /// floor the same way — both by hand, because Consultologist.Web references
+    /// no project and so cannot see the engine's constant. internal so
+    /// SpecVersionMirrorTests can prove the mirror still matches.
     /// </summary>
-    private const int NewestSpecVersion = 8;
+    internal const int NewestSpecVersion = 8;
 
     /// <summary>The version this publish will carry: the bump, or what is loaded.</summary>
     private int EffectiveSpecVersion => specVersionBump ?? content?.SpecVersion ?? 0;

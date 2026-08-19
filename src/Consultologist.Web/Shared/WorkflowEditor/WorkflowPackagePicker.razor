@@ -36,10 +36,15 @@
     private const string PinSettingKey = "consult.workflowPackage";
     private const string DefaultRef = "general@latest";
 
-    // The engine's sole package format (package-format-v5.md); older registry
-    // history stays listed but unselectable. Unknown spec = selectable — the
-    // pin resolver remains the runtime authority.
-    private const int MinSupportedSpecVersion = 5;
+    // The oldest format the engine still runs; older registry history stays
+    // listed but unselectable. Unknown spec = selectable — the pin resolver
+    // remains the runtime authority.
+    //
+    // Mirrored by hand because Consultologist.Web references no project: the
+    // client assembly cannot see WorkflowPackageStore.SupportedSpecVersions.
+    // internal so SpecVersionMirrorTests can prove the mirror still matches —
+    // the test project references both, which is why nothing here needs a fetch.
+    internal const int MinSupportedSpecVersion = 5;
 
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public EventCallback OnPinned { get; set; }
