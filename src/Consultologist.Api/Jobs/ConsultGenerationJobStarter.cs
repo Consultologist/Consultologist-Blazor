@@ -581,7 +581,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 ScheduledAtUtc: request.ScheduledAtUtc,
                 InputOrigins: inputOrigins,
                 SkippedDocuments: skipped.Count > 0 ? skipped : null,
-                Collections: collectionRosters));
+                Collections: collectionRosters,
+                // #373: what the manifest was written against, recorded rather
+                // than resolved later — a fork lives in the private registry
+                // that nothing outside can read, and a pin can be re-pointed.
+                PackageSpecVersion: specVersion));
 
         var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(
             nameof(ConsultGenerationOrchestrator),

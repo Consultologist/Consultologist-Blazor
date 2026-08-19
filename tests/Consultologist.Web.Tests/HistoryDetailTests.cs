@@ -20,7 +20,9 @@ public class HistoryDetailTests : ClientRenderTestContext
         int outputHashVersion,
         IReadOnlyList<ConsultGenerationResultDocumentResponse>? documents = null,
         IReadOnlyDictionary<string, ConsultInputOrigin>? inputOrigins = null,
-        IReadOnlyList<ConsultSkippedDocumentResponse>? skipped = null)
+        IReadOnlyList<ConsultSkippedDocumentResponse>? skipped = null,
+        int? packageSpecVersion = null,
+        int? schemaVersion = null)
     {
         // Terminal status only: a non-terminal row would start the page's real
         // 5-second polling loop.
@@ -49,7 +51,9 @@ public class HistoryDetailTests : ClientRenderTestContext
             WorkflowOutputHashVersion: outputHashVersion,
             AssembledDocuments: documents,
             InputOrigins: inputOrigins,
-            SkippedDocuments: skipped));
+            SkippedDocuments: skipped,
+            SchemaVersion: schemaVersion,
+            PackageSpecVersion: packageSpecVersion));
     }
 
     [Fact]
@@ -148,5 +152,59 @@ public class HistoryDetailTests : ClientRenderTestContext
 
         Assert.Empty(page.FindAll(".provenance-list__nested"));
         Assert.Contains("Output hash (v2)", page.Find(".provenance-list").TextContent);
+    }
+
+    private static IReadOnlyList<string> Chips(IRenderedComponent<History> page) =>
+        page.FindAll(".provenance-chip").Select(chip => chip.TextContent.Trim()).ToList();
+
+    [Fact]
+    public void AJobsPackageFormat_IsOnTheProvenanceRow()
+    {
+        // #373: the one version on that row an outside reader can act on. It
+        // used to show the record's storage version instead, labelled a schema.
+        WithJob(3, packageSpecVersion: 8, schemaVersion: 7);
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Contains("format v8", Chips(page));
+    }
+
+    [Fact]
+    public void TheRecordsStorageVersion_IsNotOnTheProvenanceRow()
+    {
+        // It is a storage discriminator — stamped 6 or 7 and never 8, so a v8
+        // job read as v7. The row is for evidence a reader can act on.
+        WithJob(3, packageSpecVersion: 8, schemaVersion: 7);
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.DoesNotContain(Chips(page), chip => chip.Contains("schema", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(Chips(page), chip => chip.Contains("v7", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TheRecordsStorageVersion_IsStillReadableInTheProvenanceList()
+    {
+        // Kept, not dropped: it says which fields on the record are the real
+        // ones, which has explained real confusion before.
+        WithJob(3, packageSpecVersion: 8, schemaVersion: 7);
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var list = page.Find(".provenance-list").TextContent;
+        Assert.Contains("Record storage version", list, StringComparison.Ordinal);
+        Assert.Contains("v7", list, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AJobThatRecordedNoFormat_ShowsNoFormatChip()
+    {
+        // Every job from before #373. An absent chip is the record saying it
+        // does not know; a dash would read as "no format".
+        WithJob(3, packageSpecVersion: null, schemaVersion: 7);
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.DoesNotContain(Chips(page), chip => chip.Contains("format", StringComparison.OrdinalIgnoreCase));
     }
 }

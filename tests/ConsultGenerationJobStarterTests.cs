@@ -670,6 +670,29 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
+    public async Task TheStarter_RecordsThePackagesSpecVersionOnTheJob()
+    {
+        // #373: the number a reader of the provenance row can act on. Captured
+        // at start because it cannot be resolved afterwards — a fork lives in
+        // the private registry, invisible to the public chain.
+        WithTypedPackage();
+
+        ConsultGenerationJobInitialize? initialize = null;
+        await _entities.SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(),
+            nameof(ConsultGenerationJobEntity.Initialize),
+            Arg.Do<object>(payload => initialize = payload as ConsultGenerationJobInitialize));
+
+        await StartWithAsync(
+            ("consult_draft", Referral),
+            ("seen_on", "2026-08-10"),
+            ("encounter_kind", "follow_up"));
+
+        Assert.NotNull(initialize);
+        Assert.Equal(8, initialize!.PackageSpecVersion);
+    }
+
+    [Fact]
     public void TypedAndStringForms_HashDifferently()
     {
         // This is the test #313's body asked for, and it is only correct
@@ -1648,4 +1671,5 @@ file static class TestCatalog
         return Consultologist.Api.Agents.OutputContractCatalog.Load(
             Path.Combine(dir!.FullName, "external", "consultologist-agents", "agents"));
     }
+
 }

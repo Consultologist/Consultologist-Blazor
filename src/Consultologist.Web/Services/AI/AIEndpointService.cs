@@ -485,7 +485,12 @@ public record ConsultGenerationJobResponse(
     // #361: each forEach collection's items as this job's package declared
     // them, so the run rail draws a fan from the job rather than from whatever
     // is pinned now. Null on every job recorded before the field existed.
-    IReadOnlyList<ConsultCollectionRoster>? Collections = null);
+    IReadOnlyList<ConsultCollectionRoster>? Collections = null,
+    // #373: the package format this job ran under — the one version on the
+    // provenance row an outside reader can act on. Null on every job recorded
+    // before it was captured, which the row renders as no chip rather than a
+    // guess.
+    int? PackageSpecVersion = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultSkippedDocument.</summary>
 public record ConsultSkippedDocumentResponse(string ResultId, string Label, string Reason);
