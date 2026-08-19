@@ -72,6 +72,16 @@ public class TemplatesPendingStateTests : ClientRenderTestContext
         return counted;
     }
 
+    /// <summary>
+    /// The most recent draft written, or null when none has been — an editor
+    /// with nothing pending removes the draft rather than writing an empty one.
+    /// </summary>
+    private string? LastSavedDraft()
+    {
+        var saved = JSInterop.Invocations["localStorage.setItem"];
+        return saved.Count == 0 ? null : (string)saved[^1].Arguments[1]!;
+    }
+
     private static void Restore(Templates editor, FieldInfo field, object? original)
     {
         // A readonly collection was mutated in place rather than replaced, and
@@ -350,6 +360,13 @@ public class TemplatesPendingStateTests : ClientRenderTestContext
         // fail for a correct reason.
         var page = RenderEditor();
 
+        // The evidence is that the payload CHANGED, not that it contains the
+        // probe token. The token only works for fields that carry a string
+        // somewhere, and #347 added the first that does not — a nullable int
+        // probes to 1, which no amount of searching for "probe" will find.
+        await Invoke(page, "PendingChangedAsync");
+        var baseline = LastSavedDraft();
+
         foreach (var field in CountedFields(page.Instance))
         {
             var original = field.GetValue(page.Instance);
@@ -357,11 +374,8 @@ public class TemplatesPendingStateTests : ClientRenderTestContext
 
             await Invoke(page, "PendingChangedAsync");
 
-            var saved = JSInterop.Invocations["localStorage.setItem"];
-            var json = (string)saved[^1].Arguments[1]!;
-
             Assert.True(
-                json.Contains("probe", StringComparison.Ordinal),
+                LastSavedDraft() != baseline,
                 $"{field.Name} is counted as pending but never reaches the saved draft");
 
             Restore(page.Instance, field, original);
