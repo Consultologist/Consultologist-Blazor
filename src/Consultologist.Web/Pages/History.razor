@@ -185,9 +185,25 @@
                                             <span class="provenance-chip" title="Output-contract catalog version this job ran under">
                                                 @(detail.CatalogRef ?? "catalog —")
                                             </span>
-                                            <span class="provenance-chip" title="Job record schema version">
-                                                schema v@(detail.SchemaVersion?.ToString() ?? "—")
-                                            </span>
+                                            @* #373: the package's own format version, which is what an
+                                               outside reader can act on. This chip used to show the job
+                                               RECORD's storage version and call it a schema — an internal
+                                               counter that is stamped 6 or 7 and never 8, so every v8 job
+                                               read as v7. The storage version moved into the Provenance
+                                               list below, where the other record-level versions live.
+
+                                               Not the word "schema": it already means a node's output
+                                               contract in this system. Omitted entirely when the job did
+                                               not record one — a job from before this knows nothing about
+                                               its format, and a dash would read as "no format". *@
+                                            @if (detail.PackageSpecVersion is { } packageFormat)
+                                            {
+                                                <span class="provenance-chip" title="Package format (specVersion) this job's manifest was written against">
+                                                    @* Parenthesised: Razor reads a bare v@name as an email
+                                                       address and emits it verbatim. *@
+                                                    format v@(packageFormat)
+                                                </span>
+                                            }
                                             @if (detail.Source == "email")
                                             {
                                                 <span class="provenance-chip" title="This job was submitted by email intake">
@@ -199,6 +215,18 @@
                                         <details class="job-detail-section">
                                             <summary class="muted-text">Provenance</summary>
                                             <dl class="provenance-list">
+                                                @* #373: this record's own storage shape — which fields
+                                                   below a reader should trust. It belongs here with the
+                                                   other record-level versions rather than on the summary
+                                                   row beside two registry-resolvable refs, and it is not
+                                                   called a schema: nothing declares it, the engine stamps
+                                                   it, and it is unrelated to the package's format.
+
+                                                   Top-level dt, not provenance-list__nested — the nested
+                                                   rows are per-input and per-deliverable, and a test pins
+                                                   their exact sequence. *@
+                                                <dt>Record storage version</dt>
+                                                <dd>v@(detail.SchemaVersion?.ToString() ?? "—")</dd>
                                                 <dt>Input hash (v@(detail.EffectiveInputHashVersion?.ToString() ?? "—"))</dt>
                                                 <dd class="hash-text">@(detail.EffectiveInputHash ?? "—")</dd>
                                                 @* #238: beside the hash, never inside it. Only slots

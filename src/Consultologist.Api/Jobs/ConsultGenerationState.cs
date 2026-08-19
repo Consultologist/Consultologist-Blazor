@@ -64,6 +64,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.CatalogRef ??= input.CatalogRef;
         State.Source ??= input.Source;
         State.ScheduledAtUtc ??= input.ScheduledAtUtc;
+        State.PackageSpecVersion ??= input.PackageSpecVersion;
         State.InputOrigins ??= input.InputOrigins?.ToDictionary(
             pair => pair.Key,
             pair => pair.Value,
@@ -388,7 +389,16 @@ public sealed record ConsultGenerationJobInitialize(
     // #315: deliverables the package declared and this job will not produce.
     IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null,
     // #361: see ConsultGenerationJobResponse.Collections.
-    IReadOnlyList<ConsultCollectionRoster>? Collections = null);
+    IReadOnlyList<ConsultCollectionRoster>? Collections = null,
+    // #373: the PACKAGE's specVersion — what rules the manifest this job ran
+    // was written against. Distinct from SchemaVersion below, which is this
+    // record's own storage shape; the two are unrelated ladders that happen to
+    // collide at 7.
+    //
+    // Appended last on purpose: ConsultGenerationEngine calls Initialize
+    // POSITIONALLY, so a parameter inserted anywhere else rebinds the arguments
+    // after it and compiles while quietly corrupting provenance.
+    int? PackageSpecVersion = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -443,7 +453,18 @@ public sealed class ConsultGenerationJobState
     public DateTimeOffset? StartedAtUtc { get; set; }
     public DateTimeOffset? CompletedAtUtc { get; set; }
     public int TotalBlockCount { get; set; }
+    /// <summary>
+    /// The shape of THIS RECORD, not of the package — which fields below a
+    /// reader should trust. Stamped by whichever code path produced the record
+    /// (CompleteDocument writes 6, CompleteResultDocument 7), never declared by
+    /// anyone, and never refused: a record at 2 is read forever.
+    ///
+    /// PackageSpecVersion is the one an outside reader wants (#373).
+    /// </summary>
     public int SchemaVersion { get; set; } = 2;
+
+    /// <summary>#373: the specVersion of the package this job ran.</summary>
+    public int? PackageSpecVersion { get; set; }
     public string? AnalysisStatus { get; set; }
     public string? AnalysisError { get; set; }
     public int CompletedStageCount { get; set; }
@@ -650,6 +671,7 @@ public sealed class ConsultGenerationJobState
             AgentVersions: AgentVersions,
             EffectiveInputHashVersion: EffectiveInputHashVersion,
             CatalogRef: CatalogRef,
+            PackageSpecVersion: PackageSpecVersion,
             // Derived, never stored: the deliverable hash of a partial job is
             // undefined, so only completed jobs carry it (provenance.md). The
             // three-way dispatch: v7 document set → v3, v6 single document →

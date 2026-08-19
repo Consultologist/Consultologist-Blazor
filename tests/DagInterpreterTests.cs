@@ -515,6 +515,60 @@ public class ConsultGenerationNodeEntityTests
     }
 
     [Fact]
+    public void Initialize_RecordsThePackageSpecVersionWriteOnce_AndSurfacesItOnTheResponse()
+    {
+        // #373: the package's format, recorded rather than resolved later. A
+        // fork lives in the private registry nothing outside can read, and a
+        // pin can be re-pointed — provenance says what the job ran.
+        var (entity, state) = CreateEntity();
+        var items = new[] { Item("hpi", "History of Present Illness") };
+
+        entity.Initialize(new ConsultGenerationJobInitialize(
+            "job-1", "user-1", items, PackageSpecVersion: 8)).GetAwaiter().GetResult();
+
+        entity.Initialize(new ConsultGenerationJobInitialize(
+            "job-1", "user-1", items, PackageSpecVersion: 5)).GetAwaiter().GetResult();
+
+        Assert.Equal(8, state().PackageSpecVersion);
+        Assert.Equal(8, state().ToResponse().PackageSpecVersion);
+    }
+
+    [Fact]
+    public void Initialize_WithNoPackageSpecVersion_LeavesItUnknown()
+    {
+        // Every job recorded before #373 is this case. Null is the record
+        // saying it does not know, which the row renders as no chip — a
+        // number would be a guess and a dash would read as "no format".
+        var (entity, state) = CreateEntity();
+
+        entity.Initialize(new ConsultGenerationJobInitialize(
+            "job-1", "user-1", new[] { Item("hpi", "History of Present Illness") }))
+            .GetAwaiter().GetResult();
+
+        Assert.Null(state().PackageSpecVersion);
+        Assert.Null(state().ToResponse().PackageSpecVersion);
+    }
+
+    [Fact]
+    public void PackageSpecVersion_IsNotTheRecordsOwnStorageVersion()
+    {
+        // The confusion #373 exists to end: two unrelated ladders that collide
+        // at 7 by coincidence. SchemaVersion is stamped 6 or 7 by whichever
+        // code path produced the record and is never 8 — so a v8 job used to
+        // display "schema v7".
+        var (entity, state) = CreateEntity();
+
+        entity.Initialize(new ConsultGenerationJobInitialize(
+            "job-1", "user-1", new[] { Item("hpi", "History of Present Illness") },
+            PackageSpecVersion: 8)).GetAwaiter().GetResult();
+        entity.CompleteResultDocument(new ConsultGenerationResultDocument(
+            "consult_note", "Consultation note", "The note.", 0)).GetAwaiter().GetResult();
+
+        Assert.Equal(8, state().PackageSpecVersion);
+        Assert.Equal(7, state().SchemaVersion);
+    }
+
+    [Fact]
     public void Initialize_RecordsTheCatalogRefWriteOnce_AndSurfacesItOnTheResponse()
     {
         var (entity, state) = CreateEntity();
