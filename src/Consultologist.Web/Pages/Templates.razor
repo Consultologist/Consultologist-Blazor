@@ -723,7 +723,7 @@
                                              Collections="@CollectionIds"
                                              ContractOptions="@ContractOptions"
                                              PromptOptions="@EffectivePrompts.Select(p => p.Id).ToList()"
-                                             AllowPromptChange="@(content?.SpecVersion == 6)"
+                                             AllowPromptChange="@(EffectiveSpecVersion >= 6)"
                                              NodeModified="@(id => nodeEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id))"
                                              RemovedNodes="@RemovedNodes"
                                              RowsFor="@RowsFor"
@@ -784,7 +784,7 @@
                                 <span>kind</span>
                                 <select class="binding-row__select" @bind="newNodeKind">
                                     <option value="prompt">prompt node</option>
-                                    @if (content?.SpecVersion == 6)
+                                    @if (EffectiveSpecVersion >= 6)
                                     {
                                         <option value="aggregator">aggregator</option>
                                     }
@@ -800,7 +800,7 @@
                             </label>
                             @if (newNodeKind != "aggregator")
                             {
-                                @if (content?.SpecVersion == 6)
+                                @if (EffectiveSpecVersion >= 6)
                                 {
                                     <label class="input-field">
                                         <span>prompt</span>
@@ -857,7 +857,7 @@
                                              Collections="@CollectionIds"
                                              ContractOptions="@ContractOptions"
                                              PromptOptions="@EffectivePrompts.Select(p => p.Id).ToList()"
-                                             AllowPromptChange="@(content?.SpecVersion == 6)"
+                                             AllowPromptChange="@(EffectiveSpecVersion >= 6)"
                                              NodeModified="@(id => nodeEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id))"
                                              RowsFor="@RowsFor"
                                              ValidateVariableName="@ValidateVariableNameForNode"
@@ -1070,7 +1070,22 @@
     internal const int NewestSpecVersion = 8;
 
     /// <summary>The version this publish will carry: the bump, or what is loaded.</summary>
-    private int EffectiveSpecVersion => specVersionBump ?? content?.SpecVersion ?? 0;
+    /// <summary>
+    /// The version this publish WILL carry. Almost every affordance wants this
+    /// one: the editor composes a manifest the server validates against the
+    /// version being published, not the version that was loaded.
+    /// </summary>
+    private int EffectiveSpecVersion => specVersionBump ?? LoadedSpecVersion;
+
+    /// <summary>
+    /// The version that was loaded. Named rather than spelled `content?.SpecVersion`
+    /// inline, because it read as the obvious choice at ten sites where it was
+    /// the wrong one (#404), and because the two readings differ exactly when
+    /// the Upgrade button has been pressed — which is the case #347 added.
+    ///
+    /// Correct only where the question is about what is already published.
+    /// </summary>
+    private int LoadedSpecVersion => content?.SpecVersion ?? 0;
 
     /// <summary>
     /// #347: stage the migration. It is a pending change like any other, so the
@@ -1089,7 +1104,11 @@
     }
 
     private bool CanUpgradeSpecVersion =>
-        content != null && specVersionBump == null && content.SpecVersion < NewestSpecVersion;
+        // Loaded on purpose, and one of only two sites that want it: the
+        // question is whether the package as published has anywhere to go up
+        // to. The pending side is the specVersionBump == null clause, which is
+        // what hides the button once it has been pressed.
+        content != null && specVersionBump == null && LoadedSpecVersion < NewestSpecVersion;
 
     private IReadOnlyList<PendingKind>? pendingKinds;
 
@@ -2251,11 +2270,15 @@
     // results must each name one), forEach nodes in v5 where the fan itself
     // was the deliverable.
     private IReadOnlyList<WorkflowManifestReader.NodeView> DeliverableCandidates =>
-        (content?.SpecVersion >= 6
+        (EffectiveSpecVersion >= 6
             ? EffectiveNodes.Where(n => n.Aggregate != null)
             : EffectiveNodes.Where(n => n.ForEach != null)).ToList();
 
-    private bool IsV7 => content?.SpecVersion >= 7;
+    // Declared inputs and the result set: authorable from v7, and gated on the
+    // version being PUBLISHED. A v6 fork that has pressed Upgrade is composing
+    // a v8 manifest, so it must be able to author what v8 requires — and the
+    // pre-flight below must hold it to those rules (#404).
+    private bool IsV7 => EffectiveSpecVersion >= 7;
 
     // The declared deliverables with pending edits applied. Empty for v5/v6 and
     // for a v7 package still on the string result form.
@@ -2319,7 +2342,7 @@
     // the authority at publish.
     private IReadOnlyList<string> UnreachableNodeLabels()
     {
-        if (content?.SpecVersion < 6 || DeliverableRootIds.Count == 0)
+        if (EffectiveSpecVersion < 6 || DeliverableRootIds.Count == 0)
         {
             return Array.Empty<string>();
         }
@@ -3522,7 +3545,11 @@
         // #347: restore only a bump that is still upward for the package now
         // loaded. A draft written against a v7 fork must not re-apply after the
         // fork has already moved on.
-        if (draftSpecVersionBump is { } bump && content != null && bump > content.SpecVersion && bump <= NewestSpecVersion)
+        // The other loaded-version site, and it could not be anything else:
+        // this asks whether a drafted bump is still upward for the package now
+        // loaded. Comparing against the effective version would compare the
+        // bump with itself.
+        if (draftSpecVersionBump is { } bump && content != null && bump > LoadedSpecVersion && bump <= NewestSpecVersion)
         {
             specVersionBump = bump;
         }
