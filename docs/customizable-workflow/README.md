@@ -17,6 +17,15 @@ yet; these notes are the input to a future milestone plan.
 
 ## Contents
 
+> **The normative package-format specifications moved out (#376).**
+> `package-format-v5..v8.md` now live in their own versioned registry,
+> [consultologist-package-format](https://github.com/Consultologist/consultologist-package-format),
+> published alongside the packages they govern and vendored here as
+> `external/consultologist-package-format`. What stays below is the design
+> record — why each format was chosen, which is a different audience from what
+> the format *is*. The links to v5–v8 in this file point outward.
+
+
 - [current-state.md](current-state.md) — what is hardcoded vs. data-driven today
   (verified against the code)
 - [workflow-packages.md](workflow-packages.md) — the versioned "workflow package"
@@ -51,7 +60,7 @@ yet; these notes are the input to a future milestone plan.
   (2026-07-15): fork-everything with derivedFrom lineage, data/
   collections replacing the standards straddle, one node kind with forEach,
   per-item provenance; executing as Milestone 5 (#59)
-- [package-format-v5.md](package-format-v5.md) — normative specVersion-5 format:
+- [package-format-v5.md](https://github.com/Consultologist/consultologist-package-format/blob/main/package-format-v5.md) — normative specVersion-5 format:
   derivedFrom fork lineage, the data table and self-describing collections, one
   node kind with forEach, item-aligned edges, the result contract, per-item
   provenance and the versioned draft-only input hash

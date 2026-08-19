@@ -3,7 +3,7 @@
 Recorded 2026-07-15 at the close of the post-milestone-4 exploration. Status:
 **implemented 2026-07-15** (#59: format layer PR #74, one-kind interpreter PR #75,
 input model PR #76, general@v2026.07.6 publish #72; normative spec:
-[package-format-v5.md](package-format-v5.md)). Four exploration threads converged into one format generation;
+[package-format-v5.md](https://github.com/Consultologist/consultologist-package-format/blob/main/package-format-v5.md)). Four exploration threads converged into one format generation;
 designed together they carry none of the compromises each would carry alone:
 
 1. forks kill the account override that forced standards into the input hash;

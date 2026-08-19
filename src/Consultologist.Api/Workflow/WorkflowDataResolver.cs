@@ -8,7 +8,7 @@ namespace Consultologist.Api.Workflow;
 /// declared fields and materialized items (the item file's text is the "content"
 /// field). Shared by the validator (which collects the errors) and the store (which
 /// runs after validation, when errors are impossible).
-/// See docs/customizable-workflow/package-format-v5.md.
+/// See external/consultologist-package-format/package-format-v5.md.
 /// </summary>
 public static class WorkflowDataResolver
 {

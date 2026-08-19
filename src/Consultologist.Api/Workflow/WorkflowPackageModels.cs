@@ -22,7 +22,7 @@ public sealed record WorkflowPackageManifest(
 /// <summary>
 /// One declared input slot of a specVersion-7 package: the id nodes bind as
 /// "input:&lt;id&gt;" and callers supply per job
-/// (docs/customizable-workflow/package-format-v7.md § 2).
+/// (external/consultologist-package-format/package-format-v7.md § 2).
 ///
 /// v8 types the slot. <c>Type</c> is optional and absent means "text", so a
 /// v7 declaration is a valid v8 one and the minimal migration is the
@@ -62,7 +62,7 @@ public static class WorkflowInputTypes
 /// <summary>
 /// One declared deliverable of a specVersion-7 package: an authored id and
 /// label naming an aggregator node. The string "result" form remains valid as
-/// one-entry sugar (docs/customizable-workflow/package-format-v7.md § 3).
+/// one-entry sugar (external/consultologist-package-format/package-format-v7.md § 3).
 /// </summary>
 public sealed record WorkflowResultSpec(
     string Id,
@@ -86,7 +86,7 @@ public sealed record WorkflowPromptSpec(
 /// <summary>
 /// One node of the workflow DAG: one kind, with ForEach as the multiplicity
 /// property. Edges are implicit in the bindings' node: references
-/// (docs/customizable-workflow/package-format-v5.md).
+/// (external/consultologist-package-format/package-format-v5.md).
 /// </summary>
 public sealed record WorkflowNodeSpec(
     string Id,
@@ -104,7 +104,7 @@ public sealed record WorkflowNodeOutputSpec(
 /// <summary>
 /// One item of a resolved data collection: the declared fields materialized —
 /// per-item file content becomes the "content" field
-/// (docs/customizable-workflow/package-format-v5.md).
+/// (external/consultologist-package-format/package-format-v5.md).
 /// </summary>
 public sealed record WorkflowDataItem(
     string Id,
