@@ -329,4 +329,110 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         });
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
+
+    [Fact]
+    public async Task V8FieldsOnAV7Package_AreCaughtBeforePublishing()
+    {
+        // #347's dead end. The editor offers the v8 controls whatever the
+        // package is, so a v7 fork can compose a manifest the registry refuses
+        // — and before this it only found out after pressing Publish.
+        //
+        // The server rule stays the authority and is pinned in WorkflowV8Tests;
+        // this asserts the editor says it first, and names the way out.
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
+
+        var page = Render<Templates>();
+        Navigate(page, "Inputs");
+        page.FindAll("select.declared-row__type")[1].Change("enum");
+        page.Find("li.declared-row__values input").Change("new_patient");
+        page.Find("li.declared-row__values input").Change("follow_up");
+
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Publish")).Click();
+
+        await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
+        Assert.Contains("requires specVersion 8", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Upgrade to specVersion 8", page.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TheSameFieldsWithAPendingUpgrade_AreAccepted()
+    {
+        // The other half, and the whole issue: the identical edit, published
+        // with the migration pending, is a manifest the registry accepts.
+        var (result, sent) = await PublishAndCaptureAsync(async page =>
+        {
+            Navigate(page, "Inputs");
+            page.FindAll("select.declared-row__type")[1].Change("enum");
+            page.Find("li.declared-row__values input").Change("new_patient");
+            page.Find("li.declared-row__values input").Change("follow_up");
+
+            Upgrade(page);
+            await Task.CompletedTask;
+        }, EditorFixtures.V7());
+
+        var root = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement;
+
+        Assert.Equal(8, root.GetProperty("specVersion").GetInt32());
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void APackageAlreadyAtTheNewestVersion_IsNotOfferedAnUpgrade()
+    {
+        // "Upward only" is the issue's first design rule, and here it is
+        // enforced by the control simply not existing rather than by a refusal
+        // — so it needs asserting, or the rule lives only in a comment.
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V8());
+
+        var page = Render<Templates>();
+
+        Assert.DoesNotContain("Upgrade to specVersion", page.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AV7Package_IsOfferedTheUpgrade()
+    {
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
+
+        var page = Render<Templates>();
+
+        Assert.Contains("Upgrade to specVersion 8", page.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnUpgradeAlone_ChangesOnlyTheSpecVersion()
+    {
+        // The proving migration, in the editor: package-format-v8.md's own
+        // argument is that changing specVersion and nothing else is what makes
+        // a migration provable — any difference afterwards is the engine.
+        var (result, sent) = await PublishAndCaptureAsync(
+            page => { Upgrade(page); return Task.CompletedTask; },
+            EditorFixtures.V7());
+
+        var before = JsonDocument.Parse(EditorFixtures.V7().Manifest.GetRawText()).RootElement;
+        var after = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement;
+
+        Assert.Equal(7, before.GetProperty("specVersion").GetInt32());
+        Assert.Equal(8, after.GetProperty("specVersion").GetInt32());
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+
+        // Every other top-level property unchanged. Compared semantically
+        // rather than byte for byte: composing re-serializes through JsonNode,
+        // which normalises the whitespace of the whole document. Harmless, but
+        // it means an upgrade rewrites formatting it did not mean to touch.
+        static string Canonical(JsonElement value) =>
+            JsonSerializer.Serialize(JsonDocument.Parse(value.GetRawText()).RootElement);
+
+        foreach (var property in before.EnumerateObject().Where(p => p.Name != "specVersion"))
+        {
+            Assert.Equal(
+                Canonical(property.Value),
+                Canonical(after.GetProperty(property.Name)));
+        }
+    }
+
+    private static void Upgrade(IRenderedComponent<Templates> page) =>
+        page.FindAll("fluent-button")
+            .First(button => button.TextContent.Contains("Upgrade to specVersion", StringComparison.Ordinal))
+            .Click();
 }

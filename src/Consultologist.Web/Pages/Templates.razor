@@ -60,6 +60,19 @@
                     }
                 </div>
                 <div class="editor-bar__actions">
+                    @* #347: the migration. Shown only while the fork is below the
+                       newest format — upward only, by construction rather than by
+                       a refusal. It stages a pending change and publishes like any
+                       other edit, which is why a bump with nothing else changed is
+                       possible: PendingCount opens the button beside it. *@
+                    @if (CanUpgradeSpecVersion)
+                    {
+                        <FluentButton Appearance="Appearance.Outline"
+                                      Disabled="@isPublishing"
+                                      @onclick="UpgradeSpecVersion">
+                            Upgrade to specVersion @NewestSpecVersion
+                        </FluentButton>
+                    }
                     <FluentButton Appearance="Appearance.Accent"
                                   Disabled="@(PendingCount == 0 || isPublishing)"
                                   @onclick="PublishAsync">
@@ -1038,6 +1051,44 @@
         Func<string> Fragment,
         Func<bool> AffectsManifest);
 
+    /// <summary>
+    /// #347: the specVersion this publish should carry, when the author has
+    /// asked to migrate. Null means "whatever the loaded manifest says", which
+    /// is what every publish did before — the editor never wrote this field, so
+    /// a fork inherited its spec version from whatever was pinned when it was
+    /// forked, forever.
+    /// </summary>
+    private int? specVersionBump;
+
+    /// <summary>
+    /// Mirrors WorkflowPackageStore.SupportedSpecVersions' maximum. The client
+    /// has no endpoint for it, and WorkflowPackagePicker already mirrors the
+    /// floor the same way.
+    /// </summary>
+    private const int NewestSpecVersion = 8;
+
+    /// <summary>The version this publish will carry: the bump, or what is loaded.</summary>
+    private int EffectiveSpecVersion => specVersionBump ?? content?.SpecVersion ?? 0;
+
+    /// <summary>
+    /// #347: stage the migration. It is a pending change like any other, so the
+    /// existing publish guard opens on it — a version bump with nothing else
+    /// changed is a legitimate publish, and the one that proves a migration.
+    /// </summary>
+    private async Task UpgradeSpecVersion()
+    {
+        if (!CanUpgradeSpecVersion)
+        {
+            return;
+        }
+
+        specVersionBump = NewestSpecVersion;
+        await PendingChangedAsync();
+    }
+
+    private bool CanUpgradeSpecVersion =>
+        content != null && specVersionBump == null && content.SpecVersion < NewestSpecVersion;
+
     private IReadOnlyList<PendingKind>? pendingKinds;
 
     // Lazy because an instance field initializer cannot capture `this`.
@@ -1090,6 +1141,12 @@
                 () => $"+{VariableAddCount} var", () => VariableAddCount > 0),
             new("variableRemovals", () => VariableRemovalCount, variableRemovals.Clear,
                 () => $"−{VariableRemovalCount} var", () => VariableRemovalCount > 0),
+
+            // #347: the one pending change that is legitimately publishable
+            // alone. Registering it here is what makes that work — PendingCount
+            // becomes 1, so the publish guard opens without being touched.
+            new("specVersionBump", () => specVersionBump != null ? 1 : 0, () => specVersionBump = null,
+                () => $"specVersion {specVersionBump}", () => specVersionBump != null),
         };
     }
 
@@ -1544,6 +1601,37 @@
         if (inputs.Count == 0)
         {
             errors.Add("inputs is required in specVersion 7.");
+        }
+
+        // #347: the editor offers the v8 controls whatever the package is, so a
+        // v7 fork can compose a manifest the registry refuses. It knew that when
+        // the field was typed; saying so here beats a rejection after the fact,
+        // and names the way out rather than only the problem.
+        if (EffectiveSpecVersion < 8)
+        {
+            var typed = inputs
+                .Where(input => input.Type != null || input.Values is { Count: > 0 })
+                .Select(input => $"'{input.Id}'")
+                .ToList();
+
+            if (typed.Count > 0)
+            {
+                errors.Add(
+                    $"Input {string.Join(", ", typed)} declares a type or values, which requires specVersion "
+                    + $"{NewestSpecVersion}. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.");
+            }
+
+            var conditional = EffectiveResults
+                .Where(result => !string.IsNullOrWhiteSpace(result.When))
+                .Select(result => $"'{result.Id}'")
+                .ToList();
+
+            if (conditional.Count > 0)
+            {
+                errors.Add(
+                    $"Document {string.Join(", ", conditional)} declares when, which requires specVersion "
+                    + $"{NewestSpecVersion}. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.");
+            }
         }
 
         foreach (var duplicate in inputs.GroupBy(input => input.Id).Where(group => group.Count() > 1))
@@ -3188,7 +3276,10 @@
         List<DraftResult>? Results = null,
         // Pending single-value data entries (#309), same trailing-optional
         // discipline: a draft written before this restores with it null.
-        Dictionary<string, string>? AddedScalars = null);
+        Dictionary<string, string>? AddedScalars = null,
+        // #347: a pending specVersion migration. Trailing optional for the same
+        // reason — a draft written before it restores with no bump pending.
+        int? SpecVersionBump = null);
 
     // #316: Type and Values ride here or a typed input is silently untyped on
     // reload. Trailing optionals — a draft written before v8 restores with null.
@@ -3219,6 +3310,7 @@
         Dictionary<string, List<string>>? draftAggregateEdits = null;
         string? draftResultEdit = null;
         List<DraftAddedPrompt>? draftAddedPrompts = null;
+        int? draftSpecVersionBump = null;
         List<DraftInput>? draftInputs = null;
         List<DraftResult>? draftResults = null;
         Dictionary<string, string>? draftAddedScalars = null;
@@ -3245,6 +3337,7 @@
                 draftInputs = payload?.Inputs;
                 draftResults = payload?.Results;
                 draftAddedScalars = payload?.AddedScalars;
+                draftSpecVersionBump = payload?.SpecVersionBump;
             }
             else
             {
@@ -3424,6 +3517,14 @@
         // Declared sections: only meaningful against a v7 package, so a draft
         // written before the pin moved to a v5/v6 package is dropped rather
         // than composed into a manifest that cannot hold it.
+        // #347: restore only a bump that is still upward for the package now
+        // loaded. A draft written against a v7 fork must not re-apply after the
+        // fork has already moved on.
+        if (draftSpecVersionBump is { } bump && content != null && bump > content.SpecVersion && bump <= NewestSpecVersion)
+        {
+            specVersionBump = bump;
+        }
+
         if (IsV7 && draftInputs is { Count: > 0 })
         {
             inputsEdit = draftInputs
@@ -3523,7 +3624,8 @@
             addedPrompts.Select(p => new DraftAddedPrompt(p.Id, p.Text)).ToList(),
             inputsEdit?.Select(i => new DraftInput(i.Id, i.Label, i.Required, i.Type, i.Values?.ToList())).ToList(),
             resultsEdit?.Select(r => new DraftResult(r.Id, r.Node, r.Label, r.When)).ToList(),
-            new Dictionary<string, string>(addedScalars, StringComparer.Ordinal));
+            new Dictionary<string, string>(addedScalars, StringComparer.Ordinal),
+            specVersionBump);
         await JS.InvokeVoidAsync("localStorage.setItem", DraftKey, JsonSerializer.Serialize(payload));
     }
 
@@ -3889,6 +3991,27 @@
         }
 
         var root = System.Text.Json.Nodes.JsonNode.Parse(content!.Manifest.GetRawText())!;
+
+        // #347: the editor's first write to specVersion. Before this it never
+        // wrote the field at all, so a fork inherited its version from whatever
+        // was pinned when it was forked and stayed there — the only way to a
+        // newer format was repinning to somebody else's package, which starts
+        // from THEIR content and breaks the fork's derivedFrom chain.
+        //
+        // Nothing else changes, which is what makes the migration provable:
+        // package-format-v8.md's own migration is exactly this edit, and the
+        // publisher validates the stamped manifest before writing anything, so
+        // a bump that does not hold is refused whole.
+        if (specVersionBump is { } bumped)
+        {
+            // Casing is tolerant like the reader's: the worker serializer may
+            // have written PascalCase.
+            root["specVersion"] = bumped;
+            if (root["SpecVersion"] != null)
+            {
+                root["SpecVersion"] = bumped;
+            }
+        }
 
         // New folders (#154): one data-map entry per pending collection; the
         // directory value's trailing slash is what marks it as a collection.
