@@ -553,14 +553,20 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
                 {
                   "Version": 11,
                   "SpecVersionBump": 8,
-                  "Inputs": [ { "Id": "prior_notes", "Label": "Prior notes", "Required": false } ]
+                  "Inputs": [ { "Id": "carried_over", "Label": "Carried over", "Required": false } ]
                 }
                 """);
 
         var page = Render<Templates>();
 
         Navigate(page, "Inputs");
-        Assert.Contains("prior_notes", page.Markup, StringComparison.Ordinal);
+
+        // Read the declared row's own field, not the markup. The add-input form
+        // carries placeholder="prior_notes", so asserting on raw markup passes
+        // whether or not anything was restored — which is how the first version
+        // of this test survived a mutant that disabled the restore entirely.
+        var declared = page.FindAll("input.declared-row__id").Select(i => i.GetAttribute("value")).ToList();
+        Assert.Contains("carried_over", declared);
     }
 
     private static IReadOnlyList<string> NavLabels(IRenderedComponent<Templates> page) =>
