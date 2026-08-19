@@ -8,7 +8,7 @@ namespace Consultologist.Api.Workflow;
 /// closures (collection-declared item fields, declared data entries, declared
 /// input slots) belong to the validator. Pre-v5 vocabularies (map kinds,
 /// previous_step_output, input:sections, the synthesis shims) were retired by
-/// the v5-only rebase — see docs/customizable-workflow/package-format-v5.md.
+/// the v5-only rebase — see external/consultologist-package-format/package-format-v5.md.
 /// </summary>
 public abstract record WorkflowNodeBindingSource
 {

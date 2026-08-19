@@ -1,3 +1,6 @@
 [submodule "external/consultologist-agents"]
 	path = external/consultologist-agents
 	url = https://github.com/Consultologist/consultologist-agents
+[submodule "external/consultologist-package-format"]
+	path = external/consultologist-package-format
+	url = https://github.com/Consultologist/consultologist-package-format

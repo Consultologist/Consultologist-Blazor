@@ -122,7 +122,7 @@ public sealed class ConsultGenerationOrchestrator
         // instance i depending item-aligned on same-collection upstream instances.
         // Determinism rules — start order derives only from manifest order plus
         // recorded activity completions; variable rendering is pure over recorded
-        // results (docs/customizable-workflow/package-format-v5.md).
+        // results (external/consultologist-package-format/package-format-v5.md).
         var nodesById = nodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
         var chainNodes = nodes.Where(node => node.ForEach != null).ToList();
         var aggregators = nodes.Where(node => node.Aggregate != null).ToList();
@@ -752,7 +752,7 @@ public sealed class ConsultGenerationOrchestrator
 /// <summary>
 /// The pure scheduling calculus of the one-kind interpreter: instance identity and
 /// per-(node, item) readiness. Kept free of Durable types so the wave semantics are
-/// unit-testable (docs/customizable-workflow/package-format-v5.md).
+/// unit-testable (external/consultologist-package-format/package-format-v5.md).
 /// </summary>
 internal static class ConsultNodeScheduler
 {

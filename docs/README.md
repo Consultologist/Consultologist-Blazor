@@ -44,18 +44,18 @@ point-in-time investigations and migration plans.
   [package format v2](customizable-workflow/package-format-v2.md),
   [package format v3](customizable-workflow/package-format-v3.md),
   [package format v4](customizable-workflow/package-format-v4.md),
-  [package format v5](customizable-workflow/package-format-v5.md),
+  [package format v5](https://github.com/Consultologist/consultologist-package-format/blob/main/package-format-v5.md),
   [registry operations](customizable-workflow/registry-operations.md),
   [decoupling roadmap](customizable-workflow/decoupling-roadmap.md),
   [DAG-as-data design](customizable-workflow/dag-as-data-design.md),
   [output-contract catalog](customizable-workflow/output-contract-catalog.md),
   [in-app editing](customizable-workflow/in-app-editing.md),
   [package format v5 design](customizable-workflow/package-format-v5-design.md),
-  [package format v6](customizable-workflow/package-format-v6.md),
+  [package format v6](https://github.com/Consultologist/consultologist-package-format/blob/main/package-format-v6.md),
   [package format v6 design](customizable-workflow/package-format-v6-design.md),
-  [package format v7](customizable-workflow/package-format-v7.md),
+  [package format v7](https://github.com/Consultologist/consultologist-package-format/blob/main/package-format-v7.md),
   [package format v7 design](customizable-workflow/package-format-v7-design.md),
-  [package format v8](customizable-workflow/package-format-v8.md),
+  [package format v8](https://github.com/Consultologist/consultologist-package-format/blob/main/package-format-v8.md),
   [package format v8 design](customizable-workflow/package-format-v8-design.md)
   (typed inputs and conditional deliverables; also carries the candidates
   considered and not taken, and why the trigger was overridden rather than
