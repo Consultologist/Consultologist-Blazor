@@ -431,6 +431,149 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         }
     }
 
+    /// <summary>
+    /// #404: every upgrade test above loads V7, where IsV7 is already true, so
+    /// the path that breaks was never exercised. A v6 fork is offered the same
+    /// Upgrade button, and the editor keeps showing it the surface the LOADED
+    /// version had rather than the one the publish will carry.
+    /// </summary>
+    [Fact]
+    public void AV6ForkWithAPendingUpgrade_CanReachWhatItUpgradedFor()
+    {
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V6());
+        var page = Render<Templates>();
+
+        Assert.DoesNotContain("Inputs", NavLabels(page));
+
+        Upgrade(page);
+
+        Assert.Contains("Inputs", NavLabels(page));
+        Assert.Contains("Documents", NavLabels(page));
+    }
+
+    [Fact]
+    public async Task AV6ForkUpgradedWithNothingDeclared_IsStoppedAtTheDesk()
+    {
+        // The sharpest half. DeclaredSectionErrors returns early when the
+        // LOADED version is below 7, so a bumped v6 fork skips every pre-flight
+        // check and composes a manifest stamped 8 with no inputs — which the
+        // server refuses outright. The pre-flight exists precisely so a refusal
+        // arrives before a version is minted.
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V6());
+        var page = Render<Templates>();
+
+        Upgrade(page);
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish")).Click();
+
+        await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
+        Assert.Contains("inputs is required in specVersion 7", page.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AV6ForkUpgraded_CanDeclareAnInputAndPublishItAsV8()
+    {
+        // End to end through the real server validator: adopting a newer
+        // format's features is what #347 was for, and until this the author had
+        // to publish a bare bump and reload before they could author anything.
+        var (result, sent) = await PublishAndCaptureAsync(async page =>
+        {
+            Upgrade(page);
+            Navigate(page, "Inputs");
+            page.Find(".add-variable__form input").Change("consult_draft");
+            page.FindAll("button.variable-chips__add").First(b => b.TextContent.Contains("+ Input")).Click();
+            await Task.CompletedTask;
+        }, EditorFixtures.V6());
+
+        var root = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement;
+
+        Assert.Equal(8, root.GetProperty("specVersion").GetInt32());
+        Assert.Equal("consult_draft", root.GetProperty("inputs")[0].GetProperty("id").GetString());
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    /// <summary>
+    /// A second defect, found while fixing the first and fixed with it. The
+    /// prompt selector and the aggregator node kind were gated on
+    /// `SpecVersion == 6` — exactly 6 — but package-format-v7.md says in its own
+    /// opening that "everything not stated here is unchanged from
+    /// package-format-v6.md: aggregator nodes … prompt sharing". So v7 and v8
+    /// packages have always been denied both.
+    ///
+    /// The aggregator half is the one that dead-ends an author: aggregators are
+    /// the only legal v7/v8 deliverable node, and AddResultAsync refuses a
+    /// second document with "add an aggregator node first" — advice that could
+    /// not be followed, because the option to add one did not render.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PromptSharingAndAggregators_SurviveTheVersionTheyWereIntroducedIn(bool v7)
+    {
+        WorkflowService.GetCurrentPackageContentAsync()
+            .Returns(v7 ? EditorFixtures.V7() : EditorFixtures.V6());
+        var page = Render<Templates>();
+        Navigate(page, "+ Node");
+
+        Assert.Contains("aggregator", page.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AV6ForkWithAPendingUpgrade_KeepsTheAggregatorItStillNeeds()
+    {
+        // Under a naive "read the effective version" sweep this would be the
+        // regression: == 6 becomes false the moment the bump lands. The gate is
+        // wrong in the other direction, so it becomes >= 6 and the control stays.
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V6());
+        var page = Render<Templates>();
+
+        Upgrade(page);
+        Navigate(page, "+ Node");
+
+        Assert.Contains("aggregator", page.Markup, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The silent half. Draft restore dropped pending inputs and results when
+    /// the LOADED package was below v7 — even with a bump to 8 already
+    /// restored, two lines earlier. No error, no badge, no console line: the
+    /// slices simply vanished, and the next persist rewrote localStorage
+    /// without them, so the work was gone from the browser too.
+    ///
+    /// bUnit returns null from localStorage.getItem by default, which is why
+    /// restore has never had coverage. Stubbing the one call is enough.
+    /// </summary>
+    [Fact]
+    public void ADraftCarryingInputs_SurvivesAReloadWithABumpPending()
+    {
+        var package = EditorFixtures.V6();
+        WorkflowService.GetCurrentPackageContentAsync().Returns(package);
+
+        JSInterop.Setup<string?>("localStorage.getItem", $"workflow-editor-draft:{package.Ref}")
+            .SetResult("""
+                {
+                  "Version": 11,
+                  "SpecVersionBump": 8,
+                  "Inputs": [ { "Id": "carried_over", "Label": "Carried over", "Required": false } ]
+                }
+                """);
+
+        var page = Render<Templates>();
+
+        Navigate(page, "Inputs");
+
+        // Read the declared row's own field, not the markup. The add-input form
+        // carries placeholder="prior_notes", so asserting on raw markup passes
+        // whether or not anything was restored — which is how the first version
+        // of this test survived a mutant that disabled the restore entirely.
+        var declared = page.FindAll("input.declared-row__id").Select(i => i.GetAttribute("value")).ToList();
+        Assert.Contains("carried_over", declared);
+    }
+
+    private static IReadOnlyList<string> NavLabels(IRenderedComponent<Templates> page) =>
+        page.FindAll("button.editor-nav__item")
+            .Select(b => b.TextContent.Replace("\u25CF", string.Empty).Trim())
+            .ToList();
+
     private static void Upgrade(IRenderedComponent<Templates> page) =>
         page.FindAll("fluent-button")
             .First(button => button.TextContent.Contains("Upgrade to specVersion", StringComparison.Ordinal))
