@@ -112,14 +112,37 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         }
 
         var manifestJson = await DownloadTextAsync(packageRef.Name, $"{packageRef.Name}/{version}/manifest.json", cancellationToken);
-        var manifest = JsonSerializer.Deserialize<WorkflowPackageManifest>(manifestJson, JsonOptions)
-            ?? throw new InvalidOperationException($"Workflow package manifest for {cacheKey} is empty or malformed.");
 
-        // Pre-v5 registry versions remain archived artifacts but are not executable
-        // (the v5-only rebase; see registry-operations.md).
-        if (!SupportedSpecVersions.Contains(manifest.SpecVersion))
+        // The version is read before the shape, and that order is load-bearing
+        // (#416). Pre-v5 registry versions remain archived artifacts but are not
+        // executable (the v5-only rebase; see registry-operations.md), and they
+        // use retired vocabulary — general@v2026.07.4 still carries
+        // sectionSteps. Reading strictly first would refuse them as a parse
+        // error naming a field, in place of the sentence that explains what they
+        // are.
+        if (!WorkflowPackageManifestJson.TryReadSpecVersion(manifestJson, out var declaredSpecVersion))
         {
-            throw new WorkflowPackageSpecVersionException(cacheKey, manifest.SpecVersion, SupportedSpecVersions);
+            throw new InvalidOperationException($"Workflow package manifest for {cacheKey} is empty or malformed.");
+        }
+
+        if (!SupportedSpecVersions.Contains(declaredSpecVersion))
+        {
+            throw new WorkflowPackageSpecVersionException(cacheKey, declaredSpecVersion, SupportedSpecVersions);
+        }
+
+        WorkflowPackageManifest manifest;
+
+        try
+        {
+            manifest = JsonSerializer.Deserialize<WorkflowPackageManifest>(manifestJson, WorkflowPackageManifestJson.ReadOptions)
+                ?? throw new InvalidOperationException($"Workflow package manifest for {cacheKey} is empty or malformed.");
+        }
+        catch (JsonException ex)
+        {
+            // Content, not registry: the package is there and readable, and this
+            // engine will not accept what it says.
+            throw new WorkflowPackageContentException(
+                $"Workflow package {cacheKey}: {WorkflowPackageManifestJson.Describe(ex)}");
         }
 
         var loaded = await LoadPromptsAsync(packageRef.Name, version, manifest, cancellationToken);

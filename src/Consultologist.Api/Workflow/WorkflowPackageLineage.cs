@@ -15,6 +15,16 @@ public sealed class WorkflowPackageLineageResolver
     /// <summary>Defensive: publish stamping prevents cycles and deep chains by construction.</summary>
     public const int MaxDepth = 10;
 
+    /// <summary>
+    /// Permissive on purpose, unlike the load and publish paths (#416). Lineage
+    /// walks backwards through history, and history contains manifests this
+    /// engine would refuse to run — general@v2026.07.4 still carries the retired
+    /// sectionSteps vocabulary. Refusing an ancestor would break the chain
+    /// display for every descendant, over a package nobody is trying to execute.
+    ///
+    /// Tighten where a manifest is about to be used; stay permissive where one
+    /// is only being traversed.
+    /// </summary>
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true

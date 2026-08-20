@@ -281,9 +281,10 @@ internal static class PackageFormatSchema
 
     /// <summary>
     /// package-format-v8.md § 2: "a section the version does not have is never a
-    /// silently ignored field." The engine does not enforce that — it sets no
-    /// UnmappedMemberHandling — so the schema is the only place the rule is
-    /// currently true.
+    /// silently ignored field." Since #416 the engine enforces it too, through
+    /// WorkflowPackageManifestJson.ReadOptions, so the schema and the reference
+    /// implementation now say the same thing rather than disagreeing about the
+    /// specification they share.
     /// </summary>
     private static void Close(JsonObject schema)
     {
