@@ -569,6 +569,75 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         Assert.Contains("carried_over", declared);
     }
 
+    /// <summary>
+    /// #411: the editor's package selector is also the consult pin, so picking
+    /// somebody else's package to look at already points your consults at it —
+    /// and Publish then mints a version of YOUR package carrying THEIR content.
+    /// Nothing said so, and it cost three accidental publishes on 2026-08-19.
+    /// </summary>
+    [Fact]
+    public void EditingAPackageThatIsNotYours_SaysSo()
+    {
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.NotMine());
+        var page = Render<Templates>();
+
+        // TextContent, not Markup: Blazor stamps scoped-CSS attributes onto
+        // every element, so `<strong>your own</strong>` reaches the DOM as
+        // `<strong b-dti775z7xr>` and a markup substring both fails and would
+        // pin a build-generated id if it passed.
+        var notice = Notice(page);
+
+        Assert.Contains("general@v2026.07.1", notice);
+        Assert.Contains("which is not your package", notice);
+        // The consequence, not just the fact. Knowing it is general's content
+        // is useless without knowing what Publish will do with it.
+        Assert.Contains("new version of your own package", notice);
+        Assert.Contains("consults switch to the published version", notice);
+    }
+
+    [Fact]
+    public void EditingYourOwnFork_SaysNothing()
+    {
+        // The common case. A notice that shows on every visit is one nobody reads.
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
+        var page = Render<Templates>();
+
+        // Asserted against a page that definitely rendered: a DoesNotContain on
+        // a blank page passes for the wrong reason.
+        Assert.NotEmpty(page.FindAll(".editor-bar"));
+        Assert.DoesNotContain("which is not your package", page.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PublishingFromSomebodyElsesPackage_NamesWhatItWasBuiltFrom()
+    {
+        // Said afterwards as well as before: what a version was built FROM is
+        // the part nobody can reconstruct from the page once it reloads, and it
+        // is the whole story when the source was not their own package.
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.NotMine());
+        WorkflowService
+            .PublishPackageAsync(Arg.Any<ClientWorkflow.WorkflowPackagePublishRequest>())
+            .Returns(new ClientWorkflow.WorkflowPublishOutcome(
+                new ClientWorkflow.WorkflowPackagePublishResponse(
+                    "acct-1234567890ab", "v2026.07.2", "acct-1234567890ab@v2026.07.2"),
+                Array.Empty<string>()));
+
+        var page = Render<Templates>();
+        Navigate(page, "Inputs");
+        page.Find(".add-variable__form input").Change("added_here");
+        page.FindAll("button.variable-chips__add").First(b => b.TextContent.Contains("+ Input")).Click();
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish")).Click();
+
+        Assert.Contains("Published acct-1234567890ab@v2026.07.2", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("from general@v2026.07.1", page.Markup, StringComparison.Ordinal);
+    }
+
+    /// <summary>The warning bar's text, tags stripped.</summary>
+    private static string Notice(IRenderedComponent<Templates> page) =>
+        page.FindAll(".fluent-messagebar-message")
+            .Select(bar => bar.TextContent)
+            .First(text => text.Contains("not your package", StringComparison.Ordinal));
+
     private static IReadOnlyList<string> NavLabels(IRenderedComponent<Templates> page) =>
         page.FindAll("button.editor-nav__item")
             .Select(b => b.TextContent.Replace("\u25CF", string.Empty).Trim())

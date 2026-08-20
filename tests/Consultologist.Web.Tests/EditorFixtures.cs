@@ -28,6 +28,25 @@ public static class EditorFixtures
                 ["data/standards/hpi.md"] = "Document the presenting illness."
             });
 
+    /// <summary>
+    /// A repo-owned package loaded into the editor — what the picker gives you
+    /// when you select `general` to look at it. Rewrites the embedded manifest
+    /// name as well as the record's, the way V8() rewrites specVersion in both:
+    /// a fixture that disagrees with itself invites a test that passes for the
+    /// wrong reason.
+    /// </summary>
+    public static WorkflowPackageContentResponse NotMine(string name = "general")
+    {
+        var mine = V7();
+        var json = mine.Manifest.GetRawText().Replace("\"acct-1234567890ab\"", $"\"{name}\"");
+
+        return mine with
+        {
+            Name = name,
+            Manifest = JsonDocument.Parse(json).RootElement.Clone()
+        };
+    }
+
     /// <summary>The v6 shape: a string result naming an aggregator.</summary>
     public static WorkflowPackageContentResponse V6() => Package("""
         {
