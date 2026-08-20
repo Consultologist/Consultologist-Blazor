@@ -1,0 +1,318 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Schema;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
+using Consultologist.Api.Workflow;
+
+namespace Consultologist.Api.Tests;
+
+/// <summary>
+/// #407: builds the JSON Schema consultologist-package-format publishes for each
+/// specVersion — the artifact an editor or a CI job can read, which neither the
+/// prose nor the conformance suite gives them.
+///
+/// The <em>shape</em> is exported from WorkflowPackageManifest, so the property
+/// set and its types cannot drift from the wire form. The <em>rules</em> are
+/// written on top, because an exporter cannot know that ids are snake_case, that
+/// values belongs to enum and nothing else, or that inputs arrive at
+/// specVersion 7.
+///
+/// Every enrichment asserts it found what it was enriching. A renamed field
+/// fails the build loudly rather than quietly publishing a schema missing a
+/// rule — which is the whole reason to export the shape rather than hand-write
+/// it twice.
+/// </summary>
+internal static class PackageFormatSchema
+{
+    /// <summary>Snake_case declared ids: input ids, result ids, enum values.</summary>
+    private const string DeclaredId = "^[a-z][a-z0-9_]*$";
+
+    /// <summary>A node reference, as `result`, `results[].node` and `aggregate[]` all use.</summary>
+    private const string NodeRef = "^node:.+$";
+
+    /// <summary>
+    /// A concrete package ref. The month range is spelled out because C# checks
+    /// it outside the regex (`month is &lt; 1 or &gt; 12`), so copying the C# pattern
+    /// alone would accept v2026.13.1.
+    /// </summary>
+    private const string ConcreteRef = @"^[a-z0-9][a-z0-9-]*@v\d{4}\.(0[1-9]|1[0-2])\.[1-9]\d*$";
+
+    private const string BindingSource = "^(input|item|data|node):.+$";
+
+    private static readonly JsonSerializerOptions WireOptions = new()
+    {
+        // The form the publisher writes and the store reads.
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver()
+    };
+
+    private static readonly JsonSerializerOptions Rendering = new() { WriteIndented = true };
+
+    internal static string Render(int specVersion) =>
+        Build(specVersion).ToJsonString(Rendering) + "\n";
+
+    internal static JsonObject Build(int specVersion)
+    {
+        var root = (JsonObject)WireOptions.GetJsonSchemaAsNode(typeof(WorkflowPackageManifest))!;
+
+        Collapse(root);
+        root["$schema"] = "https://json-schema.org/draft/2020-12/schema";
+        root["title"] = $"Consultologist workflow package manifest, specVersion {specVersion}";
+
+        var properties = Object(root, "properties");
+
+        Object(properties, "specVersion")["const"] = specVersion;
+        Object(properties, "derivedFrom")["pattern"] = ConcreteRef;
+        Object(properties, "result")["pattern"] = NodeRef;
+
+        EnrichTemplating(Object(properties, "templating"));
+        EnrichPrompts(Object(properties, "prompts"));
+        EnrichNodes(Object(properties, "nodes"), specVersion);
+
+        // Declared sections arrive at 7. A section the version does not have is
+        // an error, never an ignored field — package-format-v8.md § 2.
+        if (specVersion < 7)
+        {
+            Remove(properties, "inputs");
+            Remove(properties, "results");
+            root["required"] = Required("name", "version", "specVersion", "templating", "nodes", "result");
+        }
+        else
+        {
+            EnrichInputs(Object(properties, "inputs"), specVersion);
+            EnrichResults(Object(properties, "results"), specVersion);
+            root["required"] = Required("name", "version", "specVersion", "templating", "nodes", "inputs");
+
+            // The list form owns the declaration; the string form stays valid as
+            // one-entry sugar. One of them, never both.
+            root["oneOf"] = new JsonArray(
+                new JsonObject { ["required"] = Required("result"), ["not"] = new JsonObject { ["required"] = Required("results") } },
+                new JsonObject { ["required"] = Required("results"), ["not"] = new JsonObject { ["required"] = Required("result") } });
+        }
+
+        Close(root);
+        return root;
+    }
+
+    private static void EnrichTemplating(JsonObject templating)
+    {
+        var properties = Object(templating, "properties");
+        Object(properties, "engine")["const"] = "scriban";
+        Object(properties, "engineVersion")["pattern"] = @"^\d+(\.\d+){1,3}$";
+        Close(templating);
+    }
+
+    private static void EnrichPrompts(JsonObject prompts)
+    {
+        var item = Object(prompts, "items");
+        var properties = Object(item, "properties");
+        Object(properties, "id")["minLength"] = 1;
+        Object(properties, "file")["minLength"] = 1;
+        Object(properties, "prelude")["minLength"] = 1;
+        Close(item);
+    }
+
+    private static void EnrichNodes(JsonObject nodes, int specVersion)
+    {
+        nodes["minItems"] = 1;
+
+        var item = Object(nodes, "items");
+        var properties = Object(item, "properties");
+
+        Object(properties, "id")["minLength"] = 1;
+        Object(properties, "label")["minLength"] = 1;
+        Object(properties, "forEach")["pattern"] = "^data:.+$";
+
+        // The exporter cannot see through WorkflowBindingValueConverter: it
+        // reports the record, so `bindings` arrives as a bare object. On the
+        // wire a binding is a source string, or { from, as } — and the converter
+        // itself rejects any other property, which is why this closes.
+        var bindings = Object(properties, "bindings");
+        Require(bindings.ContainsKey("type"), "bindings lost its type; the converter's shape is hand-written and needs revisiting");
+        bindings["additionalProperties"] = new JsonObject
+        {
+            ["oneOf"] = new JsonArray(
+                new JsonObject { ["type"] = "string", ["pattern"] = BindingSource },
+                new JsonObject
+                {
+                    ["type"] = "object",
+                    ["properties"] = new JsonObject
+                    {
+                        ["from"] = new JsonObject { ["type"] = "string", ["pattern"] = BindingSource },
+                        ["as"] = new JsonObject { ["enum"] = new JsonArray("concept-bullets", "concept-context") }
+                    },
+                    ["required"] = Required("from"),
+                    ["additionalProperties"] = false
+                })
+        };
+
+        var output = Object(properties, "output");
+        Object(Object(output, "properties"), "failIfEmpty")["minLength"] = 1;
+        Close(output);
+
+        if (specVersion < 6)
+        {
+            // Aggregators arrive at 6.
+            Remove(properties, "aggregate");
+        }
+        else
+        {
+            var aggregate = Object(properties, "aggregate");
+            aggregate["minItems"] = 1;
+            Object(aggregate, "items")["pattern"] = NodeRef;
+        }
+
+        Close(item);
+    }
+
+    private static void EnrichInputs(JsonObject inputs, int specVersion)
+    {
+        inputs["minItems"] = 1;
+
+        var item = Object(inputs, "items");
+        var properties = Object(item, "properties");
+
+        Object(properties, "id")["pattern"] = DeclaredId;
+        Object(properties, "label")["minLength"] = 1;
+
+        if (specVersion < 8)
+        {
+            Remove(properties, "type");
+            Remove(properties, "values");
+        }
+        else
+        {
+            Object(properties, "type")["enum"] = new JsonArray(
+                WorkflowInputTypes.All.Select(type => (JsonNode?)type).ToArray());
+
+            var values = Object(properties, "values");
+            // An enum with one value is a constant, not a choice.
+            values["minItems"] = 2;
+            values["uniqueItems"] = true;
+            Object(values, "items")["pattern"] = DeclaredId;
+
+            // values belongs to enum and to nothing else. An absent type is
+            // text, so the "otherwise" branch has to cover absence too.
+            item["if"] = new JsonObject
+            {
+                ["properties"] = new JsonObject { ["type"] = new JsonObject { ["const"] = WorkflowInputTypes.Enum } },
+                ["required"] = Required("type")
+            };
+            item["then"] = new JsonObject { ["required"] = Required("values") };
+            item["else"] = new JsonObject { ["not"] = new JsonObject { ["required"] = Required("values") } };
+        }
+
+        // Required defaults to true when absent, so it is not required here.
+        item["required"] = Required("id", "label");
+        Close(item);
+    }
+
+    private static void EnrichResults(JsonObject results, int specVersion)
+    {
+        results["minItems"] = 1;
+
+        var item = Object(results, "items");
+        var properties = Object(item, "properties");
+
+        Object(properties, "id")["pattern"] = DeclaredId;
+        Object(properties, "label")["minLength"] = 1;
+        Object(properties, "node")["pattern"] = NodeRef;
+
+        if (specVersion < 8)
+        {
+            // Conditions arrive at 8.
+            Remove(properties, "when");
+        }
+        else
+        {
+            Object(properties, "when")["minLength"] = 1;
+        }
+
+        Close(item);
+    }
+
+    /// <summary>
+    /// Optional means absent, not null: the publisher omits nulls, so a schema
+    /// that kept the exporter's ["object","null"] unions would accept
+    /// `"nodes": null` as a well-formed manifest.
+    /// </summary>
+    private static void Collapse(JsonNode? node)
+    {
+        if (node is JsonArray array)
+        {
+            foreach (var element in array)
+            {
+                Collapse(element);
+            }
+
+            return;
+        }
+
+        if (node is not JsonObject obj)
+        {
+            return;
+        }
+
+        if (obj["type"] is JsonArray types && types.Count == 2)
+        {
+            var kept = types.FirstOrDefault(entry => entry?.GetValue<string>() != "null")?.GetValue<string>();
+            if (kept != null)
+            {
+                obj["type"] = kept;
+            }
+        }
+
+        // A `default: null` beside an omitted-when-null property is noise that
+        // reads as "null is a value here".
+        // A JSON null reads back as a null reference, not a JsonValue holding
+        // null — so this asks whether the key is present and its value absent.
+        if (obj.ContainsKey("default") && obj["default"] is null)
+        {
+            obj.Remove("default");
+        }
+
+        foreach (var pair in obj.ToList())
+        {
+            Collapse(pair.Value);
+        }
+    }
+
+    /// <summary>
+    /// package-format-v8.md § 2: "a section the version does not have is never a
+    /// silently ignored field." The engine does not enforce that — it sets no
+    /// UnmappedMemberHandling — so the schema is the only place the rule is
+    /// currently true.
+    /// </summary>
+    private static void Close(JsonObject schema)
+    {
+        if (!schema.ContainsKey("additionalProperties"))
+        {
+            schema["additionalProperties"] = false;
+        }
+    }
+
+    private static JsonObject Object(JsonObject parent, string key)
+    {
+        Require(parent[key] is JsonObject, $"the exported schema has no '{key}' to enrich — did the model rename it?");
+        return (JsonObject)parent[key]!;
+    }
+
+    private static void Remove(JsonObject parent, string key)
+    {
+        Require(parent.ContainsKey(key), $"the exported schema has no '{key}' to remove — did the model rename it?");
+        parent.Remove(key);
+    }
+
+    private static JsonArray Required(params string[] names) =>
+        new(names.Select(name => (JsonNode?)name).ToArray());
+
+    private static void Require(bool condition, string because)
+    {
+        if (!condition)
+        {
+            throw new InvalidOperationException($"Package format schema generation: {because}");
+        }
+    }
+}
