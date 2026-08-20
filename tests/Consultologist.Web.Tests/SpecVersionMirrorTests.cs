@@ -26,6 +26,19 @@ public class SpecVersionMirrorTests
     }
 
     [Fact]
+    public void TheClientsAccountPrefix_IsTheOneTheServerStamps()
+    {
+        // #411 added a third hand-mirrored fact to the client: the prefix that
+        // says a package belongs to an account. If the server ever renames it,
+        // the editor would quietly stop recognising forks — and the notice that
+        // exists to prevent an accidental publish would stop appearing on the
+        // packages that need it.
+        Assert.Equal(
+            WorkflowPackageNaming.AccountPrefix,
+            Consultologist.Web.Services.Workflow.WorkflowPackageNames.AccountPrefix);
+    }
+
+    [Fact]
     public void TheEditorsCeiling_IsTheNewestFormatTheEngineRuns()
     {
         // What "Upgrade to specVersion N" stamps. Ahead of the engine, publish

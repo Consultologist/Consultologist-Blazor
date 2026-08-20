@@ -178,7 +178,7 @@
                                     else
                                     {
                                         <div class="provenance-chips">
-                                            <span class="provenance-chip @(IsFork(detail.WorkflowPackage) ? "provenance-chip--fork" : "")"
+                                            <span class="provenance-chip @(WorkflowPackageNames.IsAccountPackage(detail.WorkflowPackage) ? "provenance-chip--fork" : "")"
                                                   title="Workflow package this job ran">
                                                 @(detail.WorkflowPackage ?? "—")
                                             </span>
@@ -889,9 +889,6 @@
             : ago.TotalDays < 7 ? $"{(int)ago.TotalDays}d ago"
             : date.ToLocalTime().ToString("MMM d, yyyy");
     }
-
-    private static bool IsFork(string? packageRef) =>
-        packageRef != null && packageRef.StartsWith("acct-", StringComparison.Ordinal);
 
     private static string? HashPrefix(string? hash) =>
         string.IsNullOrEmpty(hash) ? "—" : hash[..Math.Min(12, hash.Length)] + "…";

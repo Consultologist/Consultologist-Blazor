@@ -99,6 +99,23 @@
                 </div>
             </div>
 
+            @* #411: the editor's package selector is also the consult pin, so a
+               person who picks somebody else's package to look at is already
+               editing against it — and publishing turns that into a version of
+               THEIR package carrying this content. Said here because it was not
+               said anywhere, and it cost three accidental publishes in one day. *@
+            @if (!EditingOwnPackage)
+            {
+                <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">
+                    <strong>You are editing <code>@content.Ref</code>, which is not your package.</strong>
+                    <ul>
+                        <li>Publishing creates a new version of <strong>your own</strong> package from this content — not a new version of <code>@content.Name</code>.</li>
+                        <li>Any customisation your package already carries is not in this content, and will not be in what you publish.</li>
+                        <li>Your consults switch to the published version immediately.</li>
+                    </ul>
+                </FluentMessageBar>
+            }
+
             @if (!string.IsNullOrWhiteSpace(publishSuccess))
             {
                 <FluentMessageBar Intent="MessageIntent.Success" AllowDismiss="false">@publishSuccess</FluentMessageBar>
@@ -1086,6 +1103,14 @@
     /// Correct only where the question is about what is already published.
     /// </summary>
     private int LoadedSpecVersion => content?.SpecVersion ?? 0;
+
+    /// <summary>
+    /// Whether the loaded package is the account's own fork. False means the
+    /// editor is holding repo-owned content — legitimate, and how a fork is
+    /// started or restarted, but it makes Publish mean something other than
+    /// "save my work" (#411).
+    /// </summary>
+    private bool EditingOwnPackage => WorkflowPackageNames.IsAccountPackage(content?.Name);
 
     /// <summary>
     /// #347: stage the migration. It is a pending change like any other, so the
@@ -3919,12 +3944,19 @@
 
             await JS.InvokeVoidAsync("localStorage.removeItem", DraftKey);
             var publishedRef = outcome.Response!.Ref;
+            // Captured before LoadAsync resets content: what this was built FROM
+            // is the part a reader cannot reconstruct afterwards, and it is the
+            // whole story when the source was not their own package (#411).
+            var sourceRef = content.Ref;
+            var sourceWasForeign = !EditingOwnPackage;
             // Warnings arrive with a *successful* publish and the version is
             // immutable, so this is the only moment they can be read. Held
             // across LoadAsync, which resets the rest of the page state.
             var warnings = outcome.Response.Warnings ?? new List<string>();
             await LoadAsync();
-            publishSuccess = $"Published {publishedRef} and switched your consults to it.";
+            publishSuccess = sourceWasForeign
+                ? $"Published {publishedRef} from {sourceRef} and switched your consults to it."
+                : $"Published {publishedRef} and switched your consults to it.";
             publishWarnings = warnings;
         }
         catch (AccessTokenNotAvailableException exception)
