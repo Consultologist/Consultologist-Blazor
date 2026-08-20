@@ -113,37 +113,10 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
 
         var manifestJson = await DownloadTextAsync(packageRef.Name, $"{packageRef.Name}/{version}/manifest.json", cancellationToken);
 
-        // The version is read before the shape, and that order is load-bearing
-        // (#416). Pre-v5 registry versions remain archived artifacts but are not
-        // executable (the v5-only rebase; see registry-operations.md), and they
-        // use retired vocabulary — general@v2026.07.4 still carries
-        // sectionSteps. Reading strictly first would refuse them as a parse
-        // error naming a field, in place of the sentence that explains what they
-        // are.
-        if (!WorkflowPackageManifestJson.TryReadSpecVersion(manifestJson, out var declaredSpecVersion))
-        {
-            throw new InvalidOperationException($"Workflow package manifest for {cacheKey} is empty or malformed.");
-        }
-
-        if (!SupportedSpecVersions.Contains(declaredSpecVersion))
-        {
-            throw new WorkflowPackageSpecVersionException(cacheKey, declaredSpecVersion, SupportedSpecVersions);
-        }
-
-        WorkflowPackageManifest manifest;
-
-        try
-        {
-            manifest = JsonSerializer.Deserialize<WorkflowPackageManifest>(manifestJson, WorkflowPackageManifestJson.ReadOptions)
-                ?? throw new InvalidOperationException($"Workflow package manifest for {cacheKey} is empty or malformed.");
-        }
-        catch (JsonException ex)
-        {
-            // Content, not registry: the package is there and readable, and this
-            // engine will not accept what it says.
-            throw new WorkflowPackageContentException(
-                $"Workflow package {cacheKey}: {WorkflowPackageManifestJson.Describe(ex)}");
-        }
+        // Version first, then shape (#416). The rule lives in
+        // WorkflowPackageManifestJson because it is testable there and was not
+        // testable here.
+        var manifest = WorkflowPackageManifestJson.Read(manifestJson, cacheKey, SupportedSpecVersions);
 
         var loaded = await LoadPromptsAsync(packageRef.Name, version, manifest, cancellationToken);
         var prompts = loaded.Prompts;

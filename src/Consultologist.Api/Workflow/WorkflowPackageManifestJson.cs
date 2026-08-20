@@ -31,6 +31,44 @@ public static class WorkflowPackageManifestJson
     };
 
     /// <summary>
+    /// Read a manifest the way the engine must: the version first, then the
+    /// shape. The order is the whole point (#416) and it lives here rather than
+    /// at the call site because nothing constructs WorkflowPackageStore outside
+    /// dependency injection — a rule inlined there could not be tested, and a
+    /// mutation that reversed it passed the entire suite.
+    /// </summary>
+    public static WorkflowPackageManifest Read(
+        string manifestJson,
+        string packageRef,
+        IReadOnlyList<int> supportedSpecVersions)
+    {
+        if (!TryReadSpecVersion(manifestJson, out var declaredSpecVersion))
+        {
+            throw new InvalidOperationException($"Workflow package manifest for {packageRef} is empty or malformed.");
+        }
+
+        // Before the shape: a pre-v5 package is made of retired vocabulary, and
+        // refusing it as a parse error would replace the sentence that explains
+        // it is archived with one about a field nobody asked about.
+        if (!supportedSpecVersions.Contains(declaredSpecVersion))
+        {
+            throw new WorkflowPackageSpecVersionException(packageRef, declaredSpecVersion, supportedSpecVersions);
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<WorkflowPackageManifest>(manifestJson, ReadOptions)
+                ?? throw new InvalidOperationException($"Workflow package manifest for {packageRef} is empty or malformed.");
+        }
+        catch (JsonException ex)
+        {
+            // Content, not registry: the package is there and readable, and this
+            // engine will not accept what it says.
+            throw new WorkflowPackageContentException($"Workflow package {packageRef}: {Describe(ex)}");
+        }
+    }
+
+    /// <summary>
     /// The declared specVersion, read without imposing the current shape.
     ///
     /// Read first, and separately, so a pre-v5 package still gets the sentence

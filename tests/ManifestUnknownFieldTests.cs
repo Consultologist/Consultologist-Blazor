@@ -116,6 +116,54 @@ public class ManifestUnknownFieldTests
             JsonSerializer.Deserialize<WorkflowPackageManifest>(archived, WorkflowPackageManifestJson.ReadOptions));
     }
 
+    [Fact]
+    public void AnArchivedPackage_IsRefusedForBeingArchived_NotForItsVocabulary()
+    {
+        // The ordering, asserted. general@v2026.07.4 is a real registry version:
+        // specVersion 3, carrying the retired sectionSteps. Reading the shape
+        // before the version would refuse it as a parse error naming a field,
+        // in place of the sentence that says what it actually is — and a mutant
+        // that reversed the order passed the entire suite before this existed.
+        var archived = """
+            {
+              "name": "general",
+              "version": "v2026.07.4",
+              "specVersion": 3,
+              "sectionSteps": [ { "id": "hpi" } ]
+            }
+            """;
+
+        var exception = Assert.Throws<WorkflowPackageSpecVersionException>(() =>
+            WorkflowPackageManifestJson.Read(archived, "general@v2026.07.4", WorkflowPackageStore.SupportedSpecVersions));
+
+        Assert.Equal(3, exception.SpecVersion);
+        Assert.Contains("archived and not executable", exception.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("sectionSteps", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ASupportedPackageWithAStrayField_IsAContentFailure()
+    {
+        // The other side of the same branch: once the version is one the engine
+        // runs, an unknown property is the package's content being wrong, which
+        // is a 422 with the detail rather than a registry outage.
+        var exception = Assert.Throws<WorkflowPackageContentException>(() =>
+            WorkflowPackageManifestJson.Read(
+                WithExtra("\"formatRef\": \"x\""), "general@v2026.08.1", WorkflowPackageStore.SupportedSpecVersions));
+
+        Assert.Contains("$.formatRef", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ASupportedPackageThatIsClean_Reads()
+    {
+        var manifest = WorkflowPackageManifestJson.Read(
+            MinimalV8, "general@v2026.08.1", WorkflowPackageStore.SupportedSpecVersions);
+
+        Assert.Equal(8, manifest.SpecVersion);
+        Assert.Equal("general", manifest.Name);
+    }
+
     [Theory]
     [InlineData("not json at all")]
     [InlineData("[]")]
