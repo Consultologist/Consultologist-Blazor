@@ -10,11 +10,6 @@ namespace Consultologist.Api.Workflow;
 
 public sealed class WorkflowPackages
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
-
     // Fork manifests are immutable; spec versions read once hold for the
     // process lifetime (the Mine endpoint's per-version reads).
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int?> SpecVersionCache = new(StringComparer.Ordinal);
@@ -391,7 +386,7 @@ public sealed class WorkflowPackages
 
         try
         {
-            manifest = JsonSerializer.Deserialize<WorkflowPackageManifest>(body, JsonOptions);
+            manifest = JsonSerializer.Deserialize<WorkflowPackageManifest>(body, WorkflowPackageManifestJson.ReadOptions);
         }
         catch (JsonException ex)
         {
@@ -511,12 +506,16 @@ public sealed class WorkflowPackages
         {
             try
             {
-                publishRequest = JsonSerializer.Deserialize<WorkflowPackagePublishRequest>(requestBody, JsonOptions);
+                publishRequest = JsonSerializer.Deserialize<WorkflowPackagePublishRequest>(requestBody, WorkflowPackageManifestJson.ReadOptions);
             }
             catch (JsonException ex)
             {
-                _logger.LogWarning(ex, "Invalid WorkflowPackagePublish request: malformed JSON body.");
-                return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest, new { errors = new[] { "Malformed JSON request body." } }, cancellationToken);
+                // The property, not just "malformed": this list renders one line
+                // per error in the editor, and "Malformed JSON request body"
+                // told an author nothing about which field to remove (#416).
+                _logger.LogWarning(ex, "Invalid WorkflowPackagePublish request. Path={Path}", ex.Path);
+                return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest,
+                    new { errors = new[] { WorkflowPackageManifestJson.Describe(ex) } }, cancellationToken);
             }
         }
 

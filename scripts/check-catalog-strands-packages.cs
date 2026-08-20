@@ -128,6 +128,11 @@ foreach (var package in chain.Packages.OrderBy(p => p.Name, StringComparer.Ordin
         try
         {
             var manifestJson = await DownloadAsync($"{package.Name}/{version}/manifest.json");
+            // Permissive, unlike the load and publish paths (#416): this sweeps
+            // every published version to ask whether a catalog would strand one,
+            // and a manifest-shape complaint is not that question. A read
+            // failure aborts the whole sweep, which would be a disproportionate
+            // answer to a stray property in one historical version.
             manifest = JsonSerializer.Deserialize<WorkflowPackageManifest>(
                 manifestJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         }

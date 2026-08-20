@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Consultologist.Api.Workflow;
 
 namespace Consultologist.Api.Tests;
@@ -68,13 +69,18 @@ public class PackageFormatSchemaTests
     }
 
     [Fact]
-    public void TheSchemaRefusesWhatTheEngineQuietlyAccepts()
+    public void TheSchemaAndTheEngine_RefuseTheSameUnknownFields()
     {
-        // The one place the schema is deliberately stricter than the engine.
-        // package-format-v8.md: "a section the version does not have is never a
-        // silently ignored field" — true here, not yet true in the store.
+        // This asserted a divergence until #416: the schema said
+        // additionalProperties: false because package-format-v8.md says "a
+        // section the version does not have is never a silently ignored field",
+        // and the engine accepted them anyway. Both sides now hold, and this
+        // fails if either drifts back.
         var schema = JsonDocument.Parse(PublishedSchema(8)).RootElement;
 
         Assert.False(schema.GetProperty("additionalProperties").GetBoolean());
+        Assert.Equal(
+            JsonUnmappedMemberHandling.Disallow,
+            WorkflowPackageManifestJson.ReadOptions.UnmappedMemberHandling);
     }
 }

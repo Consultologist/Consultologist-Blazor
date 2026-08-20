@@ -61,12 +61,13 @@ try
 {
     manifest = JsonSerializer.Deserialize<WorkflowPackageManifest>(
         File.ReadAllText(manifestPath),
-        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        WorkflowPackageManifestJson.ReadOptions);
 }
 catch (JsonException ex)
 {
-    // The store deserializes with the same options, so a manifest that fails
-    // here would fail at pin resolve too.
+    // The store deserializes with the same options object now (#416), not
+    // merely an identical one — so a manifest that fails here fails at pin
+    // resolve too, and cannot stop being true by one side being edited.
     Console.Error.WriteLine($"error: manifest.json does not parse: {ex.Message}");
     return 1;
 }

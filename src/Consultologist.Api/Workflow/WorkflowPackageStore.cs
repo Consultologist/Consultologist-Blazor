@@ -112,15 +112,11 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         }
 
         var manifestJson = await DownloadTextAsync(packageRef.Name, $"{packageRef.Name}/{version}/manifest.json", cancellationToken);
-        var manifest = JsonSerializer.Deserialize<WorkflowPackageManifest>(manifestJson, JsonOptions)
-            ?? throw new InvalidOperationException($"Workflow package manifest for {cacheKey} is empty or malformed.");
 
-        // Pre-v5 registry versions remain archived artifacts but are not executable
-        // (the v5-only rebase; see registry-operations.md).
-        if (!SupportedSpecVersions.Contains(manifest.SpecVersion))
-        {
-            throw new WorkflowPackageSpecVersionException(cacheKey, manifest.SpecVersion, SupportedSpecVersions);
-        }
+        // Version first, then shape (#416). The rule lives in
+        // WorkflowPackageManifestJson because it is testable there and was not
+        // testable here.
+        var manifest = WorkflowPackageManifestJson.Read(manifestJson, cacheKey, SupportedSpecVersions);
 
         var loaded = await LoadPromptsAsync(packageRef.Name, version, manifest, cancellationToken);
         var prompts = loaded.Prompts;
