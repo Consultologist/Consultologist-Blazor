@@ -14,14 +14,16 @@
             aria-label="Workflow package">
         @if (groups.Count == 0)
         {
-            <option value="@selectedRef">@selectedRef</option>
+            <option value="@selectedRef" selected="true">@selectedRef</option>
         }
         @foreach (var group in groups)
         {
             <optgroup label="@group.Label">
                 @foreach (var option in group.Options)
                 {
-                    <option value="@option.Value" disabled="@option.Disabled">@option.Label</option>
+                    <option value="@option.Value"
+                            disabled="@option.Disabled"
+                            selected="@(option.Value == selectedRef)">@option.Label</option>
                 }
             </optgroup>
         }
@@ -73,6 +75,20 @@
     private string selectedRef = DefaultRef;
     private bool isPinning;
     private string? pinError;
+
+    /// <summary>
+    /// The chooser's selection arrives as a parameter and can change without the
+    /// component being rebuilt. OnInitializedAsync runs once, so reading it only
+    /// there left the display on whatever it was first told — correct only while
+    /// the caller happened to force a new instance.
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        if (!WritesPin && !string.IsNullOrWhiteSpace(Selected))
+        {
+            selectedRef = Selected!.Trim();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
