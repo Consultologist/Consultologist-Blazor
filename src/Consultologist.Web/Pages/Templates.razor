@@ -16,9 +16,9 @@
         <span class="section-eyebrow">Workflow</span>
         <h1 class="page-title">Your consult workflow, editable.</h1>
         <p class="page-description">
-            Edit the active package's prompt and section-standard texts. Publishing creates a new
-            immutable version of your own package — with full provenance — and your consults start
-            using it immediately.
+            Edit any package's prompt and section-standard texts — choosing one here changes what you
+            are editing, not what your consults run. Publishing creates a new immutable version of
+            your own package, with full provenance, and your consults start using it immediately.
         </p>
     </div>
 </section>
@@ -51,12 +51,24 @@
             <div class="editor-bar">
                 <div class="editor-bar__info">
                     <span>Editing</span>
+                    @* #411: a chooser, not the pin control. Selecting here used
+                       to write consult.workflowPackage, so looking at a package
+                       pointed your consults at it. Consults owns that now. *@
                     <WorkflowPackagePicker @key="content.Ref"
                                            Disabled="@isPublishing"
-                                           OnPinned="OnPackagePinnedAsync" />
+                                           WritesPin="false"
+                                           Selected="@editingRef"
+                                           OnSelected="OnPackageSelectedAsync" />
                     @if (WorkflowManifestReader.ReadDerivedFrom(content.Manifest) is { } parentRef)
                     {
                         <span class="muted-text">derived from <code>@parentRef</code></span>
+                    }
+                    @* Only when they disagree. Editing your own fork while your
+                       consults run it is the ordinary case, and a line that
+                       shows every visit is one nobody reads. *@
+                    @if (PinnedElsewhere is { } pinnedRef)
+                    {
+                        <span class="muted-text editor-bar__pin">your consults run <code>@pinnedRef</code></span>
                     }
                 </div>
                 <div class="editor-bar__actions">
@@ -114,6 +126,11 @@
                         <li>Your consults switch to the published version immediately.</li>
                     </ul>
                 </FluentMessageBar>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(selectionNotice))
+            {
+                <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">@selectionNotice</FluentMessageBar>
             }
 
             @if (!string.IsNullOrWhiteSpace(publishSuccess))
@@ -1111,6 +1128,38 @@
     /// "save my work" (#411).
     /// </summary>
     private bool EditingOwnPackage => WorkflowPackageNames.IsAccountPackage(content?.Name);
+
+    /// <summary>
+    /// The ref this editor is holding. Since #411 it is NOT the consult pin:
+    /// choosing a package here changes what you are looking at and nothing
+    /// else. Null means "whatever is pinned", which is the sensible landing.
+    /// </summary>
+    private string? editingRef;
+
+    /// <summary>The pin, read once per load, so the two can be compared.</summary>
+    private string? pinnedRef;
+
+    /// <summary>
+    /// Why the editor is not holding what was asked for. Deliberately not
+    /// loadError, which renders INSTEAD of the editor — the whole point of the
+    /// fallback is that there is something to show.
+    /// </summary>
+    private string? selectionNotice;
+
+    /// <summary>
+    /// The pinned package when it is not what is loaded, else null. Compared on
+    /// the RESOLVED ref, so a `general@latest` pin sitting on the version the
+    /// editor happens to hold reads as agreement rather than as a difference.
+    /// </summary>
+    private string? PinnedElsewhere =>
+        pinnedRef != null && content != null && !string.Equals(pinnedRef, content.Ref, StringComparison.Ordinal)
+            ? pinnedRef
+            : null;
+
+    private const string EditingRefKey = "workflow-editor-package";
+
+    /// <summary>Mirrors WorkflowPackagePinResolver.PackagePinSettingKey.</summary>
+    private const string WorkflowPackagePinSettingKey = "consult.workflowPackage";
 
     /// <summary>
     /// #347: stage the migration. It is a pending change like any other, so the
@@ -2953,7 +3002,70 @@
 
     protected override async Task OnInitializedAsync()
     {
+        editingRef = await ReadRememberedPackageAsync();
         await LoadAsync();
+    }
+
+    /// <summary>
+    /// The package this browser was last editing. Remembered so a reload keeps
+    /// a draft and the package it belongs to together — drafts are keyed per
+    /// ref, so landing back on the pin would leave one invisible until the
+    /// package was selected again.
+    /// </summary>
+    private async Task<string?> ReadPinAsync()
+    {
+        try
+        {
+            var setting = await AccountService.GetSettingAsync(WorkflowPackagePinSettingKey);
+            return string.IsNullOrWhiteSpace(setting?.Value) ? null : setting!.Value.Trim();
+        }
+        catch (AccessTokenNotAvailableException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Unknown is not "the same"; PinnedElsewhere stays silent rather
+            // than claiming agreement it cannot see.
+            return null;
+        }
+    }
+
+    private async Task RememberPackageAsync(string packageRef)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", EditingRefKey, packageRef);
+        }
+        catch
+        {
+            // Remembering is a convenience; failing to is not worth a message.
+        }
+    }
+
+    private async Task ForgetRememberedPackageAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.removeItem", EditingRefKey);
+        }
+        catch
+        {
+        }
+    }
+
+    private async Task<string?> ReadRememberedPackageAsync()
+    {
+        try
+        {
+            var stored = await JS.InvokeAsync<string?>("localStorage.getItem", EditingRefKey);
+            return string.IsNullOrWhiteSpace(stored) ? null : stored.Trim();
+        }
+        catch
+        {
+            // No memory is a fine state: the pin is the landing.
+            return null;
+        }
     }
 
     private string DraftKey => DraftKeyPrefix + content!.Ref;
@@ -2980,7 +3092,7 @@
 
     private async Task LoadDiagramAsync()
     {
-        diagramText = await WorkflowService.GetCurrentDiagramAsync();
+        diagramText = await WorkflowService.GetCurrentDiagramAsync(editingRef);
         diagramIncludesPending = false;
         await InvokeAsync(StateHasChanged);
     }
@@ -3009,7 +3121,7 @@
             }
             else
             {
-                diagramText = await WorkflowService.GetCurrentDiagramAsync();
+                diagramText = await WorkflowService.GetCurrentDiagramAsync(editingRef);
                 diagramIncludesPending = false;
             }
         }
@@ -3248,6 +3360,7 @@
     {
         isLoading = true;
         loadError = null;
+        selectionNotice = null;
         ClearPending();
         ResetFormScratch();
 
@@ -3258,7 +3371,23 @@
 
         try
         {
-            content = await WorkflowService.GetCurrentPackageContentAsync();
+            pinnedRef = await ReadPinAsync();
+
+            try
+            {
+                content = await WorkflowService.GetCurrentPackageContentAsync(editingRef);
+            }
+            catch (Exception ex) when (editingRef != null && ex is not AccessTokenNotAvailableException)
+            {
+                // A remembered package that no longer resolves — pruned, or a
+                // pin that moved out from under it. Fall back to what IS
+                // loadable rather than leaving a dead editor, and say why.
+                selectionNotice = $"Could not open {editingRef}: {ex.Message} Showing the pinned package instead.";
+                editingRef = null;
+                await ForgetRememberedPackageAsync();
+                content = await WorkflowService.GetCurrentPackageContentAsync();
+            }
+
             prompts = WorkflowManifestReader.ReadPrompts(content.Manifest);
             nodes = WorkflowManifestReader.ReadNodes(content.Manifest);
             collections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files);
@@ -4427,10 +4556,22 @@
         return JsonSerializer.SerializeToElement(root);
     }
 
-    // A new pin resolves to a different package; drafts are keyed per ref, so
-    // pending edits stay with their package and reappear on switching back.
+    // A different package to look at — not a different package to run. Drafts
+    // are keyed per ref, so pending edits stay with their package and reappear
+    // on switching back.
+    private async Task OnPackageSelectedAsync(string packageRef)
+    {
+        editingRef = packageRef;
+        await RememberPackageAsync(packageRef);
+        await LoadAsync();
+    }
+
+    // The load-error escape hatch still writes the pin: an unloadable pin is
+    // exactly the situation where changing what the consults run is the repair.
     private async Task OnPackagePinnedAsync()
     {
+        editingRef = null;
+        await ForgetRememberedPackageAsync();
         await LoadAsync();
     }
 
@@ -4445,7 +4586,12 @@
 
         try
         {
-            await AccountService.DeleteSettingAsync("consult.workflowPackage");
+            await AccountService.DeleteSettingAsync(WorkflowPackagePinSettingKey);
+            // Both meanings move together. Reverting the pin while the editor
+            // stayed on something else would report "reverted to X" naming
+            // whatever happened to be loaded (#411).
+            editingRef = null;
+            await ForgetRememberedPackageAsync();
             await LoadAsync();
             publishSuccess = $"Reverted to the default package ({content?.Ref}). Your published versions are kept.";
         }
