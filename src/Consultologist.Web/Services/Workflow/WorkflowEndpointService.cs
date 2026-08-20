@@ -10,13 +10,14 @@ namespace Consultologist.Web.Services.Workflow;
 public interface IWorkflowEndpointService
 {
     Task<WorkflowPackageResponse> GetCurrentPackageAsync();
-    Task<WorkflowPackageContentResponse> GetCurrentPackageContentAsync();
+    /// <summary>The pinned package, or a named one since #411 split editing from pinning.</summary>
+    Task<WorkflowPackageContentResponse> GetCurrentPackageContentAsync(string? packageRef = null);
     Task<WorkflowPublishOutcome> PublishPackageAsync(WorkflowPackagePublishRequest request);
     Task<PublicChainView?> GetPublicChainAsync();
     Task<PublicPackageView?> GetMyPackagesAsync();
     Task<Dictionary<string, PublicCatalogEntry>?> GetCatalogAsync(string version);
     Task<IReadOnlyList<string>?> GetLineageAsync(string packageRef);
-    Task<string?> GetCurrentDiagramAsync();
+    Task<string?> GetCurrentDiagramAsync(string? packageRef = null);
     Task<string?> GetDiagramForManifestAsync(JsonElement manifest);
 }
 
@@ -176,7 +177,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
             ?? throw new InvalidOperationException("Failed to deserialize workflow package response.");
     }
 
-    public async Task<WorkflowPackageContentResponse> GetCurrentPackageContentAsync()
+    public async Task<WorkflowPackageContentResponse> GetCurrentPackageContentAsync(string? packageRef = null)
     {
         var contentUrl = _configuration["AzureFunction:WorkflowPackageContentUrl"];
 
@@ -185,7 +186,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
             throw new InvalidOperationException("AzureFunction:WorkflowPackageContentUrl is not configured.");
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, contentUrl);
+        using var request = new HttpRequestMessage(HttpMethod.Get, WithPackageRef(contentUrl, packageRef));
         await AddAuthorizationAsync(request);
 
         using var response = await _httpClient.SendAsync(request);
@@ -364,7 +365,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
         }
     }
 
-    public async Task<string?> GetCurrentDiagramAsync()
+    public async Task<string?> GetCurrentDiagramAsync(string? packageRef = null)
     {
         var diagramUrl = _configuration["AzureFunction:WorkflowPackageDiagramUrl"];
 
@@ -375,7 +376,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
 
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, diagramUrl);
+            using var request = new HttpRequestMessage(HttpMethod.Get, WithPackageRef(diagramUrl, packageRef));
             await AddAuthorizationAsync(request);
             using var response = await _httpClient.SendAsync(request);
 
@@ -445,6 +446,23 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
     private sealed record CatalogDocument(Dictionary<string, PublicCatalogEntry>? Contracts);
 
     private sealed record PublishErrorPayload(List<string>? Errors);
+
+    /// <summary>
+    /// Appends the package ref the caller wants, or leaves the URL alone. Null
+    /// means "the pin", which is what every call meant before #411 split
+    /// editing from pinning — so the endpoints keep their old behaviour for any
+    /// caller that does not ask.
+    /// </summary>
+    private static string WithPackageRef(string url, string? packageRef)
+    {
+        if (string.IsNullOrWhiteSpace(packageRef))
+        {
+            return url;
+        }
+
+        var separator = url.Contains('?', StringComparison.Ordinal) ? '&' : '?';
+        return $"{url}{separator}ref={Uri.EscapeDataString(packageRef)}";
+    }
 
     private async Task AddAuthorizationAsync(HttpRequestMessage request)
     {

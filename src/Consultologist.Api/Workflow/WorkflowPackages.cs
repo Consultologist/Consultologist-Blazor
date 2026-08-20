@@ -231,20 +231,42 @@ public sealed class WorkflowPackages
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }
 
-        var packageRef = await _pinResolver.ResolvePinAsync(account.AppUserId, cancellationToken);
+        var requested = ParseRequestedPackage(req.Url, account.AppUserId);
+
+        if (requested.Kind == RequestedPackageKind.Malformed)
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest,
+                new { error = "ref must be a package reference (name@vYYYY.MM.N or name@latest)." }, cancellationToken);
+        }
+
+        if (requested.Kind == RequestedPackageKind.Forbidden)
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.Forbidden,
+                new { error = "Workflow package is not accessible from this account." }, cancellationToken);
+        }
+
+        var packageRef = requested.Ref
+            ?? await _pinResolver.ResolvePinAsync(account.AppUserId, cancellationToken);
 
         WorkflowPackage package;
         try
         {
             package = await _packageStore.ResolveAsync(packageRef, cancellationToken);
         }
+        // A package that is not there is not an outage. Asking for a pruned or
+        // mistyped version used to answer "the registry is unavailable", which
+        // sends a reader to check infrastructure that is fine.
+        catch (InvalidOperationException ex) when (ex.Message.Contains("was not found", StringComparison.Ordinal))
+        {
+            _logger.LogWarning(ex, "Workflow package content not found. Ref={Ref}", packageRef);
+            return await CreateJsonResponseAsync(req, HttpStatusCode.NotFound,
+                new { error = $"Workflow package {packageRef} was not found." }, cancellationToken);
+        }
         catch (InvalidOperationException ex)
         {
-            _logger.LogError(ex, "Workflow package content resolution failed. Pin={Pin}", packageRef);
-            var errorResponse = req.CreateResponse(HttpStatusCode.ServiceUnavailable);
-            FunctionCors.Apply(req, errorResponse);
-            await errorResponse.WriteAsJsonAsync(new { error = "Workflow package registry is unavailable." }, cancellationToken);
-            return errorResponse;
+            _logger.LogError(ex, "Workflow package content resolution failed. Ref={Ref}", packageRef);
+            return await CreateJsonResponseAsync(req, HttpStatusCode.ServiceUnavailable,
+                new { error = "Workflow package registry is unavailable." }, cancellationToken);
         }
 
         var response = req.CreateResponse(HttpStatusCode.OK);
@@ -286,20 +308,42 @@ public sealed class WorkflowPackages
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }
 
-        var packageRef = await _pinResolver.ResolvePinAsync(account.AppUserId, cancellationToken);
+        var requested = ParseRequestedPackage(req.Url, account.AppUserId);
+
+        if (requested.Kind == RequestedPackageKind.Malformed)
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest,
+                new { error = "ref must be a package reference (name@vYYYY.MM.N or name@latest)." }, cancellationToken);
+        }
+
+        if (requested.Kind == RequestedPackageKind.Forbidden)
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.Forbidden,
+                new { error = "Workflow package is not accessible from this account." }, cancellationToken);
+        }
+
+        var packageRef = requested.Ref
+            ?? await _pinResolver.ResolvePinAsync(account.AppUserId, cancellationToken);
 
         WorkflowPackage package;
         try
         {
             package = await _packageStore.ResolveAsync(packageRef, cancellationToken);
         }
+        // A package that is not there is not an outage. Asking for a pruned or
+        // mistyped version used to answer "the registry is unavailable", which
+        // sends a reader to check infrastructure that is fine.
+        catch (InvalidOperationException ex) when (ex.Message.Contains("was not found", StringComparison.Ordinal))
+        {
+            _logger.LogWarning(ex, "Workflow package diagram not found. Ref={Ref}", packageRef);
+            return await CreateJsonResponseAsync(req, HttpStatusCode.NotFound,
+                new { error = $"Workflow package {packageRef} was not found." }, cancellationToken);
+        }
         catch (InvalidOperationException ex)
         {
-            _logger.LogError(ex, "Workflow package diagram resolution failed. Pin={Pin}", packageRef);
-            var errorResponse = req.CreateResponse(HttpStatusCode.ServiceUnavailable);
-            FunctionCors.Apply(req, errorResponse);
-            await errorResponse.WriteAsJsonAsync(new { error = "Workflow package registry is unavailable." }, cancellationToken);
-            return errorResponse;
+            _logger.LogError(ex, "Workflow package diagram resolution failed. Ref={Ref}", packageRef);
+            return await CreateJsonResponseAsync(req, HttpStatusCode.ServiceUnavailable,
+                new { error = "Workflow package registry is unavailable." }, cancellationToken);
         }
 
         // The same generator that produces the checked-in dag.mmd (pinned by
@@ -503,6 +547,56 @@ public sealed class WorkflowPackages
         }
 
         return await CreateJsonResponseAsync(req, HttpStatusCode.OK, result.Response!, cancellationToken);
+    }
+
+    /// <summary>
+    /// Which package a read endpoint should serve. The editor asks for one by
+    /// <c>ref</c> since #411 split "what I am editing" from "what my consults
+    /// run"; everything else, and every older client, sends nothing and gets
+    /// the pin.
+    /// </summary>
+    internal enum RequestedPackageKind
+    {
+        /// <summary>No ref asked for — resolve the account's pin, as before.</summary>
+        Pin,
+        Resolved,
+        Malformed,
+        Forbidden
+    }
+
+    internal readonly record struct RequestedPackage(RequestedPackageKind Kind, WorkflowPackageRef? Ref);
+
+    /// <summary>
+    /// Reads an optional <c>ref</c> and applies the same access rule the
+    /// publisher applies to its Source — a foreign acct-* package is refused
+    /// here rather than resolved and served.
+    ///
+    /// Unlike the lineage endpoint, <c>@latest</c> is accepted: the picker
+    /// offers it, the pin permits it, and the store resolves it. The response
+    /// reports the resolved manifest's name and version either way, so what the
+    /// client holds is always concrete.
+    ///
+    /// A static over Uri and the account id on purpose: no HttpRequestData
+    /// harness exists in this repo, so this is the only shape in which the rule
+    /// can be tested (Account.ParseJobsQueryParams sets the precedent).
+    /// </summary>
+    internal static RequestedPackage ParseRequestedPackage(Uri url, string appUserId)
+    {
+        var rawRef = System.Web.HttpUtility.ParseQueryString(url.Query)["ref"];
+
+        if (string.IsNullOrWhiteSpace(rawRef))
+        {
+            return new RequestedPackage(RequestedPackageKind.Pin, null);
+        }
+
+        if (!WorkflowPackageRef.TryParse(rawRef, out var packageRef))
+        {
+            return new RequestedPackage(RequestedPackageKind.Malformed, null);
+        }
+
+        return WorkflowPackageNaming.CanAccess(packageRef!.Name, appUserId)
+            ? new RequestedPackage(RequestedPackageKind.Resolved, packageRef)
+            : new RequestedPackage(RequestedPackageKind.Forbidden, null);
     }
 
     private static async Task<HttpResponseData> CreateJsonResponseAsync<T>(
