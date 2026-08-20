@@ -192,9 +192,14 @@ setting, not the Function App's system-assigned identity (the first production
 publish 403'd on exactly this distinction).
 
 Since #134 the pin (`consult.workflowPackage`) is user-settable: the package
-selector on the Workflow and Consults pages writes it through the generic
-account-settings PUT — publish (pins the new fork version) and revert-to-default
-(deletes the setting) are no longer the only writers. The selector lists
+selector on the **Consults** page writes it through the generic account-settings
+PUT — publish (pins the new fork version) and revert-to-default (deletes the
+setting) are no longer the only writers. The Workflow page's selector wrote it
+too until #411, which separated *what you are editing* from *what your consults
+run*: it now chooses which package the editor loads (`?ref=` on
+`WorkflowPackages/Current/Content` and `/Diagram`, gated by the same
+`WorkflowPackageNaming.CanAccess` the publisher applies to its source) and
+writes nothing. Publishing still activates. The selector lists
 repo-owned packages from the anonymous chain view and the caller's own fork from
 `GET /api/WorkflowPackages/Mine` (authorized; private-registry listing of the
 account's `acct-*` versions). The pin resolver remains the sole authority on
