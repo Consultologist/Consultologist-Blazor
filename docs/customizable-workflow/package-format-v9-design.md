@@ -362,6 +362,12 @@ spends nothing, and running would create a job record whose only content is
 that it produced nothing. It needs no part of #337 — the refusal is a value
 in the existing start-failure enum, as the empty fire set was.
 
+*Note, 2026-08-21:* #337 is now scheduled — the empty-fire-set class gains
+a Failed job record so History has a row to point at. The empty fan is that
+class, so it inherits the record through the same mechanism, with no format
+consequence: what § 5 decides is that the outcome is knowable at start, and
+that survives either way of recording it.
+
 ## 6. Conditions (normative)
 
 ### Grammar
@@ -513,10 +519,11 @@ once at start; `TotalBlockCount` is a stored scalar; per-result
 reachability, which an input fan satisfies like any other fan; the
 opaque-manifest round-trip.
 
-**Still out of scope**: nested structure; `and`/`or` and arithmetic;
-conditions over node output (#336); a job record for an empty fire set
-(#337); archives (#372's Fork 2); cross-package composition; per-deliverable
-delivery routing.
+**Still out of scope for the format**: nested structure; `and`/`or` and
+arithmetic; conditions over node output (#336); archives (#372's Fork 2);
+cross-package composition; per-deliverable delivery routing. A job record
+for an empty fire set (#337) is scheduled but is not format work — it needs
+no version and changes no manifest.
 
 ## 10. Versioning mechanics
 
@@ -648,11 +655,11 @@ where items come from and leaves start-time knowability intact, which is
 exactly what keeps `TotalBlockCount` a stored scalar. Its trigger has not
 fired.
 
-**A job record for an empty fire set (#337)** — unchanged and unneeded here.
-v9's empty fan is refused at start by the same argument v8's empty fire set
-is, and adds a value to the existing start-failure enum rather than a job
-row. #337 remains high-reversibility work that needs no format version at
-all.
+**A job record for an empty fire set (#337)** — not a format candidate,
+and now scheduled as ordinary work (2026-08-21): the empty-fire-set class
+gains a Failed job record, and § 5's empty fan inherits it through the same
+mechanism. It needed no format version, which is why scheduling it changes
+nothing in this document beyond the two notes that say so.
 
 **Archives as an input transport (#372, Fork 2)** — *considered and
 deferred.* Two readings were laid out there — the archive as one input's
