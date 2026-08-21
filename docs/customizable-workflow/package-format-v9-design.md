@@ -1,7 +1,7 @@
 # Package format v9: structured inputs, numbers, and fanning over caller data — design
 
-**Status: design record for #419 (settled 2026-08-21), implementation not
-yet scheduled.** Unlike every version before it, v9 has no *sketch* to
+**Status: design record for #419 (settled 2026-08-21), implementation
+tracked by #421–#430.** Unlike every version before it, v9 has no *sketch* to
 replace: its candidates were filed as individual records — #338 and #340 —
 and this document is written from them. The candidates it does not take are
 kept in § 13 rather than deleted, so a later reader can see what was
@@ -14,6 +14,13 @@ Decisions taken with the operator: `number` and structured inputs are
 **fanned with `forEach`**, not only iterated in a template; and a condition
 may read **dotted paths and array predicates** as well as the ordering
 operators `number` brings.
+
+> **Amendment, 2026-08-21 (#371).** v9 also carries a package **title and
+> description** in the manifest — § 4, *Package title and description*. In
+> scope by product decision, not by the pairing argument, and § 2 records
+> that with the same care it gives #338's unfired trigger. The subsection
+> sits inside § 4 rather than renumbering the sections #421–#430 already
+> cite.
 
 ## 1. Motivation
 
@@ -55,6 +62,15 @@ quantity. `number` is in v9 on the pairing argument above — it revises the
 same four things structure does, and the alternative is two conflicting
 revisions of them — not because anything demanded it. A later reader should
 not find a bar here that reads as cleared.
+
+**Neither did a trigger fire for the title and description** (#371, step 1
+of its sequencing). They are in v9 by product decision: the naming pain is
+felt daily — every surface shows `acct-7bca2dcc1ed4@v2026.08.13` — and #416
+turned this from a quiet addition into a version-gated one, because an
+unknown manifest field is now refused. The manifest, the schema and the
+conformance suite are being revised anyway; shipping the two fields
+separately later would pay the versioning cost twice, which is the same
+reasoning v8's § 2 recorded for its own override.
 
 ## 3. Vocabulary
 
@@ -233,6 +249,49 @@ plausible value.
 extended to the new types. An **array of `text` is reachable**: attachments
 fill it, which is exactly what § 7 describes.
 
+### Package title and description
+
+*Added by the 2026-08-21 amendment (#371, step 1).* Two optional top-level
+manifest fields:
+
+```yaml
+name: acct-7bca2dcc1ed4
+version: v2026.09.1
+specVersion: 9
+title: Breast oncology consults
+description: Referral triage and consult notes for the breast clinic.
+```
+
+- Both **arrive at 9**. On a v8-or-earlier manifest they are refused —
+  *"a section the version does not have is never a silently ignored field"*
+  — which since #416 the engine enforces rather than merely documents.
+- `title`: when present, non-empty, a single line, at most 80 characters.
+  `description`: when present, non-empty, at most 500 characters. Both are
+  **authored package content**, the same safety class as labels and enum
+  values: written at publish, never per consult, so safe in the UI and in
+  anything the system composes.
+- **The fallback is the ref, stated rather than assumed.** Every package
+  published before this exists has no title; every surface that shows a
+  title must show the ref when there is none.
+- **No uniqueness rule.** Two identically-titled packages are legal, and the
+  picker disambiguates by showing the ref beside the title — which
+  provenance wants visible anyway.
+- **History shows the title as it was at the pinned version**, beside the
+  ref. Automatic rather than clever: a job records a ref, the ref names an
+  immutable manifest, and that manifest's title is what the reader sees. A
+  later rename cannot rewrite what an old consult ran.
+- **A fork across names starts with no title.** Inheriting the parent's
+  title would put a plausible, wrong name on a diverging package — the
+  misleading default #371 warned about, and exactly what the
+  explicit-initialisation rule exists to prevent. A republish of the same
+  package keeps its title.
+- **Why the manifest and not an account record**: the fields describe *the
+  package* and travel with it — a shared or public package should arrive
+  carrying its own name. Describing a version immutably is honest rather
+  than awkward: the package is being published anyway when it changes.
+  Filing — folders, *your* organisation of *your* packages — is #371 steps
+  2 and 3, deliberately **not** here.
+
 ## 5. Fanning over caller data (normative)
 
 ### Declaration
@@ -302,6 +361,12 @@ Same argument as v8's: knowable before any model call, costs nothing,
 spends nothing, and running would create a job record whose only content is
 that it produced nothing. It needs no part of #337 — the refusal is a value
 in the existing start-failure enum, as the empty fire set was.
+
+*Note, 2026-08-21:* #337 is now scheduled — the empty-fire-set class gains
+a Failed job record so History has a row to point at. The empty fan is that
+class, so it inherits the record through the same mechanism, with no format
+consequence: what § 5 decides is that the outcome is knowable at start, and
+that survives either way of recording it.
 
 ## 6. Conditions (normative)
 
@@ -445,17 +510,20 @@ arrays and `fields` for objects, with the one-level bound; structured
 canonical forms; `forEach: input:<id>` with engine-minted item identity;
 the refusal of an empty fan; the widened condition grammar — six operators,
 paths, `count()`, array truthiness; several documents for one slot with a
-per-slot aggregate cap; per-document provenance; effective-input hash 5.
+per-slot aggregate cap; per-document provenance; effective-input hash 5;
+`title` and `description` on the manifest, with the ref as the stated
+fallback.
 
 **Unchanged, explicitly**: conditions read declared inputs only, evaluated
 once at start; `TotalBlockCount` is a stored scalar; per-result
 reachability, which an input fan satisfies like any other fan; the
 opaque-manifest round-trip.
 
-**Still out of scope**: nested structure; `and`/`or` and arithmetic;
-conditions over node output (#336); a job record for an empty fire set
-(#337); archives (#372's Fork 2); cross-package composition; per-deliverable
-delivery routing.
+**Still out of scope for the format**: nested structure; `and`/`or` and
+arithmetic; conditions over node output (#336); archives (#372's Fork 2);
+cross-package composition; per-deliverable delivery routing. A job record
+for an empty fire set (#337) is scheduled but is not format work — it needs
+no version and changes no manifest.
 
 ## 10. Versioning mechanics
 
@@ -533,6 +601,8 @@ of a package was thinner than the registry's.
   wrong.
 - The **nodes editor** gains `input:` as a `forEach` source, which means the
   source picker stops being a list of `data:` collections.
+- A **metadata pane** for the title and description — with the fork-clears-
+  title rule (§ 4) and the explicit-initialisation posture on both fields.
 - The **Consults intake form** renders the new controls (§ 4) and the
   multi-file slot (§ 7), including the re-orderable list.
 
@@ -550,7 +620,9 @@ edits — so the pending-change registry and the draft slices are untouched.
    inputs were re-defined and outputs were not.
 2. A **demo package** exercises the new width: an array of prior notes
    fanned by `forEach`, an object input read by path, a number driving an
-   ordering comparison, and a deliverable conditioned on `count()`. It is
+   ordering comparison, a deliverable conditioned on `count()`, and a
+   declared title — the first package whose picker entry is a name somebody
+   chose. It is
    where the empty-fan refusal and the per-document provenance are seen
    working.
 3. `example-two-documents` stays v7 until there is a reason — an unmigrated
@@ -583,11 +655,11 @@ where items come from and leaves start-time knowability intact, which is
 exactly what keeps `TotalBlockCount` a stored scalar. Its trigger has not
 fired.
 
-**A job record for an empty fire set (#337)** — unchanged and unneeded here.
-v9's empty fan is refused at start by the same argument v8's empty fire set
-is, and adds a value to the existing start-failure enum rather than a job
-row. #337 remains high-reversibility work that needs no format version at
-all.
+**A job record for an empty fire set (#337)** — not a format candidate,
+and now scheduled as ordinary work (2026-08-21): the empty-fire-set class
+gains a Failed job record, and § 5's empty fan inherits it through the same
+mechanism. It needed no format version, which is why scheduling it changes
+nothing in this document beyond the two notes that say so.
 
 **Archives as an input transport (#372, Fork 2)** — *considered and
 deferred.* Two readings were laid out there — the archive as one input's
