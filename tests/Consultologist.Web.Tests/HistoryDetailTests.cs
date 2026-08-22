@@ -19,7 +19,7 @@ public class HistoryDetailTests : ClientRenderTestContext
     private void WithJob(
         int outputHashVersion,
         IReadOnlyList<ConsultGenerationResultDocumentResponse>? documents = null,
-        IReadOnlyDictionary<string, ConsultInputOrigin>? inputOrigins = null,
+        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? inputOrigins = null,
         IReadOnlyList<ConsultSkippedDocumentResponse>? skipped = null,
         int? packageSpecVersion = null,
         int? schemaVersion = null)
@@ -105,19 +105,22 @@ public class HistoryDetailTests : ClientRenderTestContext
         // #238: beside the input hash, never inside it. This is the fact a
         // reviewer needs when a consult says something the referral did not —
         // whether a machine read it, and with what.
-        WithJob(3, inputOrigins: new Dictionary<string, ConsultInputOrigin>
+        WithJob(3, inputOrigins: new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
         {
             // The Api's own constant, not a copy of the string: the client
             // record is a hand-written mirror, so the test is where the two
             // are held together.
-            ["consult_draft"] = new(Consultologist.Api.Models.ConsultInputOriginKinds.Document, "pdfpig/0.1.15", 3),
+            ["consult_draft"] = new[] { new ConsultInputOrigin(Consultologist.Api.Models.ConsultInputOriginKinds.Document, "pdfpig/0.1.15", 3) },
             // #240: a reviewer can see that a revision layer existed and was
             // resolved one way to produce this text.
-            ["prior_notes"] = new(
-                Consultologist.Api.Models.ConsultInputOriginKinds.Document,
-                "openxml/3.5.1",
-                null,
-                TrackedChangesResolved: true)
+            ["prior_notes"] = new[]
+            {
+                new ConsultInputOrigin(
+                    Consultologist.Api.Models.ConsultInputOriginKinds.Document,
+                    "openxml/3.5.1",
+                    null,
+                    TrackedChangesResolved: true)
+            }
         });
 
         var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
@@ -127,6 +130,53 @@ public class HistoryDetailTests : ClientRenderTestContext
         Assert.Contains("pdfpig/0.1.15", provenance);
         Assert.Contains("3 pages", provenance);
         Assert.Contains("tracked changes resolved to the accepted view", provenance);
+    }
+
+    [Fact]
+    public void ASlotReadFromOneDocument_KeepsTheSentence()
+    {
+        // #428 changed the shape, not the words: one document is the plain
+        // sentence, with no list around it.
+        WithJob(3, inputOrigins: new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
+        {
+            ["consult_draft"] = new[] { new ConsultInputOrigin(Consultologist.Api.Models.ConsultInputOriginKinds.Document, "pdfpig/0.1.15", 3) }
+        });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Empty(page.FindAll(".provenance-documents"));
+        var row = page.Find(".provenance-list__nested + dd");
+        Assert.Equal("read from a document by pdfpig/0.1.15 · 3 pages", row.TextContent.Trim());
+    }
+
+    [Fact]
+    public void ASlotReadFromFourDocuments_ListsOneRowPerDocumentInOrder()
+    {
+        // One slot, four readings: the slot's row stays one, and the documents
+        // are listed under it in the order they were supplied.
+        WithJob(5, inputOrigins: new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
+        {
+            ["prior_notes"] = new[]
+            {
+                new ConsultInputOrigin(Consultologist.Api.Models.ConsultInputOriginKinds.Document, "text/1"),
+                new ConsultInputOrigin(Consultologist.Api.Models.ConsultInputOriginKinds.Document, "pdfpig/0.1.15", 4),
+                new ConsultInputOrigin(Consultologist.Api.Models.ConsultInputOriginKinds.Document, "openxml/3.5.1", null, TrackedChangesResolved: true),
+                new ConsultInputOrigin(Consultologist.Api.Models.ConsultInputOriginKinds.Document, "pdfpig/0.1.15", 1)
+            }
+        });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Equal(new[] { "prior_notes" }, page.FindAll(".provenance-list__nested").Select(row => row.TextContent.Trim()));
+        Assert.Equal(
+            new[]
+            {
+                "read from a document by text/1",
+                "read from a document by pdfpig/0.1.15 · 4 pages",
+                "read from a document by openxml/3.5.1 · tracked changes resolved to the accepted view",
+                "read from a document by pdfpig/0.1.15 · 1 page"
+            },
+            page.FindAll(".provenance-documents li").Select(row => row.TextContent.Trim()));
     }
 
     [Fact]
