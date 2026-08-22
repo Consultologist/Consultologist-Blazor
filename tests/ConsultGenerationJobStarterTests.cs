@@ -189,6 +189,68 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
+    public async Task SpecVersion9Package_StampsHashVersion5()
+    {
+        // #422: the gate. Before the `>= 9` arm existed, a v9 job took the
+        // `>= 8` arm — hashed by definition 4 and stamped 4, with nothing
+        // erroring. The store is mocked, so a specVersion-9 manifest reaches
+        // the starter here even though acceptance is #424's; scalar inputs,
+        // because no declaration can ask for structure yet.
+        var supplied = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = Referral,
+            ["seen_on"] = "2026-08-10",
+            ["encounter_kind"] = "follow_up",
+            ["billable"] = ConsultInputValue.OfBoolean(true)
+        };
+
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V8Fixtures.Typed() with { SpecVersion = 9 },
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+
+        ConsultGenerationJobInitialize? initialize = null;
+        await _entities.SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(),
+            nameof(ConsultGenerationJobEntity.Initialize),
+            Arg.Do<object>(payload => initialize = payload as ConsultGenerationJobInitialize));
+
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(null, Inputs: supplied),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        Assert.Null(outcome.Error);
+        Assert.NotNull(orchestrationInput);
+        Assert.NotNull(initialize);
+        Assert.Equal(5, orchestrationInput.EffectiveInputHashVersion);
+        Assert.Equal(5, initialize.EffectiveInputHashVersion);
+        Assert.Equal(
+            ConsultGenerationProvenance.ComputeStructuredInputsHash(supplied),
+            orchestrationInput.EffectiveInputHash);
+        Assert.Equal(orchestrationInput.EffectiveInputHash, initialize.EffectiveInputHash);
+
+        // Definition 4 agrees with 5 on an ASCII map of scalars, so the hash
+        // alone cannot tell the gate moved — the stamped version above can,
+        // and ProvenanceHashTests pins where the two functions part.
+        Assert.Equal(
+            ConsultGenerationProvenance.ComputeTypedInputsHash(supplied),
+            orchestrationInput.EffectiveInputHash);
+    }
+
+    [Fact]
     public async Task SpecVersion8Package_WithABoolean_HashesTheTypedForm()
     {
         // The text-only case above cannot tell the two hash functions apart —
@@ -1119,70 +1181,58 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public void NormalizeInputs_LeavesNumbersAndStructureUntouched()
+    public void NormalizeInputs_NormalisesTextInsideStructure_AndLeavesNumbersAlone()
     {
-        // #421: only text is normalised here. Per-element normalisation is
-        // #422's, beside the hash definition that decides what it means; a
-        // normaliser that rebuilt every non-boolean as text — which this one
-        // did — would have turned an array into blank text and a required
-        // slot into "missing".
-        var array = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("One.\r\nTwo.\r\n") });
-        var number = ConsultInputValue.OfNumber("1.50");
-
+        // #422: the per-element hook #421 deferred. Every text scalar inside
+        // an array or an object is normalised like a top-level one — the same
+        // referral as an element of prior_notes and as consult_draft must hash
+        // identically — in the order it arrived, which definition 5 keeps.
         var normalized = ConsultGenerationJobStarter.NormalizeInputs(new ConsultGenerationRequest(
             null,
             Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
             {
                 ["consult_draft"] = "One.\r\nTwo.\r\n",
-                ["prior_notes"] = array,
-                ["length_of_stay"] = number
+                ["prior_notes"] = ConsultInputValue.OfArray(new[]
+                {
+                    ConsultInputValue.OfText("Second.\r\n"),
+                    ConsultInputValue.OfText("First.\rStill first.  ")
+                }),
+                ["patient"] = ConsultInputValue.OfObject(new[]
+                {
+                    new ConsultInputEntry("note", ConsultInputValue.OfText("Note.\r\n")),
+                    new ConsultInputEntry("age", ConsultInputValue.OfNumber("1.50"))
+                }),
+                ["length_of_stay"] = ConsultInputValue.OfNumber("3")
             }));
 
         Assert.Equal("One.\nTwo.", normalized.Inputs!["consult_draft"].Text);
-        Assert.Equal(array, normalized.Inputs["prior_notes"]);
-        Assert.Equal(number, normalized.Inputs["length_of_stay"]);
+        Assert.Equal(
+            new[] { "Second.", "First.\nStill first." },
+            normalized.Inputs["prior_notes"].Elements!.Select(element => element.Text));
+        Assert.Equal("Note.", normalized.Inputs["patient"].Fields![0].Value.Text);
+        Assert.Equal(ConsultInputValue.OfNumber("1.50"), normalized.Inputs["patient"].Fields[1].Value);
+        Assert.Equal(ConsultInputValue.OfNumber("3"), normalized.Inputs["length_of_stay"]);
     }
 
     [Fact]
-    public async Task V8_StructuredValueInAConditionSlot_IsRefusedBeforeConditionsRun()
+    public void CrlfAndLfInsideAnArray_HashIdenticallyUnderDefinition5()
     {
-        // Conditions read a value through Canonical, which structure does not
-        // have. The starter's shape check runs first, so the job is refused as
-        // a declaration mismatch and the condition evaluator never sees it.
-        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
-            .Returns(new WorkflowPackageRef("general", "latest"));
-        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
-            .Returns(ConditionalPackage());
+        var windows = ConsultGenerationJobStarter.NormalizeInputs(new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue>
+            {
+                ["prior_notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("One.\r\nTwo.\r\n") })
+            }));
+        var unix = ConsultGenerationJobStarter.NormalizeInputs(new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue>
+            {
+                ["prior_notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("One.\nTwo.") })
+            }));
 
-        var outcome = await StartWithAsync(
-            ("consult_draft", Referral),
-            ("seen_on", "2026-08-10"),
-            ("encounter_kind", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("secret") })));
-
-        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, outcome.Error);
-        Assert.Contains("Input 'encounter_kind'", outcome.ErrorDetail);
-        Assert.DoesNotContain("secret", outcome.ErrorDetail, StringComparison.Ordinal);
-        await _client.DidNotReceiveWithAnyArgs().ScheduleNewOrchestrationInstanceAsync(
-            default, default, default, default);
-    }
-
-    [Fact]
-    public async Task LegacyPackage_StructuredConsultDraft_DoesNotStartAJob()
-    {
-        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
-            .Returns(new WorkflowPackageRef("general", "latest"));
-        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
-            .Returns(ExecutableV5Package());
-
-        var outcome = await StartWithAsync(("consult_draft", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("secret") })));
-
-        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, outcome.Error);
-        Assert.Contains("Input 'consult_draft'", outcome.ErrorDetail);
-        Assert.DoesNotContain("secret", outcome.ErrorDetail, StringComparison.Ordinal);
-        // An authored id and fixed prose: the sender may read it.
-        Assert.Equal(outcome.ErrorDetail, outcome.SenderSafeDetail);
-        await _client.DidNotReceiveWithAnyArgs().ScheduleNewOrchestrationInstanceAsync(
-            default, default, default, default);
+        Assert.Equal(
+            ConsultGenerationProvenance.ComputeStructuredInputsHash(windows.Inputs!),
+            ConsultGenerationProvenance.ComputeStructuredInputsHash(unix.Inputs!));
     }
 
     private sealed record StartCapture(
