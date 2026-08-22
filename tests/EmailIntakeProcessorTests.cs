@@ -478,7 +478,7 @@ public class EmailIntakeProcessorTests
         await _starter.Received(1).StartAsync(
             _client,
             Arg.Is<ConsultGenerationRequest>(r =>
-                r.InputFiles!["consult_draft"].Content.Length > 0 && r.Inputs == null),
+                r.InputFiles!["consult_draft"][0].Content.Length > 0 && r.Inputs == null),
             "user-1",
             Arg.Any<ConsultGenerationJobOrigin>(),
             Arg.Any<CancellationToken>());
@@ -500,7 +500,7 @@ public class EmailIntakeProcessorTests
         await _starter.Received(1).StartAsync(
             _client,
             Arg.Is<ConsultGenerationRequest>(r =>
-                r.InputFiles!["consult_draft"].ContentType == "application/pdf"),
+                r.InputFiles!["consult_draft"][0].ContentType == "application/pdf"),
             "user-1",
             Arg.Any<ConsultGenerationJobOrigin>(),
             Arg.Any<CancellationToken>());
@@ -525,7 +525,7 @@ public class EmailIntakeProcessorTests
 
         await _starter.Received(1).StartAsync(
             _client,
-            Arg.Is<ConsultGenerationRequest>(r => r.InputFiles!["prior_notes"].Content.SequenceEqual(utf16)),
+            Arg.Is<ConsultGenerationRequest>(r => r.InputFiles!["prior_notes"][0].Content.SequenceEqual(utf16)),
             "user-1",
             Arg.Any<ConsultGenerationJobOrigin>(),
             Arg.Any<CancellationToken>());

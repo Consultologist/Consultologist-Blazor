@@ -734,9 +734,16 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             : new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal);
         var origins = new Dictionary<string, ConsultInputOrigin>(StringComparer.Ordinal);
 
-        foreach (var (id, file) in request.InputFiles.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        foreach (var (id, documents) in request.InputFiles.OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
-            var result = await DocumentExtraction.ExtractAsync(file.Content, gateWait, cancellationToken);
+            // #428 interim: the wire carries a list; reading several is the
+            // next commit's. Refused rather than read partially.
+            if (documents.Count != 1)
+            {
+                return new InputFileExtraction(request, null, $"Input '{id}' lists several documents, which are not yet read.", null);
+            }
+
+            var result = await DocumentExtraction.ExtractAsync(documents[0].Content, gateWait, cancellationToken);
 
             if (!DocumentExtraction.Succeeded(result))
             {

@@ -332,7 +332,7 @@ public sealed class EmailIntakeProcessor
                 InputFiles: resolution.Files is { Count: > 0 }
                     ? resolution.Files.ToDictionary(
                         pair => pair.Key,
-                        pair => new InputFilePayload(pair.Value.ContentType, pair.Value.Content),
+                        pair => new List<InputFilePayload> { new(pair.Value.ContentType, pair.Value.Content) },
                         StringComparer.Ordinal)
                     : null),
             match.AppUserId!,

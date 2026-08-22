@@ -425,22 +425,22 @@ public class StartRequestValidationTests
             ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
                 null,
                 Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = "Typed." },
-                InputFiles: new Dictionary<string, InputFilePayload>
+                InputFiles: new Dictionary<string, List<InputFilePayload>>
                 {
-                    ["consult_draft"] = new("text/plain", "From a file."u8.ToArray())
+                    ["consult_draft"] = [new("text/plain", "From a file."u8.ToArray())]
                 })));
 
         Assert.Equal(
             "InputFiles contains a blank id.",
             ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
                 null,
-                InputFiles: new Dictionary<string, InputFilePayload> { [" "] = new("text/plain", "x"u8.ToArray()) })));
+                InputFiles: new Dictionary<string, List<InputFilePayload>> { [" "] = [new("text/plain", "x"u8.ToArray())] })));
 
         Assert.Equal(
             "Input file 'consult_draft' is empty.",
             ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
                 null,
-                InputFiles: new Dictionary<string, InputFilePayload> { ["consult_draft"] = new("text/plain", []) })));
+                InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [new("text/plain", [])] })));
 
         // A per-file bound does not bound a request carrying several, which is
         // why the total exists at all.
@@ -448,19 +448,51 @@ public class StartRequestValidationTests
             "Input files exceed 20 MB in total.",
             ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
                 null,
-                InputFiles: new Dictionary<string, InputFilePayload>
+                InputFiles: new Dictionary<string, List<InputFilePayload>>
                 {
-                    ["a"] = new("application/pdf", new byte[9 * 1024 * 1024]),
-                    ["b"] = new("application/pdf", new byte[9 * 1024 * 1024]),
-                    ["c"] = new("application/pdf", new byte[9 * 1024 * 1024])
+                    ["a"] = [new("application/pdf", new byte[9 * 1024 * 1024])],
+                    ["b"] = [new("application/pdf", new byte[9 * 1024 * 1024])],
+                    ["c"] = [new("application/pdf", new byte[9 * 1024 * 1024])]
                 })));
 
         Assert.Null(ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
             null,
-            InputFiles: new Dictionary<string, InputFilePayload>
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
             {
-                ["consult_draft"] = new("text/plain", "From a file."u8.ToArray())
+                ["consult_draft"] = [new("text/plain", "From a file."u8.ToArray())]
             })));
+    }
+
+    [Fact]
+    public void ValidateRequest_ChecksEachDocumentOfASlot()
+    {
+        // #428: a slot lists its documents. Each is bounded as one was, and
+        // named by its position — counted from one — only when there is more
+        // than one, so a single document's sentences read as they did.
+        static string? Validate(Dictionary<string, List<InputFilePayload>> files) =>
+            ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(null, InputFiles: files));
+
+        var ok = new InputFilePayload("text/plain", "Readable."u8.ToArray());
+
+        Assert.Equal("Input 'prior_notes' has no documents.", Validate(new() { ["prior_notes"] = [] }));
+        Assert.Equal("Input file 'prior_notes' document 2 is empty.", Validate(new() { ["prior_notes"] = [ok, new("text/plain", [])] }));
+        Assert.Equal(
+            "Input file 'prior_notes' document 2 exceeds 10 MB.",
+            Validate(new() { ["prior_notes"] = [ok, new("application/pdf", new byte[10 * 1024 * 1024 + 1])] }));
+        Assert.Equal(
+            "Input 'prior_notes' has more than 256 documents.",
+            Validate(new() { ["prior_notes"] = Enumerable.Repeat(ok, 257).ToList() }));
+
+        // The total still bounds the request, however the documents are split.
+        Assert.Equal(
+            "Input files exceed 20 MB in total.",
+            Validate(new()
+            {
+                ["a"] = [new("application/pdf", new byte[6 * 1024 * 1024]), new("application/pdf", new byte[6 * 1024 * 1024])],
+                ["b"] = [new("application/pdf", new byte[6 * 1024 * 1024]), new("application/pdf", new byte[6 * 1024 * 1024])]
+            }));
+
+        Assert.Null(Validate(new() { ["prior_notes"] = [ok, ok, ok, ok] }));
     }
 
     [Fact]

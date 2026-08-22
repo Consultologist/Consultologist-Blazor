@@ -1269,9 +1269,9 @@ public class ConsultGenerationJobStarterTests
         // and the record says so by producing the same hash.
         var request = new ConsultGenerationRequest(
             null,
-            InputFiles: new Dictionary<string, InputFilePayload>
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
             {
-                ["consult_draft"] = new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))
+                ["consult_draft"] = [new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))]
             });
 
         var captured = await StartV7AndCaptureAsync(request);
@@ -1291,9 +1291,9 @@ public class ConsultGenerationJobStarterTests
     {
         var request = new ConsultGenerationRequest(
             null,
-            InputFiles: new Dictionary<string, InputFilePayload>
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
             {
-                ["consult_draft"] = new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))
+                ["consult_draft"] = [new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))]
             });
 
         var captured = await StartV7AndCaptureAsync(request);
@@ -1328,9 +1328,9 @@ public class ConsultGenerationJobStarterTests
         // The extracted text is in Inputs; nothing downstream needs the file.
         var request = new ConsultGenerationRequest(
             null,
-            InputFiles: new Dictionary<string, InputFilePayload>
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
             {
-                ["consult_draft"] = new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))
+                ["consult_draft"] = [new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))]
             });
 
         var captured = await StartV7AndCaptureAsync(request);
@@ -1346,9 +1346,9 @@ public class ConsultGenerationJobStarterTests
         // endpoint would have said about the same bytes.
         var request = new ConsultGenerationRequest(
             null,
-            InputFiles: new Dictionary<string, InputFilePayload>
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
             {
-                ["consult_draft"] = new("application/octet-stream", [0x00, 0x01, 0x02, 0x00, 0xFF])
+                ["consult_draft"] = [new("application/octet-stream", [0x00, 0x01, 0x02, 0x00, 0xFF])]
             });
 
         var captured = await StartV7AndCaptureAsync(request);
@@ -1516,9 +1516,9 @@ public class ConsultGenerationJobStarterTests
         await StartV7AndCaptureAsync(
             new ConsultGenerationRequest(
                 null,
-                InputFiles: new Dictionary<string, InputFilePayload>
+                InputFiles: new Dictionary<string, List<InputFilePayload>>
                 {
-                    ["consult_draft"] = new("text/plain", Encoding.UTF8.GetBytes(Sentinel))
+                    ["consult_draft"] = [new("text/plain", Encoding.UTF8.GetBytes(Sentinel))]
                 }),
             log);
 
@@ -1538,9 +1538,9 @@ public class ConsultGenerationJobStarterTests
         var captured = await StartV7AndCaptureAsync(
             new ConsultGenerationRequest(
                 null,
-                InputFiles: new Dictionary<string, InputFilePayload>
+                InputFiles: new Dictionary<string, List<InputFilePayload>>
                 {
-                    ["consult_draft"] = new("application/octet-stream", corrupt)
+                    ["consult_draft"] = [new("application/octet-stream", corrupt)]
                 }),
             log);
 
