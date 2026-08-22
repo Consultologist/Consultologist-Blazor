@@ -59,6 +59,10 @@ public static class V9Fixtures
     public static WorkflowPackageValidator.ValidationResult Validate(WorkflowPackageManifest manifest)
         => WorkflowPackageValidator.Validate(manifest, V6Fixtures.Files(manifest), TestOutputContracts.CatalogSchemas);
 
+    /// <summary>The v8 conditional package, at v9, over the structured inputs.</summary>
+    public static WorkflowPackageManifest Conditional(string? when)
+        => V8Fixtures.Conditional(when) with { SpecVersion = 9, Inputs = Structured().Inputs };
+
     /// <summary>
     /// #426: the structured package with a node fanning over the caller's
     /// prior notes — `forEach: input:prior_notes`, `note: item:value` —
@@ -968,5 +972,105 @@ public class WorkflowV9ConditionEvaluationTests
             WorkflowResultConditions.Explain(Parse("encounter_kind != follow_up"), Inputs(("encounter_kind", "follow_up"))));
         Assert.Equal("needs billable to be true; it is not supplied",
             WorkflowResultConditions.Explain(Parse("billable"), Inputs()));
+    }
+}
+
+/// <summary>
+/// #427, v9 § 6: the narrowing, where the declaration is known. The
+/// operand is resolved to a type — the input's, one field's, or a count —
+/// and the operator and literal are held to it.
+/// </summary>
+public class WorkflowV9ConditionValidationTests
+{
+    private static IEnumerable<string> Errors(string when) => V9Fixtures.Validate(V9Fixtures.Conditional(when)).Errors;
+
+    [Theory]
+    // v8's forms still hold.
+    [InlineData("billable")]
+    [InlineData("encounter_kind == follow_up")]
+    [InlineData("encounter_kind != new_patient")]
+    [InlineData("billable == false")]
+    // Ordering for a number and a date.
+    [InlineData("length_of_stay > 7")]
+    [InlineData("length_of_stay <= 7.5")]
+    [InlineData("length_of_stay == 0")]
+    [InlineData("seen_on >= 2026-01-01")]
+    [InlineData("seen_on != 2026-01-01")]
+    // A path into one field of an object.
+    [InlineData("patient.age >= 65")]
+    [InlineData("patient.sex == female")]
+    // A count, and the bare form on an array.
+    [InlineData("count(prior_notes) > 1")]
+    [InlineData("count(medications) == 0")]
+    [InlineData("prior_notes")]
+    public void TheGrammarAccepts(string when)
+    {
+        Assert.Empty(Errors(when));
+    }
+
+    [Theory]
+    // The operator is held to the operand's type.
+    [InlineData("encounter_kind > follow_up", "compares 'encounter_kind' with >, which is a enum; ordering operators apply to a number or a date.")]
+    [InlineData("billable >= true", "compares 'billable' with >=, which is a boolean; ordering operators apply to a number or a date.")]
+    [InlineData("patient.sex < female", "compares 'patient.sex' with <, which is a enum")]
+    // Text stays incomparable, on the input and on a field.
+    [InlineData("consult_draft == urgent", "reads 'consult_draft', which is a text: a text input cannot be tested.")]
+    [InlineData("patient.family_name == Smith", "reads 'patient.family_name', which is a text: a text input cannot be tested.")]
+    // Only a boolean or an array is tested bare.
+    [InlineData("encounter_kind", "'encounter_kind' tests an enum for truth; compare it to one of its values instead.")]
+    [InlineData("length_of_stay", "'length_of_stay' tests a number for truth; only a boolean or an array can be tested bare.")]
+    [InlineData("patient", "'patient' tests a object for truth; only a boolean or an array can be tested bare.")]
+    [InlineData("patient.age", "'patient.age' tests a number for truth")]
+    // A whole object or array is not compared; its parts are.
+    [InlineData("patient == x", "compares 'patient', which is an object; compare one of its fields, or its count, instead.")]
+    [InlineData("prior_notes == x", "compares 'prior_notes', which is an array; compare one of its fields, or its count, instead.")]
+    // A path needs an object and a declared field.
+    [InlineData("seen_on.year == 2026", "reads field 'year' of 'seen_on', which is a date, not an object.")]
+    [InlineData("medications.name == x", "reads field 'name' of 'medications', which is a array, not an object.")]
+    [InlineData("patient.weight > 90", "reads field 'weight' of 'patient', which it does not declare (fields: family_name, age, sex).")]
+    // A count needs an array, and a comparison.
+    [InlineData("count(patient) > 0", "counts 'patient', which is a object; only an array has a count.")]
+    [InlineData("count(prior_notes)", "'count(prior_notes)' needs a comparison; write count(prior_notes) > 0.")]
+    // The literal is held to the type.
+    [InlineData("length_of_stay > abc", "compares 'length_of_stay' to 'abc', which is not a plain decimal.")]
+    [InlineData("length_of_stay > 1e3", "which is not a plain decimal.")]
+    [InlineData("seen_on > 2026-1-1", "compares 'seen_on' to '2026-1-1', which is not a date written YYYY-MM-DD.")]
+    [InlineData("patient.sex == other", "compares 'patient.sex' to 'other', which it does not declare (values: female, male).")]
+    [InlineData("count(prior_notes) > -1", "compares 'count(prior_notes)' to '-1', which is not a whole number.")]
+    [InlineData("count(prior_notes) > 1.5", "which is not a whole number.")]
+    [InlineData("billable == yes", "compares boolean 'billable' to 'yes'; use true or false.")]
+    // The syntax and the undeclared-input refusals read as before.
+    [InlineData("urgency == high", "reads undeclared input 'urgency'")]
+    [InlineData("count(urgency) > 0", "reads undeclared input 'urgency'")]
+    [InlineData("patient.age >=", "compares against nothing")]
+    public void TheGrammarRejects(string when, string expected)
+    {
+        var errors = Errors(when).ToList();
+
+        Assert.Contains(errors, e => e.Contains(expected));
+        Assert.Single(errors);
+    }
+
+    [Theory]
+    [InlineData("patient.age >= 65", "condition reads a field of 'patient', which requires specVersion 9.")]
+    [InlineData("count(prior_notes) > 1", "condition counts 'prior_notes', which requires specVersion 9.")]
+    [InlineData("length_of_stay > 7", "condition compares 'length_of_stay' with >, which requires specVersion 9.")]
+    public void TheNewFormsRequireV9(string when, string expected)
+    {
+        // A v8 manifest that happens to declare the structured inputs (it
+        // cannot, but the gate is on the condition, not the declaration).
+        var manifest = V9Fixtures.Conditional(when) with { SpecVersion = 8 };
+
+        Assert.Contains(V9Fixtures.Validate(manifest).Errors, e => e.Contains(expected));
+    }
+
+    [Theory]
+    [InlineData("seen_on == 2026-08-10", "which is a date")]
+    [InlineData("consult_draft == \"urgent\"", "which is a text")]
+    [InlineData("encounter_kind", "tests an enum for truth")]
+    [InlineData("billable == yes", "use true or false")]
+    public void TheV8Refusals_AreUnchangedOnAV8Manifest(string when, string expected)
+    {
+        Assert.Contains(V8Fixtures.Validate(V8Fixtures.Conditional(when)).Errors, e => e.Contains(expected));
     }
 }

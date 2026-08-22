@@ -106,6 +106,20 @@ public class WorkflowDagDiagramTests
         Assert.Contains($"-.->|\"{expected}\"| result_patient_letter", diagram);
     }
 
+    [Theory]
+    [InlineData("length_of_stay > 7", "input_length_of_stay -.->|\"when > 7\"| result_patient_letter")]
+    [InlineData("patient.age >= 65", "input_patient -.->|\"when .age >= 65\"| result_patient_letter")]
+    [InlineData("count(prior_notes) > 1", "input_prior_notes -.->|\"when count > 1\"| result_patient_letter")]
+    [InlineData("prior_notes", "input_prior_notes -.->|\"when true\"| result_patient_letter")]
+    public void Diagram_DrawsEachV9FormOfTheGrammar(string when, string expected)
+    {
+        // #427: the edge still leaves the INPUT's stadium; the suffix says
+        // which part of it is read.
+        var diagram = WorkflowDagDiagram.Generate(V9Fixtures.Conditional(when));
+
+        Assert.Contains(expected, diagram);
+    }
+
     [Fact]
     public void Diagram_DrawsAV6SingleResult()
     {
