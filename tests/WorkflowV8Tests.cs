@@ -997,6 +997,40 @@ public class ConsultInputValueWireTests
     }
 
     [Fact]
+    public void AsJson_RoundTripsThroughFromJson_InSuppliedOrder()
+    {
+        // #423: the carrier form. Structure has no canonical string, so it
+        // travels the string-map road as its wire JSON and is reconstructed
+        // at the renderer. Supplied field order survives — it is what the
+        // caller expressed, and what {{ for }} over an object should see.
+        var value = Read("""{"v":[1.50,"a",null,{"z":false,"a":"x"}]}""")!;
+
+        var carried = ConsultInputValue.FromJson(value.AsJson());
+
+        Assert.Equal(value, carried);
+        Assert.Equal(new[] { "z", "a" }, carried.Elements![3].Fields!.Select(field => field.Id));
+        Assert.Equal("1.50", carried.Elements[0].Number);
+    }
+
+    [Fact]
+    public void AsJson_IsTheWireForm()
+    {
+        // One writer, not two: the carrier is exactly what the converter
+        // writes, so the replay form and the carrier cannot drift.
+        var value = Read("""{"v":{"b":1,"a":"x"}}""")!;
+
+        Assert.Equal("""{"b":1,"a":"x"}""", value.AsJson());
+        Assert.Equal("""{"v":{"b":1,"a":"x"}}""", Write(value));
+    }
+
+    [Fact]
+    public void AMalformedCarrier_IsRefusedLikeTheWire()
+    {
+        Assert.Throws<ConsultInputShapeException>(() => ConsultInputValue.FromJson("[[1]]"));
+        Assert.ThrowsAny<JsonException>(() => ConsultInputValue.FromJson("not json"));
+    }
+
+    [Fact]
     public void TheFactories_RefuseWhatTheConverterRefuses()
     {
         // In-process callers (the email door, tests) get the same closure as
