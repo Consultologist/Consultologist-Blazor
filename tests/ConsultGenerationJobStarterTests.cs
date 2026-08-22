@@ -251,6 +251,57 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
+    public async Task SpecVersion9Package_WithStructure_StartsAndCarriesTheDeclaration()
+    {
+        // #424 end to end: the first layer at which structure passes the
+        // starter. The typed map reaches the orchestration payload as it is,
+        // the resolver map carries the carriers, InputTypes names the new
+        // types for the renderer, and the hash is definition 5 of the structure.
+        var supplied = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = Referral,
+            ["seen_on"] = "2026-08-10",
+            ["encounter_kind"] = "follow_up",
+            ["length_of_stay"] = ConsultInputValue.OfNumber("3"),
+            ["prior_notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("First."), ConsultInputValue.OfText("Second.") }),
+            ["patient"] = ConsultInputValue.OfObject(new[] { new ConsultInputEntry("family_name", ConsultInputValue.OfText("Smith")), new ConsultInputEntry("age", ConsultInputValue.OfNumber("40")) })
+        };
+
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V9Fixtures.Structured(),
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(null, Inputs: supplied),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        Assert.Null(outcome.Error);
+        Assert.NotNull(orchestrationInput);
+        Assert.Equal(5, orchestrationInput.EffectiveInputHashVersion);
+        Assert.Equal(ConsultGenerationProvenance.ComputeStructuredInputsHash(supplied), orchestrationInput.EffectiveInputHash);
+        Assert.Equal(supplied["prior_notes"], orchestrationInput.Request.Inputs!["prior_notes"]);
+        Assert.Equal("""["First.","Second."]""", orchestrationInput.Inputs!["prior_notes"]);
+        Assert.Equal("3", orchestrationInput.Inputs["length_of_stay"]);
+        Assert.Equal(WorkflowInputTypes.Array, orchestrationInput.InputTypes!["prior_notes"]);
+        Assert.Equal(WorkflowInputTypes.Object, orchestrationInput.InputTypes["patient"]);
+        Assert.Equal(WorkflowInputTypes.Number, orchestrationInput.InputTypes["length_of_stay"]);
+    }
+
+    [Fact]
     public async Task SpecVersion8Package_WithABoolean_HashesTheTypedForm()
     {
         // The text-only case above cannot tell the two hash functions apart —
@@ -1822,6 +1873,120 @@ public class ResolveEffectiveInputsTests
         // road lossless.
         Assert.Equal(array, ConsultInputValue.FromJson(ConsultGenerationJobStarter.ResolverForm(array)));
         Assert.Equal(obj, ConsultInputValue.FromJson(ConsultGenerationJobStarter.ResolverForm(obj)));
+    }
+
+    // #424 (v9 layer 4): the declaration can ask for structure now, and the
+    // starter holds a supplied value to it — a JSON number for a number, exactly
+    // the declared fields for an object, canonical elements for an array. The
+    // messages name kinds, ids and indices, never a value.
+
+    private static Dictionary<string, ConsultInputValue> StructuredInputs(
+        params (string Id, ConsultInputValue Value)[] overrides)
+    {
+        var inputs = TypedInputs(
+            ("length_of_stay", ConsultInputValue.OfNumber("3")),
+            ("patient", Patient(("family_name", ConsultInputValue.OfText("Smith")), ("age", ConsultInputValue.OfNumber("40")))),
+            ("prior_notes", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("First note."), ConsultInputValue.OfText("Second note.") })),
+            ("medications", ConsultInputValue.OfArray(new[]
+            {
+                Patient(("name", ConsultInputValue.OfText("metformin")), ("dose", ConsultInputValue.OfText("500 mg"))),
+                Patient(("name", ConsultInputValue.OfText("ramipril")))
+            })));
+
+        foreach (var (id, value) in overrides)
+        {
+            inputs[id] = value;
+        }
+
+        return inputs;
+    }
+
+    private static ConsultInputValue Patient(params (string Id, ConsultInputValue Value)[] fields) =>
+        ConsultInputValue.OfObject(fields.Select(field => new ConsultInputEntry(field.Id, field.Value)));
+
+    [Fact]
+    public void V9_StructuredValues_AreAccepted_AndReachTheResolverAsCarriers()
+    {
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new ConsultGenerationRequest(null, Inputs: StructuredInputs()),
+            V9Fixtures.Structured());
+
+        Assert.Null(resolution.Error);
+        Assert.Equal("3", resolution.Effective!["length_of_stay"]);
+        // Structure travels as its carrier (#423); the renderer reconstructs it.
+        Assert.Equal("""["First note.","Second note."]""", resolution.Effective["prior_notes"]);
+        Assert.Equal("""{"family_name":"Smith","age":40}""", resolution.Effective["patient"]);
+        Assert.Equal(StructuredInputs()["medications"], ConsultInputValue.FromJson(resolution.Effective["medications"]));
+    }
+
+    public static TheoryData<string, string, string> StructuredRefusals()
+    {
+        var data = new TheoryData<string, string, string>();
+
+        void Add(string id, ConsultInputValue value, string expected) => data.Add(id, value.AsJson(), expected);
+
+        Add("length_of_stay", ConsultInputValue.OfText("3"), "is a number and must be sent as a JSON number; got text.");
+        Add("length_of_stay", ConsultInputValue.OfBoolean(true), "is a number and must be sent as a JSON number; got a boolean.");
+        Add("patient", ConsultInputValue.OfArray(Array.Empty<ConsultInputValue>()), "is an object and must be sent as a JSON object; got an array.");
+        Add("patient", Patient(("family_name", ConsultInputValue.OfText("x")), ("nickname", ConsultInputValue.OfText("y"))),
+            "has a field 'nickname' it does not declare (fields: family_name, age, sex).");
+        Add("patient", Patient(("age", ConsultInputValue.OfNumber("40"))), "is missing required field 'family_name'.");
+        Add("patient", Patient(("family_name", ConsultInputValue.OfText("x")), ("age", ConsultInputValue.NullElement)),
+            "field 'age' is null; omit an optional field instead.");
+        Add("patient", Patient(("family_name", ConsultInputValue.OfText("x")), ("age", ConsultInputValue.OfText("40"))),
+            "field 'age' is a number and must be sent as a JSON number; got text.");
+        Add("patient", Patient(("family_name", ConsultInputValue.OfText("x")), ("sex", ConsultInputValue.OfText("other"))),
+            "field 'sex' accepts 'female', 'male'; got 'other'.");
+        Add("prior_notes", ConsultInputValue.OfText("one note"), "is an array and must be sent as a JSON array; got text.");
+        Add("prior_notes", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("a"), ConsultInputValue.NullElement }), "element 1 is null.");
+        Add("prior_notes", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("a"), ConsultInputValue.OfNumber("3") }),
+            "element 1 is a text and must be sent as a JSON string; got a number.");
+        Add("medications", ConsultInputValue.OfArray(new[] { Patient(("name", ConsultInputValue.OfText("x"))), Patient(("dose", ConsultInputValue.OfText("y"))) }),
+            "element 1 is missing required field 'name'.");
+        Add("medications", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("metformin") }),
+            "element 0 is an object and must be sent as a JSON object; got text.");
+        // A v8 scalar slot still refuses structure, as it has since #421.
+        Add("seen_on", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("2026-08-10") }),
+            "is a date and must be sent as a JSON string; got an array.");
+
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(StructuredRefusals))]
+    public void V9_AValueDisagreeingWithTheDeclaration_IsRefusedAndNamesThePlace(string id, string carrier, string expected)
+    {
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new ConsultGenerationRequest(null, Inputs: StructuredInputs((id, ConsultInputValue.FromJson(carrier)))),
+            V9Fixtures.Structured());
+
+        Assert.Equal($"Input '{id}' {expected}", resolution.Error);
+    }
+
+    [Fact]
+    public void V9_ARequiredArrayWithNoEntries_IsRefusedByName()
+    {
+        // Present and empty is not absent (v9 § 4): the required check lets it
+        // through, and the shape check refuses it naming the slot.
+        var manifest = V9Fixtures.WithInput(new WorkflowInputSpec("prior_notes", "Prior notes",
+            Required: true, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
+
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new ConsultGenerationRequest(null, Inputs: StructuredInputs(("prior_notes", ConsultInputValue.OfArray(Array.Empty<ConsultInputValue>())))),
+            manifest);
+
+        Assert.Equal("Input 'prior_notes' is required and has no entries.", resolution.Error);
+    }
+
+    [Fact]
+    public void V9_AnOptionalArrayWithNoEntries_IsAccepted()
+    {
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new ConsultGenerationRequest(null, Inputs: StructuredInputs(("prior_notes", ConsultInputValue.OfArray(Array.Empty<ConsultInputValue>())))),
+            V9Fixtures.Structured());
+
+        Assert.Null(resolution.Error);
+        Assert.Equal("[]", resolution.Effective!["prior_notes"]);
     }
 
     [Fact]

@@ -59,6 +59,18 @@ public record WorkflowPackageInputResponse(
     // v8: the declared type and, for an enum, its values — what the setup form
     // renders a control from. Null on v5-v7 packages.
     string? Type = null,
+    IReadOnlyList<string>? Values = null,
+    // v9 (#424): an array's element type and an object's fields. Null before 9.
+    // Mirrors the server's record, which is what the response deserialises into.
+    string? Items = null,
+    IReadOnlyList<WorkflowPackageFieldResponse>? Fields = null);
+
+/// <summary>Mirrors Consultologist.Api.Workflow.WorkflowPackageFieldResponse.</summary>
+public record WorkflowPackageFieldResponse(
+    string Id,
+    string Label,
+    bool Required,
+    string? Type = null,
     IReadOnlyList<string>? Values = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.WorkflowInputTypes.</summary>
@@ -68,6 +80,15 @@ public static class WorkflowInputTypes
     public const string Date = "date";
     public const string Enum = "enum";
     public const string Boolean = "boolean";
+
+    // v9 (#424). The editor and the setup form learn these in #429; until
+    // then they are names the client can read off a response.
+    public const string Number = "number";
+    public const string Object = "object";
+    public const string Array = "array";
+
+    /// <summary>Every type the format has — pinned against the server's in SpecVersionMirrorTests.</summary>
+    public static readonly IReadOnlyList<string> All = new[] { Text, Date, Enum, Boolean, Number, Object, Array };
 
     public static string Of(WorkflowPackageInputResponse input) => input.Type ?? Text;
 

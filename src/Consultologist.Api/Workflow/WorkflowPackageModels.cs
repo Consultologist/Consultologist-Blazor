@@ -38,6 +38,27 @@ public sealed record WorkflowInputSpec(
     string Label,
     bool Required = true,
     string? Type = null,
+    List<string>? Values = null,
+    // v9 (package-format-v9-design.md § 4): the element type of an array —
+    // required for `array`, forbidden otherwise — and the fields of an object,
+    // whether the input IS an object or is an array OF objects. Trailing
+    // optionals, omitted when null, so a v7/v8 manifest writes the bytes it
+    // always wrote.
+    string? Items = null,
+    List<WorkflowFieldSpec>? Fields = null);
+
+/// <summary>
+/// One field of a declared object (v9 § 4), in an input's vocabulary — id,
+/// label, required, type, values — minus the two members that would let it
+/// nest. Structure is one level deep by construction: a field cannot carry
+/// items or fields, so the bound is the type, not a rule the validator has
+/// to remember.
+/// </summary>
+public sealed record WorkflowFieldSpec(
+    string Id,
+    string Label,
+    bool Required = true,
+    string? Type = null,
     List<string>? Values = null);
 
 /// <summary>
@@ -53,10 +74,43 @@ public static class WorkflowInputTypes
     public const string Enum = "enum";
     public const string Boolean = "boolean";
 
-    public static readonly IReadOnlyList<string> All = new[] { Text, Date, Enum, Boolean };
+    // v9 (package-format-v9-design.md § 4).
+    public const string Number = "number";
+    public const string Object = "object";
+    public const string Array = "array";
+
+    /// <summary>Every type the format has, as of the newest version.</summary>
+    public static readonly IReadOnlyList<string> All = new[] { Text, Date, Enum, Boolean, Number, Object, Array };
+
+    /// <summary>
+    /// The types a field or an array element may be. Structure is one level
+    /// deep: an object's field and an array's element are scalars, and an
+    /// array's element may also be an object.
+    /// </summary>
+    public static readonly IReadOnlyList<string> Scalars = new[] { Text, Date, Enum, Boolean, Number };
+
+    /// <summary>What an array may hold: a scalar, or a one-level object.</summary>
+    public static readonly IReadOnlyList<string> ElementTypes = new[] { Text, Date, Enum, Boolean, Number, Object };
+
+    private static readonly IReadOnlyList<string> V8Types = new[] { Text, Date, Enum, Boolean };
+
+    /// <summary>
+    /// The type set one specVersion admits. Keyed by version rather than a
+    /// single list because an error message lists the accepted names, and a
+    /// v8 manifest's refusal must keep reading exactly as the published
+    /// conformance suite recorded it.
+    /// </summary>
+    public static IReadOnlyList<string> ForSpecVersion(int specVersion) => specVersion >= 9 ? All : V8Types;
 
     /// <summary>An absent type is text — the default that keeps v7 declarations valid.</summary>
     public static string Of(WorkflowInputSpec input) => input.Type ?? Text;
+
+    /// <summary>The same default for a field.</summary>
+    public static string Of(WorkflowFieldSpec field) => field.Type ?? Text;
+
+    /// <summary>Whether the declaration has fields: an object, or an array of objects.</summary>
+    public static bool DeclaresObject(WorkflowInputSpec input) =>
+        Of(input) == Object || (Of(input) == Array && input.Items == Object);
 }
 
 /// <summary>
@@ -241,6 +295,19 @@ public sealed record WorkflowPackageInputResponse(
     bool Required,
     // v8: what the setup form renders. Trailing optionals — a v5-v7 package
     // sends null and the form draws the textarea it always did.
+    string? Type = null,
+    IReadOnlyList<string>? Values = null,
+    // v9 (#424): the element type of an array and the fields of an object,
+    // so the form can draw a repeating row or a field group (#429). Null on
+    // every package before 9.
+    string? Items = null,
+    IReadOnlyList<WorkflowPackageFieldResponse>? Fields = null);
+
+/// <summary>One declared field of an object input, as the setup form renders it (v9 § 4).</summary>
+public sealed record WorkflowPackageFieldResponse(
+    string Id,
+    string Label,
+    bool Required,
     string? Type = null,
     IReadOnlyList<string>? Values = null);
 

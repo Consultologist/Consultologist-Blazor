@@ -110,7 +110,11 @@ public sealed class WorkflowPackages
                     // Only a declared type travels: text is the default, so a
                     // v7 package's response is byte-identical to before.
                     input.Type,
-                    input.Values))
+                    input.Values,
+                    input.Items,
+                    input.Fields?
+                        .Select(field => new WorkflowPackageFieldResponse(field.Id, field.Label, field.Required, field.Type, field.Values))
+                        .ToList()))
                 .ToList(),
             package.Results?
                 .Select(result => new WorkflowPackageResultResponse(result.Id, result.Label))

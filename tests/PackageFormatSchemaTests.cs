@@ -58,6 +58,32 @@ public class PackageFormatSchemaTests
     }
 
     [Fact]
+    public void TheV9Schema_CarriesTheDeclarationRules_AheadOfItsPublication()
+    {
+        // #424: specVersion 9 is accepted before it is run, so there is no
+        // published schema to compare against yet — that file ships with the
+        // registry release (#430). The rules are pinned here so the generator
+        // is ready when it does, and so the v8 schema's four-name enum is seen
+        // to be keyed by version rather than by the vocabulary's growth.
+        var schema = PackageFormatSchema.Build(9);
+        var input = schema["properties"]!["inputs"]!["items"]!;
+        var names = input["properties"]!["type"]!["enum"]!.AsArray().Select(n => n!.GetValue<string>());
+
+        Assert.Equal(new[] { "text", "date", "enum", "boolean", "number", "object", "array" }, names);
+        Assert.Equal(
+            new[] { "text", "date", "enum", "boolean", "number", "object" },
+            input["properties"]!["items"]!["enum"]!.AsArray().Select(n => n!.GetValue<string>()));
+        Assert.Equal(
+            new[] { "text", "date", "enum", "boolean", "number" },
+            input["properties"]!["fields"]!["items"]!["properties"]!["type"]!["enum"]!.AsArray().Select(n => n!.GetValue<string>()));
+        Assert.Equal(3, input["allOf"]!.AsArray().Count);
+
+        var v8Names = PackageFormatSchema.Build(8)["properties"]!["inputs"]!["items"]!["properties"]!["type"]!["enum"]!
+            .AsArray().Select(n => n!.GetValue<string>());
+        Assert.Equal(new[] { "text", "date", "enum", "boolean" }, v8Names);
+    }
+
+    [Fact]
     public void EveryVersionTheEngineRuns_HasAPublishedSchema()
     {
         // A format an author is told to conform to, with nothing to conform
