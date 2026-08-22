@@ -143,6 +143,7 @@ public static class WorkflowPackageValidator
             ValidateDerivedFrom(manifest, errors);
             ValidateNodes(manifest, files, catalogSchemas, errors);
             WarnUnreachableByEmail(manifest, warnings);
+            WarnFannedOptionalInputs(manifest, warnings);
         }
 
         return new ValidationResult(errors, warnings);
@@ -187,6 +188,12 @@ public static class WorkflowPackageValidator
     {
         var v6OrLater = manifest.SpecVersion >= 6;
         var declaredInputs = ValidateInputs(manifest, errors);
+        // The declarations themselves, for what a fan needs to know (v9): the
+        // id set above closes bindings; an input fan needs the type.
+        var inputsById = (manifest.Inputs ?? new List<WorkflowInputSpec>())
+            .Where(input => WorkflowDeclaredIds.IsValid(input.Id))
+            .GroupBy(input => input.Id, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
         var data = WorkflowDataResolver.Resolve(manifest, files, errors);
         var nodes = manifest.Nodes ?? new List<WorkflowNodeSpec>();
 
@@ -251,10 +258,20 @@ public static class WorkflowPackageValidator
                     errors.Add($"Node '{node.Id}' binds '{variable}' to 'item:{item.Field}' but declares no forEach.");
                     return;
                 case WorkflowNodeBindingSource.Item item:
-                    if (TryResolveForEachCollection(node, data, out _, out var collection)
-                        && !collection!.Fields.Contains(item.Field))
+                    if (!TryResolveForEachSource(manifest, node, data, inputsById, out _, out var collection, out var inputFan))
+                    {
+                        return; // The forEach itself is refused beside this; one complaint is enough.
+                    }
+
+                    if (collection != null && !collection.Fields.Contains(item.Field))
                     {
                         errors.Add($"Node '{node.Id}' binds '{variable}' to unknown item field '{item.Field}' (the collection declares: {string.Join(", ", collection.Fields)}).");
+                    }
+                    else if (inputFan != null && !WorkflowInputFans.ItemFields.Contains(item.Field, StringComparer.Ordinal))
+                    {
+                        // One shape for every caller element (v9 § 5): the element
+                        // itself is item:value, whatever its kind.
+                        errors.Add($"Node '{node.Id}' binds '{variable}' to unknown item field '{item.Field}' (an input fan's items carry: {string.Join(", ", WorkflowInputFans.ItemFields)}).");
                     }
 
                     return;
@@ -368,7 +385,7 @@ public static class WorkflowPackageValidator
                 continue;
             }
 
-            if (node.ForEach != null && !TryResolveForEachCollection(node, data, out var forEachError, out _))
+            if (node.ForEach != null && !TryResolveForEachSource(manifest, node, data, inputsById, out var forEachError, out _, out _))
             {
                 errors.Add($"Node '{node.Id}' {forEachError}");
             }
@@ -974,32 +991,65 @@ public static class WorkflowPackageValidator
         }
     }
 
-    private static bool TryResolveForEachCollection(
+    /// <summary>
+    /// What a node fans: a data collection, as always — or, from v9, an array
+    /// input (package-format-v9-design.md § 5, #426). Below 9 the sentence is
+    /// the one it always was; an input fan on an older manifest reads as a
+    /// source the format does not know, which is true of that version.
+    /// </summary>
+    private static bool TryResolveForEachSource(
+        WorkflowPackageManifest manifest,
         WorkflowNodeSpec node,
         WorkflowPackageData data,
+        IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
         out string? error,
-        out WorkflowDataCollection? collection)
+        out WorkflowDataCollection? collection,
+        out WorkflowInputSpec? inputFan)
     {
         error = null;
         collection = null;
+        inputFan = null;
 
-        if (!WorkflowNodeBindingSources.TryParse(node.ForEach!, out var source, out _)
-            || source is not WorkflowNodeBindingSource.Data dataSource)
+        if (!WorkflowNodeBindingSources.TryParse(node.ForEach!, out var source, out _))
         {
             error = $"forEach '{node.ForEach}' must be a data: collection reference.";
             return false;
         }
 
-        if (data.Collections.TryGetValue(dataSource.Id, out var resolved))
+        switch (source)
         {
-            collection = resolved;
-            return true;
-        }
+            case WorkflowNodeBindingSource.Data dataSource:
+                if (data.Collections.TryGetValue(dataSource.Id, out var resolved))
+                {
+                    collection = resolved;
+                    return true;
+                }
 
-        error = data.Scalars.ContainsKey(dataSource.Id)
-            ? $"forEach references scalar data entry '{dataSource.Id}' (forEach requires a collection)."
-            : $"forEach references unknown data entry '{dataSource.Id}'.";
-        return false;
+                error = data.Scalars.ContainsKey(dataSource.Id)
+                    ? $"forEach references scalar data entry '{dataSource.Id}' (forEach requires a collection)."
+                    : $"forEach references unknown data entry '{dataSource.Id}'.";
+                return false;
+
+            case WorkflowNodeBindingSource.Input input when manifest.SpecVersion >= 9:
+                if (!inputsById.TryGetValue(input.Name, out var declaration))
+                {
+                    error = $"forEach '{node.ForEach}' fans undeclared input '{input.Name}'.";
+                    return false;
+                }
+
+                if (WorkflowInputTypes.Of(declaration) != WorkflowInputTypes.Array)
+                {
+                    error = $"forEach '{node.ForEach}' fans input '{input.Name}', which is a {WorkflowInputTypes.Of(declaration)}; only an array can be fanned.";
+                    return false;
+                }
+
+                inputFan = declaration;
+                return true;
+
+            default:
+                error = $"forEach '{node.ForEach}' must be a data: collection reference.";
+                return false;
+        }
     }
 
     private static void ValidateResult(
@@ -1282,6 +1332,38 @@ public static class WorkflowPackageValidator
     /// trips it unresolvable, and published versions are immutable. Not
     /// hypothetical — acct-* versions declaring a required boolean are live.
     /// </summary>
+    /// <summary>
+    /// v9 (#426): a fan over an array the caller may leave out. An absent or
+    /// empty fanned input produces no items, therefore no blocks, therefore no
+    /// document — the job is refused at start by name. That is correct, and
+    /// it is worth the author hearing at publish rather than discovering on
+    /// every consult that skipped the slot. A warning: this validator runs at
+    /// load.
+    /// </summary>
+    private static void WarnFannedOptionalInputs(WorkflowPackageManifest manifest, List<string> warnings)
+    {
+        if (manifest.SpecVersion < 9)
+        {
+            return;
+        }
+
+        var inputsById = (manifest.Inputs ?? new List<WorkflowInputSpec>())
+            .GroupBy(input => input.Id, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+
+        foreach (var node in (manifest.Nodes ?? new List<WorkflowNodeSpec>()).Where(node => WorkflowInputFans.IsInputFan(node.ForEach)))
+        {
+            var id = WorkflowInputFans.InputIdOf(node.ForEach!);
+
+            if (inputsById.TryGetValue(id, out var input) && !input.Required)
+            {
+                warnings.Add(
+                    $"Input '{id}' is optional but node '{node.Id}' fans it: a consult that leaves it empty is refused at start, "
+                    + "because every document written from it would have nothing to say. Declare it required, or accept the refusal.");
+            }
+        }
+    }
+
     private static void WarnUnreachableByEmail(WorkflowPackageManifest manifest, List<string> warnings)
     {
         // Booleans arrive with v8; before it there is nothing to say.
