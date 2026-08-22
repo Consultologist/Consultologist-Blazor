@@ -257,6 +257,126 @@ public class ProvenanceHashTests
     }
 
     [Fact]
+    public void TypedInputsHash_PinsTheCanonicalShape()
+    {
+        // Canonical shape pin: ordinal-sorted {id: typed value}, a boolean as
+        // true and not "true" — the definition v8 jobs record as
+        // effectiveInputHashVersion 4. Pinned here for the first time, because
+        // the regression that matters most from now on is this not moving.
+        var supplied = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = "Draft text.",
+            ["billable"] = ConsultInputValue.OfBoolean(true)
+        };
+
+        Assert.Equal(
+            ConsultGenerationProvenance.Sha256Hex("""{"billable":true,"consult_draft":"Draft text."}"""),
+            ConsultGenerationProvenance.ComputeTypedInputsHash(supplied));
+        Assert.Equal(4, ConsultGenerationProvenance.TypedInputsHashVersion);
+    }
+
+    [Theory]
+    [InlineData("number")]
+    [InlineData("object")]
+    [InlineData("array")]
+    public void TypedInputsHash_RefusesStructure(string kind)
+    {
+        // #422: version 4's domain is v8's scalars. Structure reaching it can
+        // only mean a misrouted version gate — the failure that would
+        // otherwise produce a plausible hash stamped 4 — so it throws rather
+        // than hashing, and names the slot.
+        var value = kind switch
+        {
+            "number" => ConsultInputValue.OfNumber("3"),
+            "object" => ConsultInputValue.OfObject(new[] { new ConsultInputEntry("k", ConsultInputValue.OfText("x")) }),
+            _ => ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("x") })
+        };
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            ConsultGenerationProvenance.ComputeTypedInputsHash(
+                new Dictionary<string, ConsultInputValue> { ["length_of_stay"] = value }));
+
+        Assert.Contains("'length_of_stay'", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("definition 5", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StructuredInputsHash_PinsTheCanonicalShape()
+    {
+        // Canonical shape pin for definition 5 (package-format-v9-design.md
+        // § 8): slot ids and field ids ordinal-sorted at every level, array
+        // elements in supplied order, a number as the digits sent.
+        var supplied = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["prior_notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("b"), ConsultInputValue.OfText("a") }),
+            ["patient"] = ConsultInputValue.OfObject(new[]
+            {
+                new ConsultInputEntry("z", ConsultInputValue.OfNumber("1.50")),
+                new ConsultInputEntry("a", ConsultInputValue.OfText("x"))
+            }),
+            ["consult_draft"] = "Draft text."
+        };
+
+        Assert.Equal(
+            ConsultGenerationProvenance.Sha256Hex("""{"consult_draft":"Draft text.","patient":{"a":"x","z":1.50},"prior_notes":["b","a"]}"""),
+            ConsultGenerationProvenance.ComputeStructuredInputsHash(supplied));
+        Assert.Equal(5, ConsultGenerationProvenance.StructuredInputsHashVersion);
+    }
+
+    [Fact]
+    public void StructuredInputsHash_ObjectKeyOrderDoesNotMatter_ArrayOrderDoes()
+    {
+        static ConsultInputValue Patient(params (string Id, string Text)[] fields) =>
+            ConsultInputValue.OfObject(fields.Select(f => new ConsultInputEntry(f.Id, ConsultInputValue.OfText(f.Text))));
+
+        Assert.Equal(
+            ConsultGenerationProvenance.ComputeStructuredInputsHash(
+                new Dictionary<string, ConsultInputValue> { ["patient"] = Patient(("b", "2"), ("a", "1")) }),
+            ConsultGenerationProvenance.ComputeStructuredInputsHash(
+                new Dictionary<string, ConsultInputValue> { ["patient"] = Patient(("a", "1"), ("b", "2")) }));
+
+        // An array's order is the caller's, stated — so it is part of the input.
+        Assert.NotEqual(
+            ConsultGenerationProvenance.ComputeStructuredInputsHash(
+                new Dictionary<string, ConsultInputValue> { ["notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("a"), ConsultInputValue.OfText("b") }) }),
+            ConsultGenerationProvenance.ComputeStructuredInputsHash(
+                new Dictionary<string, ConsultInputValue> { ["notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("b"), ConsultInputValue.OfText("a") }) }));
+    }
+
+    [Fact]
+    public void StructuredInputsHash_NumberSpellingIsSignificant()
+    {
+        // 1.50 is what the caller sent; trimming it would hash a value
+        // nobody sent (v9 § 4).
+        Assert.NotEqual(
+            ConsultGenerationProvenance.ComputeStructuredInputsHash(
+                new Dictionary<string, ConsultInputValue> { ["n"] = ConsultInputValue.OfNumber("1.5") }),
+            ConsultGenerationProvenance.ComputeStructuredInputsHash(
+                new Dictionary<string, ConsultInputValue> { ["n"] = ConsultInputValue.OfNumber("1.50") }));
+    }
+
+    [Fact]
+    public void StructuredInputsHash_WritesUtf8AsIs_WhereVersion4Escapes()
+    {
+        // Definition 5 escapes only what JSON requires; 2–4 use the default
+        // encoder, which writes é as \u00e9 and & as \u0026. So the two agree
+        // on an ASCII map of scalars and on nothing wider — fine, because they
+        // are never compared. Both halves pinned so neither moves quietly.
+        var accented = new Dictionary<string, ConsultInputValue> { ["consult_draft"] = "Café & <b>" };
+        var ascii = new Dictionary<string, ConsultInputValue> { ["consult_draft"] = "Draft." };
+
+        Assert.Equal(
+            ConsultGenerationProvenance.Sha256Hex("""{"consult_draft":"Café & <b>"}"""),
+            ConsultGenerationProvenance.ComputeStructuredInputsHash(accented));
+        Assert.NotEqual(
+            ConsultGenerationProvenance.ComputeTypedInputsHash(accented),
+            ConsultGenerationProvenance.ComputeStructuredInputsHash(accented));
+        Assert.Equal(
+            ConsultGenerationProvenance.ComputeTypedInputsHash(ascii),
+            ConsultGenerationProvenance.ComputeStructuredInputsHash(ascii));
+    }
+
+    [Fact]
     public void ResultSetHash_PinsTheCanonicalShape()
     {
         // Canonical shape pin: ordinal-sorted {resultId: sha256hex(document)} —
