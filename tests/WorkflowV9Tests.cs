@@ -1,3 +1,5 @@
+using Consultologist.Api.Jobs;
+using Consultologist.Api.Models;
 using Consultologist.Api.Workflow;
 
 namespace Consultologist.Api.Tests;
@@ -56,6 +58,47 @@ public static class V9Fixtures
 
     public static WorkflowPackageValidator.ValidationResult Validate(WorkflowPackageManifest manifest)
         => WorkflowPackageValidator.Validate(manifest, V6Fixtures.Files(manifest), TestOutputContracts.CatalogSchemas);
+
+    /// <summary>
+    /// #426: the structured package with a node fanning over the caller's
+    /// prior notes — `forEach: input:prior_notes`, `note: item:value` —
+    /// aggregated into the result beside the standards chain. The fanned
+    /// input is required, as a fanned input should be.
+    /// </summary>
+    public static WorkflowPackageManifest Fanned(string forEach = "input:prior_notes", string binding = "item:value")
+    {
+        // The fanned input is required, as a fanned input should be; the
+        // others keep Structured()'s optional declarations.
+        var fannedId = WorkflowInputFans.IsInputFan(forEach) ? WorkflowInputFans.InputIdOf(forEach) : null;
+        var manifest = Structured() with
+        {
+            Inputs = Structured().Inputs!
+                .Select(input => input.Id == fannedId ? input with { Required = true } : input)
+                .ToList()
+        };
+        var prompts = new List<WorkflowPromptSpec>(manifest.Prompts!)
+        {
+            new("summarise-note", "prompts/summarise-note.md", new List<string> { "note" })
+        };
+
+        var nodes = new List<WorkflowNodeSpec>(manifest.Nodes!);
+        var fan = new WorkflowNodeSpec("summarise-note", "Summarising a prior note",
+            Prompt: "summarise-note",
+            Bindings: new Dictionary<string, WorkflowBindingValue>(StringComparer.Ordinal)
+            {
+                ["note"] = new(binding)
+            },
+            ForEach: forEach);
+
+        var resultIndex = nodes.FindIndex(node => node.Id == "assemble-note");
+        nodes[resultIndex] = nodes[resultIndex] with
+        {
+            Aggregate = new List<string> { "node:section-instructions", "node:summarise-note" }
+        };
+        nodes.Insert(resultIndex, fan);
+
+        return manifest with { Prompts = prompts, Nodes = nodes };
+    }
 
     /// <summary>
     /// The structured package with a scalar prompt node whose one variable
@@ -532,5 +575,201 @@ public class WorkflowVariableDeclarationsTests
             WorkflowVariableDeclarations.For(manifest));
 
         Assert.Equal("Seen 10 August 2026", rendered);
+    }
+}
+
+/// <summary>
+/// #426: a node may fan over a caller-supplied array. The validator admits
+/// `forEach: input:&lt;id&gt;` for an array input from specVersion 9, and an
+/// input fan's items carry one shape — id, name, value.
+/// </summary>
+public class WorkflowV9FanTests
+{
+    private static IEnumerable<string> Errors(WorkflowPackageManifest manifest) => V9Fixtures.Validate(manifest).Errors;
+
+    [Fact]
+    public void AFanOverAnArrayInput_IsValid()
+    {
+        var result = V9Fixtures.Validate(V9Fixtures.Fanned());
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void AFanOverAnArrayOfObjects_IsValid()
+    {
+        var result = V9Fixtures.Validate(V9Fixtures.Fanned(forEach: "input:medications"));
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AFanOverANonArrayInput_IsRefused()
+    {
+        Assert.Contains(
+            "Node 'summarise-note' forEach 'input:length_of_stay' fans input 'length_of_stay', which is a number; only an array can be fanned.",
+            Errors(V9Fixtures.Fanned(forEach: "input:length_of_stay")));
+    }
+
+    [Fact]
+    public void AFanOverAnUndeclaredInput_IsRefused()
+    {
+        Assert.Contains(
+            "Node 'summarise-note' forEach 'input:nothing' fans undeclared input 'nothing'.",
+            Errors(V9Fixtures.Fanned(forEach: "input:nothing")));
+    }
+
+    [Fact]
+    public void AnInputFanOnAV8Manifest_ReadsAsItAlwaysDid()
+    {
+        // Below 9 the sentence is unchanged: an input is not a source that
+        // version can fan, and the conformance suite pins the wording.
+        var manifest = V9Fixtures.Fanned() with { SpecVersion = 8 };
+
+        Assert.Contains(V8Fixtures.Validate(manifest).Errors,
+            e => e.Contains("forEach 'input:prior_notes' must be a data: collection reference."));
+    }
+
+    [Fact]
+    public void AnItemFieldAnInputFanDoesNotCarry_IsRefused()
+    {
+        // One shape for every caller element: the element is item:value.
+        Assert.Contains(
+            "Node 'summarise-note' binds 'note' to unknown item field 'text' (an input fan's items carry: id, name, value).",
+            Errors(V9Fixtures.Fanned(binding: "item:text")));
+    }
+
+    [Theory]
+    [InlineData("item:id")]
+    [InlineData("item:name")]
+    public void TheMintedItemFields_AreBindable(string binding)
+    {
+        var result = V9Fixtures.Validate(V9Fixtures.Fanned(binding: binding));
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AFannedOptionalInput_WarnsAtPublish()
+    {
+        // Absent or empty, a fanned input refuses the job at start by name.
+        // Correct, and worth hearing at publish rather than on every consult.
+        var manifest = V9Fixtures.Fanned();
+        var inputs = manifest.Inputs!.Select(i => i.Id == "prior_notes" ? i with { Required = false } : i).ToList();
+
+        var result = V9Fixtures.Validate(manifest with { Inputs = inputs });
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+        Assert.Contains(result.Warnings, w => w.StartsWith("Input 'prior_notes' is optional but node 'summarise-note' fans it", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AnInputFansItems_CarryOneShape()
+    {
+        // id is the index, name is the label and ordinal — never the element,
+        // which is patient data and reaches history events and the rail —
+        // and value is the element: a scalar's text, an object's carrier.
+        var notes = new WorkflowInputSpec("prior_notes", "Prior notes", Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text);
+        var items = WorkflowInputFans.Items(notes, ConsultInputValue.OfArray(new[]
+        {
+            ConsultInputValue.OfText("Seen in clinic; BP 150/95."),
+            ConsultInputValue.OfText("Follow-up; BP 130/85.")
+        }));
+
+        Assert.Equal(new[] { "0", "1" }, items.Select(item => item["id"]));
+        Assert.Equal(new[] { "Prior notes 1", "Prior notes 2" }, items.Select(item => item["name"]));
+        Assert.Equal("Follow-up; BP 130/85.", items[1]["value"]);
+        Assert.All(items, item => Assert.DoesNotContain("BP", item["name"], StringComparison.Ordinal));
+
+        var meds = new WorkflowInputSpec("medications", "Medications", Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Object,
+            Fields: new List<WorkflowFieldSpec> { new("name", "Drug"), new("dose", "Dose") });
+        var element = ConsultInputValue.OfObject(new[]
+        {
+            new ConsultInputEntry("name", ConsultInputValue.OfText("metformin")),
+            new ConsultInputEntry("dose", ConsultInputValue.OfText("500 mg"))
+        });
+        var medItems = WorkflowInputFans.Items(meds, ConsultInputValue.OfArray(new[] { element }));
+
+        Assert.Equal(element, ConsultInputValue.FromJson(medItems[0]["value"]));
+        Assert.Equal("Medications 1", medItems[0]["name"]);
+        Assert.Empty(WorkflowInputFans.Items(notes, null));
+        Assert.Empty(WorkflowInputFans.Items(notes, ConsultInputValue.OfText("not an array")));
+    }
+}
+
+/// <summary>
+/// #426: what an input fan's item carries, typed. The element reaches its
+/// node as item:value — a string in the item map, untagged — and the
+/// array's declaration, one level down, says what it is.
+/// </summary>
+public class WorkflowV9FanRenderingTests
+{
+    [Fact]
+    public void AnElementOfAnArrayOfObjects_RendersItsFields()
+    {
+        var manifest = V9Fixtures.Fanned(forEach: "input:medications");
+        var element = ConsultInputValue.OfObject(new[]
+        {
+            new ConsultInputEntry("name", ConsultInputValue.OfText("metformin")),
+            new ConsultInputEntry("dose", ConsultInputValue.OfText("500 mg"))
+        });
+        var item = WorkflowInputFans.Items(manifest.Inputs!.Single(i => i.Id == "medications"), ConsultInputValue.OfArray(new[] { element }))[0];
+
+        // The resolver hands the node the carrier, as a string, as it does
+        // every item field.
+        var node = ConsultGenerationJobStarter.DescribeNode(manifest.Nodes!.Single(n => n.Id == "summarise-note"), null);
+        var variables = ConsultNodeVariableResolver.Resolve(node, new Dictionary<string, string>(), item, null,
+            new Dictionary<string, ConsultNodeDescriptor>(), new Dictionary<string, NodeRunResult>());
+        Assert.Equal(element.AsJson(), variables["note"]);
+
+        // And the renderer, given the declarations the activity has, makes it an object.
+        var rendered = PromptTemplateRenderer.Render(
+            new WorkflowPromptTemplate("summarise-note", "{{ note.name }} at {{ note.dose }}", new[] { "note" }, null),
+            variables,
+            variableTypes: null,
+            WorkflowVariableDeclarations.For(manifest));
+
+        Assert.Equal("metformin at 500 mg", rendered);
+    }
+
+    [Fact]
+    public void AnElementOfAnArrayOfDates_FormatsAsADate()
+    {
+        var manifest = V9Fixtures.Fanned();
+        manifest = manifest with
+        {
+            Inputs = manifest.Inputs!.Select(i => i.Id == "prior_notes" ? i with { Items = WorkflowInputTypes.Date } : i).ToList()
+        };
+
+        var rendered = PromptTemplateRenderer.Render(
+            new WorkflowPromptTemplate("summarise-note", "Seen {{ note | date.to_string \"%d %B %Y\" }}", new[] { "note" }, null),
+            new Dictionary<string, string> { ["note"] = "2026-08-10" },
+            variableTypes: null,
+            WorkflowVariableDeclarations.For(manifest));
+
+        Assert.Equal("Seen 10 August 2026", rendered);
+    }
+
+    [Fact]
+    public void AnElementOfAnArrayOfText_NeedsNoDeclaration()
+    {
+        var declarations = WorkflowVariableDeclarations.For(V9Fixtures.Fanned());
+
+        Assert.DoesNotContain("note", declarations.Keys);
+    }
+
+    [Fact]
+    public void TheProbe_AgreesWithTheFan()
+    {
+        // Publish-time: a template reaching into an object element validates,
+        // because the probe types item:value from the same declaration.
+        var manifest = V9Fixtures.Fanned(forEach: "input:medications");
+        var files = V6Fixtures.Files(manifest);
+        files["prompts/summarise-note.md"] = "{{ note.name }} at {{ note.dose }}";
+
+        var result = WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas);
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
 }

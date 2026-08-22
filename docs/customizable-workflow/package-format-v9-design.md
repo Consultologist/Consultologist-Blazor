@@ -361,6 +361,33 @@ is significant, and is recorded**: it is the order the elements hash in
 (§ 8), so an item's identity is stable across a replay for the same reason
 the hash is.
 
+> **Amended 2026-08-22 (#426).** The two bullets above are superseded by
+> **one item shape for every caller element — `{ id, name, value }`**
+> (operator's decision):
+>
+> - `id` is the element's zero-based index, as above.
+> - `name` is the input's label and the element's ordinal — *"Prior notes
+>   2"* — and **never the element's text**. A block name reaches the job's
+>   history events, the run-rail roster and the SSE payload; an element is
+>   patient data.
+> - `value` is the element: a scalar's canonical string, or an object
+>   element's carrier (§ 10, #423), which the renderer materialises (#425).
+>   A node binds `item:value` for either kind and writes `{{ m.dose }}`.
+>
+> Why not `item:<field-id>` for an object element: an item is a flat map
+> whose `id` and `name` the engine mints and reads unguarded, so flattening
+> an element's fields into it collides with exactly the field names an
+> author reaches for first. One shape, no reserved names. `item:id` and
+> `item:name` stay bindable. The snapshot key is the literal `forEach`
+> string (`input:prior_notes`), which cannot collide with a data
+> collection's id.
+>
+> Also decided in the doing: the empty-fan refusal fires when **any**
+> firing deliverable would expand to no blocks because a fanned input is
+> empty *or absent* — so a fanned input should be required, and publishing
+> a fanned optional input **warns**. Before a job exists an input fan
+> contributes no blocks; the run rail fills from the job's roster.
+
 ### What this does not change
 
 **`TotalBlockCount` stays a stored scalar, stamped once at start** (#176,

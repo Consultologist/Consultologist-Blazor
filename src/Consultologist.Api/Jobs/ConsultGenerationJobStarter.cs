@@ -466,7 +466,49 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         if (package.Manifest.SpecVersion >= 6)
         {
-            items = WorkflowPackageBlocks.Resolve(package)
+            // v9 (#426): a fan over a caller-supplied array. Its items come from
+            // the request — one per element, ids the engine mints — keyed by the
+            // literal forEach string, which is what the orchestrator's
+            // CollectionIdOf already yields for a non-data source and what the
+            // rail matches a roster by. The supplied map is the typed one, so an
+            // array of objects fans its elements as carriers.
+            var inputsById = (package.Manifest.Inputs ?? new List<WorkflowInputSpec>())
+                .ToDictionary(input => input.Id, StringComparer.Ordinal);
+            var inputFans = package.Nodes
+                .Where(node => WorkflowInputFans.IsInputFan(node.ForEach))
+                .Select(node => node.ForEach!)
+                .Distinct(StringComparer.Ordinal)
+                .ToDictionary(
+                    key => key,
+                    key => WorkflowInputFans.Items(
+                        inputsById[WorkflowInputFans.InputIdOf(key)],
+                        inputs.Supplied?.GetValueOrDefault(WorkflowInputFans.InputIdOf(key))),
+                    StringComparer.Ordinal);
+
+            // An empty fan produces no items, no blocks, no document — v8's
+            // empty-fire-set case wearing different clothes, and refused the
+            // same way: at start, by name, before anything is spent (v9 § 5).
+            var emptyFans = inputFans.Where(fan => fan.Value.Count == 0).Select(fan => fan.Key).ToList();
+            if (emptyFans.Count > 0)
+            {
+                var emptyDetail = "No document applies to these inputs. "
+                    + string.Join(" ", emptyFans.Select(key =>
+                        $"'{inputsById[WorkflowInputFans.InputIdOf(key)].Label}' has no entries, and every document this package produces is written from them."));
+
+                _logger.LogWarning(
+                    "Rejected job start: a fanned input has no entries. Package={Package}, Fans={Fans}",
+                    package.Ref,
+                    string.Join(", ", emptyFans));
+
+                return new ConsultGenerationJobStartOutcome(
+                    null,
+                    ConsultGenerationJobStartError.NoApplicableDeliverable,
+                    emptyDetail,
+                    // Authored labels and fixed prose: the sender may read it.
+                    SenderSafeDetail: emptyDetail);
+            }
+
+            items = WorkflowPackageBlocks.Resolve(package, inputFans)
                 .Select(block => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(StringComparer.Ordinal)
                 {
                     ["id"] = block.Id,
@@ -474,8 +516,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 })
                 .ToList();
 
-            collectionSets = package.Nodes
-                .Where(node => node.ForEach != null)
+            var dataSets = package.Nodes
+                .Where(node => node.ForEach != null && !WorkflowInputFans.IsInputFan(node.ForEach))
                 .Select(node => node.ForEach![WorkflowNodeBindingSources.DataPrefix.Length..])
                 .Distinct(StringComparer.Ordinal)
                 .ToDictionary(
@@ -486,6 +528,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                         .Select(item => (IReadOnlyDictionary<string, string>)item.Fields)
                         .ToList(),
                     StringComparer.Ordinal);
+
+            collectionSets = dataSets
+                .Concat(inputFans)
+                .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
 
             // #361: the same rosters, slimmed to what a run rail needs. The
             // orchestrator's copy above carries every field including content —
