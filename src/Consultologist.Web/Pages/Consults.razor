@@ -887,7 +887,7 @@
       // the form displayed the newer one. The version a running job used is not
       // this page's to remember: it is on the job's own snapshot, fetched below
       // and rendered by History as its provenance chip.
-      ApplyInputValues(memento!.Inputs);
+      ApplyInputValues(memento!.Inputs, memento.Values);
     }
 
     var blockSnapshots = sessionMatches
@@ -1145,7 +1145,8 @@
       JobSession.Current = new ConsultJobMemento(
         job.JobId,
         textSnapshot,
-        blockSnapshots.Select(block => new ConsultJobBlock(block.Id, block.Name)).ToList());
+        blockSnapshots.Select(block => new ConsultJobBlock(block.Id, block.Name)).ToList(),
+        EffectiveInputValues());
 
       await RunAttachedJobAsync(job.JobId, blockSnapshots);
     }
@@ -1696,15 +1697,33 @@
       .ToList();
   }
 
-  // Re-attaching to a running job restores what it ran on, which the memento
-  // holds as text — so any attachment in the form is stale by definition.
-  private void ApplyInputValues(IReadOnlyDictionary<string, string> values)
+  // Re-attaching to a running job restores what it ran on — as typed when
+  // the memento holds it so (#429), as text before that. Either way an
+  // attachment in the form is stale by definition: the document travelled
+  // as the text the server read.
+  private void ApplyInputValues(
+    IReadOnlyDictionary<string, string> values,
+    IReadOnlyDictionary<string, ConsultInputValue>? typed)
   {
     foreach (var field in inputFields)
     {
-      field.RestoreText(values.GetValueOrDefault(field.Id, string.Empty));
+      if (typed != null && typed.TryGetValue(field.Id, out var value))
+      {
+        field.Restore(value);
+      }
+      else
+      {
+        field.RestoreText(values.GetValueOrDefault(field.Id, string.Empty));
+      }
     }
   }
+
+  // What re-attach restores: each slot as typed, a document slot as the text
+  // the server read — one element per document for an array of text.
+  private Dictionary<string, ConsultInputValue> EffectiveInputValues() =>
+    inputFields
+      .Where(field => field.IsFilled)
+      .ToDictionary(field => field.Id, field => field.EffectiveValue, StringComparer.Ordinal);
 
   // #236: clears the whole slot, not just its text. Leaving the attachment
   // behind left a scheduled submit showing "loaded referral.txt" over an
@@ -2565,7 +2584,73 @@
       Documents.AddRange(previous.Documents);
     }
 
-    /// <summary>Re-attach: the memento holds text, so a scalar is restored as typed and a boolean by its word.</summary>
+    /// <summary>What this slot ran on, as a value: documents as the text read, one element each for an array.</summary>
+    public ConsultInputValue EffectiveValue => HasFile
+      ? TakesSeveralDocuments
+        ? ConsultInputValue.OfArray(Documents.Select(document => ConsultInputValue.OfText(document.PreviewText)))
+        : ConsultInputValue.OfText(Documents[0].PreviewText)
+      : Supplied!;
+
+    /// <summary>Re-attach from a typed memento (#429): a scalar, an object's fields, an array's rows.</summary>
+    public void Restore(ConsultInputValue value)
+    {
+      Clear();
+
+      switch (Type)
+      {
+        case WorkflowInputTypes.Object when value.IsObject:
+          RestoreFields(Fields, value);
+          break;
+        case WorkflowInputTypes.Array when value.IsArray:
+          foreach (var element in value.Elements!)
+          {
+            var row = AddRow();
+            if (row.Scalar != null)
+            {
+              RestoreScalar(row.Scalar, element);
+            }
+            else
+            {
+              RestoreFields(row.Fields!, element);
+            }
+          }
+
+          break;
+        default:
+          RestoreScalar(Scalar, value);
+          break;
+      }
+    }
+
+    private static void RestoreScalar(ScalarSlot slot, ConsultInputValue value)
+    {
+      if (value.IsBoolean)
+      {
+        slot.Flag = value.Flag;
+      }
+      else if (value.HasCanonical)
+      {
+        slot.Value = value.Canonical;
+      }
+    }
+
+    private static void RestoreFields(IReadOnlyList<ScalarSlot> slots, ConsultInputValue value)
+    {
+      if (!value.IsObject)
+      {
+        return;
+      }
+
+      foreach (var entry in value.Fields!)
+      {
+        if (slots.FirstOrDefault(slot => slot.Id == entry.Id) is { } slot)
+        {
+          RestoreScalar(slot, entry.Value);
+        }
+      }
+    }
+
+    /// <summary>Re-attach from a text memento: a scalar is restored as typed and a boolean by its word.</summary>
     public void RestoreText(string text)
     {
       Clear();

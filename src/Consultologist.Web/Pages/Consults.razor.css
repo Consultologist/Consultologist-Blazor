@@ -445,3 +445,17 @@
 	flex-direction: column;
 	gap: 0.3rem;
 }
+
+/* #429: the typed controls were styled only inside WorkflowNodeSummary,
+   whose scoped rules never reached this page. */
+.node-field__input {
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
+	padding: 0.4rem 0.5rem;
+	border: 1px solid var(--consultologist-border, #d0d0d0);
+	border-radius: var(--consultologist-radius-sm, 4px);
+	background: var(--consultologist-surface, #fff);
+	font: inherit;
+	font-weight: 400;
+}

@@ -964,6 +964,39 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ReattachingAStructuredRun_RestoresItsRowsAndFields()
+    {
+        // #429: the memento carries the inputs as typed, so "Edit inputs" on a
+        // run gives back the rows and fields that ran, not their text.
+        const string JobId = "0123456789abcdef0123456789abcdef";
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithLabs(), specVersion: 9);
+        JobSession.Current = new ConsultJobMemento(
+            JobId,
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["consult_draft"] = "Referral.", ["labs"] = "Test: Sodium\nValue: 138" },
+            new[] { new ConsultJobBlock("s:hpi", "History") },
+            new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["consult_draft"] = ConsultInputValue.OfText("Referral."),
+                ["labs"] = ConsultInputValue.OfArray(new[]
+                {
+                    ConsultInputValue.OfObject(new[] { new ConsultInputEntry("name", ConsultInputValue.OfText("Sodium")), new ConsultInputEntry("value", ConsultInputValue.OfNumber("138")) }),
+                    ConsultInputValue.OfObject(new[] { new ConsultInputEntry("name", ConsultInputValue.OfText("Potassium")), new ConsultInputEntry("value", ConsultInputValue.OfNumber("4.1")) })
+                })
+            });
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
+            JobId, "user-1", "Completed", TotalBlockCount: 1, CompletedBlockCount: 1, FailedBlockCount: 0,
+            GeneratedBlocks: new Dictionary<string, string> { ["s:hpi"] = "Section prose." },
+            FailedBlocks: new Dictionary<string, string>(), Success: true, AssembledDocument: "The note."));
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Edit inputs")).Click();
+
+        Assert.Equal(2, page.FindAll(".input-field__row").Count);
+        Assert.Equal("Sodium", FieldText(page, 1));
+        Assert.Equal(new[] { "138", "4.1" }, page.FindAll("input[inputmode=decimal]").Select(input => input.GetAttribute("value")));
+    }
+
+    [Fact]
     public async Task SwitchingPackages_CarriesAChosenBoolean()
     {
         // #429: the whole answer carries into a slot the next package still
