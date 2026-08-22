@@ -1948,12 +1948,11 @@
                 continue;
             }
 
+            // #427: carried as written, so a v9 form the editor cannot yet
+            // compose (a field, a count, an ordering) survives the rename.
             results[index] = results[index] with
             {
-                When = WorkflowResultConditionText.Compose(
-                    newId,
-                    WorkflowResultConditionText.IsNegated(results[index].When),
-                    WorkflowResultConditionText.LiteralOf(results[index].When))
+                When = WorkflowResultConditionText.Rename(results[index].When!, newId)
             };
         }
     }

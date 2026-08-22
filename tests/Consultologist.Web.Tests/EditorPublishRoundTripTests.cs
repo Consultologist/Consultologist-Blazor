@@ -68,6 +68,30 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
             .Click();
 
     [Fact]
+    public async Task AV9Condition_TheEditorCannotWrite_StillPublishes()
+    {
+        // #427: "length_of_stay > 7" used to read as an input NAMED
+        // "length_of_stay > 7" — refused at the desk as undeclared, for a
+        // package the engine accepts. The editor reads the whole grammar now,
+        // and the composed manifest carries the condition as written.
+        var (result, sent) = await PublishAndCaptureAsync(page =>
+        {
+            Navigate(page, "Inputs");
+            page.Find(".add-variable__form input.node-field__input").Change("labs");
+            page.Find(".add-variable__form button").Click();
+            return Task.CompletedTask;
+        }, EditorFixtures.V9Conditional());
+
+        var when = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement
+            .GetProperty("results").EnumerateArray()
+            .Select(r => r.TryGetProperty("when", out var value) ? value.GetString() : null)
+            .Single(value => value != null);
+
+        Assert.Equal("length_of_stay > 7", when);
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
     public async Task V7Package_EditedInputs_ComposesAValidManifest()
     {
         var result = await PublishAndValidateAsync(page =>
