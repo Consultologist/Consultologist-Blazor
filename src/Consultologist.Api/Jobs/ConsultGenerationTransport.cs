@@ -36,6 +36,15 @@ public sealed class ConsultGenerationJobs
     // mirrors email's per-message budget.
     internal const int MaxInputFileBytes = 10 * 1024 * 1024;
     internal const int MaxInputFilesTotalBytes = 20 * 1024 * 1024;
+
+    // v9 layer 1 (#421): structure at the door. Shape limits in the same sense
+    // as MaxInputLength — refused, never truncated — and bounding allocation
+    // before the starter sees the request. The text cap applies to every text
+    // scalar wherever it sits, so the worst case is 256 elements of 256 KB;
+    // the per-slot aggregate cap that bounds that is #428's, beside the
+    // several-documents design that needs it.
+    internal const int MaxArrayElements = 256;
+    internal const int MaxObjectFields = 64;
     private const string MissingSseAttemptId = "missing";
     private const string InvalidSseAttemptId = "invalid";
     private const string SseExitReasonCompleted = "Completed";
@@ -154,6 +163,19 @@ public sealed class ConsultGenerationJobs
                         req.Body,
                         JsonOptions,
                         cancellationToken);
+                }
+                catch (ConsultInputShapeException ex)
+                {
+                    // A shape the input converter refuses — an exponent, structure
+                    // past one level, a repeated key. Named, because a caller who
+                    // sent 1e3 should not get the same answer as one who sent a
+                    // truncated body. The message carries the token and the path,
+                    // never the value, which may be patient data.
+                    var shapeError = MalformedInputMessage(ex);
+
+                    _logger.LogWarning(ex, "Invalid ConsultGenerationJobs request: {ValidationError}", shapeError);
+
+                    return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest, new { error = shapeError }, cancellationToken);
                 }
                 catch (JsonException ex)
                 {
@@ -850,6 +872,99 @@ public sealed class ConsultGenerationJobs
         return $"{authority}/api/ConsultGenerationJobs/{jobId}";
     }
 
+    /// <summary>
+    /// The 400 for a shape the input converter refused: its own sentence, plus
+    /// where in the body it sat. Neither names a value.
+    /// </summary>
+    internal static string MalformedInputMessage(ConsultInputShapeException exception) =>
+        string.IsNullOrEmpty(exception.Path)
+            ? exception.Message
+            : $"{exception.Message} At {exception.Path}.";
+
+    /// <summary>
+    /// The door's shape rules for one value, by kind. Text: blank and the
+    /// cap, as always. Structure: the counts, and the cap on every text
+    /// scalar inside — a boolean and a number have no length to run away
+    /// with. An empty array passes: it is present and empty (v9 § 4), and
+    /// whether that satisfies the slot is the starter's 422.
+    /// </summary>
+    private static string? ValidateInputValue(string id, ConsultInputValue value)
+    {
+        switch (value.Kind)
+        {
+            case ConsultInputKind.Text:
+                if (value.IsBlank)
+                {
+                    return $"Input '{id}' is blank.";
+                }
+
+                return value.Text!.Length > MaxInputLength
+                    ? $"Input '{id}' exceeds {MaxInputLength / 1024} KB."
+                    : null;
+
+            case ConsultInputKind.Null:
+                // The converter never produces this at the top of the map; an
+                // in-process caller could.
+                return $"Input '{id}' is null.";
+
+            case ConsultInputKind.Object:
+                return ValidateObjectValue(id, value, where: null);
+
+            case ConsultInputKind.Array:
+                if (value.Elements!.Count > MaxArrayElements)
+                {
+                    return $"Input '{id}' has more than {MaxArrayElements} elements.";
+                }
+
+                for (var index = 0; index < value.Elements.Count; index++)
+                {
+                    var element = value.Elements[index];
+                    var elementError = element.Kind switch
+                    {
+                        ConsultInputKind.Text when element.Text!.Length > MaxInputLength =>
+                            $"Input '{id}' element {index} exceeds {MaxInputLength / 1024} KB.",
+                        ConsultInputKind.Object => ValidateObjectValue(id, element, where: $"element {index}"),
+                        _ => null
+                    };
+
+                    if (elementError != null)
+                    {
+                        return elementError;
+                    }
+                }
+
+                return null;
+
+            default:
+                return null;
+        }
+    }
+
+    private static string? ValidateObjectValue(string id, ConsultInputValue value, string? where)
+    {
+        var site = where is null ? $"Input '{id}'" : $"Input '{id}' {where}";
+
+        if (value.Fields!.Count > MaxObjectFields)
+        {
+            return $"{site} has more than {MaxObjectFields} fields.";
+        }
+
+        foreach (var field in value.Fields)
+        {
+            if (string.IsNullOrWhiteSpace(field.Id))
+            {
+                return $"{site} has a blank field id.";
+            }
+
+            if (field.Value.Kind == ConsultInputKind.Text && field.Value.Text!.Length > MaxInputLength)
+            {
+                return $"{site} field '{field.Id}' exceeds {MaxInputLength / 1024} KB.";
+            }
+        }
+
+        return null;
+    }
+
     internal static string? ValidateRequest(ConsultGenerationRequest? request)
     {
         if (request == null)
@@ -928,16 +1043,15 @@ public sealed class ConsultGenerationJobs
                     return "Inputs contains a blank id.";
                 }
 
-                if (value is null || value.IsBlank)
+                if (value is null)
                 {
                     return $"Input '{id}' is blank.";
                 }
 
-                // The cap is about text: a boolean has no length to run away
-                // with, and Canonical would report 4 or 5 characters.
-                if (!value.IsBoolean && (value.Text?.Length ?? 0) > MaxInputLength)
+                var valueError = ValidateInputValue(id, value);
+                if (valueError != null)
                 {
-                    return $"Input '{id}' exceeds {MaxInputLength / 1024} KB.";
+                    return valueError;
                 }
             }
         }

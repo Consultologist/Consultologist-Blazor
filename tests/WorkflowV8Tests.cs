@@ -655,6 +655,22 @@ public class WorkflowResultConditionEvaluationTests
     }
 
     [Fact]
+    public void AStructuredValue_DoesNotHold_AndIsExplainedWithoutThrowing()
+    {
+        // #421: the starter refuses structure before conditions run, but these
+        // two are public pure functions and must never throw whatever map they
+        // are handed. A value with no canonical string has not answered.
+        var inputs = Inputs(("billable", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("secret") })));
+
+        Assert.False(WorkflowResultConditions.Holds(Parse("billable"), inputs));
+        Assert.False(WorkflowResultConditions.Holds(Parse("billable != true"), inputs));
+
+        var explained = WorkflowResultConditions.Explain(Parse("billable"), inputs);
+        Assert.Contains("an array", explained, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret", explained, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void NoCondition_AlwaysFires()
         => Assert.True(WorkflowResultConditions.Holds(null, Inputs()));
 

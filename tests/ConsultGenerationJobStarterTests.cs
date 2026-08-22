@@ -1118,6 +1118,73 @@ public class ConsultGenerationJobStarterTests
         Assert.Null(normalized.ConsultDraft);
     }
 
+    [Fact]
+    public void NormalizeInputs_LeavesNumbersAndStructureUntouched()
+    {
+        // #421: only text is normalised here. Per-element normalisation is
+        // #422's, beside the hash definition that decides what it means; a
+        // normaliser that rebuilt every non-boolean as text — which this one
+        // did — would have turned an array into blank text and a required
+        // slot into "missing".
+        var array = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("One.\r\nTwo.\r\n") });
+        var number = ConsultInputValue.OfNumber("1.50");
+
+        var normalized = ConsultGenerationJobStarter.NormalizeInputs(new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["consult_draft"] = "One.\r\nTwo.\r\n",
+                ["prior_notes"] = array,
+                ["length_of_stay"] = number
+            }));
+
+        Assert.Equal("One.\nTwo.", normalized.Inputs!["consult_draft"].Text);
+        Assert.Equal(array, normalized.Inputs["prior_notes"]);
+        Assert.Equal(number, normalized.Inputs["length_of_stay"]);
+    }
+
+    [Fact]
+    public async Task V8_StructuredValueInAConditionSlot_IsRefusedBeforeConditionsRun()
+    {
+        // Conditions read a value through Canonical, which structure does not
+        // have. The starter's shape check runs first, so the job is refused as
+        // a declaration mismatch and the condition evaluator never sees it.
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ConditionalPackage());
+
+        var outcome = await StartWithAsync(
+            ("consult_draft", Referral),
+            ("seen_on", "2026-08-10"),
+            ("encounter_kind", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("secret") })));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, outcome.Error);
+        Assert.Contains("Input 'encounter_kind'", outcome.ErrorDetail);
+        Assert.DoesNotContain("secret", outcome.ErrorDetail, StringComparison.Ordinal);
+        await _client.DidNotReceiveWithAnyArgs().ScheduleNewOrchestrationInstanceAsync(
+            default, default, default, default);
+    }
+
+    [Fact]
+    public async Task LegacyPackage_StructuredConsultDraft_DoesNotStartAJob()
+    {
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV5Package());
+
+        var outcome = await StartWithAsync(("consult_draft", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("secret") })));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, outcome.Error);
+        Assert.Contains("Input 'consult_draft'", outcome.ErrorDetail);
+        Assert.DoesNotContain("secret", outcome.ErrorDetail, StringComparison.Ordinal);
+        // An authored id and fixed prose: the sender may read it.
+        Assert.Equal(outcome.ErrorDetail, outcome.SenderSafeDetail);
+        await _client.DidNotReceiveWithAnyArgs().ScheduleNewOrchestrationInstanceAsync(
+            default, default, default, default);
+    }
+
     private sealed record StartCapture(
         ConsultGenerationJobStartOutcome Outcome,
         ConsultGenerationJobInitialize? Initialize,
@@ -1616,6 +1683,72 @@ public class ResolveEffectiveInputsTests
 
         Assert.Null(resolution.Error);
         Assert.Equal(string.Empty, resolution.Effective!["billable"]);
+    }
+
+    // #421 (v9 layer 1): the wire now carries a number, an object and an
+    // array, and no v5–v8 declaration can ask for any of them. Each is a 422
+    // naming the slot — never a crash, and never the value, which is why the
+    // payloads here are distinctive strings asserted absent from the error.
+
+    private static ConsultInputValue Structured(string kind) => kind switch
+    {
+        "number" => ConsultInputValue.OfNumber("424242"),
+        "object" => ConsultInputValue.OfObject(new[] { new ConsultInputEntry("k", ConsultInputValue.OfText("secret")) }),
+        "array" => ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("secret") }),
+        "array-with-null" => ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("secret"), ConsultInputValue.NullElement }),
+        "empty-array" => ConsultInputValue.OfArray(Array.Empty<ConsultInputValue>()),
+        _ => throw new ArgumentOutOfRangeException(nameof(kind))
+    };
+
+    [Theory]
+    [InlineData("consult_draft", "number", "must be sent as a JSON string; got a number")]
+    [InlineData("seen_on", "object", "must be sent as a JSON string; got an object")]
+    [InlineData("encounter_kind", "array", "must be sent as a JSON string; got an array")]
+    [InlineData("billable", "number", "must be sent as JSON true or false; got a number")]
+    [InlineData("billable", "array-with-null", "must be sent as JSON true or false; got an array")]
+    public void V8_StructuredValue_IsRejectedAndNamesTheInput(string id, string kind, string expected)
+    {
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new ConsultGenerationRequest(null, Inputs: TypedInputs((id, Structured(kind)))),
+            V8Fixtures.Typed());
+
+        Assert.Contains($"Input '{id}'", resolution.Error);
+        Assert.Contains(expected, resolution.Error);
+        Assert.DoesNotContain("424242", resolution.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret", resolution.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void V8_AnEmptyArray_IsTheWrongShape_NotAMissingInput()
+    {
+        // Present and empty (v9 § 4): it is not blank, so it reaches the
+        // shape check and is refused for what it is, rather than read as an
+        // absence the caller never expressed.
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new ConsultGenerationRequest(null, Inputs: TypedInputs(("consult_draft", Structured("empty-array")))),
+            V8Fixtures.Typed());
+
+        Assert.Contains("Input 'consult_draft'", resolution.Error);
+        Assert.Contains("got an array", resolution.Error);
+        Assert.DoesNotContain("missing", resolution.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LegacyPackage_StructuredConsultDraft_IsRefusedNotFolded()
+    {
+        // A v5/v6 package folds consult_draft into the draft field through its
+        // canonical string. Structure has none, so the fold would throw; the
+        // refusal lands in the <7 branch where the slot can be named.
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
+            new ConsultGenerationRequest(null, Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["consult_draft"] = Structured("object")
+            }),
+            V5Fixtures.Manifest());
+
+        Assert.Contains("Input 'consult_draft'", resolution.Error);
+        Assert.Contains("must be sent as a JSON string; got an object", resolution.Error);
+        Assert.DoesNotContain("secret", resolution.Error, StringComparison.Ordinal);
     }
 
     [Fact]
