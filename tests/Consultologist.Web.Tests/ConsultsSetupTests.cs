@@ -548,6 +548,112 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         Assert.Equal(new[] { "consult_draft" }, sent!.Keys);
     }
 
+    private static WorkflowPackageInputResponse[] WithPatient(bool required = true) => new[]
+    {
+        new WorkflowPackageInputResponse("consult_draft", "Consult draft", true),
+        new WorkflowPackageInputResponse("patient", "Patient", required, WorkflowInputTypes.Object,
+            Fields: new[]
+            {
+                new WorkflowPackageFieldResponse("age", "Age", true, WorkflowInputTypes.Number),
+                new WorkflowPackageFieldResponse("sex", "Sex", false, WorkflowInputTypes.Enum, new[] { "female", "male" }),
+                new WorkflowPackageFieldResponse("family_name", "Family name", false)
+            })
+    };
+
+    [Fact]
+    public void AnObject_RendersOneControlPerField()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithPatient(), specVersion: 9);
+
+        var page = Render<Consults>();
+
+        var group = page.Find(".input-field__group");
+        Assert.Equal(
+            new[] { "Age", "Sex", "Family name" },
+            group.QuerySelectorAll("label.input-field__member > span").Select(span => span.TextContent.Replace("(optional)", "").Trim()));
+        Assert.Single(group.QuerySelectorAll("input[inputmode=decimal]"));
+        Assert.Single(group.QuerySelectorAll("select.node-field__input"));
+        Assert.Single(group.QuerySelectorAll("fluent-text-area"));
+    }
+
+    [Fact]
+    public void ARequiredField_GatesTheRun_AndIsNamedOnceTheObjectIsTouched()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithPatient(), specVersion: 9);
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+
+        // Untouched: required, so closed — but nothing is wrong yet.
+        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+        Assert.Empty(page.FindAll(".input-field__error"));
+
+        // Touched through an optional field: the required one is now named.
+        page.Find(".input-field__group select.node-field__input").Change("female");
+        Assert.Equal("Patient: Age is required.", page.Find(".input-field__error").TextContent.Trim());
+        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+
+        page.Find("input[inputmode=decimal]").Change("41");
+        Assert.Empty(page.FindAll(".input-field__error"));
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void AnObject_TravelsInFieldOrder_WithBlankOptionalFieldsOmitted()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithPatient(), specVersion: 9);
+        IReadOnlyDictionary<string, ConsultInputValue>? sent = null;
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sent = value),
+                Arg.Any<string?>(), Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
+            .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.FindAll("fluent-text-area")[1].Change("Smith");
+        page.Find("input[inputmode=decimal]").Change("41");
+        page.FindAll("fluent-button").Last().Click();
+
+        var patient = sent!["patient"];
+        Assert.True(patient.IsObject);
+        Assert.Equal(new[] { "age", "family_name" }, patient.Fields!.Select(entry => entry.Id));
+        Assert.True(patient.Fields![0].Value.IsNumber);
+        Assert.Equal("41", patient.Fields[0].Value.Canonical);
+    }
+
+    [Fact]
+    public void AnUntouchedOptionalObject_IsOmitted()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithPatient(required: false), specVersion: 9);
+        IReadOnlyDictionary<string, ConsultInputValue>? sent = null;
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sent = value),
+                Arg.Any<string?>(), Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
+            .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.Equal(new[] { "consult_draft" }, sent!.Keys);
+    }
+
+    [Fact]
+    public void AFieldThatDoesNotParse_IsNamedWithItsObject()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithPatient(), specVersion: 9);
+
+        var page = Render<Consults>();
+        page.Find("input[inputmode=decimal]").Change("forty");
+
+        Assert.Equal(
+            "Patient: Age must be a plain decimal number, like 12 or 1.50.",
+            page.Find(".input-field__error").TextContent.Trim());
+    }
+
     [Fact]
     public async Task SwitchingPackages_CarriesAChosenBoolean()
     {

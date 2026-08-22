@@ -86,6 +86,28 @@
                                         Looks wrong? Remove the file and paste the text instead.
                                     </span>
                                 }
+                                else if (field.Type == WorkflowInputTypes.Object)
+                                {
+                                    @* v9: a field group — one labelled control per
+                                       declared field. An untouched optional object is
+                                       absent; a touched one answers every required
+                                       field before the run opens. *@
+                                    <div class="input-field__group" @onclick:stopPropagation="true">
+                                        @foreach (var slot in field.Fields)
+                                        {
+                                            <label class="input-field__member" @key="slot">
+                                                <span>
+                                                    @slot.Label
+                                                    @if (!slot.Required)
+                                                    {
+                                                        <span class="muted-text input-field__optional">(optional)</span>
+                                                    }
+                                                </span>
+                                                @ScalarControl(slot)
+                                            </label>
+                                        }
+                                    </div>
+                                }
                                 else
                                 {
                                     @* v8/v9: one control per scalar type, the same
