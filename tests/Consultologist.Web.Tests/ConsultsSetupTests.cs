@@ -23,7 +23,7 @@ public class ConsultsSetupTests : ClientRenderTestContext
             .ToList();
 
     private static IReadOnlyList<IElement> Fields(IRenderedComponent<Consults> page) =>
-        page.FindAll("label.input-field");
+        page.FindAll(".input-field");
 
     [Fact]
     public void LegacyPackage_RendersTheSingleDraftField()
@@ -127,7 +127,7 @@ public class ConsultsSetupTests : ClientRenderTestContext
             .Returns(DocumentExtractionOutcome.Refused(error));
 
     private static IElement Field(IRenderedComponent<Consults> page, int index) =>
-        page.FindAll("label.input-field")[index];
+        page.FindAll(".input-field")[index];
 
     [Fact]
     public void AttachingAFile_ReplacesThatSlotsTextAreaOnly()
@@ -461,6 +461,559 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         page.FindAll("select.node-field__input")[0].Change("follow_up");
 
         Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+    }
+
+    // ----- #429: v9 intake controls ----------------------------------------
+
+    private static WorkflowPackageInputResponse[] WithNumber() => new[]
+    {
+        new WorkflowPackageInputResponse("consult_draft", "Consult draft", true),
+        new WorkflowPackageInputResponse("length_of_stay", "Length of stay", false, WorkflowInputTypes.Number)
+    };
+
+    [Fact]
+    public void ANumber_RendersADecimalTextInput()
+    {
+        // Not type=number: the canonical form is the spelling typed, which a
+        // number control would not promise to keep.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNumber(), specVersion: 9);
+
+        var page = Render<Consults>();
+
+        var control = Assert.Single(page.FindAll("input[inputmode=decimal]"));
+        Assert.Equal("Length of stay", control.GetAttribute("aria-label"));
+        Assert.Empty(page.FindAll("input[type=number]"));
+    }
+
+    [Fact]
+    public void ANonNumber_NamesTheFieldAndHoldsTheRun()
+    {
+        // On an OPTIONAL slot: a value that is present and wrong must not be
+        // quietly omitted. Clearing it reopens the gate.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNumber(), specVersion: 9);
+
+        var page = Render<Consults>();
+        page.Find("fluent-text-area").Change("Referral.");
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+
+        page.Find("input[inputmode=decimal]").Change("about a week");
+
+        Assert.Equal(
+            "Length of stay must be a plain decimal number, like 12 or 1.50.",
+            page.Find(".input-field__error").TextContent.Trim());
+        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+
+        page.Find("input[inputmode=decimal]").Change("");
+
+        Assert.Empty(page.FindAll(".input-field__error"));
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void ANumber_TravelsWithTheSpellingTyped()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNumber(), specVersion: 9);
+        IReadOnlyDictionary<string, ConsultInputValue>? sent = null;
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sent = value),
+                Arg.Any<string?>(), Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
+            .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
+
+        var page = Render<Consults>();
+        page.Find("fluent-text-area").Change("Referral.");
+        page.Find("input[inputmode=decimal]").Change("1.50");
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.NotNull(sent);
+        Assert.True(sent!["length_of_stay"].IsNumber);
+        Assert.Equal("1.50", sent["length_of_stay"].Canonical);
+    }
+
+    [Fact]
+    public void AnUntouchedOptionalNumber_IsOmitted()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNumber(), specVersion: 9);
+        IReadOnlyDictionary<string, ConsultInputValue>? sent = null;
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sent = value),
+                Arg.Any<string?>(), Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
+            .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
+
+        var page = Render<Consults>();
+        page.Find("fluent-text-area").Change("Referral.");
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.Equal(new[] { "consult_draft" }, sent!.Keys);
+    }
+
+    private static WorkflowPackageInputResponse[] WithPatient(bool required = true) => new[]
+    {
+        new WorkflowPackageInputResponse("consult_draft", "Consult draft", true),
+        new WorkflowPackageInputResponse("patient", "Patient", required, WorkflowInputTypes.Object,
+            Fields: new[]
+            {
+                new WorkflowPackageFieldResponse("age", "Age", true, WorkflowInputTypes.Number),
+                new WorkflowPackageFieldResponse("sex", "Sex", false, WorkflowInputTypes.Enum, new[] { "female", "male" }),
+                new WorkflowPackageFieldResponse("family_name", "Family name", false)
+            })
+    };
+
+    [Fact]
+    public void AnObject_RendersOneControlPerField()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithPatient(), specVersion: 9);
+
+        var page = Render<Consults>();
+
+        var group = page.Find(".input-field__group");
+        Assert.Equal(
+            new[] { "Age", "Sex", "Family name" },
+            group.QuerySelectorAll("label.input-field__member > span").Select(span => span.TextContent.Replace("(optional)", "").Trim()));
+        Assert.Single(group.QuerySelectorAll("input[inputmode=decimal]"));
+        Assert.Single(group.QuerySelectorAll("select.node-field__input"));
+        Assert.Single(group.QuerySelectorAll("fluent-text-area"));
+    }
+
+    [Fact]
+    public void ARequiredField_GatesTheRun_AndIsNamedOnceTheObjectIsTouched()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithPatient(), specVersion: 9);
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+
+        // Untouched: required, so closed — but nothing is wrong yet.
+        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+        Assert.Empty(page.FindAll(".input-field__error"));
+
+        // Touched through an optional field: the required one is now named.
+        page.Find(".input-field__group select.node-field__input").Change("female");
+        Assert.Equal("Patient: Age is required.", page.Find(".input-field__error").TextContent.Trim());
+        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+
+        page.Find("input[inputmode=decimal]").Change("41");
+        Assert.Empty(page.FindAll(".input-field__error"));
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void AnObject_TravelsInFieldOrder_WithBlankOptionalFieldsOmitted()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithPatient(), specVersion: 9);
+        IReadOnlyDictionary<string, ConsultInputValue>? sent = null;
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sent = value),
+                Arg.Any<string?>(), Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
+            .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.FindAll("fluent-text-area")[1].Change("Smith");
+        page.Find("input[inputmode=decimal]").Change("41");
+        page.FindAll("fluent-button").Last().Click();
+
+        var patient = sent!["patient"];
+        Assert.True(patient.IsObject);
+        Assert.Equal(new[] { "age", "family_name" }, patient.Fields!.Select(entry => entry.Id));
+        Assert.True(patient.Fields![0].Value.IsNumber);
+        Assert.Equal("41", patient.Fields[0].Value.Canonical);
+    }
+
+    [Fact]
+    public void AnUntouchedOptionalObject_IsOmitted()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithPatient(required: false), specVersion: 9);
+        IReadOnlyDictionary<string, ConsultInputValue>? sent = null;
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sent = value),
+                Arg.Any<string?>(), Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
+            .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.Equal(new[] { "consult_draft" }, sent!.Keys);
+    }
+
+    [Fact]
+    public void AFieldThatDoesNotParse_IsNamedWithItsObject()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithPatient(), specVersion: 9);
+
+        var page = Render<Consults>();
+        page.Find("input[inputmode=decimal]").Change("forty");
+
+        Assert.Equal(
+            "Patient: Age must be a plain decimal number, like 12 or 1.50.",
+            page.Find(".input-field__error").TextContent.Trim());
+    }
+
+    private static WorkflowPackageInputResponse[] WithNotes(bool required = false, string items = WorkflowInputTypes.Text) => new[]
+    {
+        new WorkflowPackageInputResponse("consult_draft", "Consult draft", true),
+        new WorkflowPackageInputResponse("prior_notes", "Prior notes", required, WorkflowInputTypes.Array,
+            items == WorkflowInputTypes.Enum ? new[] { "clinic", "ward" } : null,
+            Items: items)
+    };
+
+    private static WorkflowPackageInputResponse[] WithLabs() => new[]
+    {
+        new WorkflowPackageInputResponse("consult_draft", "Consult draft", true),
+        new WorkflowPackageInputResponse("labs", "Labs", false, WorkflowInputTypes.Array, Items: WorkflowInputTypes.Object,
+            Fields: new[]
+            {
+                new WorkflowPackageFieldResponse("name", "Test", true),
+                new WorkflowPackageFieldResponse("value", "Value", true, WorkflowInputTypes.Number)
+            })
+    };
+
+    private IReadOnlyDictionary<string, ConsultInputValue>? sentInputs;
+
+    private void CaptureSubmit() =>
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sentInputs = value),
+                Arg.Any<string?>(), Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
+            .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
+
+    [Fact]
+    public void AnArray_StartsWithNoRowsAndAnAddButton()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+
+        var page = Render<Consults>();
+
+        Assert.Empty(page.FindAll(".input-field__row"));
+        Assert.Equal("+ Add entry", page.Find(".input-field__add").TextContent.Trim());
+    }
+
+    [Fact]
+    public void Rows_AreAddedRemovedAndMoved_AndTravelInOrder()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        CaptureSubmit();
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.Find(".input-field__add").Click();
+        page.Find(".input-field__add").Click();
+        page.Find(".input-field__add").Click();
+        Assert.Equal(3, page.FindAll(".input-field__row").Count);
+
+        var areas = page.FindAll("fluent-text-area");
+        areas[1].Change("One.");
+        areas[2].Change("Two.");
+        areas[3].Change("Three.");
+
+        // The third moves up, the first is removed: Three, Two.
+        page.FindAll("button[title='Move up']")[2].Click();
+        page.FindAll("button[title='Remove entry']")[0].Click();
+        Assert.Equal(2, page.FindAll(".input-field__row").Count);
+
+        page.FindAll("fluent-button").Last().Click();
+
+        var notes = sentInputs!["prior_notes"];
+        Assert.True(notes.IsArray);
+        Assert.Equal(new[] { "Three.", "Two." }, notes.Elements!.Select(element => element.Canonical));
+    }
+
+    [Fact]
+    public void ARequiredArrayWithNoRows_KeepsTheGateClosed()
+    {
+        // No rows is absent, and a required slot cannot be absent — closed
+        // without complaint, like a blank required textarea.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(required: true), specVersion: 9);
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+
+        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+        Assert.Empty(page.FindAll(".input-field__error"));
+    }
+
+    [Fact]
+    public void AnOptionalArrayWithNoRows_IsOmitted()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(required: false), specVersion: 9);
+        CaptureSubmit();
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.Equal(new[] { "consult_draft" }, sentInputs!.Keys);
+    }
+
+    [Fact]
+    public void AnEmptyRow_NamesItselfAndHoldsTheRun()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.Find(".input-field__add").Click();
+        page.Find(".input-field__add").Click();
+        page.FindAll("fluent-text-area")[1].Change("One.");
+
+        Assert.Equal("Prior notes row 2 is empty; fill it in or remove it.", page.Find(".input-field__error").TextContent.Trim());
+        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+
+        page.FindAll("button[title='Remove entry']")[1].Click();
+        Assert.Empty(page.FindAll(".input-field__error"));
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void AnArrayOfObjects_RendersAFieldGroupPerRow_AndTravelsAsObjects()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithLabs(), specVersion: 9);
+        CaptureSubmit();
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.Find(".input-field__add").Click();
+        page.Find(".input-field__add").Click();
+
+        Assert.Equal(2, page.FindAll(".input-field__row").Count);
+        Assert.Equal(4, page.FindAll(".input-field__row label.input-field__member").Count);
+
+        page.FindAll("fluent-text-area")[1].Change("Sodium");
+        page.FindAll("input[inputmode=decimal]")[0].Change("138");
+        page.FindAll("fluent-text-area")[2].Change("Potassium");
+        Assert.Equal("Labs row 2: Value is required.", page.Find(".input-field__error").TextContent.Trim());
+        page.FindAll("input[inputmode=decimal]")[1].Change("4.1");
+        Assert.Empty(page.FindAll(".input-field__error"));
+
+        page.FindAll("fluent-button").Last().Click();
+
+        var labs = sentInputs!["labs"];
+        Assert.True(labs.IsArray);
+        Assert.Equal(2, labs.Elements!.Count);
+        Assert.Equal(new[] { "name", "value" }, labs.Elements[0].Fields!.Select(entry => entry.Id));
+        Assert.Equal("4.1", labs.Elements[1].Fields![1].Value.Canonical);
+    }
+
+    [Fact]
+    public void AnArrayOfEnums_OffersTheDeclaredValuesPerRow()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(items: WorkflowInputTypes.Enum), specVersion: 9);
+
+        var page = Render<Consults>();
+        page.Find(".input-field__add").Click();
+
+        var options = page.Find(".input-field__row select.node-field__input").QuerySelectorAll("option").Select(option => option.GetAttribute("value"));
+        Assert.Equal(new[] { "", "clinic", "ward" }, options);
+    }
+
+    // ----- #429: several documents for one slot ----------------------------
+
+    /// <summary>Each file reads as its own text, so order is observable.</summary>
+    private void WithExtractionOfEachFile() =>
+        DocumentService.ExtractAsync(Arg.Any<byte[]>(), Arg.Any<string>())
+            .Returns(call =>
+            {
+                var text = System.Text.Encoding.UTF8.GetString(call.Arg<byte[]>());
+                return text.StartsWith("BAD", StringComparison.Ordinal)
+                    ? DocumentExtractionOutcome.Refused("This PDF has no text layer, so it is a scan or a fax.")
+                    : new DocumentExtractionOutcome(text, "text/1", text.Length, null);
+            });
+
+    private IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>? sentFiles;
+
+    private void CaptureSubmitWithFiles() =>
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sentInputs = value),
+                Arg.Any<string?>(), Arg.Any<DateTimeOffset?>(),
+                Arg.Do<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>(value => sentFiles = value))
+            .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
+
+    private static IRenderedComponent<Microsoft.AspNetCore.Components.Forms.InputFile> FileInput(
+        IRenderedComponent<Consults> page,
+        int index) =>
+        page.FindComponents<Microsoft.AspNetCore.Components.Forms.InputFile>()[index];
+
+    private static string FieldText(IRenderedComponent<Consults> page, int index) =>
+        page.FindAll("fluent-text-area")[index].GetAttribute("current-value")
+            ?? page.FindAll("fluent-text-area")[index].GetAttribute("value")
+            ?? string.Empty;
+
+    private static IEnumerable<string> ChipNames(IRenderedComponent<Consults> page) =>
+        page.FindAll(".input-field__document .input-field__chip-name").Select(chip => chip.TextContent.Trim());
+
+    [Fact]
+    public void TwoFilesSelectedAtOnce_AttachInSelectionOrder()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+
+        var page = Render<Consults>();
+        FileInput(page, 1).UploadFiles(
+            InputFileContent.CreateFromText("First note.", "first.txt"),
+            InputFileContent.CreateFromText("Second note.", "second.txt"));
+
+        Assert.Equal(new[] { "first.txt", "second.txt" }, ChipNames(page));
+        Assert.Equal(
+            new[] { "First note.", "Second note." },
+            page.FindAll(".input-field__document .input-field__preview").Select(preview => preview.TextContent.Trim()));
+        // Document mode: the rows are hidden, the picker stays to append.
+        Assert.Empty(page.FindAll(".input-field__row"));
+        Assert.Empty(page.FindAll(".input-field__add"));
+    }
+
+    [Fact]
+    public void MovingADocumentDown_ReordersWhatIsSent()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+        CaptureSubmitWithFiles();
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        FileInput(page, 1).UploadFiles(
+            InputFileContent.CreateFromText("First note.", "first.txt"),
+            InputFileContent.CreateFromText("Second note.", "second.txt"));
+        page.FindAll("button[title='Move down']")[0].Click();
+        Assert.Equal(new[] { "second.txt", "first.txt" }, ChipNames(page));
+
+        page.FindAll("fluent-button").Last().Click();
+
+        var documents = sentFiles!["prior_notes"];
+        Assert.Equal(
+            new[] { "Second note.", "First note." },
+            documents.Select(document => System.Text.Encoding.UTF8.GetString(document.Content)));
+        Assert.False(sentInputs!.ContainsKey("prior_notes"));
+    }
+
+    [Fact]
+    public void RemovingOneDocument_KeepsTheOthers_AndRemoveAllGivesBackTheRows()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+
+        var page = Render<Consults>();
+        page.Find(".input-field__add").Click();
+        page.FindAll("fluent-text-area")[1].Change("Typed row.");
+        FileInput(page, 1).UploadFiles(
+            InputFileContent.CreateFromText("First note.", "first.txt"),
+            InputFileContent.CreateFromText("Second note.", "second.txt"));
+
+        page.FindAll("button[title='Remove this file']")[0].Click();
+        Assert.Equal(new[] { "second.txt" }, ChipNames(page));
+
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Remove all")).Click();
+        Assert.Empty(page.FindAll(".input-field__document"));
+        Assert.Single(page.FindAll(".input-field__row"));
+        Assert.Equal("Typed row.", FieldText(page, 1));
+    }
+
+    [Fact]
+    public void APerFileRefusal_NamesTheFileAndKeepsTheOthers()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+
+        var page = Render<Consults>();
+        FileInput(page, 1).UploadFiles(
+            InputFileContent.CreateFromText("First note.", "first.txt"),
+            InputFileContent.CreateFromText("BAD scan", "scan.pdf"));
+
+        Assert.Equal(new[] { "first.txt" }, ChipNames(page));
+        Assert.Equal(
+            "scan.pdf: This PDF has no text layer, so it is a scan or a fax.",
+            page.Find(".input-field__file-error").TextContent.Trim());
+    }
+
+    [Fact]
+    public void ALoneRefusedFile_KeepsTheServersSentenceVerbatim()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+
+        var page = Render<Consults>();
+        FileInput(page, 1).UploadFiles(InputFileContent.CreateFromText("BAD scan", "scan.pdf"));
+
+        Assert.Equal("This PDF has no text layer, so it is a scan or a fax.", page.Find(".input-field__file-error").TextContent.Trim());
+    }
+
+    [Fact]
+    public void OnlyAnArrayOfTextTakesSeveral()
+    {
+        // A text slot's picker is single; an array of text's is multiple; an
+        // array of anything else has none — the server's own rule.
+        var inputs = new[]
+        {
+            new WorkflowPackageInputResponse("consult_draft", "Consult draft", true),
+            new WorkflowPackageInputResponse("prior_notes", "Prior notes", false, WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text),
+            new WorkflowPackageInputResponse("visits", "Visits", false, WorkflowInputTypes.Array, Items: WorkflowInputTypes.Date)
+        };
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: inputs, specVersion: 9);
+
+        var page = Render<Consults>();
+
+        var pickers = page.FindAll("input[type=file]");
+        Assert.Equal(2, pickers.Count);
+        Assert.False(pickers[0].HasAttribute("multiple"));
+        Assert.True(pickers[1].HasAttribute("multiple"));
+    }
+
+    [Fact]
+    public void ReattachingAStructuredRun_RestoresItsRowsAndFields()
+    {
+        // #429: the memento carries the inputs as typed, so "Edit inputs" on a
+        // run gives back the rows and fields that ran, not their text.
+        const string JobId = "0123456789abcdef0123456789abcdef";
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithLabs(), specVersion: 9);
+        JobSession.Current = new ConsultJobMemento(
+            JobId,
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["consult_draft"] = "Referral.", ["labs"] = "Test: Sodium\nValue: 138" },
+            new[] { new ConsultJobBlock("s:hpi", "History") },
+            new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["consult_draft"] = ConsultInputValue.OfText("Referral."),
+                ["labs"] = ConsultInputValue.OfArray(new[]
+                {
+                    ConsultInputValue.OfObject(new[] { new ConsultInputEntry("name", ConsultInputValue.OfText("Sodium")), new ConsultInputEntry("value", ConsultInputValue.OfNumber("138")) }),
+                    ConsultInputValue.OfObject(new[] { new ConsultInputEntry("name", ConsultInputValue.OfText("Potassium")), new ConsultInputEntry("value", ConsultInputValue.OfNumber("4.1")) })
+                })
+            });
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
+            JobId, "user-1", "Completed", TotalBlockCount: 1, CompletedBlockCount: 1, FailedBlockCount: 0,
+            GeneratedBlocks: new Dictionary<string, string> { ["s:hpi"] = "Section prose." },
+            FailedBlocks: new Dictionary<string, string>(), Success: true, AssembledDocument: "The note."));
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Edit inputs")).Click();
+
+        Assert.Equal(2, page.FindAll(".input-field__row").Count);
+        Assert.Equal("Sodium", FieldText(page, 1));
+        Assert.Equal(new[] { "138", "4.1" }, page.FindAll("input[inputmode=decimal]").Select(input => input.GetAttribute("value")));
+    }
+
+    [Fact]
+    public async Task SwitchingPackages_CarriesAChosenBoolean()
+    {
+        // #429: the whole answer carries into a slot the next package still
+        // declares with the same shape. A chosen boolean used to be dropped
+        // here — Value carried, Flag did not.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: TypedInputs());
+        var page = Render<Consults>();
+        page.FindAll("select.node-field__input")[1].Change("true");
+
+        // Only the package stub moves: re-running WithPinnedPackage would
+        // re-enter its throwing content stub while configuring it.
+        WorkflowService.GetCurrentPackageAsync().Returns(new WorkflowPackageResponse(
+            "general", "v2026.07.11", 7, new[] { Block("s:plan", "Plan") }, TypedInputs(), null));
+        var picker = page.FindComponent<Consultologist.Web.Shared.WorkflowEditor.WorkflowPackagePicker>();
+        await page.InvokeAsync(() => picker.Instance.OnPinned.InvokeAsync());
+
+        Assert.Equal("true", page.FindAll("select.node-field__input")[1].GetAttribute("value"));
     }
 
     [Fact]

@@ -350,7 +350,91 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         {
             Assert.False(input.TryGetProperty("type", out _));
             Assert.False(input.TryGetProperty("values", out _));
+            // #429: nor the v9 words.
+            Assert.False(input.TryGetProperty("items", out _));
+            Assert.False(input.TryGetProperty("fields", out _));
         });
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public async Task AV9StructuredPackage_KeepsItemsAndFieldsThroughAnUnrelatedRelabel()
+    {
+        // #429: the composer rebuilds the whole inputs list from the editor's
+        // records. Before this, relabelling consult_draft stripped every other
+        // input's items and fields — and the registry refused the result.
+        var (result, sent) = await PublishAndCaptureAsync(page =>
+        {
+            Navigate(page, "Inputs");
+            page.FindAll("li.declared-row input")[1].Change("Referral letter");
+            return Task.CompletedTask;
+        }, EditorFixtures.V9Structured());
+
+        var inputs = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement.GetProperty("inputs").EnumerateArray().ToList();
+
+        Assert.Equal("Referral letter", inputs[0].GetProperty("label").GetString());
+        Assert.Equal("text", inputs[1].GetProperty("items").GetString());
+        Assert.False(inputs[1].TryGetProperty("fields", out _));
+
+        var patientFields = inputs[2].GetProperty("fields").EnumerateArray().ToList();
+        Assert.Equal(new[] { "age", "sex" }, patientFields.Select(f => f.GetProperty("id").GetString()));
+        Assert.Equal("number", patientFields[0].GetProperty("type").GetString());
+        Assert.Equal(new[] { "female", "male" }, patientFields[1].GetProperty("values").EnumerateArray().Select(v => v.GetString()));
+        Assert.False(patientFields[1].GetProperty("required").GetBoolean());
+
+        Assert.Equal("object", inputs[3].GetProperty("items").GetString());
+        Assert.Equal(2, inputs[3].GetProperty("fields").GetArrayLength());
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public async Task RetypingAnArrayToText_ClearsItsItemsAndFields()
+    {
+        // Items belong to an array, fields to an object: a slot retyped to
+        // text carries neither, or the validator refuses the publish.
+        var (result, sent) = await PublishAndCaptureAsync(page =>
+        {
+            Navigate(page, "Inputs");
+            page.FindAll("select.declared-row__type")[3].Change(ClientWorkflow.WorkflowInputTypes.Text);
+            return Task.CompletedTask;
+        }, EditorFixtures.V9Structured());
+
+        var labs = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement.GetProperty("inputs")[3];
+
+        Assert.False(labs.TryGetProperty("type", out _));
+        Assert.False(labs.TryGetProperty("items", out _));
+        Assert.False(labs.TryGetProperty("fields", out _));
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public async Task ADraftCarryingStructure_RestoresItemsAndFields()
+    {
+        // The draft slices mirror the editor's records; a reload that dropped
+        // items and fields would publish a stripped package from a draft that
+        // looked complete.
+        var package = EditorFixtures.V9Structured();
+        JSInterop.Setup<string?>("localStorage.getItem", $"workflow-editor-draft:{package.Ref}")
+            .SetResult("""
+                {
+                  "Version": 11,
+                  "Inputs": [
+                    { "Id": "consult_draft", "Label": "Consult draft", "Required": true },
+                    { "Id": "labs", "Label": "Labs (drafted)", "Required": false, "Type": "array", "Items": "object",
+                      "Fields": [ { "Id": "name", "Label": "Test", "Required": true },
+                                  { "Id": "value", "Label": "Value", "Required": true, "Type": "number" } ] }
+                  ]
+                }
+                """);
+
+        var (result, sent) = await PublishAndCaptureAsync(_ => Task.CompletedTask, package);
+
+        var labs = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement.GetProperty("inputs")[1];
+
+        Assert.Equal("Labs (drafted)", labs.GetProperty("label").GetString());
+        Assert.Equal("object", labs.GetProperty("items").GetString());
+        Assert.Equal(new[] { "name", "value" }, labs.GetProperty("fields").EnumerateArray().Select(f => f.GetProperty("id").GetString()));
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
 

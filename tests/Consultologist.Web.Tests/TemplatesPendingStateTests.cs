@@ -154,7 +154,10 @@ public class TemplatesPendingStateTests : ClientRenderTestContext
     /// </summary>
     private static object? Probe(Type type, int depth)
     {
-        if (depth > 4)
+        // #429: InputView.Fields[i].Values[j] puts a string at depth 5
+        // (list → InputView → list → FieldView → list → string). A bound that
+        // threw there would drop inputsEdit from discovery silently.
+        if (depth > 6)
         {
             throw new InvalidOperationException("probe nested too deeply");
         }

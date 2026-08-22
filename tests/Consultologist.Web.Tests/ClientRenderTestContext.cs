@@ -76,10 +76,13 @@ public abstract class ClientRenderTestContext : BunitContext
         IReadOnlyList<WorkflowPackageBlockResponse>? blocks = null,
         IReadOnlyList<WorkflowPackageInputResponse>? inputs = null,
         IReadOnlyList<WorkflowPackageResultResponse>? results = null,
-        string version = "v2026.07.10")
+        string version = "v2026.07.10",
+        // #429: v9 declares shapes the form renders; the default keeps the
+        // v6/v7 reading every earlier test relies on.
+        int? specVersion = null)
     {
         WorkflowService.GetCurrentPackageAsync().Returns(new WorkflowPackageResponse(
-            "general", version, inputs is null ? 6 : 7, blocks, inputs, results));
+            "general", version, specVersion ?? (inputs is null ? 6 : 7), blocks, inputs, results));
 
         // The run rail's enrichment; failures here are swallowed by the page,
         // so a rejected task is a legitimate "content endpoint unavailable".

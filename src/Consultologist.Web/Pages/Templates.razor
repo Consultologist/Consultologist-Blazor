@@ -531,6 +531,13 @@
                                             value="@WorkflowInputTypes.Of(slot)"
                                             @onchange="args => RetypeInputAsync(slot, args.Value?.ToString())"
                                             aria-label="@($"Type for input {slot.Id}")">
+                                        @* v9 (#429): a type this editor does not yet author is
+                                           shown as itself rather than as "text". Choosing it
+                                           again is a no-op. *@
+                                        @if (WorkflowInputTypes.Of(slot) is not (WorkflowInputTypes.Text or WorkflowInputTypes.Date or WorkflowInputTypes.Enum or WorkflowInputTypes.Boolean))
+                                        {
+                                            <option value="@WorkflowInputTypes.Of(slot)">@WorkflowInputTypes.Of(slot)</option>
+                                        }
                                         <option value="@WorkflowInputTypes.Text">text</option>
                                         <option value="@WorkflowInputTypes.Date">date</option>
                                         <option value="@WorkflowInputTypes.Enum">enum</option>
@@ -1977,13 +1984,22 @@
 
         if (index >= 0)
         {
+            // v9 (#429): items belong to an array, fields to an object or an
+            // array of objects, values to an enum or an array of enums. Kept
+            // across a retype that still wants them, cleared otherwise.
+            var keepsItems = type == WorkflowInputTypes.Array;
+            var elementType = keepsItems ? inputs[index].Items : null;
+            var keepsFields = type == WorkflowInputTypes.Object || elementType == WorkflowInputTypes.Object;
+            var keepsValues = type == WorkflowInputTypes.Enum || elementType == WorkflowInputTypes.Enum;
+
             inputs[index] = inputs[index] with
             {
                 // text is the default, so it is written as absence rather than
                 // as the word — a v7 declaration stays byte-identical.
                 Type = type == WorkflowInputTypes.Text ? null : type,
-                // Values belong to enum and to nothing else.
-                Values = type == WorkflowInputTypes.Enum ? inputs[index].Values ?? new List<string>() : null
+                Values = keepsValues ? inputs[index].Values ?? new List<string>() : null,
+                Items = keepsItems ? inputs[index].Items : null,
+                Fields = keepsFields ? inputs[index].Fields : null
             };
             declaredError = null;
         }
@@ -3462,6 +3478,11 @@
     // #316: Type and Values ride here or a typed input is silently untyped on
     // reload. Trailing optionals — a draft written before v8 restores with null.
     private sealed record DraftInput(
+        string Id, string Label, bool Required, string? Type = null, List<string>? Values = null,
+        // v9 (#429): the structure rides too, or a reload strips it.
+        string? Items = null, List<DraftField>? Fields = null);
+
+    private sealed record DraftField(
         string Id, string Label, bool Required, string? Type = null, List<string>? Values = null);
 
     private sealed record DraftResult(string Id, string Node, string Label, string? When = null);
@@ -3710,7 +3731,10 @@
         if (IsV7 && draftInputs is { Count: > 0 })
         {
             inputsEdit = draftInputs
-                .Select(input => new WorkflowManifestReader.InputView(input.Id, input.Label, input.Required, input.Type, input.Values))
+                .Select(input => new WorkflowManifestReader.InputView(
+                    input.Id, input.Label, input.Required, input.Type, input.Values,
+                    input.Items,
+                    input.Fields?.Select(f => new WorkflowManifestReader.FieldView(f.Id, f.Label, f.Required, f.Type, f.Values)).ToList()))
                 .ToList();
         }
 
@@ -3804,7 +3828,10 @@
             aggregateEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             resultEdit,
             addedPrompts.Select(p => new DraftAddedPrompt(p.Id, p.Text)).ToList(),
-            inputsEdit?.Select(i => new DraftInput(i.Id, i.Label, i.Required, i.Type, i.Values?.ToList())).ToList(),
+            inputsEdit?.Select(i => new DraftInput(
+                i.Id, i.Label, i.Required, i.Type, i.Values?.ToList(),
+                i.Items,
+                i.Fields?.Select(f => new DraftField(f.Id, f.Label, f.Required, f.Type, f.Values?.ToList())).ToList())).ToList(),
             resultsEdit?.Select(r => new DraftResult(r.Id, r.Node, r.Label, r.When)).ToList(),
             new Dictionary<string, string>(addedScalars, StringComparer.Ordinal),
             specVersionBump);
@@ -4382,6 +4409,40 @@
                         {
                             node["values"] = new System.Text.Json.Nodes.JsonArray(
                                 input.Values.Select(v => (System.Text.Json.Nodes.JsonNode?)v).ToArray());
+                        }
+
+                        // v9 (#429): carried as read. Omitted when absent, so
+                        // every v7 and v8 package composes the bytes it did.
+                        if (input.Items != null)
+                        {
+                            node["items"] = input.Items;
+                        }
+
+                        if (input.Fields is { Count: > 0 })
+                        {
+                            node["fields"] = new System.Text.Json.Nodes.JsonArray(
+                                input.Fields.Select(field =>
+                                {
+                                    var fieldNode = new System.Text.Json.Nodes.JsonObject
+                                    {
+                                        ["id"] = field.Id,
+                                        ["label"] = field.Label,
+                                        ["required"] = field.Required
+                                    };
+
+                                    if (field.Type != null)
+                                    {
+                                        fieldNode["type"] = field.Type;
+                                    }
+
+                                    if (field.Values is { Count: > 0 })
+                                    {
+                                        fieldNode["values"] = new System.Text.Json.Nodes.JsonArray(
+                                            field.Values.Select(v => (System.Text.Json.Nodes.JsonNode?)v).ToArray());
+                                    }
+
+                                    return (System.Text.Json.Nodes.JsonNode?)fieldNode;
+                                }).ToArray());
                         }
 
                         return (System.Text.Json.Nodes.JsonNode?)node;

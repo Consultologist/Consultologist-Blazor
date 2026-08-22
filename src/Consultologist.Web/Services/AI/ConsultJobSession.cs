@@ -19,7 +19,13 @@ public sealed record ConsultJobBlock(string Id, string Name);
 public sealed record ConsultJobMemento(
     string JobId,
     IReadOnlyDictionary<string, string> Inputs,
-    IReadOnlyList<ConsultJobBlock> Blocks);
+    IReadOnlyList<ConsultJobBlock> Blocks,
+    // #429: the inputs as typed — a number, an object, an array of rows —
+    // so a structured slot re-attaches as itself rather than as its text.
+    // A document slot rides as the text the server read, the way the text
+    // map always carried it. Trailing optional: a memento written before
+    // this restores from the text.
+    IReadOnlyDictionary<string, ConsultInputValue>? Values = null);
 
 /// <summary>
 /// #207: per-tab memory of the most recently submitted consult job, so

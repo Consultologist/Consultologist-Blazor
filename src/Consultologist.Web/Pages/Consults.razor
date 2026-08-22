@@ -63,7 +63,56 @@
                                    attached document, never both. The text is
                                    kept underneath so removing the file gives
                                    it back. *@
-                                @if (field.HasFile)
+                                @if (field.HasFile && field.TakesSeveralDocuments)
+                                {
+                                    @* #428/#429: several documents, in the order chosen —
+                                       the order the elements hash in. Rows are kept
+                                       underneath; "Remove all" gives them back. *@
+                                    <div class="input-field__documents" @onclick:stopPropagation="true">
+                                        @for (var i = 0; i < field.Documents.Count; i++)
+                                        {
+                                            var index = i;
+                                            var document = field.Documents[index];
+                                            var currentField = field;
+                                            <div class="input-field__document" @key="document">
+                                                <span class="input-field__chip">
+                                                    <span class="muted-text input-field__row-number">@(index + 1).</span>
+                                                    <span class="input-field__chip-name">@document.FileName</span>
+                                                    @if (document.PageCount is { } pages)
+                                                    {
+                                                        <span class="muted-text">@pages page@(pages == 1 ? "" : "s")</span>
+                                                    }
+                                                    <span class="input-field__row-buttons">
+                                                        <button type="button" class="aggregate-row__button" title="Move up"
+                                                                disabled="@(index == 0)"
+                                                                @onclick="() => MoveDocument(currentField, index, -1)">↑</button>
+                                                        <button type="button" class="aggregate-row__button" title="Move down"
+                                                                disabled="@(index == currentField.Documents.Count - 1)"
+                                                                @onclick="() => MoveDocument(currentField, index, +1)">↓</button>
+                                                        <button type="button" class="aggregate-row__button" title="Remove this file"
+                                                                @onclick="() => RemoveDocument(currentField, index)">×</button>
+                                                    </span>
+                                                </span>
+                                                <div class="input-field__preview">@document.PreviewText</div>
+                                            </div>
+                                        }
+                                        <span class="input-field__file">
+                                            <InputFile multiple OnChange="args => LoadFileAsync(field, args)" />
+                                            @if (field.IsReading)
+                                            {
+                                                <FluentProgressRing style="width: 16px; height: 16px;" />
+                                                <span class="muted-text">Reading&hellip;</span>
+                                            }
+                                            <FluentButton Appearance="Appearance.Stealth"
+                                                          Title="Remove every file and type instead"
+                                                          @onclick="() => RemoveFile(field)">Remove all</FluentButton>
+                                        </span>
+                                        <span class="muted-text input-field__hint">
+                                            Looks wrong? Remove the file and type the entry instead.
+                                        </span>
+                                    </div>
+                                }
+                                else if (field.HasFile)
                                 {
                                     <span class="input-field__chip" @onclick:stopPropagation="true">
                                         <span class="input-field__chip-name">@field.FileName</span>
@@ -86,67 +135,119 @@
                                         Looks wrong? Remove the file and paste the text instead.
                                     </span>
                                 }
-                                else if (field.Type == WorkflowInputTypes.Date)
+                                else if (field.Type == WorkflowInputTypes.Object)
                                 {
-                                    @* v8: the control's value IS the contract. The server
-                                       accepts only ISO YYYY-MM-DD and rejects rather than
-                                       normalises, so this is not a display preference.
-                                       Empty until chosen — never today's date. *@
-                                    <input type="date"
-                                           class="node-field__input"
-                                           value="@field.Value"
-                                           @onchange="args => field.Value = args.Value?.ToString() ?? string.Empty"
-                                           aria-label="@field.Label" />
-                                }
-                                else if (field.Type == WorkflowInputTypes.Enum)
-                                {
-                                    @* No selection until one is made: a plausible default
-                                       is still a value nobody chose. *@
-                                    <select class="node-field__input"
-                                            value="@field.Value"
-                                            @onchange="args => field.Value = args.Value?.ToString() ?? string.Empty"
-                                            aria-label="@field.Label">
-                                        <option value="">choose…</option>
-                                        @foreach (var option in field.Values)
+                                    @* v9: a field group — one labelled control per
+                                       declared field. An untouched optional object is
+                                       absent; a touched one answers every required
+                                       field before the run opens. *@
+                                    <div class="input-field__group" @onclick:stopPropagation="true">
+                                        @foreach (var slot in field.Fields)
                                         {
-                                            <option value="@option">@option</option>
+                                            <label class="input-field__member" @key="slot">
+                                                <span>
+                                                    @slot.Label
+                                                    @if (!slot.Required)
+                                                    {
+                                                        <span class="muted-text input-field__optional">(optional)</span>
+                                                    }
+                                                </span>
+                                                @ScalarControl(slot)
+                                            </label>
                                         }
-                                    </select>
+                                    </div>
                                 }
-                                else if (field.Type == WorkflowInputTypes.Boolean)
+                                else if (field.Type == WorkflowInputTypes.Array)
                                 {
-                                    @* Tri-state on purpose: unanswered is not false, and a
-                                       required boolean nobody touched must block the run
-                                       rather than quietly submit false. *@
-                                    <select class="node-field__input"
-                                            value="@(field.Flag is null ? string.Empty : field.Flag.Value ? "true" : "false")"
-                                            @onchange="args => SetFlag(field, args.Value?.ToString())"
-                                            aria-label="@field.Label">
-                                        <option value="">choose…</option>
-                                        <option value="true">Yes</option>
-                                        <option value="false">No</option>
-                                    </select>
+                                    @* v9: a row set in the order the clinician puts
+                                       it — the order the elements hash in. No rows is
+                                       absent; an empty row names itself and holds the
+                                       run rather than being dropped. *@
+                                    <div class="input-field__group" @onclick:stopPropagation="true">
+                                        @for (var i = 0; i < field.Rows.Count; i++)
+                                        {
+                                            var index = i;
+                                            var row = field.Rows[index];
+                                            var currentField = field;
+                                            <div class="input-field__row" @key="row">
+                                                <span class="muted-text input-field__row-number">@(index + 1).</span>
+                                                <div class="input-field__row-body">
+                                                    @if (row.Scalar is { } scalar)
+                                                    {
+                                                        @ScalarControl(scalar)
+                                                    }
+                                                    else
+                                                    {
+                                                        @foreach (var slot in row.Fields!)
+                                                        {
+                                                            <label class="input-field__member" @key="slot">
+                                                                <span>
+                                                                    @slot.Label
+                                                                    @if (!slot.Required)
+                                                                    {
+                                                                        <span class="muted-text input-field__optional">(optional)</span>
+                                                                    }
+                                                                </span>
+                                                                @ScalarControl(slot)
+                                                            </label>
+                                                        }
+                                                    }
+                                                </div>
+                                                <span class="input-field__row-buttons">
+                                                    <button type="button" class="aggregate-row__button" title="Move up"
+                                                            disabled="@(index == 0)"
+                                                            @onclick="() => currentField.MoveRow(index, -1)">↑</button>
+                                                    <button type="button" class="aggregate-row__button" title="Move down"
+                                                            disabled="@(index == currentField.Rows.Count - 1)"
+                                                            @onclick="() => currentField.MoveRow(index, +1)">↓</button>
+                                                    <button type="button" class="aggregate-row__button" title="Remove entry"
+                                                            @onclick="() => currentField.RemoveRow(index)">×</button>
+                                                </span>
+                                            </div>
+                                        }
+                                        <button type="button" class="input-field__add"
+                                                @onclick="() => field.AddRow()">+ Add entry</button>
+                                        @if (field.TakesSeveralDocuments)
+                                        {
+                                            @* Or attach documents: each becomes one entry, in the
+                                               order chosen (v9 § 7). The same no-filter rule as the
+                                               single picker. *@
+                                            <span class="input-field__file">
+                                                <InputFile multiple OnChange="args => LoadFileAsync(field, args)" />
+                                                @if (field.IsReading)
+                                                {
+                                                    <FluentProgressRing style="width: 16px; height: 16px;" />
+                                                    <span class="muted-text">Reading&hellip;</span>
+                                                }
+                                            </span>
+                                        }
+                                    </div>
                                 }
                                 else
                                 {
-                                    @* Bound to the field object's own property: Blazor's
-                                       expression formatter cannot parse an indexer whose
-                                       argument is a property access. *@
-                                    <FluentTextArea @bind-Value="field.Value"
-                                                    Placeholder="@field.Placeholder"
-                                                    Rows="@(inputFields.Count == 1 ? 16 : 6)" />
-                                    @* No accept filter and no extension list: the
-                                       parser is the only thing that knows what a
-                                       format is, and a second opinion here could
-                                       disagree with it (docs/DOCUMENT_INPUT.md § 1). *@
-                                    <span class="input-field__file" @onclick:stopPropagation="true">
-                                        <InputFile OnChange="args => LoadFileAsync(field, args)" />
-                                        @if (field.IsReading)
-                                        {
-                                            <FluentProgressRing style="width: 16px; height: 16px;" />
-                                            <span class="muted-text">Reading&hellip;</span>
-                                        }
-                                    </span>
+                                    @* v8/v9: one control per scalar type, the same
+                                       fragment that draws a row's element and an
+                                       object's field. *@
+                                    @ScalarControl(field.Scalar)
+                                    @if (field.TakesOneDocument)
+                                    {
+                                        @* No accept filter and no extension list: the
+                                           parser is the only thing that knows what a
+                                           format is, and a second opinion here could
+                                           disagree with it (docs/DOCUMENT_INPUT.md § 1). *@
+                                        <span class="input-field__file" @onclick:stopPropagation="true">
+                                            <InputFile OnChange="args => LoadFileAsync(field, args)" />
+                                            @if (field.IsReading)
+                                            {
+                                                <FluentProgressRing style="width: 16px; height: 16px;" />
+                                                <span class="muted-text">Reading&hellip;</span>
+                                            }
+                                        </span>
+                                    }
+                                }
+                                @if (field.Problem is { } problem)
+                                {
+                                    <span class="input-field__error">@problem</span>
                                 }
                                 @if (field.FileError != null)
                                 {
@@ -255,7 +356,7 @@
                             }
                             <FluentButton Appearance="Appearance.Accent"
                                           @onclick="CreateConsultAsync"
-                                          Disabled="@(isBlocksLoading || isAiRequestLoading || isSchedulingRequest || !HasEveryRequiredInput || packageBlocks.Count == 0)">
+                                          Disabled="@(isBlocksLoading || isAiRequestLoading || isSchedulingRequest || !HasEveryRequiredInput || !HasNoInputProblems || packageBlocks.Count == 0)">
                                 @(runOvernight ? "Schedule consult" : "Create consult")
                             </FluentButton>
                         </div>
@@ -559,6 +660,77 @@
 </AuthorizeView>
 
 @code {
+  /// <summary>
+  /// One control per scalar type (v8; v9 adds number). Drawn at the top of a
+  /// scalar slot, inside an array's row and inside an object's field group —
+  /// one fragment, so the three sites cannot drift. A fragment rather than a
+  /// component: its handlers run in this page's own render context, so the
+  /// submit gate re-evaluates without a callback layer.
+  /// </summary>
+  private RenderFragment<ScalarSlot> ScalarControl => slot =>
+    @<text>
+      @if (slot.Type == WorkflowInputTypes.Date)
+      {
+        @* v8: the control's value IS the contract. The server accepts only
+           ISO YYYY-MM-DD and rejects rather than normalises, so this is not
+           a display preference. Empty until chosen — never today's date. *@
+        <input type="date"
+               class="node-field__input"
+               value="@slot.Value"
+               @onchange="args => slot.Value = args.Value?.ToString() ?? string.Empty"
+               aria-label="@slot.Label" />
+      }
+      else if (slot.Type == WorkflowInputTypes.Enum)
+      {
+        @* No selection until one is made: a plausible default is still a
+           value nobody chose. *@
+        <select class="node-field__input"
+                value="@slot.Value"
+                @onchange="args => slot.Value = args.Value?.ToString() ?? string.Empty"
+                aria-label="@slot.Label">
+          <option value="">choose…</option>
+          @foreach (var option in slot.Values)
+          {
+            <option value="@option">@option</option>
+          }
+        </select>
+      }
+      else if (slot.Type == WorkflowInputTypes.Boolean)
+      {
+        @* Tri-state on purpose: unanswered is not false, and a required
+           boolean nobody touched must block the run rather than quietly
+           submit false. *@
+        <select class="node-field__input"
+                value="@(slot.Flag is null ? string.Empty : slot.Flag.Value ? "true" : "false")"
+                @onchange="args => SetFlag(slot, args.Value?.ToString())"
+                aria-label="@slot.Label">
+          <option value="">choose…</option>
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+      }
+      else if (slot.Type == WorkflowInputTypes.Number)
+      {
+        @* v9: a text control, not type=number. The canonical form is the
+           caller's own spelling — "1.50" is sent as "1.50" — and a number
+           control would not promise to keep it. The parse gate is the slot's. *@
+        <input type="text"
+               inputmode="decimal"
+               class="node-field__input input-field__number"
+               value="@slot.Value"
+               @onchange="args => slot.Value = args.Value?.ToString() ?? string.Empty"
+               aria-label="@slot.Label" />
+      }
+      else
+      {
+        @* Bound to the slot's own property: Blazor's expression formatter
+           cannot parse an indexer whose argument is a property access. *@
+        <FluentTextArea @bind-Value="slot.Value"
+                        Placeholder="@slot.Placeholder"
+                        Rows="@slot.Rows" />
+      }
+    </text>;
+
   private static readonly int MaxSseReconnectAttempts = 1;
   private static readonly JsonSerializerOptions SseJsonOptions = new()
   {
@@ -570,7 +742,7 @@
   // renders both eras. Seeded before the package resolves — the setup form
   // renders once first.
   private List<ConsultInputField> inputFields = LegacyInputs
-    .Select(input => new ConsultInputField(input.Id, input.Label, input.Required))
+    .Select(input => new ConsultInputField(input, textRows: 16))
     .ToList();
   private IReadOnlyList<WorkflowPackageResultResponse>? declaredResults;
   private bool editingDraft;
@@ -715,7 +887,7 @@
       // the form displayed the newer one. The version a running job used is not
       // this page's to remember: it is on the job's own snapshot, fetched below
       // and rendered by History as its provenance chip.
-      ApplyInputValues(memento!.Inputs);
+      ApplyInputValues(memento!.Inputs, memento.Values);
     }
 
     var blockSnapshots = sessionMatches
@@ -902,6 +1074,12 @@
       return;
     }
 
+    if (inputFields.Select(field => field.Problem).FirstOrDefault(problem => problem != null) is { } problem)
+    {
+      aiRequestError = problem;
+      return;
+    }
+
     if (packageBlocks.Count == 0)
     {
       aiRequestError = "No section standards are available.";
@@ -967,7 +1145,8 @@
       JobSession.Current = new ConsultJobMemento(
         job.JobId,
         textSnapshot,
-        blockSnapshots.Select(block => new ConsultJobBlock(block.Id, block.Name)).ToList());
+        blockSnapshots.Select(block => new ConsultJobBlock(block.Id, block.Name)).ToList(),
+        EffectiveInputValues());
 
       await RunAttachedJobAsync(job.JobId, blockSnapshots);
     }
@@ -1499,19 +1678,18 @@
   {
     var carried = inputFields.ToDictionary(field => field.Id, field => field, StringComparer.Ordinal);
 
-    inputFields = (declaration is { Count: > 0 } ? declaration : LegacyInputs)
+    var declared = declaration is { Count: > 0 } ? declaration : LegacyInputs;
+
+    inputFields = declared
       .Select(input =>
       {
-        var field = new ConsultInputField(input.Id, input.Label, input.Required, input.Type, input.Values);
+        var field = new ConsultInputField(input, textRows: declared.Count == 1 ? 16 : 6);
 
+        // #429: the whole answer carries — a chosen boolean too, which used
+        // to be dropped here — but only into a slot of the same shape.
         if (carried.TryGetValue(input.Id, out var previous))
         {
-          field.Value = previous.Value;
-          field.FileName = previous.FileName;
-          field.FileContent = previous.FileContent;
-          field.FileContentType = previous.FileContentType;
-          field.PreviewText = previous.PreviewText;
-          field.PageCount = previous.PageCount;
+          field.AdoptFrom(previous);
         }
 
         return field;
@@ -1519,16 +1697,33 @@
       .ToList();
   }
 
-  // Re-attaching to a running job restores what it ran on, which the memento
-  // holds as text — so any attachment in the form is stale by definition.
-  private void ApplyInputValues(IReadOnlyDictionary<string, string> values)
+  // Re-attaching to a running job restores what it ran on — as typed when
+  // the memento holds it so (#429), as text before that. Either way an
+  // attachment in the form is stale by definition: the document travelled
+  // as the text the server read.
+  private void ApplyInputValues(
+    IReadOnlyDictionary<string, string> values,
+    IReadOnlyDictionary<string, ConsultInputValue>? typed)
   {
     foreach (var field in inputFields)
     {
-      RemoveFile(field);
-      field.Value = values.GetValueOrDefault(field.Id, string.Empty);
+      if (typed != null && typed.TryGetValue(field.Id, out var value))
+      {
+        field.Restore(value);
+      }
+      else
+      {
+        field.RestoreText(values.GetValueOrDefault(field.Id, string.Empty));
+      }
     }
   }
+
+  // What re-attach restores: each slot as typed, a document slot as the text
+  // the server read — one element per document for an array of text.
+  private Dictionary<string, ConsultInputValue> EffectiveInputValues() =>
+    inputFields
+      .Where(field => field.IsFilled)
+      .ToDictionary(field => field.Id, field => field.EffectiveValue, StringComparer.Ordinal);
 
   // #236: clears the whole slot, not just its text. Leaving the attachment
   // behind left a scheduled submit showing "loaded referral.txt" over an
@@ -1537,9 +1732,10 @@
   {
     foreach (var field in inputFields)
     {
-      field.Value = string.Empty;
-      RemoveFile(field);
+      field.Clear();
     }
+
+    scheduleConfirmation = null;
   }
 
   // #236: bytes accepted before anything is uploaded, so a huge file is not
@@ -1550,73 +1746,103 @@
 
   private async Task LoadFileAsync(ConsultInputField field, InputFileChangeEventArgs args)
   {
-    var file = args.FileCount > 0 ? args.File : null;
-
-    if (file == null)
+    if (args.FileCount == 0)
     {
       return;
     }
+
+    // #429: an array of text takes several, in the order chosen; anything
+    // else takes one — the server's own rule. args.File throws for several,
+    // which is what made a multi-select unsupported rather than unused.
+    var files = field.TakesSeveralDocuments
+      ? args.GetMultipleFiles(args.FileCount)
+      : new[] { args.File };
 
     // Attaching a file is an edit like any other: a stale confirmation would
     // outlive what it described.
     field.FileError = null;
     scheduleConfirmation = null;
-
-    if (file.Size > MaxUploadBytes)
-    {
-      field.FileError = $"That file is larger than {MaxUploadBytes / (1024 * 1024)} MB.";
-      return;
-    }
-
     field.IsReading = true;
     await InvokeAsync(StateHasChanged);
 
+    var refusals = new List<string>();
+
     try
     {
-      using var buffer = new MemoryStream();
-      await using (var stream = file.OpenReadStream(MaxUploadBytes))
+      foreach (var file in files)
       {
-        await stream.CopyToAsync(buffer);
+        // Among several, the refusal names which — the filename stays in the
+        // browser, as every filename does. Alone, it is the server's sentence
+        // verbatim, as it always was.
+        string Refused(string sentence) => files.Count == 1 ? sentence : $"{file.Name}: {sentence}";
+
+        if (file.Size > MaxUploadBytes)
+        {
+          refusals.Add(Refused($"That file is larger than {MaxUploadBytes / (1024 * 1024)} MB."));
+          continue;
+        }
+
+        try
+        {
+          using var buffer = new MemoryStream();
+          await using (var stream = file.OpenReadStream(MaxUploadBytes))
+          {
+            await stream.CopyToAsync(buffer);
+          }
+
+          var content = buffer.ToArray();
+          var outcome = await DocumentService.ExtractAsync(content, file.ContentType);
+
+          if (!outcome.Succeeded)
+          {
+            // The server's own sentence for this cause, shown verbatim. The
+            // slot stays as it was, so a refused file changes nothing.
+            refusals.Add(Refused(outcome.Error!));
+            continue;
+          }
+
+          // The file becomes the input. What was typed is left alone
+          // underneath so that removing the file gives it back.
+          if (!field.TakesSeveralDocuments)
+          {
+            field.Documents.Clear();
+          }
+
+          field.Documents.Add(new AttachedDocument(
+            file.Name,
+            string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+            content,
+            outcome.PageCount,
+            outcome.Text!));
+        }
+        catch (Exception ex)
+        {
+          refusals.Add(Refused($"That file could not be read: {ex.Message}"));
+        }
       }
-
-      var content = buffer.ToArray();
-      var outcome = await DocumentService.ExtractAsync(content, file.ContentType);
-
-      if (!outcome.Succeeded)
-      {
-        // The server's own sentence for this cause, shown verbatim. The slot
-        // stays as it was, so a refused file changes nothing.
-        field.FileError = outcome.Error;
-        return;
-      }
-
-      // The file becomes the input. Value is left alone underneath so that
-      // removing the file gives back whatever was typed before.
-      field.FileName = file.Name;
-      field.FileContent = content;
-      field.FileContentType = string.IsNullOrWhiteSpace(file.ContentType)
-        ? "application/octet-stream"
-        : file.ContentType;
-      field.PreviewText = outcome.Text!;
-      field.PageCount = outcome.PageCount;
-    }
-    catch (Exception ex)
-    {
-      field.FileError = $"That file could not be read: {ex.Message}";
     }
     finally
     {
       field.IsReading = false;
+      field.FileError = refusals.Count > 0 ? string.Join(" ", refusals) : null;
     }
+  }
+
+  private void MoveDocument(ConsultInputField field, int index, int delta)
+  {
+    (field.Documents[index], field.Documents[index + delta]) = (field.Documents[index + delta], field.Documents[index]);
+    scheduleConfirmation = null;
+  }
+
+  private void RemoveDocument(ConsultInputField field, int index)
+  {
+    field.Documents.RemoveAt(index);
+    scheduleConfirmation = null;
   }
 
   private void RemoveFile(ConsultInputField field)
   {
-    field.FileName = null;
-    field.FileContent = null;
-    field.FileContentType = null;
-    field.PreviewText = string.Empty;
-    field.PageCount = null;
+    field.Documents.Clear();
     field.FileError = null;
     scheduleConfirmation = null;
   }
@@ -1628,8 +1854,8 @@
   // Tri-state, so an untouched required boolean blocks the run instead of
   // quietly submitting false. Razor cannot parse a switch expression inside an
   // inline lambda, which is the only reason this is a method.
-  private static void SetFlag(ConsultInputField field, string? choice) =>
-    field.Flag = choice switch
+  private static void SetFlag(ScalarSlot slot, string? choice) =>
+    slot.Flag = choice switch
     {
       "true" => true,
       "false" => false,
@@ -1643,14 +1869,15 @@
 
   // #236: the attached documents. The file travels rather than its text, so
   // the server extracts it and the record says what read it. #428: a slot
-  // lists its documents; this form attaches one, so each is a list of one —
-  // the multi-file picker is #429's.
+  // lists its documents, in the order chosen.
   private Dictionary<string, IReadOnlyList<InputFilePayload>> SuppliedFiles() =>
     inputFields
       .Where(field => field.HasFile)
       .ToDictionary(
         field => field.Id,
-        field => (IReadOnlyList<InputFilePayload>)new[] { new InputFilePayload(field.FileContentType!, field.FileContent!) },
+        field => (IReadOnlyList<InputFilePayload>)field.Documents
+          .Select(document => new InputFilePayload(document.ContentType, document.Content))
+          .ToList(),
         StringComparer.Ordinal);
 
   // What every display surface and memento shows: the text that ran,
@@ -1664,6 +1891,10 @@
   // the lambdas below name their parameter 'entry'.
   private bool HasEveryRequiredInput =>
     inputFields.Where(entry => entry.Required).All(entry => entry.IsFilled);
+
+  // #429: a value that is present and wrong — on an optional slot as much as
+  // a required one — must not be quietly omitted. Named, and the run waits.
+  private bool HasNoInputProblems => inputFields.All(entry => entry.Problem is null);
 
   private bool HasAnyInput => inputFields.Any(entry => entry.IsFilled);
 
@@ -2033,21 +2264,156 @@
   private sealed record PackageBlock(string Id, string Name);
 
   /// <summary>
-  /// One editable setup field. A mutable class, not a record: the text area
-  /// binds to Value directly, which is the only shape Blazor's expression
-  /// formatter accepts inside a loop (an indexer keyed by a property access
-  /// throws at render time).
+  /// One scalar answer: a scalar input's value, one element of an array, or
+  /// one field of an object. The control binds to it wherever it sits. A
+  /// mutable class, not a record: the text area binds to Value directly,
+  /// which is the only shape Blazor's expression formatter accepts inside a
+  /// loop (an indexer keyed by a property access throws at render time).
   /// </summary>
-  private sealed class ConsultInputField
+  private sealed class ScalarSlot
   {
-    public ConsultInputField(string id, string label, bool required,
-      string? type = null, IReadOnlyList<string>? values = null)
+    public ScalarSlot(string id, string label, bool required, string? type, IReadOnlyList<string>? values, int rows, string? placeholder = null)
     {
       Id = id;
       Label = label;
       Required = required;
       Type = type ?? WorkflowInputTypes.Text;
       Values = values ?? Array.Empty<string>();
+      Rows = rows;
+      Placeholder = placeholder ?? $"Enter {label.ToLowerInvariant()}...";
+    }
+
+    public string Id { get; }
+    public string Label { get; }
+    public bool Required { get; }
+    public string Type { get; }
+    public IReadOnlyList<string> Values { get; }
+    public int Rows { get; }
+    public string Placeholder { get; }
+
+    // text, date, enum — and a number, as typed: the canonical form is the
+    // caller's own spelling, so "1.50" is sent as "1.50".
+    public string Value { get; set; } = string.Empty;
+
+    /// <summary>
+    /// A boolean's value, held apart from Value so an untouched control is
+    /// distinguishable from a false one. Explicit initialisation: null until
+    /// the clinician chooses, never defaulted to false.
+    /// </summary>
+    public bool? Flag { get; set; }
+
+    public bool IsTouched => Type == WorkflowInputTypes.Boolean ? Flag.HasValue : !string.IsNullOrWhiteSpace(Value);
+
+    /// <summary>What this slot sends, or null when nothing was chosen — or, for a number, nothing parseable.</summary>
+    public ConsultInputValue? Supplied => Type switch
+    {
+      WorkflowInputTypes.Boolean => Flag is { } flag ? ConsultInputValue.OfBoolean(flag) : null,
+      // v9: the gate is the same parse the server applies; a spelling it
+      // refuses is named here rather than sent to be refused there.
+      WorkflowInputTypes.Number => ConsultInputValue.TryParseNumber(Value.Trim(), out var number) ? number : null,
+      _ => string.IsNullOrWhiteSpace(Value) ? null : ConsultInputValue.OfText(Value)
+    };
+
+    public bool IsFilled => Supplied is not null;
+
+    /// <summary>What is wrong with a touched value, as the fragment after its subject; null when nothing is.</summary>
+    public string? Problem => Type == WorkflowInputTypes.Number && IsTouched && Supplied is null
+      ? "must be a plain decimal number, like 12 or 1.50."
+      : null;
+
+    /// <summary>The text that ran: a chosen boolean reads true or false, a number as spelled.</summary>
+    public string EffectiveText => Supplied is { HasCanonical: true } supplied ? supplied.Canonical : Value;
+
+    public void Clear()
+    {
+      Value = string.Empty;
+      Flag = null;
+    }
+
+    public void CopyFrom(ScalarSlot other)
+    {
+      Value = other.Value;
+      Flag = other.Flag;
+    }
+  }
+
+  /// <summary>One row of an array: a scalar, or — for an array of objects — one slot per declared field.</summary>
+  private sealed class ConsultInputElement
+  {
+    public ConsultInputElement(ScalarSlot scalar) => Scalar = scalar;
+
+    public ConsultInputElement(IReadOnlyList<ScalarSlot> fields) => Fields = fields;
+
+    public ScalarSlot? Scalar { get; }
+    public IReadOnlyList<ScalarSlot>? Fields { get; }
+
+    public bool IsEmpty => Scalar != null ? !Scalar.IsTouched : Fields!.All(slot => !slot.IsTouched);
+
+    public ConsultInputValue? Supplied => Scalar != null
+      ? Scalar.Supplied
+      : ConsultInputField.ObjectValue(Fields!, requireTouched: false);
+
+    /// <summary>A sentence about this row, with its subject ("Prior notes row 2") supplied by the caller.</summary>
+    public string? Problem(string subject)
+    {
+      if (IsEmpty)
+      {
+        return $"{subject} is empty; fill it in or remove it.";
+      }
+
+      if (Scalar != null)
+      {
+        return Scalar.Problem is { } problem ? $"{subject} {problem}" : null;
+      }
+
+      return ConsultInputField.FieldsProblem(Fields!, subject + ":");
+    }
+
+    public string EffectiveText => Scalar != null
+      ? Scalar.EffectiveText
+      : ConsultInputField.FieldsText(Fields!);
+  }
+
+  /// <summary>
+  /// #236: an attached document. The bytes are held because the job request
+  /// carries the file itself — the server extracts it again there, so what
+  /// runs is what the server read rather than what this client reported. An
+  /// IBrowserFile's stream does not survive until submit, so it cannot be
+  /// re-read then. The preview is load-bearing beyond display: the run-phase
+  /// draft bar and the re-attach memento both need the input text, and this
+  /// is the client's only copy.
+  /// </summary>
+  private sealed record AttachedDocument(
+    string FileName,
+    string ContentType,
+    byte[] Content,
+    int? PageCount,
+    string PreviewText);
+
+  /// <summary>
+  /// One editable setup field. v9 (#429): a scalar, an object of scalar
+  /// fields, or an array of rows; and, for a text or an array-of-text slot,
+  /// the documents that fill it instead.
+  /// </summary>
+  private sealed class ConsultInputField
+  {
+    private readonly IReadOnlyList<WorkflowPackageFieldResponse> fieldSpecs;
+
+    public ConsultInputField(WorkflowPackageInputResponse input, int textRows)
+    {
+      Id = input.Id;
+      Label = input.Label;
+      Required = input.Required;
+      Type = WorkflowInputTypes.Of(input);
+      Items = input.Items ?? WorkflowInputTypes.Text;
+      Values = input.Values ?? Array.Empty<string>();
+      fieldSpecs = input.Fields ?? Array.Empty<WorkflowPackageFieldResponse>();
+
+      var placeholder = Id == "consult_draft"
+        ? "Enter referral details, clinical context, and the consult question..."
+        : null;
+      Scalar = new ScalarSlot(Id, Label, Required, Type, Values, textRows, placeholder);
+      Fields = Type == WorkflowInputTypes.Object ? FieldSlots() : Array.Empty<ScalarSlot>();
     }
 
     public string Id { get; }
@@ -2055,59 +2421,292 @@
     public bool Required { get; }
 
     // v8: what control this slot renders and, for an enum, its choices.
+    // v9: an array's element type, an object's (or array-of-object's) fields.
     public string Type { get; }
+    public string Items { get; }
     public IReadOnlyList<string> Values { get; }
 
-    /// <summary>
-    /// A boolean's value, held apart from Value so an untouched checkbox is
-    /// distinguishable from a false one. Explicit initialisation: null until
-    /// the clinician chooses, never defaulted to false.
-    /// </summary>
-    public bool? Flag { get; set; }
+    /// <summary>The scalar answer, for a scalar slot. Value and Flag forward here.</summary>
+    public ScalarSlot Scalar { get; }
+    public string Value { get => Scalar.Value; set => Scalar.Value = value; }
+    public bool? Flag { get => Scalar.Flag; set => Scalar.Flag = value; }
 
-    /// <summary>What this slot sends, or null when nothing was chosen.</summary>
-    public ConsultInputValue? Supplied => Type == WorkflowInputTypes.Boolean
-      ? Flag.HasValue ? ConsultInputValue.OfBoolean(Flag.Value) : null
-      : string.IsNullOrWhiteSpace(Value) ? null : ConsultInputValue.OfText(Value);
-    public string Value { get; set; } = string.Empty;
+    /// <summary>An object's fields, one slot each, in declaration order.</summary>
+    public IReadOnlyList<ScalarSlot> Fields { get; }
+
+    /// <summary>An array's rows, in the order the clinician put them.</summary>
+    public List<ConsultInputElement> Rows { get; } = new();
+
+    /// <summary>The documents filling this slot, in the order chosen (#428: that order is the record's).</summary>
+    public List<AttachedDocument> Documents { get; } = new();
 
     // #208: why a load was refused. Per-field so a failed upload names the
     // field the user aimed at.
     public string? FileError { get; set; }
-
-    // #236: the attached document. The bytes are held because the job request
-    // carries the file itself — the server extracts it again there, so what
-    // runs is what the server read rather than what this client reported. An
-    // IBrowserFile's stream does not survive until submit, so it cannot be
-    // re-read then.
-    public string? FileName { get; set; }
-    public byte[]? FileContent { get; set; }
-    public string? FileContentType { get; set; }
-    public int? PageCount { get; set; }
-
-    // What the server got out of the file. Read-only to the user, and
-    // load-bearing beyond display: the run-phase draft bar and the re-attach
-    // memento both need the input text, and this is the client's only copy.
-    public string PreviewText { get; set; } = string.Empty;
-
     public bool IsReading { get; set; }
 
-    public bool HasFile => FileContent != null;
+    public bool HasFile => Documents.Count > 0;
+
+    // The single-document view the markup still renders (#429 PR A keeps it
+    // until the multi-file slot lands).
+    public string? FileName => Documents.Count > 0 ? Documents[0].FileName : null;
+    public int? PageCount => Documents.Count > 0 ? Documents[0].PageCount : null;
+    public string PreviewText => Documents.Count > 0 ? Documents[0].PreviewText : string.Empty;
+
+    /// <summary>The server's rule (ExtractInputFilesAsync): only an array of text takes several documents.</summary>
+    public bool TakesSeveralDocuments => Type == WorkflowInputTypes.Array && Items == WorkflowInputTypes.Text;
+    public bool TakesOneDocument => Type == WorkflowInputTypes.Text;
+
+    /// <summary>What this slot sends, or null when nothing was chosen.</summary>
+    public ConsultInputValue? Supplied => Type switch
+    {
+      // An untouched optional object is absent; a touched one must answer
+      // every required field. Absent optional fields are omitted, never null.
+      WorkflowInputTypes.Object => ObjectValue(Fields, requireTouched: true),
+      // No rows is absent; a row that is empty or wrong holds the whole slot.
+      WorkflowInputTypes.Array => Rows.Count == 0 || Rows.Any(row => row.IsEmpty || row.Supplied is null)
+        ? null
+        : ConsultInputValue.OfArray(Rows.Select(row => row.Supplied!)),
+      _ => Scalar.Supplied
+    };
 
     /// <summary>
     /// What this slot contributes, whichever way it was filled — the one
     /// question every gate should be asking.
     /// </summary>
-    // Supplied rather than Value, so a chosen checkbox counts as filled: a
-    // boolean's answer lives in Flag and its Value stays empty.
     public bool IsFilled => HasFile || Supplied is not null;
 
-    /// <summary>The text that ran, for display surfaces that show inputs.</summary>
-    public string EffectiveText => HasFile ? PreviewText : Value;
+    /// <summary>
+    /// A named sentence about a value that is present and wrong — a number
+    /// that does not parse, an empty row, a required field left blank once
+    /// the object was touched. Null when nothing is wrong; an untouched slot
+    /// is not wrong, only (if required) unfilled.
+    /// </summary>
+    public string? Problem
+    {
+      get
+      {
+        if (HasFile)
+        {
+          return null;
+        }
 
-    public string Placeholder => Id == "consult_draft"
-      ? "Enter referral details, clinical context, and the consult question..."
-      : $"Enter {Label.ToLowerInvariant()}...";
+        switch (Type)
+        {
+          case WorkflowInputTypes.Object:
+            return Fields.Any(slot => slot.IsTouched) ? FieldsProblem(Fields, $"{Label}:") : null;
+          case WorkflowInputTypes.Array:
+            for (var index = 0; index < Rows.Count; index++)
+            {
+              if (Rows[index].Problem($"{Label} row {index + 1}") is { } problem)
+              {
+                return problem;
+              }
+            }
+
+            return null;
+          default:
+            return Scalar.Problem is { } scalarProblem ? $"{Label} {scalarProblem}" : null;
+        }
+      }
+    }
+
+    /// <summary>The text that ran, for display surfaces that show inputs.</summary>
+    public string EffectiveText
+    {
+      get
+      {
+        if (HasFile)
+        {
+          return string.Join("\n\n", Documents.Select(document => document.PreviewText));
+        }
+
+        return Type switch
+        {
+          WorkflowInputTypes.Object => FieldsText(Fields),
+          WorkflowInputTypes.Array => string.Join(
+            Items == WorkflowInputTypes.Object ? "\n\n" : "\n",
+            Rows.Where(row => !row.IsEmpty).Select(row => row.EffectiveText)),
+          _ => Scalar.EffectiveText
+        };
+      }
+    }
+
+    public string Placeholder => Scalar.Placeholder;
+
+    public ConsultInputElement AddRow()
+    {
+      var row = Items == WorkflowInputTypes.Object
+        ? new ConsultInputElement(FieldSlots())
+        : new ConsultInputElement(new ScalarSlot(Id, Label, true, Items, Values, rows: 3));
+      Rows.Add(row);
+      return row;
+    }
+
+    public void RemoveRow(int index) => Rows.RemoveAt(index);
+
+    public void MoveRow(int index, int delta) =>
+      (Rows[index], Rows[index + delta]) = (Rows[index + delta], Rows[index]);
+
+    public void Clear()
+    {
+      Scalar.Clear();
+      foreach (var slot in Fields)
+      {
+        slot.Clear();
+      }
+
+      Rows.Clear();
+      Documents.Clear();
+      FileError = null;
+    }
+
+    /// <summary>
+    /// Carries what was supplied into a slot the new package still declares
+    /// with the same shape — switching packages never smuggles a stale input
+    /// into a run, and a slot whose shape changed starts empty.
+    /// </summary>
+    public void AdoptFrom(ConsultInputField previous)
+    {
+      if (previous.Type != Type || previous.Items != Items
+        || !previous.Fields.Select(slot => slot.Id).SequenceEqual(Fields.Select(slot => slot.Id)))
+      {
+        return;
+      }
+
+      Scalar.CopyFrom(previous.Scalar);
+      for (var index = 0; index < Fields.Count; index++)
+      {
+        Fields[index].CopyFrom(previous.Fields[index]);
+      }
+
+      Rows.AddRange(previous.Rows);
+      Documents.AddRange(previous.Documents);
+    }
+
+    /// <summary>What this slot ran on, as a value: documents as the text read, one element each for an array.</summary>
+    public ConsultInputValue EffectiveValue => HasFile
+      ? TakesSeveralDocuments
+        ? ConsultInputValue.OfArray(Documents.Select(document => ConsultInputValue.OfText(document.PreviewText)))
+        : ConsultInputValue.OfText(Documents[0].PreviewText)
+      : Supplied!;
+
+    /// <summary>Re-attach from a typed memento (#429): a scalar, an object's fields, an array's rows.</summary>
+    public void Restore(ConsultInputValue value)
+    {
+      Clear();
+
+      switch (Type)
+      {
+        case WorkflowInputTypes.Object when value.IsObject:
+          RestoreFields(Fields, value);
+          break;
+        case WorkflowInputTypes.Array when value.IsArray:
+          foreach (var element in value.Elements!)
+          {
+            var row = AddRow();
+            if (row.Scalar != null)
+            {
+              RestoreScalar(row.Scalar, element);
+            }
+            else
+            {
+              RestoreFields(row.Fields!, element);
+            }
+          }
+
+          break;
+        default:
+          RestoreScalar(Scalar, value);
+          break;
+      }
+    }
+
+    private static void RestoreScalar(ScalarSlot slot, ConsultInputValue value)
+    {
+      if (value.IsBoolean)
+      {
+        slot.Flag = value.Flag;
+      }
+      else if (value.HasCanonical)
+      {
+        slot.Value = value.Canonical;
+      }
+    }
+
+    private static void RestoreFields(IReadOnlyList<ScalarSlot> slots, ConsultInputValue value)
+    {
+      if (!value.IsObject)
+      {
+        return;
+      }
+
+      foreach (var entry in value.Fields!)
+      {
+        if (slots.FirstOrDefault(slot => slot.Id == entry.Id) is { } slot)
+        {
+          RestoreScalar(slot, entry.Value);
+        }
+      }
+    }
+
+    /// <summary>Re-attach from a text memento: a scalar is restored as typed and a boolean by its word.</summary>
+    public void RestoreText(string text)
+    {
+      Clear();
+
+      if (Type == WorkflowInputTypes.Boolean)
+      {
+        Flag = text switch { "true" => true, "false" => false, _ => null };
+      }
+      else if (Type is not (WorkflowInputTypes.Object or WorkflowInputTypes.Array))
+      {
+        Value = text;
+      }
+    }
+
+    private IReadOnlyList<ScalarSlot> FieldSlots() =>
+      fieldSpecs.Select(spec => new ScalarSlot(spec.Id, spec.Label, spec.Required, spec.Type, spec.Values, rows: 3)).ToList();
+
+    internal static ConsultInputValue? ObjectValue(IReadOnlyList<ScalarSlot> fields, bool requireTouched)
+    {
+      if (requireTouched && !fields.Any(slot => slot.IsTouched))
+      {
+        return null;
+      }
+
+      if (fields.Any(slot => slot.Problem != null || (slot.Required && !slot.IsFilled)))
+      {
+        return null;
+      }
+
+      return ConsultInputValue.OfObject(
+        fields.Where(slot => slot.IsFilled).Select(slot => new ConsultInputEntry(slot.Id, slot.Supplied!)));
+    }
+
+    internal static string? FieldsProblem(IReadOnlyList<ScalarSlot> fields, string subject)
+    {
+      foreach (var slot in fields)
+      {
+        if (slot.Problem is { } problem)
+        {
+          return $"{subject} {slot.Label} {problem}";
+        }
+      }
+
+      foreach (var slot in fields)
+      {
+        if (slot.Required && !slot.IsFilled)
+        {
+          return $"{subject} {slot.Label} is required.";
+        }
+      }
+
+      return null;
+    }
+
+    internal static string FieldsText(IReadOnlyList<ScalarSlot> fields) =>
+      string.Join("\n", fields.Where(slot => slot.IsFilled).Select(slot => $"{slot.Label}: {slot.EffectiveText}"));
   }
 
   private sealed record ConsultGenerationBlockCompletedEvent(
