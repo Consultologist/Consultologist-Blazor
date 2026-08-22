@@ -1422,7 +1422,9 @@ public static class WorkflowPackageValidator
                     : "placeholder");
             }
 
-            var context = new TemplateContext { StrictVariables = true };
+            // The renderer's own context, so what publishes is what runs —
+            // including v9's rule that an empty array is falsy (#425).
+            var context = new PromptTemplateRenderer.RenderingContext();
             context.PushGlobal(probe);
             template.Render(context);
         }

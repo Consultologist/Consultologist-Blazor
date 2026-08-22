@@ -123,9 +123,8 @@ public class DurablePayloadReplayTests
     {
         // The road: structure travels in Variables as its carrier, and
         // VariableTypes says what it is. The payload's shape is the v8 shape
-        // — nothing new to replay. The renderer does not parse the carrier
-        // until #425; until then it renders the text, visibly, which is the
-        // whole point of a type tag over an empty string.
+        // — nothing new to replay. Since #425 the renderer materialises the
+        // carrier, so the array iterates rather than rendering as text.
         var notes = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("a"), ConsultInputValue.OfText("b") });
         var input = new ConsultPromptNodeActivityInput(
             "summarise",
@@ -140,9 +139,9 @@ public class DurablePayloadReplayTests
         Assert.Equal("array", replayed.VariableTypes!["prior_notes"]);
 
         var rendered = PromptTemplateRenderer.Render(
-            new WorkflowPromptTemplate("summarise", "Notes: {{ prior_notes }}", new[] { "prior_notes" }, null),
+            new WorkflowPromptTemplate("summarise", "Notes:{{ for n in prior_notes }} {{ n }}{{ end }}", new[] { "prior_notes" }, null),
             replayed.Variables,
             replayed.VariableTypes);
-        Assert.Contains(notes.AsJson(), rendered, StringComparison.Ordinal);
+        Assert.Equal("Notes: a b", rendered);
     }
 }
