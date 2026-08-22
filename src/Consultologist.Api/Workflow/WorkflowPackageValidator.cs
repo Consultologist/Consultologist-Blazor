@@ -51,6 +51,10 @@ public static class WorkflowPackageValidator
     /// </summary>
     private static readonly DateTime ProbeDate = new(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc);
 
+    // v9: a number probes as a decimal, which is what the renderer hands
+    // Scriban — with a fraction, so a template that formats it meets one.
+    private const decimal ProbeNumber = 1.5m;
+
     /// <summary>
     /// Scriban globals a prompt variable would shadow. Only the ones whose loss
     /// is silent rather than loud are worth warning about — a shadowed `date`
@@ -1180,6 +1184,55 @@ public static class WorkflowPackageValidator
     }
 
     /// <summary>
+    /// What the probe hands Scriban for a declared input — the type the
+    /// renderer will (v9 § 4, *The publish-time probe*): a date, a boolean, a
+    /// decimal, an object carrying its declared fields, or an array of
+    /// <b>two</b> element probes. Two rather than one, so a template that
+    /// assumes a singleton fails the probe rather than the job.
+    /// </summary>
+    internal static object ProbeValue(WorkflowInputSpec input)
+    {
+        var type = WorkflowInputTypes.Of(input);
+
+        return type switch
+        {
+            WorkflowInputTypes.Object => ObjectProbe(input.Fields),
+            WorkflowInputTypes.Array => new ScriptArray { ElementProbe(input), ElementProbe(input) },
+            _ => ScalarProbe(type)
+        };
+    }
+
+    private static object ElementProbe(WorkflowInputSpec input) =>
+        input.Items == WorkflowInputTypes.Object
+            ? ObjectProbe(input.Fields)
+            : ScalarProbe(input.Items ?? WorkflowInputTypes.Text);
+
+    private static ScriptObject ObjectProbe(IEnumerable<WorkflowFieldSpec>? fields)
+    {
+        var probe = new ScriptObject();
+
+        // Runs before the declaration is validated, so a malformed field list
+        // probes as what it can rather than throwing.
+        foreach (var field in fields ?? Array.Empty<WorkflowFieldSpec>())
+        {
+            if (!string.IsNullOrEmpty(field.Id) && !probe.ContainsKey(field.Id))
+            {
+                probe.Add(field.Id, ScalarProbe(WorkflowInputTypes.Of(field)));
+            }
+        }
+
+        return probe;
+    }
+
+    private static object ScalarProbe(string type) => type switch
+    {
+        WorkflowInputTypes.Date => ProbeDate,
+        WorkflowInputTypes.Boolean => true,
+        WorkflowInputTypes.Number => ProbeNumber,
+        _ => "placeholder"
+    };
+
+    /// <summary>
     /// Variable name → the declared input type the probe should render it as
     /// (#357).
     ///
@@ -1197,19 +1250,23 @@ public static class WorkflowPackageValidator
     /// string, a duplicate id or a binding naming no declared input all fall
     /// back to a string rather than throwing.
     /// </summary>
-    private static IReadOnlyDictionary<string, string> ProbeTypes(WorkflowPackageManifest manifest)
+    private static IReadOnlyDictionary<string, WorkflowInputSpec> ProbeTypes(WorkflowPackageManifest manifest)
     {
-        var declared = new Dictionary<string, string>(StringComparer.Ordinal);
+        var declared = new Dictionary<string, WorkflowInputSpec>(StringComparer.Ordinal);
 
         foreach (var input in manifest.Inputs ?? new List<WorkflowInputSpec>())
         {
             var type = WorkflowInputTypes.Of(input);
 
-            // Only the two converted types change what the probe hands Scriban;
-            // text and enum are strings at runtime too.
-            if (type is WorkflowInputTypes.Date or WorkflowInputTypes.Boolean)
+            // Only the converted types change what the probe hands Scriban;
+            // text and enum are strings at runtime too. v9 (#424): a number,
+            // an object and an array are converted as well — the declaration
+            // travels here rather than its name, because an object's probe
+            // needs its fields and an array's its element type.
+            if (type is WorkflowInputTypes.Date or WorkflowInputTypes.Boolean
+                or WorkflowInputTypes.Number or WorkflowInputTypes.Object or WorkflowInputTypes.Array)
             {
-                declared[input.Id] = type;
+                declared[input.Id] = input;
             }
         }
 
@@ -1218,7 +1275,7 @@ public static class WorkflowPackageValidator
             return declared;
         }
 
-        var typed = new Dictionary<string, string>(StringComparer.Ordinal);
+        var typed = new Dictionary<string, WorkflowInputSpec>(StringComparer.Ordinal);
         var conflicted = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
@@ -1229,7 +1286,7 @@ public static class WorkflowPackageValidator
                     ? declared.GetValueOrDefault(binding.From[WorkflowNodeBindingSources.InputPrefix.Length..])
                     : null;
 
-                if (typed.TryGetValue(variable, out var seen) && seen != type)
+                if (typed.TryGetValue(variable, out var seen) && !ReferenceEquals(seen, type))
                 {
                     conflicted.Add(variable);
                 }
@@ -1337,7 +1394,7 @@ public static class WorkflowPackageValidator
     private static void ValidateTemplate(
         WorkflowPromptSpec prompt,
         string templateText,
-        IReadOnlyDictionary<string, string> probeTypes,
+        IReadOnlyDictionary<string, WorkflowInputSpec> probeTypes,
         List<string> errors,
         List<string> warnings)
     {
@@ -1360,12 +1417,9 @@ public static class WorkflowPackageValidator
                 // the string "placeholder", and the format's own documented
                 // idiom — {{ seen_on | date.to_string "%d %B %Y" }} — could not
                 // publish, because Scriban refuses string → DateTime.
-                probe.Add(variable, probeTypes.GetValueOrDefault(variable) switch
-                {
-                    WorkflowInputTypes.Date => ProbeDate,
-                    WorkflowInputTypes.Boolean => true,
-                    _ => "placeholder"
-                });
+                probe.Add(variable, probeTypes.TryGetValue(variable, out var declaration)
+                    ? ProbeValue(declaration)
+                    : "placeholder");
             }
 
             var context = new TemplateContext { StrictVariables = true };

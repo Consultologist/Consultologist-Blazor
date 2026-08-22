@@ -56,6 +56,125 @@ public static class V9Fixtures
 
     public static WorkflowPackageValidator.ValidationResult Validate(WorkflowPackageManifest manifest)
         => WorkflowPackageValidator.Validate(manifest, V6Fixtures.Files(manifest), TestOutputContracts.CatalogSchemas);
+
+    /// <summary>
+    /// The structured package with a scalar prompt node whose one variable
+    /// `seen` is bound to the named source, and a hand-written template — the
+    /// shape V8Fixtures.Reading uses to exercise the probe.
+    /// </summary>
+    public static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) Reading(
+        string template,
+        string source)
+    {
+        var manifest = Structured();
+        var prompts = new List<WorkflowPromptSpec>(manifest.Prompts!)
+        {
+            new("stamp", "prompts/stamp.md", new List<string> { "seen" })
+        };
+
+        var nodes = new List<WorkflowNodeSpec>(manifest.Nodes!);
+        var reader = new WorkflowNodeSpec("stamp", "Stamping the note",
+            Prompt: "stamp",
+            Bindings: new Dictionary<string, WorkflowBindingValue>(StringComparer.Ordinal)
+            {
+                ["seen"] = new(source)
+            });
+
+        var resultIndex = nodes.FindIndex(node => node.Id == "assemble-note");
+        nodes[resultIndex] = nodes[resultIndex] with
+        {
+            Aggregate = new List<string> { "node:section-instructions", "node:stamp" }
+        };
+        nodes.Insert(resultIndex, reader);
+
+        manifest = manifest with { Prompts = prompts, Nodes = nodes };
+
+        var files = V6Fixtures.Files(manifest);
+        files["prompts/stamp.md"] = template;
+
+        return (manifest, files);
+    }
+}
+
+/// <summary>
+/// #424: the publish-time probe hands Scriban the type the renderer will
+/// (v9 § 4). Before this every variable not bound to a date or a boolean
+/// was the string "placeholder", so {{ for note in prior_notes }} would have
+/// been validated against a scalar and a correct template could not publish
+/// — #357's defect, one version on.
+/// </summary>
+public class WorkflowV9ProbeTests
+{
+    private static WorkflowPackageValidator.ValidationResult ValidateReading(string template, string source)
+    {
+        var (manifest, files) = V9Fixtures.Reading(template, source);
+        return WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas);
+    }
+
+    [Fact]
+    public void ALoopOverAnArrayOfText_Publishes()
+    {
+        var result = ValidateReading("{{ for note in seen }}- {{ note }}\n{{ end }}", "input:prior_notes");
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AFieldOfAnObject_Publishes()
+    {
+        var result = ValidateReading("{{ seen.family_name }}, aged {{ seen.age | math.format \"0.0\" }}", "input:patient");
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AFieldOfEachObjectInAnArray_Publishes()
+    {
+        var result = ValidateReading("{{ for m in seen }}{{ m.name }} {{ m.dose }}{{ end }}", "input:medications");
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void ANumberFilter_OnANumberBoundVariable_Publishes()
+    {
+        var result = ValidateReading("Stayed {{ seen | math.format \"0.0\" }} days", "input:length_of_stay");
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void ADateFilter_OnAnArrayBoundVariable_StillFails()
+    {
+        // The type comes from the binding: an array is not a date, and
+        // formatting it as one would throw at the job.
+        var result = ValidateReading("Seen {{ seen | date.to_string \"%d %B %Y\" }}", "input:prior_notes");
+
+        Assert.Contains(result.Errors, error => error.Contains("failed strict rendering", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AnArrayProbesAsTwoElements_AndAnObjectCarriesItsFields()
+    {
+        // Two rather than one, so a template that assumes a singleton fails
+        // the probe rather than the job. Pinned on the value itself, because
+        // the validator throws away what a template renders.
+        var notes = V9Fixtures.Structured().Inputs!.Single(input => input.Id == "prior_notes");
+        var medications = V9Fixtures.Structured().Inputs!.Single(input => input.Id == "medications");
+        var patient = V9Fixtures.Structured().Inputs!.Single(input => input.Id == "patient");
+
+        var notesProbe = Assert.IsType<Scriban.Runtime.ScriptArray>(WorkflowPackageValidator.ProbeValue(notes));
+        Assert.Equal(2, notesProbe.Count);
+        Assert.All(notesProbe, element => Assert.Equal("placeholder", element));
+
+        var medicationsProbe = Assert.IsType<Scriban.Runtime.ScriptArray>(WorkflowPackageValidator.ProbeValue(medications));
+        Assert.Equal(2, medicationsProbe.Count);
+        Assert.All(medicationsProbe, element => Assert.Contains("dose", Assert.IsType<Scriban.Runtime.ScriptObject>(element).Keys));
+
+        var patientProbe = Assert.IsType<Scriban.Runtime.ScriptObject>(WorkflowPackageValidator.ProbeValue(patient));
+        Assert.Equal(1.5m, patientProbe["age"]);
+        Assert.Equal("placeholder", patientProbe["sex"]);
+    }
 }
 
 /// <summary>
