@@ -1802,6 +1802,29 @@ public class ResolveEffectiveInputsTests
     }
 
     [Fact]
+    public void ResolverForm_IsCanonicalForScalars_AndTheCarrierForStructure()
+    {
+        // #423: the one place shape is decided. Scalars keep the string v7
+        // and v8 carried; structure, which has no canonical string, travels
+        // as its wire JSON and is reconstructed by the renderer. Until #424
+        // admits a structured declaration, nothing reaches this with
+        // structure end to end — which is why it is a function with a test.
+        var array = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("a"), ConsultInputValue.NullElement });
+        var obj = ConsultInputValue.OfObject(new[] { new ConsultInputEntry("z", ConsultInputValue.OfNumber("1.50")) });
+
+        Assert.Equal("Draft.", ConsultGenerationJobStarter.ResolverForm("Draft."));
+        Assert.Equal("true", ConsultGenerationJobStarter.ResolverForm(ConsultInputValue.OfBoolean(true)));
+        Assert.Equal("1.50", ConsultGenerationJobStarter.ResolverForm(ConsultInputValue.OfNumber("1.50")));
+        Assert.Equal("""["a",null]""", ConsultGenerationJobStarter.ResolverForm(array));
+        Assert.Equal("""{"z":1.50}""", ConsultGenerationJobStarter.ResolverForm(obj));
+
+        // And the carrier reads back as the value, which is what makes the
+        // road lossless.
+        Assert.Equal(array, ConsultInputValue.FromJson(ConsultGenerationJobStarter.ResolverForm(array)));
+        Assert.Equal(obj, ConsultInputValue.FromJson(ConsultGenerationJobStarter.ResolverForm(obj)));
+    }
+
+    [Fact]
     public void V8_UntypedInputs_BehaveExactlyAsV7()
     {
         // The minimal-v8 migration: same declaration, same acceptance.

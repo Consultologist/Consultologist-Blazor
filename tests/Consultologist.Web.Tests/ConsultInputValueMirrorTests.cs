@@ -64,6 +64,21 @@ public class ConsultInputValueMirrorTests
         Assert.StartsWith("threw InvalidOperationException", CanonicalOutcome<ApiValue>(json));
     }
 
+    [Fact]
+    public void TheCarrierForm_AgreesOnBothSides()
+    {
+        // #423: AsJson is the string-map carrier between the starter and the
+        // renderer. The client never sends one, but the two copies must stay
+        // identical, and this is the member a later edit is likeliest to miss.
+        const string json = """{"v":[1.50,"a",null,{"z":false,"a":"x"}]}""";
+
+        var api = JsonSerializer.Deserialize<Dictionary<string, ApiValue>>(json)!["v"]!.AsJson();
+        var web = JsonSerializer.Deserialize<Dictionary<string, WebValue>>(json)!["v"]!.AsJson();
+
+        Assert.Equal(api, web);
+        Assert.Equal("""[1.50,"a",null,{"z":false,"a":"x"}]""", api);
+    }
+
     /// <summary>
     /// What one converter did with a row, as a sentence the other's can be
     /// compared to: accepted — with the kind, the flags and the bytes written

@@ -176,6 +176,25 @@ public sealed record ConsultInputValue
     public static ConsultInputValue NullElement => NullInstance;
 
     /// <summary>
+    /// The carrier form: this value as its wire JSON, for the road between the
+    /// job starter and the renderer, which is a string map at every durable
+    /// hop (v9 § 10). A scalar travels as its canonical string; structure has
+    /// none, so it travels as this — field order as supplied — and the
+    /// renderer reconstructs it with <see cref="FromJson"/>, told to by the
+    /// variable's declared type. The same mechanism v8 used for a date and a
+    /// boolean, now that structure has a string that round-trips.
+    /// </summary>
+    public string AsJson() => JsonSerializer.Serialize(this);
+
+    /// <summary>
+    /// The carrier read back. This is the wire reader, so a malformed carrier
+    /// is refused exactly as a malformed request would be.
+    /// </summary>
+    public static ConsultInputValue FromJson(string json) =>
+        JsonSerializer.Deserialize<ConsultInputValue>(json)
+        ?? throw new InvalidOperationException("A carrier string read back as nothing.");
+
+    /// <summary>
     /// A bare string means text. Compile-time strictness was never available
     /// here — the starter cannot know at the call site whether 'billable' is a
     /// boolean slot — so the type discipline lives where the declaration is

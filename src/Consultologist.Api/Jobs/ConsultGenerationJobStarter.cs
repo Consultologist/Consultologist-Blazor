@@ -877,16 +877,30 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var effective = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var input in declared)
         {
-            // The resolver map is canonical strings: item:, node: and data:
-            // bindings are strings too, and the renderer re-types the declared
-            // inputs from VariableTypes rather than carrying a union here.
+            // The resolver map is strings: item:, node: and data: bindings are
+            // strings too, and the renderer re-types the declared inputs from
+            // VariableTypes rather than carrying a union here. A scalar is its
+            // canonical string; structure is its carrier (ResolverForm).
             effective[input.Id] = supplied.TryGetValue(input.Id, out var value)
-                ? value.Canonical
+                ? ResolverForm(value)
                 : string.Empty;
         }
 
         return new EffectiveInputsResolution(effective, supplied, null);
     }
+
+    /// <summary>
+    /// The one place shape is decided (v9 § 10, #423): what a supplied value
+    /// becomes on the string-map road to the renderer. A scalar is its
+    /// canonical string, as v7 and v8 carried it. Structure has none and
+    /// travels as its wire JSON instead, reconstructed at the last hop by the
+    /// renderer, which is told to by the variable's declared type — the same
+    /// mechanism v8 used for a date and a boolean. Lossless, so no second
+    /// payload slot is needed and every in-flight job replays untouched: the
+    /// maps have the same shape they always had.
+    /// </summary>
+    internal static string ResolverForm(ConsultInputValue value) =>
+        value.HasCanonical ? value.Canonical : value.AsJson();
 
     /// <summary>
     /// What is wrong with a supplied value for its declared type, or null when
