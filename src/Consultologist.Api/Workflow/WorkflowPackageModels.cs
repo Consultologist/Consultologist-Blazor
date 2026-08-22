@@ -296,6 +296,19 @@ public sealed record WorkflowPackageInputResponse(
     // v8: what the setup form renders. Trailing optionals — a v5-v7 package
     // sends null and the form draws the textarea it always did.
     string? Type = null,
+    IReadOnlyList<string>? Values = null,
+    // v9 (#424): the element type of an array and the fields of an object,
+    // so the form can draw a repeating row or a field group (#429). Null on
+    // every package before 9.
+    string? Items = null,
+    IReadOnlyList<WorkflowPackageFieldResponse>? Fields = null);
+
+/// <summary>One declared field of an object input, as the setup form renders it (v9 § 4).</summary>
+public sealed record WorkflowPackageFieldResponse(
+    string Id,
+    string Label,
+    bool Required,
+    string? Type = null,
     IReadOnlyList<string>? Values = null);
 
 /// <summary>

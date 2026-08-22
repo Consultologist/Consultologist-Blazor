@@ -39,6 +39,17 @@ public class SpecVersionMirrorTests
     }
 
     [Fact]
+    public void TheClientsInputTypes_AreTheServers()
+    {
+        // #424 added three names to the vocabulary. The client mirrors the
+        // list by hand for the same reason as the others; a name the server
+        // knows and the client does not is a control the form cannot draw.
+        Assert.Equal(
+            WorkflowInputTypes.All,
+            Consultologist.Web.Services.Workflow.WorkflowInputTypes.All);
+    }
+
+    [Fact]
     public void TheEditorsCeiling_IsTheNewestFormatTheEngineRuns()
     {
         // What "Upgrade to specVersion N" stamps. Ahead of the engine, publish
