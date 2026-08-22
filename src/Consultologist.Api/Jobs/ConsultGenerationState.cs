@@ -69,6 +69,10 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             pair => pair.Key,
             pair => pair.Value,
             StringComparer.Ordinal);
+        State.InputDocumentOrigins ??= input.InputDocumentOrigins?.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value.ToList(),
+            StringComparer.Ordinal);
         State.SkippedDocuments ??= input.SkippedDocuments?.ToList();
 
         // #157: a future schedule shows as Scheduled until MarkRunning; entities
@@ -370,7 +374,13 @@ public sealed record ConsultGenerationOrchestrationInput(
     // job start. Null on every job recorded before this existed, and on every
     // job whose inputs were typed — absence means "not recorded", never
     // "typed" (docs/DOCUMENT_INPUT.md § 7).
-    IReadOnlyDictionary<string, ConsultInputOrigin>? InputOrigins = null);
+    IReadOnlyDictionary<string, ConsultInputOrigin>? InputOrigins = null,
+    // v9 (#428): one origin per document, positionally — origins[id][i]
+    // describes element i. The single-origin slot above stays for instances
+    // in flight (a scheduled job sleeps up to seven days); new jobs write
+    // only this one. Appended last: this is the payload a sleeping instance
+    // re-reads.
+    IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? InputDocumentOrigins = null);
 
 public sealed record ConsultGenerationJobInitialize(
     string JobId,
@@ -398,7 +408,10 @@ public sealed record ConsultGenerationJobInitialize(
     // Appended last on purpose: ConsultGenerationEngine calls Initialize
     // POSITIONALLY, so a parameter inserted anywhere else rebinds the arguments
     // after it and compiles while quietly corrupting provenance.
-    int? PackageSpecVersion = null);
+    int? PackageSpecVersion = null,
+    // v9 (#428): see ConsultGenerationOrchestrationInput.InputDocumentOrigins.
+    // Appended last for the same reason as PackageSpecVersion.
+    IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? InputDocumentOrigins = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -487,6 +500,12 @@ public sealed class ConsultGenerationJobState
     // #238: per-slot record of where the input text came from. Null for every
     // job whose inputs were typed, and for every job predating this field.
     public Dictionary<string, ConsultInputOrigin>? InputOrigins { get; set; }
+    // v9 (#428): the same record per document, positionally. Added beside
+    // InputOrigins rather than in its place: records at rest hold the single
+    // shape, and a converter on a durable payload is a worse bargain than a
+    // second field. A record has one or the other, never both; ToResponse
+    // projects either into the one response map.
+    public Dictionary<string, List<ConsultInputOrigin>>? InputDocumentOrigins { get; set; }
     // The effective-input hash definition this job used: null/1 = draft+sections
     // (pre-v5, historical); 2 = draft only (v5/v6); 3 = the declared inputs as
     // strings (v7); 4 = the typed scalars (v8); 5 = structured values with
@@ -609,6 +628,27 @@ public sealed class ConsultGenerationJobState
         return progress;
     }
 
+    /// <summary>
+    /// #428: the one response map, from whichever field this record holds. A
+    /// #238-era record's single origin becomes a one-element list — it was one
+    /// document, and the reader sees it as such.
+    /// </summary>
+    private IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? ProjectInputOrigins()
+    {
+        if (InputDocumentOrigins is { Count: > 0 })
+        {
+            return InputDocumentOrigins.ToDictionary(
+                pair => pair.Key,
+                pair => (IReadOnlyList<ConsultInputOrigin>)pair.Value.AsReadOnly(),
+                StringComparer.Ordinal);
+        }
+
+        return InputOrigins?.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyList<ConsultInputOrigin>)new[] { pair.Value },
+            StringComparer.Ordinal);
+    }
+
     public ConsultGenerationJobResponse ToResponse()
     {
         var completedSections = Blocks.Values
@@ -654,7 +694,7 @@ public sealed class ConsultGenerationJobState
             History: History.Count > 0 ? History.AsReadOnly() : null,
             WorkflowPackage: WorkflowPackage,
             EffectiveInputHash: EffectiveInputHash,
-            InputOrigins: InputOrigins,
+            InputOrigins: ProjectInputOrigins(),
             SkippedDocuments: SkippedDocuments,
             Source: Source,
             ScheduledAtUtc: ScheduledAtUtc,

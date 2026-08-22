@@ -115,10 +115,13 @@ public record ConsultGenerationJobResponse(
     // v7: the per-deliverable documents in result-set order (Completed jobs
     // only; hash version 3 covers exactly these). Null on v5/v6 jobs.
     IReadOnlyList<ConsultGenerationResultDocumentResponse>? AssembledDocuments = null,
-    // #238: per-slot record of where the input text came from, as the server
-    // observed it. Null when nothing was recorded — which is every job before
-    // this field existed and every job whose inputs were typed.
-    IReadOnlyDictionary<string, ConsultInputOrigin>? InputOrigins = null,
+    // #238: where the input text came from, as the server observed it. Null
+    // when nothing was recorded — which is every job before this field
+    // existed and every job whose inputs were typed.
+    //
+    // v9 (#428): one origin per document, positionally. A job recorded
+    // before this with one document reads as a one-element list.
+    IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? InputOrigins = null,
     // #315: declared deliverables this job's inputs excluded, with the reason.
     IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null,
     // #361: each forEach collection's items as this job's package declared

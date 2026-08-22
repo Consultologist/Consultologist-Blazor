@@ -79,7 +79,9 @@ public sealed class ConsultGenerationOrchestrator
                 input.CatalogRef,
                 input.Source,
                 request.ScheduledAtUtc,
-                input.InputOrigins));
+                input.InputOrigins,
+                // #428: by name — PackageSpecVersion sits between, unpassed.
+                InputDocumentOrigins: input.InputDocumentOrigins));
 
         // #157: a scheduled job sleeps here — visible as Scheduled (entity state
         // above) — then proceeds identically. CurrentUtcDateTime keeps the guard

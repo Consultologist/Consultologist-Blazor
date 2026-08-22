@@ -86,11 +86,50 @@ public class DurablePayloadReplayTests
 
         var input = JsonSerializer.Deserialize<ConsultGenerationOrchestrationInput>(stored, Durable)!;
 
-        Assert.Equal(stored, JsonSerializer.Serialize(input, Durable));
+        // #428 appended the twentieth slot. The bytes a v8 job was started
+        // with are the read side, untouched; what they re-serialise to is
+        // those bytes plus exactly one trailing null — nothing moved.
+        Assert.Equal(stored[..^1] + ",\"InputDocumentOrigins\":null}", JsonSerializer.Serialize(input, Durable));
         Assert.Equal(ConsultInputValue.OfBoolean(true), input.Request.Inputs!["billable"]);
         Assert.Equal("true", input.Inputs!["billable"]);
         Assert.Equal(4, input.EffectiveInputHashVersion);
         Assert.Equal("boolean", input.InputTypes!["billable"]);
+    }
+
+    [Fact]
+    public void A238OrchestrationInput_WithASingleOrigin_Replays()
+    {
+        // A job started before #428 with one document: its origin sits in the
+        // single-valued slot, and there is no twentieth slot at all. This is
+        // the pin that forbids changing the old slot's type in place — a
+        // scheduled job sleeps up to seven days on exactly these bytes.
+        const string stored = """
+            {"Request":{"ConsultDraft":null,"WorkflowPackage":null,"ScheduledAtUtc":null,"Inputs":{"consult_draft":"Referral text."},"InputFiles":null},"AppUserId":"user-1","WorkflowPackage":"general@v2026.08.1","EffectiveInputHash":"0000000000000000000000000000000000000000000000000000000000000000","ItemSteps":null,"Nodes":null,"ResultNodeId":null,"Items":[{"id":"hpi","name":"History"}],"DataScalars":null,"EffectiveInputHashVersion":4,"InputTypes":null,"SkippedDocuments":null,"CatalogRef":null,"Collections":null,"Source":"app","ReplyToAddress":null,"Results":null,"Inputs":{"consult_draft":"Referral text."},"InputOrigins":{"consult_draft":{"Kind":"document","Extractor":"pdfpig/0.1.15","PageCount":3,"TrackedChangesResolved":false}}}
+            """;
+
+        var input = JsonSerializer.Deserialize<ConsultGenerationOrchestrationInput>(stored, Durable)!;
+
+        var origin = Assert.Contains("consult_draft", input.InputOrigins!);
+        Assert.Equal(new ConsultInputOrigin("document", "pdfpig/0.1.15", 3), origin);
+        Assert.Null(input.InputDocumentOrigins);
+    }
+
+    [Fact]
+    public void AV9OrchestrationInput_WithDocumentOrigins_ReplaysByteForByte()
+    {
+        // #428: a slot read from two documents — two origins, in order, in
+        // the twentieth slot; the single-valued slot null.
+        const string stored = """
+            {"Request":{"ConsultDraft":null,"WorkflowPackage":null,"ScheduledAtUtc":null,"Inputs":{"prior_notes":["One.","Two."]},"InputFiles":null},"AppUserId":"user-1","WorkflowPackage":"general@v2026.08.1","EffectiveInputHash":"0000000000000000000000000000000000000000000000000000000000000000","ItemSteps":null,"Nodes":null,"ResultNodeId":null,"Items":[{"id":"hpi","name":"History"}],"DataScalars":null,"EffectiveInputHashVersion":5,"InputTypes":{"prior_notes":"array"},"SkippedDocuments":null,"CatalogRef":null,"Collections":null,"Source":"app","ReplyToAddress":null,"Results":null,"Inputs":{"prior_notes":"[\u0022One.\u0022,\u0022Two.\u0022]"},"InputOrigins":null,"InputDocumentOrigins":{"prior_notes":[{"Kind":"document","Extractor":"text/1","PageCount":null,"TrackedChangesResolved":false},{"Kind":"document","Extractor":"pdfpig/0.1.15","PageCount":2,"TrackedChangesResolved":false}]}}
+            """;
+
+        var input = JsonSerializer.Deserialize<ConsultGenerationOrchestrationInput>(stored, Durable)!;
+
+        Assert.Equal(stored, JsonSerializer.Serialize(input, Durable));
+        var origins = Assert.Contains("prior_notes", input.InputDocumentOrigins!);
+        Assert.Equal(2, origins.Count);
+        Assert.Equal("pdfpig/0.1.15", origins[1].Extractor);
+        Assert.Null(input.InputOrigins);
     }
 
     [Fact]
