@@ -654,6 +654,164 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
             page.Find(".input-field__error").TextContent.Trim());
     }
 
+    private static WorkflowPackageInputResponse[] WithNotes(bool required = false, string items = WorkflowInputTypes.Text) => new[]
+    {
+        new WorkflowPackageInputResponse("consult_draft", "Consult draft", true),
+        new WorkflowPackageInputResponse("prior_notes", "Prior notes", required, WorkflowInputTypes.Array,
+            items == WorkflowInputTypes.Enum ? new[] { "clinic", "ward" } : null,
+            Items: items)
+    };
+
+    private static WorkflowPackageInputResponse[] WithLabs() => new[]
+    {
+        new WorkflowPackageInputResponse("consult_draft", "Consult draft", true),
+        new WorkflowPackageInputResponse("labs", "Labs", false, WorkflowInputTypes.Array, Items: WorkflowInputTypes.Object,
+            Fields: new[]
+            {
+                new WorkflowPackageFieldResponse("name", "Test", true),
+                new WorkflowPackageFieldResponse("value", "Value", true, WorkflowInputTypes.Number)
+            })
+    };
+
+    private IReadOnlyDictionary<string, ConsultInputValue>? sentInputs;
+
+    private void CaptureSubmit() =>
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sentInputs = value),
+                Arg.Any<string?>(), Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
+            .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
+
+    [Fact]
+    public void AnArray_StartsWithNoRowsAndAnAddButton()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+
+        var page = Render<Consults>();
+
+        Assert.Empty(page.FindAll(".input-field__row"));
+        Assert.Equal("+ Add entry", page.Find(".input-field__add").TextContent.Trim());
+    }
+
+    [Fact]
+    public void Rows_AreAddedRemovedAndMoved_AndTravelInOrder()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        CaptureSubmit();
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.Find(".input-field__add").Click();
+        page.Find(".input-field__add").Click();
+        page.Find(".input-field__add").Click();
+        Assert.Equal(3, page.FindAll(".input-field__row").Count);
+
+        var areas = page.FindAll("fluent-text-area");
+        areas[1].Change("One.");
+        areas[2].Change("Two.");
+        areas[3].Change("Three.");
+
+        // The third moves up, the first is removed: Three, Two.
+        page.FindAll("button[title='Move up']")[2].Click();
+        page.FindAll("button[title='Remove entry']")[0].Click();
+        Assert.Equal(2, page.FindAll(".input-field__row").Count);
+
+        page.FindAll("fluent-button").Last().Click();
+
+        var notes = sentInputs!["prior_notes"];
+        Assert.True(notes.IsArray);
+        Assert.Equal(new[] { "Three.", "Two." }, notes.Elements!.Select(element => element.Canonical));
+    }
+
+    [Fact]
+    public void ARequiredArrayWithNoRows_KeepsTheGateClosed()
+    {
+        // No rows is absent, and a required slot cannot be absent — closed
+        // without complaint, like a blank required textarea.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(required: true), specVersion: 9);
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+
+        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+        Assert.Empty(page.FindAll(".input-field__error"));
+    }
+
+    [Fact]
+    public void AnOptionalArrayWithNoRows_IsOmitted()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(required: false), specVersion: 9);
+        CaptureSubmit();
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.Equal(new[] { "consult_draft" }, sentInputs!.Keys);
+    }
+
+    [Fact]
+    public void AnEmptyRow_NamesItselfAndHoldsTheRun()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.Find(".input-field__add").Click();
+        page.Find(".input-field__add").Click();
+        page.FindAll("fluent-text-area")[1].Change("One.");
+
+        Assert.Equal("Prior notes row 2 is empty; fill it in or remove it.", page.Find(".input-field__error").TextContent.Trim());
+        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+
+        page.FindAll("button[title='Remove entry']")[1].Click();
+        Assert.Empty(page.FindAll(".input-field__error"));
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void AnArrayOfObjects_RendersAFieldGroupPerRow_AndTravelsAsObjects()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithLabs(), specVersion: 9);
+        CaptureSubmit();
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.Find(".input-field__add").Click();
+        page.Find(".input-field__add").Click();
+
+        Assert.Equal(2, page.FindAll(".input-field__row").Count);
+        Assert.Equal(4, page.FindAll(".input-field__row label.input-field__member").Count);
+
+        page.FindAll("fluent-text-area")[1].Change("Sodium");
+        page.FindAll("input[inputmode=decimal]")[0].Change("138");
+        page.FindAll("fluent-text-area")[2].Change("Potassium");
+        Assert.Equal("Labs row 2: Value is required.", page.Find(".input-field__error").TextContent.Trim());
+        page.FindAll("input[inputmode=decimal]")[1].Change("4.1");
+        Assert.Empty(page.FindAll(".input-field__error"));
+
+        page.FindAll("fluent-button").Last().Click();
+
+        var labs = sentInputs!["labs"];
+        Assert.True(labs.IsArray);
+        Assert.Equal(2, labs.Elements!.Count);
+        Assert.Equal(new[] { "name", "value" }, labs.Elements[0].Fields!.Select(entry => entry.Id));
+        Assert.Equal("4.1", labs.Elements[1].Fields![1].Value.Canonical);
+    }
+
+    [Fact]
+    public void AnArrayOfEnums_OffersTheDeclaredValuesPerRow()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(items: WorkflowInputTypes.Enum), specVersion: 9);
+
+        var page = Render<Consults>();
+        page.Find(".input-field__add").Click();
+
+        var options = page.Find(".input-field__row select.node-field__input").QuerySelectorAll("option").Select(option => option.GetAttribute("value"));
+        Assert.Equal(new[] { "", "clinic", "ward" }, options);
+    }
+
     [Fact]
     public async Task SwitchingPackages_CarriesAChosenBoolean()
     {

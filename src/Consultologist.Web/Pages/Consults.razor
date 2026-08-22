@@ -108,6 +108,58 @@
                                         }
                                     </div>
                                 }
+                                else if (field.Type == WorkflowInputTypes.Array)
+                                {
+                                    @* v9: a row set in the order the clinician puts
+                                       it — the order the elements hash in. No rows is
+                                       absent; an empty row names itself and holds the
+                                       run rather than being dropped. *@
+                                    <div class="input-field__group" @onclick:stopPropagation="true">
+                                        @for (var i = 0; i < field.Rows.Count; i++)
+                                        {
+                                            var index = i;
+                                            var row = field.Rows[index];
+                                            var currentField = field;
+                                            <div class="input-field__row" @key="row">
+                                                <span class="muted-text input-field__row-number">@(index + 1).</span>
+                                                <div class="input-field__row-body">
+                                                    @if (row.Scalar is { } scalar)
+                                                    {
+                                                        @ScalarControl(scalar)
+                                                    }
+                                                    else
+                                                    {
+                                                        @foreach (var slot in row.Fields!)
+                                                        {
+                                                            <label class="input-field__member" @key="slot">
+                                                                <span>
+                                                                    @slot.Label
+                                                                    @if (!slot.Required)
+                                                                    {
+                                                                        <span class="muted-text input-field__optional">(optional)</span>
+                                                                    }
+                                                                </span>
+                                                                @ScalarControl(slot)
+                                                            </label>
+                                                        }
+                                                    }
+                                                </div>
+                                                <span class="input-field__row-buttons">
+                                                    <button type="button" class="aggregate-row__button" title="Move up"
+                                                            disabled="@(index == 0)"
+                                                            @onclick="() => currentField.MoveRow(index, -1)">↑</button>
+                                                    <button type="button" class="aggregate-row__button" title="Move down"
+                                                            disabled="@(index == currentField.Rows.Count - 1)"
+                                                            @onclick="() => currentField.MoveRow(index, +1)">↓</button>
+                                                    <button type="button" class="aggregate-row__button" title="Remove entry"
+                                                            @onclick="() => currentField.RemoveRow(index)">×</button>
+                                                </span>
+                                            </div>
+                                        }
+                                        <button type="button" class="input-field__add"
+                                                @onclick="() => field.AddRow()">+ Add entry</button>
+                                    </div>
+                                }
                                 else
                                 {
                                     @* v8/v9: one control per scalar type, the same

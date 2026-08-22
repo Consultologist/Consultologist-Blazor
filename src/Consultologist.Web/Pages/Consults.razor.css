@@ -357,3 +357,78 @@
 .input-field__hint {
 	font-size: 0.8rem;
 }
+
+/* #429: a v9 object's field group and an array's row set. */
+.input-field__group {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	padding: 0.5rem 0.6rem;
+	border: 1px solid var(--consultologist-border, #d0d0d0);
+	border-radius: var(--consultologist-radius-sm, 4px);
+}
+
+.input-field__member {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	font-weight: 500;
+	font-size: 0.85rem;
+}
+
+.input-field__row {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.5rem;
+}
+
+.input-field__row-number {
+	padding-top: 0.4rem;
+	min-width: 1.4rem;
+	text-align: right;
+}
+
+.input-field__row-body {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+	min-width: 0;
+}
+
+.input-field__row-buttons {
+	display: flex;
+	gap: 0.25rem;
+	padding-top: 0.3rem;
+}
+
+/* Copied from WorkflowNodeSummary.razor.css: scoped CSS does not cross components. */
+.aggregate-row__button {
+	border: 1px solid var(--consultologist-border, #d0d0d0);
+	border-radius: var(--consultologist-radius-sm, 4px);
+	background: var(--consultologist-surface, #fff);
+	font-size: 0.72rem;
+	padding: 0.1rem 0.4rem;
+	cursor: pointer;
+}
+
+.aggregate-row__button:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.input-field__add {
+	align-self: flex-start;
+	border: 1px dashed var(--consultologist-border, #d0d0d0);
+	border-radius: var(--consultologist-radius-sm, 4px);
+	background: transparent;
+	font-size: 0.8rem;
+	padding: 0.2rem 0.6rem;
+	cursor: pointer;
+}
+
+.input-field__error {
+	color: var(--error-foreground, #a4262c);
+	font-size: 0.8rem;
+	font-weight: 500;
+}
