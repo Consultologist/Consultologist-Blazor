@@ -1,4 +1,6 @@
+using System.Text.RegularExpressions;
 using Consultologist.Api.Jobs;
+using Consultologist.Api.Workflow;
 
 namespace Consultologist.Api.Email;
 
@@ -19,6 +21,14 @@ public sealed record EmailInputAttachment(string FileName, string ContentType, b
 /// assignment is unverifiable by construction: fine when one attachment has one
 /// place to go, a silent wrong-data error when two could be swapped. Ambiguity
 /// is therefore refused rather than guessed.
+///
+/// v9 (#428): a slot declared an array of text takes several documents, and
+/// the sender names their order — <c>prior_notes-1.pdf</c>,
+/// <c>prior_notes-2.docx</c> — because order is significant in the hash and
+/// the only ordering signal a message carries is the one the sender wrote.
+/// Numbered 1 to n without gaps or repeats, or refused: a guess here would be
+/// the swap this class exists to refuse. Input ids are snake_case, so the
+/// hyphen is never part of one.
 /// </summary>
 public static class EmailAttachmentInputs
 {
@@ -31,7 +41,9 @@ public static class EmailAttachmentInputs
     /// </summary>
     public sealed record Resolution(
         IReadOnlyDictionary<string, string>? Inputs,
-        IReadOnlyDictionary<string, EmailInputAttachment>? Files,
+        // #428: a slot's documents in the sender's order; one document is a
+        // one-element list.
+        IReadOnlyDictionary<string, IReadOnlyList<EmailInputAttachment>>? Files,
         string? RejectReason,
         // #294: characters of body text that had nowhere to go. A named
         // attachment outranks the body for the slot it names, so the body is
@@ -42,15 +54,20 @@ public static class EmailAttachmentInputs
         public static Resolution Rejected(string reason) => new(null, null, reason);
     }
 
-    /// <param name="declaredInputIds">
+    /// <summary><c>&lt;slot&gt;-&lt;n&gt;</c>: the stem of a numbered attachment.</summary>
+    private static readonly Regex NumberedStem = new(@"^(?<slot>.+)-(?<n>[1-9][0-9]*)$", RegexOptions.Compiled);
+
+    /// <param name="declaredInputs">
     /// The package's declared slots in declaration order. Empty for v5/v6,
     /// whose only slot is the frozen consult_draft convention.
     /// </param>
     public static Resolution Resolve(
-        IReadOnlyList<string> declaredInputIds,
+        IReadOnlyList<WorkflowInputSpec> declaredInputs,
         string? body,
         IReadOnlyList<EmailInputAttachment> attachments)
     {
+        var declaredInputIds = declaredInputs.Select(input => input.Id).ToList();
+
         var trimmedBody = body?.Trim() ?? string.Empty;
         var hasBody = trimmedBody.Length > 0;
 
@@ -82,7 +99,8 @@ public static class EmailAttachmentInputs
                 null);
         }
 
-        var files = new Dictionary<string, EmailInputAttachment>(StringComparer.Ordinal);
+        var files = new Dictionary<string, IReadOnlyList<EmailInputAttachment>>(StringComparer.Ordinal);
+        var numbered = new Dictionary<string, List<(int Number, EmailInputAttachment Attachment)>>(StringComparer.Ordinal);
 
         // Stems are matched before the body claims anything: naming a file
         // after a slot is a deliberate act, while a body may be nothing but
@@ -93,22 +111,80 @@ public static class EmailAttachmentInputs
         foreach (var attachment in attachments)
         {
             var stem = Path.GetFileNameWithoutExtension(attachment.FileName);
-            var slot = declaredInputIds.FirstOrDefault(id => string.Equals(id, stem, StringComparison.OrdinalIgnoreCase));
+            var plain = Declared(declaredInputs, stem);
 
-            if (slot != null && !files.ContainsKey(slot))
+            if (plain != null)
             {
-                files[slot] = attachment;
+                if (numbered.ContainsKey(plain.Id))
+                {
+                    return Resolution.Rejected(BothPlainAndNumbered(plain.Id));
+                }
+
+                if (files.ContainsKey(plain.Id))
+                {
+                    // Two attachments naming the same slot — genuinely
+                    // ambiguous, unlike a body the sender may not have
+                    // written. An array slot included: unnumbered, their
+                    // order is not something we can confirm back.
+                    return Resolution.Rejected($"More than one input was supplied for '{plain.Id}'.");
+                }
+
+                files[plain.Id] = new[] { attachment };
+                continue;
             }
-            else if (slot != null)
+
+            // #428: a numbered stem for a declared slot. For any name that
+            // is not one, the file is unmatched exactly as before — a sender
+            // whose "fax-2.pdf" is their only attachment is not numbering.
+            var match = NumberedStem.Match(stem);
+
+            if (match.Success && Declared(declaredInputs, match.Groups["slot"].Value) is { } spec)
             {
-                // Two attachments naming the same slot — genuinely ambiguous,
-                // unlike a body the sender may not have written.
-                return Resolution.Rejected($"More than one input was supplied for '{slot}'.");
+                if (!TakesSeveral(spec))
+                {
+                    return Resolution.Rejected(
+                        $"Input '{spec.Id}' takes one document and cannot be numbered. Name the file '{spec.Id}' instead.");
+                }
+
+                if (files.ContainsKey(spec.Id))
+                {
+                    return Resolution.Rejected(BothPlainAndNumbered(spec.Id));
+                }
+
+                // A number too large for an int is a gap by any reading.
+                var number = int.TryParse(match.Groups["n"].Value, out var parsed) ? parsed : int.MaxValue;
+
+                if (!numbered.TryGetValue(spec.Id, out var list))
+                {
+                    numbered[spec.Id] = list = new List<(int, EmailInputAttachment)>();
+                }
+
+                list.Add((number, attachment));
+                continue;
             }
-            else
+
+            unmatched.Add(attachment);
+        }
+
+        // Numbered 1 to n, each once: the sender's order, as written. The
+        // sender's own numbers are filename fragments and are not echoed.
+        foreach (var (slot, list) in numbered)
+        {
+            var numbers = list.Select(entry => entry.Number).Order().ToList();
+
+            if (numbers.Distinct().Count() != numbers.Count)
             {
-                unmatched.Add(attachment);
+                return Resolution.Rejected(
+                    $"Input '{slot}' has more than one document with the same number. Number each file once.");
             }
+
+            if (!numbers.SequenceEqual(Enumerable.Range(1, numbers.Count)))
+            {
+                return Resolution.Rejected(
+                    $"Input '{slot}' is numbered with gaps. Number its files 1 to {numbers.Count} without gaps.");
+            }
+
+            files[slot] = list.OrderBy(entry => entry.Number).Select(entry => entry.Attachment).ToList();
         }
 
         var inputs = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -181,7 +257,18 @@ public static class EmailAttachmentInputs
         // send it to the optional slot, but that fails loudly rather than
         // quietly: the required slot stays empty and the job start refuses with
         // "Required input(s) '…' missing." (#232).
-        files[free[0]] = unmatched[0];
+        files[free[0]] = new[] { unmatched[0] };
         return new Resolution(inputs, files, null, discarded);
     }
+
+    private static WorkflowInputSpec? Declared(IReadOnlyList<WorkflowInputSpec> declaredInputs, string stem) =>
+        declaredInputs.FirstOrDefault(input => string.Equals(input.Id, stem, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>An array of text is the one slot that takes several documents (v9 § 7).</summary>
+    private static bool TakesSeveral(WorkflowInputSpec spec) =>
+        WorkflowInputTypes.Of(spec) == WorkflowInputTypes.Array
+        && (spec.Items ?? WorkflowInputTypes.Text) == WorkflowInputTypes.Text;
+
+    private static string BothPlainAndNumbered(string slot) =>
+        $"Input '{slot}' was supplied both as '{slot}' and as numbered files. Number every file for it, or send one.";
 }
