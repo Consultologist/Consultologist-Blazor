@@ -1250,64 +1250,10 @@ public static class WorkflowPackageValidator
     /// string, a duplicate id or a binding naming no declared input all fall
     /// back to a string rather than throwing.
     /// </summary>
-    private static IReadOnlyDictionary<string, WorkflowInputSpec> ProbeTypes(WorkflowPackageManifest manifest)
-    {
-        var declared = new Dictionary<string, WorkflowInputSpec>(StringComparer.Ordinal);
-
-        foreach (var input in manifest.Inputs ?? new List<WorkflowInputSpec>())
-        {
-            var type = WorkflowInputTypes.Of(input);
-
-            // Only the converted types change what the probe hands Scriban;
-            // text and enum are strings at runtime too. v9 (#424): a number,
-            // an object and an array are converted as well — the declaration
-            // travels here rather than its name, because an object's probe
-            // needs its fields and an array's its element type.
-            if (type is WorkflowInputTypes.Date or WorkflowInputTypes.Boolean
-                or WorkflowInputTypes.Number or WorkflowInputTypes.Object or WorkflowInputTypes.Array)
-            {
-                declared[input.Id] = input;
-            }
-        }
-
-        if (declared.Count == 0)
-        {
-            return declared;
-        }
-
-        var typed = new Dictionary<string, WorkflowInputSpec>(StringComparer.Ordinal);
-        var conflicted = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
-        {
-            foreach (var (variable, binding) in node.Bindings ?? new Dictionary<string, WorkflowBindingValue>())
-            {
-                var type = binding.From.StartsWith(WorkflowNodeBindingSources.InputPrefix, StringComparison.Ordinal)
-                    ? declared.GetValueOrDefault(binding.From[WorkflowNodeBindingSources.InputPrefix.Length..])
-                    : null;
-
-                if (typed.TryGetValue(variable, out var seen) && !ReferenceEquals(seen, type))
-                {
-                    conflicted.Add(variable);
-                }
-                else if (type != null)
-                {
-                    typed[variable] = type;
-                }
-                else if (typed.ContainsKey(variable))
-                {
-                    conflicted.Add(variable);
-                }
-            }
-        }
-
-        foreach (var variable in conflicted)
-        {
-            typed.Remove(variable);
-        }
-
-        return typed;
-    }
+    private static IReadOnlyDictionary<string, WorkflowInputSpec> ProbeTypes(WorkflowPackageManifest manifest) =>
+        // One rule with the renderer's activity (#425): the same map that types
+        // a probe is the map that types a job, so what publishes is what runs.
+        WorkflowVariableDeclarations.For(manifest);
 
     /// <summary>
     /// #370: a package the email door can never start, said at publish rather
@@ -1422,7 +1368,9 @@ public static class WorkflowPackageValidator
                     : "placeholder");
             }
 
-            var context = new TemplateContext { StrictVariables = true };
+            // The renderer's own context, so what publishes is what runs —
+            // including v9's rule that an empty array is falsy (#425).
+            var context = new PromptTemplateRenderer.RenderingContext();
             context.PushGlobal(probe);
             template.Render(context);
         }

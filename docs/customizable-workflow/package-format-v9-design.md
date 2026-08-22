@@ -216,14 +216,41 @@ does not hold (§ 6). The idiom for authors is
 for `{{ if !billable }}`, in the same place, for the same reason: a
 condition is three-valued and Scriban has one falsy null.
 
+> **Amended 2026-08-22 (#425).** The two paragraphs above are superseded;
+> kept so the reasoning that led here stays readable. In the doing, the
+> null reading turned out to be a trap: Scriban refuses a member of `null`
+> (`EnableRelaxedTargetAccess` is off), so the prescribed idiom
+> `{{ if prior_notes.size > 0 }}` — and `{{ patient.age }}` — would have
+> **thrown the job** on exactly the consult where the optional slot was
+> left empty. The operator's decision:
+>
+> - An **absent optional array renders as an empty array**, an **absent
+>   optional object as an empty object** (`EmptyScriptObject`), and an
+>   absent optional number as `null` (#358's rule for converted scalars).
+> - **An empty array is falsy**, by the renderer's own rule: its
+>   `TemplateContext` overrides `ToBool`, the one method truthiness lives in.
+>   The publish-time probe renders through the same context, so what
+>   publishes is what runs.
+>
+> So `{{ if x }}`, `{{ if x.size > 0 }}`, `{{ for … }}` and `{{ x.field }}`
+> behave alike on absence and on emptiness, and agree with `when:` (§ 6).
+> The asymmetry is removed rather than documented, and **no bare-`if`
+> warning is added**. v8 jobs carry no arrays, so their bytes are untouched.
+>
+> Also in the doing: an object's **fields render as their own types** — a
+> `date` field formats as a date — because the activity already has the
+> package and its declarations ride along to the renderer; the probe and
+> the activity share one variable → declaration map
+> (`WorkflowVariableDeclarations`).
+
 ### The publish-time probe
 
 `WorkflowPackageValidator` dry-runs every prompt against a probe object, and
-`ProbeTypes` special-cases only `date` and `boolean` — everything else is
-the string `"placeholder"`. Left alone, `{{ for note in prior_notes }}`
+before v9 `ProbeTypes` special-cased only `date` and `boolean` — everything
+else was the string `"placeholder"`. Left alone, `{{ for note in prior_notes }}`
 would be validated against a scalar and `{{ patient.age }}` against a
 string, so a correct template **could not publish**, exactly as #357's
-documented date idiom could not.
+documented date idiom could not. *(Implemented in #424.)*
 
 The probe learns the new types: a number probes as a number, an object as an
 object carrying its declared fields, an array as a **two-element** array of

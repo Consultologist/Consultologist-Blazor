@@ -469,3 +469,68 @@ public class WorkflowV9DeclarationTests
         Assert.DoesNotContain(result.Warnings, w => w.Contains("'prior_notes'", StringComparison.Ordinal));
     }
 }
+
+/// <summary>
+/// #425: the variable → declaration map the probe and the activity share.
+/// </summary>
+public class WorkflowVariableDeclarationsTests
+{
+    [Fact]
+    public void AVariableBoundToAConvertedInput_CarriesItsDeclaration()
+    {
+        var (manifest, _) = V9Fixtures.Reading("{{ seen }}", "input:patient");
+
+        var declarations = WorkflowVariableDeclarations.For(manifest);
+
+        Assert.Equal("patient", declarations["seen"].Id);
+        Assert.Equal(3, declarations["seen"].Fields!.Count);
+    }
+
+    [Theory]
+    [InlineData("input:consult_draft")]
+    [InlineData("input:encounter_kind")]
+    [InlineData("item:name")]
+    public void AVariableBoundToAStringSource_IsNotTyped(string source)
+    {
+        // Text and enum are strings at runtime; so is anything not an input.
+        var (manifest, _) = V9Fixtures.Reading("{{ seen }}", source);
+
+        Assert.DoesNotContain("seen", WorkflowVariableDeclarations.For(manifest).Keys);
+    }
+
+    [Fact]
+    public void AVariableTwoNodesBindDifferently_StaysAString()
+    {
+        // The v8 rule, kept: a shared prompt's variable is typed only when
+        // every binding that reaches it agrees.
+        var (manifest, _) = V8Fixtures.Reading("{{ seen }}", "input:seen_on", alsoBoundBy: "item:name");
+
+        Assert.DoesNotContain("seen", WorkflowVariableDeclarations.For(manifest).Keys);
+    }
+
+    [Fact]
+    public void TheProbeAndTheActivity_UseTheSameMap()
+    {
+        // What publishes is what runs: a field typed as a date by the probe is
+        // a date at the job. Rendered here exactly as RunPromptNodeActivity
+        // does, with the declarations the package carries.
+        var (manifest, files) = V9Fixtures.Reading("Seen {{ seen.seen_on | date.to_string \"%d %B %Y\" }}", "input:patient");
+        var fields = new List<WorkflowFieldSpec>(manifest.Inputs!.Single(i => i.Id == "patient").Fields!)
+        {
+            new("seen_on", "Seen on", Required: false, Type: WorkflowInputTypes.Date)
+        };
+        var inputs = manifest.Inputs!.Select(i => i.Id == "patient" ? i with { Fields = fields } : i).ToList();
+        manifest = manifest with { Inputs = inputs };
+
+        var validation = WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas);
+        Assert.True(validation.IsValid, string.Join(" | ", validation.Errors));
+
+        var rendered = PromptTemplateRenderer.Render(
+            new WorkflowPromptTemplate("stamp", files["prompts/stamp.md"], new[] { "seen" }, null),
+            new Dictionary<string, string> { ["seen"] = """{"family_name":"Smith","age":40,"seen_on":"2026-08-10"}""" },
+            new Dictionary<string, string> { ["seen"] = WorkflowInputTypes.Object },
+            WorkflowVariableDeclarations.For(manifest));
+
+        Assert.Equal("Seen 10 August 2026", rendered);
+    }
+}
