@@ -575,6 +575,20 @@ correct. v9's is `>= 8`, and the danger is concentrated:
   `Initialize` is positional, which is why this is a cliff by construction
   whatever it carries.
 
+  *Amended 2026-08-22 (#423).* **The trailing optional was not needed.**
+  Two facts found in the doing: the typed request already rides inside the
+  orchestration input and replays through the wire converter, and
+  definition 5 (#422) gave structure the round-tripping string this bullet
+  said it lacked — its JSON. So structure travels in the **existing string
+  maps** as its wire JSON (field order as supplied), typed by the existing
+  `InputTypes` → `VariableTypes` tag, and reconstructed at the last hop —
+  v8's own mechanism for a date and a boolean, reused. No payload shape
+  changes; replay is unchanged by construction rather than by a null
+  default. The resolver's collapse (`ResolverForm`) is the one place shape
+  is decided, and it is now lossless — the fact #405's re-decision was
+  waiting on. The stored shapes of both payloads are pinned as bytes
+  (`DurablePayloadReplayTests`), which nothing had done before.
+
 Every dispatch point gets its own disposition — **superset** or **changed
 behaviour** — enumerated when the implementation issues are written. The
 headline is the one #405 measured and v9 reverses: **v8 added zero execution
