@@ -301,6 +301,137 @@ public class ConsultGenerationJobStarterTests
         Assert.Equal(WorkflowInputTypes.Number, orchestrationInput.InputTypes["length_of_stay"]);
     }
 
+    // #426 (v9 layer 6): a fan over a caller-supplied array. The job snapshots
+    // the fan's items from the request under the literal forEach key, expands
+    // one block per element, and stamps TotalBlockCount once at start.
+
+    private async Task<(ConsultGenerationJobStartOutcome Outcome, ConsultGenerationJobInitialize? Initialize, ConsultGenerationOrchestrationInput? Input)>
+        StartFannedAsync(WorkflowPackageManifest manifest, ConsultInputValue? priorNotes, string fannedId = "prior_notes")
+    {
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                manifest,
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Consultation note") }));
+
+        ConsultGenerationJobInitialize? initialize = null;
+        await _entities.SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(),
+            nameof(ConsultGenerationJobEntity.Initialize),
+            Arg.Do<object>(payload => initialize = payload as ConsultGenerationJobInitialize));
+
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var supplied = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = Referral,
+            ["seen_on"] = "2026-08-10",
+            ["encounter_kind"] = "follow_up"
+        };
+        if (priorNotes is not null)
+        {
+            supplied[fannedId] = priorNotes;
+        }
+
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(null, Inputs: supplied),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        return (outcome, initialize, orchestrationInput);
+    }
+
+    [Fact]
+    public async Task AFanOverACallersArray_StartsWithOneBlockPerElement()
+    {
+        var (outcome, initialize, input) = await StartFannedAsync(V9Fixtures.Fanned(), ConsultInputValue.OfArray(new[]
+        {
+            ConsultInputValue.OfText("Seen in clinic; BP 150/95."),
+            ConsultInputValue.OfText("Follow-up; BP 130/85.")
+        }));
+
+        Assert.Null(outcome.Error);
+        Assert.NotNull(initialize);
+        Assert.NotNull(input);
+
+        // The deliverable's blocks: the standards fan's two, then the notes fan's
+        // two — ids the engine minted, names that never carry the note.
+        Assert.Equal(
+            new[] { "consult:section-instructions:hpi", "consult:section-instructions:pmh", "consult:summarise-note:0", "consult:summarise-note:1" },
+            initialize.Items.Select(item => item["id"]).ToArray());
+        Assert.Equal("Prior notes 2", initialize.Items[3]["name"]);
+        Assert.All(initialize.Items, item => Assert.DoesNotContain("BP", item["name"], StringComparison.Ordinal));
+
+        // The snapshot the orchestrator fans over, under the literal key.
+        var fan = input.Collections!["input:prior_notes"];
+        Assert.Equal(new[] { "0", "1" }, fan.Select(item => item["id"]));
+        Assert.Equal("Follow-up; BP 130/85.", fan[1]["value"]);
+        Assert.Contains("standards", input.Collections.Keys);
+
+        // The slim roster the rail reads: ids and names, never values.
+        var roster = initialize.Collections!.Single(r => r.CollectionId == "input:prior_notes");
+        Assert.Equal(new[] { "Prior notes 1", "Prior notes 2" }, roster.Items.Select(item => item.Name));
+
+        Assert.Equal(5, input.EffectiveInputHashVersion);
+    }
+
+    [Fact]
+    public async Task AnEmptyFan_IsRefusedAtStart_NamingTheInput()
+    {
+        // No items, no blocks, no document: v8's empty fire set in different
+        // clothes, refused the same way and through the same enum value.
+        var (outcome, initialize, _) = await StartFannedAsync(V9Fixtures.Fanned(),
+            ConsultInputValue.OfArray(Array.Empty<ConsultInputValue>()));
+
+        // A required array with no entries is refused as the wrong shape first
+        // (#424); the fan's own refusal needs the optional declaration.
+        Assert.NotNull(outcome.Error);
+        Assert.Null(outcome.JobId);
+        Assert.Null(initialize);
+
+        var manifest = V9Fixtures.Fanned();
+        manifest = manifest with
+        {
+            Inputs = manifest.Inputs!.Select(i => i.Id == "prior_notes" ? i with { Required = false } : i).ToList()
+        };
+        var (absent, absentInit, _) = await StartFannedAsync(manifest, priorNotes: null);
+
+        Assert.Equal(ConsultGenerationJobStartError.NoApplicableDeliverable, absent.Error);
+        Assert.Null(absent.JobId);
+        Assert.Null(absentInit);
+        Assert.Equal(
+            "No document applies to these inputs. 'Prior notes' has no entries, and every document this package produces is written from them.",
+            absent.ErrorDetail);
+        Assert.Equal(absent.ErrorDetail, absent.SenderSafeDetail);
+    }
+
+    [Fact]
+    public async Task AFanOverAnArrayOfObjects_CarriesEachElementAsItsCarrier()
+    {
+        var manifest = V9Fixtures.Fanned(forEach: "input:medications");
+        var element = ConsultInputValue.OfObject(new[]
+        {
+            new ConsultInputEntry("name", ConsultInputValue.OfText("metformin")),
+            new ConsultInputEntry("dose", ConsultInputValue.OfText("500 mg"))
+        });
+
+        var (outcome, _, input) = await StartFannedAsync(manifest, ConsultInputValue.OfArray(new[] { element }), fannedId: "medications");
+
+        Assert.Null(outcome.Error);
+        var fan = input!.Collections!["input:medications"];
+        Assert.Equal(element, ConsultInputValue.FromJson(fan[0]["value"]));
+        Assert.Equal("Medications 1", fan[0]["name"]);
+    }
+
     [Fact]
     public async Task SpecVersion8Package_WithABoolean_HashesTheTypedForm()
     {

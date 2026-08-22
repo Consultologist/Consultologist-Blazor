@@ -66,8 +66,15 @@ public static class V9Fixtures
     /// </summary>
     public static WorkflowPackageManifest Fanned(string forEach = "input:prior_notes", string binding = "item:value")
     {
-        var manifest = WithInput(new WorkflowInputSpec("prior_notes", "Prior notes",
-            Required: true, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
+        // The fanned input is required, as a fanned input should be; the
+        // others keep Structured()'s optional declarations.
+        var fannedId = WorkflowInputFans.IsInputFan(forEach) ? WorkflowInputFans.InputIdOf(forEach) : null;
+        var manifest = Structured() with
+        {
+            Inputs = Structured().Inputs!
+                .Select(input => input.Id == fannedId ? input with { Required = true } : input)
+                .ToList()
+        };
         var prompts = new List<WorkflowPromptSpec>(manifest.Prompts!)
         {
             new("summarise-note", "prompts/summarise-note.md", new List<string> { "note" })
