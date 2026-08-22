@@ -44,13 +44,22 @@ public static class WorkflowVariableDeclarations
         var typed = new Dictionary<string, WorkflowInputSpec>(StringComparer.Ordinal);
         var conflicted = new HashSet<string>(StringComparer.Ordinal);
 
+        // v9 (#426): an input fan's element reaches its node as item:value, a
+        // string in the item map. What it IS — a date, a number, an object
+        // with fields — is the array's declaration, one level down. Synthesised
+        // once per fanned input so every node fanning it resolves to the same
+        // instance, which the agreement rule below compares by reference.
+        var elements = new Dictionary<string, WorkflowInputSpec>(StringComparer.Ordinal);
+
         foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
         {
             foreach (var (variable, binding) in node.Bindings ?? new Dictionary<string, WorkflowBindingValue>())
             {
                 var declaration = binding.From.StartsWith(WorkflowNodeBindingSources.InputPrefix, StringComparison.Ordinal)
                     ? declared.GetValueOrDefault(binding.From[WorkflowNodeBindingSources.InputPrefix.Length..])
-                    : null;
+                    : binding.From == "item:value" && WorkflowInputFans.IsInputFan(node.ForEach)
+                        ? ElementOf(node.ForEach!, elements, manifest)
+                        : null;
 
                 if (typed.TryGetValue(variable, out var seen) && !ReferenceEquals(seen, declaration))
                 {
@@ -73,5 +82,38 @@ public static class WorkflowVariableDeclarations
         }
 
         return typed;
+    }
+
+    /// <summary>
+    /// The declaration of one element of a fanned array: the array's items
+    /// type and values for a scalar, its fields for an object. Null for an
+    /// array of text — a string needs no type — and for anything malformed,
+    /// which the validator reports on its own.
+    /// </summary>
+    private static WorkflowInputSpec? ElementOf(
+        string forEach,
+        Dictionary<string, WorkflowInputSpec> elements,
+        WorkflowPackageManifest manifest)
+    {
+        if (elements.TryGetValue(forEach, out var known))
+        {
+            return known;
+        }
+
+        var id = WorkflowInputFans.InputIdOf(forEach);
+        var array = (manifest.Inputs ?? new List<WorkflowInputSpec>())
+            .FirstOrDefault(input => input.Id == id && WorkflowInputTypes.Of(input) == WorkflowInputTypes.Array);
+
+        if (array is null || array.Items is null or WorkflowInputTypes.Text)
+        {
+            return null;
+        }
+
+        var element = array.Items == WorkflowInputTypes.Object
+            ? new WorkflowInputSpec(id, array.Label, Type: WorkflowInputTypes.Object, Fields: array.Fields)
+            : new WorkflowInputSpec(id, array.Label, Type: array.Items, Values: array.Values);
+
+        elements[forEach] = element;
+        return element;
     }
 }

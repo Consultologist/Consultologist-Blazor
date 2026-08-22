@@ -1,3 +1,4 @@
+using Consultologist.Api.Jobs;
 using Consultologist.Api.Models;
 using Consultologist.Api.Workflow;
 
@@ -694,5 +695,81 @@ public class WorkflowV9FanTests
         Assert.Equal("Medications 1", medItems[0]["name"]);
         Assert.Empty(WorkflowInputFans.Items(notes, null));
         Assert.Empty(WorkflowInputFans.Items(notes, ConsultInputValue.OfText("not an array")));
+    }
+}
+
+/// <summary>
+/// #426: what an input fan's item carries, typed. The element reaches its
+/// node as item:value — a string in the item map, untagged — and the
+/// array's declaration, one level down, says what it is.
+/// </summary>
+public class WorkflowV9FanRenderingTests
+{
+    [Fact]
+    public void AnElementOfAnArrayOfObjects_RendersItsFields()
+    {
+        var manifest = V9Fixtures.Fanned(forEach: "input:medications");
+        var element = ConsultInputValue.OfObject(new[]
+        {
+            new ConsultInputEntry("name", ConsultInputValue.OfText("metformin")),
+            new ConsultInputEntry("dose", ConsultInputValue.OfText("500 mg"))
+        });
+        var item = WorkflowInputFans.Items(manifest.Inputs!.Single(i => i.Id == "medications"), ConsultInputValue.OfArray(new[] { element }))[0];
+
+        // The resolver hands the node the carrier, as a string, as it does
+        // every item field.
+        var node = ConsultGenerationJobStarter.DescribeNode(manifest.Nodes!.Single(n => n.Id == "summarise-note"), null);
+        var variables = ConsultNodeVariableResolver.Resolve(node, new Dictionary<string, string>(), item, null,
+            new Dictionary<string, ConsultNodeDescriptor>(), new Dictionary<string, NodeRunResult>());
+        Assert.Equal(element.AsJson(), variables["note"]);
+
+        // And the renderer, given the declarations the activity has, makes it an object.
+        var rendered = PromptTemplateRenderer.Render(
+            new WorkflowPromptTemplate("summarise-note", "{{ note.name }} at {{ note.dose }}", new[] { "note" }, null),
+            variables,
+            variableTypes: null,
+            WorkflowVariableDeclarations.For(manifest));
+
+        Assert.Equal("metformin at 500 mg", rendered);
+    }
+
+    [Fact]
+    public void AnElementOfAnArrayOfDates_FormatsAsADate()
+    {
+        var manifest = V9Fixtures.Fanned();
+        manifest = manifest with
+        {
+            Inputs = manifest.Inputs!.Select(i => i.Id == "prior_notes" ? i with { Items = WorkflowInputTypes.Date } : i).ToList()
+        };
+
+        var rendered = PromptTemplateRenderer.Render(
+            new WorkflowPromptTemplate("summarise-note", "Seen {{ note | date.to_string \"%d %B %Y\" }}", new[] { "note" }, null),
+            new Dictionary<string, string> { ["note"] = "2026-08-10" },
+            variableTypes: null,
+            WorkflowVariableDeclarations.For(manifest));
+
+        Assert.Equal("Seen 10 August 2026", rendered);
+    }
+
+    [Fact]
+    public void AnElementOfAnArrayOfText_NeedsNoDeclaration()
+    {
+        var declarations = WorkflowVariableDeclarations.For(V9Fixtures.Fanned());
+
+        Assert.DoesNotContain("note", declarations.Keys);
+    }
+
+    [Fact]
+    public void TheProbe_AgreesWithTheFan()
+    {
+        // Publish-time: a template reaching into an object element validates,
+        // because the probe types item:value from the same declaration.
+        var manifest = V9Fixtures.Fanned(forEach: "input:medications");
+        var files = V6Fixtures.Files(manifest);
+        files["prompts/summarise-note.md"] = "{{ note.name }} at {{ note.dose }}";
+
+        var result = WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas);
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
 }

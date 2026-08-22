@@ -115,9 +115,17 @@ public static class PromptTemplateRenderer
         IReadOnlyDictionary<string, string>? variableTypes,
         IReadOnlyDictionary<string, WorkflowInputSpec>? declarations)
     {
+        // The tag names a declared input's type. An input fan's item:value has
+        // no tag — the orchestrator types input: bindings only — but it has a
+        // declaration (#426), and the declaration says what the element is.
         if (variableTypes is null || !variableTypes.TryGetValue(name, out var type))
         {
-            return value;
+            if (declarations is null || !declarations.TryGetValue(name, out var elementDeclaration))
+            {
+                return value;
+            }
+
+            type = WorkflowInputTypes.Of(elementDeclaration);
         }
 
         // #358: an unanswered optional of a CONVERTED type is null, not the
