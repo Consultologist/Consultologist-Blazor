@@ -90,7 +90,14 @@ public sealed class RunPromptNodeActivity
                     $"Workflow package {package.Ref} has no prompt '{input.PromptId}' for node '{input.NodeId}'.");
             }
 
-            var rendered = PromptTemplateRenderer.Render(prompt, input.Variables, input.VariableTypes);
+            // v9 (#425): the package is already in hand for the template, so
+            // its declarations ride along and an object's fields render as
+            // their own types — what the publish-time probe checked against.
+            var rendered = PromptTemplateRenderer.Render(
+                prompt,
+                input.Variables,
+                input.VariableTypes,
+                WorkflowVariableDeclarations.For(package.Manifest));
             var inputHash = ConsultGenerationProvenance.Sha256Hex(rendered);
 
             var entry = _catalog.GetEntry(input.OutputContract ?? OutputContracts.Text);
