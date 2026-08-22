@@ -527,14 +527,21 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // workflowPackage ref; agent identities are covered by catalogRef — the
         // record stores refs, not copies (#105).
         // See docs/customizable-workflow/provenance.md.
-        // Three definitions, and under v8 genuinely three functions. v8 hashes
-        // the TYPED map, so a boolean hashes as `true` and not as `"true"` —
-        // which is why the version had to move (package-format-v8-design.md
-        // § 6). v7 keeps hashing canonical strings; v5/v6 keep the draft-only
+        // Four definitions, and genuinely four functions. v9 hashes the
+        // STRUCTURED map — field ids sorted, arrays in the caller's order,
+        // UTF-8 as-is (package-format-v9-design.md § 8). v8 hashes the typed
+        // map, so a boolean hashes as `true` and not as `"true"` (v8 § 6). v7
+        // keeps hashing canonical strings; v5/v6 keep the draft-only
         // definition. Never compared across versions.
+        //
+        // The `>= 8` arm is the one #422 exists for: before the `>= 9` arm
+        // above it, a v9 job would have been hashed by definition 4 and
+        // stamped 4, with nothing erroring. Definition 4 now refuses
+        // structure, so a gate that slips again fails the start instead.
         var specVersion = package.Manifest.SpecVersion;
         var effectiveInputHash = specVersion switch
         {
+            >= 9 => ConsultGenerationProvenance.ComputeStructuredInputsHash(inputs.Supplied!),
             >= 8 => ConsultGenerationProvenance.ComputeTypedInputsHash(inputs.Supplied!),
             >= 7 => ConsultGenerationProvenance.ComputeDeclaredInputsHash(
                 inputs.Supplied!.ToDictionary(pair => pair.Key, pair => pair.Value.Canonical, StringComparer.Ordinal)),
@@ -543,6 +550,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         var effectiveInputHashVersion = specVersion switch
         {
+            >= 9 => ConsultGenerationProvenance.StructuredInputsHashVersion,
             >= 8 => ConsultGenerationProvenance.TypedInputsHashVersion,
             >= 7 => ConsultGenerationProvenance.DeclaredInputsHashVersion,
             _ => 2
@@ -739,19 +747,29 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         foreach (var (id, value) in request.Inputs)
         {
-            // Only text carries whitespace worth normalising; a boolean has
-            // none, and normalising it would erase the type. A number, an
-            // object and an array pass through UNCHANGED at this layer:
-            // per-element normalisation is #422's explicit scope (effective-
-            // input hash 5, v9 § 8), and fixing bytes here would pre-empt a
-            // definition that version has not yet chosen.
-            normalized[id] = value.Kind == ConsultInputKind.Text
-                ? ConsultInputValue.OfText(CanonicalText.Normalize(value.Text ?? string.Empty))
-                : value;
+            normalized[id] = NormalizeValue(value);
         }
 
         return request with { ConsultDraft = draft, Inputs = normalized };
     }
+
+    /// <summary>
+    /// Only text carries whitespace worth normalising; a boolean has none,
+    /// and normalising it would erase the type. A number is the digits the
+    /// caller sent. Structure is rebuilt with every text scalar inside it
+    /// normalised — per element, per field — in the order it arrived, which
+    /// definition 5 treats as significant (#422, v9 § 8). The "hook
+    /// CanonicalText does not have" is this composition rather than a change
+    /// to CanonicalText, which stays the one rule applied to one string.
+    /// </summary>
+    private static ConsultInputValue NormalizeValue(ConsultInputValue value) => value.Kind switch
+    {
+        ConsultInputKind.Text => ConsultInputValue.OfText(CanonicalText.Normalize(value.Text ?? string.Empty)),
+        ConsultInputKind.Object => ConsultInputValue.OfObject(
+            value.Fields!.Select(field => new ConsultInputEntry(field.Id, NormalizeValue(field.Value)))),
+        ConsultInputKind.Array => ConsultInputValue.OfArray(value.Elements!.Select(NormalizeValue)),
+        _ => value
+    };
 
     internal static EffectiveInputsResolution ResolveEffectiveInputs(
         ConsultGenerationRequest request,

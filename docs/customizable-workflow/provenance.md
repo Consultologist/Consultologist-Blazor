@@ -64,13 +64,28 @@ precondition — a registry humans can write would make the attestation tautolog
 
 ## The effective-input hash
 
-> **Versioned 2026-07-15 (Milestone 5)**: jobs record `effectiveInputHashVersion` —
-> **v1** (null/absent, pre-v5 jobs) covered draft + sections as described below;
-> **v2** (specVersion-5 jobs) covers **the draft only**, because sections are
-> package data covered by the `workflowPackage` ref and the account standards
-> override is retired. The two definitions are never compared as equals. The
-> per-node chain below extends to **per-(node, item)** entries (`nodeId:itemId`
-> keys) — every forEach instance records its own input/output hashes.
+> **Versioned 2026-07-15 (Milestone 5)**: jobs record `effectiveInputHashVersion`.
+> Definitions are added beside their predecessors, never replaced, and **never
+> compared as equals** across versions:
+>
+> - **1** (null/absent, pre-v5 jobs) — draft + sections, as described below;
+>   historical.
+> - **2** (specVersion 5/6) — **the draft only**, because sections are package
+>   data covered by the `workflowPackage` ref and the account standards override
+>   is retired.
+> - **3** (specVersion 7) — the supplied inputs as an ordinal-sorted `{id: text}`
+>   map, absent optionals omitted (package-format-v7-design.md § 6).
+> - **4** (specVersion 8) — the same map as **typed scalars**: a boolean hashes
+>   as `true`, not `"true"` (package-format-v8-design.md § 6).
+> - **5** (specVersion 9) — the same map as **structured values**: field ids
+>   ordinal-sorted at every level, array elements in the caller's order, a
+>   number as the digits sent, and UTF-8 written as-is where 2–4 escape it
+>   (package-format-v9-design.md § 8). Definition 4 refuses structure, so a
+>   misrouted gate fails rather than stamping 4.
+>
+> The per-node chain below extends to **per-(node, item)** entries
+> (`nodeId:itemId` keys) — every forEach instance records its own input/output
+> hashes.
 >
 > **v5-only rebase (#77, 2026-07-15)**: the v1 definition is historical — the
 > engine computes only v2, and job records referencing pre-v5 packages are no

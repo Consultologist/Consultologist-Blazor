@@ -1,5 +1,7 @@
+using System.Buffers;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Consultologist.Api.Models;
 
@@ -52,13 +54,125 @@ internal static class ConsultGenerationProvenance
     /// </summary>
     public const int TypedInputsHashVersion = 4;
 
+    /// <summary>
+    /// Version 4's domain is v8's scalars — text and a boolean — and it
+    /// refuses anything else rather than hashing it. Since #421 the wire
+    /// carries numbers and structure, and a structured value reaching this
+    /// function can only mean the version gate routed a v9 job here: the one
+    /// failure that would otherwise produce a plausible hash stamped 4, wrong
+    /// and saying it is right. A throw makes that a failed start instead.
+    /// </summary>
     public static string ComputeTypedInputsHash(IReadOnlyDictionary<string, ConsultInputValue> suppliedInputs)
     {
+        foreach (var (id, value) in suppliedInputs)
+        {
+            if (value.Kind is not (ConsultInputKind.Text or ConsultInputKind.Boolean))
+            {
+                throw new InvalidOperationException(
+                    $"Effective-input hash 4 covers text and booleans only; input '{id}' is {value.Described}. A job carrying structure is hashed by definition 5.");
+            }
+        }
+
         var canonical = suppliedInputs
             .OrderBy(pair => pair.Key, StringComparer.Ordinal)
             .ToDictionary(pair => pair.Key, pair => pair.Value);
 
         return Sha256Hex(JsonSerializer.Serialize(canonical, CanonicalJsonOptions));
+    }
+
+    /// <summary>
+    /// The effective-input hash, definition version 5 (v9 jobs): SHA-256 of
+    /// the canonical JSON of the supplied inputs as structured values
+    /// (package-format-v9-design.md § 8). Canonical means: top-level slot ids
+    /// and object field ids ordinal-sorted at every level — UTF-16 code-unit
+    /// order, which is also RFC 8785's; array elements in supplied order,
+    /// which is significant and is the caller's; a number as the digits the
+    /// caller sent; absent optionals omitted; text normalised per element
+    /// before it arrives here; no insignificant whitespace; and **UTF-8
+    /// written as-is**, with only what JSON requires escaped.
+    ///
+    /// That last rule is where this definition parts from 2–4, which use
+    /// System.Text.Json's default encoder and escape non-ASCII and a handful
+    /// of ASCII (&lt;, &gt;, &amp;, ', +) as \uXXXX. So 4 and 5 agree byte for
+    /// byte on an ASCII map of scalars and on nothing wider — which is fine,
+    /// because they are never compared, per provenance.md. Written by its own
+    /// writer rather than the wire converter, so the replay form (supplied
+    /// order) and the hashed form (sorted) cannot drift each other.
+    /// </summary>
+    public const int StructuredInputsHashVersion = 5;
+
+    private static readonly JsonWriterOptions CanonicalWriterOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        Indented = false
+    };
+
+    public static string ComputeStructuredInputsHash(IReadOnlyDictionary<string, ConsultInputValue> suppliedInputs)
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+
+        using (var writer = new Utf8JsonWriter(buffer, CanonicalWriterOptions))
+        {
+            writer.WriteStartObject();
+
+            foreach (var (id, value) in suppliedInputs.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            {
+                writer.WritePropertyName(id);
+                WriteCanonical(writer, value);
+            }
+
+            writer.WriteEndObject();
+        }
+
+        return Sha256Hex(buffer.WrittenSpan);
+    }
+
+    /// <summary>
+    /// One value in definition 5's canonical form. Total over every kind the
+    /// wire carries: a null element never reaches a hash — the starter
+    /// refuses it first — but the writer does not assume so.
+    /// </summary>
+    internal static void WriteCanonical(Utf8JsonWriter writer, ConsultInputValue value)
+    {
+        switch (value.Kind)
+        {
+            case ConsultInputKind.Boolean:
+                writer.WriteBooleanValue(value.Flag!.Value);
+                break;
+
+            case ConsultInputKind.Number:
+                writer.WriteRawValue(value.Number!);
+                break;
+
+            case ConsultInputKind.Object:
+                writer.WriteStartObject();
+                foreach (var field in value.Fields!.OrderBy(field => field.Id, StringComparer.Ordinal))
+                {
+                    writer.WritePropertyName(field.Id);
+                    WriteCanonical(writer, field.Value);
+                }
+
+                writer.WriteEndObject();
+                break;
+
+            case ConsultInputKind.Array:
+                writer.WriteStartArray();
+                foreach (var element in value.Elements!)
+                {
+                    WriteCanonical(writer, element);
+                }
+
+                writer.WriteEndArray();
+                break;
+
+            case ConsultInputKind.Null:
+                writer.WriteNullValue();
+                break;
+
+            default:
+                writer.WriteStringValue(value.Text ?? string.Empty);
+                break;
+        }
     }
 
     public static string ComputeDeclaredInputsHash(IReadOnlyDictionary<string, string> suppliedInputs)
@@ -130,5 +244,11 @@ internal static class ConsultGenerationProvenance
     public static string Sha256Hex(string text)
     {
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
+    }
+
+    /// <summary>The same digest over bytes already in UTF-8 — what a writer produces.</summary>
+    public static string Sha256Hex(ReadOnlySpan<byte> utf8)
+    {
+        return Convert.ToHexStringLower(SHA256.HashData(utf8));
     }
 }

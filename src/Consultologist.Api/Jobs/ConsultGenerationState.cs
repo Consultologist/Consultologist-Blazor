@@ -488,7 +488,10 @@ public sealed class ConsultGenerationJobState
     // job whose inputs were typed, and for every job predating this field.
     public Dictionary<string, ConsultInputOrigin>? InputOrigins { get; set; }
     // The effective-input hash definition this job used: null/1 = draft+sections
-    // (v2-v4 packages), 2 = draft only (v5 packages, package-format-v5.md).
+    // (pre-v5, historical); 2 = draft only (v5/v6); 3 = the declared inputs as
+    // strings (v7); 4 = the typed scalars (v8); 5 = structured values with
+    // sorted field ids and UTF-8 as-is (v9). Never compared across versions —
+    // docs/customizable-workflow/provenance.md.
     public int? EffectiveInputHashVersion { get; set; }
 
     // LEGACY, read-only since #105: records ≤ 2026-07-17 stored the contract →
