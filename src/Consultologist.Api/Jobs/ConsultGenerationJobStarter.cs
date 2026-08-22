@@ -907,21 +907,42 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// nothing is. Phrased to complete "Input '&lt;id&gt;' …" so the caller
     /// always names the slot — a message that says only "invalid date" makes
     /// the author hunt for which field.
+    ///
+    /// v9 (#424): declaration-aware. A number wants a JSON number; an object
+    /// wants exactly its declared fields, each a canonical scalar; an array
+    /// wants every element canonical for its items, names the element that
+    /// is not, and — required — has at least one. A v8 scalar slot still
+    /// refuses structure. Messages name kinds, ids and indices, never a
+    /// structured value.
     /// </summary>
     private static string? CanonicalFormComplaint(WorkflowInputSpec input, ConsultInputValue value)
     {
         var type = WorkflowInputTypes.Of(input);
 
-        // Shape first: the JSON kind and the declared type must agree. This is
-        // the 422 half of the strictness — a well-formed request whose value
-        // disagrees with the declaration.
-        //
-        // v9 layer 1 (#421): the wire now carries a number, an object and an
-        // array, and no v5–v8 declaration can ask for any of them. So each is
-        // refused whatever the slot's type, before anything reads Canonical —
-        // which structure does not have. The message names the kind, never
-        // the value. A null cannot arrive at the top of the map (it reads as
-        // blank text), but the arm is closed rather than assumed.
+        return type switch
+        {
+            WorkflowInputTypes.Object => ObjectComplaint(input.Fields ?? new List<WorkflowFieldSpec>(), value, where: string.Empty),
+            WorkflowInputTypes.Array => ArrayComplaint(input, value),
+            _ => ScalarComplaint(type, input.Values, value)
+        };
+    }
+
+    /// <summary>
+    /// The scalar rule, for an input, a field or an array element alike. Shape
+    /// first: the JSON kind and the declared type must agree — this is the 422
+    /// half of the strictness, a well-formed request whose value disagrees
+    /// with the declaration. Then the canonical form: a date's spelling, an
+    /// enum's membership.
+    /// </summary>
+    private static string? ScalarComplaint(string type, List<string>? values, ConsultInputValue value)
+    {
+        if (type == WorkflowInputTypes.Number)
+        {
+            return value.IsNumber ? null : $"is a number and must be sent as a JSON number; got {value.Described}.";
+        }
+
+        // A number, an object, an array or a null in a slot declared as one of
+        // v8's scalars. The message names the kind, never the value.
         if (value.Kind is ConsultInputKind.Number or ConsultInputKind.Object or ConsultInputKind.Array or ConsultInputKind.Null)
         {
             return type == WorkflowInputTypes.Boolean
@@ -945,11 +966,97 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 value.Canonical, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _) =>
                 $"is a date and must be written YYYY-MM-DD; got '{value.Canonical}'.",
 
-            WorkflowInputTypes.Enum when input.Values?.Contains(value.Canonical, StringComparer.Ordinal) != true =>
-                $"accepts {string.Join(", ", (input.Values ?? new List<string>()).Select(v => $"'{v}'"))}; got '{value.Canonical}'.",
+            WorkflowInputTypes.Enum when values?.Contains(value.Canonical, StringComparer.Ordinal) != true =>
+                $"accepts {string.Join(", ", (values ?? new List<string>()).Select(v => $"'{v}'"))}; got '{value.Canonical}'.",
 
             _ => null
         };
+    }
+
+    /// <summary>
+    /// An object against its declared fields: exactly the declared keys, every
+    /// required one present, no null (absence is spelled by leaving the key
+    /// out — v9 § 4, operator's decision), each value canonical for its field.
+    /// <paramref name="where"/> is empty for an object input and "element N "
+    /// for an element of an array of objects.
+    /// </summary>
+    private static string? ObjectComplaint(IReadOnlyList<WorkflowFieldSpec> fields, ConsultInputValue value, string where)
+    {
+        if (!value.IsObject)
+        {
+            return $"{where}is an object and must be sent as a JSON object; got {value.Described}.";
+        }
+
+        var declared = fields.ToDictionary(field => field.Id, StringComparer.Ordinal);
+        var supplied = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var entry in value.Fields!)
+        {
+            if (!declared.TryGetValue(entry.Id, out var field))
+            {
+                return $"{where}has a field '{entry.Id}' it does not declare (fields: {string.Join(", ", fields.Select(f => f.Id))}).";
+            }
+
+            supplied.Add(entry.Id);
+
+            if (entry.Value.IsNull)
+            {
+                return $"{where}field '{entry.Id}' is null; omit an optional field instead.";
+            }
+
+            var complaint = ScalarComplaint(WorkflowInputTypes.Of(field), field.Values, entry.Value);
+            if (complaint != null)
+            {
+                return $"{where}field '{entry.Id}' {complaint}";
+            }
+        }
+
+        var missing = fields.FirstOrDefault(field => field.Required && !supplied.Contains(field.Id));
+
+        return missing is null ? null : $"{where}is missing required field '{missing.Id}'.";
+    }
+
+    /// <summary>
+    /// An array against its declared items: a JSON array; not empty when the
+    /// input is required (present and empty is not absent, v9 § 4, so the
+    /// required check above let it through to be refused here by name); no
+    /// null element; each element canonical for the items — a scalar rule, or
+    /// the object rule for an array of objects.
+    /// </summary>
+    private static string? ArrayComplaint(WorkflowInputSpec input, ConsultInputValue value)
+    {
+        if (!value.IsArray)
+        {
+            return $"is an array and must be sent as a JSON array; got {value.Described}.";
+        }
+
+        if (input.Required && value.Elements!.Count == 0)
+        {
+            return "is required and has no entries.";
+        }
+
+        for (var index = 0; index < value.Elements!.Count; index++)
+        {
+            var element = value.Elements[index];
+
+            if (element.IsNull)
+            {
+                return $"element {index} is null.";
+            }
+
+            var complaint = input.Items == WorkflowInputTypes.Object
+                ? ObjectComplaint(input.Fields ?? new List<WorkflowFieldSpec>(), element, where: $"element {index} ")
+                : ScalarComplaint(input.Items ?? WorkflowInputTypes.Text, input.Values, element) is { } scalar
+                    ? $"element {index} {scalar}"
+                    : null;
+
+            if (complaint != null)
+            {
+                return complaint;
+            }
+        }
+
+        return null;
     }
 
     internal static ConsultNodeDescriptor DescribeNode(
