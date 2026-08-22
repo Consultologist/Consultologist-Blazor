@@ -831,6 +831,60 @@ public class ConsultGenerationJobStarterTests
         Assert.Equal(outcome.ErrorDetail, outcome.SenderSafeDetail);
     }
 
+    [Fact]
+    public async Task WhenNoDeliverableApplies_TheRefusalNeverPrintsThePatientsValue()
+    {
+        // #427: a v9 condition may read a number, a date or a field of an
+        // object — the patient's. The refusal says what was needed and that
+        // it was not met, and is still quotable back to the sender.
+        var manifest = V9Fixtures.Conditional("patient.age >= 65");
+        var files = V6Fixtures.Files(manifest);
+        var errors = new List<string>();
+        var data = WorkflowDataResolver.Resolve(manifest, files, errors);
+
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackage(
+                manifest,
+                Nodes: manifest.Nodes,
+                SchemaContracts: TestOutputContracts.CatalogSchemas,
+                Data: data,
+                Results: new List<WorkflowResolvedResult>
+                {
+                    new("consult_note", "assemble-note", "Consultation note",
+                        new WorkflowResultCondition("patient", "65", false, Field: "age", Ordering: ">=")),
+                    new("patient_letter", "assemble-letter", "Patient letter",
+                        new WorkflowResultCondition("length_of_stay", "7", false, Ordering: ">"))
+                }));
+
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(null, Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["consult_draft"] = Referral,
+                ["seen_on"] = "2026-08-10",
+                ["encounter_kind"] = "follow_up",
+                ["length_of_stay"] = ConsultInputValue.OfNumber("3"),
+                ["patient"] = ConsultInputValue.OfObject(new[]
+                {
+                    new ConsultInputEntry("family_name", "Smith"),
+                    new ConsultInputEntry("age", ConsultInputValue.OfNumber("41"))
+                })
+            }),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        Assert.Equal(ConsultGenerationJobStartError.NoApplicableDeliverable, outcome.Error);
+        Assert.Contains("'Consultation note' needs patient.age to be >= 65; it is not.", outcome.ErrorDetail);
+        Assert.Contains("'Patient letter' needs length_of_stay to be > 7; it is not.", outcome.ErrorDetail);
+        Assert.DoesNotContain("41", outcome.ErrorDetail);
+        Assert.DoesNotContain("Smith", outcome.ErrorDetail);
+        Assert.DoesNotContain(" 3", outcome.ErrorDetail);
+        Assert.Equal(outcome.ErrorDetail, outcome.SenderSafeDetail);
+    }
+
     /// <summary>
     /// #369: the pinned package for the sender-safety tests — the typed v8
     /// declaration, whose consult_draft, seen_on and encounter_kind are all

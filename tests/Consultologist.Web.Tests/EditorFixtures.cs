@@ -164,6 +164,41 @@ public static class EditorFixtures
         };
     }
 
+    /// <summary>
+    /// #427: a v9 package whose condition the editor can read but not yet
+    /// write — an ordering over a number. The editor composes only the v8
+    /// forms (#429); what it must not do is refuse the package at the desk.
+    /// </summary>
+    public static WorkflowPackageContentResponse V9Conditional() => Package("""
+        {
+          "name": "acct-1234567890ab",
+          "version": "v2026.08.1",
+          "specVersion": 9,
+          "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
+          "inputs": [
+            { "id": "consult_draft", "label": "Consult draft", "required": true },
+            { "id": "length_of_stay", "label": "Length of stay (days)", "required": false, "type": "number" }
+          ],
+          "data": { "standards": "data/standards/" },
+          "prompts": [
+            { "id": "draft-section", "file": "prompts/draft-section.md",
+              "variables": ["section_name", "consult_draft"] }
+          ],
+          "results": [
+            { "id": "consult_note", "node": "node:assemble-note", "label": "Consultation note" },
+            { "id": "discharge_summary", "node": "node:assemble-summary", "label": "Discharge summary",
+              "when": "length_of_stay > 7" }
+          ],
+          "nodes": [
+            { "id": "draft-section", "forEach": "data:standards", "label": "Drafting section",
+              "prompt": "draft-section",
+              "bindings": { "section_name": "item:name", "consult_draft": "input:consult_draft" } },
+            { "id": "assemble-note", "label": "Assembling note", "aggregate": ["node:draft-section"] },
+            { "id": "assemble-summary", "label": "Assembling summary", "aggregate": ["node:draft-section"] }
+          ]
+        }
+        """, 9);
+
     /// <summary>The v7 shape: declared inputs and a results list.</summary>
     public static WorkflowPackageContentResponse V7() => Package("""
         {

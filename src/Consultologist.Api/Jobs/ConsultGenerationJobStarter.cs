@@ -410,11 +410,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     ConsultGenerationJobStartError.NoApplicableDeliverable,
                     noneApplyDetail,
                     // #369: authored throughout. Labels and condition literals
-                    // come from the manifest, and WorkflowResultCondition.Explain's
-                    // supplied-value branch can only ever print a DECLARED enum
-                    // value or true/false — a condition reads an enum or a boolean
-                    // only (v8 grammar), and any other value was already refused
-                    // by CanonicalFormComplaint before conditions were evaluated.
+                    // come from the manifest, and WorkflowResultCondition.Explain
+                    // prints only what is safe on every surface: a declared enum
+                    // value, true/false, and a count of entries. A number, a date
+                    // or a field's value — which v9 conditions may read (#427) —
+                    // is the patient's and is never printed; the sentence says
+                    // what was needed and that it was not met.
                     SenderSafeDetail: noneApplyDetail);
             }
 

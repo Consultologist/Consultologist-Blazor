@@ -59,6 +59,10 @@ public static class V9Fixtures
     public static WorkflowPackageValidator.ValidationResult Validate(WorkflowPackageManifest manifest)
         => WorkflowPackageValidator.Validate(manifest, V6Fixtures.Files(manifest), TestOutputContracts.CatalogSchemas);
 
+    /// <summary>The v8 conditional package, at v9, over the structured inputs.</summary>
+    public static WorkflowPackageManifest Conditional(string? when)
+        => V8Fixtures.Conditional(when) with { SpecVersion = 9, Inputs = Structured().Inputs };
+
     /// <summary>
     /// #426: the structured package with a node fanning over the caller's
     /// prior notes — `forEach: input:prior_notes`, `note: item:value` —
@@ -771,5 +775,302 @@ public class WorkflowV9FanRenderingTests
         var result = WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas);
 
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+}
+
+/// <summary>
+/// #427: the widened grammar, evaluated. Six operators, a path into an
+/// object, count() of an array, array truthiness — and a sentence that
+/// never prints the patient's number, date or field.
+/// </summary>
+public class WorkflowV9ConditionEvaluationTests
+{
+    private static Dictionary<string, ConsultInputValue> Inputs(params (string Id, ConsultInputValue Value)[] pairs)
+        => pairs.ToDictionary(p => p.Id, p => p.Value, StringComparer.Ordinal);
+
+    private static WorkflowResultCondition Parse(string when)
+    {
+        Assert.True(WorkflowResultConditions.TryParse(when, out var condition, out var error), error);
+        return condition!;
+    }
+
+    private static ConsultInputValue Patient(int age, string? sex = "female") =>
+        ConsultInputValue.OfObject(new[]
+        {
+            new ConsultInputEntry("family_name", ConsultInputValue.OfText("Smith")),
+            new ConsultInputEntry("age", ConsultInputValue.OfNumber(age.ToString())),
+            new ConsultInputEntry("sex", sex is null ? ConsultInputValue.NullElement : ConsultInputValue.OfText(sex))
+        });
+
+    private static ConsultInputValue Notes(params string[] notes) =>
+        ConsultInputValue.OfArray(notes.Select(ConsultInputValue.OfText));
+
+    // ---- the parser ----
+
+    [Theory]
+    [InlineData("length_of_stay > 7", "length_of_stay", null, false, ">", "7")]
+    [InlineData("length_of_stay >= 7", "length_of_stay", null, false, ">=", "7")]
+    [InlineData("seen_on <= 2026-01-01", "seen_on", null, false, "<=", "2026-01-01")]
+    [InlineData("patient.age < 65", "patient", "age", false, "<", "65")]
+    [InlineData("patient.sex == female", "patient", "sex", false, null, "female")]
+    [InlineData("count(prior_notes) > 1", "prior_notes", null, true, ">", "1")]
+    [InlineData("count( prior_notes ) == 0", "prior_notes", null, true, null, "0")]
+    [InlineData("prior_notes", "prior_notes", null, false, null, null)]
+    public void TheParserReadsEveryForm(string when, string input, string? field, bool isCount, string? ordering, string? literal)
+    {
+        var condition = Parse(when);
+
+        Assert.Equal(input, condition.InputId);
+        Assert.Equal(field, condition.Field);
+        Assert.Equal(isCount, condition.IsCount);
+        Assert.Equal(ordering, condition.Ordering);
+        Assert.Equal(literal, condition.Literal);
+    }
+
+    [Theory]
+    [InlineData("patient.age.x >= 1")]
+    [InlineData("count(prior_notes")]
+    [InlineData("count(Prior Notes) > 1")]
+    [InlineData("patient..age == 1")]
+    public void AMalformedOperand_IsNotAnInputId(string when)
+    {
+        Assert.False(WorkflowResultConditions.TryParse(when, out _, out var error));
+        Assert.Contains("is not an input id", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TwoCharacterOperators_AreReadBeforeOneCharacterOnes()
+    {
+        // ">=" is never ">" followed by a literal beginning with "=".
+        var condition = Parse("length_of_stay >= 7");
+
+        Assert.Equal(">=", condition.Ordering);
+        Assert.Equal("7", condition.Literal);
+    }
+
+    // ---- Holds ----
+
+    [Theory]
+    [InlineData("length_of_stay > 7", "10", true)]
+    [InlineData("length_of_stay > 7", "7", false)]
+    [InlineData("length_of_stay >= 7", "7", true)]
+    [InlineData("length_of_stay < 7", "6.5", true)]
+    [InlineData("length_of_stay <= 7", "7.01", false)]
+    [InlineData("length_of_stay == 7", "7.0", true)]
+    [InlineData("length_of_stay != 7", "7.0", false)]
+    public void ANumber_Compares(string when, string supplied, bool expected)
+        => Assert.Equal(expected, WorkflowResultConditions.Holds(Parse(when), Inputs(("length_of_stay", ConsultInputValue.OfNumber(supplied)))));
+
+    [Theory]
+    [InlineData("seen_on >= 2026-01-01", "2026-08-10", true)]
+    [InlineData("seen_on < 2026-01-01", "2026-08-10", false)]
+    [InlineData("seen_on == 2026-08-10", "2026-08-10", true)]
+    [InlineData("seen_on != 2026-08-10", "2026-08-10", false)]
+    public void ADate_Compares(string when, string supplied, bool expected)
+        => Assert.Equal(expected, WorkflowResultConditions.Holds(Parse(when), Inputs(("seen_on", supplied))));
+
+    [Theory]
+    [InlineData("patient.age >= 65", 70, true)]
+    [InlineData("patient.age >= 65", 40, false)]
+    [InlineData("patient.sex == female", 40, true)]
+    [InlineData("patient.sex != female", 40, false)]
+    public void APath_ReadsOneField(string when, int age, bool expected)
+        => Assert.Equal(expected, WorkflowResultConditions.Holds(Parse(when), Inputs(("patient", Patient(age)))));
+
+    [Fact]
+    public void APathIntoAnAbsentObject_OrAMissingOrNullField_DoesNotHold()
+    {
+        Assert.False(WorkflowResultConditions.Holds(Parse("patient.age >= 65"), Inputs()));
+        Assert.False(WorkflowResultConditions.Holds(Parse("patient.nickname == x"), Inputs(("patient", Patient(70)))));
+        Assert.False(WorkflowResultConditions.Holds(Parse("patient.sex == female"), Inputs(("patient", Patient(70, sex: null)))));
+        Assert.False(WorkflowResultConditions.Holds(Parse("patient.sex != female"), Inputs(("patient", Patient(70, sex: null)))));
+        // A path into something that is not an object answers nothing.
+        Assert.False(WorkflowResultConditions.Holds(Parse("patient.age >= 65"), Inputs(("patient", "text"))));
+    }
+
+    [Theory]
+    [InlineData("count(prior_notes) > 1", 2, true)]
+    [InlineData("count(prior_notes) > 1", 1, false)]
+    [InlineData("count(prior_notes) == 0", 0, true)]
+    [InlineData("count(prior_notes) <= 3", 3, true)]
+    public void Count_IsTheNumberOfEntries(string when, int entries, bool expected)
+        => Assert.Equal(expected, WorkflowResultConditions.Holds(
+            Parse(when), Inputs(("prior_notes", Notes(Enumerable.Repeat("n", entries).ToArray())))));
+
+    [Fact]
+    public void CountOfAnAbsentArray_IsZero_TheOneExceptionToAbsence()
+    {
+        // "No entries supplied" and "an empty list supplied" answer the same
+        // clinical question (v9 § 6).
+        Assert.True(WorkflowResultConditions.Holds(Parse("count(prior_notes) == 0"), Inputs()));
+        Assert.False(WorkflowResultConditions.Holds(Parse("count(prior_notes) > 0"), Inputs()));
+        Assert.True(WorkflowResultConditions.Holds(Parse("count(prior_notes) < 1"), Inputs()));
+        // count() of something that is not a list answers nothing.
+        Assert.False(WorkflowResultConditions.Holds(Parse("count(prior_notes) == 0"), Inputs(("prior_notes", "text"))));
+    }
+
+    [Fact]
+    public void TheBareForm_OnAnArray_IsNonEmpty()
+    {
+        Assert.True(WorkflowResultConditions.Holds(Parse("prior_notes"), Inputs(("prior_notes", Notes("a")))));
+        Assert.False(WorkflowResultConditions.Holds(Parse("prior_notes"), Inputs(("prior_notes", Notes()))));
+        Assert.False(WorkflowResultConditions.Holds(Parse("prior_notes"), Inputs()));
+    }
+
+    // ---- Explain ----
+
+    [Theory]
+    [InlineData("length_of_stay > 7", "needs length_of_stay to be > 7; it is not")]
+    [InlineData("seen_on >= 2026-01-01", "needs seen_on to be >= 2026-01-01; it is not")]
+    [InlineData("seen_on == 2026-01-01", "needs seen_on to be '2026-01-01'; it is not")]
+    [InlineData("patient.age >= 65", "needs patient.age to be >= 65; it is not")]
+    [InlineData("patient.sex == male", "needs patient.sex to be 'male'; it is not")]
+    public void TheSentence_NeverPrintsThePatientsValue(string when, string expected)
+    {
+        // A number, a date or a field's value is the patient's, and this sentence
+        // reaches History and the email reply. It says what was needed and that
+        // it was not met — never what was found.
+        var inputs = Inputs(
+            ("length_of_stay", ConsultInputValue.OfNumber("3")),
+            ("seen_on", "2025-12-31"),
+            ("patient", Patient(40)));
+
+        var explained = WorkflowResultConditions.Explain(Parse(when), inputs);
+
+        Assert.Equal(expected, explained);
+        Assert.DoesNotContain("3", explained.Replace("65", "").Replace("2026-01-01", ""), StringComparison.Ordinal);
+        Assert.DoesNotContain("2025-12-31", explained, StringComparison.Ordinal);
+        Assert.DoesNotContain("40", explained, StringComparison.Ordinal);
+        Assert.DoesNotContain("female", explained, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheSentence_PrintsACount_AndAnArraysEmptiness()
+    {
+        // A count of entries is not content.
+        Assert.Equal("needs count(prior_notes) to be > 1; it is 1",
+            WorkflowResultConditions.Explain(Parse("count(prior_notes) > 1"), Inputs(("prior_notes", Notes("secret")))));
+        Assert.Equal("needs count(prior_notes) to be > 1; it is 0",
+            WorkflowResultConditions.Explain(Parse("count(prior_notes) > 1"), Inputs()));
+        Assert.Equal("needs prior_notes to be non-empty; it is empty",
+            WorkflowResultConditions.Explain(Parse("prior_notes"), Inputs(("prior_notes", Notes()))));
+        Assert.Equal("needs prior_notes to be non-empty; it is 2 entries",
+            WorkflowResultConditions.Explain(Parse("prior_notes"), Inputs(("prior_notes", Notes("a", "b")))));
+        Assert.Equal("needs prior_notes to be true; it is not supplied",
+            WorkflowResultConditions.Explain(Parse("prior_notes"), Inputs()));
+    }
+
+    [Fact]
+    public void TheV8Sentences_AreUnchanged()
+    {
+        // The email door quotes these back; two client tests pin them verbatim.
+        Assert.Equal("needs billable to be 'true'; it is 'false'",
+            WorkflowResultConditions.Explain(Parse("billable == true"), Inputs(("billable", ConsultInputValue.OfBoolean(false)))));
+        Assert.Equal("needs billable to be true; it is 'false'",
+            WorkflowResultConditions.Explain(Parse("billable"), Inputs(("billable", ConsultInputValue.OfBoolean(false)))));
+        Assert.Equal("needs encounter_kind to be not 'follow_up'; it is 'follow_up'",
+            WorkflowResultConditions.Explain(Parse("encounter_kind != follow_up"), Inputs(("encounter_kind", "follow_up"))));
+        Assert.Equal("needs billable to be true; it is not supplied",
+            WorkflowResultConditions.Explain(Parse("billable"), Inputs()));
+    }
+}
+
+/// <summary>
+/// #427, v9 § 6: the narrowing, where the declaration is known. The
+/// operand is resolved to a type — the input's, one field's, or a count —
+/// and the operator and literal are held to it.
+/// </summary>
+public class WorkflowV9ConditionValidationTests
+{
+    private static IEnumerable<string> Errors(string when) => V9Fixtures.Validate(V9Fixtures.Conditional(when)).Errors;
+
+    [Theory]
+    // v8's forms still hold.
+    [InlineData("billable")]
+    [InlineData("encounter_kind == follow_up")]
+    [InlineData("encounter_kind != new_patient")]
+    [InlineData("billable == false")]
+    // Ordering for a number and a date.
+    [InlineData("length_of_stay > 7")]
+    [InlineData("length_of_stay <= 7.5")]
+    [InlineData("length_of_stay == 0")]
+    [InlineData("seen_on >= 2026-01-01")]
+    [InlineData("seen_on != 2026-01-01")]
+    // A path into one field of an object.
+    [InlineData("patient.age >= 65")]
+    [InlineData("patient.sex == female")]
+    // A count, and the bare form on an array.
+    [InlineData("count(prior_notes) > 1")]
+    [InlineData("count(medications) == 0")]
+    [InlineData("prior_notes")]
+    public void TheGrammarAccepts(string when)
+    {
+        Assert.Empty(Errors(when));
+    }
+
+    [Theory]
+    // The operator is held to the operand's type.
+    [InlineData("encounter_kind > follow_up", "compares 'encounter_kind' with >, which is a enum; ordering operators apply to a number or a date.")]
+    [InlineData("billable >= true", "compares 'billable' with >=, which is a boolean; ordering operators apply to a number or a date.")]
+    [InlineData("patient.sex < female", "compares 'patient.sex' with <, which is a enum")]
+    // Text stays incomparable, on the input and on a field.
+    [InlineData("consult_draft == urgent", "reads 'consult_draft', which is a text: a text input cannot be tested.")]
+    [InlineData("patient.family_name == Smith", "reads 'patient.family_name', which is a text: a text input cannot be tested.")]
+    // Only a boolean or an array is tested bare.
+    [InlineData("encounter_kind", "'encounter_kind' tests an enum for truth; compare it to one of its values instead.")]
+    [InlineData("length_of_stay", "'length_of_stay' tests a number for truth; only a boolean or an array can be tested bare.")]
+    [InlineData("patient", "'patient' tests a object for truth; only a boolean or an array can be tested bare.")]
+    [InlineData("patient.age", "'patient.age' tests a number for truth")]
+    // A whole object or array is not compared; its parts are.
+    [InlineData("patient == x", "compares 'patient', which is an object; compare one of its fields, or its count, instead.")]
+    [InlineData("prior_notes == x", "compares 'prior_notes', which is an array; compare one of its fields, or its count, instead.")]
+    // A path needs an object and a declared field.
+    [InlineData("seen_on.year == 2026", "reads field 'year' of 'seen_on', which is a date, not an object.")]
+    [InlineData("medications.name == x", "reads field 'name' of 'medications', which is a array, not an object.")]
+    [InlineData("patient.weight > 90", "reads field 'weight' of 'patient', which it does not declare (fields: family_name, age, sex).")]
+    // A count needs an array, and a comparison.
+    [InlineData("count(patient) > 0", "counts 'patient', which is a object; only an array has a count.")]
+    [InlineData("count(prior_notes)", "'count(prior_notes)' needs a comparison; write count(prior_notes) > 0.")]
+    // The literal is held to the type.
+    [InlineData("length_of_stay > abc", "compares 'length_of_stay' to 'abc', which is not a plain decimal.")]
+    [InlineData("length_of_stay > 1e3", "which is not a plain decimal.")]
+    [InlineData("seen_on > 2026-1-1", "compares 'seen_on' to '2026-1-1', which is not a date written YYYY-MM-DD.")]
+    [InlineData("patient.sex == other", "compares 'patient.sex' to 'other', which it does not declare (values: female, male).")]
+    [InlineData("count(prior_notes) > -1", "compares 'count(prior_notes)' to '-1', which is not a whole number.")]
+    [InlineData("count(prior_notes) > 1.5", "which is not a whole number.")]
+    [InlineData("billable == yes", "compares boolean 'billable' to 'yes'; use true or false.")]
+    // The syntax and the undeclared-input refusals read as before.
+    [InlineData("urgency == high", "reads undeclared input 'urgency'")]
+    [InlineData("count(urgency) > 0", "reads undeclared input 'urgency'")]
+    [InlineData("patient.age >=", "compares against nothing")]
+    public void TheGrammarRejects(string when, string expected)
+    {
+        var errors = Errors(when).ToList();
+
+        Assert.Contains(errors, e => e.Contains(expected));
+        Assert.Single(errors);
+    }
+
+    [Theory]
+    [InlineData("patient.age >= 65", "condition reads a field of 'patient', which requires specVersion 9.")]
+    [InlineData("count(prior_notes) > 1", "condition counts 'prior_notes', which requires specVersion 9.")]
+    [InlineData("length_of_stay > 7", "condition compares 'length_of_stay' with >, which requires specVersion 9.")]
+    public void TheNewFormsRequireV9(string when, string expected)
+    {
+        // A v8 manifest that happens to declare the structured inputs (it
+        // cannot, but the gate is on the condition, not the declaration).
+        var manifest = V9Fixtures.Conditional(when) with { SpecVersion = 8 };
+
+        Assert.Contains(V9Fixtures.Validate(manifest).Errors, e => e.Contains(expected));
+    }
+
+    [Theory]
+    [InlineData("seen_on == 2026-08-10", "which is a date")]
+    [InlineData("consult_draft == \"urgent\"", "which is a text")]
+    [InlineData("encounter_kind", "tests an enum for truth")]
+    [InlineData("billable == yes", "use true or false")]
+    public void TheV8Refusals_AreUnchangedOnAV8Manifest(string when, string expected)
+    {
+        Assert.Contains(V8Fixtures.Validate(V8Fixtures.Conditional(when)).Errors, e => e.Contains(expected));
     }
 }

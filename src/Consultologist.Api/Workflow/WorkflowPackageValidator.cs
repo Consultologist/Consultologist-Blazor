@@ -5,6 +5,8 @@ using System.Text.Json.Nodes;
 using Scriban;
 using Scriban.Runtime;
 
+using Consultologist.Api.Models;
+
 namespace Consultologist.Api.Workflow;
 
 /// <summary>
@@ -830,15 +832,14 @@ public static class WorkflowPackageValidator
 
     /// <summary>
     /// The vocabulary closure over a deliverable's condition
-    /// (package-format-v8-design.md § 5). The parser has already settled the
-    /// syntax; what is checked here needs the declaration.
+    /// (package-format-v8-design.md § 5, v9 § 6). The parser has already
+    /// settled the syntax; what is checked here needs the declaration.
     ///
-    /// Conditions read <c>enum</c> and <c>boolean</c> inputs only. Date
-    /// equality asks merely "was it exactly this day" until ordering exists
-    /// (#338), and text equality compares a referral byte for byte — neither
-    /// is a choice, which is what a condition is for. Widening this is
-    /// additive and safe; narrowing it later would strand published packages,
-    /// so the narrow rule comes first.
+    /// v8 conditions read <c>enum</c> and <c>boolean</c> inputs only, and a
+    /// v8 manifest is still held to that — its refusals read as they always
+    /// did. v9 widens once: ordering for a number or a date, a path into one
+    /// field of an object, count() of an array, the bare form on an array.
+    /// Text stays incomparable: a referral byte for byte is not a choice.
     /// </summary>
     private static void ValidateResultCondition(
         WorkflowPackageManifest manifest,
@@ -866,6 +867,41 @@ public static class WorkflowPackageValidator
         if (!declaredInputs.TryGetValue(condition!.InputId, out var input))
         {
             errors.Add($"Result '{result.Id}' condition reads undeclared input '{condition.InputId}' (declared: {string.Join(", ", declaredInputs.Keys.Order(StringComparer.Ordinal))}).");
+            return;
+        }
+
+        if (manifest.SpecVersion < 9)
+        {
+            ValidateV8Condition(result, condition, input, errors);
+            return;
+        }
+
+        ValidateV9Condition(result, condition, input, errors);
+    }
+
+    /// <summary>The v8 rules, verbatim: the conformance suite and the editor quote these sentences.</summary>
+    private static void ValidateV8Condition(
+        WorkflowResultSpec result,
+        WorkflowResultCondition condition,
+        WorkflowInputSpec input,
+        List<string> errors)
+    {
+        // v9's forms on a v8 manifest: named, the way every version gate is.
+        if (condition.Field != null)
+        {
+            errors.Add($"Result '{result.Id}' condition reads a field of '{condition.InputId}', which requires specVersion 9.");
+            return;
+        }
+
+        if (condition.IsCount)
+        {
+            errors.Add($"Result '{result.Id}' condition counts '{condition.InputId}', which requires specVersion 9.");
+            return;
+        }
+
+        if (condition.IsOrdered)
+        {
+            errors.Add($"Result '{result.Id}' condition compares '{condition.InputId}' with {condition.Ordering}, which requires specVersion 9.");
             return;
         }
 
@@ -899,6 +935,121 @@ public static class WorkflowPackageValidator
             // An undeclared value is an authoring error, not a condition that
             // silently never holds.
             errors.Add($"Result '{result.Id}' condition compares '{condition.InputId}' to '{condition.Literal}', which it does not declare (values: {string.Join(", ", input.Values ?? new List<string>())}).");
+        }
+    }
+
+    /// <summary>
+    /// v9 § 6. The operand is resolved to a type first — the input's, one
+    /// field's, or a count — and the operator and literal are held to it.
+    /// Every message names the type, so an author learns why rather than
+    /// hunting a syntax error.
+    /// </summary>
+    private static void ValidateV9Condition(
+        WorkflowResultSpec result,
+        WorkflowResultCondition condition,
+        WorkflowInputSpec input,
+        List<string> errors)
+    {
+        var prefix = $"Result '{result.Id}' condition";
+        var inputType = WorkflowInputTypes.Of(input);
+        string operandType;
+        List<string>? values;
+
+        if (condition.IsCount)
+        {
+            if (inputType != WorkflowInputTypes.Array)
+            {
+                errors.Add($"{prefix} counts '{condition.InputId}', which is a {inputType}; only an array has a count.");
+                return;
+            }
+
+            if (condition.IsBare)
+            {
+                errors.Add($"{prefix} '{condition.Operand}' needs a comparison; write count({condition.InputId}) > 0.");
+                return;
+            }
+
+            if (!int.TryParse(condition.Literal, NumberStyles.None, CultureInfo.InvariantCulture, out _))
+            {
+                errors.Add($"{prefix} compares '{condition.Operand}' to '{condition.Literal}', which is not a whole number.");
+            }
+
+            return;
+        }
+
+        if (condition.Field != null)
+        {
+            if (inputType != WorkflowInputTypes.Object)
+            {
+                errors.Add($"{prefix} reads field '{condition.Field}' of '{condition.InputId}', which is a {inputType}, not an object.");
+                return;
+            }
+
+            var field = input.Fields?.FirstOrDefault(f => string.Equals(f.Id, condition.Field, StringComparison.Ordinal));
+
+            if (field is null)
+            {
+                errors.Add($"{prefix} reads field '{condition.Field}' of '{condition.InputId}', which it does not declare (fields: {string.Join(", ", (input.Fields ?? new List<WorkflowFieldSpec>()).Select(f => f.Id))}).");
+                return;
+            }
+
+            operandType = WorkflowInputTypes.Of(field);
+            values = field.Values;
+        }
+        else
+        {
+            operandType = inputType;
+            values = input.Values;
+        }
+
+        if (condition.IsBare)
+        {
+            if (operandType is WorkflowInputTypes.Boolean or WorkflowInputTypes.Array)
+            {
+                return;
+            }
+
+            errors.Add(operandType == WorkflowInputTypes.Enum
+                ? $"{prefix} '{condition.Operand}' tests an enum for truth; compare it to one of its values instead."
+                : $"{prefix} '{condition.Operand}' tests a {operandType} for truth; only a boolean or an array can be tested bare.");
+            return;
+        }
+
+        if (operandType == WorkflowInputTypes.Text)
+        {
+            errors.Add($"{prefix} reads '{condition.Operand}', which is a text: a text input cannot be tested.");
+            return;
+        }
+
+        if (operandType is WorkflowInputTypes.Object or WorkflowInputTypes.Array)
+        {
+            errors.Add($"{prefix} compares '{condition.Operand}', which is an {operandType}; compare one of its fields, or its count, instead.");
+            return;
+        }
+
+        if (condition.IsOrdered && operandType is not (WorkflowInputTypes.Number or WorkflowInputTypes.Date))
+        {
+            errors.Add($"{prefix} compares '{condition.Operand}' with {condition.Ordering}, which is a {operandType}; ordering operators apply to a number or a date.");
+            return;
+        }
+
+        switch (operandType)
+        {
+            case WorkflowInputTypes.Boolean when condition.Literal is not ("true" or "false"):
+                errors.Add($"{prefix} compares boolean '{condition.Operand}' to '{condition.Literal}'; use true or false.");
+                break;
+
+            case WorkflowInputTypes.Enum when values?.Contains(condition.Literal!, StringComparer.Ordinal) != true:
+                errors.Add($"{prefix} compares '{condition.Operand}' to '{condition.Literal}', which it does not declare (values: {string.Join(", ", values ?? new List<string>())}).");
+                break;
+
+            case WorkflowInputTypes.Number when !ConsultInputValue.TryParseNumber(condition.Literal!, out _):
+                errors.Add($"{prefix} compares '{condition.Operand}' to '{condition.Literal}', which is not a plain decimal.");
+                break;
+
+            case WorkflowInputTypes.Date when !DateOnly.TryParseExact(condition.Literal, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _):
+                errors.Add($"{prefix} compares '{condition.Operand}' to '{condition.Literal}', which is not a date written YYYY-MM-DD.");
+                break;
         }
     }
 

@@ -181,9 +181,11 @@ public static class WorkflowDagDiagram
                 continue;
             }
 
+            // v9: the operand's suffix says which form — ".age >= 65", "count > 1".
+            var suffix = condition.IsCount ? "count " : condition.Field is null ? string.Empty : $".{condition.Field} ";
             var test = condition.Literal is null
-                ? "when true"
-                : $"when {(condition.Negated ? WorkflowResultConditions.NotEqualsOperator : WorkflowResultConditions.EqualsOperator)} {condition.Literal}";
+                ? $"when {suffix}true"
+                : $"when {suffix}{condition.Operator} {condition.Literal}";
 
             sb.Append($"    {Sanitize($"input:{condition.InputId}")} -.->|\"{test}\"| {boxId}\n");
         }
