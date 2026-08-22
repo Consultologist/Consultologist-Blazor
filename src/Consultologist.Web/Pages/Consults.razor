@@ -255,7 +255,7 @@
                             }
                             <FluentButton Appearance="Appearance.Accent"
                                           @onclick="CreateConsultAsync"
-                                          Disabled="@(isBlocksLoading || isAiRequestLoading || isSchedulingRequest || !HasEveryRequiredInput || packageBlocks.Count == 0)">
+                                          Disabled="@(isBlocksLoading || isAiRequestLoading || isSchedulingRequest || !HasEveryRequiredInput || !HasNoInputProblems || packageBlocks.Count == 0)">
                                 @(runOvernight ? "Schedule consult" : "Create consult")
                             </FluentButton>
                         </div>
@@ -570,7 +570,7 @@
   // renders both eras. Seeded before the package resolves — the setup form
   // renders once first.
   private List<ConsultInputField> inputFields = LegacyInputs
-    .Select(input => new ConsultInputField(input.Id, input.Label, input.Required))
+    .Select(input => new ConsultInputField(input, textRows: 16))
     .ToList();
   private IReadOnlyList<WorkflowPackageResultResponse>? declaredResults;
   private bool editingDraft;
@@ -899,6 +899,12 @@
         .Where(field => field.Required && !field.IsFilled)
         .Select(field => field.Label);
       aiRequestError = $"{string.Join(", ", missing)} is required.";
+      return;
+    }
+
+    if (inputFields.Select(field => field.Problem).FirstOrDefault(problem => problem != null) is { } problem)
+    {
+      aiRequestError = problem;
       return;
     }
 
@@ -1499,19 +1505,18 @@
   {
     var carried = inputFields.ToDictionary(field => field.Id, field => field, StringComparer.Ordinal);
 
-    inputFields = (declaration is { Count: > 0 } ? declaration : LegacyInputs)
+    var declared = declaration is { Count: > 0 } ? declaration : LegacyInputs;
+
+    inputFields = declared
       .Select(input =>
       {
-        var field = new ConsultInputField(input.Id, input.Label, input.Required, input.Type, input.Values);
+        var field = new ConsultInputField(input, textRows: declared.Count == 1 ? 16 : 6);
 
+        // #429: the whole answer carries — a chosen boolean too, which used
+        // to be dropped here — but only into a slot of the same shape.
         if (carried.TryGetValue(input.Id, out var previous))
         {
-          field.Value = previous.Value;
-          field.FileName = previous.FileName;
-          field.FileContent = previous.FileContent;
-          field.FileContentType = previous.FileContentType;
-          field.PreviewText = previous.PreviewText;
-          field.PageCount = previous.PageCount;
+          field.AdoptFrom(previous);
         }
 
         return field;
@@ -1525,8 +1530,7 @@
   {
     foreach (var field in inputFields)
     {
-      RemoveFile(field);
-      field.Value = values.GetValueOrDefault(field.Id, string.Empty);
+      field.RestoreText(values.GetValueOrDefault(field.Id, string.Empty));
     }
   }
 
@@ -1537,9 +1541,10 @@
   {
     foreach (var field in inputFields)
     {
-      field.Value = string.Empty;
-      RemoveFile(field);
+      field.Clear();
     }
+
+    scheduleConfirmation = null;
   }
 
   // #236: bytes accepted before anything is uploaded, so a huge file is not
@@ -1590,15 +1595,15 @@
         return;
       }
 
-      // The file becomes the input. Value is left alone underneath so that
-      // removing the file gives back whatever was typed before.
-      field.FileName = file.Name;
-      field.FileContent = content;
-      field.FileContentType = string.IsNullOrWhiteSpace(file.ContentType)
-        ? "application/octet-stream"
-        : file.ContentType;
-      field.PreviewText = outcome.Text!;
-      field.PageCount = outcome.PageCount;
+      // The file becomes the input. What was typed is left alone underneath
+      // so that removing the file gives it back.
+      field.Documents.Clear();
+      field.Documents.Add(new AttachedDocument(
+        file.Name,
+        string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+        content,
+        outcome.PageCount,
+        outcome.Text!));
     }
     catch (Exception ex)
     {
@@ -1612,11 +1617,7 @@
 
   private void RemoveFile(ConsultInputField field)
   {
-    field.FileName = null;
-    field.FileContent = null;
-    field.FileContentType = null;
-    field.PreviewText = string.Empty;
-    field.PageCount = null;
+    field.Documents.Clear();
     field.FileError = null;
     scheduleConfirmation = null;
   }
@@ -1643,14 +1644,15 @@
 
   // #236: the attached documents. The file travels rather than its text, so
   // the server extracts it and the record says what read it. #428: a slot
-  // lists its documents; this form attaches one, so each is a list of one —
-  // the multi-file picker is #429's.
+  // lists its documents, in the order chosen.
   private Dictionary<string, IReadOnlyList<InputFilePayload>> SuppliedFiles() =>
     inputFields
       .Where(field => field.HasFile)
       .ToDictionary(
         field => field.Id,
-        field => (IReadOnlyList<InputFilePayload>)new[] { new InputFilePayload(field.FileContentType!, field.FileContent!) },
+        field => (IReadOnlyList<InputFilePayload>)field.Documents
+          .Select(document => new InputFilePayload(document.ContentType, document.Content))
+          .ToList(),
         StringComparer.Ordinal);
 
   // What every display surface and memento shows: the text that ran,
@@ -1664,6 +1666,10 @@
   // the lambdas below name their parameter 'entry'.
   private bool HasEveryRequiredInput =>
     inputFields.Where(entry => entry.Required).All(entry => entry.IsFilled);
+
+  // #429: a value that is present and wrong — on an optional slot as much as
+  // a required one — must not be quietly omitted. Named, and the run waits.
+  private bool HasNoInputProblems => inputFields.All(entry => entry.Problem is null);
 
   private bool HasAnyInput => inputFields.Any(entry => entry.IsFilled);
 
@@ -2033,21 +2039,156 @@
   private sealed record PackageBlock(string Id, string Name);
 
   /// <summary>
-  /// One editable setup field. A mutable class, not a record: the text area
-  /// binds to Value directly, which is the only shape Blazor's expression
-  /// formatter accepts inside a loop (an indexer keyed by a property access
-  /// throws at render time).
+  /// One scalar answer: a scalar input's value, one element of an array, or
+  /// one field of an object. The control binds to it wherever it sits. A
+  /// mutable class, not a record: the text area binds to Value directly,
+  /// which is the only shape Blazor's expression formatter accepts inside a
+  /// loop (an indexer keyed by a property access throws at render time).
   /// </summary>
-  private sealed class ConsultInputField
+  private sealed class ScalarSlot
   {
-    public ConsultInputField(string id, string label, bool required,
-      string? type = null, IReadOnlyList<string>? values = null)
+    public ScalarSlot(string id, string label, bool required, string? type, IReadOnlyList<string>? values, int rows, string? placeholder = null)
     {
       Id = id;
       Label = label;
       Required = required;
       Type = type ?? WorkflowInputTypes.Text;
       Values = values ?? Array.Empty<string>();
+      Rows = rows;
+      Placeholder = placeholder ?? $"Enter {label.ToLowerInvariant()}...";
+    }
+
+    public string Id { get; }
+    public string Label { get; }
+    public bool Required { get; }
+    public string Type { get; }
+    public IReadOnlyList<string> Values { get; }
+    public int Rows { get; }
+    public string Placeholder { get; }
+
+    // text, date, enum — and a number, as typed: the canonical form is the
+    // caller's own spelling, so "1.50" is sent as "1.50".
+    public string Value { get; set; } = string.Empty;
+
+    /// <summary>
+    /// A boolean's value, held apart from Value so an untouched control is
+    /// distinguishable from a false one. Explicit initialisation: null until
+    /// the clinician chooses, never defaulted to false.
+    /// </summary>
+    public bool? Flag { get; set; }
+
+    public bool IsTouched => Type == WorkflowInputTypes.Boolean ? Flag.HasValue : !string.IsNullOrWhiteSpace(Value);
+
+    /// <summary>What this slot sends, or null when nothing was chosen — or, for a number, nothing parseable.</summary>
+    public ConsultInputValue? Supplied => Type switch
+    {
+      WorkflowInputTypes.Boolean => Flag is { } flag ? ConsultInputValue.OfBoolean(flag) : null,
+      // v9: the gate is the same parse the server applies; a spelling it
+      // refuses is named here rather than sent to be refused there.
+      WorkflowInputTypes.Number => ConsultInputValue.TryParseNumber(Value.Trim(), out var number) ? number : null,
+      _ => string.IsNullOrWhiteSpace(Value) ? null : ConsultInputValue.OfText(Value)
+    };
+
+    public bool IsFilled => Supplied is not null;
+
+    /// <summary>What is wrong with a touched value, as the fragment after its subject; null when nothing is.</summary>
+    public string? Problem => Type == WorkflowInputTypes.Number && IsTouched && Supplied is null
+      ? "must be a plain decimal number, like 12 or 1.50."
+      : null;
+
+    /// <summary>The text that ran: a chosen boolean reads true or false, a number as spelled.</summary>
+    public string EffectiveText => Supplied is { HasCanonical: true } supplied ? supplied.Canonical : Value;
+
+    public void Clear()
+    {
+      Value = string.Empty;
+      Flag = null;
+    }
+
+    public void CopyFrom(ScalarSlot other)
+    {
+      Value = other.Value;
+      Flag = other.Flag;
+    }
+  }
+
+  /// <summary>One row of an array: a scalar, or — for an array of objects — one slot per declared field.</summary>
+  private sealed class ConsultInputElement
+  {
+    public ConsultInputElement(ScalarSlot scalar) => Scalar = scalar;
+
+    public ConsultInputElement(IReadOnlyList<ScalarSlot> fields) => Fields = fields;
+
+    public ScalarSlot? Scalar { get; }
+    public IReadOnlyList<ScalarSlot>? Fields { get; }
+
+    public bool IsEmpty => Scalar != null ? !Scalar.IsTouched : Fields!.All(slot => !slot.IsTouched);
+
+    public ConsultInputValue? Supplied => Scalar != null
+      ? Scalar.Supplied
+      : ConsultInputField.ObjectValue(Fields!, requireTouched: false);
+
+    /// <summary>A sentence about this row, with its subject ("Prior notes row 2") supplied by the caller.</summary>
+    public string? Problem(string subject)
+    {
+      if (IsEmpty)
+      {
+        return $"{subject} is empty; fill it in or remove it.";
+      }
+
+      if (Scalar != null)
+      {
+        return Scalar.Problem is { } problem ? $"{subject} {problem}" : null;
+      }
+
+      return ConsultInputField.FieldsProblem(Fields!, subject + ":");
+    }
+
+    public string EffectiveText => Scalar != null
+      ? Scalar.EffectiveText
+      : ConsultInputField.FieldsText(Fields!);
+  }
+
+  /// <summary>
+  /// #236: an attached document. The bytes are held because the job request
+  /// carries the file itself — the server extracts it again there, so what
+  /// runs is what the server read rather than what this client reported. An
+  /// IBrowserFile's stream does not survive until submit, so it cannot be
+  /// re-read then. The preview is load-bearing beyond display: the run-phase
+  /// draft bar and the re-attach memento both need the input text, and this
+  /// is the client's only copy.
+  /// </summary>
+  private sealed record AttachedDocument(
+    string FileName,
+    string ContentType,
+    byte[] Content,
+    int? PageCount,
+    string PreviewText);
+
+  /// <summary>
+  /// One editable setup field. v9 (#429): a scalar, an object of scalar
+  /// fields, or an array of rows; and, for a text or an array-of-text slot,
+  /// the documents that fill it instead.
+  /// </summary>
+  private sealed class ConsultInputField
+  {
+    private readonly IReadOnlyList<WorkflowPackageFieldResponse> fieldSpecs;
+
+    public ConsultInputField(WorkflowPackageInputResponse input, int textRows)
+    {
+      Id = input.Id;
+      Label = input.Label;
+      Required = input.Required;
+      Type = WorkflowInputTypes.Of(input);
+      Items = input.Items ?? WorkflowInputTypes.Text;
+      Values = input.Values ?? Array.Empty<string>();
+      fieldSpecs = input.Fields ?? Array.Empty<WorkflowPackageFieldResponse>();
+
+      var placeholder = Id == "consult_draft"
+        ? "Enter referral details, clinical context, and the consult question..."
+        : null;
+      Scalar = new ScalarSlot(Id, Label, Required, Type, Values, textRows, placeholder);
+      Fields = Type == WorkflowInputTypes.Object ? FieldSlots() : Array.Empty<ScalarSlot>();
     }
 
     public string Id { get; }
@@ -2055,59 +2196,226 @@
     public bool Required { get; }
 
     // v8: what control this slot renders and, for an enum, its choices.
+    // v9: an array's element type, an object's (or array-of-object's) fields.
     public string Type { get; }
+    public string Items { get; }
     public IReadOnlyList<string> Values { get; }
 
-    /// <summary>
-    /// A boolean's value, held apart from Value so an untouched checkbox is
-    /// distinguishable from a false one. Explicit initialisation: null until
-    /// the clinician chooses, never defaulted to false.
-    /// </summary>
-    public bool? Flag { get; set; }
+    /// <summary>The scalar answer, for a scalar slot. Value and Flag forward here.</summary>
+    public ScalarSlot Scalar { get; }
+    public string Value { get => Scalar.Value; set => Scalar.Value = value; }
+    public bool? Flag { get => Scalar.Flag; set => Scalar.Flag = value; }
 
-    /// <summary>What this slot sends, or null when nothing was chosen.</summary>
-    public ConsultInputValue? Supplied => Type == WorkflowInputTypes.Boolean
-      ? Flag.HasValue ? ConsultInputValue.OfBoolean(Flag.Value) : null
-      : string.IsNullOrWhiteSpace(Value) ? null : ConsultInputValue.OfText(Value);
-    public string Value { get; set; } = string.Empty;
+    /// <summary>An object's fields, one slot each, in declaration order.</summary>
+    public IReadOnlyList<ScalarSlot> Fields { get; }
+
+    /// <summary>An array's rows, in the order the clinician put them.</summary>
+    public List<ConsultInputElement> Rows { get; } = new();
+
+    /// <summary>The documents filling this slot, in the order chosen (#428: that order is the record's).</summary>
+    public List<AttachedDocument> Documents { get; } = new();
 
     // #208: why a load was refused. Per-field so a failed upload names the
     // field the user aimed at.
     public string? FileError { get; set; }
-
-    // #236: the attached document. The bytes are held because the job request
-    // carries the file itself — the server extracts it again there, so what
-    // runs is what the server read rather than what this client reported. An
-    // IBrowserFile's stream does not survive until submit, so it cannot be
-    // re-read then.
-    public string? FileName { get; set; }
-    public byte[]? FileContent { get; set; }
-    public string? FileContentType { get; set; }
-    public int? PageCount { get; set; }
-
-    // What the server got out of the file. Read-only to the user, and
-    // load-bearing beyond display: the run-phase draft bar and the re-attach
-    // memento both need the input text, and this is the client's only copy.
-    public string PreviewText { get; set; } = string.Empty;
-
     public bool IsReading { get; set; }
 
-    public bool HasFile => FileContent != null;
+    public bool HasFile => Documents.Count > 0;
+
+    // The single-document view the markup still renders (#429 PR A keeps it
+    // until the multi-file slot lands).
+    public string? FileName => Documents.Count > 0 ? Documents[0].FileName : null;
+    public int? PageCount => Documents.Count > 0 ? Documents[0].PageCount : null;
+    public string PreviewText => Documents.Count > 0 ? Documents[0].PreviewText : string.Empty;
+
+    /// <summary>The server's rule (ExtractInputFilesAsync): only an array of text takes several documents.</summary>
+    public bool TakesSeveralDocuments => Type == WorkflowInputTypes.Array && Items == WorkflowInputTypes.Text;
+    public bool TakesOneDocument => Type == WorkflowInputTypes.Text;
+
+    /// <summary>What this slot sends, or null when nothing was chosen.</summary>
+    public ConsultInputValue? Supplied => Type switch
+    {
+      // An untouched optional object is absent; a touched one must answer
+      // every required field. Absent optional fields are omitted, never null.
+      WorkflowInputTypes.Object => ObjectValue(Fields, requireTouched: true),
+      // No rows is absent; a row that is empty or wrong holds the whole slot.
+      WorkflowInputTypes.Array => Rows.Count == 0 || Rows.Any(row => row.IsEmpty || row.Supplied is null)
+        ? null
+        : ConsultInputValue.OfArray(Rows.Select(row => row.Supplied!)),
+      _ => Scalar.Supplied
+    };
 
     /// <summary>
     /// What this slot contributes, whichever way it was filled — the one
     /// question every gate should be asking.
     /// </summary>
-    // Supplied rather than Value, so a chosen checkbox counts as filled: a
-    // boolean's answer lives in Flag and its Value stays empty.
     public bool IsFilled => HasFile || Supplied is not null;
 
-    /// <summary>The text that ran, for display surfaces that show inputs.</summary>
-    public string EffectiveText => HasFile ? PreviewText : Value;
+    /// <summary>
+    /// A named sentence about a value that is present and wrong — a number
+    /// that does not parse, an empty row, a required field left blank once
+    /// the object was touched. Null when nothing is wrong; an untouched slot
+    /// is not wrong, only (if required) unfilled.
+    /// </summary>
+    public string? Problem
+    {
+      get
+      {
+        if (HasFile)
+        {
+          return null;
+        }
 
-    public string Placeholder => Id == "consult_draft"
-      ? "Enter referral details, clinical context, and the consult question..."
-      : $"Enter {Label.ToLowerInvariant()}...";
+        switch (Type)
+        {
+          case WorkflowInputTypes.Object:
+            return Fields.Any(slot => slot.IsTouched) ? FieldsProblem(Fields, $"{Label}:") : null;
+          case WorkflowInputTypes.Array:
+            for (var index = 0; index < Rows.Count; index++)
+            {
+              if (Rows[index].Problem($"{Label} row {index + 1}") is { } problem)
+              {
+                return problem;
+              }
+            }
+
+            return null;
+          default:
+            return Scalar.Problem is { } scalarProblem ? $"{Label} {scalarProblem}" : null;
+        }
+      }
+    }
+
+    /// <summary>The text that ran, for display surfaces that show inputs.</summary>
+    public string EffectiveText
+    {
+      get
+      {
+        if (HasFile)
+        {
+          return string.Join("\n\n", Documents.Select(document => document.PreviewText));
+        }
+
+        return Type switch
+        {
+          WorkflowInputTypes.Object => FieldsText(Fields),
+          WorkflowInputTypes.Array => string.Join(
+            Items == WorkflowInputTypes.Object ? "\n\n" : "\n",
+            Rows.Where(row => !row.IsEmpty).Select(row => row.EffectiveText)),
+          _ => Scalar.EffectiveText
+        };
+      }
+    }
+
+    public string Placeholder => Scalar.Placeholder;
+
+    public ConsultInputElement AddRow()
+    {
+      var row = Items == WorkflowInputTypes.Object
+        ? new ConsultInputElement(FieldSlots())
+        : new ConsultInputElement(new ScalarSlot(Id, Label, true, Items, Values, rows: 3));
+      Rows.Add(row);
+      return row;
+    }
+
+    public void RemoveRow(int index) => Rows.RemoveAt(index);
+
+    public void MoveRow(int index, int delta) =>
+      (Rows[index], Rows[index + delta]) = (Rows[index + delta], Rows[index]);
+
+    public void Clear()
+    {
+      Scalar.Clear();
+      foreach (var slot in Fields)
+      {
+        slot.Clear();
+      }
+
+      Rows.Clear();
+      Documents.Clear();
+      FileError = null;
+    }
+
+    /// <summary>
+    /// Carries what was supplied into a slot the new package still declares
+    /// with the same shape — switching packages never smuggles a stale input
+    /// into a run, and a slot whose shape changed starts empty.
+    /// </summary>
+    public void AdoptFrom(ConsultInputField previous)
+    {
+      if (previous.Type != Type || previous.Items != Items
+        || !previous.Fields.Select(slot => slot.Id).SequenceEqual(Fields.Select(slot => slot.Id)))
+      {
+        return;
+      }
+
+      Scalar.CopyFrom(previous.Scalar);
+      for (var index = 0; index < Fields.Count; index++)
+      {
+        Fields[index].CopyFrom(previous.Fields[index]);
+      }
+
+      Rows.AddRange(previous.Rows);
+      Documents.AddRange(previous.Documents);
+    }
+
+    /// <summary>Re-attach: the memento holds text, so a scalar is restored as typed and a boolean by its word.</summary>
+    public void RestoreText(string text)
+    {
+      Clear();
+
+      if (Type == WorkflowInputTypes.Boolean)
+      {
+        Flag = text switch { "true" => true, "false" => false, _ => null };
+      }
+      else if (Type is not (WorkflowInputTypes.Object or WorkflowInputTypes.Array))
+      {
+        Value = text;
+      }
+    }
+
+    private IReadOnlyList<ScalarSlot> FieldSlots() =>
+      fieldSpecs.Select(spec => new ScalarSlot(spec.Id, spec.Label, spec.Required, spec.Type, spec.Values, rows: 3)).ToList();
+
+    internal static ConsultInputValue? ObjectValue(IReadOnlyList<ScalarSlot> fields, bool requireTouched)
+    {
+      if (requireTouched && !fields.Any(slot => slot.IsTouched))
+      {
+        return null;
+      }
+
+      if (fields.Any(slot => slot.Problem != null || (slot.Required && !slot.IsFilled)))
+      {
+        return null;
+      }
+
+      return ConsultInputValue.OfObject(
+        fields.Where(slot => slot.IsFilled).Select(slot => new ConsultInputEntry(slot.Id, slot.Supplied!)));
+    }
+
+    internal static string? FieldsProblem(IReadOnlyList<ScalarSlot> fields, string subject)
+    {
+      foreach (var slot in fields)
+      {
+        if (slot.Problem is { } problem)
+        {
+          return $"{subject} {slot.Label} {problem}";
+        }
+      }
+
+      foreach (var slot in fields)
+      {
+        if (slot.Required && !slot.IsFilled)
+        {
+          return $"{subject} {slot.Label} is required.";
+        }
+      }
+
+      return null;
+    }
+
+    internal static string FieldsText(IReadOnlyList<ScalarSlot> fields) =>
+      string.Join("\n", fields.Where(slot => slot.IsFilled).Select(slot => $"{slot.Label}: {slot.EffectiveText}"));
   }
 
   private sealed record ConsultGenerationBlockCompletedEvent(

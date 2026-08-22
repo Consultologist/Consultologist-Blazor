@@ -23,7 +23,7 @@ public class ConsultsSetupTests : ClientRenderTestContext
             .ToList();
 
     private static IReadOnlyList<IElement> Fields(IRenderedComponent<Consults> page) =>
-        page.FindAll("label.input-field");
+        page.FindAll(".input-field");
 
     [Fact]
     public void LegacyPackage_RendersTheSingleDraftField()
@@ -127,7 +127,7 @@ public class ConsultsSetupTests : ClientRenderTestContext
             .Returns(DocumentExtractionOutcome.Refused(error));
 
     private static IElement Field(IRenderedComponent<Consults> page, int index) =>
-        page.FindAll("label.input-field")[index];
+        page.FindAll(".input-field")[index];
 
     [Fact]
     public void AttachingAFile_ReplacesThatSlotsTextAreaOnly()
@@ -461,6 +461,26 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         page.FindAll("select.node-field__input")[0].Change("follow_up");
 
         Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public async Task SwitchingPackages_CarriesAChosenBoolean()
+    {
+        // #429: the whole answer carries into a slot the next package still
+        // declares with the same shape. A chosen boolean used to be dropped
+        // here — Value carried, Flag did not.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: TypedInputs());
+        var page = Render<Consults>();
+        page.FindAll("select.node-field__input")[1].Change("true");
+
+        // Only the package stub moves: re-running WithPinnedPackage would
+        // re-enter its throwing content stub while configuring it.
+        WorkflowService.GetCurrentPackageAsync().Returns(new WorkflowPackageResponse(
+            "general", "v2026.07.11", 7, new[] { Block("s:plan", "Plan") }, TypedInputs(), null));
+        var picker = page.FindComponent<Consultologist.Web.Shared.WorkflowEditor.WorkflowPackagePicker>();
+        await page.InvokeAsync(() => picker.Instance.OnPinned.InvokeAsync());
+
+        Assert.Equal("true", page.FindAll("select.node-field__input")[1].GetAttribute("value"));
     }
 
     [Fact]
