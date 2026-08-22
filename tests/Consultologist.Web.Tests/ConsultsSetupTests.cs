@@ -463,6 +463,91 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
     }
 
+    // ----- #429: v9 intake controls ----------------------------------------
+
+    private static WorkflowPackageInputResponse[] WithNumber() => new[]
+    {
+        new WorkflowPackageInputResponse("consult_draft", "Consult draft", true),
+        new WorkflowPackageInputResponse("length_of_stay", "Length of stay", false, WorkflowInputTypes.Number)
+    };
+
+    [Fact]
+    public void ANumber_RendersADecimalTextInput()
+    {
+        // Not type=number: the canonical form is the spelling typed, which a
+        // number control would not promise to keep.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNumber(), specVersion: 9);
+
+        var page = Render<Consults>();
+
+        var control = Assert.Single(page.FindAll("input[inputmode=decimal]"));
+        Assert.Equal("Length of stay", control.GetAttribute("aria-label"));
+        Assert.Empty(page.FindAll("input[type=number]"));
+    }
+
+    [Fact]
+    public void ANonNumber_NamesTheFieldAndHoldsTheRun()
+    {
+        // On an OPTIONAL slot: a value that is present and wrong must not be
+        // quietly omitted. Clearing it reopens the gate.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNumber(), specVersion: 9);
+
+        var page = Render<Consults>();
+        page.Find("fluent-text-area").Change("Referral.");
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+
+        page.Find("input[inputmode=decimal]").Change("about a week");
+
+        Assert.Equal(
+            "Length of stay must be a plain decimal number, like 12 or 1.50.",
+            page.Find(".input-field__error").TextContent.Trim());
+        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+
+        page.Find("input[inputmode=decimal]").Change("");
+
+        Assert.Empty(page.FindAll(".input-field__error"));
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void ANumber_TravelsWithTheSpellingTyped()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNumber(), specVersion: 9);
+        IReadOnlyDictionary<string, ConsultInputValue>? sent = null;
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sent = value),
+                Arg.Any<string?>(), Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
+            .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
+
+        var page = Render<Consults>();
+        page.Find("fluent-text-area").Change("Referral.");
+        page.Find("input[inputmode=decimal]").Change("1.50");
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.NotNull(sent);
+        Assert.True(sent!["length_of_stay"].IsNumber);
+        Assert.Equal("1.50", sent["length_of_stay"].Canonical);
+    }
+
+    [Fact]
+    public void AnUntouchedOptionalNumber_IsOmitted()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNumber(), specVersion: 9);
+        IReadOnlyDictionary<string, ConsultInputValue>? sent = null;
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sent = value),
+                Arg.Any<string?>(), Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
+            .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
+
+        var page = Render<Consults>();
+        page.Find("fluent-text-area").Change("Referral.");
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.Equal(new[] { "consult_draft" }, sent!.Keys);
+    }
+
     [Fact]
     public async Task SwitchingPackages_CarriesAChosenBoolean()
     {

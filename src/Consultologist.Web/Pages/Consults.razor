@@ -86,67 +86,31 @@
                                         Looks wrong? Remove the file and paste the text instead.
                                     </span>
                                 }
-                                else if (field.Type == WorkflowInputTypes.Date)
-                                {
-                                    @* v8: the control's value IS the contract. The server
-                                       accepts only ISO YYYY-MM-DD and rejects rather than
-                                       normalises, so this is not a display preference.
-                                       Empty until chosen — never today's date. *@
-                                    <input type="date"
-                                           class="node-field__input"
-                                           value="@field.Value"
-                                           @onchange="args => field.Value = args.Value?.ToString() ?? string.Empty"
-                                           aria-label="@field.Label" />
-                                }
-                                else if (field.Type == WorkflowInputTypes.Enum)
-                                {
-                                    @* No selection until one is made: a plausible default
-                                       is still a value nobody chose. *@
-                                    <select class="node-field__input"
-                                            value="@field.Value"
-                                            @onchange="args => field.Value = args.Value?.ToString() ?? string.Empty"
-                                            aria-label="@field.Label">
-                                        <option value="">choose…</option>
-                                        @foreach (var option in field.Values)
-                                        {
-                                            <option value="@option">@option</option>
-                                        }
-                                    </select>
-                                }
-                                else if (field.Type == WorkflowInputTypes.Boolean)
-                                {
-                                    @* Tri-state on purpose: unanswered is not false, and a
-                                       required boolean nobody touched must block the run
-                                       rather than quietly submit false. *@
-                                    <select class="node-field__input"
-                                            value="@(field.Flag is null ? string.Empty : field.Flag.Value ? "true" : "false")"
-                                            @onchange="args => SetFlag(field, args.Value?.ToString())"
-                                            aria-label="@field.Label">
-                                        <option value="">choose…</option>
-                                        <option value="true">Yes</option>
-                                        <option value="false">No</option>
-                                    </select>
-                                }
                                 else
                                 {
-                                    @* Bound to the field object's own property: Blazor's
-                                       expression formatter cannot parse an indexer whose
-                                       argument is a property access. *@
-                                    <FluentTextArea @bind-Value="field.Value"
-                                                    Placeholder="@field.Placeholder"
-                                                    Rows="@(inputFields.Count == 1 ? 16 : 6)" />
-                                    @* No accept filter and no extension list: the
-                                       parser is the only thing that knows what a
-                                       format is, and a second opinion here could
-                                       disagree with it (docs/DOCUMENT_INPUT.md § 1). *@
-                                    <span class="input-field__file" @onclick:stopPropagation="true">
-                                        <InputFile OnChange="args => LoadFileAsync(field, args)" />
-                                        @if (field.IsReading)
-                                        {
-                                            <FluentProgressRing style="width: 16px; height: 16px;" />
-                                            <span class="muted-text">Reading&hellip;</span>
-                                        }
-                                    </span>
+                                    @* v8/v9: one control per scalar type, the same
+                                       fragment that draws a row's element and an
+                                       object's field. *@
+                                    @ScalarControl(field.Scalar)
+                                    @if (field.TakesOneDocument)
+                                    {
+                                        @* No accept filter and no extension list: the
+                                           parser is the only thing that knows what a
+                                           format is, and a second opinion here could
+                                           disagree with it (docs/DOCUMENT_INPUT.md § 1). *@
+                                        <span class="input-field__file" @onclick:stopPropagation="true">
+                                            <InputFile OnChange="args => LoadFileAsync(field, args)" />
+                                            @if (field.IsReading)
+                                            {
+                                                <FluentProgressRing style="width: 16px; height: 16px;" />
+                                                <span class="muted-text">Reading&hellip;</span>
+                                            }
+                                        </span>
+                                    }
+                                }
+                                @if (field.Problem is { } problem)
+                                {
+                                    <span class="input-field__error">@problem</span>
                                 }
                                 @if (field.FileError != null)
                                 {
@@ -559,6 +523,77 @@
 </AuthorizeView>
 
 @code {
+  /// <summary>
+  /// One control per scalar type (v8; v9 adds number). Drawn at the top of a
+  /// scalar slot, inside an array's row and inside an object's field group —
+  /// one fragment, so the three sites cannot drift. A fragment rather than a
+  /// component: its handlers run in this page's own render context, so the
+  /// submit gate re-evaluates without a callback layer.
+  /// </summary>
+  private RenderFragment<ScalarSlot> ScalarControl => slot =>
+    @<text>
+      @if (slot.Type == WorkflowInputTypes.Date)
+      {
+        @* v8: the control's value IS the contract. The server accepts only
+           ISO YYYY-MM-DD and rejects rather than normalises, so this is not
+           a display preference. Empty until chosen — never today's date. *@
+        <input type="date"
+               class="node-field__input"
+               value="@slot.Value"
+               @onchange="args => slot.Value = args.Value?.ToString() ?? string.Empty"
+               aria-label="@slot.Label" />
+      }
+      else if (slot.Type == WorkflowInputTypes.Enum)
+      {
+        @* No selection until one is made: a plausible default is still a
+           value nobody chose. *@
+        <select class="node-field__input"
+                value="@slot.Value"
+                @onchange="args => slot.Value = args.Value?.ToString() ?? string.Empty"
+                aria-label="@slot.Label">
+          <option value="">choose…</option>
+          @foreach (var option in slot.Values)
+          {
+            <option value="@option">@option</option>
+          }
+        </select>
+      }
+      else if (slot.Type == WorkflowInputTypes.Boolean)
+      {
+        @* Tri-state on purpose: unanswered is not false, and a required
+           boolean nobody touched must block the run rather than quietly
+           submit false. *@
+        <select class="node-field__input"
+                value="@(slot.Flag is null ? string.Empty : slot.Flag.Value ? "true" : "false")"
+                @onchange="args => SetFlag(slot, args.Value?.ToString())"
+                aria-label="@slot.Label">
+          <option value="">choose…</option>
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+      }
+      else if (slot.Type == WorkflowInputTypes.Number)
+      {
+        @* v9: a text control, not type=number. The canonical form is the
+           caller's own spelling — "1.50" is sent as "1.50" — and a number
+           control would not promise to keep it. The parse gate is the slot's. *@
+        <input type="text"
+               inputmode="decimal"
+               class="node-field__input input-field__number"
+               value="@slot.Value"
+               @onchange="args => slot.Value = args.Value?.ToString() ?? string.Empty"
+               aria-label="@slot.Label" />
+      }
+      else
+      {
+        @* Bound to the slot's own property: Blazor's expression formatter
+           cannot parse an indexer whose argument is a property access. *@
+        <FluentTextArea @bind-Value="slot.Value"
+                        Placeholder="@slot.Placeholder"
+                        Rows="@slot.Rows" />
+      }
+    </text>;
+
   private static readonly int MaxSseReconnectAttempts = 1;
   private static readonly JsonSerializerOptions SseJsonOptions = new()
   {
@@ -1629,8 +1664,8 @@
   // Tri-state, so an untouched required boolean blocks the run instead of
   // quietly submitting false. Razor cannot parse a switch expression inside an
   // inline lambda, which is the only reason this is a method.
-  private static void SetFlag(ConsultInputField field, string? choice) =>
-    field.Flag = choice switch
+  private static void SetFlag(ScalarSlot slot, string? choice) =>
+    slot.Flag = choice switch
     {
       "true" => true,
       "false" => false,
