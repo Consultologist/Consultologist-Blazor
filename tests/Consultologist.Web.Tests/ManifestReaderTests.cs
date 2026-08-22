@@ -36,6 +36,55 @@ public class ManifestReaderTests
     }
 
     [Fact]
+    public void ReadInputs_ReadsItemsAndFields()
+    {
+        // #429: the composer rebuilds the inputs list from these records, so
+        // what the reader does not carry, a publish silently drops.
+        var inputs = WorkflowManifestReader.ReadInputs(Parse("""
+            { "inputs": [
+                { "id": "prior_notes", "label": "Prior notes", "required": false, "type": "array", "items": "text" },
+                { "id": "labs", "label": "Labs", "type": "array", "items": "object",
+                  "fields": [
+                    { "id": "name", "label": "Test" },
+                    { "id": "value", "label": "Value", "required": false, "type": "number" },
+                    { "id": "unit", "label": "Unit", "type": "enum", "values": ["mg", "mmol"] }
+                  ] }
+            ] }
+            """));
+
+        Assert.Equal("text", inputs[0].Items);
+        Assert.Null(inputs[0].Fields);
+        Assert.Equal("object", inputs[1].Items);
+        Assert.Equal(
+            new[] { ("name", "Test", true, (string?)null), ("value", "Value", false, "number"), ("unit", "Unit", true, "enum") },
+            inputs[1].Fields!.Select(f => (f.Id, f.Label, f.Required, f.Type)).ToArray());
+        Assert.Equal(new[] { "mg", "mmol" }, inputs[1].Fields![2].Values);
+    }
+
+    [Fact]
+    public void ReadInputs_ToleratesPascalCaseItemsAndFields()
+    {
+        var input = Assert.Single(WorkflowManifestReader.ReadInputs(Parse("""
+            { "Inputs": [ { "Id": "labs", "Label": "Labs", "Type": "array", "Items": "object",
+                            "Fields": [ { "Id": "name", "Label": "Test", "Required": false } ] } ] }
+            """)));
+
+        Assert.Equal("object", input.Items);
+        var field = Assert.Single(input.Fields!);
+        Assert.Equal(("name", "Test", false), (field.Id, field.Label, field.Required));
+    }
+
+    [Fact]
+    public void ReadInputs_LeavesItemsAndFieldsNullWhenAbsent()
+    {
+        var input = Assert.Single(WorkflowManifestReader.ReadInputs(
+            Parse("""{ "inputs": [ { "id": "consult_draft", "label": "Consult draft", "type": "enum", "values": ["a", "b"] } ] }""")));
+
+        Assert.Null(input.Items);
+        Assert.Null(input.Fields);
+    }
+
+    [Fact]
     public void ReadInputs_ToleratesPascalCase()
     {
         var input = Assert.Single(WorkflowManifestReader.ReadInputs(

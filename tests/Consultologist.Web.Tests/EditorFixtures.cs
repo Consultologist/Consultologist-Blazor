@@ -199,6 +199,49 @@ public static class EditorFixtures
         }
         """, 9);
 
+    /// <summary>
+    /// #429: a v9 package declaring the structured shapes — an array of text,
+    /// an object with a required number and an optional enum, and an array of
+    /// objects. Nothing binds the structured inputs; the prompt reads
+    /// consult_draft, so the package validates as V7 does.
+    /// </summary>
+    public static WorkflowPackageContentResponse V9Structured() => Package("""
+        {
+          "name": "acct-1234567890ab",
+          "version": "v2026.08.1",
+          "specVersion": 9,
+          "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
+          "inputs": [
+            { "id": "consult_draft", "label": "Consult draft", "required": true },
+            { "id": "prior_notes", "label": "Prior notes", "required": false, "type": "array", "items": "text" },
+            { "id": "patient", "label": "Patient", "required": true, "type": "object",
+              "fields": [
+                { "id": "age", "label": "Age", "required": true, "type": "number" },
+                { "id": "sex", "label": "Sex", "required": false, "type": "enum", "values": ["female", "male"] }
+              ] },
+            { "id": "labs", "label": "Labs", "required": false, "type": "array", "items": "object",
+              "fields": [
+                { "id": "name", "label": "Test", "required": true },
+                { "id": "value", "label": "Value", "required": true, "type": "number" }
+              ] }
+          ],
+          "data": { "standards": "data/standards/" },
+          "prompts": [
+            { "id": "draft-section", "file": "prompts/draft-section.md",
+              "variables": ["section_name", "consult_draft"] }
+          ],
+          "results": [
+            { "id": "consult_note", "node": "node:assemble-note", "label": "Consultation note" }
+          ],
+          "nodes": [
+            { "id": "draft-section", "forEach": "data:standards", "label": "Drafting section",
+              "prompt": "draft-section",
+              "bindings": { "section_name": "item:name", "consult_draft": "input:consult_draft" } },
+            { "id": "assemble-note", "label": "Assembling note", "aggregate": ["node:draft-section"] }
+          ]
+        }
+        """, 9);
+
     /// <summary>The v7 shape: declared inputs and a results list.</summary>
     public static WorkflowPackageContentResponse V7() => Package("""
         {

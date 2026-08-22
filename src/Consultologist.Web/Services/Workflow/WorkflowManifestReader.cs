@@ -28,15 +28,33 @@ public static class WorkflowManifestReader
         string? FailIfEmpty = null);
 
     /// <summary>
+    /// One declared field of an object input (v9 § 4). A field holds a scalar,
+    /// so it has no items and no fields of its own.
+    /// </summary>
+    public sealed record FieldView(
+        string Id,
+        string Label,
+        bool Required,
+        string? Type = null,
+        IReadOnlyList<string>? Values = null);
+
+    /// <summary>
     /// One declared input slot. v8 types it: <c>Type</c> null means text, which
     /// is what keeps a v7 declaration valid. <c>Values</c> belongs to enum.
+    ///
+    /// v9 (#429): <c>Items</c> is an array's element type and <c>Fields</c> an
+    /// object's (or an array-of-object's) fields. Carried here because the
+    /// composer rebuilds the whole inputs list from these records — without
+    /// them, relabelling one input stripped every other's structure.
     /// </summary>
     public sealed record InputView(
         string Id,
         string Label,
         bool Required,
         string? Type = null,
-        IReadOnlyList<string>? Values = null);
+        IReadOnlyList<string>? Values = null,
+        string? Items = null,
+        IReadOnlyList<FieldView>? Fields = null);
 
     /// <summary>
     /// One declared deliverable: authored id and label over an aggregator node.
@@ -271,10 +289,39 @@ public static class WorkflowManifestReader
                 ReadString(input, "label") ?? id,
                 required,
                 ReadString(input, "type"),
-                ReadStringArray(input, "values")));
+                ReadStringArray(input, "values"),
+                ReadString(input, "items"),
+                ReadFields(input)));
         }
 
         return inputs;
+    }
+
+    /// <summary>An object input's declared fields (v9); null when the property is absent.</summary>
+    private static IReadOnlyList<FieldView>? ReadFields(JsonElement input)
+    {
+        if (!TryGetProperty(input, "fields", out var array) || array.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var fields = new List<FieldView>();
+
+        foreach (var field in array.EnumerateArray())
+        {
+            var id = ReadString(field, "id") ?? string.Empty;
+            var required = !TryGetProperty(field, "required", out var requiredElement)
+                || requiredElement.ValueKind != JsonValueKind.False;
+
+            fields.Add(new FieldView(
+                id,
+                ReadString(field, "label") ?? id,
+                required,
+                ReadString(field, "type"),
+                ReadStringArray(field, "values")));
+        }
+
+        return fields;
     }
 
     /// <summary>
