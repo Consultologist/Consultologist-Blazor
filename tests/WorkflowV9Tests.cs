@@ -773,3 +773,200 @@ public class WorkflowV9FanRenderingTests
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
 }
+
+/// <summary>
+/// #427: the widened grammar, evaluated. Six operators, a path into an
+/// object, count() of an array, array truthiness — and a sentence that
+/// never prints the patient's number, date or field.
+/// </summary>
+public class WorkflowV9ConditionEvaluationTests
+{
+    private static Dictionary<string, ConsultInputValue> Inputs(params (string Id, ConsultInputValue Value)[] pairs)
+        => pairs.ToDictionary(p => p.Id, p => p.Value, StringComparer.Ordinal);
+
+    private static WorkflowResultCondition Parse(string when)
+    {
+        Assert.True(WorkflowResultConditions.TryParse(when, out var condition, out var error), error);
+        return condition!;
+    }
+
+    private static ConsultInputValue Patient(int age, string? sex = "female") =>
+        ConsultInputValue.OfObject(new[]
+        {
+            new ConsultInputEntry("family_name", ConsultInputValue.OfText("Smith")),
+            new ConsultInputEntry("age", ConsultInputValue.OfNumber(age.ToString())),
+            new ConsultInputEntry("sex", sex is null ? ConsultInputValue.NullElement : ConsultInputValue.OfText(sex))
+        });
+
+    private static ConsultInputValue Notes(params string[] notes) =>
+        ConsultInputValue.OfArray(notes.Select(ConsultInputValue.OfText));
+
+    // ---- the parser ----
+
+    [Theory]
+    [InlineData("length_of_stay > 7", "length_of_stay", null, false, ">", "7")]
+    [InlineData("length_of_stay >= 7", "length_of_stay", null, false, ">=", "7")]
+    [InlineData("seen_on <= 2026-01-01", "seen_on", null, false, "<=", "2026-01-01")]
+    [InlineData("patient.age < 65", "patient", "age", false, "<", "65")]
+    [InlineData("patient.sex == female", "patient", "sex", false, null, "female")]
+    [InlineData("count(prior_notes) > 1", "prior_notes", null, true, ">", "1")]
+    [InlineData("count( prior_notes ) == 0", "prior_notes", null, true, null, "0")]
+    [InlineData("prior_notes", "prior_notes", null, false, null, null)]
+    public void TheParserReadsEveryForm(string when, string input, string? field, bool isCount, string? ordering, string? literal)
+    {
+        var condition = Parse(when);
+
+        Assert.Equal(input, condition.InputId);
+        Assert.Equal(field, condition.Field);
+        Assert.Equal(isCount, condition.IsCount);
+        Assert.Equal(ordering, condition.Ordering);
+        Assert.Equal(literal, condition.Literal);
+    }
+
+    [Theory]
+    [InlineData("patient.age.x >= 1")]
+    [InlineData("count(prior_notes")]
+    [InlineData("count(Prior Notes) > 1")]
+    [InlineData("patient..age == 1")]
+    public void AMalformedOperand_IsNotAnInputId(string when)
+    {
+        Assert.False(WorkflowResultConditions.TryParse(when, out _, out var error));
+        Assert.Contains("is not an input id", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TwoCharacterOperators_AreReadBeforeOneCharacterOnes()
+    {
+        // ">=" is never ">" followed by a literal beginning with "=".
+        var condition = Parse("length_of_stay >= 7");
+
+        Assert.Equal(">=", condition.Ordering);
+        Assert.Equal("7", condition.Literal);
+    }
+
+    // ---- Holds ----
+
+    [Theory]
+    [InlineData("length_of_stay > 7", "10", true)]
+    [InlineData("length_of_stay > 7", "7", false)]
+    [InlineData("length_of_stay >= 7", "7", true)]
+    [InlineData("length_of_stay < 7", "6.5", true)]
+    [InlineData("length_of_stay <= 7", "7.01", false)]
+    [InlineData("length_of_stay == 7", "7.0", true)]
+    [InlineData("length_of_stay != 7", "7.0", false)]
+    public void ANumber_Compares(string when, string supplied, bool expected)
+        => Assert.Equal(expected, WorkflowResultConditions.Holds(Parse(when), Inputs(("length_of_stay", ConsultInputValue.OfNumber(supplied)))));
+
+    [Theory]
+    [InlineData("seen_on >= 2026-01-01", "2026-08-10", true)]
+    [InlineData("seen_on < 2026-01-01", "2026-08-10", false)]
+    [InlineData("seen_on == 2026-08-10", "2026-08-10", true)]
+    [InlineData("seen_on != 2026-08-10", "2026-08-10", false)]
+    public void ADate_Compares(string when, string supplied, bool expected)
+        => Assert.Equal(expected, WorkflowResultConditions.Holds(Parse(when), Inputs(("seen_on", supplied))));
+
+    [Theory]
+    [InlineData("patient.age >= 65", 70, true)]
+    [InlineData("patient.age >= 65", 40, false)]
+    [InlineData("patient.sex == female", 40, true)]
+    [InlineData("patient.sex != female", 40, false)]
+    public void APath_ReadsOneField(string when, int age, bool expected)
+        => Assert.Equal(expected, WorkflowResultConditions.Holds(Parse(when), Inputs(("patient", Patient(age)))));
+
+    [Fact]
+    public void APathIntoAnAbsentObject_OrAMissingOrNullField_DoesNotHold()
+    {
+        Assert.False(WorkflowResultConditions.Holds(Parse("patient.age >= 65"), Inputs()));
+        Assert.False(WorkflowResultConditions.Holds(Parse("patient.nickname == x"), Inputs(("patient", Patient(70)))));
+        Assert.False(WorkflowResultConditions.Holds(Parse("patient.sex == female"), Inputs(("patient", Patient(70, sex: null)))));
+        Assert.False(WorkflowResultConditions.Holds(Parse("patient.sex != female"), Inputs(("patient", Patient(70, sex: null)))));
+        // A path into something that is not an object answers nothing.
+        Assert.False(WorkflowResultConditions.Holds(Parse("patient.age >= 65"), Inputs(("patient", "text"))));
+    }
+
+    [Theory]
+    [InlineData("count(prior_notes) > 1", 2, true)]
+    [InlineData("count(prior_notes) > 1", 1, false)]
+    [InlineData("count(prior_notes) == 0", 0, true)]
+    [InlineData("count(prior_notes) <= 3", 3, true)]
+    public void Count_IsTheNumberOfEntries(string when, int entries, bool expected)
+        => Assert.Equal(expected, WorkflowResultConditions.Holds(
+            Parse(when), Inputs(("prior_notes", Notes(Enumerable.Repeat("n", entries).ToArray())))));
+
+    [Fact]
+    public void CountOfAnAbsentArray_IsZero_TheOneExceptionToAbsence()
+    {
+        // "No entries supplied" and "an empty list supplied" answer the same
+        // clinical question (v9 § 6).
+        Assert.True(WorkflowResultConditions.Holds(Parse("count(prior_notes) == 0"), Inputs()));
+        Assert.False(WorkflowResultConditions.Holds(Parse("count(prior_notes) > 0"), Inputs()));
+        Assert.True(WorkflowResultConditions.Holds(Parse("count(prior_notes) < 1"), Inputs()));
+        // count() of something that is not a list answers nothing.
+        Assert.False(WorkflowResultConditions.Holds(Parse("count(prior_notes) == 0"), Inputs(("prior_notes", "text"))));
+    }
+
+    [Fact]
+    public void TheBareForm_OnAnArray_IsNonEmpty()
+    {
+        Assert.True(WorkflowResultConditions.Holds(Parse("prior_notes"), Inputs(("prior_notes", Notes("a")))));
+        Assert.False(WorkflowResultConditions.Holds(Parse("prior_notes"), Inputs(("prior_notes", Notes()))));
+        Assert.False(WorkflowResultConditions.Holds(Parse("prior_notes"), Inputs()));
+    }
+
+    // ---- Explain ----
+
+    [Theory]
+    [InlineData("length_of_stay > 7", "needs length_of_stay to be > 7; it is not")]
+    [InlineData("seen_on >= 2026-01-01", "needs seen_on to be >= 2026-01-01; it is not")]
+    [InlineData("seen_on == 2026-01-01", "needs seen_on to be '2026-01-01'; it is not")]
+    [InlineData("patient.age >= 65", "needs patient.age to be >= 65; it is not")]
+    [InlineData("patient.sex == male", "needs patient.sex to be 'male'; it is not")]
+    public void TheSentence_NeverPrintsThePatientsValue(string when, string expected)
+    {
+        // A number, a date or a field's value is the patient's, and this sentence
+        // reaches History and the email reply. It says what was needed and that
+        // it was not met — never what was found.
+        var inputs = Inputs(
+            ("length_of_stay", ConsultInputValue.OfNumber("3")),
+            ("seen_on", "2025-12-31"),
+            ("patient", Patient(40)));
+
+        var explained = WorkflowResultConditions.Explain(Parse(when), inputs);
+
+        Assert.Equal(expected, explained);
+        Assert.DoesNotContain("3", explained.Replace("65", "").Replace("2026-01-01", ""), StringComparison.Ordinal);
+        Assert.DoesNotContain("2025-12-31", explained, StringComparison.Ordinal);
+        Assert.DoesNotContain("40", explained, StringComparison.Ordinal);
+        Assert.DoesNotContain("female", explained, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheSentence_PrintsACount_AndAnArraysEmptiness()
+    {
+        // A count of entries is not content.
+        Assert.Equal("needs count(prior_notes) to be > 1; it is 1",
+            WorkflowResultConditions.Explain(Parse("count(prior_notes) > 1"), Inputs(("prior_notes", Notes("secret")))));
+        Assert.Equal("needs count(prior_notes) to be > 1; it is 0",
+            WorkflowResultConditions.Explain(Parse("count(prior_notes) > 1"), Inputs()));
+        Assert.Equal("needs prior_notes to be non-empty; it is empty",
+            WorkflowResultConditions.Explain(Parse("prior_notes"), Inputs(("prior_notes", Notes()))));
+        Assert.Equal("needs prior_notes to be non-empty; it is 2 entries",
+            WorkflowResultConditions.Explain(Parse("prior_notes"), Inputs(("prior_notes", Notes("a", "b")))));
+        Assert.Equal("needs prior_notes to be true; it is not supplied",
+            WorkflowResultConditions.Explain(Parse("prior_notes"), Inputs()));
+    }
+
+    [Fact]
+    public void TheV8Sentences_AreUnchanged()
+    {
+        // The email door quotes these back; two client tests pin them verbatim.
+        Assert.Equal("needs billable to be 'true'; it is 'false'",
+            WorkflowResultConditions.Explain(Parse("billable == true"), Inputs(("billable", ConsultInputValue.OfBoolean(false)))));
+        Assert.Equal("needs billable to be true; it is 'false'",
+            WorkflowResultConditions.Explain(Parse("billable"), Inputs(("billable", ConsultInputValue.OfBoolean(false)))));
+        Assert.Equal("needs encounter_kind to be not 'follow_up'; it is 'follow_up'",
+            WorkflowResultConditions.Explain(Parse("encounter_kind != follow_up"), Inputs(("encounter_kind", "follow_up"))));
+        Assert.Equal("needs billable to be true; it is not supplied",
+            WorkflowResultConditions.Explain(Parse("billable"), Inputs()));
+    }
+}

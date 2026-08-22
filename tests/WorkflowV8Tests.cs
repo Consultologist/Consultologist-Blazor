@@ -656,19 +656,20 @@ public class WorkflowResultConditionEvaluationTests
     }
 
     [Fact]
-    public void AStructuredValue_DoesNotHold_AndIsExplainedWithoutThrowing()
+    public void AStructuredValue_IsEvaluatedWithoutThrowing_AndNeverQuoted()
     {
-        // #421: the starter refuses structure before conditions run, but these
-        // two are public pure functions and must never throw whatever map they
-        // are handed. A value with no canonical string has not answered.
+        // #421 made these two pure functions safe on any map; #427 gave an
+        // array a meaning under the bare form — non-empty — while a literal
+        // comparison against structure still answers nothing. Either way the
+        // element's text never reaches the sentence.
         var inputs = Inputs(("billable", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("secret") })));
 
-        Assert.False(WorkflowResultConditions.Holds(Parse("billable"), inputs));
+        Assert.True(WorkflowResultConditions.Holds(Parse("billable"), inputs));
         Assert.False(WorkflowResultConditions.Holds(Parse("billable != true"), inputs));
 
         var explained = WorkflowResultConditions.Explain(Parse("billable"), inputs);
-        Assert.Contains("an array", explained, StringComparison.Ordinal);
-        Assert.DoesNotContain("secret", explained, StringComparison.Ordinal);
+        Assert.Equal("needs billable to be non-empty; it is 1 entry", explained);
+        Assert.DoesNotContain("secret", WorkflowResultConditions.Explain(Parse("billable != true"), inputs), StringComparison.Ordinal);
     }
 
     [Fact]
