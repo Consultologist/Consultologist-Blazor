@@ -812,6 +812,157 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         Assert.Equal(new[] { "", "clinic", "ward" }, options);
     }
 
+    // ----- #429: several documents for one slot ----------------------------
+
+    /// <summary>Each file reads as its own text, so order is observable.</summary>
+    private void WithExtractionOfEachFile() =>
+        DocumentService.ExtractAsync(Arg.Any<byte[]>(), Arg.Any<string>())
+            .Returns(call =>
+            {
+                var text = System.Text.Encoding.UTF8.GetString(call.Arg<byte[]>());
+                return text.StartsWith("BAD", StringComparison.Ordinal)
+                    ? DocumentExtractionOutcome.Refused("This PDF has no text layer, so it is a scan or a fax.")
+                    : new DocumentExtractionOutcome(text, "text/1", text.Length, null);
+            });
+
+    private IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>? sentFiles;
+
+    private void CaptureSubmitWithFiles() =>
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sentInputs = value),
+                Arg.Any<string?>(), Arg.Any<DateTimeOffset?>(),
+                Arg.Do<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>(value => sentFiles = value))
+            .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
+
+    private static IRenderedComponent<Microsoft.AspNetCore.Components.Forms.InputFile> FileInput(
+        IRenderedComponent<Consults> page,
+        int index) =>
+        page.FindComponents<Microsoft.AspNetCore.Components.Forms.InputFile>()[index];
+
+    private static string FieldText(IRenderedComponent<Consults> page, int index) =>
+        page.FindAll("fluent-text-area")[index].GetAttribute("current-value")
+            ?? page.FindAll("fluent-text-area")[index].GetAttribute("value")
+            ?? string.Empty;
+
+    private static IEnumerable<string> ChipNames(IRenderedComponent<Consults> page) =>
+        page.FindAll(".input-field__document .input-field__chip-name").Select(chip => chip.TextContent.Trim());
+
+    [Fact]
+    public void TwoFilesSelectedAtOnce_AttachInSelectionOrder()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+
+        var page = Render<Consults>();
+        FileInput(page, 1).UploadFiles(
+            InputFileContent.CreateFromText("First note.", "first.txt"),
+            InputFileContent.CreateFromText("Second note.", "second.txt"));
+
+        Assert.Equal(new[] { "first.txt", "second.txt" }, ChipNames(page));
+        Assert.Equal(
+            new[] { "First note.", "Second note." },
+            page.FindAll(".input-field__document .input-field__preview").Select(preview => preview.TextContent.Trim()));
+        // Document mode: the rows are hidden, the picker stays to append.
+        Assert.Empty(page.FindAll(".input-field__row"));
+        Assert.Empty(page.FindAll(".input-field__add"));
+    }
+
+    [Fact]
+    public void MovingADocumentDown_ReordersWhatIsSent()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+        CaptureSubmitWithFiles();
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        FileInput(page, 1).UploadFiles(
+            InputFileContent.CreateFromText("First note.", "first.txt"),
+            InputFileContent.CreateFromText("Second note.", "second.txt"));
+        page.FindAll("button[title='Move down']")[0].Click();
+        Assert.Equal(new[] { "second.txt", "first.txt" }, ChipNames(page));
+
+        page.FindAll("fluent-button").Last().Click();
+
+        var documents = sentFiles!["prior_notes"];
+        Assert.Equal(
+            new[] { "Second note.", "First note." },
+            documents.Select(document => System.Text.Encoding.UTF8.GetString(document.Content)));
+        Assert.False(sentInputs!.ContainsKey("prior_notes"));
+    }
+
+    [Fact]
+    public void RemovingOneDocument_KeepsTheOthers_AndRemoveAllGivesBackTheRows()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+
+        var page = Render<Consults>();
+        page.Find(".input-field__add").Click();
+        page.FindAll("fluent-text-area")[1].Change("Typed row.");
+        FileInput(page, 1).UploadFiles(
+            InputFileContent.CreateFromText("First note.", "first.txt"),
+            InputFileContent.CreateFromText("Second note.", "second.txt"));
+
+        page.FindAll("button[title='Remove this file']")[0].Click();
+        Assert.Equal(new[] { "second.txt" }, ChipNames(page));
+
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Remove all")).Click();
+        Assert.Empty(page.FindAll(".input-field__document"));
+        Assert.Single(page.FindAll(".input-field__row"));
+        Assert.Equal("Typed row.", FieldText(page, 1));
+    }
+
+    [Fact]
+    public void APerFileRefusal_NamesTheFileAndKeepsTheOthers()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+
+        var page = Render<Consults>();
+        FileInput(page, 1).UploadFiles(
+            InputFileContent.CreateFromText("First note.", "first.txt"),
+            InputFileContent.CreateFromText("BAD scan", "scan.pdf"));
+
+        Assert.Equal(new[] { "first.txt" }, ChipNames(page));
+        Assert.Equal(
+            "scan.pdf: This PDF has no text layer, so it is a scan or a fax.",
+            page.Find(".input-field__file-error").TextContent.Trim());
+    }
+
+    [Fact]
+    public void ALoneRefusedFile_KeepsTheServersSentenceVerbatim()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+
+        var page = Render<Consults>();
+        FileInput(page, 1).UploadFiles(InputFileContent.CreateFromText("BAD scan", "scan.pdf"));
+
+        Assert.Equal("This PDF has no text layer, so it is a scan or a fax.", page.Find(".input-field__file-error").TextContent.Trim());
+    }
+
+    [Fact]
+    public void OnlyAnArrayOfTextTakesSeveral()
+    {
+        // A text slot's picker is single; an array of text's is multiple; an
+        // array of anything else has none — the server's own rule.
+        var inputs = new[]
+        {
+            new WorkflowPackageInputResponse("consult_draft", "Consult draft", true),
+            new WorkflowPackageInputResponse("prior_notes", "Prior notes", false, WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text),
+            new WorkflowPackageInputResponse("visits", "Visits", false, WorkflowInputTypes.Array, Items: WorkflowInputTypes.Date)
+        };
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: inputs, specVersion: 9);
+
+        var page = Render<Consults>();
+
+        var pickers = page.FindAll("input[type=file]");
+        Assert.Equal(2, pickers.Count);
+        Assert.False(pickers[0].HasAttribute("multiple"));
+        Assert.True(pickers[1].HasAttribute("multiple"));
+    }
+
     [Fact]
     public async Task SwitchingPackages_CarriesAChosenBoolean()
     {

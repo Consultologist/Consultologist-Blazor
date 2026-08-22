@@ -432,3 +432,16 @@
 	font-size: 0.8rem;
 	font-weight: 500;
 }
+
+/* #429: a slot read from several documents, in the order chosen. */
+.input-field__documents {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.input-field__document {
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+}

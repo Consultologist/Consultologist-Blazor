@@ -63,7 +63,56 @@
                                    attached document, never both. The text is
                                    kept underneath so removing the file gives
                                    it back. *@
-                                @if (field.HasFile)
+                                @if (field.HasFile && field.TakesSeveralDocuments)
+                                {
+                                    @* #428/#429: several documents, in the order chosen —
+                                       the order the elements hash in. Rows are kept
+                                       underneath; "Remove all" gives them back. *@
+                                    <div class="input-field__documents" @onclick:stopPropagation="true">
+                                        @for (var i = 0; i < field.Documents.Count; i++)
+                                        {
+                                            var index = i;
+                                            var document = field.Documents[index];
+                                            var currentField = field;
+                                            <div class="input-field__document" @key="document">
+                                                <span class="input-field__chip">
+                                                    <span class="muted-text input-field__row-number">@(index + 1).</span>
+                                                    <span class="input-field__chip-name">@document.FileName</span>
+                                                    @if (document.PageCount is { } pages)
+                                                    {
+                                                        <span class="muted-text">@pages page@(pages == 1 ? "" : "s")</span>
+                                                    }
+                                                    <span class="input-field__row-buttons">
+                                                        <button type="button" class="aggregate-row__button" title="Move up"
+                                                                disabled="@(index == 0)"
+                                                                @onclick="() => MoveDocument(currentField, index, -1)">↑</button>
+                                                        <button type="button" class="aggregate-row__button" title="Move down"
+                                                                disabled="@(index == currentField.Documents.Count - 1)"
+                                                                @onclick="() => MoveDocument(currentField, index, +1)">↓</button>
+                                                        <button type="button" class="aggregate-row__button" title="Remove this file"
+                                                                @onclick="() => RemoveDocument(currentField, index)">×</button>
+                                                    </span>
+                                                </span>
+                                                <div class="input-field__preview">@document.PreviewText</div>
+                                            </div>
+                                        }
+                                        <span class="input-field__file">
+                                            <InputFile multiple OnChange="args => LoadFileAsync(field, args)" />
+                                            @if (field.IsReading)
+                                            {
+                                                <FluentProgressRing style="width: 16px; height: 16px;" />
+                                                <span class="muted-text">Reading&hellip;</span>
+                                            }
+                                            <FluentButton Appearance="Appearance.Stealth"
+                                                          Title="Remove every file and type instead"
+                                                          @onclick="() => RemoveFile(field)">Remove all</FluentButton>
+                                        </span>
+                                        <span class="muted-text input-field__hint">
+                                            Looks wrong? Remove the file and type the entry instead.
+                                        </span>
+                                    </div>
+                                }
+                                else if (field.HasFile)
                                 {
                                     <span class="input-field__chip" @onclick:stopPropagation="true">
                                         <span class="input-field__chip-name">@field.FileName</span>
@@ -158,6 +207,20 @@
                                         }
                                         <button type="button" class="input-field__add"
                                                 @onclick="() => field.AddRow()">+ Add entry</button>
+                                        @if (field.TakesSeveralDocuments)
+                                        {
+                                            @* Or attach documents: each becomes one entry, in the
+                                               order chosen (v9 § 7). The same no-filter rule as the
+                                               single picker. *@
+                                            <span class="input-field__file">
+                                                <InputFile multiple OnChange="args => LoadFileAsync(field, args)" />
+                                                @if (field.IsReading)
+                                                {
+                                                    <FluentProgressRing style="width: 16px; height: 16px;" />
+                                                    <span class="muted-text">Reading&hellip;</span>
+                                                }
+                                            </span>
+                                        }
                                     </div>
                                 }
                                 else
@@ -1664,64 +1727,98 @@
 
   private async Task LoadFileAsync(ConsultInputField field, InputFileChangeEventArgs args)
   {
-    var file = args.FileCount > 0 ? args.File : null;
-
-    if (file == null)
+    if (args.FileCount == 0)
     {
       return;
     }
+
+    // #429: an array of text takes several, in the order chosen; anything
+    // else takes one — the server's own rule. args.File throws for several,
+    // which is what made a multi-select unsupported rather than unused.
+    var files = field.TakesSeveralDocuments
+      ? args.GetMultipleFiles(args.FileCount)
+      : new[] { args.File };
 
     // Attaching a file is an edit like any other: a stale confirmation would
     // outlive what it described.
     field.FileError = null;
     scheduleConfirmation = null;
-
-    if (file.Size > MaxUploadBytes)
-    {
-      field.FileError = $"That file is larger than {MaxUploadBytes / (1024 * 1024)} MB.";
-      return;
-    }
-
     field.IsReading = true;
     await InvokeAsync(StateHasChanged);
 
+    var refusals = new List<string>();
+
     try
     {
-      using var buffer = new MemoryStream();
-      await using (var stream = file.OpenReadStream(MaxUploadBytes))
+      foreach (var file in files)
       {
-        await stream.CopyToAsync(buffer);
+        // Among several, the refusal names which — the filename stays in the
+        // browser, as every filename does. Alone, it is the server's sentence
+        // verbatim, as it always was.
+        string Refused(string sentence) => files.Count == 1 ? sentence : $"{file.Name}: {sentence}";
+
+        if (file.Size > MaxUploadBytes)
+        {
+          refusals.Add(Refused($"That file is larger than {MaxUploadBytes / (1024 * 1024)} MB."));
+          continue;
+        }
+
+        try
+        {
+          using var buffer = new MemoryStream();
+          await using (var stream = file.OpenReadStream(MaxUploadBytes))
+          {
+            await stream.CopyToAsync(buffer);
+          }
+
+          var content = buffer.ToArray();
+          var outcome = await DocumentService.ExtractAsync(content, file.ContentType);
+
+          if (!outcome.Succeeded)
+          {
+            // The server's own sentence for this cause, shown verbatim. The
+            // slot stays as it was, so a refused file changes nothing.
+            refusals.Add(Refused(outcome.Error!));
+            continue;
+          }
+
+          // The file becomes the input. What was typed is left alone
+          // underneath so that removing the file gives it back.
+          if (!field.TakesSeveralDocuments)
+          {
+            field.Documents.Clear();
+          }
+
+          field.Documents.Add(new AttachedDocument(
+            file.Name,
+            string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+            content,
+            outcome.PageCount,
+            outcome.Text!));
+        }
+        catch (Exception ex)
+        {
+          refusals.Add(Refused($"That file could not be read: {ex.Message}"));
+        }
       }
-
-      var content = buffer.ToArray();
-      var outcome = await DocumentService.ExtractAsync(content, file.ContentType);
-
-      if (!outcome.Succeeded)
-      {
-        // The server's own sentence for this cause, shown verbatim. The slot
-        // stays as it was, so a refused file changes nothing.
-        field.FileError = outcome.Error;
-        return;
-      }
-
-      // The file becomes the input. What was typed is left alone underneath
-      // so that removing the file gives it back.
-      field.Documents.Clear();
-      field.Documents.Add(new AttachedDocument(
-        file.Name,
-        string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
-        content,
-        outcome.PageCount,
-        outcome.Text!));
-    }
-    catch (Exception ex)
-    {
-      field.FileError = $"That file could not be read: {ex.Message}";
     }
     finally
     {
       field.IsReading = false;
+      field.FileError = refusals.Count > 0 ? string.Join(" ", refusals) : null;
     }
+  }
+
+  private void MoveDocument(ConsultInputField field, int index, int delta)
+  {
+    (field.Documents[index], field.Documents[index + delta]) = (field.Documents[index + delta], field.Documents[index]);
+    scheduleConfirmation = null;
+  }
+
+  private void RemoveDocument(ConsultInputField field, int index)
+  {
+    field.Documents.RemoveAt(index);
+    scheduleConfirmation = null;
   }
 
   private void RemoveFile(ConsultInputField field)
