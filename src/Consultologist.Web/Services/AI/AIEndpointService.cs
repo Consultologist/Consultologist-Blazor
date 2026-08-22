@@ -161,9 +161,10 @@ public class AIEndpointService : IAIEndpointService
                 "Starting consult generation job at {Url}. InputCount={InputCount}, InputLength={InputLength}",
                 functionUrl,
                 inputs.Count,
-                // Canonical, so a boolean counts 4 or 5 rather than throwing:
-                // this is a log line, not the size cap.
-                inputs.Values.Sum(value => value.Canonical.Length));
+                // TextLength, so a boolean counts 4 or 5, a number its digits
+                // and structure the text inside it, none of it throwing: this
+                // is a log line, not the size cap.
+                inputs.Values.Sum(value => value.TextLength));
 
             using var httpRequest = new HttpRequestMessage(HttpMethod.Post, functionUrl)
             {

@@ -118,9 +118,14 @@ public static class WorkflowResultConditions
         // answered the question, so the condition does not hold — including
         // the negated form, which would otherwise fire on every job that left
         // the slot blank (package-format-v8-design.md § 4).
+        // A value with no canonical string — structure, which the starter
+        // refuses before conditions run — has not answered an enum or boolean
+        // question either. Guarded here too, so this pure function never
+        // throws whatever map it is handed.
         if (suppliedInputs is null
             || !suppliedInputs.TryGetValue(condition.InputId, out var value)
-            || value.IsBlank)
+            || value.IsBlank
+            || !value.HasCanonical)
         {
             return false;
         }
@@ -145,7 +150,9 @@ public static class WorkflowResultConditions
         var supplied = suppliedInputs is not null
             && suppliedInputs.TryGetValue(condition.InputId, out var value)
             && !value.IsBlank
-                ? $"'{value.Canonical}'"
+                // Described prints "an array", never content, so the sentence
+                // stays safe on every surface.
+                ? value.HasCanonical ? $"'{value.Canonical}'" : value.Described
                 : "not supplied";
 
         var wanted = condition.Literal is null

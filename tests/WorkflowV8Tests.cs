@@ -655,6 +655,22 @@ public class WorkflowResultConditionEvaluationTests
     }
 
     [Fact]
+    public void AStructuredValue_DoesNotHold_AndIsExplainedWithoutThrowing()
+    {
+        // #421: the starter refuses structure before conditions run, but these
+        // two are public pure functions and must never throw whatever map they
+        // are handed. A value with no canonical string has not answered.
+        var inputs = Inputs(("billable", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("secret") })));
+
+        Assert.False(WorkflowResultConditions.Holds(Parse("billable"), inputs));
+        Assert.False(WorkflowResultConditions.Holds(Parse("billable != true"), inputs));
+
+        var explained = WorkflowResultConditions.Explain(Parse("billable"), inputs);
+        Assert.Contains("an array", explained, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret", explained, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void NoCondition_AlwaysFires()
         => Assert.True(WorkflowResultConditions.Holds(null, Inputs()));
 
@@ -703,10 +719,24 @@ public class WorkflowResultConditionEvaluationTests
             WorkflowResultConditions.Explain(Parse("billable"), Inputs()));
 }
 
+/// <summary>
+/// The wire form of one input value, both directions. v8 admitted a string and
+/// a boolean; v9 layer 1 (#421) admits a plain-decimal number, an object of
+/// scalars and an array of scalars or one-level objects — package-format-v9-
+/// design.md § 4 is the table, and each of its rows is a case here.
+///
+/// A shape the format cannot carry is a 400, thrown as
+/// ConsultInputShapeException so the door can say which token and where. A
+/// well-formed value that disagrees with the declaration is the 422, and that
+/// check lives in the starter where the slot can be named.
+/// </summary>
 public class ConsultInputValueWireTests
 {
     private static ConsultInputValue? Read(string json)
         => JsonSerializer.Deserialize<Dictionary<string, ConsultInputValue>>(json)!["v"];
+
+    private static string Write(ConsultInputValue value)
+        => JsonSerializer.Serialize(new Dictionary<string, ConsultInputValue> { ["v"] = value });
 
     [Fact]
     public void AJsonStringIsText_AndAJsonBooleanIsAFlag()
@@ -714,18 +744,6 @@ public class ConsultInputValueWireTests
         Assert.Equal(ConsultInputValue.OfText("2026-08-10"), Read("""{"v":"2026-08-10"}"""));
         Assert.Equal(ConsultInputValue.OfBoolean(true), Read("""{"v":true}"""));
         Assert.Equal(ConsultInputValue.OfBoolean(false), Read("""{"v":false}"""));
-    }
-
-    [Theory]
-    [InlineData("""{"v":20260810}""")]
-    [InlineData("""{"v":{"nested":1}}""")]
-    [InlineData("""{"v":["a"]}""")]
-    public void ATokenJsonShouldNotCarry_IsMalformed(string json)
-    {
-        // A shape error, so the HTTP door answers 400. A value that is the
-        // right SHAPE but disagrees with the declaration is the 422, and that
-        // check lives in the starter where the slot can be named.
-        Assert.Throws<JsonException>(() => Read(json));
     }
 
     [Fact]
@@ -758,9 +776,241 @@ public class ConsultInputValueWireTests
     {
         // The durable payload is replayed from this JSON, so the written form
         // has to be the read form.
-        Assert.Equal("""{"v":true}""", JsonSerializer.Serialize(
-            new Dictionary<string, ConsultInputValue> { ["v"] = ConsultInputValue.OfBoolean(true) }));
-        Assert.Equal("""{"v":"text"}""", JsonSerializer.Serialize(
-            new Dictionary<string, ConsultInputValue> { ["v"] = "text" }));
+        Assert.Equal("""{"v":true}""", Write(ConsultInputValue.OfBoolean(true)));
+        Assert.Equal("""{"v":"text"}""", Write("text"));
+    }
+
+    [Fact]
+    public void ANumber_ReadsAsTheDigitsSent()
+    {
+        // 1.50, not 1.5: trimming would mean provenance records a value nobody
+        // sent (v9 § 4). The decimal is there for comparison; the spelling is
+        // what travels.
+        var value = Read("""{"v":1.50}""")!;
+
+        Assert.True(value.IsNumber);
+        Assert.Equal("1.50", value.Number);
+        Assert.Equal(1.50m, value.NumberValue);
+        Assert.Equal("1.50", value.Canonical);
+        Assert.False(value.IsBlank);
+        Assert.Equal("""{"v":1.50}""", Write(value));
+    }
+
+    [Fact]
+    public void AStringOfDigits_IsText()
+    {
+        // "3" is a JSON string and stays text; whether a text is acceptable in
+        // a number slot is the starter's 422, not the converter's business.
+        var value = Read("""{"v":"3"}""")!;
+
+        Assert.Equal(ConsultInputKind.Text, value.Kind);
+        Assert.Equal(ConsultInputValue.OfText("3"), value);
+    }
+
+    [Theory]
+    // Exponent form: valid JSON, never a plain decimal.
+    [InlineData("""{"v":1e3}""")]
+    [InlineData("""{"v":1E3}""")]
+    // 2^96: one past decimal's range.
+    [InlineData("""{"v":79228162514264337593543950336}""")]
+    // Thirty significant digits: decimal would round, and a rounded value is
+    // a value nobody sent.
+    [InlineData("""{"v":123456789012345678901234567890}""")]
+    [InlineData("""{"v":1.00000000000000000000000000001}""")]
+    public void ANumberTheFormatCannotCarry_IsAShapeError(string json)
+    {
+        var exception = Assert.Throws<ConsultInputShapeException>(() => Read(json));
+
+        Assert.Contains("plain decimal", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MinusZero_IsRefused_BecauseItDoesNotRoundTrip()
+    {
+        // Not a row in § 4's table; what the round-trip rule yields, pinned so
+        // a change to it is deliberate. decimal keeps no negative zero, so the
+        // spelling cannot be reproduced and the rule refuses it.
+        Assert.Throws<ConsultInputShapeException>(() => Read("""{"v":-0}"""));
+    }
+
+    [Theory]
+    [InlineData("""{"v":+3}""")]
+    [InlineData("""{"v":007}""")]
+    [InlineData("""{"v":.5}""")]
+    [InlineData("""{"v":5.}""")]
+    public void AGrammarRefusal_IsAPlainJsonException_NotAShapeError(string json)
+    {
+        // JSON's own grammar refuses these before the converter sees a token,
+        // so they answer the door's generic 400 rather than a named one. The
+        // boundary is recorded here rather than papered over by parsing bytes
+        // by hand.
+        var exception = Assert.ThrowsAny<JsonException>(() => Read(json));
+
+        Assert.IsNotType<ConsultInputShapeException>(exception);
+    }
+
+    [Fact]
+    public void AnObjectOfScalars_ReadsInSuppliedOrder()
+    {
+        var value = Read("""{"v":{"b":1,"a":"x","c":true}}""")!;
+
+        Assert.True(value.IsObject);
+        Assert.Equal(new[] { "b", "a", "c" }, value.Fields!.Select(field => field.Id));
+        Assert.Equal(ConsultInputKind.Number, value.Fields[0].Value.Kind);
+        Assert.Equal(ConsultInputKind.Text, value.Fields[1].Value.Kind);
+        Assert.Equal(ConsultInputKind.Boolean, value.Fields[2].Value.Kind);
+        Assert.False(value.IsBlank);
+    }
+
+    [Fact]
+    public void AnObjectWithARepeatedKey_IsAShapeError()
+    {
+        // Last-wins would make provenance record one of two values the caller
+        // sent; refusing is the only reading with no surprise in it.
+        var exception = Assert.Throws<ConsultInputShapeException>(() => Read("""{"v":{"a":1,"a":2}}"""));
+
+        Assert.Contains("repeats the field 'a'", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("""{"v":{"a":{"b":1}}}""", "field 'a'")]
+    [InlineData("""{"v":{"a":[1]}}""", "field 'a'")]
+    [InlineData("""{"v":[[1]]}""", "element 0")]
+    [InlineData("""{"v":[{"a":{"b":1}}]}""", "field 'a'")]
+    public void StructurePastOneLevel_IsAShapeError(string json, string where)
+    {
+        // The format bounds depth at one (v9 § 4), so no declaration could ever
+        // admit this — which is what makes it a shape error rather than a
+        // declaration disagreement.
+        var exception = Assert.Throws<ConsultInputShapeException>(() => Read(json));
+
+        Assert.Contains(where, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AShapeError_NamesTheTokenAndPath_NeverTheValue()
+    {
+        var exception = Assert.Throws<ConsultInputShapeException>(() => Read("""{"v":[["secret"]]}"""));
+
+        Assert.DoesNotContain("secret", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("element 0 is an array", exception.Message, StringComparison.Ordinal);
+        // Set by the serializer before it rethrows our exception unchanged.
+        Assert.Equal("$.v", exception.Path);
+    }
+
+    [Fact]
+    public void AnArrayOfOneLevelObjects_Reads()
+    {
+        var value = Read("""{"v":[{"k":1},{"k":2}]}""")!;
+
+        Assert.True(value.IsArray);
+        Assert.Equal(2, value.Elements!.Count);
+        Assert.All(value.Elements, element => Assert.True(element.IsObject));
+    }
+
+    [Fact]
+    public void AnEmptyArray_IsPresentAndNotBlank()
+    {
+        // Present and empty, not absent (v9 § 4): a required slot holding one
+        // is refused by the starter naming the slot, never waved through.
+        var value = Read("""{"v":[]}""")!;
+
+        Assert.True(value.IsArray);
+        Assert.Empty(value.Elements!);
+        Assert.False(value.IsBlank);
+    }
+
+    [Fact]
+    public void ANullInsideStructure_IsCarried_ForTheStarterToRefuse()
+    {
+        var array = Read("""{"v":["a",null]}""")!;
+        var obj = Read("""{"v":{"k":null}}""")!;
+
+        Assert.True(array.Elements![1].IsNull);
+        Assert.True(obj.Fields![0].Value.IsNull);
+        Assert.False(array.IsBlank);
+        Assert.False(obj.IsBlank);
+    }
+
+    [Fact]
+    public void StructureRoundTripsByteForByte()
+    {
+        // Replay reads this back through the same converter, and the hash
+        // sees these bytes: supplied order, spelling, nulls and all.
+        const string json = """{"v":[1.50,"a",null,{"k":false,"n":-2.5}]}""";
+
+        Assert.Equal(json, Write(Read(json)!));
+    }
+
+    [Fact]
+    public void CanonicalIsUnrepresentableForStructure()
+    {
+        // Deliberately a throw, not an empty string: an empty string would let
+        // structure reach a string-only renderer silently (v9 § 10).
+        foreach (var value in new[]
+                 {
+                     ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("a") }),
+                     ConsultInputValue.OfObject(new[] { new ConsultInputEntry("k", ConsultInputValue.OfText("a")) }),
+                     ConsultInputValue.NullElement
+                 })
+        {
+            Assert.False(value.HasCanonical);
+            Assert.Throws<InvalidOperationException>(() => value.Canonical);
+        }
+
+        Assert.True(ConsultInputValue.OfNumber("3").HasCanonical);
+        Assert.Equal("an array", ConsultInputValue.OfArray(Array.Empty<ConsultInputValue>()).Described);
+        Assert.Equal("an object", ConsultInputValue.OfObject(Array.Empty<ConsultInputEntry>()).Described);
+    }
+
+    [Fact]
+    public void EqualityIsStructural_AndOverTheSpelling()
+    {
+        const string json = """{"v":[1.50,{"k":"x"},null]}""";
+
+        Assert.Equal(Read(json), Read(json));
+        Assert.Equal(
+            JsonSerializer.Deserialize<Dictionary<string, ConsultInputValue>>(json),
+            JsonSerializer.Deserialize<Dictionary<string, ConsultInputValue>>(json));
+
+        // 1.5 and 1.50 serialise to different bytes and hash differently, so
+        // they are different values — decimal equality would say otherwise.
+        Assert.NotEqual(Read("""{"v":1.5}"""), Read("""{"v":1.50}"""));
+        Assert.NotEqual(Read("""{"v":[1,2]}"""), Read("""{"v":[2,1]}"""));
+    }
+
+    [Fact]
+    public void TextLength_CountsTheTextInsideStructure()
+    {
+        // A log line's number, never the cap — the cap is per text scalar.
+        Assert.Equal(5, Read("""{"v":["ab",{"k":"cde"},7,true,null]}""")!.TextLength - "true".Length - "7".Length);
+    }
+
+    [Fact]
+    public void TheIssuesDoneWhenPayload_Deserialises()
+    {
+        var supplied = JsonSerializer.Deserialize<Dictionary<string, ConsultInputValue>>(
+            """{"prior_notes": ["a", "b"], "length_of_stay": 3}""")!;
+
+        Assert.Equal(2, supplied["prior_notes"].Elements!.Count);
+        Assert.Equal("3", supplied["length_of_stay"].Number);
+    }
+
+    [Fact]
+    public void TheFactories_RefuseWhatTheConverterRefuses()
+    {
+        // In-process callers (the email door, tests) get the same closure as
+        // the wire, so a value that could not have arrived cannot be built.
+        Assert.Throws<ArgumentException>(() => ConsultInputValue.OfNumber("1e3"));
+        Assert.Throws<ArgumentException>(() => ConsultInputValue.OfArray(new[] { ConsultInputValue.OfArray(Array.Empty<ConsultInputValue>()) }));
+        Assert.Throws<ArgumentException>(() => ConsultInputValue.OfObject(new[]
+        {
+            new ConsultInputEntry("a", ConsultInputValue.OfText("x")),
+            new ConsultInputEntry("a", ConsultInputValue.OfText("y"))
+        }));
+        Assert.Throws<ArgumentException>(() => ConsultInputValue.OfObject(new[]
+        {
+            new ConsultInputEntry("a", ConsultInputValue.OfArray(Array.Empty<ConsultInputValue>()))
+        }));
     }
 }

@@ -359,6 +359,86 @@ public class StartRequestValidationTests
             ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
                 null, Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = new string('x', ConsultGenerationJobs.MaxInputLength + 1) })));
     }
+
+    private static string? Validate(Dictionary<string, ConsultInputValue> inputs) =>
+        ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(null, Inputs: inputs));
+
+    [Fact]
+    public void ValidateRequest_AdmitsNumbersAndEmptyArrays()
+    {
+        // #421: a number has no length to run away with, and an empty array is
+        // present and empty — whether that satisfies the slot is the
+        // starter's 422, not the door's 400.
+        Assert.Null(Validate(new Dictionary<string, ConsultInputValue> { ["length_of_stay"] = ConsultInputValue.OfNumber("3") }));
+        Assert.Null(Validate(new Dictionary<string, ConsultInputValue> { ["prior_notes"] = ConsultInputValue.OfArray(Array.Empty<ConsultInputValue>()) }));
+    }
+
+    [Fact]
+    public void ValidateRequest_BoundsStructuredValues()
+    {
+        // Shape limits in the same sense as MaxInputLength: refused, never
+        // truncated, and applied before the starter allocates anything.
+        var big = new string('x', ConsultGenerationJobs.MaxInputLength + 1);
+
+        Assert.Equal(
+            $"Input 'prior_notes' has more than {ConsultGenerationJobs.MaxArrayElements} elements.",
+            Validate(new Dictionary<string, ConsultInputValue>
+            {
+                ["prior_notes"] = ConsultInputValue.OfArray(Enumerable.Repeat(ConsultInputValue.OfText("a"), ConsultGenerationJobs.MaxArrayElements + 1))
+            }));
+        Assert.Equal(
+            "Input 'prior_notes' element 1 exceeds 256 KB.",
+            Validate(new Dictionary<string, ConsultInputValue>
+            {
+                ["prior_notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("a"), ConsultInputValue.OfText(big) })
+            }));
+        Assert.Equal(
+            $"Input 'patient' has more than {ConsultGenerationJobs.MaxObjectFields} fields.",
+            Validate(new Dictionary<string, ConsultInputValue>
+            {
+                ["patient"] = ConsultInputValue.OfObject(Enumerable.Range(0, ConsultGenerationJobs.MaxObjectFields + 1)
+                    .Select(i => new ConsultInputEntry($"f{i}", ConsultInputValue.OfText("a"))))
+            }));
+        Assert.Equal(
+            "Input 'patient' field 'note' exceeds 256 KB.",
+            Validate(new Dictionary<string, ConsultInputValue>
+            {
+                ["patient"] = ConsultInputValue.OfObject(new[] { new ConsultInputEntry("note", ConsultInputValue.OfText(big)) })
+            }));
+        Assert.Equal(
+            "Input 'patient' has a blank field id.",
+            Validate(new Dictionary<string, ConsultInputValue>
+            {
+                ["patient"] = ConsultInputValue.OfObject(new[] { new ConsultInputEntry(" ", ConsultInputValue.OfText("a")) })
+            }));
+        Assert.Equal(
+            "Input 'prior_notes' element 0 field 'note' exceeds 256 KB.",
+            Validate(new Dictionary<string, ConsultInputValue>
+            {
+                ["prior_notes"] = ConsultInputValue.OfArray(new[]
+                {
+                    ConsultInputValue.OfObject(new[] { new ConsultInputEntry("note", ConsultInputValue.OfText(big)) })
+                })
+            }));
+    }
+
+    [Fact]
+    public void MalformedInputMessage_NamesTheTokenAndThePath_NeverTheValue()
+    {
+        // The door's 400 for a shape the converter refused, as a caller reads
+        // it: what was wrong and where — and nothing the caller sent.
+        var exception = Assert.Throws<ConsultInputShapeException>(() =>
+            JsonSerializer.Deserialize<ConsultGenerationRequest>(
+                """{"inputs":{"consult_draft":[["secret"]]}}""",
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }));
+
+        var message = ConsultGenerationJobs.MalformedInputMessage(exception);
+
+        Assert.Contains("element 0 is an array", message, StringComparison.Ordinal);
+        Assert.Contains("consult_draft", message, StringComparison.Ordinal);
+        Assert.Contains(" At $.", message, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret", message, StringComparison.Ordinal);
+    }
 }
 
 public class ConsultGenerationNodeEntityTests

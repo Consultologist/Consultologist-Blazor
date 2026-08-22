@@ -740,10 +740,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         foreach (var (id, value) in request.Inputs)
         {
             // Only text carries whitespace worth normalising; a boolean has
-            // none, and normalising it would erase the type.
-            normalized[id] = value.IsBoolean
-                ? value
-                : ConsultInputValue.OfText(CanonicalText.Normalize(value.Text ?? string.Empty));
+            // none, and normalising it would erase the type. A number, an
+            // object and an array pass through UNCHANGED at this layer:
+            // per-element normalisation is #422's explicit scope (effective-
+            // input hash 5, v9 § 8), and fixing bytes here would pre-empt a
+            // definition that version has not yet chosen.
+            normalized[id] = value.Kind == ConsultInputKind.Text
+                ? ConsultInputValue.OfText(CanonicalText.Normalize(value.Text ?? string.Empty))
+                : value;
         }
 
         return request with { ConsultDraft = draft, Inputs = normalized };
@@ -765,6 +769,17 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 {
                     return new EffectiveInputsResolution(null, null,
                         $"Inputs names undeclared input(s) {string.Join(", ", foreign.Select(id => $"'{id}'"))}: a specVersion {manifest.SpecVersion} package accepts only consult_draft.");
+                }
+
+                // v9 layer 1 (#421): the draft folds into the v5/v6 shape through
+                // its canonical string, which structure does not have. Refused
+                // here, where the slot can be named, rather than thrown at the
+                // fold. An authored id and fixed prose, so sender-safe.
+                if (request.Inputs.TryGetValue(ConsultDraftInputId, out var draft)
+                    && draft.Kind is ConsultInputKind.Number or ConsultInputKind.Object or ConsultInputKind.Array)
+                {
+                    var legacyDetail = $"Input 'consult_draft' is the consult draft and must be sent as a JSON string; got {draft.Described}.";
+                    return new EffectiveInputsResolution(null, null, legacyDetail, legacyDetail);
                 }
             }
 
@@ -867,9 +882,21 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         // Shape first: the JSON kind and the declared type must agree. This is
         // the 422 half of the strictness — a well-formed request whose value
-        // disagrees with the declaration. A token JSON has no business holding
-        // at all (a number, an object) never reaches here: the converter
-        // rejects it as malformed, which is a 400.
+        // disagrees with the declaration.
+        //
+        // v9 layer 1 (#421): the wire now carries a number, an object and an
+        // array, and no v5–v8 declaration can ask for any of them. So each is
+        // refused whatever the slot's type, before anything reads Canonical —
+        // which structure does not have. The message names the kind, never
+        // the value. A null cannot arrive at the top of the map (it reads as
+        // blank text), but the arm is closed rather than assumed.
+        if (value.Kind is ConsultInputKind.Number or ConsultInputKind.Object or ConsultInputKind.Array or ConsultInputKind.Null)
+        {
+            return type == WorkflowInputTypes.Boolean
+                ? $"is a boolean and must be sent as JSON true or false; got {value.Described}."
+                : $"is a {type} and must be sent as a JSON string; got {value.Described}.";
+        }
+
         if (type == WorkflowInputTypes.Boolean && !value.IsBoolean)
         {
             return $"is a boolean and must be sent as JSON true or false, not a string; got '{value.Canonical}'.";
