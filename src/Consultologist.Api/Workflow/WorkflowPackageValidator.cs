@@ -26,7 +26,7 @@ public static class WorkflowPackageValidator
     /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
     /// are checked against the published spec-versions.json there too.
     /// </summary>
-    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8 };
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9 };
 
     /// <summary>
     /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
@@ -502,6 +502,11 @@ public static class WorkflowPackageValidator
     /// v8 types an input slot (package-format-v8-design.md § 4). An absent type
     /// is text, which is what keeps every v7 declaration valid — so the minimal
     /// v8 migration is the specVersion line and nothing else.
+    ///
+    /// v9 adds number, object and array, with `items` for an array and
+    /// `fields` for an object (package-format-v9-design.md § 4). The type set
+    /// is keyed by version: a v8 manifest is held to v8's four names, and its
+    /// refusals read exactly as the published conformance suite recorded them.
     /// </summary>
     private static void ValidateInputType(WorkflowPackageManifest manifest, WorkflowInputSpec input, List<string> errors)
     {
@@ -519,54 +524,220 @@ public static class WorkflowPackageValidator
                 errors.Add($"Input '{input.Id}' declares values, which requires specVersion 8.");
             }
 
-            return;
-        }
-
-        var type = WorkflowInputTypes.Of(input);
-
-        if (!WorkflowInputTypes.All.Contains(type, StringComparer.Ordinal))
-        {
-            errors.Add($"Input '{input.Id}' declares unknown type '{type}' (accepted: {string.Join(", ", WorkflowInputTypes.All)}).");
-            return; // An unknown type says nothing about whether values belong.
-        }
-
-        if (type != WorkflowInputTypes.Enum)
-        {
-            if (input.Values != null)
+            if (input.Items != null)
             {
-                errors.Add($"Input '{input.Id}' is type '{type}' and may not declare values.");
+                errors.Add($"Input '{input.Id}' declares items, which requires specVersion 9.");
+            }
+
+            if (input.Fields != null)
+            {
+                errors.Add($"Input '{input.Id}' declares fields, which requires specVersion 9.");
             }
 
             return;
         }
 
-        if (input.Values is not { Count: > 0 })
+        var accepted = WorkflowInputTypes.ForSpecVersion(manifest.SpecVersion);
+        var type = WorkflowInputTypes.Of(input);
+
+        if (manifest.SpecVersion < 9)
         {
-            errors.Add($"Input '{input.Id}' is type 'enum' and must declare values.");
+            // v9's vocabulary on a v8 manifest: the same posture as the gate
+            // above, so an author learns which version to move to rather than
+            // that a name is unknown.
+            var gated = false;
+
+            if (input.Type != null && !accepted.Contains(type, StringComparer.Ordinal)
+                && WorkflowInputTypes.All.Contains(type, StringComparer.Ordinal))
+            {
+                errors.Add($"Input '{input.Id}' declares type '{type}', which requires specVersion 9.");
+                gated = true;
+            }
+
+            if (input.Items != null)
+            {
+                errors.Add($"Input '{input.Id}' declares items, which requires specVersion 9.");
+                gated = true;
+            }
+
+            if (input.Fields != null)
+            {
+                errors.Add($"Input '{input.Id}' declares fields, which requires specVersion 9.");
+                gated = true;
+            }
+
+            if (gated)
+            {
+                return;
+            }
+        }
+
+        if (!accepted.Contains(type, StringComparer.Ordinal))
+        {
+            errors.Add($"Input '{input.Id}' declares unknown type '{type}' (accepted: {string.Join(", ", accepted)}).");
+            return; // An unknown type says nothing about whether values belong.
+        }
+
+        var subject = $"Input '{input.Id}'";
+        var isArray = type == WorkflowInputTypes.Array;
+
+        // items: required for an array, one of the element types, forbidden
+        // otherwise. Structure is one level deep, so an array of arrays is
+        // refused by name rather than as an unknown element type.
+        if (isArray)
+        {
+            if (input.Items is null)
+            {
+                errors.Add($"{subject} is type 'array' and must declare items.");
+                return;
+            }
+
+            if (input.Items == WorkflowInputTypes.Array)
+            {
+                errors.Add($"{subject} declares items 'array'; structure is one level deep, so an array may not hold arrays.");
+                return;
+            }
+
+            if (!WorkflowInputTypes.ElementTypes.Contains(input.Items, StringComparer.Ordinal))
+            {
+                errors.Add($"{subject} declares unknown items type '{input.Items}' (accepted: {string.Join(", ", WorkflowInputTypes.ElementTypes)}).");
+                return;
+            }
+        }
+        else if (input.Items != null)
+        {
+            errors.Add($"{subject} is type '{type}' and may not declare items.");
+        }
+
+        // fields: required when the declaration is an object or an array of
+        // objects, forbidden otherwise.
+        if (WorkflowInputTypes.DeclaresObject(input))
+        {
+            if (input.Fields is not { Count: > 0 })
+            {
+                errors.Add(isArray
+                    ? $"{subject} is an array of objects and must declare fields."
+                    : $"{subject} is type 'object' and must declare fields.");
+            }
+            else
+            {
+                ValidateFields(input, errors);
+            }
+        }
+        else if (input.Fields != null)
+        {
+            errors.Add($"{subject} is type '{type}' and may not declare fields.");
+        }
+
+        // values: an enum's, or an array of enums'. Nothing else has a choice
+        // to declare.
+        var valuesBelong = type == WorkflowInputTypes.Enum
+            || (isArray && input.Items == WorkflowInputTypes.Enum);
+
+        if (!valuesBelong)
+        {
+            if (input.Values != null)
+            {
+                errors.Add($"{subject} is type '{type}' and may not declare values.");
+            }
+
             return;
         }
 
-        if (input.Values.Count < 2)
+        ValidateEnumValues(subject, input.Values, errors);
+    }
+
+    /// <summary>
+    /// The enum rules, for an input, an array's elements or a field alike: at
+    /// least two values, unique, each a declared id. Enum values share the
+    /// declared-id rule, so they are safe wherever result ids are — authored
+    /// package content, never patient data.
+    /// </summary>
+    private static void ValidateEnumValues(string subject, List<string>? values, List<string> errors)
+    {
+        if (values is not { Count: > 0 })
         {
-            errors.Add($"Input '{input.Id}' declares one enum value; an enum with one value is a constant, not a choice.");
+            errors.Add($"{subject} is type 'enum' and must declare values.");
+            return;
+        }
+
+        if (values.Count < 2)
+        {
+            errors.Add($"{subject} declares one enum value; an enum with one value is a constant, not a choice.");
         }
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var value in input.Values)
+        foreach (var value in values)
         {
-            // Enum values share the declared-id rule, so they are safe wherever
-            // result ids are: authored package content, never patient data.
             if (!WorkflowDeclaredIds.IsValid(value))
             {
-                errors.Add($"Input '{input.Id}' enum value '{value}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).");
+                errors.Add($"{subject} enum value '{value}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).");
                 continue;
             }
 
             if (!seen.Add(value))
             {
-                errors.Add($"Input '{input.Id}' declares duplicate enum value '{value}'.");
+                errors.Add($"{subject} declares duplicate enum value '{value}'.");
             }
+        }
+    }
+
+    /// <summary>
+    /// An object's fields (v9 § 4): ids snake_case and unique, a label each, a
+    /// scalar type — structure is one level deep — and values for an enum
+    /// field on the usual terms.
+    /// </summary>
+    private static void ValidateFields(WorkflowInputSpec input, List<string> errors)
+    {
+        var subject = $"Input '{input.Id}'";
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var field in input.Fields!)
+        {
+            if (!WorkflowDeclaredIds.IsValid(field.Id))
+            {
+                errors.Add($"{subject} field id '{field.Id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).");
+                continue;
+            }
+
+            if (!seen.Add(field.Id))
+            {
+                errors.Add($"{subject} declares duplicate field id '{field.Id}'.");
+            }
+
+            var fieldSubject = $"{subject} field '{field.Id}'";
+
+            if (string.IsNullOrWhiteSpace(field.Label))
+            {
+                errors.Add($"{fieldSubject} has no label.");
+            }
+
+            var type = WorkflowInputTypes.Of(field);
+
+            if (type is WorkflowInputTypes.Object or WorkflowInputTypes.Array)
+            {
+                errors.Add($"{fieldSubject} is type '{type}'; structure is one level deep, so a field holds a scalar.");
+                continue;
+            }
+
+            if (!WorkflowInputTypes.Scalars.Contains(type, StringComparer.Ordinal))
+            {
+                errors.Add($"{fieldSubject} declares unknown type '{type}' (accepted: {string.Join(", ", WorkflowInputTypes.Scalars)}).");
+                continue;
+            }
+
+            if (type != WorkflowInputTypes.Enum)
+            {
+                if (field.Values != null)
+                {
+                    errors.Add($"{fieldSubject} is type '{type}' and may not declare values.");
+                }
+
+                continue;
+            }
+
+            ValidateEnumValues(fieldSubject, field.Values, errors);
         }
     }
 
@@ -1118,11 +1289,15 @@ public static class WorkflowPackageValidator
 
         var inputs = manifest.Inputs ?? new List<WorkflowInputSpec>();
 
+        // v9 (package-format-v9-design.md § 4, Intake): a number and an object
+        // are as unreachable by email as a boolean — the door supplies text. An
+        // array is not listed: attachments fill an array of text (§ 7, #428).
         foreach (var input in inputs.Where(input =>
-            input.Required && WorkflowInputTypes.Of(input) == WorkflowInputTypes.Boolean))
+            input.Required && WorkflowInputTypes.Of(input) is WorkflowInputTypes.Boolean
+                or WorkflowInputTypes.Number or WorkflowInputTypes.Object))
         {
             warnings.Add(
-                $"Input '{input.Id}' is a required boolean. Email can only supply text, so this package "
+                $"Input '{input.Id}' is a required {WorkflowInputTypes.Of(input)}. Email can only supply text, so this package "
                 + "cannot be started from the email door.");
         }
 

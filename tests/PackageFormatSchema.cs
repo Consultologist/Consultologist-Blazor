@@ -181,33 +181,121 @@ internal static class PackageFormatSchema
         {
             Remove(properties, "type");
             Remove(properties, "values");
+            Remove(properties, "items");
+            Remove(properties, "fields");
         }
-        else
+        else if (specVersion < 9)
         {
-            Object(properties, "type")["enum"] = new JsonArray(
-                WorkflowInputTypes.All.Select(type => (JsonNode?)type).ToArray());
-
-            var values = Object(properties, "values");
-            // An enum with one value is a constant, not a choice.
-            values["minItems"] = 2;
-            values["uniqueItems"] = true;
-            Object(values, "items")["pattern"] = DeclaredId;
+            // The v8 type set, keyed by version so this schema's bytes do not
+            // move when a later version widens the vocabulary.
+            Object(properties, "type")["enum"] = TypeNames(WorkflowInputTypes.ForSpecVersion(8));
+            EnrichValues(Object(properties, "values"));
+            Remove(properties, "items");
+            Remove(properties, "fields");
 
             // values belongs to enum and to nothing else. An absent type is
             // text, so the "otherwise" branch has to cover absence too.
-            item["if"] = new JsonObject
-            {
-                ["properties"] = new JsonObject { ["type"] = new JsonObject { ["const"] = WorkflowInputTypes.Enum } },
-                ["required"] = Required("type")
-            };
+            item["if"] = TypeIs(WorkflowInputTypes.Enum);
             item["then"] = new JsonObject { ["required"] = Required("values") };
             item["else"] = new JsonObject { ["not"] = new JsonObject { ["required"] = Required("values") } };
+        }
+        else
+        {
+            EnrichStructuredInput(item, properties);
         }
 
         // Required defaults to true when absent, so it is not required here.
         item["required"] = Required("id", "label");
         Close(item);
     }
+
+    /// <summary>
+    /// v9 (package-format-v9-design.md § 4): number, object and array; items for
+    /// an array, fields for an object or an array of objects; values for an
+    /// enum or an array of enums. Structure is one level deep — a field's type
+    /// is a scalar, and items may not be array.
+    /// </summary>
+    private static void EnrichStructuredInput(JsonObject item, JsonObject properties)
+    {
+        Object(properties, "type")["enum"] = TypeNames(WorkflowInputTypes.ForSpecVersion(9));
+        Object(properties, "items")["enum"] = TypeNames(WorkflowInputTypes.ElementTypes);
+        EnrichValues(Object(properties, "values"));
+
+        var fields = Object(properties, "fields");
+        fields["minItems"] = 1;
+        var field = Object(fields, "items");
+        var fieldProperties = Object(field, "properties");
+        Object(fieldProperties, "id")["pattern"] = DeclaredId;
+        Object(fieldProperties, "label")["minLength"] = 1;
+        Object(fieldProperties, "type")["enum"] = TypeNames(WorkflowInputTypes.Scalars);
+        EnrichValues(Object(fieldProperties, "values"));
+        field["if"] = TypeIs(WorkflowInputTypes.Enum);
+        field["then"] = new JsonObject { ["required"] = Required("values") };
+        field["else"] = new JsonObject { ["not"] = new JsonObject { ["required"] = Required("values") } };
+        field["required"] = Required("id", "label");
+        Close(field);
+
+        var isArray = TypeIs(WorkflowInputTypes.Array);
+        var isObject = TypeIs(WorkflowInputTypes.Object);
+        var isArrayOfObjects = new JsonObject
+        {
+            ["properties"] = new JsonObject
+            {
+                ["type"] = new JsonObject { ["const"] = WorkflowInputTypes.Array },
+                ["items"] = new JsonObject { ["const"] = WorkflowInputTypes.Object }
+            },
+            ["required"] = Required("type", "items")
+        };
+        var isArrayOfEnums = new JsonObject
+        {
+            ["properties"] = new JsonObject
+            {
+                ["type"] = new JsonObject { ["const"] = WorkflowInputTypes.Array },
+                ["items"] = new JsonObject { ["const"] = WorkflowInputTypes.Enum }
+            },
+            ["required"] = Required("type", "items")
+        };
+
+        item["allOf"] = new JsonArray(
+            // items: required for an array, forbidden otherwise.
+            new JsonObject
+            {
+                ["if"] = isArray,
+                ["then"] = new JsonObject { ["required"] = Required("items") },
+                ["else"] = new JsonObject { ["not"] = new JsonObject { ["required"] = Required("items") } }
+            },
+            // fields: required for an object or an array of objects, forbidden otherwise.
+            new JsonObject
+            {
+                ["if"] = new JsonObject { ["anyOf"] = new JsonArray(isObject, isArrayOfObjects) },
+                ["then"] = new JsonObject { ["required"] = Required("fields") },
+                ["else"] = new JsonObject { ["not"] = new JsonObject { ["required"] = Required("fields") } }
+            },
+            // values: required for an enum or an array of enums, forbidden otherwise.
+            new JsonObject
+            {
+                ["if"] = new JsonObject { ["anyOf"] = new JsonArray(TypeIs(WorkflowInputTypes.Enum), isArrayOfEnums) },
+                ["then"] = new JsonObject { ["required"] = Required("values") },
+                ["else"] = new JsonObject { ["not"] = new JsonObject { ["required"] = Required("values") } }
+            });
+    }
+
+    private static void EnrichValues(JsonObject values)
+    {
+        // An enum with one value is a constant, not a choice.
+        values["minItems"] = 2;
+        values["uniqueItems"] = true;
+        Object(values, "items")["pattern"] = DeclaredId;
+    }
+
+    private static JsonObject TypeIs(string type) => new()
+    {
+        ["properties"] = new JsonObject { ["type"] = new JsonObject { ["const"] = type } },
+        ["required"] = Required("type")
+    };
+
+    private static JsonArray TypeNames(IEnumerable<string> names) =>
+        new(names.Select(name => (JsonNode?)name).ToArray());
 
     private static void EnrichResults(JsonObject results, int specVersion)
     {
