@@ -482,6 +482,15 @@ where `when: prior_notes == …` would not. That is an exception to the rule
 above, and it is stated here rather than discovered — a condition whose
 whole purpose is asking "how many" is useless if it cannot say "none".
 
+*Amended 2026-08-22 (#427):* **what a refusal may say.** When no document
+applies, the engine's explanation reaches History and the email door's
+reply, where it is quoted back to the sender. It prints only what is safe
+on every surface — a declared enum value, `true`/`false`, the condition's
+own literal, and a count of entries. A **number, a date, or a field's
+value is the patient's and is never printed**: for those the sentence says
+what was needed and that it was not met (`needs patient.age to be >= 65;
+it is not`), never what was supplied.
+
 ## 7. Several documents for one slot (normative)
 
 #340 absorbed #372, so this is v9's business rather than a follow-on.
