@@ -489,6 +489,23 @@ their predecessors, never compared across versions:
   v9 jobs stamp `effectiveInputHashVersion: 5`; v8 keeps 4, v7 keeps 3,
   v5/v6 keep 2. A genuinely different function again, not the same bytes
   under a new number.
+
+  *Amended 2026-08-22 (#422), the byte-level rules a definition is:*
+  - **UTF-8 written as-is**, with only what JSON requires escaped
+    (`JavaScriptEncoder.UnsafeRelaxedJsonEscaping`). This is where 5 parts
+    from 2–4, which use System.Text.Json's default encoder and escape
+    non-ASCII and `<`, `>`, `&`, `'`, `+` as `\uXXXX` — never stated and
+    never pinned until now. So 4 and 5 agree byte for byte on an ASCII map
+    of scalars and on nothing wider, which is fine: they are never compared.
+  - **Ordinal means UTF-16 code-unit order** (`StringComparer.Ordinal`),
+    which is also RFC 8785's rule — for slot ids and field ids alike.
+  - **Definition 4 refuses structure.** Its domain is v8's text and
+    booleans; a number, object or array reaching it can only mean a
+    misrouted version gate, and a throw turns the silent wrong-and-stamped-4
+    record into a failed start.
+  - Written by its own writer rather than the wire converter, so the replay
+    form (supplied order) and the hashed form (sorted) cannot drift each
+    other.
 - **Workflow-output hash**: unchanged. `ResultSetHashVersion` 3 covers v9 —
   documents produced from caller-supplied items are documents like any
   other.

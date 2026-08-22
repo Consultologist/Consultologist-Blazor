@@ -153,7 +153,10 @@ three callers.
   still holds; only the text reaching it is cleaner. `provenance.md` is
   explicit that definitions are never compared as equals across
   versions, so a bump would cost comparability against every existing v7
-  job to record nothing new.
+  job to record nothing new. *(True of #238. v8 and v9 did move the
+  version — to 4 for typed values and 5 for structured ones — for reasons
+  of their own, never for normalisation; since #422 the normaliser also
+  runs over every text scalar inside an array or object.)*
 
 > **Amended 2026-07-31 during #251.** The rule covers **a lone `\r` as
 > well as `\r\n`**. It did not, and the gap was exactly the failure this
