@@ -532,6 +532,28 @@ compression bombs, path traversal, nesting depth, entry counts, per-entry
 size and a third-party dependency with its own attestation question. #372
 keeps that analysis for whoever wants it (§ 13).
 
+*Amended 2026-08-22 (#428), what landing it settled:*
+- **A `text` slot given several documents is refused**, not concatenated:
+  *"Input 'consult_draft' is a text and takes one document; declare it an
+  array of text to supply several."* One document into an array-of-text
+  slot is a one-element array; one into a text slot is `OfText`, so hash
+  definitions 3 and 4 see the bytes they did.
+- **The email door's order is the sender's**, written as numbered stems —
+  `prior_notes-1.pdf`, `prior_notes-2.docx`, numbered 1 to n with no gaps
+  or repeats, read as numbers. Two plain stems for one slot stay refused.
+- **Provenance is additive at rest.** `InputDocumentOrigins` sits beside
+  the #238 `InputOrigins` on both durable records and in entity state;
+  new jobs write only the new field, and the response's one map projects
+  a pre-#428 single origin as a one-element list.
+- **The aggregate cap is its own refusal**, `InputTooLong` (422; a
+  rejected attachment at the email door): *"Input 'prior_notes' exceeds
+  256 KB across its 3 documents."* Raw extracted lengths, strict `>`.
+- **The content floor measures an array of text however it was supplied**
+  — typed notes as much as extracted documents — so a required array of
+  four five-character strings is now refused as carrying no referral.
+- **Ordinals in sentences count from one** (*document 2 of 4*), matching
+  the numbered stems and History's list; `origins[id][i]` stays 0-based.
+
 ## 8. Provenance
 
 Per provenance.md's discipline — definitions are versioned, added beside
