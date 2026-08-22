@@ -276,7 +276,7 @@ public sealed class EmailIntakeProcessor
         }
 
         var resolution = EmailAttachmentInputs.Resolve(
-            await DeclaredInputIdsAsync(match.AppUserId!, cancellationToken),
+            await DeclaredInputsAsync(match.AppUserId!, cancellationToken),
             draft,
             attachments);
 
@@ -332,7 +332,7 @@ public sealed class EmailIntakeProcessor
                 InputFiles: resolution.Files is { Count: > 0 }
                     ? resolution.Files.ToDictionary(
                         pair => pair.Key,
-                        pair => new InputFilePayload(pair.Value.ContentType, pair.Value.Content),
+                        pair => pair.Value.Select(attachment => new InputFilePayload(attachment.ContentType, attachment.Content)).ToList(),
                         StringComparer.Ordinal)
                     : null),
             match.AppUserId!,
@@ -362,6 +362,7 @@ public sealed class EmailIntakeProcessor
             {
                 ConsultGenerationJobStartError.InputsMismatch => EmailIntakeOutcomes.RejectedInputs,
                 ConsultGenerationJobStartError.InputFileUnreadable => EmailIntakeOutcomes.RejectedAttachments,
+                ConsultGenerationJobStartError.InputTooLong => EmailIntakeOutcomes.RejectedAttachments,
                 // #290: the message arrived and parsed; there was simply no
                 // referral in it to generate from.
                 ConsultGenerationJobStartError.InputWithoutContent => EmailIntakeOutcomes.RejectedEmpty,
@@ -466,20 +467,21 @@ public sealed class EmailIntakeProcessor
     /// rather than failing the message. The store caches resolved versions, so
     /// this is a cache hit by the time the starter asks again.
     /// </summary>
-    private async Task<IReadOnlyList<string>> DeclaredInputIdsAsync(string appUserId, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<WorkflowInputSpec>> DeclaredInputsAsync(string appUserId, CancellationToken cancellationToken)
     {
         try
         {
             var packageRef = await _pinResolver.ResolvePinAsync(appUserId, cancellationToken);
             var package = await _packageStore.ResolveAsync(packageRef, cancellationToken);
 
-            return package.Manifest.Inputs?.Select(input => input.Id).ToList()
-                ?? (IReadOnlyList<string>)Array.Empty<string>();
+            // #428: the declarations themselves, not just the ids — which slot
+            // takes several documents is a question about its type.
+            return package.Manifest.Inputs ?? (IReadOnlyList<WorkflowInputSpec>)Array.Empty<WorkflowInputSpec>();
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Email intake could not read the pinned package's declared inputs; assigning as legacy.");
-            return Array.Empty<string>();
+            return Array.Empty<WorkflowInputSpec>();
         }
     }
 

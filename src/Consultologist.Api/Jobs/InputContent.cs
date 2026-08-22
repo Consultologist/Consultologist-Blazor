@@ -64,6 +64,23 @@ internal static class InputContent
         @"\b(?:https?://|ftp://|www\.|mailto:)\S+",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    /// <summary>A text, or an array of text (#428).</summary>
+    internal static bool IsProse(WorkflowInputSpec declared) =>
+        WorkflowInputTypes.Of(declared) == WorkflowInputTypes.Text
+        || (WorkflowInputTypes.Of(declared) == WorkflowInputTypes.Array
+            && (declared.Items ?? WorkflowInputTypes.Text) == WorkflowInputTypes.Text);
+
+    /// <summary>
+    /// The prose in a value: a text's, or the sum over an array's text
+    /// elements (#428). Nothing else counts — a number or a date is not prose.
+    /// </summary>
+    internal static int MeaningfulLength(ConsultInputValue? value) => value?.Kind switch
+    {
+        ConsultInputKind.Text => MeaningfulLength(value.Text),
+        ConsultInputKind.Array => value.Elements!.Sum(element => element.Kind == ConsultInputKind.Text ? MeaningfulLength(element.Text) : 0),
+        _ => 0
+    };
+
     /// <summary>
     /// Characters left once URLs and whitespace are removed — what a reader
     /// would call the prose.
@@ -136,7 +153,7 @@ internal static class InputContent
         ConsultGenerationRequest request,
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, string>? effective,
-        IReadOnlyDictionary<string, ConsultInputOrigin>? origins)
+        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? origins)
     {
         bool FromNoDocument(string id) => origins?.ContainsKey(id) != true;
 
@@ -173,7 +190,7 @@ internal static class InputContent
     internal static string? FindInputWithoutContent(
         ConsultGenerationRequest request,
         WorkflowPackageManifest manifest,
-        IReadOnlyDictionary<string, string>? effective,
+        IReadOnlyDictionary<string, ConsultInputValue>? supplied,
         int minimum)
     {
         if (minimum <= 0)
@@ -182,7 +199,7 @@ internal static class InputContent
         }
 
         // v5/v6 declare no inputs: the draft is the input.
-        if (manifest.SpecVersion < 7 || effective == null)
+        if (manifest.SpecVersion < 7 || supplied == null)
         {
             return MeaningfulLength(request.ConsultDraft) < minimum
                 ? ConsultGenerationJobStarter.ConsultDraftInputId
@@ -202,12 +219,17 @@ internal static class InputContent
             // measuring it against a referral's minimum would reject every v8
             // package that declares one (#313). Its own type already
             // constrains it far more tightly than a length ever could.
-            if (WorkflowInputTypes.Of(declared) != WorkflowInputTypes.Text)
+            //
+            // #428: an array of text is prose too — several documents, or
+            // several typed notes — and is measured as the slot, the sum of
+            // its elements: one thin document among four is not an empty
+            // referral, and four thin ones are.
+            if (!IsProse(declared))
             {
                 continue;
             }
 
-            if (MeaningfulLength(effective.GetValueOrDefault(declared.Id)) < minimum)
+            if (MeaningfulLength(supplied.GetValueOrDefault(declared.Id)) < minimum)
             {
                 return declared.Id;
             }

@@ -141,6 +141,15 @@ public class EmailIntakeProcessorTests
             .Returns(new WorkflowPackage(V7Fixtures.MultiDeliverable()));
     }
 
+    /// <summary>#428: a package whose prior_notes is an array of text.</summary>
+    private void WithV9Package()
+    {
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackage(V9Fixtures.Structured()));
+    }
+
     private void SetupSingleUnread()
     {
         _mail.ListUnreadInboxMessagesAsync(Mailbox, Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -478,7 +487,7 @@ public class EmailIntakeProcessorTests
         await _starter.Received(1).StartAsync(
             _client,
             Arg.Is<ConsultGenerationRequest>(r =>
-                r.InputFiles!["consult_draft"].Content.Length > 0 && r.Inputs == null),
+                r.InputFiles!["consult_draft"][0].Content.Length > 0 && r.Inputs == null),
             "user-1",
             Arg.Any<ConsultGenerationJobOrigin>(),
             Arg.Any<CancellationToken>());
@@ -500,7 +509,7 @@ public class EmailIntakeProcessorTests
         await _starter.Received(1).StartAsync(
             _client,
             Arg.Is<ConsultGenerationRequest>(r =>
-                r.InputFiles!["consult_draft"].ContentType == "application/pdf"),
+                r.InputFiles!["consult_draft"][0].ContentType == "application/pdf"),
             "user-1",
             Arg.Any<ConsultGenerationJobOrigin>(),
             Arg.Any<CancellationToken>());
@@ -525,7 +534,7 @@ public class EmailIntakeProcessorTests
 
         await _starter.Received(1).StartAsync(
             _client,
-            Arg.Is<ConsultGenerationRequest>(r => r.InputFiles!["prior_notes"].Content.SequenceEqual(utf16)),
+            Arg.Is<ConsultGenerationRequest>(r => r.InputFiles!["prior_notes"][0].Content.SequenceEqual(utf16)),
             "user-1",
             Arg.Any<ConsultGenerationJobOrigin>(),
             Arg.Any<CancellationToken>());
@@ -599,6 +608,94 @@ public class EmailIntakeProcessorTests
 
         Assert.Equal(1, summary.Rejected);
         await _starter.DidNotReceiveWithAnyArgs().StartAsync(default!, default!, default!, default!, default);
+        await _claims.Received(1).UpdateAsync(
+            Arg.Is<EmailIntakeClaim>(c => c.Outcome == EmailIntakeOutcomes.RejectedAttachments),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task NumberedAttachments_ReachTheStarterAsOneSlotInOrder()
+    {
+        // #428: the sender's numbers are the order the elements hash in.
+        WithV9Package();
+        SetupAcceptedSender(Message(hasAttachments: true));
+        WithAttachments(Attachment("prior_notes-2.txt", "Two."), Attachment("prior_notes-1.txt", "One."));
+
+        var summary = await CreateProcessor().RunOnceAsync(_client, CancellationToken.None);
+
+        Assert.Equal(1, summary.Accepted);
+        await _starter.Received(1).StartAsync(
+            _client,
+            Arg.Is<ConsultGenerationRequest>(r =>
+                r.InputFiles!["prior_notes"].Count == 2
+                && System.Text.Encoding.UTF8.GetString(r.InputFiles["prior_notes"][0].Content) == "One."
+                && System.Text.Encoding.UTF8.GetString(r.InputFiles["prior_notes"][1].Content) == "Two."),
+            "user-1",
+            Arg.Any<ConsultGenerationJobOrigin>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ANumberedAttachmentForATextSlot_IsRejectedAndTheReplySaysWhy()
+    {
+        WithV9Package();
+        SetupAcceptedSender(Message(body: "  ", hasAttachments: true));
+        WithAttachments(Attachment("consult_draft-1.txt", "Referral."));
+
+        var summary = await CreateProcessor().RunOnceAsync(_client, CancellationToken.None);
+
+        Assert.Equal(1, summary.Rejected);
+        await _starter.DidNotReceiveWithAnyArgs().StartAsync(default!, default!, default!, default!, default);
+        await _mail.Received(1).SendMailAsync(
+            Mailbox,
+            "doc@example.com",
+            Arg.Any<string>(),
+            Arg.Is<string>(body => body.Contains("'consult_draft' takes one document and cannot be numbered")),
+            Arg.Any<CancellationToken>());
+        await _claims.Received(1).UpdateAsync(
+            Arg.Is<EmailIntakeClaim>(c => c.Outcome == EmailIntakeOutcomes.RejectedAttachments),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ANumberedRejection_PutsNeitherFilenameNorContentInTheLog()
+    {
+        // The numbered paths log Detail={Detail} like every other rejection;
+        // the sentinel rides in the stem so a reason that echoed a filename
+        // would be caught.
+        const string FileName = "prior_notes-SENTINEL-FILENAME-4a5b6c-1.txt";
+        const string Content = "SENTINEL-CLINICAL-CONTENT-0f1e2d";
+
+        var log = new CapturingLogger<EmailIntakeProcessor>();
+        WithV9Package();
+        SetupAcceptedSender(Message(body: "  ", hasAttachments: true));
+        WithAttachments(Attachment(FileName, Content), Attachment("prior_notes-1.txt", Content), Attachment("prior_notes-3.txt", Content));
+
+        var summary = await CreateProcessor(logger: log).RunOnceAsync(_client, CancellationToken.None);
+
+        Assert.Equal(1, summary.Rejected);
+        Assert.DoesNotContain("SENTINEL-FILENAME", log.Everything, StringComparison.Ordinal);
+        Assert.DoesNotContain(Content, log.Everything, StringComparison.Ordinal);
+        Assert.NotEmpty(log.Recorded);
+    }
+
+    [Fact]
+    public async Task InputTooLong_IsFiledAsRejectedAttachmentsAndTheReplySaysWhy()
+    {
+        // #428: the aggregate cap is about the attachments, not a failure.
+        const string detail = "Input 'prior_notes' exceeds 256 KB across its 3 documents.";
+        SetupStartFailure(new ConsultGenerationJobStartOutcome(
+            null, ConsultGenerationJobStartError.InputTooLong, detail, SenderSafeDetail: detail));
+
+        var summary = await CreateProcessor().RunOnceAsync(_client, CancellationToken.None);
+
+        Assert.Equal(1, summary.Rejected);
+        await _mail.Received(1).SendMailAsync(
+            Mailbox,
+            "doc@example.com",
+            Arg.Any<string>(),
+            Arg.Is<string>(body => body.Contains("exceeds 256 KB across its 3 documents")),
+            Arg.Any<CancellationToken>());
         await _claims.Received(1).UpdateAsync(
             Arg.Is<EmailIntakeClaim>(c => c.Outcome == EmailIntakeOutcomes.RejectedAttachments),
             Arg.Any<CancellationToken>());

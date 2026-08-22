@@ -247,12 +247,12 @@ public class ConsultsSetupTests : ClientRenderTestContext
         WithExtraction("Old records, as read.");
 
         IReadOnlyDictionary<string, ConsultInputValue>? sentInputs = null;
-        IReadOnlyDictionary<string, InputFilePayload>? sentFiles = null;
+        IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>? sentFiles = null;
         AIService.StartConsultGenerationJobAsync(
                 Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sentInputs = value),
                 Arg.Any<string?>(),
                 Arg.Any<DateTimeOffset?>(),
-                Arg.Do<IReadOnlyDictionary<string, InputFilePayload>?>(value => sentFiles = value))
+                Arg.Do<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>(value => sentFiles = value))
             .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
 
         var page = Render<Consults>();
@@ -266,7 +266,9 @@ public class ConsultsSetupTests : ClientRenderTestContext
 
         Assert.NotNull(sentFiles);
         Assert.Equal(new[] { "prior_notes" }, sentFiles!.Keys.ToArray());
-        Assert.Equal("Old records.", System.Text.Encoding.UTF8.GetString(sentFiles["prior_notes"].Content));
+        // #428: a slot lists its documents; this form attaches one, so one.
+        var document = Assert.Single(sentFiles["prior_notes"]);
+        Assert.Equal("Old records.", System.Text.Encoding.UTF8.GetString(document.Content));
     }
 
     [Fact]
@@ -295,7 +297,7 @@ public class ConsultsSetupTests : ClientRenderTestContext
                 Arg.Any<IReadOnlyDictionary<string, ConsultInputValue>>(),
                 Arg.Any<string?>(),
                 Arg.Any<DateTimeOffset?>(),
-                Arg.Any<IReadOnlyDictionary<string, InputFilePayload>?>())
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
             .Returns<Task<ConsultGenerationJobStartResponse>>(_ => throw failure);
 
     private IRenderedComponent<Consults> SubmitOneDraft()
@@ -396,7 +398,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
                 Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sent = value),
                 Arg.Any<string?>(),
                 Arg.Any<DateTimeOffset?>(),
-                Arg.Any<IReadOnlyDictionary<string, InputFilePayload>?>())
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
             .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
 
         var page = Render<Consults>();
@@ -426,7 +428,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
                 Arg.Do<IReadOnlyDictionary<string, ConsultInputValue>>(value => sent = value),
                 Arg.Any<string?>(),
                 Arg.Any<DateTimeOffset?>(),
-                Arg.Any<IReadOnlyDictionary<string, InputFilePayload>?>())
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
             .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
 
         var page = Render<Consults>();
@@ -541,7 +543,7 @@ public class ConsultsPackageRefTests : ClientRenderTestContext
                 Arg.Any<IReadOnlyDictionary<string, ConsultInputValue>>(),
                 Arg.Do<string?>(value => sent[0] = value),
                 Arg.Any<DateTimeOffset?>(),
-                Arg.Any<IReadOnlyDictionary<string, InputFilePayload>?>())
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
             .Returns(new ConsultGenerationJobStartResponse("job-2", "https://example/status"));
 
         return sent[0];
@@ -561,7 +563,7 @@ public class ConsultsPackageRefTests : ClientRenderTestContext
                 Arg.Any<IReadOnlyDictionary<string, ConsultInputValue>>(),
                 Arg.Do<string?>(value => sentRef = value),
                 Arg.Any<DateTimeOffset?>(),
-                Arg.Any<IReadOnlyDictionary<string, InputFilePayload>?>())
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
             .Returns(new ConsultGenerationJobStartResponse("job-2", "https://example/status"));
 
         var page = Render<Consults>();
@@ -582,7 +584,7 @@ public class ConsultsPackageRefTests : ClientRenderTestContext
                 Arg.Any<IReadOnlyDictionary<string, ConsultInputValue>>(),
                 Arg.Do<string?>(value => sentRef = value),
                 Arg.Any<DateTimeOffset?>(),
-                Arg.Any<IReadOnlyDictionary<string, InputFilePayload>?>())
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
             .Returns(new ConsultGenerationJobStartResponse("job-2", "https://example/status"));
 
         var page = Render<Consults>();
@@ -612,7 +614,7 @@ public class ConsultsPackageRefTests : ClientRenderTestContext
                 Arg.Any<IReadOnlyDictionary<string, ConsultInputValue>>(),
                 Arg.Do<string?>(value => sentRef = value),
                 Arg.Do<DateTimeOffset?>(value => sentSchedule = value),
-                Arg.Any<IReadOnlyDictionary<string, InputFilePayload>?>())
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
             .Returns(new ConsultGenerationJobStartResponse("job-2", "https://example/status"));
 
         var page = Render<Consults>();
@@ -706,7 +708,7 @@ public class ConsultsPackageRefTests : ClientRenderTestContext
                 Arg.Any<IReadOnlyDictionary<string, ConsultInputValue>>(),
                 Arg.Any<string?>(),
                 Arg.Do<DateTimeOffset?>(value => sentSchedule = value),
-                Arg.Any<IReadOnlyDictionary<string, InputFilePayload>?>())
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>())
             .Returns(new ConsultGenerationJobStartResponse("job-2", "https://example/status"));
 
         var page = Render<Consults>();

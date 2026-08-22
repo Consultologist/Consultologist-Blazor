@@ -376,6 +376,7 @@ yield 400 KB, and a 1 MB zip may expand to a gigabyte.
 | Pages parsed | 100 | Parse cost is per page, not per byte |
 | Decompressed size | 100 MB | A container's cost is not its size |
 | Characters extracted | 256 KB | `ConsultGenerationJobs.MaxInputLength` |
+| Characters per slot, all its documents | 256 KB | The same bound, summed after extraction (#428) |
 | Bytes per email, all attachments | 20 MB | A message-level property |
 | Bytes per job request, all files | 20 MB | Likewise, per request |
 
@@ -396,6 +397,17 @@ yield 400 KB, and a 1 MB zip may expand to a gigabyte.
 > mitigations available here are keeping the document's lifetime as
 > tight as possible and treating out-of-memory as reachable; an actual
 > memory bound is #241's.
+
+> **Amended 2026-08-22 during #428.** Two character caps, and they
+> compose. The parser bounds each document at 256 KB as before; a slot
+> filled by **several** documents (v9, `package-format-v9-design.md`
+> § 7) is also held as a whole to `MaxInputLength` — the same bound the
+> door holds typed text to — summed at the starter **after** extraction,
+> where the total is first knowable. Over is refused as `InputTooLong`
+> (422; the email door files it as a rejected attachment), never
+> truncated: *"Input 'prior_notes' exceeds 256 KB across its 3
+> documents."* Raw extracted lengths, before normalisation, as the door's
+> are. A slot may list at most 256 documents, the array bound.
 
 ## 5. The app source
 
@@ -489,6 +501,31 @@ POST /api/ConsultGenerationJobs
   base64 and then a ~26 MB UTF-16 string; deserialise from the stream
   instead so the bytes are parsed once.
 
+> **Amended 2026-08-22 during #428.** `inputFiles` maps a slot to a
+> **list** of documents, in the order supplied; one document is a
+> one-element list:
+>
+> ```text
+> { "inputFiles": { "prior_notes": [ { "contentType": "application/pdf", "content": "<base64>" },
+>                                    { "contentType": "text/plain",      "content": "<base64>" } ] } }
+> ```
+>
+> Only a slot declared `type: array, items: text` takes several — each
+> document becomes one element, in that order, which is the order the
+> elements hash in. A `text` slot takes exactly one and the starter
+> refuses more by name once it knows the declaration: *"Input
+> 'consult_draft' is a text and takes one document; declare it an array
+> of text to supply several."* One document into an array slot is a
+> one-element array; one into a text slot is the text it always was, so
+> hash definitions 3 and 4 are unchanged. The door bounds each document
+> as it bounded the one and names a document by its position — counted
+> from one, only when there is more than one: *"Input file 'prior_notes'
+> document 2 is empty."* An empty list is refused like an empty file.
+> The #290 content floor measures the **slot**: an array of text is
+> prose, however supplied, and one thin document among four is not an
+> empty referral. The setup form still attaches one file per slot; the
+> multi-file picker is #429's.
+
 ## 6. The email source
 
 - `GraphMailClient.ListAttachmentsAsync` reads each non-inline attachment's
@@ -559,6 +596,23 @@ POST /api/ConsultGenerationJobs
 > file → Share link* is the likeliest producer — becomes available, this is
 > the one case left to measure.
 
+> **Amended 2026-08-22 during #428.** Several attachments for one slot
+> are accepted when the slot is an array of text and the sender names
+> their order: `prior_notes-1.pdf`, `prior_notes-2.docx`, … numbered 1 to
+> n with no gaps and no repeats. The numbers are read as numbers (ten
+> after two), the order is the sender's, and it is the order the elements
+> hash in — the only ordering signal a message carries is the one the
+> sender wrote, since a no-PHI reply can confirm nothing back. Refused,
+> each by a sentence naming only the slot: a numbered stem for a slot
+> that takes one (*"takes one document and cannot be numbered"*), a gap
+> (*"numbered with gaps"*), a repeat (*"more than one document with the
+> same number"*), a plain stem beside a numbered one (*"supplied both as
+> 'prior_notes' and as numbered files"*). Two **plain** stems for one
+> slot keep today's refusal, array slots included. A numbered stem naming
+> no declared slot — `fax-2.pdf` — is the unmatched file it always was.
+> The resolver now receives the declarations rather than the ids, since
+> which slot takes several is a question about its type.
+
 ## 7. Provenance
 
 - **Record the origin, beside the hash and not inside it.** Per slot:
@@ -598,6 +652,18 @@ POST /api/ConsultGenerationJobs
 - **Durable replay safety**: the annotation travels as trailing optional
   record parameters on the orchestration input, deserialising null for
   jobs already in flight — the discipline #215 and #217 followed.
+
+> **Amended 2026-08-22 during #428.** Per **document**, positionally —
+> `origins[id][i]` describes element `i` of the slot — rather than per
+> slot. Stored beside the #238 field, not in its place: records at rest
+> and instances in flight hold the single shape, so
+> `InputDocumentOrigins` is a new trailing slot on both durable records
+> and a new state field, and new jobs write only it. The response has
+> one map, `inputOrigins`, of slot → list; a record written before this
+> projects its single origin as a one-element list. History lists one
+> row per document under the slot, in the order supplied; a slot read
+> from one keeps its sentence. A document that extracted to nothing is
+> still one element and one origin, so the record says which one it was.
 - **Not in v1**: retaining the source file. The record references
   extracted text, so a better extractor cannot be re-run over the
   original later. Keeping the bytes would mean PHI at rest with its own

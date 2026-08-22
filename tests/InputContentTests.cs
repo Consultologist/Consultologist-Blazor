@@ -86,7 +86,7 @@ public class InputContentTests
         var offending = InputContent.FindInputWithoutContent(
             new ConsultGenerationRequest(null),
             V7(),
-            new Dictionary<string, string> { ["consult_draft"] = LinkOnlyBody, ["prior_notes"] = TerseReferral },
+            new Dictionary<string, ConsultInputValue> { ["consult_draft"] = LinkOnlyBody, ["prior_notes"] = TerseReferral },
             40);
 
         Assert.Equal("consult_draft", offending);
@@ -100,10 +100,58 @@ public class InputContentTests
         var offending = InputContent.FindInputWithoutContent(
             new ConsultGenerationRequest(null),
             V7(),
-            new Dictionary<string, string> { ["consult_draft"] = TerseReferral, ["prior_notes"] = "" },
+            new Dictionary<string, ConsultInputValue> { ["consult_draft"] = TerseReferral, ["prior_notes"] = "" },
             40);
 
         Assert.Null(offending);
+    }
+
+    [Fact]
+    public void ARequiredArrayOfText_IsMeasuredAsTheSumOfItsElements()
+    {
+        // #428: one thin note among several is not an empty referral; several
+        // thin ones are — the slot is measured, not the element.
+        var manifest = V9Fixtures.WithInput(new("prior_notes", "Prior notes", Required: true, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
+
+        Assert.Null(InputContent.FindInputWithoutContent(
+            new ConsultGenerationRequest(null),
+            manifest,
+            new Dictionary<string, ConsultInputValue>
+            {
+                ["consult_draft"] = TerseReferral,
+                ["prior_notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("Thin."), ConsultInputValue.OfText(TerseReferral) })
+            },
+            40));
+
+        Assert.Equal("prior_notes", InputContent.FindInputWithoutContent(
+            new ConsultGenerationRequest(null),
+            manifest,
+            new Dictionary<string, ConsultInputValue>
+            {
+                ["consult_draft"] = TerseReferral,
+                ["prior_notes"] = ConsultInputValue.OfArray(Enumerable.Repeat(ConsultInputValue.OfText("Thin."), 4))
+            },
+            40));
+    }
+
+    [Fact]
+    public void AnArrayOfObjects_IsNotMeasured()
+    {
+        // Structure is not prose: its fields are typed, and each already
+        // constrains itself more tightly than a length could.
+        var manifest = V9Fixtures.WithInput(new("medications", "Medications", Required: true,
+            Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Object,
+            Fields: new List<WorkflowFieldSpec> { new("name", "Drug") }));
+
+        Assert.Null(InputContent.FindInputWithoutContent(
+            new ConsultGenerationRequest(null),
+            manifest,
+            new Dictionary<string, ConsultInputValue>
+            {
+                ["consult_draft"] = TerseReferral,
+                ["medications"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfObject(new[] { new ConsultInputEntry("name", ConsultInputValue.OfText("x")) }) })
+            },
+            40));
     }
 
     [Fact]
@@ -137,8 +185,8 @@ public class InputContentTests
     private const string OneDriveLink =
         "https://consultologist-my.sharepoint.com/:w:/g/personal/u/EX9fLk2mQ_dHqB7wZ8vNc1kBqL3rT6yPmA2sK4uW0nXeVg";
 
-    private static readonly Dictionary<string, ConsultInputOrigin> FromADocument =
-        new() { ["consult_draft"] = new ConsultInputOrigin("document", "openxml/3.5.1") };
+    private static readonly Dictionary<string, IReadOnlyList<ConsultInputOrigin>> FromADocument =
+        new() { ["consult_draft"] = new[] { new ConsultInputOrigin("document", "openxml/3.5.1") } };
 
     [Fact]
     public void ABodyThatIsOnlyALinkAndASignature_IsRefused()

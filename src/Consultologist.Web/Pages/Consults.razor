@@ -1642,13 +1642,15 @@
       .ToDictionary(field => field.Id, field => field.Supplied!, StringComparer.Ordinal);
 
   // #236: the attached documents. The file travels rather than its text, so
-  // the server extracts it and the record says what read it.
-  private Dictionary<string, InputFilePayload> SuppliedFiles() =>
+  // the server extracts it and the record says what read it. #428: a slot
+  // lists its documents; this form attaches one, so each is a list of one —
+  // the multi-file picker is #429's.
+  private Dictionary<string, IReadOnlyList<InputFilePayload>> SuppliedFiles() =>
     inputFields
       .Where(field => field.HasFile)
       .ToDictionary(
         field => field.Id,
-        field => new InputFilePayload(field.FileContentType!, field.FileContent!),
+        field => (IReadOnlyList<InputFilePayload>)new[] { new InputFilePayload(field.FileContentType!, field.FileContent!) },
         StringComparer.Ordinal);
 
   // What every display surface and memento shows: the text that ran,

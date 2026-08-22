@@ -40,9 +40,9 @@ public sealed class ConsultGenerationJobs
     // v9 layer 1 (#421): structure at the door. Shape limits in the same sense
     // as MaxInputLength — refused, never truncated — and bounding allocation
     // before the starter sees the request. The text cap applies to every text
-    // scalar wherever it sits, so the worst case is 256 elements of 256 KB;
-    // the per-slot aggregate cap that bounds that is #428's, beside the
-    // several-documents design that needs it.
+    // scalar wherever it sits, so the worst case is 256 elements of 256 KB; a
+    // slot filled by documents is bounded as a whole by MaxInputLength at the
+    // starter, after extraction (#428), where the total is first known.
     internal const int MaxArrayElements = 256;
     internal const int MaxObjectFields = 64;
     private const string MissingSseAttemptId = "missing";
@@ -997,7 +997,7 @@ public sealed class ConsultGenerationJobs
         {
             var totalBytes = 0L;
 
-            foreach (var (id, file) in request.InputFiles!)
+            foreach (var (id, documents) in request.InputFiles!)
             {
                 if (string.IsNullOrWhiteSpace(id))
                 {
@@ -1012,17 +1012,41 @@ public sealed class ConsultGenerationJobs
                     return $"Input '{id}' was supplied as both text and a file.";
                 }
 
-                if (file?.Content is not { Length: > 0 })
+                // v9 (#428): a slot lists its documents. An empty list says
+                // nothing about the slot; it is refused rather than read as
+                // absent, the way an empty file is.
+                if (documents is not { Count: > 0 })
                 {
-                    return $"Input file '{id}' is empty.";
+                    return $"Input '{id}' has no documents.";
                 }
 
-                if (file.Content.Length > MaxInputFileBytes)
+                // Several documents become an array, so the array bound holds.
+                if (documents.Count > MaxArrayElements)
                 {
-                    return $"Input file '{id}' exceeds {MaxInputFileBytes / (1024 * 1024)} MB.";
+                    return $"Input '{id}' has more than {MaxArrayElements} documents.";
                 }
 
-                totalBytes += file.Content.Length;
+                for (var index = 0; index < documents.Count; index++)
+                {
+                    var file = documents[index];
+
+                    // Counted from one, the way a sender numbers attachments
+                    // (docs/DOCUMENT_INPUT.md § 6); named only when there is
+                    // more than one, so a single document reads as it did.
+                    var which = documents.Count == 1 ? string.Empty : $" document {index + 1}";
+
+                    if (file?.Content is not { Length: > 0 })
+                    {
+                        return $"Input file '{id}'{which} is empty.";
+                    }
+
+                    if (file.Content.Length > MaxInputFileBytes)
+                    {
+                        return $"Input file '{id}'{which} exceeds {MaxInputFileBytes / (1024 * 1024)} MB.";
+                    }
+
+                    totalBytes += file.Content.Length;
+                }
             }
 
             // A per-file cap does not bound a request carrying several. The
@@ -1837,6 +1861,7 @@ public sealed class ConsultGenerationJobs
             // document inside it could not be read. Same status the
             // preview endpoint returns for the same cause.
             ConsultGenerationJobStartError.InputFileUnreadable => HttpStatusCode.UnprocessableEntity,
+            ConsultGenerationJobStartError.InputTooLong => HttpStatusCode.UnprocessableEntity,
             // #290: present but carrying no referral. Unsatisfiable
             // content, not a malformed request.
             ConsultGenerationJobStartError.InputWithoutContent => HttpStatusCode.UnprocessableEntity,

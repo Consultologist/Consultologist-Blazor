@@ -233,11 +233,26 @@
                                                    the server read from a document appear — an absent
                                                    entry means nothing was recorded, not that the
                                                    input was typed. *@
-                                                @foreach (var origin in detail.InputOrigins ?? new Dictionary<string, ConsultInputOrigin>())
+                                                @foreach (var origin in detail.InputOrigins ?? new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>())
                                                 {
                                                     <dt class="provenance-list__nested">@origin.Key</dt>
                                                     <dd>
-                                                        read from a document by @(origin.Value.Extractor ?? "—")@(origin.Value.PageCount is { } pages ? $" · {pages} page{(pages == 1 ? "" : "s")}" : "")@(origin.Value.TrackedChangesResolved ? " · tracked changes resolved to the accepted view" : "")
+                                                        @if (origin.Value.Count == 1)
+                                                        {
+                                                            @DescribeOrigin(origin.Value[0])
+                                                        }
+                                                        else
+                                                        {
+                                                            @* #428: one row per document, positionally — a
+                                                               four-document referral is four readings, not one
+                                                               reading with the pages summed. *@
+                                                            <ol class="provenance-documents">
+                                                                @foreach (var document in origin.Value)
+                                                                {
+                                                                    <li>@DescribeOrigin(document)</li>
+                                                                }
+                                                            </ol>
+                                                        }
                                                     </dd>
                                                 }
                                                 @if (detail.WorkflowOutputHash != null)
@@ -395,6 +410,15 @@
 </AuthorizeView>
 
 @code {
+    /// <summary>
+    /// #238's sentence, one document at a time: what read it, how many pages,
+    /// whether a revision layer was resolved. The words are the record's.
+    /// </summary>
+    private static string DescribeOrigin(ConsultInputOrigin origin) =>
+        $"read from a document by {origin.Extractor ?? "—"}"
+        + (origin.PageCount is { } pages ? $" · {pages} page{(pages == 1 ? "" : "s")}" : "")
+        + (origin.TrackedChangesResolved ? " · tracked changes resolved to the accepted view" : "");
+
     private List<AccountJobSummaryResponse> jobs = new();
     private string? jobsContinuationToken;
     private bool jobsLoading;

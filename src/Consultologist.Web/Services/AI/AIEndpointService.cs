@@ -21,7 +21,7 @@ public interface IAIEndpointService
         IReadOnlyDictionary<string, ConsultInputValue> inputs,
         string? workflowPackage = null,
         DateTimeOffset? scheduledAtUtc = null,
-        IReadOnlyDictionary<string, InputFilePayload>? files = null);
+        IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>? files = null);
 
     Task<ConsultGenerationJobResponse> GetConsultGenerationJobAsync(string jobId);
 
@@ -134,7 +134,7 @@ public class AIEndpointService : IAIEndpointService
         IReadOnlyDictionary<string, ConsultInputValue> inputs,
         string? workflowPackage = null,
         DateTimeOffset? scheduledAtUtc = null,
-        IReadOnlyDictionary<string, InputFilePayload>? files = null)
+        IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>? files = null)
     {
         var stopwatch = Stopwatch.StartNew();
 
@@ -154,7 +154,7 @@ public class AIEndpointService : IAIEndpointService
                 scheduledAtUtc,
                 inputs.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
                 files is { Count: > 0 }
-                    ? files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
+                    ? files.ToDictionary(pair => pair.Key, pair => pair.Value.ToList(), StringComparer.Ordinal)
                     : null);
 
             _logger.LogInformation(
@@ -415,17 +415,22 @@ public record ConsultGenerationRequest(
     // boolean for boolean. A bare string still means text, so the v7 shape is
     // unchanged for every package that declares no types.
     Dictionary<string, ConsultInputValue>? Inputs = null,
-    // #238: a slot filled by a document instead of text. The server extracts
-    // it at job start, so origin is observed rather than asserted. Nothing in
-    // the UI sends these yet — #236 is what attaches a file.
-    Dictionary<string, InputFilePayload>? InputFiles = null);
+    // #238: a slot filled by documents instead of text. The server extracts
+    // them at job start, so origin is observed rather than asserted.
+    //
+    // v9 (#428): a slot maps to its documents in the order supplied; one
+    // document is a one-element list. Only a slot declared an array of text
+    // takes several (package-format-v9-design.md § 7). The setup form still
+    // attaches one per slot — the picker is #429's.
+    Dictionary<string, List<InputFilePayload>>? InputFiles = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.InputFilePayload. byte[] rides
 /// the JSON body as base64; no filename is sent.</summary>
 public sealed record InputFilePayload(string ContentType, byte[] Content);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultInputOrigin. Absence
-/// means "not recorded", never "typed".</summary>
+/// means "not recorded", never "typed". One per document, positionally, since
+/// v9 (#428).</summary>
 public sealed record ConsultInputOrigin(
     string Kind,
     string? Extractor = null,
@@ -479,7 +484,9 @@ public record ConsultGenerationJobResponse(
     // workflowOutputHash v3 covers exactly these documents' digests).
     IReadOnlyList<ConsultGenerationResultDocumentResponse>? AssembledDocuments = null,
     // #238: where each input's text came from, as the server observed it.
-    IReadOnlyDictionary<string, ConsultInputOrigin>? InputOrigins = null,
+    // v9 (#428): one origin per document, in order; a job recorded before
+    // that with one document reads as a one-element list.
+    IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? InputOrigins = null,
     // #315: declared deliverables this job's inputs excluded, with the reason.
     // Silence here is the failure mode the issue was written against.
     IReadOnlyList<ConsultSkippedDocumentResponse>? SkippedDocuments = null,

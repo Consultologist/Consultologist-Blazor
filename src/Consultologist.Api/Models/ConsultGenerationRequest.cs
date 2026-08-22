@@ -19,11 +19,17 @@ public record ConsultGenerationRequest(
     // caller's {"id": "text"} is unchanged and still valid — every v5–v7
     // input is a text slot.
     Dictionary<string, ConsultInputValue>? Inputs = null,
-    // #238: the same slots, filled by a document instead of text. The server
+    // #238: the same slots, filled by documents instead of text. The server
     // extracts these at job start (docs/DOCUMENT_INPUT.md § 5), so a slot's
     // origin is something the server observed rather than something the
     // caller asserted. A slot appears in one map or the other, never both.
-    Dictionary<string, InputFilePayload>? InputFiles = null);
+    //
+    // v9 (#428): a slot maps to its documents, in the order supplied. One
+    // document is a one-element list. A slot declared an array of text takes
+    // several, each becoming one element; a text slot takes exactly one, and
+    // the starter refuses more once it knows the declaration
+    // (package-format-v9-design.md § 7).
+    Dictionary<string, List<InputFilePayload>>? InputFiles = null);
 
 /// <summary>
 /// A document supplied for an input slot. System.Text.Json serialises byte[]
@@ -38,7 +44,9 @@ public sealed record InputFilePayload(string ContentType, byte[] Content);
 
 /// <summary>
 /// #238: what the server observed about where an input's text came from.
-/// Recorded per slot, beside the effective-input hash and never inside it.
+/// Recorded beside the effective-input hash and never inside it — per
+/// document, positionally, since v9 (#428): origins[id][i] describes element
+/// i of the slot.
 ///
 /// Absence means "not recorded" — never "typed". Email jobs supply text until
 /// #237 lands, and every job recorded before this existed has no entry at
@@ -107,10 +115,13 @@ public record ConsultGenerationJobResponse(
     // v7: the per-deliverable documents in result-set order (Completed jobs
     // only; hash version 3 covers exactly these). Null on v5/v6 jobs.
     IReadOnlyList<ConsultGenerationResultDocumentResponse>? AssembledDocuments = null,
-    // #238: per-slot record of where the input text came from, as the server
-    // observed it. Null when nothing was recorded — which is every job before
-    // this field existed and every job whose inputs were typed.
-    IReadOnlyDictionary<string, ConsultInputOrigin>? InputOrigins = null,
+    // #238: where the input text came from, as the server observed it. Null
+    // when nothing was recorded — which is every job before this field
+    // existed and every job whose inputs were typed.
+    //
+    // v9 (#428): one origin per document, positionally. A job recorded
+    // before this with one document reads as a one-element list.
+    IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? InputOrigins = null,
     // #315: declared deliverables this job's inputs excluded, with the reason.
     IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null,
     // #361: each forEach collection's items as this job's package declared
