@@ -362,6 +362,7 @@ public sealed class EmailIntakeProcessor
             {
                 ConsultGenerationJobStartError.InputsMismatch => EmailIntakeOutcomes.RejectedInputs,
                 ConsultGenerationJobStartError.InputFileUnreadable => EmailIntakeOutcomes.RejectedAttachments,
+                ConsultGenerationJobStartError.InputTooLong => EmailIntakeOutcomes.RejectedAttachments,
                 // #290: the message arrived and parsed; there was simply no
                 // referral in it to generate from.
                 ConsultGenerationJobStartError.InputWithoutContent => EmailIntakeOutcomes.RejectedEmpty,

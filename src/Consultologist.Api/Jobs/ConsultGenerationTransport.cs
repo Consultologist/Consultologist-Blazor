@@ -1861,6 +1861,7 @@ public sealed class ConsultGenerationJobs
             // document inside it could not be read. Same status the
             // preview endpoint returns for the same cause.
             ConsultGenerationJobStartError.InputFileUnreadable => HttpStatusCode.UnprocessableEntity,
+            ConsultGenerationJobStartError.InputTooLong => HttpStatusCode.UnprocessableEntity,
             // #290: present but carrying no referral. Unsatisfiable
             // content, not a malformed request.
             ConsultGenerationJobStartError.InputWithoutContent => HttpStatusCode.UnprocessableEntity,

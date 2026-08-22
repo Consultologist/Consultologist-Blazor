@@ -1298,9 +1298,12 @@ public class ConsultGenerationJobStarterTests
 
         var captured = await StartV7AndCaptureAsync(request);
 
-        var origin = Assert.Contains("consult_draft", captured.Initialize!.InputOrigins);
+        // #428: per document, positionally — one document, one origin, and
+        // the #238-era single-valued slot left null.
+        var origin = Assert.Single(Assert.Contains("consult_draft", captured.Initialize!.InputDocumentOrigins));
         Assert.Equal(ConsultInputOriginKinds.Document, origin.Kind);
         Assert.Equal("text/1", origin.Extractor);
+        Assert.Null(captured.Initialize.InputOrigins);
     }
 
     [Fact]
@@ -1548,7 +1551,232 @@ public class ConsultGenerationJobStarterTests
         Assert.DoesNotContain(Sentinel, log.Everything, StringComparison.Ordinal);
     }
 
-    private async Task<StartCapture> StartV7AndCaptureAsync(
+    // ----- #428: several documents for one slot -------------------------
+
+    private static Dictionary<string, ConsultInputValue> V9Typed() => new(StringComparer.Ordinal)
+    {
+        ["consult_draft"] = Referral,
+        ["seen_on"] = "2026-08-10",
+        ["encounter_kind"] = "follow_up"
+    };
+
+    private static InputFilePayload Text(string text) =>
+        new("text/plain", Encoding.UTF8.GetBytes(text));
+
+    [Fact]
+    public async Task FourDocumentsIntoOneSlot_BecomeFourElementsInSuppliedOrderWithFourOrigins()
+    {
+        // The issue's first test: order is the caller's and is the order the
+        // elements hash in (definition 5), so a reversal would be a different
+        // record of the same referral.
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: V9Typed(),
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
+            {
+                ["prior_notes"] = [Text("One."), Text("Two."), Text("Three."), Text("Four.")]
+            });
+
+        var captured = await StartAndCaptureAsync(V9Fixtures.Structured(), request);
+
+        Assert.Null(captured.Outcome.Error);
+        var expected = ConsultInputValue.OfArray(new[] { "One.", "Two.", "Three.", "Four." }.Select(ConsultInputValue.OfText));
+        Assert.Equal(expected, captured.OrchestrationInput!.Request.Inputs!["prior_notes"]);
+        Assert.Equal("""["One.","Two.","Three.","Four."]""", captured.OrchestrationInput.Inputs!["prior_notes"]);
+        Assert.Null(captured.OrchestrationInput.Request.InputFiles);
+
+        var supplied = V9Typed();
+        supplied["prior_notes"] = expected;
+        Assert.Equal(ConsultGenerationProvenance.ComputeStructuredInputsHash(supplied), captured.OrchestrationInput.EffectiveInputHash);
+
+        var origins = Assert.Contains("prior_notes", captured.Initialize!.InputDocumentOrigins);
+        Assert.Equal(4, origins.Count);
+        Assert.All(origins, origin => Assert.Equal(ConsultInputOriginKinds.Document, origin.Kind));
+        Assert.Null(captured.Initialize.InputOrigins);
+        Assert.Equal(4, captured.OrchestrationInput.InputDocumentOrigins!["prior_notes"].Count);
+    }
+
+    [Fact]
+    public async Task OneDocumentIntoAnArrayOfTextSlot_IsAOneElementArray()
+    {
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: V9Typed(),
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["prior_notes"] = [Text("One.")] });
+
+        var captured = await StartAndCaptureAsync(V9Fixtures.Structured(), request);
+
+        Assert.Null(captured.Outcome.Error);
+        Assert.Equal(
+            ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("One.") }),
+            captured.OrchestrationInput!.Request.Inputs!["prior_notes"]);
+        Assert.Single(captured.Initialize!.InputDocumentOrigins!["prior_notes"]);
+    }
+
+    [Fact]
+    public async Task ASlotWhoseDocumentsSumPastTheCap_IsRefusedNotTruncated()
+    {
+        // Each document clears the parser's own bound; together they exceed
+        // what an input may carry. Refused with the slot named and the count
+        // of documents — never the text, never a filename.
+        var half = new string('a', ConsultGenerationJobs.MaxInputLength / 2);
+        var over = await StartAndCaptureAsync(V9Fixtures.Structured(), new ConsultGenerationRequest(
+            null,
+            Inputs: V9Typed(),
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["prior_notes"] = [Text(half + "a"), Text(half + "a")] }));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputTooLong, over.Outcome.Error);
+        Assert.Equal("Input 'prior_notes' exceeds 256 KB across its 2 documents.", over.Outcome.ErrorDetail);
+        Assert.Equal(over.Outcome.ErrorDetail, over.Outcome.SenderSafeDetail);
+        Assert.Null(over.Initialize);
+        Assert.Null(over.OrchestrationInput);
+
+        // Exactly at the bound passes: the cap is strict, as the door's is.
+        var at = await StartAndCaptureAsync(V9Fixtures.Structured(), new ConsultGenerationRequest(
+            null,
+            Inputs: V9Typed(),
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["prior_notes"] = [Text(half), Text(half)] }));
+
+        Assert.Null(at.Outcome.Error);
+    }
+
+    [Fact]
+    public async Task TheContentFloor_MeasuresTheSlotNotTheElement()
+    {
+        // One thin document among several is not an empty referral; several
+        // thin ones are.
+        var manifest = V9Fixtures.WithInput(new("prior_notes", "Prior notes", Required: true, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
+
+        var mixed = await StartAndCaptureAsync(manifest, new ConsultGenerationRequest(
+            null,
+            Inputs: V9Typed(),
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["prior_notes"] = [Text("Thin."), Text(Referral)] }));
+
+        Assert.Null(mixed.Outcome.Error);
+
+        var thin = await StartAndCaptureAsync(manifest, new ConsultGenerationRequest(
+            null,
+            Inputs: V9Typed(),
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["prior_notes"] = [Text("Thin."), Text("Thin."), Text("Thin."), Text("Thin.")] }));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputWithoutContent, thin.Outcome.Error);
+        Assert.Contains("'prior_notes' does not contain a referral to work from.", thin.Outcome.ErrorDetail);
+
+        // And the origins of the thin documents were never the question: a
+        // document that read to little is still recorded — the refusal here
+        // is about the slot, before anything is recorded.
+        Assert.Null(thin.Initialize);
+    }
+
+    [Fact]
+    public async Task OneDocumentIntoATextSlot_OnAV8Package_HashesLikeTheEquivalentText()
+    {
+        // The v8 twin of AttachedDocument_FillsItsSlotAndHashesLikeTheEquivalentText:
+        // a text slot's one document is OfText, so definition 4 sees the
+        // bytes it always did.
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["seen_on"] = "2026-08-10",
+                ["encounter_kind"] = "follow_up"
+            },
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [Text(Referral)] });
+
+        var captured = await StartAndCaptureAsync(V8Fixtures.Typed(), request);
+
+        Assert.Null(captured.Outcome.Error);
+        Assert.Equal(4, captured.OrchestrationInput!.EffectiveInputHashVersion);
+        Assert.Equal(ConsultInputValue.OfText(Referral), captured.OrchestrationInput.Request.Inputs!["consult_draft"]);
+        Assert.Equal(
+            ConsultGenerationProvenance.ComputeTypedInputsHash(new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["consult_draft"] = Referral,
+                ["seen_on"] = "2026-08-10",
+                ["encounter_kind"] = "follow_up"
+            }),
+            captured.OrchestrationInput.EffectiveInputHash);
+    }
+
+    [Fact]
+    public async Task TwoDocumentsIntoATextSlot_AreRefusedByName()
+    {
+        // A text slot takes one: concatenation would invent the boundary the
+        // request is careful never to carry (v9 design § 7). Refused before a
+        // byte is parsed, with a sentence the email door may quote back.
+        const string expected = "Input 'consult_draft' is a text and takes one document; declare it an array of text to supply several.";
+
+        var v9 = await StartAndCaptureAsync(V9Fixtures.Structured(), new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal) { ["seen_on"] = "2026-08-10", ["encounter_kind"] = "follow_up" },
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [Text("One."), Text("Two.")] }));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, v9.Outcome.Error);
+        Assert.Equal(expected, v9.Outcome.ErrorDetail);
+        Assert.Equal(expected, v9.Outcome.SenderSafeDetail);
+
+        // The same on a v7 package, whose every slot is a text.
+        var v7 = await StartV7AndCaptureAsync(new ConsultGenerationRequest(
+            null,
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [Text("One."), Text("Two.")] }));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, v7.Outcome.Error);
+        Assert.Equal(expected, v7.Outcome.ErrorDetail);
+    }
+
+    [Fact]
+    public async Task SeveralDocumentsIntoAnUndeclaredSlot_AreRefusedWithoutQuotingTheIdToTheSender()
+    {
+        var captured = await StartAndCaptureAsync(V9Fixtures.Structured(), new ConsultGenerationRequest(
+            null,
+            Inputs: V9Typed(),
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["made_up"] = [Text("One."), Text("Two.")] }));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, captured.Outcome.Error);
+        Assert.Equal("Input 'made_up' is not declared by this package and takes no documents.", captured.Outcome.ErrorDetail);
+        Assert.Null(captured.Outcome.SenderSafeDetail);
+    }
+
+    [Fact]
+    public async Task AnUnreadableSecondDocument_NamesItsPosition()
+    {
+        var captured = await StartAndCaptureAsync(V9Fixtures.Structured(), new ConsultGenerationRequest(
+            null,
+            Inputs: V9Typed(),
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
+            {
+                ["prior_notes"] = [Text("One."), new("application/octet-stream", [0x00, 0x01, 0x02, 0x00, 0xFF])]
+            }));
+
+        Assert.Equal(ConsultGenerationJobStartError.InputFileUnreadable, captured.Outcome.Error);
+        Assert.StartsWith("Input 'prior_notes' document 2 of 2: ", captured.Outcome.ErrorDetail);
+        Assert.Equal(captured.Outcome.ErrorDetail, captured.Outcome.SenderSafeDetail);
+    }
+
+    [Fact]
+    public async Task FourReadableDocuments_PutNoneOfTheirContentInTheLog()
+    {
+        var log = new CapturingLogger<ConsultGenerationJobStarter>();
+        var sentinels = Enumerable.Range(1, 4).Select(n => $"{Sentinel}-{n}").ToList();
+
+        await StartAndCaptureAsync(
+            V9Fixtures.Structured(),
+            new ConsultGenerationRequest(
+                null,
+                Inputs: V9Typed(),
+                InputFiles: new Dictionary<string, List<InputFilePayload>> { ["prior_notes"] = sentinels.Select(Text).ToList() }),
+            log);
+
+        Assert.DoesNotContain(Sentinel, log.Everything, StringComparison.Ordinal);
+    }
+
+    private Task<StartCapture> StartV7AndCaptureAsync(
+        ConsultGenerationRequest request,
+        ILogger<ConsultGenerationJobStarter>? logger = null) =>
+        StartAndCaptureAsync(V7Fixtures.Minimal(), request, logger);
+
+    private async Task<StartCapture> StartAndCaptureAsync(
+        WorkflowPackageManifest manifest,
         ConsultGenerationRequest request,
         ILogger<ConsultGenerationJobStarter>? logger = null)
     {
@@ -1556,7 +1784,7 @@ public class ConsultGenerationJobStarterTests
             .Returns(new WorkflowPackageRef("general", "latest"));
         _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
             .Returns(ExecutableV7Package(
-                V7Fixtures.Minimal(),
+                manifest,
                 new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
 
         ConsultGenerationJobInitialize? initialize = null;

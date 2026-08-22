@@ -39,6 +39,11 @@ public enum ConsultGenerationJobStartError
     // #238: a supplied document could not be read. Well-formed request,
     // unsatisfiable content — 422 like InputsMismatch, not 400.
     InputFileUnreadable,
+    // #428: a slot's documents read to more text than an input may carry.
+    // Well-formed, every document readable, the sum over the cap — refused,
+    // never truncated: a consult written from most of a referral with nothing
+    // saying so is the worst available outcome (v9 design § 7).
+    InputTooLong,
     // #266: the account has spent its window. The one error here that is
     // about the caller's history rather than about this request, and the
     // only one the email door must not answer with a rejection reply.
@@ -241,19 +246,20 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // the orchestration — stays the string-keyed pipeline it already was.
         // Extraction is the pre-step docs/DOCUMENT_INPUT.md describes, not a
         // new kind of input.
-        var extraction = await ExtractInputFilesAsync(request, GateWaitFor(origin), cancellationToken);
+        var extraction = await ExtractInputFilesAsync(request, package.Manifest, GateWaitFor(origin), cancellationToken);
         if (extraction.Error != null)
         {
             _logger.LogWarning(
-                "Rejected job start: an attached document could not be read. Outcome={Outcome}",
+                "Rejected job start: attached documents were refused. Kind={Kind}, Outcome={Outcome}",
+                extraction.ErrorKind,
                 extraction.Outcome);
             // #217: the extraction complaint names an authored input id, never
             // the attachment's filename — a filename can itself be PHI.
             return new ConsultGenerationJobStartOutcome(
                 null,
-                ConsultGenerationJobStartError.InputFileUnreadable,
+                extraction.ErrorKind,
                 extraction.Error,
-                SenderSafeDetail: extraction.Error);
+                SenderSafeDetail: extraction.SenderSafeError);
         }
 
         request = NormalizeInputs(extraction.Request);
@@ -283,7 +289,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var withoutContent = InputContent.FindInputWithoutContent(
             request,
             package.Manifest,
-            inputs.Effective,
+            inputs.Supplied,
             InputContent.MinimumCharacters);
 
         if (withoutContent != null)
@@ -292,8 +298,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 "Rejected job start: a required input carries no referral. Package={Package}, Input={Input}, Characters={Characters}, Minimum={Minimum}",
                 package.Ref,
                 withoutContent,
-                InputContent.MeaningfulLength(
-                    inputs.Effective?.GetValueOrDefault(withoutContent) ?? request.ConsultDraft),
+                inputs.Supplied is null
+                    ? InputContent.MeaningfulLength(request.ConsultDraft)
+                    : InputContent.MeaningfulLength(inputs.Supplied.GetValueOrDefault(withoutContent)),
                 InputContent.MinimumCharacters);
 
             var withoutContentDetail =
@@ -634,7 +641,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 EffectiveInputHashVersion: effectiveInputHashVersion,
                 Source: origin.Source,
                 ScheduledAtUtc: request.ScheduledAtUtc,
-                InputOrigins: inputOrigins,
+                InputDocumentOrigins: inputOrigins,
                 SkippedDocuments: skipped.Count > 0 ? skipped : null,
                 Collections: collectionRosters,
                 // #373: what the manifest was written against, recorded rather
@@ -663,7 +670,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 ReplyToAddress: origin.ReplyToAddress,
                 Results: resultDescriptors,
                 Inputs: inputs.Effective,
-                InputOrigins: inputOrigins),
+                InputDocumentOrigins: inputOrigins),
             new StartOrchestrationOptions { InstanceId = jobId },
             cancellationToken);
 
@@ -692,9 +699,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// </summary>
     internal sealed record InputFileExtraction(
         ConsultGenerationRequest Request,
-        IReadOnlyDictionary<string, ConsultInputOrigin>? Origins,
+        // #428: per document, positionally.
+        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? Origins,
         string? Error,
-        string? Outcome);
+        string? Outcome,
+        ConsultGenerationJobStartError ErrorKind = ConsultGenerationJobStartError.InputFileUnreadable,
+        // Error when it names only a declared id and fixed prose. Null when
+        // the id is one the caller made up.
+        string? SenderSafeError = null);
 
     /// <summary>
     /// Reads every attached document and folds its text into the input map
@@ -720,6 +732,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
     internal static async Task<InputFileExtraction> ExtractInputFilesAsync(
         ConsultGenerationRequest request,
+        WorkflowPackageManifest manifest,
         TimeSpan gateWait,
         CancellationToken cancellationToken)
     {
@@ -728,38 +741,95 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             return new InputFileExtraction(request, null, null, null);
         }
 
-        // An extracted document is always text: a file fills a text slot.
         var inputs = request.Inputs is { Count: > 0 }
             ? new Dictionary<string, ConsultInputValue>(request.Inputs, StringComparer.Ordinal)
             : new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal);
-        var origins = new Dictionary<string, ConsultInputOrigin>(StringComparer.Ordinal);
+        var origins = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>(StringComparer.Ordinal);
+
+        // v5/v6 declare nothing: the one implicit slot is a text.
+        var declared = manifest.SpecVersion >= 7
+            ? (manifest.Inputs ?? []).ToDictionary(input => input.Id, StringComparer.Ordinal)
+            : new Dictionary<string, WorkflowInputSpec>(StringComparer.Ordinal)
+            {
+                [ConsultDraftInputId] = new(ConsultDraftInputId, "Consult draft")
+            };
 
         foreach (var (id, documents) in request.InputFiles.OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
-            // #428 interim: the wire carries a list; reading several is the
-            // next commit's. Refused rather than read partially.
-            if (documents.Count != 1)
-            {
-                return new InputFileExtraction(request, null, $"Input '{id}' lists several documents, which are not yet read.", null);
-            }
+            // #428: several documents become the elements of an array of text
+            // (v9 design § 7). Anything else takes one — a text slot because
+            // concatenation would have to invent a boundary the request is
+            // careful never to carry, every other type because a document is
+            // text. Checked before any bytes are parsed, once the declaration
+            // is known; a lone document into an undeclared slot keeps today's
+            // path and is refused by name further on.
+            var spec = declared.GetValueOrDefault(id);
+            var several = spec != null
+                && WorkflowInputTypes.Of(spec) == WorkflowInputTypes.Array
+                && (spec.Items ?? WorkflowInputTypes.Text) == WorkflowInputTypes.Text;
 
-            var result = await DocumentExtraction.ExtractAsync(documents[0].Content, gateWait, cancellationToken);
-
-            if (!DocumentExtraction.Succeeded(result))
+            if (documents.Count > 1 && !several)
             {
+                if (spec is null)
+                {
+                    return new InputFileExtraction(
+                        request, null, $"Input '{id}' is not declared by this package and takes no documents.", null,
+                        ConsultGenerationJobStartError.InputsMismatch);
+                }
+
+                var takesOne = $"Input '{id}' is {DescribeDeclaredType(spec)} and takes one document; declare it an array of text to supply several.";
+
                 return new InputFileExtraction(
-                    request,
-                    null,
-                    DocumentExtractionCopy.For(result.Outcome),
-                    result.Outcome);
+                    request, null, takesOne, null, ConsultGenerationJobStartError.InputsMismatch, SenderSafeError: takesOne);
             }
 
-            inputs[id] = ConsultInputValue.OfText(result.Text!);
-            origins[id] = new ConsultInputOrigin(
-                ConsultInputOriginKinds.Document,
-                result.ExtractorId,
-                result.PageCount,
-                result.TrackedChangesResolved);
+            var texts = new List<ConsultInputValue>(documents.Count);
+            var slotOrigins = new List<ConsultInputOrigin>(documents.Count);
+            var total = 0;
+
+            for (var index = 0; index < documents.Count; index++)
+            {
+                var result = await DocumentExtraction.ExtractAsync(documents[index].Content, gateWait, cancellationToken);
+
+                if (!DocumentExtraction.Succeeded(result))
+                {
+                    // Positioned — counted from one — only among several, so
+                    // a single document's sentence is the preview's.
+                    var detail = documents.Count == 1
+                        ? DocumentExtractionCopy.For(result.Outcome)
+                        : $"Input '{id}' document {index + 1} of {documents.Count}: {DocumentExtractionCopy.For(result.Outcome)}";
+
+                    return new InputFileExtraction(request, null, detail, result.Outcome, SenderSafeError: detail);
+                }
+
+                // The aggregate cap (v9 design § 7): each document is bounded
+                // by the parser, the slot by what an input may carry — the
+                // same bound the door holds typed text to, first knowable
+                // here. Raw lengths, before normalisation, as the door's are.
+                total += result.Text!.Length;
+
+                if (total > ConsultGenerationJobs.MaxInputLength)
+                {
+                    var detail = $"Input '{id}' exceeds {ConsultGenerationJobs.MaxInputLength / 1024} KB across its {documents.Count} documents.";
+
+                    return new InputFileExtraction(
+                        request, null, detail, null, ConsultGenerationJobStartError.InputTooLong, SenderSafeError: detail);
+                }
+
+                // A document that read to nothing is still one element and
+                // still one origin: the record says which one it was.
+                texts.Add(ConsultInputValue.OfText(result.Text!));
+                slotOrigins.Add(new ConsultInputOrigin(
+                    ConsultInputOriginKinds.Document,
+                    result.ExtractorId,
+                    result.PageCount,
+                    result.TrackedChangesResolved));
+            }
+
+            // One document into a text slot is the text it always was, so hash
+            // definitions 3 and 4 see the same bytes they did.
+            inputs[id] = several ? ConsultInputValue.OfArray(texts) : texts[0];
+            origins[id] = slotOrigins;
         }
 
         // InputFiles cleared here, and this is load-bearing rather than tidy:
@@ -774,6 +844,19 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             origins,
             null,
             null);
+    }
+
+    /// <summary>"a text", "an enum", "an array of object" — for a sentence about a declaration.</summary>
+    private static string DescribeDeclaredType(WorkflowInputSpec spec)
+    {
+        var type = WorkflowInputTypes.Of(spec);
+
+        return type switch
+        {
+            WorkflowInputTypes.Array => $"an array of {spec.Items ?? WorkflowInputTypes.Text}",
+            WorkflowInputTypes.Enum or WorkflowInputTypes.Object => $"an {type}",
+            _ => $"a {type}"
+        };
     }
 
     /// <summary>
