@@ -40,6 +40,9 @@ internal static class PackageFormatSchema
 
     private const string BindingSource = "^(input|item|data|node):.+$";
 
+    /// <summary>A title: no line break anywhere (v9 § 4).</summary>
+    private const string SingleLine = @"^[^\r\n]*$";
+
     private static readonly JsonSerializerOptions WireOptions = new()
     {
         // The form the publisher writes and the store reads.
@@ -70,6 +73,28 @@ internal static class PackageFormatSchema
         EnrichTemplating(Object(properties, "templating"));
         EnrichPrompts(Object(properties, "prompts"));
         EnrichNodes(Object(properties, "nodes"), specVersion);
+
+        // The MANIFEST's title lives under properties — root["title"] above is
+        // this schema's own title, a different field that shares the name.
+        // v9 § 4 (#432): both arrive at 9. The engine counts UTF-16 units where
+        // JSON Schema's maxLength counts code points; the engine is the
+        // authority, and the schema is looser only for astral characters.
+        if (specVersion < 9)
+        {
+            Remove(properties, "title");
+            Remove(properties, "description");
+        }
+        else
+        {
+            var title = Object(properties, "title");
+            title["minLength"] = 1;
+            title["maxLength"] = WorkflowPackageMetadata.MaxTitleLength;
+            title["pattern"] = SingleLine;
+
+            var description = Object(properties, "description");
+            description["minLength"] = 1;
+            description["maxLength"] = WorkflowPackageMetadata.MaxDescriptionLength;
+        }
 
         // Declared sections arrive at 7. A section the version does not have is
         // an error, never an ignored field — package-format-v8.md § 2.

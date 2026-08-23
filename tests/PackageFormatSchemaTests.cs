@@ -81,6 +81,19 @@ public class PackageFormatSchemaTests
         var v8Names = PackageFormatSchema.Build(8)["properties"]!["inputs"]!["items"]!["properties"]!["type"]!["enum"]!
             .AsArray().Select(n => n!.GetValue<string>());
         Assert.Equal(new[] { "text", "date", "enum", "boolean" }, v8Names);
+
+        // #432: the title and the description, at 9 and not before.
+        var title = schema["properties"]!["title"]!;
+        Assert.Equal(1, title["minLength"]!.GetValue<int>());
+        Assert.Equal(WorkflowPackageMetadata.MaxTitleLength, title["maxLength"]!.GetValue<int>());
+        Assert.Equal(@"^[^\r\n]*$", title["pattern"]!.GetValue<string>());
+        var description = schema["properties"]!["description"]!;
+        Assert.Equal(1, description["minLength"]!.GetValue<int>());
+        Assert.Equal(WorkflowPackageMetadata.MaxDescriptionLength, description["maxLength"]!.GetValue<int>());
+        Assert.False(PackageFormatSchema.Build(8)["properties"]!.AsObject().ContainsKey("title"));
+        Assert.False(PackageFormatSchema.Build(8)["properties"]!.AsObject().ContainsKey("description"));
+        // The schema's own title is a different field that shares the name.
+        Assert.Equal("Consultologist workflow package manifest, specVersion 9", schema["title"]!.GetValue<string>());
     }
 
     [Fact]

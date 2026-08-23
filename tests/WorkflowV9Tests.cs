@@ -1074,3 +1074,92 @@ public class WorkflowV9ConditionValidationTests
         Assert.Contains(V8Fixtures.Validate(V8Fixtures.Conditional(when)).Errors, e => e.Contains(expected));
     }
 }
+
+/// <summary>#432, v9 § 4: a title and a description — both optional, both arriving at 9.</summary>
+public class WorkflowV9MetadataTests
+{
+    private static IEnumerable<string> Errors(WorkflowPackageManifest manifest) => V9Fixtures.Validate(manifest).Errors;
+
+    [Fact]
+    public void ATitleAndADescription_AreAcceptedAtNine()
+    {
+        var manifest = V9Fixtures.Minimal() with
+        {
+            Title = "Breast oncology consults",
+            Description = "Referral triage and consult notes for the breast clinic."
+        };
+
+        Assert.True(V9Fixtures.Validate(manifest).IsValid, string.Join(" | ", Errors(manifest)));
+    }
+
+    [Theory]
+    [InlineData(7)]
+    [InlineData(8)]
+    public void BelowNine_EachIsRefusedByName(int specVersion)
+    {
+        // Not "unknown property": the reader knows them on every version. The
+        // gate is < 9, not == 8 — the same posture as items and fields.
+        var manifest = (specVersion == 7 ? V7Fixtures.Minimal() : V8Fixtures.Typed()) with
+        {
+            Title = "Breast oncology consults",
+            Description = "Referral triage."
+        };
+
+        var errors = (specVersion == 7 ? V7Fixtures.Validate(manifest) : V8Fixtures.Validate(manifest)).Errors;
+
+        Assert.Contains("title requires specVersion 9.", errors);
+        Assert.Contains("description requires specVersion 9.", errors);
+    }
+
+    [Theory]
+    [InlineData("", "title must not be empty.")]
+    [InlineData("   ", "title must not be empty.")]
+    [InlineData("\n", "title must not be empty.")]
+    [InlineData("Breast\nclinic", "title must be a single line.")]
+    [InlineData("Breast\r\nclinic", "title must be a single line.")]
+    public void ATitle_IsHeldToItsRules(string title, string expected)
+    {
+        var errors = Errors(V9Fixtures.Minimal() with { Title = title }).ToList();
+
+        Assert.Contains(expected, errors);
+        Assert.Single(errors);
+    }
+
+    [Fact]
+    public void ATitle_IsAtMostEightyCharacters()
+    {
+        Assert.True(V9Fixtures.Validate(V9Fixtures.Minimal() with { Title = new string('x', 80) }).IsValid);
+        Assert.Contains(
+            "title must be at most 80 characters.",
+            Errors(V9Fixtures.Minimal() with { Title = new string('x', 81) }));
+    }
+
+    [Fact]
+    public void ATwoLineTitleThatIsAlsoTooLong_IsToldBoth()
+    {
+        var errors = Errors(V9Fixtures.Minimal() with { Title = new string('x', 50) + "\n" + new string('y', 50) }).ToList();
+
+        Assert.Equal(new[] { "title must be a single line.", "title must be at most 80 characters." }, errors);
+    }
+
+    [Theory]
+    [InlineData("", "description must not be empty.")]
+    [InlineData("  ", "description must not be empty.")]
+    public void ADescription_MustNotBeEmpty(string description, string expected)
+    {
+        var errors = Errors(V9Fixtures.Minimal() with { Description = description }).ToList();
+
+        Assert.Contains(expected, errors);
+        Assert.Single(errors);
+    }
+
+    [Fact]
+    public void ADescription_IsAtMostFiveHundredCharacters_AndMaySpanLines()
+    {
+        Assert.True(V9Fixtures.Validate(V9Fixtures.Minimal() with { Description = new string('x', 500) }).IsValid);
+        Assert.True(V9Fixtures.Validate(V9Fixtures.Minimal() with { Description = "Two\nlines." }).IsValid);
+        Assert.Contains(
+            "description must be at most 500 characters.",
+            Errors(V9Fixtures.Minimal() with { Description = new string('x', 501) }));
+    }
+}

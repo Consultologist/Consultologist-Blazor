@@ -88,6 +88,19 @@ public class SpecVersionMirrorTests
     }
 
     [Fact]
+    public void TheClientsTitleAndDescriptionLimits_AreTheServers()
+    {
+        // #432: the Package pane's maxlength and counters, and the desk's
+        // sentences, all read these.
+        Assert.Equal(
+            WorkflowPackageMetadata.MaxTitleLength,
+            Consultologist.Web.Services.Workflow.WorkflowPackageMetadata.MaxTitleLength);
+        Assert.Equal(
+            WorkflowPackageMetadata.MaxDescriptionLength,
+            Consultologist.Web.Services.Workflow.WorkflowPackageMetadata.MaxDescriptionLength);
+    }
+
+    [Fact]
     public void TheClientsItemFields_AreTheServers()
     {
         // What a binding may read from an input fan's item (v9 § 5).

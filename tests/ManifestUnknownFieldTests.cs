@@ -62,6 +62,19 @@ public class ManifestUnknownFieldTests
     }
 
     [Fact]
+    public void TitleAndDescription_AreMembersTheReaderKnows()
+    {
+        // #432: typed on the record, so the strict reader accepts them on any
+        // version. Refusing them below 9 is the validator's, by name.
+        var manifest = JsonSerializer.Deserialize<WorkflowPackageManifest>(
+            WithExtra("\"title\": \"Breast oncology consults\", \"description\": \"Referral triage.\""),
+            WorkflowPackageManifestJson.ReadOptions);
+
+        Assert.Equal("Breast oncology consults", manifest!.Title);
+        Assert.Equal("Referral triage.", manifest.Description);
+    }
+
+    [Fact]
     public void TheDescription_NamesThePropertyAndNotADotNetType()
     {
         var exception = Assert.Throws<JsonException>(() =>
