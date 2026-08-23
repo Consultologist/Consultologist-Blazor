@@ -283,7 +283,10 @@ public sealed record WorkflowPackage(
     WorkflowPackageData? Data = null,
     string? ResultNodeId = null,
     IReadOnlyDictionary<string, string>? SourceFiles = null,
-    IReadOnlyList<WorkflowResolvedResult>? Results = null)
+    IReadOnlyList<WorkflowResolvedResult>? Results = null,
+    // #433: the publication stamp the version carries, or null for every
+    // version published before it existed. Deliberately not in SourceFiles.
+    WorkflowPackageStamp? Stamp = null)
 {
     public string Ref => $"{Manifest.Name}@{Manifest.Version}";
 

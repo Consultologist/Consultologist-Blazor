@@ -35,6 +35,13 @@
 // to do with this publish. A package declaring no schemas is immune outright —
 // nothing consults the catalog for it.
 //
+// Since #433 a published version may carry publish.json, the publication
+// stamp: what each schema resolved to, under which catalog, at publish. The
+// engine takes a stamp's word and re-matches nothing, so for a stamped version
+// the only stranding question is whether the candidate still carries each
+// stamped contract id — its schema text is not read. Unstamped versions (every
+// one published before the stamp existed) keep the schema-match question.
+//
 // Read-only. It lists and downloads from the PUBLIC registry anonymously and
 // writes nothing anywhere.
 
@@ -107,6 +114,7 @@ var packages = new BlobServiceClient(new Uri(registryUri)).GetBlobContainerClien
 
 var stranded = new List<string>();
 var checkedCount = 0;
+var stampedCount = 0;
 var skipped = 0;
 
 foreach (var package in chain.Packages.OrderBy(p => p.Name, StringComparer.Ordinal))
@@ -154,8 +162,50 @@ foreach (var package in chain.Packages.OrderBy(p => p.Name, StringComparer.Ordin
 
         checkedCount++;
 
+        // #433: the publication stamp, when the version has one.
+        var stampJson = await TryDownloadAsync($"{package.Name}/{version}/{WorkflowPackageStamp.FileName}");
+        WorkflowPackageStamp? stamp = null;
+
+        if (stampJson != null)
+        {
+            try
+            {
+                stamp = WorkflowPackageStamp.Read(stampJson, reference);
+                stampedCount++;
+            }
+            catch (WorkflowPackageContentException ex)
+            {
+                Console.Error.WriteLine($"error: {ex.Message}");
+                return 2;
+            }
+        }
+
         foreach (var (schemaId, path) in schemas)
         {
+            if (stamp != null)
+            {
+                // Stamped: the match was made at publish. The question is
+                // only whether the contract it resolved to still exists.
+                if (!stamp.Contracts.TryGetValue(schemaId, out var stampedId))
+                {
+                    // Stranded under every catalog — a registry defect, not
+                    // a question this catalog can answer.
+                    Console.Error.WriteLine($"error: {reference} {WorkflowPackageStamp.FileName} has no contract for schema '{schemaId}'.");
+                    return 2;
+                }
+
+                if (candidate.Entries.ContainsKey(stampedId))
+                {
+                    Console.Out.WriteLine($"  {reference} schema '{schemaId}' -> {stampedId} (stamped under {stamp.CatalogRef})");
+                    continue;
+                }
+
+                Console.Error.WriteLine("error: " + WorkflowPackageContentException.StampedContractUnknown(
+                    reference, schemaId, stampedId, stamp.CatalogRef, candidate.ResolvedRef).Message);
+                stranded.Add($"{reference} ({schemaId})");
+                continue;
+            }
+
             JsonNode? schema;
             try
             {
@@ -183,7 +233,7 @@ foreach (var package in chain.Packages.OrderBy(p => p.Name, StringComparer.Ordin
 }
 
 Console.Out.WriteLine(
-    $"{checkedCount} package version(s) declare a schema, {skipped} skipped (unsupported specVersion or no schema), "
+    $"{checkedCount} package version(s) declare a schema ({stampedCount} stamped), {skipped} skipped (unsupported specVersion or no schema), "
         + $"{stranded.Count} would be stranded");
 
 if (stranded.Count > 0)
@@ -200,4 +250,17 @@ async Task<string> DownloadAsync(string blobPath)
 {
     var response = await packages.GetBlobClient(blobPath).DownloadContentAsync();
     return response.Value.Content.ToString();
+}
+
+// A blob that may legitimately be absent: null on 404.
+async Task<string?> TryDownloadAsync(string blobPath)
+{
+    try
+    {
+        return await DownloadAsync(blobPath);
+    }
+    catch (Azure.RequestFailedException ex) when (ex.Status == 404)
+    {
+        return null;
+    }
 }

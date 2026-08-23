@@ -53,6 +53,7 @@ workflow-packages/
     │       └── <seven prompt templates>.md
     └── v2026.07.6/                     # specVersion 5: data collections replace standards.md
         ├── manifest.json
+        ├── publish.json                # the publication stamp (#433): catalogRef + schema → contract, written at publish
         ├── dag.mmd
         ├── prompts/…
         ├── schemas/concept-list.json
@@ -230,7 +231,7 @@ private-container client — `acct-*` content is unreachable from this endpoint
 by construction, not by filtering. This is the surface the app's logged-out
 view and the marketing site consume.
 
-## Publication metadata (decided 2026-07-16; not yet implemented)
+## Publication metadata (decided 2026-07-16; the sidecar exists since #433 — `publishedBy`/`publishedAt` still pending)
 
 Author and publication time are **publish-event data, not package content**, so
 they will never appear in the manifest (rationale in package-format-v5.md, "What
@@ -243,3 +244,17 @@ posture as the server-stamped `derivedFrom`, zero format change, and the manifes
 stays byte-round-trippable through the editor. Until then, the blob's creation
 time and CalVer already answer "when", and git / the `acct-*` name already answer
 "who".
+
+> **Amended 2026-08-23 (#433).** The sidecar is `publish.json`, beside the
+> manifest. Today it carries the **publication stamp**: `catalogRef` — the
+> output-contract catalog the version was validated under — and `contracts`,
+> schema id → the contract id each declared schema resolved to. The app's
+> writer uploads it after the files and before the manifest (the commit
+> marker), so an `acct-*` version is never reachable without it; the content
+> repo's CI does not run the publisher and writes it with
+> `scripts/stamp-workflow-package.cs` — wired in
+> [consultologist-workflows#19](https://github.com/Consultologist/consultologist-workflows/issues/19);
+> until then public versions are unstamped and load as they always did. The
+> stamp is never part of the editor's files: a request carrying one is
+> refused by path. `publishedBy`/`publishedAt` join the same file when they
+> land.

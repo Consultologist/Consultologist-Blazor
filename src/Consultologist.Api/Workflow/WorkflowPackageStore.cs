@@ -65,6 +65,22 @@ public sealed class WorkflowPackageContentException : Exception
         string packageRef, string schemaId, string catalogRef)
         => new($"Workflow package {packageRef} schema '{schemaId}' does not canonically match any contract in "
             + $"{catalogRef}. The package is unchanged and immutable; the catalog moved.");
+
+    /// <summary>
+    /// #433: the stamped stranding sentence. A stamped package is stranded only
+    /// when a contract it was published under is gone — it names both catalogs,
+    /// so the reader sees the whole distance the catalog moved.
+    /// </summary>
+    public static WorkflowPackageContentException StampedContractUnknown(
+        string packageRef, string schemaId, string contractId, string stampedCatalogRef, string catalogRef)
+        => new($"Workflow package {packageRef} schema '{schemaId}' was published as contract '{contractId}' under "
+            + $"{stampedCatalogRef}, which {catalogRef} no longer carries. The package is unchanged and immutable; the catalog moved.");
+
+    /// <summary>#433: a stamp that does not cover a declared schema — written at publish, so a publisher defect.</summary>
+    public static WorkflowPackageContentException StampIncomplete(
+        string packageRef, string schemaId, string stampedCatalogRef)
+        => new($"Workflow package {packageRef} schema '{schemaId}' has no contract in its publication stamp "
+            + $"({stampedCatalogRef}). The stamp was written at publish and is incomplete.");
 }
 
 public sealed class WorkflowPackageStore : IWorkflowPackageStore
@@ -128,7 +144,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
             : results.Count == 1 ? results[0].NodeId : null;
         var schemaContracts = loaded.SchemaContracts;
 
-        var package = new WorkflowPackage(manifest, prompts, nodes, schemaContracts, loaded.Data, resultNodeId, loaded.Files, results);
+        var package = new WorkflowPackage(manifest, prompts, nodes, schemaContracts, loaded.Data, resultNodeId, loaded.Files, results, loaded.Stamp);
 
         _packageCache.TryAdd(cacheKey, package);
         _logger.LogInformation("Workflow package resolved. Package={Package}, SpecVersion={SpecVersion}, Prompts={PromptCount}", cacheKey, manifest.SpecVersion, prompts?.Count ?? 0);
@@ -182,12 +198,13 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     /// reports them coherently); everything else fails loud on 404. Validation
     /// failures throw — the engine's fail-loud enforcement point.
     /// </summary>
-    private async Task<(Dictionary<string, WorkflowPromptTemplate> Prompts, Dictionary<string, string> SchemaContracts, WorkflowPackageData? Data, Dictionary<string, string> Files)> LoadPromptsAsync(
+    private async Task<(Dictionary<string, WorkflowPromptTemplate> Prompts, Dictionary<string, string> SchemaContracts, WorkflowPackageData? Data, Dictionary<string, string> Files, WorkflowPackageStamp? Stamp)> LoadPromptsAsync(
         string name,
         string version,
         WorkflowPackageManifest manifest,
         CancellationToken cancellationToken)
     {
+        var packageRef = $"{name}@{version}";
         var files = new Dictionary<string, string>(StringComparer.Ordinal);
         var paths = (manifest.Prompts ?? new List<WorkflowPromptSpec>()).Select(p => p.File)
             .Concat((manifest.Preludes ?? new Dictionary<string, string>()).Values)
@@ -201,11 +218,19 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
 
         await GatherDataFilesAsync(name, version, manifest, files, cancellationToken);
 
+        // #433: the publication stamp, when the version has one — every version
+        // published before it has none, and those keep re-matching as they
+        // did. Held here and on the package, NEVER in `files`: that map is
+        // SourceFiles, which the editor round-trips into its next publish, and
+        // the publisher refuses a root-level file by path.
+        var stampJson = await TryDownloadTextAsync(name, $"{name}/{version}/{WorkflowPackageStamp.FileName}", cancellationToken);
+        var stamp = stampJson is null ? null : WorkflowPackageStamp.Read(stampJson, packageRef);
+
         var catalogSchemas = _catalog.Entries.Values
             .Where(entry => entry.SchemaJson != null)
             .ToDictionary(entry => entry.ContractId, entry => entry.SchemaJson!, StringComparer.Ordinal);
 
-        var result = WorkflowPackageValidator.Validate(manifest, files, catalogSchemas);
+        var result = WorkflowPackageValidator.Validate(manifest, files, catalogSchemas, stamp?.Contracts);
 
         foreach (var warning in result.Warnings)
         {
@@ -227,24 +252,69 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
                 prompt.Prelude is null ? null : files[manifest.Preludes![prompt.Prelude]]),
             StringComparer.Ordinal);
 
-        var schemaContracts = new Dictionary<string, string>(StringComparer.Ordinal);
+        var schemaContracts = ResolveContracts(packageRef, manifest, files, stamp, _catalog);
 
-        foreach (var (schemaId, path) in manifest.Schemas ?? new Dictionary<string, string>())
+        if (manifest.Schemas is { Count: > 0 })
         {
-            if (!_catalog.TryResolveContract(System.Text.Json.Nodes.JsonNode.Parse(files[path]), out var contractId))
-            {
-                throw WorkflowPackageContentException.SchemaUnmatched(
-                    $"{name}@{version}", schemaId, _catalog.ResolvedRef);
-            }
-
-            schemaContracts[schemaId] = contractId;
+            _logger.LogInformation(
+                "Workflow package {Package} contracts resolved from {Source}.",
+                packageRef,
+                stamp is null ? $"schema match against {_catalog.ResolvedRef}" : $"publication stamp ({stamp.CatalogRef})");
         }
 
         // Post-validation resolve: the validator has already guaranteed integrity,
         // so this collects no errors.
         var data = WorkflowDataResolver.Resolve(manifest, files, new List<string>());
 
-        return (prompts, schemaContracts, data, files);
+        return (prompts, schemaContracts, data, files, stamp);
+    }
+
+    /// <summary>
+    /// What each declared schema runs as (#433). Unstamped — every version
+    /// published before the stamp existed — re-matches the embedded schema
+    /// against the running catalog, and is stranded when it moved. Stamped, the
+    /// match was made once at publish under the catalog the stamp names; what
+    /// is checked here is only that each stamped contract still exists, so the
+    /// activity's lookup cannot fail later. A stamp entry for a schema the
+    /// manifest does not declare is inert: the manifest is the declaration.
+    /// </summary>
+    internal static Dictionary<string, string> ResolveContracts(
+        string packageRef,
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> files,
+        WorkflowPackageStamp? stamp,
+        OutputContractCatalog catalog)
+    {
+        var schemaContracts = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var (schemaId, path) in manifest.Schemas ?? new Dictionary<string, string>())
+        {
+            if (stamp is null)
+            {
+                if (!catalog.TryResolveContract(System.Text.Json.Nodes.JsonNode.Parse(files[path]), out var matched))
+                {
+                    throw WorkflowPackageContentException.SchemaUnmatched(packageRef, schemaId, catalog.ResolvedRef);
+                }
+
+                schemaContracts[schemaId] = matched;
+                continue;
+            }
+
+            if (!stamp.Contracts.TryGetValue(schemaId, out var stampedId))
+            {
+                throw WorkflowPackageContentException.StampIncomplete(packageRef, schemaId, stamp.CatalogRef);
+            }
+
+            if (!catalog.Entries.ContainsKey(stampedId))
+            {
+                throw WorkflowPackageContentException.StampedContractUnknown(
+                    packageRef, schemaId, stampedId, stamp.CatalogRef, catalog.ResolvedRef);
+            }
+
+            schemaContracts[schemaId] = stampedId;
+        }
+
+        return schemaContracts;
     }
 
     /// <summary>
@@ -301,14 +371,27 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         string path,
         CancellationToken cancellationToken)
     {
+        var content = await TryDownloadTextAsync(name, $"{name}/{version}/{path}", cancellationToken);
+
+        if (content is null)
+        {
+            return false;
+        }
+
+        files[path] = content;
+        return true;
+    }
+
+    /// <summary>A blob that may legitimately be absent: null on 404, everything else as DownloadTextAsync.</summary>
+    private async Task<string?> TryDownloadTextAsync(string packageName, string blobPath, CancellationToken cancellationToken)
+    {
         try
         {
-            files[path] = await DownloadTextAsync(name, $"{name}/{version}/{path}", cancellationToken);
-            return true;
+            return await DownloadTextAsync(packageName, blobPath, cancellationToken);
         }
         catch (InvalidOperationException)
         {
-            return false;
+            return null;
         }
     }
 
