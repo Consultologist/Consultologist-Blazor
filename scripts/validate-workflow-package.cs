@@ -96,7 +96,9 @@ foreach (var path in Directory.EnumerateFiles(root, "*", SearchOption.AllDirecto
 {
     var relative = Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/');
 
-    if (relative is "manifest.json" or "dag.mmd")
+    // The publication stamp (#433) is publish-time evidence, not a package
+    // file: skipped here, checked for drift below.
+    if (relative is "manifest.json" or "dag.mmd" || relative == WorkflowPackageStamp.FileName)
     {
         continue;
     }
@@ -135,8 +137,35 @@ foreach (var error in result.Errors)
     Console.Error.WriteLine($"error: {error}");
 }
 
+// #433: a stamp left in a source tree is uploaded as evidence, so a stale one
+// is evidence of something false. It must say what this catalog resolves.
+var stale = 0;
+var stampPath = Path.Combine(root, WorkflowPackageStamp.FileName);
+
+if (result.IsValid && File.Exists(stampPath))
+{
+    try
+    {
+        var declared = WorkflowPackageStamp.Read(File.ReadAllText(stampPath), $"{manifest.Name}@{manifest.Version}");
+        var expected = WorkflowPackageStamp.Compute(manifest, files, catalog, new List<string>());
+
+        if (!string.Equals(declared.ToJson(), expected.ToJson(), StringComparison.Ordinal))
+        {
+            Console.Error.WriteLine(
+                $"error: {WorkflowPackageStamp.FileName} declares {declared.CatalogRef} with {declared.Contracts.Count} contract(s), "
+                    + $"but {catalog.ResolvedRef} resolves differently; delete it and re-stamp.");
+            stale = 1;
+        }
+    }
+    catch (WorkflowPackageContentException ex)
+    {
+        Console.Error.WriteLine($"error: {ex.Message}");
+        stale = 1;
+    }
+}
+
 Console.Out.WriteLine(
     $"{manifest.Name}@{manifest.Version} (specVersion {manifest.SpecVersion}): "
-        + $"{files.Count} files, {result.Errors.Count} errors, {result.Warnings.Count} warnings");
+        + $"{files.Count} files, {result.Errors.Count + stale} errors, {result.Warnings.Count} warnings");
 
-return result.IsValid ? 0 : 1;
+return result.IsValid && stale == 0 ? 0 : 1;
