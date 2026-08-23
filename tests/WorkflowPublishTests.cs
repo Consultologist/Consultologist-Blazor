@@ -468,7 +468,9 @@ public class WorkflowPackagePublisherTests
     private static WorkflowPackageManifest Titled() => V9Fixtures.Minimal() with
     {
         Title = "Breast oncology consults",
-        Description = "Referral triage and consult notes for the breast clinic."
+        Description = "Referral triage and consult notes for the breast clinic.",
+        // #453: tags ride along, and are cleared on the same rule.
+        Tags = new List<string> { "oncology", "breast" }
     };
 
     [Fact]
@@ -489,6 +491,28 @@ public class WorkflowPackagePublisherTests
         var raw = writer.Blobs[$"{AccountName}/v2026.07.1/manifest.json"];
         Assert.DoesNotContain("\"title\"", raw);
         Assert.DoesNotContain("\"description\"", raw);
+
+        // #453: the tags are cleared to the EMPTY SET, not removed — a v9
+        // manifest must state them, and the bytes say "tags": [].
+        Assert.NotNull(stored.Tags);
+        Assert.Empty(stored.Tags!);
+        Assert.Contains("\"tags\": []", raw);
+    }
+
+    [Fact]
+    public async Task Publish_AForkAcrossNames_OfAPreV9Package_LeavesTagsAbsent()
+    {
+        // A v8 source has no tags section; clearing must not invent one,
+        // which the validator would refuse below 9.
+        var (publisher, writer, _) = CreatePublisher();
+        var manifest = V8Fixtures.Typed();
+
+        var result = await publisher.PublishAsync(
+            OwnerId, Request(manifest: manifest, files: V5Fixtures.Files(manifest)), CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        Assert.Null(writer.ReadManifest(AccountName, "v2026.07.1").Tags);
+        Assert.DoesNotContain("\"tags\"", writer.Blobs[$"{AccountName}/v2026.07.1/manifest.json"]);
     }
 
     [Fact]
@@ -509,6 +533,7 @@ public class WorkflowPackagePublisherTests
         var stored = writer.ReadManifest(AccountName, "v2026.07.2");
         Assert.Equal("Breast oncology consults", stored.Title);
         Assert.Equal("Referral triage and consult notes for the breast clinic.", stored.Description);
+        Assert.Equal(new[] { "oncology", "breast" }, stored.Tags);
     }
 
     // ----- #433: the publication stamp -------------------------------------

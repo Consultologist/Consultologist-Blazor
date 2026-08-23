@@ -12,8 +12,8 @@ public sealed class WorkflowPackages
 {
     // Fork manifests are immutable; what is read off one holds for the process
     // lifetime (the Mine endpoint's per-version reads): the spec version and,
-    // from v9, the title (#432).
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (int? SpecVersion, string? Title)> ListingCache = new(StringComparer.Ordinal);
+    // from v9, the title (#432) and tags (#453).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (int? SpecVersion, string? Title, IReadOnlyList<string>? Tags)> ListingCache = new(StringComparer.Ordinal);
 
     private readonly IWorkflowPackageStore _packageStore;
     private readonly IWorkflowPackagePinResolver _pinResolver;
@@ -156,6 +156,7 @@ public sealed class WorkflowPackages
         string? latestPointerJson = null;
         var specVersions = new Dictionary<string, int>(StringComparer.Ordinal);
         var titles = new Dictionary<string, string>(StringComparer.Ordinal);
+        var tags = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
 
         try
         {
@@ -179,7 +180,10 @@ public sealed class WorkflowPackages
                 {
                     var manifest = await container.GetBlobClient(manifestPath).DownloadContentAsync(cancellationToken);
                     var manifestJson = manifest.Value.Content.ToString();
-                    listing = (AccountPackageListing.ReadSpecVersion(manifestJson), AccountPackageListing.ReadTitle(manifestJson));
+                    listing = (
+                        AccountPackageListing.ReadSpecVersion(manifestJson),
+                        AccountPackageListing.ReadTitle(manifestJson),
+                        AccountPackageListing.ReadTags(manifestJson));
                     ListingCache[manifestPath] = listing;
                 }
 
@@ -193,6 +197,11 @@ public sealed class WorkflowPackages
                 if (listing.Title is { } title)
                 {
                     titles[version] = title;
+                }
+
+                if (listing.Tags is { } declared)
+                {
+                    tags[version] = declared;
                 }
             }
         }
@@ -212,7 +221,11 @@ public sealed class WorkflowPackages
         var response = req.CreateResponse(HttpStatusCode.OK);
         FunctionCors.Apply(req, response);
         await response.WriteAsJsonAsync(
-            AccountPackageListing.Build(name, blobNames, latestPointerJson, specVersions.Count > 0 ? specVersions : null, titles.Count > 0 ? titles : null),
+            AccountPackageListing.Build(
+                name, blobNames, latestPointerJson,
+                specVersions.Count > 0 ? specVersions : null,
+                titles.Count > 0 ? titles : null,
+                tags.Count > 0 ? tags : null),
             cancellationToken);
         return response;
     }

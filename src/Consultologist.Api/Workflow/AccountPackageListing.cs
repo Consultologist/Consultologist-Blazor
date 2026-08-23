@@ -17,7 +17,8 @@ public static class AccountPackageListing
         IReadOnlyList<string> blobNames,
         string? latestPointerJson,
         IReadOnlyDictionary<string, int>? specVersions = null,
-        IReadOnlyDictionary<string, string>? titles = null)
+        IReadOnlyDictionary<string, string>? titles = null,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? tags = null)
     {
         var versions = PublicRegistryReader.SortVersions(blobNames
             .Select(blobName => blobName.Split('/'))
@@ -40,7 +41,7 @@ public static class AccountPackageListing
             }
         }
 
-        return new PublicPackageSummary(name, latest, versions, specVersions, titles);
+        return new PublicPackageSummary(name, latest, versions, specVersions, titles, tags);
     }
 
     /// <summary>
@@ -59,6 +60,35 @@ public static class AccountPackageListing
                 && !string.IsNullOrWhiteSpace(title.GetString())
                     ? title.GetString()
                     : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads just the tags out of a manifest document (#453): the array's
+    /// string entries in authored order; null when absent, not an array, or
+    /// the document is unreadable; an empty list when the array is empty.
+    /// Non-string entries are skipped — this is a listing, not the validator,
+    /// which refused them at publish.
+    /// </summary>
+    public static IReadOnlyList<string>? ReadTags(string manifestJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(manifestJson);
+
+            if (!document.RootElement.TryGetProperty("tags", out var tags) || tags.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            return tags.EnumerateArray()
+                .Where(tag => tag.ValueKind == JsonValueKind.String)
+                .Select(tag => tag.GetString()!)
+                .ToList();
         }
         catch (JsonException)
         {
