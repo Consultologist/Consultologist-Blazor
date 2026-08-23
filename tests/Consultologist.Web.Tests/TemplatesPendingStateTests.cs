@@ -254,7 +254,7 @@ public class TemplatesPendingStateTests : ClientRenderTestContext
         var counted = CountedFields(RenderEditor().Instance);
 
         Assert.True(
-            counted.Count >= 16,
+            counted.Count >= 18,
             $"discovery found only {counted.Count}: {string.Join(", ", counted.Select(f => f.Name))}");
     }
 
