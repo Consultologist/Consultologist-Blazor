@@ -80,6 +80,37 @@ public class WorkflowResultConditionTextTests
     }
 
     [Theory]
+    [InlineData("billable", "billable", null, false, false, false)]
+    [InlineData("encounter_kind == follow_up", "encounter_kind", null, false, false, false)]
+    [InlineData("length_of_stay > 7", "length_of_stay", null, false, true, true)]
+    [InlineData("patient.age >= 65", "patient.age", "age", false, true, true)]
+    [InlineData("patient.sex == female", "patient.sex", "sex", false, false, true)]
+    [InlineData("count(prior_notes) > 1", "count(prior_notes)", null, true, true, true)]
+    [InlineData("prior_notes", "prior_notes", null, false, false, false)]
+    [InlineData("", null, null, false, false, false)]
+    public void TheForms_AreReadApart(string when, string? operand, string? field, bool isCount, bool isOrdered, bool isV9)
+    {
+        // #429: the desk names a v9 form on a v8 publish, and the operand
+        // picker shows a loaded condition as itself.
+        Assert.Equal(operand, WorkflowResultConditionText.OperandOf(when));
+        Assert.Equal(field, WorkflowResultConditionText.FieldOf(when));
+        Assert.Equal(isCount, WorkflowResultConditionText.IsCount(when));
+        Assert.Equal(isOrdered, WorkflowResultConditionText.IsOrdered(when));
+        Assert.Equal(isV9, WorkflowResultConditionText.IsV9Form(when));
+    }
+
+    [Theory]
+    [InlineData("patient.age >= 65", "patient", "age", "years", "patient.years >= 65")]
+    [InlineData("patient.age", "patient", "age", "years", "patient.years")]
+    [InlineData("patient.sex == female", "patient", "age", "years", "patient.sex == female")]
+    [InlineData("visit.age >= 65", "patient", "age", "years", "visit.age >= 65")]
+    [InlineData("count(patient) > 1", "patient", "age", "years", "count(patient) > 1")]
+    public void RenameField_TouchesOnlyTheConditionReadingThatField(string when, string input, string oldField, string newField, string expected)
+    {
+        Assert.Equal(expected, WorkflowResultConditionText.RenameField(when, input, oldField, newField));
+    }
+
+    [Theory]
     [InlineData("encounter_kind == follow_up")]
     [InlineData("encounter_kind != follow_up")]
     [InlineData("billable")]

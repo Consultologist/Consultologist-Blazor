@@ -1751,7 +1751,8 @@
         if (EffectiveSpecVersion < 8)
         {
             var typed = inputs
-                .Where(input => input.Type != null || input.Values is { Count: > 0 })
+                .Where(input => !WorkflowInputTypes.RequiresV9(input)
+                    && (input.Type != null || input.Values is { Count: > 0 }))
                 .Select(input => $"'{input.Id}'")
                 .ToList();
 
@@ -1763,7 +1764,8 @@
             }
 
             var conditional = EffectiveResults
-                .Where(result => !string.IsNullOrWhiteSpace(result.When))
+                .Where(result => !string.IsNullOrWhiteSpace(result.When)
+                    && !WorkflowResultConditionText.IsV9Form(result.When))
                 .Select(result => $"'{result.Id}'")
                 .ToList();
 
@@ -1772,6 +1774,56 @@
                 errors.Add(
                     $"Document {string.Join(", ", conditional)} declares when, which requires specVersion 8. "
                     + $"Use \"Upgrade to specVersion {RunnableSpecVersion}\" and publish.");
+            }
+        }
+
+        // #429: the v9 shapes, named the same way. The editor offers them only
+        // at 9, but a draft, a fork or a typed value can still carry one.
+        if (EffectiveSpecVersion < 9)
+        {
+            var upgrade = $"Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.";
+
+            errors.AddRange(inputs
+                .Where(WorkflowInputTypes.RequiresV9)
+                .Select(input => $"Input '{input.Id}' declares a type that requires specVersion 9. {upgrade}"));
+
+            errors.AddRange(EffectiveResults
+                .Where(result => WorkflowResultConditionText.IsV9Form(result.When))
+                .Select(result => $"Document '{result.Id}' declares a condition form that requires specVersion 9. {upgrade}"));
+
+            errors.AddRange(EffectiveNodes
+                .Where(node => WorkflowInputFans.IsInputFan(node.ForEach))
+                .Select(node => $"Node '{node.Id}' fans an input, which requires specVersion 9. {upgrade}"));
+        }
+        else
+        {
+            // The shapes a v9 declaration must finish before it can publish
+            // (explicit initialisation: an array starts with no entry type, an
+            // object with no fields). The server refuses these too; said here
+            // first, beside the control.
+            errors.AddRange(inputs
+                .Where(input => WorkflowInputTypes.Of(input) == WorkflowInputTypes.Array && input.Items is null)
+                .Select(input => $"Input '{input.Id}' is an array and must declare what its entries are."));
+
+            errors.AddRange(inputs
+                .Where(input => WorkflowInputTypes.DeclaresObject(input) && input.Fields is not { Count: > 0 })
+                .Select(input => $"Input '{input.Id}' is an object and must declare at least one field."));
+
+            foreach (var input in inputs.Where(input => input.Fields is { Count: > 0 }))
+            {
+                errors.AddRange(input.Fields!
+                    .GroupBy(field => field.Id)
+                    .Where(group => group.Count() > 1)
+                    .Select(group => $"Input '{input.Id}' declares duplicate field id '{group.Key}'."));
+
+                errors.AddRange(input.Fields!
+                    .Where(field => string.IsNullOrWhiteSpace(field.Label))
+                    .Select(field => $"Input '{input.Id}' field '{field.Id}' has no label."));
+
+                errors.AddRange(input.Fields!
+                    .Where(field => WorkflowInputTypes.Of(field) == WorkflowInputTypes.Enum && (field.Values?.Count ?? 0) < 2)
+                    .Select(field => $"Input '{input.Id}' field '{field.Id}' declares {field.Values?.Count ?? 0} enum "
+                        + $"value{((field.Values?.Count ?? 0) == 1 ? string.Empty : "s")}; an enum needs at least two."));
             }
         }
 
@@ -1806,7 +1858,7 @@
         // Checked here rather than refused at the click because the in-progress
         // state is legitimate; what is not legitimate is publishing it.
         errors.AddRange(inputs
-            .Where(input => WorkflowInputTypes.Of(input) == WorkflowInputTypes.Enum
+            .Where(input => WorkflowInputTypes.DeclaresValues(input)
                 && (input.Values?.Count ?? 0) < 2)
             .Select(input => $"Input '{input.Id}' declares {input.Values?.Count ?? 0} enum "
                 + $"value{((input.Values?.Count ?? 0) == 1 ? string.Empty : "s")}; an enum needs at least two."));
@@ -1829,12 +1881,22 @@
 
             var literal = WorkflowResultConditionText.LiteralOf(conditioned.When);
 
-            if (WorkflowInputTypes.Of(tested) == WorkflowInputTypes.Enum
-                && literal != null
-                && tested.Values?.Contains(literal, StringComparer.Ordinal) != true)
+            if (EffectiveSpecVersion < 9)
             {
-                errors.Add(
-                    $"Result '{conditioned.Id}' condition compares '{tested.Id}' to '{literal}', which it does not declare.");
+                if (WorkflowInputTypes.Of(tested) == WorkflowInputTypes.Enum
+                    && literal != null
+                    && tested.Values?.Contains(literal, StringComparer.Ordinal) != true)
+                {
+                    errors.Add(
+                        $"Result '{conditioned.Id}' condition compares '{tested.Id}' to '{literal}', which it does not declare.");
+                }
+
+                continue;
+            }
+
+            if (V9ConditionComplaint(conditioned, tested) is { } complaint)
+            {
+                errors.Add(complaint);
             }
         }
 
@@ -1864,6 +1926,108 @@
 
         return errors;
     }
+
+    /// <summary>
+    /// The desk's mirror of the server's v9 condition closure (#427): the
+    /// operand is resolved to a type — the input's, one field's, or a count —
+    /// and the operator and literal are held to it, in the server's words.
+    /// Null when the condition is sound.
+    /// </summary>
+    private static string? V9ConditionComplaint(
+        WorkflowManifestReader.ResultView result,
+        WorkflowManifestReader.InputView tested)
+    {
+        var prefix = $"Result '{result.Id}' condition";
+        var when = result.When;
+        var operand = WorkflowResultConditionText.OperandOf(when) ?? tested.Id;
+        var op = WorkflowResultConditionText.OperatorOf(when);
+        var literal = WorkflowResultConditionText.LiteralOf(when);
+        var inputType = WorkflowInputTypes.Of(tested);
+        string type;
+        IReadOnlyList<string>? values;
+
+        if (WorkflowResultConditionText.IsCount(when))
+        {
+            if (inputType != WorkflowInputTypes.Array)
+            {
+                return $"{prefix} counts '{tested.Id}', which is a {inputType}; only an array has a count.";
+            }
+
+            type = CountType;
+            values = null;
+        }
+        else if (WorkflowResultConditionText.FieldOf(when) is { } fieldId)
+        {
+            if (inputType != WorkflowInputTypes.Object)
+            {
+                return $"{prefix} reads field '{fieldId}' of '{tested.Id}', which is a {inputType}, not an object.";
+            }
+
+            var field = tested.Fields?.FirstOrDefault(f => f.Id == fieldId);
+
+            if (field is null)
+            {
+                return $"{prefix} reads field '{fieldId}' of '{tested.Id}', which it does not declare.";
+            }
+
+            type = WorkflowInputTypes.Of(field);
+            values = field.Values;
+        }
+        else
+        {
+            type = inputType;
+            values = tested.Values;
+        }
+
+        if (op is null)
+        {
+            return type switch
+            {
+                WorkflowInputTypes.Boolean or WorkflowInputTypes.Array => null,
+                CountType => $"{prefix} '{operand}' needs a comparison; write count({tested.Id}) > 0.",
+                WorkflowInputTypes.Enum => $"{prefix} '{operand}' tests an enum for truth; compare it to one of its values instead.",
+                _ => $"{prefix} '{operand}' tests a {type} for truth; only a boolean or an array can be tested bare."
+            };
+        }
+
+        if (string.IsNullOrEmpty(literal))
+        {
+            return $"{prefix} compares against nothing; write a value after the operator.";
+        }
+
+        if (type == WorkflowInputTypes.Text)
+        {
+            return $"{prefix} reads '{operand}', which is a text: a text input cannot be tested.";
+        }
+
+        if (type is WorkflowInputTypes.Object or WorkflowInputTypes.Array)
+        {
+            return $"{prefix} compares '{operand}', which is an {type}; compare one of its fields, or its count, instead.";
+        }
+
+        if (WorkflowResultConditionText.IsOrdered(when) && type is not (WorkflowInputTypes.Number or WorkflowInputTypes.Date or CountType))
+        {
+            return $"{prefix} compares '{operand}' with {op}, which is a {type}; ordering operators apply to a number or a date.";
+        }
+
+        return type switch
+        {
+            WorkflowInputTypes.Boolean when literal is not ("true" or "false") =>
+                $"{prefix} compares boolean '{operand}' to '{literal}'; use true or false.",
+            WorkflowInputTypes.Enum when values?.Contains(literal, StringComparer.Ordinal) != true =>
+                $"{prefix} compares '{operand}' to '{literal}', which it does not declare.",
+            WorkflowInputTypes.Number when !Consultologist.Web.Services.AI.ConsultInputValue.TryParseNumber(literal, out _) =>
+                $"{prefix} compares '{operand}' to '{literal}', which is not a plain decimal.",
+            WorkflowInputTypes.Date when !DateOnly.TryParseExact(literal, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _) =>
+                $"{prefix} compares '{operand}' to '{literal}', which is not a date written YYYY-MM-DD.",
+            CountType when !int.TryParse(literal, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out _) =>
+                $"{prefix} compares '{operand}' to '{literal}', which is not a whole number.",
+            _ => null
+        };
+    }
+
+    /// <summary>The pseudo-type of count(x): a whole number, ordered.</summary>
+    private const string CountType = "count";
 
     private async Task AddInputAsync()
     {
