@@ -5158,6 +5158,15 @@
             {
                 root["SpecVersion"] = bumped;
             }
+
+            // #453: v9 requires tags, so the minimal v9 migration is TWO
+            // edits — the version line and an empty tags array. Written only
+            // when the manifest has no tags key in either casing: a package
+            // that already states them keeps them.
+            if (bumped >= 9 && root["tags"] is null && root["Tags"] is null)
+            {
+                root["tags"] = new System.Text.Json.Nodes.JsonArray();
+            }
         }
 
         // #432: the title and description, written as edited.

@@ -174,6 +174,7 @@ public static class EditorFixtures
           "name": "acct-1234567890ab",
           "version": "v2026.08.1",
           "specVersion": 9,
+          "tags": [],
           "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
           "inputs": [
             { "id": "consult_draft", "label": "Consult draft", "required": true },
@@ -210,6 +211,7 @@ public static class EditorFixtures
           "name": "acct-1234567890ab",
           "version": "v2026.08.1",
           "specVersion": 9,
+          "tags": [],
           "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
           "inputs": [
             { "id": "consult_draft", "label": "Consult draft", "required": true },

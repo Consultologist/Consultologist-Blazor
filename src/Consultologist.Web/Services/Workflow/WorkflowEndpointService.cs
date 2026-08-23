@@ -45,7 +45,9 @@ public record PublicPackageView(
     List<string>? Versions,
     Dictionary<string, int>? SpecVersions = null,
     // v9 § 4 (#432): per-version titles; absent means untitled.
-    Dictionary<string, string>? Titles = null);
+    Dictionary<string, string>? Titles = null,
+    // #453: per-version tags, for versions that declare the section (v9+).
+    Dictionary<string, List<string>>? Tags = null);
 
 public record PublicCatalogView(Dictionary<string, PublicContractView>? Contracts, string? Latest = null);
 

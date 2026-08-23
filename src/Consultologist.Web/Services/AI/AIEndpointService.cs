@@ -510,7 +510,10 @@ public record ConsultGenerationJobResponse(
     string? PackageTitle = null,
     // #434: mirrors the Api's ConsultGenerationJobResponse.StartFailure — why
     // the job was created already Failed. Null on every job that started.
-    string? StartFailure = null);
+    string? StartFailure = null,
+    // #453: mirrors the Api's ConsultGenerationJobResponse.PackageTags — the
+    // pinned manifest's tags as they were when the job ran.
+    IReadOnlyList<string>? PackageTags = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultSkippedDocument.</summary>
 public record ConsultSkippedDocumentResponse(string ResultId, string Label, string Reason);
