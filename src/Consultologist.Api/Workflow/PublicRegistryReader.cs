@@ -17,7 +17,10 @@ public sealed record PublicPackageSummary(
     string Name,
     string? Latest,
     IReadOnlyList<string> Versions,
-    IReadOnlyDictionary<string, int>? SpecVersions = null);
+    IReadOnlyDictionary<string, int>? SpecVersions = null,
+    // v9 § 4 (#432): per-version titles, for the versions that declare one.
+    // The picker shows the ref beside it; absence means untitled.
+    IReadOnlyDictionary<string, string>? Titles = null);
 
 public sealed record PublicCatalogSummary(
     string? Latest,
@@ -40,9 +43,12 @@ public sealed class PublicRegistryReader
 
     private readonly BlobServiceClient? _service;
 
-    // Version manifests are immutable: a spec version read once holds forever
+    // Version manifests are immutable: what is read off one holds forever
     // (singleton service, so this outlives requests).
-    private readonly ConcurrentDictionary<string, int?> _specVersionCache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, ManifestListing> _listingCache = new(StringComparer.Ordinal);
+
+    /// <summary>What the selector reads off one manifest: its spec version and, from v9, its title.</summary>
+    private sealed record ManifestListing(int? SpecVersion, string? Title);
 
     public PublicRegistryReader(IConfiguration configuration)
     {
@@ -92,43 +98,55 @@ public sealed class PublicRegistryReader
         }
 
         // Per-version spec versions, so the selector can mark pre-v5 history
-        // unselectable (#134).
+        // unselectable (#134) — and, from v9, titles (#432). One read each.
         var specVersions = new Dictionary<string, int>(StringComparer.Ordinal);
+        var titles = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var manifestPath in packageNames.Where(n => n.Split('/') is { Length: 3 } parts && parts[2] == "manifest.json"))
         {
-            if (await GetSpecVersionAsync(WorkflowPackageBlobContainerFactory.ContainerName, manifestPath, cancellationToken) is int spec)
+            var listing = await GetListingAsync(WorkflowPackageBlobContainerFactory.ContainerName, manifestPath, cancellationToken);
+            var key = manifestPath[..^"/manifest.json".Length];
+
+            if (listing.SpecVersion is int spec)
             {
-                specVersions[manifestPath[..^"/manifest.json".Length]] = spec;
+                specVersions[key] = spec;
+            }
+
+            if (listing.Title is { } title)
+            {
+                titles[key] = title;
             }
         }
 
-        return Assemble(packageNames, contractNames, agentNames, smallFiles, DateTimeOffset.UtcNow, specVersions);
+        return Assemble(packageNames, contractNames, agentNames, smallFiles, DateTimeOffset.UtcNow, specVersions, titles.Count > 0 ? titles : null);
     }
 
-    private async Task<int?> GetSpecVersionAsync(string containerName, string blobPath, CancellationToken cancellationToken)
+    private async Task<ManifestListing> GetListingAsync(string containerName, string blobPath, CancellationToken cancellationToken)
     {
         var cacheKey = $"{containerName}/{blobPath}";
 
-        if (_specVersionCache.TryGetValue(cacheKey, out var cached))
+        if (_listingCache.TryGetValue(cacheKey, out var cached))
         {
             return cached;
         }
 
-        int? spec;
+        ManifestListing listing;
 
         try
         {
-            spec = AccountPackageListing.ReadSpecVersion(await ReadTextAsync(containerName, blobPath, cancellationToken));
+            var manifestJson = await ReadTextAsync(containerName, blobPath, cancellationToken);
+            listing = new ManifestListing(
+                AccountPackageListing.ReadSpecVersion(manifestJson),
+                AccountPackageListing.ReadTitle(manifestJson));
         }
         catch (RequestFailedException)
         {
             // Transient read failure: report unknown, cache nothing.
-            return null;
+            return new ManifestListing(null, null);
         }
 
-        _specVersionCache[cacheKey] = spec;
-        return spec;
+        _listingCache[cacheKey] = listing;
+        return listing;
     }
 
     public const string OutputContractCatalogContainer = OutputContractCatalog.RegistryName;
@@ -141,7 +159,8 @@ public sealed class PublicRegistryReader
         IReadOnlyList<string> agentBlobs,
         IReadOnlyDictionary<string, string> smallFiles,
         DateTimeOffset nowUtc,
-        IReadOnlyDictionary<string, int>? specVersions = null)
+        IReadOnlyDictionary<string, int>? specVersions = null,
+        IReadOnlyDictionary<string, string>? titles = null)
     {
         // Packages: {name}/{version}/manifest.json + {name}/latest.json.
         var packages = packageBlobs
@@ -153,7 +172,8 @@ public sealed class PublicRegistryReader
                 g.Key,
                 ReadPointer(smallFiles.GetValueOrDefault($"{WorkflowPackageBlobContainerFactory.ContainerName}/{g.Key}/latest.json")),
                 SortVersions(g.Select(parts => parts[1])),
-                BuildSpecMap(g.Key, g.Select(parts => parts[1]), specVersions)))
+                BuildVersionMap(g.Key, g.Select(parts => parts[1]), specVersions),
+                BuildVersionMap(g.Key, g.Select(parts => parts[1]), titles)))
             .ToList();
 
         // Catalog: {version}/output-contracts.json + latest.json.
@@ -208,23 +228,24 @@ public sealed class PublicRegistryReader
         return new PublicChainResponse(packages, catalog, agents, nowUtc);
     }
 
-    private static IReadOnlyDictionary<string, int>? BuildSpecMap(
+    /// <summary>A per-version map for one package, from a map keyed "name/version"; null when empty.</summary>
+    private static IReadOnlyDictionary<string, T>? BuildVersionMap<T>(
         string name,
         IEnumerable<string> versions,
-        IReadOnlyDictionary<string, int>? specVersions)
+        IReadOnlyDictionary<string, T>? byPath)
     {
-        if (specVersions is null)
+        if (byPath is null)
         {
             return null;
         }
 
-        var map = new Dictionary<string, int>(StringComparer.Ordinal);
+        var map = new Dictionary<string, T>(StringComparer.Ordinal);
 
         foreach (var version in versions.Distinct(StringComparer.Ordinal))
         {
-            if (specVersions.TryGetValue($"{name}/{version}", out var spec))
+            if (byPath.TryGetValue($"{name}/{version}", out var value))
             {
-                map[version] = spec;
+                map[version] = value;
             }
         }
 

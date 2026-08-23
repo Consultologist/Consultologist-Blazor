@@ -61,6 +61,20 @@ public class ConsultsSetupTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ATitledPackage_ShowsItsTitleBeforeThePicker_AndAnUntitledOneTheRefOnly()
+    {
+        // #432: the title when there is one; the picker beside it shows the ref.
+        WithPinnedPackage(blocks: NineSections(), specVersion: 9, title: "Breast oncology consults");
+        var titled = Render<Consults>();
+        Assert.Equal("Breast oncology consults", titled.Find(".setup-context__title").TextContent.Trim());
+
+        WorkflowService.GetCurrentPackageAsync().Returns(new WorkflowPackageResponse("general", "v2026.07.10", 6, NineSections()));
+        var untitled = Render<Consults>();
+        Assert.Empty(untitled.FindAll(".setup-context__title"));
+        Assert.Contains("9 sections", untitled.Find(".setup-context").TextContent);
+    }
+
+    [Fact]
     public void Submit_IsGatedOnEveryRequiredInput()
     {
         WithPinnedPackage(

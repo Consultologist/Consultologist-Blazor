@@ -459,3 +459,8 @@
 	font: inherit;
 	font-weight: 400;
 }
+
+/* #432: the pinned package's title, when it has one. */
+.setup-context__title {
+	font-weight: 600;
+}

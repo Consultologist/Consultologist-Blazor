@@ -16,7 +16,8 @@ public static class AccountPackageListing
         string name,
         IReadOnlyList<string> blobNames,
         string? latestPointerJson,
-        IReadOnlyDictionary<string, int>? specVersions = null)
+        IReadOnlyDictionary<string, int>? specVersions = null,
+        IReadOnlyDictionary<string, string>? titles = null)
     {
         var versions = PublicRegistryReader.SortVersions(blobNames
             .Select(blobName => blobName.Split('/'))
@@ -39,7 +40,30 @@ public static class AccountPackageListing
             }
         }
 
-        return new PublicPackageSummary(name, latest, versions, specVersions);
+        return new PublicPackageSummary(name, latest, versions, specVersions, titles);
+    }
+
+    /// <summary>
+    /// Reads just the title out of a manifest document (v9 § 4, #432); null
+    /// when absent, blank, not a string, or the document is unreadable. The
+    /// registry writes camelCase, as ReadSpecVersion assumes.
+    /// </summary>
+    public static string? ReadTitle(string manifestJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(manifestJson);
+
+            return document.RootElement.TryGetProperty("title", out var title)
+                && title.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(title.GetString())
+                    ? title.GetString()
+                    : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

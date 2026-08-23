@@ -332,7 +332,10 @@ public sealed record WorkflowPackageResponse(
     int SpecVersion,
     IReadOnlyList<WorkflowPackageBlockResponse>? Blocks = null,
     IReadOnlyList<WorkflowPackageInputResponse>? Inputs = null,
-    IReadOnlyList<WorkflowPackageResultResponse>? Results = null);
+    IReadOnlyList<WorkflowPackageResultResponse>? Results = null,
+    // v9 § 4 (#432): the package's title; null when it has none, and the
+    // client shows the ref instead — the stated fallback.
+    string? Title = null);
 
 /// <summary>
 /// The pin-resolved package's full editable content: the typed manifest (the
