@@ -97,6 +97,31 @@ public class AIEndpointRefusalTests
     }
 
     [Fact]
+    public async Task ARefusalThatLeftARow_SaysWhereItIs()
+    {
+        // #434: the same status and sentence, plus the id of the job born
+        // Failed. Read the same tolerant way as the sentence.
+        var service = Service(HttpStatusCode.UnprocessableEntity, $$"""{"error":"{{Refusal}}","jobId":"bb4df62f2bea4dd193a92ae0e6798370"}""");
+
+        var refusal = await Assert.ThrowsAsync<ConsultGenerationRefusedException>(() => StartAsync(service));
+
+        Assert.Equal(Refusal, refusal.Message);
+        Assert.Equal("bb4df62f2bea4dd193a92ae0e6798370", refusal.JobId);
+    }
+
+    [Theory]
+    [InlineData("""{"error":"no","jobId":null}""")]
+    [InlineData("""{"error":"no"}""")]
+    public async Task ARefusalThatLeftNothing_HasNoJobId(string body)
+    {
+        var service = Service(HttpStatusCode.UnprocessableEntity, body);
+
+        var refusal = await Assert.ThrowsAsync<ConsultGenerationRefusedException>(() => StartAsync(service));
+
+        Assert.Null(refusal.JobId);
+    }
+
+    [Fact]
     public async Task APollRefusal_ArrivesTheSameWay()
     {
         // The poll path discarded the body with its own copy of the same

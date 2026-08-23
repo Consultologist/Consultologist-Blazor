@@ -75,6 +75,13 @@
 	text-decoration: underline;
 }
 
+/* #434: a refusal that left a row says where it is, beside its sentence. */
+.refusal-history-link {
+	margin-left: 0.5rem;
+	color: inherit;
+	text-decoration: underline;
+}
+
 .draft-bar {
 	border: 1px solid var(--consultologist-border);
 	border-radius: var(--consultologist-radius-sm);

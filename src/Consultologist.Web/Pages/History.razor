@@ -61,7 +61,10 @@
                                     <span class="job-item__chevron" aria-hidden="true">&#x203A;</span>
                                     <div class="job-history-item__status">
                                         <span class="job-status-badge job-status-badge--@job.Status.ToLowerInvariant()">
-                                            @job.Status
+                                            @* #434: created already Failed because no document applied —
+                                               named in the list, so a row with 0 / 0 sections is not
+                                               mistaken for a run that broke. *@
+                                            @(job.FailedAtStart ? "Failed — nothing applied" : job.Status)
                                         </span>
                                         @if (job.Source == "email")
                                         {
@@ -302,9 +305,12 @@
                                             var setupBadge = detail.StartedAtUtc != null
                                                 ? ("✓", "node-status--success")
                                                 : ("·", "node-status--muted");
+                                            @* #434: StartFailure is its own field — "nothing ran" is not
+                                               inferred from an event label or from the absence of blocks. *@
                                             var doneBadge = detail.Status switch
                                             {
                                                 "Completed" => ("✓", "Done", "node-status--success"),
+                                                "Failed" when detail.StartFailure != null => ("✗", "Nothing produced", "node-status--failure"),
                                                 "Failed" => ("✗", "Failed", "node-status--failure"),
                                                 _ => ("●", detail.Status, "node-status--muted")
                                             };
@@ -374,6 +380,7 @@
                                                     <span class="node-row__contract muted-text">
                                                         @(detail.CompletedAtUtc != null ? FormatDate(detail.CompletedAtUtc.Value) : "")
                                                         @(detail.RuntimeFailureError != null ? $" · {detail.RuntimeFailureError}" : "")
+                                                        @(detail.StartFailure != null ? $" · {detail.StartFailure}" : "")
                                                     </span>
                                                     @if (detail.WorkflowOutputHash != null)
                                                     {

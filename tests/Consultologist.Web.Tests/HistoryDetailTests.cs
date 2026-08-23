@@ -234,6 +234,87 @@ public class HistoryDetailTests : ClientRenderTestContext
     private static IReadOnlyList<string> Chips(IRenderedComponent<History> page) =>
         page.FindAll(".provenance-chip").Select(chip => chip.TextContent.Trim()).ToList();
 
+    private const string NothingApplied =
+        "No document applies to these inputs. 'Patient letter' needs billable to be 'true'; it is not supplied.";
+
+    private void WithJobBornFailed()
+    {
+        AccountService.GetJobsAsync(Arg.Any<int>(), Arg.Any<string?>()).Returns(new AccountJobsResponse(
+            new[]
+            {
+                new AccountJobSummaryResponse(
+                    JobId, "Failed", DateTimeOffset.UtcNow, null, DateTimeOffset.UtcNow,
+                    TotalBlockCount: 0, CompletedBlockCount: 0, FailedBlockCount: 0, Source: "email", FailedAtStart: true)
+            },
+            null));
+
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
+            JobId,
+            "user-1",
+            "Failed",
+            TotalBlockCount: 0,
+            CompletedBlockCount: 0,
+            FailedBlockCount: 0,
+            GeneratedBlocks: new Dictionary<string, string>(),
+            FailedBlocks: new Dictionary<string, string>(),
+            Success: false,
+            EffectiveInputHash: "aaaa",
+            EffectiveInputHashVersion: 4,
+            SkippedDocuments: new[] { new ConsultSkippedDocumentResponse("patient_letter", "Patient letter", "needs billable to be 'true'; it is not supplied") },
+            PackageSpecVersion: 8,
+            WorkflowPackage: "general@v2026.08.1",
+            PackageTitle: "Breast oncology consults",
+            StartFailure: NothingApplied));
+    }
+
+    [Fact]
+    public void AJobBornFailed_IsNamedInTheList_AndSaysWhyInTheDetail()
+    {
+        // #434: a well-formed request the package produced nothing for. The
+        // list names the class — a Failed row with 0 / 0 sections would read as
+        // a run that broke — and the detail says what was wanted, beside the
+        // provenance a run would have carried.
+        WithJobBornFailed();
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Equal("Failed — nothing applied", page.Find(".job-status-badge").TextContent.Trim());
+        Assert.Contains("0 / 0 sections", page.Markup, StringComparison.Ordinal);
+
+        var done = page.FindAll(".node-row").Last();
+        Assert.Equal("Nothing produced", done.QuerySelector(".node-row__label")!.TextContent.Trim());
+        Assert.Contains(NothingApplied, done.TextContent, StringComparison.Ordinal);
+
+        Assert.Contains("not produced — it needs billable to be 'true'; it is not supplied", page.Find(".provenance-list").TextContent, StringComparison.Ordinal);
+        Assert.Contains("Breast oncology consults · general@v2026.08.1", Chips(page));
+    }
+
+    [Fact]
+    public void AJobThatRanAndFailed_IsStillJustFailed()
+    {
+        // The other half of the distinction: no StartFailure, so nothing here
+        // changes.
+        WithJob(3);
+        AccountService.GetJobsAsync(Arg.Any<int>(), Arg.Any<string?>()).Returns(new AccountJobsResponse(
+            new[]
+            {
+                new AccountJobSummaryResponse(
+                    JobId, "Failed", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+                    TotalBlockCount: 9, CompletedBlockCount: 4, FailedBlockCount: 1)
+            },
+            null));
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
+            JobId, "user-1", "Failed", 9, 4, 1,
+            new Dictionary<string, string>(), new Dictionary<string, string>(), false,
+            RuntimeFailureError: "Section generation failed."));
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Equal("Failed", page.Find(".job-status-badge").TextContent.Trim());
+        Assert.Equal("Failed", page.FindAll(".node-row").Last().QuerySelector(".node-row__label")!.TextContent.Trim());
+        Assert.DoesNotContain("Nothing produced", page.Markup, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void AJobsPackageFormat_IsOnTheProvenanceRow()
     {
