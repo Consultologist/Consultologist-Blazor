@@ -335,6 +335,25 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void OnAV8Package_AnObjectsFieldsAreNotOfferedAsOperands()
+    {
+        // The mutant this pins: an object's paths offered below 9 would let a
+        // v8 publish carry a form the engine refuses there.
+        var page = RenderEditor(EditorFixtures.V8());
+        Navigate(page, "Inputs");
+        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Object);
+        page.Find("input[aria-label='New field id for prior_notes']").Change("kind");
+        page.FindAll("button").First(button => button.TextContent.Trim() == "+ Field").Click();
+        page.Find("select[aria-label='Type for field prior_notes.kind']").Change(WorkflowInputTypes.Enum);
+        page.Find("input[aria-label='Add a value to prior_notes.kind']").Change("clinic");
+        page.Find("input[aria-label='Add a value to prior_notes.kind']").Change("ward");
+        Navigate(page, "Documents");
+
+        Assert.DoesNotContain("prior_notes.kind", page.Find("li.declared-row__when").TextContent);
+        Assert.Empty(page.FindAll("select[aria-label='Condition operand for consult_note']"));
+    }
+
+    [Fact]
     public void SwitchingOperand_CoercesTheLiteral()
     {
         var package = EditorFixtures.V9Structured();
