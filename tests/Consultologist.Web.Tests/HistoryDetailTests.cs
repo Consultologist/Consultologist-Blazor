@@ -22,7 +22,9 @@ public class HistoryDetailTests : ClientRenderTestContext
         IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? inputOrigins = null,
         IReadOnlyList<ConsultSkippedDocumentResponse>? skipped = null,
         int? packageSpecVersion = null,
-        int? schemaVersion = null)
+        int? schemaVersion = null,
+        string? workflowPackage = null,
+        string? packageTitle = null)
     {
         // Terminal status only: a non-terminal row would start the page's real
         // 5-second polling loop.
@@ -53,7 +55,32 @@ public class HistoryDetailTests : ClientRenderTestContext
             InputOrigins: inputOrigins,
             SkippedDocuments: skipped,
             SchemaVersion: schemaVersion,
-            PackageSpecVersion: packageSpecVersion));
+            PackageSpecVersion: packageSpecVersion,
+            WorkflowPackage: workflowPackage,
+            PackageTitle: packageTitle));
+    }
+
+    [Fact]
+    public void ATitledPackage_ShowsItsTitleBesideTheRef()
+    {
+        // #432: the title as it was at the pinned version — stamped on the
+        // record, since History cannot read the manifest — beside the ref.
+        WithJob(3, workflowPackage: "general@v2026.08.1", packageTitle: "Breast oncology consults");
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Contains("Breast oncology consults · general@v2026.08.1", Chips(page));
+    }
+
+    [Fact]
+    public void AnUntitledPackage_ShowsTheRefAlone()
+    {
+        WithJob(3, workflowPackage: "general@v2026.08.1");
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Contains("general@v2026.08.1", Chips(page));
+        Assert.DoesNotContain(Chips(page), chip => chip.Contains(" · general@"));
     }
 
     [Fact]

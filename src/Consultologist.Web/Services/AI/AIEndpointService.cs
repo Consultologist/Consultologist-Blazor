@@ -498,7 +498,10 @@ public record ConsultGenerationJobResponse(
     // provenance row an outside reader can act on. Null on every job recorded
     // before it was captured, which the row renders as no chip rather than a
     // guess.
-    int? PackageSpecVersion = null);
+    int? PackageSpecVersion = null,
+    // #432: the package's title as it was at the pinned version; null when
+    // untitled, and the chip shows the ref alone.
+    string? PackageTitle = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultSkippedDocument.</summary>
 public record ConsultSkippedDocumentResponse(string ResultId, string Label, string Reason);

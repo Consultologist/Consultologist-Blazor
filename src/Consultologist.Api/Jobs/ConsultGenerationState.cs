@@ -65,6 +65,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.Source ??= input.Source;
         State.ScheduledAtUtc ??= input.ScheduledAtUtc;
         State.PackageSpecVersion ??= input.PackageSpecVersion;
+        State.PackageTitle ??= input.PackageTitle;
         State.InputOrigins ??= input.InputOrigins?.ToDictionary(
             pair => pair.Key,
             pair => pair.Value,
@@ -411,7 +412,11 @@ public sealed record ConsultGenerationJobInitialize(
     int? PackageSpecVersion = null,
     // v9 (#428): see ConsultGenerationOrchestrationInput.InputDocumentOrigins.
     // Appended last for the same reason as PackageSpecVersion.
-    IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? InputDocumentOrigins = null);
+    IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? InputDocumentOrigins = null,
+    // #432: the package's title as the pinned manifest carried it — what the
+    // reader sees beside the ref, as it was when the job ran. Appended last
+    // for the reason PackageSpecVersion gives.
+    string? PackageTitle = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -478,6 +483,9 @@ public sealed class ConsultGenerationJobState
 
     /// <summary>#373: the specVersion of the package this job ran.</summary>
     public int? PackageSpecVersion { get; set; }
+
+    /// <summary>#432: the package's title at the pinned version; null when untitled, and on every job before it.</summary>
+    public string? PackageTitle { get; set; }
     public string? AnalysisStatus { get; set; }
     public string? AnalysisError { get; set; }
     public int CompletedStageCount { get; set; }
@@ -715,6 +723,7 @@ public sealed class ConsultGenerationJobState
             EffectiveInputHashVersion: EffectiveInputHashVersion,
             CatalogRef: CatalogRef,
             PackageSpecVersion: PackageSpecVersion,
+            PackageTitle: PackageTitle,
             // Derived, never stored: the deliverable hash of a partial job is
             // undefined, so only completed jobs carry it (provenance.md). The
             // three-way dispatch: v7 document set → v3, v6 single document →

@@ -180,7 +180,11 @@
                                         <div class="provenance-chips">
                                             <span class="provenance-chip @(WorkflowPackageNames.IsAccountPackage(detail.WorkflowPackage) ? "provenance-chip--fork" : "")"
                                                   title="Workflow package this job ran">
-                                                @(detail.WorkflowPackage ?? "—")
+                                                @* #432: the title as it was at the pinned version,
+                                                   beside the ref — the ref alone when untitled. *@
+                                                @(detail.PackageTitle is { Length: > 0 } packageTitle && detail.WorkflowPackage != null
+                                                    ? $"{packageTitle} · {detail.WorkflowPackage}"
+                                                    : detail.WorkflowPackage ?? "—")
                                             </span>
                                             <span class="provenance-chip" title="Output-contract catalog version this job ran under">
                                                 @(detail.CatalogRef ?? "catalog —")
