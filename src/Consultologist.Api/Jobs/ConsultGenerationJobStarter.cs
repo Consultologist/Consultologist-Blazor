@@ -58,7 +58,8 @@ public enum ConsultGenerationJobStartError
     InputBehindACloudLink,
     // #315: every declared deliverable's condition is false for these inputs,
     // so the job would produce nothing. Knowable at start because conditions
-    // read declared inputs only — refused rather than run.
+    // read declared inputs only — refused rather than run. #434: refused AND
+    // recorded — the outcome carries a job id born Failed.
     NoApplicableDeliverable
 }
 
@@ -77,6 +78,12 @@ internal sealed record EffectiveInputsResolution(
     // complaints, which end in got '<supplied value>'.
     string? SenderSafeError = null);
 
+/// <summary>
+/// JobId without Error: started. Error without JobId: refused, no row. Both
+/// (#434): refused because no deliverable applied, and a row born Failed says
+/// so — the one kind that carries both, so each door keeps its message and
+/// gains the pointer.
+/// </summary>
 public sealed record ConsultGenerationJobStartOutcome(
     string? JobId,
     ConsultGenerationJobStartError? Error = null,
@@ -401,29 +408,28 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
             if (firing.Count == 0)
             {
-                // Knowable before any model call, so the job is never created
-                // and nothing is spent. The email door needs nothing extra:
-                // every start-failure path already replies and moves the
-                // message to Rejected.
+                // Knowable before any model call, so nothing is spent. #434:
+                // the job is created all the same — born Failed, carrying the
+                // deliverables that did not apply and what each wanted — so
+                // History holds a row for a submission that produced nothing.
+                // The doors keep their messages; the row is what is new.
                 _logger.LogWarning(
-                    "Rejected job start: no deliverable applies to these inputs. Package={Package}, Declared={Declared}",
+                    "Rejected job start: no deliverable applies to these inputs. JobId={JobId}, Package={Package}, Declared={Declared}",
+                    jobId,
                     package.Ref,
                     skipped.Count);
                 var noneApplyDetail = "No document applies to these inputs. "
                     + string.Join(" ", skipped.Select(s => $"'{s.Label}' {s.Reason}."));
 
-                return new ConsultGenerationJobStartOutcome(
-                    null,
-                    ConsultGenerationJobStartError.NoApplicableDeliverable,
-                    noneApplyDetail,
-                    // #369: authored throughout. Labels and condition literals
-                    // come from the manifest, and WorkflowResultCondition.Explain
-                    // prints only what is safe on every surface: a declared enum
-                    // value, true/false, and a count of entries. A number, a date
-                    // or a field's value — which v9 conditions may read (#427) —
-                    // is the patient's and is never printed; the sentence says
-                    // what was needed and that it was not met.
-                    SenderSafeDetail: noneApplyDetail);
+                // #369: authored throughout. Labels and condition literals
+                // come from the manifest, and WorkflowResultCondition.Explain
+                // prints only what is safe on every surface: a declared enum
+                // value, true/false, and a count of entries. A number, a date
+                // or a field's value — which v9 conditions may read (#427) —
+                // is the patient's and is never printed; the sentence says
+                // what was needed and that it was not met.
+                return await RecordNoApplicableDeliverableAsync(
+                    client, entityId, jobId, appUserId, request, package, inputs, origin, inputOrigins, skipped, noneApplyDetail);
             }
 
             package = package with { Results = firing };
@@ -494,26 +500,30 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     StringComparer.Ordinal);
 
             // An empty fan produces no items, no blocks, no document — v8's
-            // empty-fire-set case wearing different clothes, and refused the
-            // same way: at start, by name, before anything is spent (v9 § 5).
+            // empty-fire-set case wearing different clothes, and recorded the
+            // same way: at start, by name, before anything is spent (v9 § 5,
+            // #434). Every declared deliverable is the one not produced, for
+            // the same reason, so the record lists each of them with it.
             var emptyFans = inputFans.Where(fan => fan.Value.Count == 0).Select(fan => fan.Key).ToList();
             if (emptyFans.Count > 0)
             {
+                var emptyReasons = emptyFans.Select(key =>
+                    $"'{inputsById[WorkflowInputFans.InputIdOf(key)].Label}' has no entries, and every document this package produces is written from them").ToList();
                 var emptyDetail = "No document applies to these inputs. "
-                    + string.Join(" ", emptyFans.Select(key =>
-                        $"'{inputsById[WorkflowInputFans.InputIdOf(key)].Label}' has no entries, and every document this package produces is written from them."));
+                    + string.Join(" ", emptyReasons.Select(reason => $"{reason}."));
+                var notProduced = (package.Results ?? new List<WorkflowResolvedResult>())
+                    .Select(result => new ConsultSkippedDocument(result.Id, result.Label, string.Join("; ", emptyReasons)))
+                    .ToList();
 
                 _logger.LogWarning(
-                    "Rejected job start: a fanned input has no entries. Package={Package}, Fans={Fans}",
+                    "Rejected job start: a fanned input has no entries. JobId={JobId}, Package={Package}, Fans={Fans}",
+                    jobId,
                     package.Ref,
                     string.Join(", ", emptyFans));
 
-                return new ConsultGenerationJobStartOutcome(
-                    null,
-                    ConsultGenerationJobStartError.NoApplicableDeliverable,
-                    emptyDetail,
-                    // Authored labels and fixed prose: the sender may read it.
-                    SenderSafeDetail: emptyDetail);
+                // Authored labels and fixed prose: the sender may read it.
+                return await RecordNoApplicableDeliverableAsync(
+                    client, entityId, jobId, appUserId, request, package, inputs, origin, inputOrigins, notProduced, emptyDetail);
             }
 
             items = WorkflowPackageBlocks.Resolve(package, inputFans)
@@ -593,22 +603,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // stamped 4, with nothing erroring. Definition 4 now refuses
         // structure, so a gate that slips again fails the start instead.
         var specVersion = package.Manifest.SpecVersion;
-        var effectiveInputHash = specVersion switch
-        {
-            >= 9 => ConsultGenerationProvenance.ComputeStructuredInputsHash(inputs.Supplied!),
-            >= 8 => ConsultGenerationProvenance.ComputeTypedInputsHash(inputs.Supplied!),
-            >= 7 => ConsultGenerationProvenance.ComputeDeclaredInputsHash(
-                inputs.Supplied!.ToDictionary(pair => pair.Key, pair => pair.Value.Canonical, StringComparer.Ordinal)),
-            _ => ConsultGenerationProvenance.ComputeDraftOnlyHash(request)
-        };
-
-        var effectiveInputHashVersion = specVersion switch
-        {
-            >= 9 => ConsultGenerationProvenance.StructuredInputsHashVersion,
-            >= 8 => ConsultGenerationProvenance.TypedInputsHashVersion,
-            >= 7 => ConsultGenerationProvenance.DeclaredInputsHashVersion,
-            _ => 2
-        };
+        var (effectiveInputHash, effectiveInputHashVersion) = EffectiveInputHashOf(specVersion, request, inputs);
 
         // Only v8 has types, and only the non-text ones are worth carrying:
         // null here means a v5-v7 job's payload is byte-identical to before.
@@ -683,6 +678,90 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             items.Count);
 
         return new ConsultGenerationJobStartOutcome(instanceId);
+    }
+
+    /// <summary>
+    /// The provenance hash and its definition version for a request under a
+    /// package of this specVersion. One function, because the job that is born
+    /// Failed (#434) records the same hash the job that runs would have.
+    /// </summary>
+    private static (string Hash, int Version) EffectiveInputHashOf(
+        int specVersion,
+        ConsultGenerationRequest request,
+        EffectiveInputsResolution inputs)
+    {
+        var hash = specVersion switch
+        {
+            >= 9 => ConsultGenerationProvenance.ComputeStructuredInputsHash(inputs.Supplied!),
+            >= 8 => ConsultGenerationProvenance.ComputeTypedInputsHash(inputs.Supplied!),
+            >= 7 => ConsultGenerationProvenance.ComputeDeclaredInputsHash(
+                inputs.Supplied!.ToDictionary(pair => pair.Key, pair => pair.Value.Canonical, StringComparer.Ordinal)),
+            _ => ConsultGenerationProvenance.ComputeDraftOnlyHash(request)
+        };
+
+        var version = specVersion switch
+        {
+            >= 9 => ConsultGenerationProvenance.StructuredInputsHashVersion,
+            >= 8 => ConsultGenerationProvenance.TypedInputsHashVersion,
+            >= 7 => ConsultGenerationProvenance.DeclaredInputsHashVersion,
+            _ => 2
+        };
+
+        return (hash, version);
+    }
+
+    /// <summary>
+    /// #434: the one refusal that leaves a row. A well-formed, authorized
+    /// request met a package whose conditions produced nothing — not a request
+    /// problem (those return before a job exists) but a fact about this
+    /// package and these inputs, which the operator will be asked about. The
+    /// record is born Failed in one entity signal: no orchestration, nothing
+    /// spent. It carries the provenance a run would have (package, hash,
+    /// catalog, origins, title) and no skeleton — nothing ran. The outcome
+    /// carries BOTH the job id and the error, the only kind that does, so
+    /// each door keeps its message and gains the pointer.
+    /// </summary>
+    private async Task<ConsultGenerationJobStartOutcome> RecordNoApplicableDeliverableAsync(
+        DurableTaskClient client,
+        EntityInstanceId entityId,
+        string jobId,
+        string appUserId,
+        ConsultGenerationRequest request,
+        WorkflowPackage package,
+        EffectiveInputsResolution inputs,
+        ConsultGenerationJobOrigin origin,
+        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? inputOrigins,
+        IReadOnlyList<ConsultSkippedDocument> notProduced,
+        string detail)
+    {
+        var specVersion = package.Manifest.SpecVersion;
+        var (effectiveInputHash, effectiveInputHashVersion) = EffectiveInputHashOf(specVersion, request, inputs);
+
+        await client.Entities.SignalEntityAsync(
+            entityId,
+            nameof(ConsultGenerationJobEntity.RecordStartFailure),
+            new ConsultGenerationJobStartFailure(
+                new ConsultGenerationJobInitialize(
+                    jobId,
+                    appUserId,
+                    Array.Empty<IReadOnlyDictionary<string, string>>(),
+                    package.Ref,
+                    effectiveInputHash,
+                    EffectiveInputHashVersion: effectiveInputHashVersion,
+                    CatalogRef: _catalog.ResolvedRef,
+                    Source: origin.Source,
+                    ScheduledAtUtc: request.ScheduledAtUtc,
+                    SkippedDocuments: notProduced,
+                    PackageSpecVersion: specVersion,
+                    InputDocumentOrigins: inputOrigins,
+                    PackageTitle: package.Manifest.Title),
+                detail));
+
+        return new ConsultGenerationJobStartOutcome(
+            jobId,
+            ConsultGenerationJobStartError.NoApplicableDeliverable,
+            detail,
+            SenderSafeDetail: detail);
     }
 
     internal const string ConsultDraftInputId = "consult_draft";
