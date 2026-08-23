@@ -168,7 +168,9 @@ internal static class PackageFormatSchema
 
         Object(properties, "id")["minLength"] = 1;
         Object(properties, "label")["minLength"] = 1;
-        Object(properties, "forEach")["pattern"] = "^data:.+$";
+        // v9 (#426): a fan may also walk a caller-supplied array. Below 9
+        // only a data: collection can be fanned, and the schema says so.
+        Object(properties, "forEach")["pattern"] = specVersion >= 9 ? "^(data|input):.+$" : "^data:.+$";
 
         // The exporter cannot see through WorkflowBindingValueConverter: it
         // reports the record, so `bindings` arrives as a bare object. On the

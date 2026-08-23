@@ -89,14 +89,6 @@
                             Upgrade to specVersion @RunnableSpecVersion
                         </FluentButton>
                     }
-                    @if (OffersNewestUpgrade)
-                    {
-                        <FluentButton Appearance="Appearance.Outline"
-                                      Disabled="@isPublishing"
-                                      @onclick="() => UpgradeSpecVersionTo(NewestSpecVersion)">
-                            Upgrade to specVersion @NewestSpecVersion
-                        </FluentButton>
-                    }
                     <FluentButton Appearance="Appearance.Accent"
                                   Disabled="@(PendingCount == 0 || isPublishing)"
                                   @onclick="PublishAsync">
@@ -146,16 +138,6 @@
                         }
                         <li>Your consults switch to the published version immediately.</li>
                     </ul>
-                </FluentMessageBar>
-            }
-
-            @* #429 (v9 § 10): a format the registry accepts before the engine
-               runs it. A deferred state gets a visible name and an up-front
-               notification — never a silent hold. *@
-            @if (NotYetRunnable)
-            {
-                <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">
-                    specVersion @EffectiveSpecVersion is publishable but not yet runnable: consults pinned to a specVersion @EffectiveSpecVersion package will refuse to start until the engine runs it (#430).
                 </FluentMessageBar>
             }
 
@@ -1417,15 +1399,13 @@
 
     /// <summary>
     /// Mirrors WorkflowPackageStore.SupportedSpecVersions' maximum — the
-    /// newest format the engine will RUN. Below NewestSpecVersion while a
-    /// format is publishable but not yet executable (v9 § 10), which the
-    /// editor says up front rather than letting an author publish into
-    /// silence. #430 moves it to 9, and the two ceilings become one.
+    /// newest format the engine will RUN. Equal to NewestSpecVersion since
+    /// #430 released v9; while a future format is publishable but not yet
+    /// executable the two part again, and the not-yet-runnable notice, its
+    /// publish-success sentence and the second Upgrade button (#429, retired
+    /// with #430) come back with the gap.
     /// </summary>
-    internal const int RunnableSpecVersion = 8;
-
-    /// <summary>A staged bump past the runnable ceiling, or a loaded package already past it.</summary>
-    private bool NotYetRunnable => EffectiveSpecVersion > RunnableSpecVersion;
+    internal const int RunnableSpecVersion = 9;
 
     /// <summary>The version this publish will carry: the bump, or what is loaded.</summary>
     /// <summary>
@@ -1508,12 +1488,9 @@
         // what hides the buttons once one has been pressed.
         content != null && specVersionBump == null && LoadedSpecVersion < target && target <= NewestSpecVersion;
 
-    // #429: one button per rung. The runnable ceiling is the migration every
-    // package should take; the newest is opt-in while it is not yet runnable,
-    // and the two collapse into one when #430 makes them equal.
+    // #429 had one button per rung while the ceilings differed; #430 made
+    // them equal and the second button retired with the gap.
     private bool OffersRunnableUpgrade => CanUpgradeTo(RunnableSpecVersion);
-
-    private bool OffersNewestUpgrade => RunnableSpecVersion < NewestSpecVersion && CanUpgradeTo(NewestSpecVersion);
 
     private IReadOnlyList<PendingKind>? pendingKinds;
 
@@ -5243,8 +5220,6 @@
             // immutable, so this is the only moment they can be read. Held
             // across LoadAsync, which resets the rest of the page state.
             var warnings = outcome.Response.Warnings ?? new List<string>();
-            // #429: likewise read before LoadAsync clears the bump.
-            var notYetRunnable = NotYetRunnable;
             // #432: the title the publish carried — none on a fork, which the
             // server clears; quoted so the success names what was just named.
             var publishedTitle = sourceWasForeign ? null : WorkflowManifestReader.ReadTitle(composed);
@@ -5252,8 +5227,7 @@
             await LoadAsync();
             publishSuccess = (sourceWasForeign
                 ? $"Published {publishedRef}{named} from {sourceRef} and switched your consults to it."
-                : $"Published {publishedRef}{named} and switched your consults to it.")
-                + (notYetRunnable ? " It is not yet runnable." : string.Empty);
+                : $"Published {publishedRef}{named} and switched your consults to it.");
             publishWarnings = warnings;
         }
         catch (AccessTokenNotAvailableException exception)

@@ -95,6 +95,10 @@ public class PackageFormatSchemaTests
         // The schema's own title is a different field that shares the name.
         Assert.Equal("Consultologist workflow package manifest, specVersion 9", schema["title"]!.GetValue<string>());
 
+        // #426: the fan pattern widens at 9 to admit input: fans; v8's stays data:-only.
+        Assert.Equal("^(data|input):.+$", schema["properties"]!["nodes"]!["items"]!["properties"]!["forEach"]!["pattern"]!.GetValue<string>());
+        Assert.Equal("^data:.+$", PackageFormatSchema.Build(8)["properties"]!["nodes"]!["items"]!["properties"]!["forEach"]!["pattern"]!.GetValue<string>());
+
         // #453: tags — required at 9, an array of single-line labels, absent before.
         var tags = schema["properties"]!["tags"]!;
         Assert.Equal("array", tags["type"]!.GetValue<string>());

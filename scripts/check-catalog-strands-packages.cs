@@ -29,7 +29,7 @@
 // WHAT IT CHECKS, AND WHAT IT DELIBERATELY DOES NOT. Only whether each declared
 // schema still canonically matches SOME contract in the candidate catalog —
 // TryResolveContract, which is exactly what WorkflowPackageStore calls. Not the
-// full validator: published `general` spans specVersion 1 through 8, and
+// full validator: published `general` spans every specVersion since 1, and
 // anything below 5 is already unloadable whatever the catalog says, so a full
 // validate would report old versions as failures for a reason that has nothing
 // to do with this publish. A package declaring no schemas is immune outright —

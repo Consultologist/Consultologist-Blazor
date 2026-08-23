@@ -88,7 +88,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     private const string ContainerName = WorkflowPackageBlobContainerFactory.ContainerName;
 
     /// <summary>A manifest declares the rule set it was validated under (package-format-v6-design.md § 9).</summary>
-    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8 };
+    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9 };
     private static readonly TimeSpan LatestPointerCacheDuration = TimeSpan.FromSeconds(60);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
