@@ -208,7 +208,7 @@ public class ConsultGenerationJobStarterTests
             .Returns(new WorkflowPackageRef("general", "latest"));
         _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
             .Returns(ExecutableV7Package(
-                V8Fixtures.Typed() with { SpecVersion = 9 },
+                V8Fixtures.Typed() with { SpecVersion = 9, Tags = new List<string>() },
                 new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
 
         ConsultGenerationJobInitialize? initialize = null;
@@ -978,7 +978,7 @@ public class ConsultGenerationJobStarterTests
         // #432: a title rides on a v9 manifest; the typed v8 shape otherwise.
         var manifest = title is null
             ? V8Fixtures.Typed()
-            : V8Fixtures.Typed() with { SpecVersion = 9, Title = title };
+            : V8Fixtures.Typed() with { SpecVersion = 9, Title = title, Tags = new List<string>() };
         var errors = new List<string>();
 
         _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())

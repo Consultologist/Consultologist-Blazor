@@ -25,7 +25,13 @@ public sealed record WorkflowPackageManifest(
     // manifest writes the bytes it always wrote. The version gate is the
     // validator's, as inputs' and fields' are.
     string? Title = null,
-    string? Description = null);
+    string? Description = null,
+    // v9 § 4 (#453): the labels a package is found by. REQUIRED at 9 — an
+    // empty array when the package has none, so a reader never wonders
+    // whether absence was a choice; null is not a spelling of "none" on a v9
+    // manifest, only the value a pre-v9 manifest carries. Authored content,
+    // the safety class of a label; order as authored, never sorted.
+    List<string>? Tags = null);
 
 /// <summary>
 /// One declared input slot of a specVersion-7 package: the id nodes bind as

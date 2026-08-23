@@ -180,6 +180,11 @@ public static class WorkflowPackageValidator
                 errors.Add("description requires specVersion 9.");
             }
 
+            if (manifest.Tags != null)
+            {
+                errors.Add("tags requires specVersion 9.");
+            }
+
             return;
         }
 
@@ -212,6 +217,68 @@ public static class WorkflowPackageValidator
             else if (manifest.Description.Length > WorkflowPackageMetadata.MaxDescriptionLength)
             {
                 errors.Add($"description must be at most {WorkflowPackageMetadata.MaxDescriptionLength} characters.");
+            }
+        }
+
+        ValidateTags(manifest.Tags, errors);
+    }
+
+    /// <summary>
+    /// #453: tags are required at 9 — an empty array is the spelling of
+    /// "none" — and each one is held to a label's rules. Sentences name the
+    /// POSITION, never the text: a tag is authored content, but the offending
+    /// one is the one whose text is the problem, and the author can see it.
+    /// Every rule reports, so a tag that is both too long and a repeat is
+    /// told both.
+    /// </summary>
+    private static void ValidateTags(List<string>? tags, List<string> errors)
+    {
+        if (tags is null)
+        {
+            errors.Add("tags is required in specVersion 9 (an empty array when the package has none).");
+            return;
+        }
+
+        if (tags.Count > WorkflowPackageMetadata.MaxTags)
+        {
+            errors.Add($"tags must declare at most {WorkflowPackageMetadata.MaxTags} tags.");
+        }
+
+        for (var i = 0; i < tags.Count; i++)
+        {
+            var tag = tags[i];
+
+            if (string.IsNullOrWhiteSpace(tag))
+            {
+                errors.Add($"tags[{i}] must not be empty.");
+                continue;
+            }
+
+            if (tag.Contains('\r') || tag.Contains('\n'))
+            {
+                errors.Add($"tags[{i}] must be a single line.");
+            }
+
+            if (!string.Equals(tag, tag.Trim(), StringComparison.Ordinal))
+            {
+                errors.Add($"tags[{i}] must not begin or end with whitespace.");
+            }
+
+            if (tag.Length > WorkflowPackageMetadata.MaxTagLength)
+            {
+                errors.Add($"tags[{i}] must be at most {WorkflowPackageMetadata.MaxTagLength} characters.");
+            }
+
+            // Distinct ignoring case: a filter treats Oncology and oncology as
+            // one, so the manifest may not declare them as two. The earlier
+            // position is the one kept; the later one is the repeat.
+            for (var j = 0; j < i; j++)
+            {
+                if (!string.IsNullOrWhiteSpace(tags[j]) && string.Equals(tags[j].Trim(), tag.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    errors.Add($"tags[{i}] repeats tags[{j}]; tags are distinct ignoring case.");
+                    break;
+                }
             }
         }
     }

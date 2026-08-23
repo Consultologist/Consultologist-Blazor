@@ -83,6 +83,7 @@ internal static class PackageFormatSchema
         {
             Remove(properties, "title");
             Remove(properties, "description");
+            Remove(properties, "tags");
         }
         else
         {
@@ -94,6 +95,22 @@ internal static class PackageFormatSchema
             var description = Object(properties, "description");
             description["minLength"] = 1;
             description["maxLength"] = WorkflowPackageMetadata.MaxDescriptionLength;
+
+            // #453: required at 9 (added to the required list below), an array
+            // of single-line labels. The exporter offers the nullable form;
+            // null is not a spelling of "none" on a v9 manifest, so the type
+            // is narrowed to the array alone. Trimming and case-insensitive
+            // distinctness are the engine's rules; JSON Schema's uniqueItems
+            // is case-sensitive, and is stated as the looser bound it is.
+            var tags = Object(properties, "tags");
+            tags["type"] = "array";
+            tags["maxItems"] = WorkflowPackageMetadata.MaxTags;
+            tags["uniqueItems"] = true;
+            var tag = Object(tags, "items");
+            tag["type"] = "string";
+            tag["minLength"] = 1;
+            tag["maxLength"] = WorkflowPackageMetadata.MaxTagLength;
+            tag["pattern"] = SingleLine;
         }
 
         // Declared sections arrive at 7. A section the version does not have is
@@ -108,7 +125,10 @@ internal static class PackageFormatSchema
         {
             EnrichInputs(Object(properties, "inputs"), specVersion);
             EnrichResults(Object(properties, "results"), specVersion);
-            root["required"] = Required("name", "version", "specVersion", "templating", "nodes", "inputs");
+            root["required"] = specVersion < 9
+                ? Required("name", "version", "specVersion", "templating", "nodes", "inputs")
+                // #453: every v9 manifest states its tags.
+                : Required("name", "version", "specVersion", "templating", "nodes", "inputs", "tags");
 
             // The list form owns the declaration; the string form stays valid as
             // one-entry sugar. One of them, never both.

@@ -115,6 +115,30 @@ public class ConformanceFixtureExport
             "A result set declaring no deliverables. A package that can produce nothing is not a package.",
             v7Multi with { SpecVersion = 8, Results = new List<WorkflowResultSpec>() });
 
+        // v9 (#453). Generated here ahead of the registry release; published
+        // with the v9 prose by #430. Tags are required at 9, so the minimal v9
+        // manifest is v8's plus the version line AND an empty tags array.
+        var v9 = V9Fixtures.Minimal();
+        var v9Tagged = v9 with { Tags = new List<string> { "oncology", "Breast", "new-patient" } };
+        cases.Add(new Case("v9-minimal-is-v8-plus-two-lines", 9,
+            "The migration v9 promises: a valid v8 manifest with specVersion 9 and an empty tags array, nothing else changed.",
+            v9, V6Fixtures.Files(v9)));
+        cases.Add(new Case("v9-tagged", 9,
+            "Three tags in authored order; case is kept as written.",
+            v9Tagged, V6Fixtures.Files(v9Tagged)));
+
+        Invalid("invalid-tags-omitted-at-v9", 9,
+            "A v9 manifest without tags. Every v9 manifest states its tags; an empty array is how it says none.",
+            v9 with { Tags = null });
+
+        Invalid("invalid-tags-before-v9", 8,
+            "A tags array on a v8 manifest, even an empty one. A section the version does not have is an error.",
+            v8 with { Tags = new List<string>() });
+
+        Invalid("invalid-tag-repeated-ignoring-case", 9,
+            "Two tags that differ only in case. A filter treats them as one, so the manifest may not declare two.",
+            v9 with { Tags = new List<string> { "oncology", "Oncology" } });
+
         return cases;
     }
 
