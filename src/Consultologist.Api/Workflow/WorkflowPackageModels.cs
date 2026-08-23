@@ -17,7 +17,15 @@ public sealed record WorkflowPackageManifest(
     Dictionary<string, string>? Data = null,
     string? Result = null,
     List<WorkflowInputSpec>? Inputs = null,
-    List<WorkflowResultSpec>? Results = null);
+    List<WorkflowResultSpec>? Results = null,
+    // v9 (package-format-v9-design.md § 4, #432): what the package is called
+    // and what it is for. Authored content, the safety class of a label.
+    // Typed rather than tolerated so the publisher's re-serialisation keeps
+    // them (#398); trailing optionals omitted when null, so every earlier
+    // manifest writes the bytes it always wrote. The version gate is the
+    // validator's, as inputs' and fields' are.
+    string? Title = null,
+    string? Description = null);
 
 /// <summary>
 /// One declared input slot of a specVersion-7 package: the id nodes bind as
@@ -324,7 +332,10 @@ public sealed record WorkflowPackageResponse(
     int SpecVersion,
     IReadOnlyList<WorkflowPackageBlockResponse>? Blocks = null,
     IReadOnlyList<WorkflowPackageInputResponse>? Inputs = null,
-    IReadOnlyList<WorkflowPackageResultResponse>? Results = null);
+    IReadOnlyList<WorkflowPackageResultResponse>? Results = null,
+    // v9 § 4 (#432): the package's title; null when it has none, and the
+    // client shows the ref instead — the stated fallback.
+    string? Title = null);
 
 /// <summary>
 /// The pin-resolved package's full editable content: the typed manifest (the

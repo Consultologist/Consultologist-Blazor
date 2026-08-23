@@ -280,6 +280,12 @@
                             <div class="setup-context">
                                 <span class="setup-context__line">
                                     Runs
+                                    @if (!string.IsNullOrWhiteSpace(currentPackageTitle))
+                                    {
+                                        @* v9 § 4 (#432): the title when there is one; the
+                                           picker beside it always shows the ref. *@
+                                        <span class="setup-context__title">@currentPackageTitle</span>
+                                    }
                                     <WorkflowPackagePicker @key="currentPackageRef"
                                                            Disabled="@isAiRequestLoading"
                                                            OnPinned="OnPackagePinnedAsync" />
@@ -764,6 +770,7 @@
   // submit. The version a *running* job used is not this; that is on the job's
   // own snapshot (ConsultGenerationJobResponse.WorkflowPackage).
   private string? currentPackageRef;
+  private string? currentPackageTitle;
   private IReadOnlyList<WorkflowManifestReader.NodeView>? workflowNodes;
   private IReadOnlyList<WorkflowManifestReader.CollectionView> workflowCollections = Array.Empty<WorkflowManifestReader.CollectionView>();
 
@@ -1017,6 +1024,7 @@
       // model; customization returns as package forking (the in-app editor).
       var package = await WorkflowService.GetCurrentPackageAsync();
       currentPackageRef = package.Ref;
+      currentPackageTitle = package.Title;
 
       packageBlocks = (package.Blocks ?? Array.Empty<WorkflowPackageBlockResponse>())
         .Select(block => new PackageBlock(block.Id, block.Name))

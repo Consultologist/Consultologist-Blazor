@@ -647,7 +647,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // #373: what the manifest was written against, recorded rather
                 // than resolved later — a fork lives in the private registry
                 // that nothing outside can read, and a pin can be re-pointed.
-                PackageSpecVersion: specVersion));
+                PackageSpecVersion: specVersion,
+                // #432: and its title, as the pinned manifest carries it.
+                PackageTitle: package.Manifest.Title));
 
         var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(
             nameof(ConsultGenerationOrchestrator),

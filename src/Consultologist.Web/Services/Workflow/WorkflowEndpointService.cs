@@ -43,7 +43,9 @@ public record PublicPackageView(
     string? Name,
     string? Latest,
     List<string>? Versions,
-    Dictionary<string, int>? SpecVersions = null);
+    Dictionary<string, int>? SpecVersions = null,
+    // v9 § 4 (#432): per-version titles; absent means untitled.
+    Dictionary<string, string>? Titles = null);
 
 public record PublicCatalogView(Dictionary<string, PublicContractView>? Contracts, string? Latest = null);
 
@@ -126,7 +128,9 @@ public record WorkflowPackageResponse(
     // v7 only; null on v5/v6, whose single input is the consult_draft
     // convention and whose single deliverable needs no grouping.
     IReadOnlyList<WorkflowPackageInputResponse>? Inputs = null,
-    IReadOnlyList<WorkflowPackageResultResponse>? Results = null)
+    IReadOnlyList<WorkflowPackageResultResponse>? Results = null,
+    // v9 § 4 (#432): the title, or null — the ref is the stated fallback.
+    string? Title = null)
 {
     public string Ref => $"{Name}@{Version}";
 }

@@ -51,6 +51,24 @@ public class ProvenanceMirrorTests
     }
 
     [Fact]
+    public void ThePackageTitle_ReachesTheClient()
+    {
+        // #432: the job response's trailing title, through the wire into the
+        // hand-mirrored record.
+        var response = new ApiModels.ConsultGenerationJobResponse(
+            "job-1", "user-1", "Completed", 1, 1, 0,
+            new Dictionary<string, string>(), new Dictionary<string, string>(), true,
+            PackageSpecVersion: 9,
+            PackageTitle: "Breast oncology consults");
+
+        var mirrored = JsonSerializer.Deserialize<WebAI.ConsultGenerationJobResponse>(
+            JsonSerializer.Serialize(response, Web), Web)!;
+
+        Assert.Equal("Breast oncology consults", mirrored.PackageTitle);
+        Assert.Equal(9, mirrored.PackageSpecVersion);
+    }
+
+    [Fact]
     public void TwoDocumentsForOneSlot_ReachTheServerInOrder()
     {
         var request = new WebAI.ConsultGenerationRequest(

@@ -59,6 +59,10 @@
                                            WritesPin="false"
                                            Selected="@editingRef"
                                            OnSelected="OnPackageSelectedAsync" />
+                    @if (LoadedTitle is { Length: > 0 } loadedTitle)
+                    {
+                        <span class="editor-bar__title">@loadedTitle</span>
+                    }
                     @if (WorkflowManifestReader.ReadDerivedFrom(content.Manifest) is { } parentRef)
                     {
                         <span class="muted-text">derived from <code>@parentRef</code></span>
@@ -131,6 +135,12 @@
                     <ul>
                         <li>Publishing creates a new version of <strong>your own</strong> package from this content — not a new version of <code>@content.Name</code>.</li>
                         <li>Any customisation your package already carries is not in this content, and will not be in what you publish.</li>
+                        @if (WorkflowManifestReader.ReadTitle(content.Manifest) != null || WorkflowManifestReader.ReadDescription(content.Manifest) != null)
+                        {
+                            @* #432: a fork across names starts with no title. Said
+                               here, before the publish, not discovered after it. *@
+                            <li>Its title and description are not carried over: your version starts with no title and shows as its ref until you name it in the Package pane after publishing.</li>
+                        }
                         <li>Your consults switch to the published version immediately.</li>
                     </ul>
                 </FluentMessageBar>
@@ -311,6 +321,16 @@
                         <span>+ Data value</span>
                     </button>
                     <span class="editor-nav__group">Workflow</span>
+                    @if (EffectiveSpecVersion >= 9)
+                    {
+                        @* #432: the package's own pane arrives with v9. *@
+                        <button type="button"
+                                class="editor-nav__item @(selectedKey == PackageKey ? "editor-nav__item--selected" : "")"
+                                @onclick="() => Select(PackageKey)">
+                            <span class="editor-nav__dot">@(titleEdit != null || descriptionEdit != null ? "●" : "")</span>
+                            <span>Package</span>
+                        </button>
+                    }
                     @if (IsV7)
                     {
                         @* Declared sections are v7-only: v5/v6 have a frozen
@@ -510,6 +530,55 @@
                                 <p class="muted-text">Adds a generated section to every future consult.</p>
                             </ChildContent>
                         </WorkflowEditorPane>
+                    }
+                    else if (selectedKey == PackageKey)
+                    {
+                        <div class="pane-header">
+                            <div>
+                                <h3 class="panel-title">Package</h3>
+                                <p class="muted-text">
+                                    What this package is called and what it is for. Every place that names a
+                                    package — the picker, the consult setup line, a job's history — shows the
+                                    title when there is one and the ref <code>@content.Ref</code> when there is not.
+                                </p>
+                            </div>
+                        </div>
+                        <label class="package-field">
+                            <span>Title</span>
+                            <input class="node-field__input"
+                                   maxlength="@WorkflowPackageMetadata.MaxTitleLength"
+                                   value="@(EffectiveTitle ?? string.Empty)"
+                                   placeholder="@content.Ref"
+                                   disabled="@(!EditingOwnPackage)"
+                                   @onchange="args => OnTitleChangedAsync(args.Value?.ToString())"
+                                   aria-label="Package title" />
+                            <span class="muted-text">
+                                @(string.IsNullOrEmpty(EffectiveTitle)
+                                    ? $"Shown as {content.Ref} until a title is given."
+                                    : $"{EffectiveTitle.Length}/{WorkflowPackageMetadata.MaxTitleLength} characters")
+                            </span>
+                        </label>
+                        <label class="package-field">
+                            <span>Description</span>
+                            <textarea class="node-field__input"
+                                      rows="4"
+                                      maxlength="@WorkflowPackageMetadata.MaxDescriptionLength"
+                                      value="@(EffectiveDescription ?? string.Empty)"
+                                      disabled="@(!EditingOwnPackage)"
+                                      @onchange="args => OnDescriptionChangedAsync(args.Value?.ToString())"
+                                      aria-label="Package description"></textarea>
+                            <span class="muted-text">
+                                @(string.IsNullOrEmpty(EffectiveDescription)
+                                    ? "No description."
+                                    : $"{EffectiveDescription.Length}/{WorkflowPackageMetadata.MaxDescriptionLength} characters")
+                            </span>
+                        </label>
+                        @if (!EditingOwnPackage)
+                        {
+                            @* The server clears both on a fork across names, so the
+                               fields do not accept what it would strip. *@
+                            <p class="muted-text">A fork starts with no title. Publish your version first, then name it here.</p>
+                        }
                     }
                     else if (selectedKey == InputsKey)
                     {
@@ -1188,6 +1257,8 @@
     private const string DraftKeyPrefix = "workflow-editor-draft:";
     private const string GraphKey = "graph";
     private const string InputsKey = "inputs";
+    // #432: the package's own pane — its title and description (v9 § 4).
+    private const string PackageKey = "package";
     private const string ResultsKey = "results";
     private const string NewKeyPrefix = "new:";
     private const string AddCollectionKey = "add-collection";
@@ -1262,6 +1333,17 @@
     /// forked, forever.
     /// </summary>
     private int? specVersionBump;
+
+    // #432: the title and description as edited — null means unchanged, an
+    // empty string means cleared. Never trimmed: "   " is a value the desk
+    // refuses in the server's words, not a clearing.
+    private string? titleEdit;
+    private string? descriptionEdit;
+
+    private string? LoadedTitle => content == null ? null : WorkflowManifestReader.ReadTitle(content.Manifest);
+    private string? LoadedDescription => content == null ? null : WorkflowManifestReader.ReadDescription(content.Manifest);
+    private string? EffectiveTitle => titleEdit ?? LoadedTitle;
+    private string? EffectiveDescription => descriptionEdit ?? LoadedDescription;
 
     /// <summary>
     /// Mirrors WorkflowPackageValidator.AcceptedSpecVersions' maximum — the
@@ -1421,6 +1503,11 @@
                 () => "inputs", () => inputsEdit != null),
             new("resultsEdit", () => resultsEdit != null ? 1 : 0, () => resultsEdit = null,
                 () => "documents", () => resultsEdit != null),
+            // #432: the package's title and description.
+            new("titleEdit", () => titleEdit != null ? 1 : 0, () => titleEdit = null,
+                () => "title", () => titleEdit != null),
+            new("descriptionEdit", () => descriptionEdit != null ? 1 : 0, () => descriptionEdit = null,
+                () => "description", () => descriptionEdit != null),
 
             new("variableAdds", () => VariableAddCount, variableAdds.Clear,
                 () => $"+{VariableAddCount} var", () => VariableAddCount > 0),
@@ -1470,6 +1557,7 @@
     private bool PaneStillExists(string key) =>
         key is GraphKey or InputsKey or ResultsKey
             or AddCollectionKey or AddScalarKey or AddNodeKey or AddPromptKey
+        || (key == PackageKey && EffectiveSpecVersion >= 9)
         || (key.StartsWith(NewKeyPrefix, StringComparison.Ordinal)
             && EffectiveCollections.Any(c => NewKeyFor(c.Id) == key))
         || (key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)
@@ -2179,6 +2267,106 @@
 
     /// <summary>The pseudo-type of count(x): a whole number, ordered.</summary>
     private const string CountType = "count";
+
+    // ----- #432: the package's title and description --------------------------
+
+    private static void WriteMetadata(System.Text.Json.Nodes.JsonNode root, string camelKey, string? edit)
+    {
+        if (edit is null)
+        {
+            return;
+        }
+
+        var pascalKey = char.ToUpperInvariant(camelKey[0]) + camelKey[1..];
+
+        // A clearing removes the key in whichever casing it was read.
+        if (edit.Length == 0)
+        {
+            root.AsObject().Remove(camelKey);
+            root.AsObject().Remove(pascalKey);
+            return;
+        }
+
+        root[root[pascalKey] is not null ? pascalKey : camelKey] = edit;
+    }
+
+    private async Task OnTitleChangedAsync(string? value)
+    {
+        var title = value ?? string.Empty;
+        titleEdit = string.Equals(title, LoadedTitle ?? string.Empty, StringComparison.Ordinal) ? null : title;
+        await PendingChangedAsync();
+    }
+
+    private async Task OnDescriptionChangedAsync(string? value)
+    {
+        var description = value ?? string.Empty;
+        descriptionEdit = string.Equals(description, LoadedDescription ?? string.Empty, StringComparison.Ordinal) ? null : description;
+        await PendingChangedAsync();
+    }
+
+    /// <summary>
+    /// The desk's mirror of the server's metadata closure (v9 § 4): below 9 a
+    /// title is named as needing the version, the way a typed input is; at 9
+    /// the five sentences are the server's. An empty string is a clearing and
+    /// never an error; a whitespace-only one is a value, and is refused.
+    /// </summary>
+    private IReadOnlyList<string> PackageMetadataErrors()
+    {
+        var errors = new List<string>();
+        var title = EffectiveTitle;
+        var description = EffectiveDescription;
+
+        if (EffectiveSpecVersion < 9)
+        {
+            var upgrade = $"Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.";
+
+            if (!string.IsNullOrEmpty(title))
+            {
+                errors.Add($"The package declares a title, which requires specVersion 9. {upgrade}");
+            }
+
+            if (!string.IsNullOrEmpty(description))
+            {
+                errors.Add($"The package declares a description, which requires specVersion 9. {upgrade}");
+            }
+
+            return errors;
+        }
+
+        if (!string.IsNullOrEmpty(title))
+        {
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                errors.Add("title must not be empty.");
+            }
+            else
+            {
+                if (title.Contains('\n') || title.Contains('\r'))
+                {
+                    errors.Add("title must be a single line.");
+                }
+
+                if (title.Length > WorkflowPackageMetadata.MaxTitleLength)
+                {
+                    errors.Add($"title must be at most {WorkflowPackageMetadata.MaxTitleLength} characters.");
+                }
+            }
+        }
+
+        if (!string.IsNullOrEmpty(description))
+        {
+            if (string.IsNullOrWhiteSpace(description))
+            {
+                errors.Add("description must not be empty.");
+            }
+            else if (description.Length > WorkflowPackageMetadata.MaxDescriptionLength)
+            {
+                errors.Add($"description must be at most {WorkflowPackageMetadata.MaxDescriptionLength} characters.");
+            }
+        }
+
+        return errors;
+    }
 
     private async Task AddInputAsync()
     {
@@ -4185,7 +4373,10 @@
         Dictionary<string, string>? AddedScalars = null,
         // #347: a pending specVersion migration. Trailing optional for the same
         // reason — a draft written before it restores with no bump pending.
-        int? SpecVersionBump = null);
+        int? SpecVersionBump = null,
+        // #432: the title and description as edited; "" is a clearing.
+        string? Title = null,
+        string? Description = null);
 
     // #316: Type and Values ride here or a typed input is silently untyped on
     // reload. Trailing optionals — a draft written before v8 restores with null.
@@ -4222,6 +4413,8 @@
         string? draftResultEdit = null;
         List<DraftAddedPrompt>? draftAddedPrompts = null;
         int? draftSpecVersionBump = null;
+        string? draftTitle = null;
+        string? draftDescription = null;
         List<DraftInput>? draftInputs = null;
         List<DraftResult>? draftResults = null;
         Dictionary<string, string>? draftAddedScalars = null;
@@ -4249,6 +4442,8 @@
                 draftResults = payload?.Results;
                 draftAddedScalars = payload?.AddedScalars;
                 draftSpecVersionBump = payload?.SpecVersionBump;
+                draftTitle = payload?.Title;
+                draftDescription = payload?.Description;
             }
             else
             {
@@ -4440,6 +4635,18 @@
             specVersionBump = bump;
         }
 
+        // #432: restored whatever the version — a title on a package below 9
+        // is refused by name at the desk, the #429 posture, rather than dropped.
+        if (draftTitle is { } restoredTitle && restoredTitle != (LoadedTitle ?? string.Empty))
+        {
+            titleEdit = restoredTitle;
+        }
+
+        if (draftDescription is { } restoredDescription && restoredDescription != (LoadedDescription ?? string.Empty))
+        {
+            descriptionEdit = restoredDescription;
+        }
+
         if (IsV7 && draftInputs is { Count: > 0 })
         {
             inputsEdit = draftInputs
@@ -4522,7 +4729,7 @@
         }
 
         var payload = new DraftPayload(
-            11,
+            12,
             edits,
             addedItems.Select(a => new DraftAdded(a.Collection, a.Id, a.Name, a.Content)).ToList(),
             removedFiles.ToList(),
@@ -4546,7 +4753,9 @@
                 i.Fields?.Select(f => new DraftField(f.Id, f.Label, f.Required, f.Type, f.Values?.ToList())).ToList())).ToList(),
             resultsEdit?.Select(r => new DraftResult(r.Id, r.Node, r.Label, r.When)).ToList(),
             new Dictionary<string, string>(addedScalars, StringComparer.Ordinal),
-            specVersionBump);
+            specVersionBump,
+            titleEdit,
+            descriptionEdit);
         await JS.InvokeVoidAsync("localStorage.setItem", DraftKey, JsonSerializer.Serialize(payload));
     }
 
@@ -4735,6 +4944,7 @@
             }
 
             unbound.AddRange(DeclaredSectionErrors());
+            unbound.AddRange(PackageMetadataErrors());
 
             if (unbound.Count > 0)
             {
@@ -4800,8 +5010,9 @@
                 }
             }
 
+            var composed = ComposeManifest();
             var outcome = await WorkflowService.PublishPackageAsync(
-                new WorkflowPackagePublishRequest(content.Ref, ComposeManifest(), files));
+                new WorkflowPackagePublishRequest(content.Ref, composed, files));
 
             if (!outcome.Succeeded)
             {
@@ -4822,10 +5033,14 @@
             var warnings = outcome.Response.Warnings ?? new List<string>();
             // #429: likewise read before LoadAsync clears the bump.
             var notYetRunnable = NotYetRunnable;
+            // #432: the title the publish carried — none on a fork, which the
+            // server clears; quoted so the success names what was just named.
+            var publishedTitle = sourceWasForeign ? null : WorkflowManifestReader.ReadTitle(composed);
+            var named = string.IsNullOrEmpty(publishedTitle) ? string.Empty : $" (\"{publishedTitle}\")";
             await LoadAsync();
             publishSuccess = (sourceWasForeign
-                ? $"Published {publishedRef} from {sourceRef} and switched your consults to it."
-                : $"Published {publishedRef} and switched your consults to it.")
+                ? $"Published {publishedRef}{named} from {sourceRef} and switched your consults to it."
+                : $"Published {publishedRef}{named} and switched your consults to it.")
                 + (notYetRunnable ? " It is not yet runnable." : string.Empty);
             publishWarnings = warnings;
         }
@@ -4944,6 +5159,10 @@
                 root["SpecVersion"] = bumped;
             }
         }
+
+        // #432: the title and description, written as edited.
+        WriteMetadata(root, "title", titleEdit);
+        WriteMetadata(root, "description", descriptionEdit);
 
         // New folders (#154): one data-map entry per pending collection; the
         // directory value's trailing slash is what marks it as a collection.

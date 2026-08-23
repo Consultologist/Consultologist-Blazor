@@ -440,6 +440,22 @@ public class WorkflowPackageDescribeTests
     }
 
     [Fact]
+    public void ATitledPackage_CarriesItsTitle_AndAnUntitledOneNull()
+    {
+        // #432: the pinned-package response carries the title; the client
+        // shows the ref when it is null.
+        var titled = WorkflowPackages.Describe(Package(
+            V7Fixtures.Minimal() with { SpecVersion = 9, Title = "Breast oncology consults" },
+            new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+        var untitled = WorkflowPackages.Describe(Package(
+            V7Fixtures.Minimal(),
+            new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+
+        Assert.Equal("Breast oncology consults", titled.Title);
+        Assert.Null(untitled.Title);
+    }
+
+    [Fact]
     public void V7MinimalPackage_DeclaresItsInputAndTheSugarResult()
     {
         var response = WorkflowPackages.Describe(Package(

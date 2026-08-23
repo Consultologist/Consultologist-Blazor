@@ -782,6 +782,36 @@ public class ConsultGenerationNodeEntityTests
     }
 
     [Fact]
+    public void Initialize_RecordsThePackageTitleWriteOnce_AndSurfacesItOnTheResponse()
+    {
+        // #432: what the package was called when the job ran. A later rename
+        // cannot rewrite what an old consult ran, so the first write holds.
+        var (entity, state) = CreateEntity();
+        var items = new[] { Item("hpi", "History of Present Illness") };
+
+        entity.Initialize(new ConsultGenerationJobInitialize(
+            "job-1", "user-1", items, PackageTitle: "Breast oncology consults")).GetAwaiter().GetResult();
+        entity.Initialize(new ConsultGenerationJobInitialize(
+            "job-1", "user-1", items, PackageTitle: "Renamed")).GetAwaiter().GetResult();
+
+        Assert.Equal("Breast oncology consults", state().PackageTitle);
+        Assert.Equal("Breast oncology consults", state().ToResponse().PackageTitle);
+    }
+
+    [Fact]
+    public void Initialize_WithNoPackageTitle_LeavesItUnknown()
+    {
+        var (entity, state) = CreateEntity();
+
+        entity.Initialize(new ConsultGenerationJobInitialize(
+            "job-1", "user-1", new[] { Item("hpi", "History of Present Illness") }))
+            .GetAwaiter().GetResult();
+
+        Assert.Null(state().PackageTitle);
+        Assert.Null(state().ToResponse().PackageTitle);
+    }
+
+    [Fact]
     public void PackageSpecVersion_IsNotTheRecordsOwnStorageVersion()
     {
         // The confusion #373 exists to end: two unrelated ladders that collide

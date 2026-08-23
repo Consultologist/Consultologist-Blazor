@@ -142,6 +142,7 @@ public static class WorkflowPackageValidator
         }
         else
         {
+            ValidateMetadata(manifest, errors);
             ValidateDerivedFrom(manifest, errors);
             ValidateNodes(manifest, files, catalogSchemas, errors);
             WarnUnreachableByEmail(manifest, warnings);
@@ -149,6 +150,63 @@ public static class WorkflowPackageValidator
         }
 
         return new ValidationResult(errors, warnings);
+    }
+
+    /// <summary>
+    /// v9 § 4 (#432): a title and a description, both optional, both arriving
+    /// at 9 — below it each is refused by name, as items and fields are. A
+    /// whitespace-only value is empty and says only that; a non-empty title may
+    /// be told both that it spans lines and that it is too long. Lengths are
+    /// UTF-16 code units (WorkflowPackageMetadata).
+    /// </summary>
+    private static void ValidateMetadata(WorkflowPackageManifest manifest, List<string> errors)
+    {
+        if (manifest.SpecVersion < 9)
+        {
+            if (manifest.Title != null)
+            {
+                errors.Add("title requires specVersion 9.");
+            }
+
+            if (manifest.Description != null)
+            {
+                errors.Add("description requires specVersion 9.");
+            }
+
+            return;
+        }
+
+        if (manifest.Title != null)
+        {
+            if (string.IsNullOrWhiteSpace(manifest.Title))
+            {
+                errors.Add("title must not be empty.");
+            }
+            else
+            {
+                if (manifest.Title.Contains('\r') || manifest.Title.Contains('\n'))
+                {
+                    errors.Add("title must be a single line.");
+                }
+
+                if (manifest.Title.Length > WorkflowPackageMetadata.MaxTitleLength)
+                {
+                    errors.Add($"title must be at most {WorkflowPackageMetadata.MaxTitleLength} characters.");
+                }
+            }
+        }
+
+        if (manifest.Description != null)
+        {
+            if (string.IsNullOrWhiteSpace(manifest.Description))
+            {
+                errors.Add("description must not be empty.");
+            }
+            else if (manifest.Description.Length > WorkflowPackageMetadata.MaxDescriptionLength)
+            {
+                errors.Add($"description must be at most {WorkflowPackageMetadata.MaxDescriptionLength} characters.");
+            }
+        }
     }
 
     private static void ValidateDerivedFrom(WorkflowPackageManifest manifest, List<string> errors)

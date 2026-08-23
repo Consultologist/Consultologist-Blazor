@@ -319,6 +319,29 @@ description: Referral triage and consult notes for the breast clinic.
   Filing — folders, *your* organisation of *your* packages — is #371 steps
   2 and 3, deliberately **not** here.
 
+*Amended 2026-08-23 (#432), what landing it settled:*
+- **A fork across names clears the description too.** Both are the parent's
+  words about the parent; an inherited description on a diverging package is
+  the same misleading default. Decided in the publisher on the validated
+  source name — never the client's manifest name, which it ignores — so a
+  republish of the same package keeps both. The editor says so in the
+  foreign-package notice before the publish, and its Package pane is
+  disabled on a foreign package: it does not accept what the server strips.
+- **Lengths count UTF-16 code units** (`string.Length`), the count the
+  validator enforces; the schema's `maxLength` counts code points and is
+  looser only for astral characters. The engine is the authority.
+- **The title is stamped on the job record** (`packageTitle`) at start,
+  beside `packageSpecVersion` — History cannot read a manifest, and this is
+  what "as it was at the pinned version" means in practice. A display
+  convenience beside the ref; the ref remains the provenance.
+- **The picker reads a titled version as `{title} — {version}`**; the group
+  label keeps the name, so the ref is always in view. An unsupported
+  version says so whatever it is called.
+- **The editor's Package pane arrives at 9**, the ref stated as the
+  fallback where the title would go; the desk speaks the server's five
+  sentences at 9 and names the version below it; the publish success quotes
+  the title it carried.
+
 ## 5. Fanning over caller data (normative)
 
 ### Declaration

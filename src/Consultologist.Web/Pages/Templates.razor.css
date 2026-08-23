@@ -391,3 +391,23 @@
 	background: var(--consultologist-surface-muted, var(--consultologist-surface));
 	font-size: 0.8rem;
 }
+
+/* #432: the package pane and the loaded title in the bar. */
+.package-field {
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+	margin-top: 0.75rem;
+	max-width: 40rem;
+	font-size: 0.9rem;
+	font-weight: 600;
+}
+
+.package-field .muted-text {
+	font-weight: 400;
+	font-size: 0.8rem;
+}
+
+.editor-bar__title {
+	font-weight: 600;
+}

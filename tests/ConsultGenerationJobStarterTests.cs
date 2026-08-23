@@ -890,9 +890,12 @@ public class ConsultGenerationJobStarterTests
     /// declaration, whose consult_draft, seen_on and encounter_kind are all
     /// required and whose seen_on is a date.
     /// </summary>
-    private void WithTypedPackage()
+    private void WithTypedPackage(string? title = null)
     {
-        var manifest = V8Fixtures.Typed();
+        // #432: a title rides on a v9 manifest; the typed v8 shape otherwise.
+        var manifest = title is null
+            ? V8Fixtures.Typed()
+            : V8Fixtures.Typed() with { SpecVersion = 9, Title = title };
         var errors = new List<string>();
 
         _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
@@ -988,6 +991,30 @@ public class ConsultGenerationJobStarterTests
 
         Assert.NotNull(initialize);
         Assert.Equal(8, initialize!.PackageSpecVersion);
+    }
+
+    [Theory]
+    [InlineData("Breast oncology consults")]
+    [InlineData(null)]
+    public async Task TheStarter_RecordsThePackagesTitleOnTheJob(string? title)
+    {
+        // #432: captured at start, like the spec version — History cannot see
+        // the manifest, and a later rename must not rewrite what this ran.
+        WithTypedPackage(title);
+
+        ConsultGenerationJobInitialize? initialize = null;
+        await _entities.SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(),
+            nameof(ConsultGenerationJobEntity.Initialize),
+            Arg.Do<object>(payload => initialize = payload as ConsultGenerationJobInitialize));
+
+        await StartWithAsync(
+            ("consult_draft", Referral),
+            ("seen_on", "2026-08-10"),
+            ("encounter_kind", "follow_up"));
+
+        Assert.NotNull(initialize);
+        Assert.Equal(title, initialize!.PackageTitle);
     }
 
     [Fact]

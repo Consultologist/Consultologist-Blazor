@@ -131,7 +131,10 @@ public record ConsultGenerationJobResponse(
     // #373: the package format this job ran under. Null on every job recorded
     // before it was captured — an absent value is the record saying it does not
     // know, which the client renders as no chip rather than a guess.
-    int? PackageSpecVersion = null);
+    int? PackageSpecVersion = null,
+    // #432: the package's title at the pinned version, beside the ref. Null on
+    // an untitled package and on every job before it; the ref is the fallback.
+    string? PackageTitle = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and

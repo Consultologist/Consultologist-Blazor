@@ -162,10 +162,16 @@
         {
             var spec = package.SpecVersions?.GetValueOrDefault(version);
             var unsupported = spec is int value && value < MinSupportedSpecVersion;
+            // v9 § 4 (#432): a titled version reads as its title with the
+            // version beside it; the group label keeps the name, so the ref is
+            // always in view. Untitled versions read as they did.
+            var title = package.Titles?.GetValueOrDefault(version);
 
             options.Add(new(
                 $"{package.Name}@{version}",
-                unsupported ? $"{version} — unsupported (spec {spec})" : version,
+                unsupported ? $"{version} — unsupported (spec {spec})"
+                    : !string.IsNullOrWhiteSpace(title) ? $"{title} — {version}"
+                    : version,
                 unsupported));
         }
 
