@@ -286,6 +286,13 @@
                                                     <dt class="provenance-list__nested">@skipped.Label</dt>
                                                     <dd>not produced — it @skipped.Reason</dd>
                                                 }
+                                                @* #453: the package's tags as they were at the pinned
+                                                   version — stamped on the record, shown for finding it. *@
+                                                @if (detail.PackageTags is { Count: > 0 } packageTags)
+                                                {
+                                                    <dt>Tags</dt>
+                                                    <dd class="provenance-tags">@string.Join(" · ", packageTags)</dd>
+                                                }
                                                 @if (LineageFor(detail.WorkflowPackage) is { Count: > 1 } lineage)
                                                 {
                                                     <dt>Lineage</dt>
