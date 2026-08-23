@@ -104,7 +104,7 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
         var result = ValidateSent(sent);
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
         Assert.Equal(
-            "Published acct-1234567890ab@v2026.08.2 (\"Breast oncology consults\") and switched your consults to it. It is not yet runnable.",
+            "Published acct-1234567890ab@v2026.08.2 (\"Breast oncology consults\") and switched your consults to it.",
             PublishSuccess(page));
     }
 
