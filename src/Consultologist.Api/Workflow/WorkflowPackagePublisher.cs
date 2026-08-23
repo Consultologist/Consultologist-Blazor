@@ -194,12 +194,31 @@ public sealed class WorkflowPackagePublisher
 
         validation.Warnings.AddRange(RelabelledWithoutContentChange(parent, stamped, files));
 
+        // #433: the publication stamp — what each declared schema resolved to,
+        // under this catalog — recorded once, here, where the match is first
+        // made. Every declared schema, not only the referenced ones the
+        // validator closed; a declared schema matching nothing is refused at
+        // this desk rather than published to strand at load.
+        var stampErrors = new List<string>();
+        var stamp = WorkflowPackageStamp.Compute(stamped, files, _catalog, stampErrors);
+
+        if (stampErrors.Count > 0)
+        {
+            return new WorkflowPackagePublishResult(null, stampErrors);
+        }
+
+        var stampJson = stamp.ToJson();
+
         for (var attempt = 1; ; attempt++)
         {
             foreach (var (path, content) in files)
             {
                 await _writer.UploadFileAsync(name, stamped.Version, path, content, cancellationToken);
             }
+
+            // The stamp before the manifest, so no version is ever reachable
+            // without it; per attempt, since a conflict moves the version.
+            await _writer.UploadFileAsync(name, stamped.Version, WorkflowPackageStamp.FileName, stampJson, cancellationToken);
 
             try
             {
@@ -245,9 +264,10 @@ public sealed class WorkflowPackagePublisher
             cancellationToken);
 
         _logger.LogInformation(
-            "Published account workflow package and flipped the pin. Ref={Ref}, DerivedFrom={DerivedFrom}",
+            "Published account workflow package and flipped the pin. Ref={Ref}, DerivedFrom={DerivedFrom}, Stamp={Stamp}",
             concreteRef,
-            stamped.DerivedFrom);
+            stamped.DerivedFrom,
+            stamp.CatalogRef);
 
         return new WorkflowPackagePublishResult(
             new WorkflowPackagePublishResponse(name, stamped.Version, concreteRef, validation.Warnings),

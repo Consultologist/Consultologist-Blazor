@@ -511,6 +511,130 @@ public class WorkflowPackagePublisherTests
         Assert.Equal("Referral triage and consult notes for the breast clinic.", stored.Description);
     }
 
+    // ----- #433: the publication stamp -------------------------------------
+
+    private static string StampBlob(string version) => $"{AccountName}/{version}/{WorkflowPackageStamp.FileName}";
+
+    [Fact]
+    public async Task Publish_WritesTheStamp_WithTheCatalogRefAndEveryResolvedContract()
+    {
+        var (publisher, writer, _) = CreatePublisher();
+        var manifest = V5Fixtures.Manifest();
+        var files = V5Fixtures.Files(manifest);
+
+        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: files), CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        var expected = WorkflowPackageStamp.Compute(manifest, files, Catalog, new List<string>());
+        Assert.Equal(expected.ToJson(), writer.Blobs[StampBlob("v2026.07.1")]);
+        Assert.Equal(Catalog.ResolvedRef, WorkflowPackageStamp.Read(writer.Blobs[StampBlob("v2026.07.1")], "x@v1").CatalogRef);
+        Assert.Equal("concept-list", expected.Contracts["concept-list"]);
+
+        // Exactly the request's files, the manifest and the stamp — nothing else.
+        Assert.Equal(
+            files.Keys.Append("manifest.json").Append(WorkflowPackageStamp.FileName).Select(path => $"{AccountName}/v2026.07.1/{path}").Order(StringComparer.Ordinal),
+            writer.Blobs.Keys.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task Publish_NoSchemas_StampsAnEmptyContractsMap()
+    {
+        var (publisher, writer, _) = CreatePublisher();
+        // Every fixture declares concept-list; a package with no schemas is one
+        // whose prompt nodes are all text.
+        var typed = V9Fixtures.Minimal();
+        var manifest = typed with
+        {
+            Schemas = null,
+            Nodes = typed.Nodes!.Select(node => node with
+            {
+                Output = null,
+                // A concept renderer needs a concept-list output; plain text does not.
+                Bindings = node.Bindings?.ToDictionary(
+                    pair => pair.Key,
+                    pair => pair.Value with { As = null },
+                    StringComparer.Ordinal)
+            }).ToList()
+        };
+        var files = V5Fixtures.Files(manifest).Where(pair => !pair.Key.StartsWith("schemas/", StringComparison.Ordinal))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+
+        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: files), CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        var stamp = WorkflowPackageStamp.Read(writer.Blobs[StampBlob("v2026.07.1")], "x@v1");
+        Assert.Equal(Catalog.ResolvedRef, stamp.CatalogRef);
+        Assert.Empty(stamp.Contracts);
+    }
+
+    [Fact]
+    public async Task Publish_UploadsTheStampBeforeTheManifest()
+    {
+        // The manifest is the commit marker: a version is never reachable
+        // without its stamp.
+        var (publisher, writer, _) = CreatePublisher();
+
+        await publisher.PublishAsync(OwnerId, Request(), CancellationToken.None);
+
+        var stampAt = writer.Writes.IndexOf(StampBlob("v2026.07.1"));
+        var manifestAt = writer.Writes.IndexOf($"{AccountName}/v2026.07.1/manifest.json");
+        Assert.True(stampAt >= 0 && stampAt < manifestAt, string.Join(", ", writer.Writes));
+        Assert.All(writer.Writes.Take(stampAt), path => Assert.DoesNotContain("manifest.json", path));
+    }
+
+    [Fact]
+    public async Task Publish_VersionConflict_StampsTheFinalVersion()
+    {
+        var writer = new FakeRegistryWriter();
+        await writer.CreateManifestAsync(AccountName, "v2026.07.1", "{}", CancellationToken.None);
+        var (publisher, _, _) = CreatePublisher(writer: writer);
+
+        var result = await publisher.PublishAsync(OwnerId, Request(), CancellationToken.None);
+
+        Assert.Equal("v2026.07.2", result.Response!.Version);
+        Assert.Contains(StampBlob("v2026.07.2"), writer.Blobs.Keys);
+        // The conflicted candidate's stamp is orphaned with its files — the
+        // same unreachable orphan the loop's comment already describes.
+        Assert.Equal(writer.Blobs[StampBlob("v2026.07.1")], writer.Blobs[StampBlob("v2026.07.2")]);
+    }
+
+    [Fact]
+    public async Task Publish_RejectsPublishJsonInTheRequest_ByPath()
+    {
+        // The stamp is the publisher's to write. A client-supplied one is a
+        // root-level file, which the path rule already refuses.
+        var (publisher, writer, _) = CreatePublisher();
+        var manifest = V5Fixtures.Manifest();
+        var files = V5Fixtures.Files(manifest);
+        files[WorkflowPackageStamp.FileName] = "{}";
+
+        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: files), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(
+            "File path 'publish.json' is not allowed: expected prompts/<file>, schemas/<file>, data/<collection>/<file>, or data/<file>.",
+            result.Errors);
+        Assert.Empty(writer.Blobs);
+    }
+
+    [Fact]
+    public async Task Publish_ADeclaredSchemaMatchingNothing_IsRefusedAtTheDesk_AndWritesNothing()
+    {
+        // Unreferenced, so the validator's closure never saw it; it used to
+        // publish and strand at load.
+        var (publisher, writer, _) = CreatePublisher();
+        var manifest = V5Fixtures.Manifest();
+        manifest = manifest with { Schemas = new Dictionary<string, string>(manifest.Schemas!) { ["extra"] = "schemas/extra.json" } };
+        var files = V5Fixtures.Files(manifest);
+        files["schemas/extra.json"] = TestOutputContracts.ConceptListSchema.TrimEnd().TrimEnd('}') + ", \"x-drift\": true }";
+
+        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: files), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains($"Schema 'extra' matches no contract in {Catalog.ResolvedRef}.", result.Errors);
+        Assert.Empty(writer.Blobs);
+    }
+
     [Fact]
     public async Task Publish_VersionConflict_RereadsBumpsAndRetries()
     {
@@ -657,12 +781,16 @@ internal sealed class FakeRegistryWriter : IWorkflowPackageRegistryWriter
     public Dictionary<string, string> LatestPointers { get; } = new(StringComparer.Ordinal);
     private readonly HashSet<string> _manifests = new(StringComparer.Ordinal);
 
+    /// <summary>#433: every blob path in the order it was written — the stamp must precede the manifest.</summary>
+    public List<string> Writes { get; } = new();
+
     public Task<string?> ReadLatestVersionAsync(string name, CancellationToken cancellationToken) =>
         Task.FromResult(LatestPointers.TryGetValue(name, out var version) ? version : null);
 
     public Task UploadFileAsync(string name, string version, string path, string content, CancellationToken cancellationToken)
     {
         Blobs[$"{name}/{version}/{path}"] = content;
+        Writes.Add($"{name}/{version}/{path}");
         return Task.CompletedTask;
     }
 
@@ -678,6 +806,7 @@ internal sealed class FakeRegistryWriter : IWorkflowPackageRegistryWriter
         }
 
         Blobs[key] = manifestJson;
+        Writes.Add(key);
         return Task.CompletedTask;
     }
 
