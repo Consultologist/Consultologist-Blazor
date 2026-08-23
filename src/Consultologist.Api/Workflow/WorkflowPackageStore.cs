@@ -65,6 +65,22 @@ public sealed class WorkflowPackageContentException : Exception
         string packageRef, string schemaId, string catalogRef)
         => new($"Workflow package {packageRef} schema '{schemaId}' does not canonically match any contract in "
             + $"{catalogRef}. The package is unchanged and immutable; the catalog moved.");
+
+    /// <summary>
+    /// #433: the stamped stranding sentence. A stamped package is stranded only
+    /// when a contract it was published under is gone — it names both catalogs,
+    /// so the reader sees the whole distance the catalog moved.
+    /// </summary>
+    public static WorkflowPackageContentException StampedContractUnknown(
+        string packageRef, string schemaId, string contractId, string stampedCatalogRef, string catalogRef)
+        => new($"Workflow package {packageRef} schema '{schemaId}' was published as contract '{contractId}' under "
+            + $"{stampedCatalogRef}, which {catalogRef} no longer carries. The package is unchanged and immutable; the catalog moved.");
+
+    /// <summary>#433: a stamp that does not cover a declared schema — written at publish, so a publisher defect.</summary>
+    public static WorkflowPackageContentException StampIncomplete(
+        string packageRef, string schemaId, string stampedCatalogRef)
+        => new($"Workflow package {packageRef} schema '{schemaId}' has no contract in its publication stamp "
+            + $"({stampedCatalogRef}). The stamp was written at publish and is incomplete.");
 }
 
 public sealed class WorkflowPackageStore : IWorkflowPackageStore

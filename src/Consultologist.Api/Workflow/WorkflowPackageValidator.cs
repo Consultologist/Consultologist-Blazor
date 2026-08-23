@@ -77,10 +77,17 @@ public static class WorkflowPackageValidator
     /// package schema must canonically match one of these (the closure that welds
     /// package contracts to attested agents, output-contract-catalog.md).
     /// </param>
+    /// <param name="stampedContracts">
+    /// #433: schema id → contract id as the publication stamp recorded it. A
+    /// schema the stamp covers was matched once, at publish, under the catalog
+    /// the stamp names; it is not re-matched here. Null — every unstamped
+    /// version, and every caller but the store — keeps the closure as it was.
+    /// </param>
     public static ValidationResult Validate(
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, string> files,
-        IReadOnlyDictionary<string, string> catalogSchemas)
+        IReadOnlyDictionary<string, string> catalogSchemas,
+        IReadOnlyDictionary<string, string>? stampedContracts = null)
     {
         var errors = new List<string>();
         var warnings = new List<string>();
@@ -144,7 +151,7 @@ public static class WorkflowPackageValidator
         {
             ValidateMetadata(manifest, errors);
             ValidateDerivedFrom(manifest, errors);
-            ValidateNodes(manifest, files, catalogSchemas, errors);
+            ValidateNodes(manifest, files, catalogSchemas, stampedContracts, errors);
             WarnUnreachableByEmail(manifest, warnings);
             WarnFannedOptionalInputs(manifest, warnings);
         }
@@ -244,6 +251,7 @@ public static class WorkflowPackageValidator
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, string> files,
         IReadOnlyDictionary<string, string> catalogSchemas,
+        IReadOnlyDictionary<string, string>? stampedContracts,
         List<string> errors)
     {
         var v6OrLater = manifest.SpecVersion >= 6;
@@ -481,7 +489,7 @@ public static class WorkflowPackageValidator
                 }
             }
 
-            ValidateNodeOutput(node, manifest, files, catalogSchemas, errors);
+            ValidateNodeOutput(node, manifest, files, catalogSchemas, stampedContracts, errors);
         }
 
         foreach (var orphan in promptsById.Keys.Where(id => promptReferenceCounts.GetValueOrDefault(id) == 0))
@@ -1339,6 +1347,7 @@ public static class WorkflowPackageValidator
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, string> files,
         IReadOnlyDictionary<string, string> catalogSchemas,
+        IReadOnlyDictionary<string, string>? stampedContracts,
         List<string> errors)
     {
         if (node.Output is null)
@@ -1373,10 +1382,18 @@ public static class WorkflowPackageValidator
         // canonically match some catalog output contract (modulo title/description) —
         // schemas are welded to attested agents, and the catalog names them
         // (output-contract-catalog.md). This subsumes the structured-outputs-subset check.
-        var canonicalSchema = CanonicalizeSchema(schema);
-        if (!catalogSchemas.Values.Any(catalogSchema => CanonicalizeSchema(JsonNode.Parse(catalogSchema)) == canonicalSchema))
+        //
+        // #433: a schema the publication stamp covers was matched once, at
+        // publish, under the catalog the stamp names. Re-matching it here against
+        // whatever catalog is running is what stranded immutable packages; the
+        // store checks the stamped contract still exists instead.
+        if (stampedContracts is null || !stampedContracts.ContainsKey(node.Output.Schema))
         {
-            errors.Add($"Schema '{node.Output.Schema}' must canonically match a catalog output contract (modulo title/description).");
+            var canonicalSchema = CanonicalizeSchema(schema);
+            if (!catalogSchemas.Values.Any(catalogSchema => CanonicalizeSchema(JsonNode.Parse(catalogSchema)) == canonicalSchema))
+            {
+                errors.Add($"Schema '{node.Output.Schema}' must canonically match a catalog output contract (modulo title/description).");
+            }
         }
 
         if (node.Output.FailIfEmpty != null && string.IsNullOrWhiteSpace(node.Output.FailIfEmpty))
