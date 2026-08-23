@@ -374,8 +374,12 @@ public sealed class EmailIntakeProcessor
                 ConsultGenerationJobStartError.NoApplicableDeliverable => EmailIntakeOutcomes.RejectedNoDeliverable,
                 _ => EmailIntakeOutcomes.StartFailed
             };
+            // #434: a refusal for NoApplicableDeliverable leaves a job row
+            // born Failed, and the claim is where an operator starts from —
+            // so it carries the id. Still a rejection: Rejected folder, the
+            // same reply. JobId is null for every other kind.
             await _claims.UpdateAsync(
-                new EmailIntakeClaim(claimKey, message.Id, message.FromAddress, now, match.AppUserId, Outcome: outcome),
+                new EmailIntakeClaim(claimKey, message.Id, message.FromAddress, now, match.AppUserId, start.JobId, outcome),
                 cancellationToken);
             await DisposeMessageAsync(mailbox, message.Id, RejectedFolder, cancellationToken);
             await SendStartFailureReplyAsync(
@@ -454,7 +458,11 @@ public sealed class EmailIntakeProcessor
                 existing.ClaimedAtUtc);
         }
 
-        var folder = existing.JobId != null ? ProcessedFolder : RejectedFolder;
+        // The outcome, not the job id, says which folder: since #434 a
+        // rejected claim can carry the id of the row that says nothing ran.
+        var folder = string.Equals(existing.Outcome, EmailIntakeOutcomes.Accepted, StringComparison.Ordinal)
+            ? ProcessedFolder
+            : RejectedFolder;
         await DisposeMessageAsync(mailbox, messageRef.Id, folder, cancellationToken);
         return MessageOutcome.Repaired;
     }
