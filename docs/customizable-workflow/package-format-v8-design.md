@@ -340,6 +340,21 @@ nothing. This follows the same up-front-notification posture as the
 deferred-state work: a held or inapplicable state gets a name and a message
 rather than silence.
 
+*Amended 2026-08-23 (#434).* Still refused, still nothing spent — but a job
+record now exists for it, created already **Failed** in one entity write with
+no orchestration behind it. The refusal sentence above is stored on the record
+as `startFailure` (its own field, so "nothing ran" is never inferred from the
+absence of blocks), the deliverables that did not apply are listed with what
+each wanted, and the provenance a run would have carried — package ref and
+title, catalog, the input hash by the same definition, document origins — is
+stamped. `totalBlockCount` is a stated zero. The web door's sentence and the
+email door's reply are unchanged; each now also points at the row (the HTTP
+body's `jobId`, the intake claim's `jobId`). This is #337's alternative,
+adopted before any external sender needed it: the operator has a row to point
+at. The other start refusals — a malformed ref, a missing required input, a
+rate limit — stay refusals with no row; the line is a *well-formed, authorized*
+request that met a package whose conditions produced nothing.
+
 ### Outcome and record
 
 - **Completed means every deliverable that fired produced.**
