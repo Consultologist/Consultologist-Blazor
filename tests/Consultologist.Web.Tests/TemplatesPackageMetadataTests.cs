@@ -1,4 +1,5 @@
 using Bunit;
+using System.Text.Json;
 using Consultologist.Web.Pages;
 using Consultologist.Web.Services.Workflow;
 using NSubstitute;
@@ -208,9 +209,183 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
     public void TheForeignPackageNotice_SaysTheTitleIsNotCarried_OnlyWhenThereIsOne()
     {
         var titled = RenderEditor(EditorFixtures.WithTitle(EditorFixtures.NotMine(), "Breast oncology consults"));
-        Assert.Contains(ForeignNoticeBullets(titled), bullet => bullet.StartsWith("Its title and description are not carried over", StringComparison.Ordinal));
+        Assert.Contains(ForeignNoticeBullets(titled), bullet => bullet.StartsWith("Its title, description and tags are not carried over", StringComparison.Ordinal));
+
+        // #453: tags alone are enough to warrant the bullet; an empty set is not.
+        var tagged = RenderEditor(EditorFixtures.WithTags(EditorFixtures.NotMine() with { SpecVersion = 9 }, "oncology"));
+        Assert.Contains(ForeignNoticeBullets(tagged), bullet => bullet.Contains("not carried over", StringComparison.Ordinal));
+        var untagged = RenderEditor(EditorFixtures.WithTags(EditorFixtures.NotMine() with { SpecVersion = 9 }));
+        Assert.DoesNotContain(ForeignNoticeBullets(untagged), bullet => bullet.Contains("not carried over", StringComparison.Ordinal));
 
         var plain = RenderEditor(EditorFixtures.NotMine());
         Assert.DoesNotContain(ForeignNoticeBullets(plain), bullet => bullet.Contains("not carried over", StringComparison.Ordinal));
+    }
+
+    // ----- #453: tags ---------------------------------------------------------
+
+    private static IReadOnlyList<string> TagTexts(IRenderedComponent<Templates> page) =>
+        page.FindAll(".package-tag__text").Select(tag => tag.TextContent.Trim()).ToList();
+
+    private static void AddTag(IRenderedComponent<Templates> page, string tag)
+    {
+        page.Find("input[aria-label='New tag']").Input(tag);
+        page.FindAll("button").First(button => button.TextContent.Trim() == "Add tag").Click();
+    }
+
+    private static string TagsHint(IRenderedComponent<Templates> page) =>
+        page.Find("input[aria-label='New tag']").ParentElement!.NextElementSibling!.TextContent.Trim();
+
+    [Fact]
+    public void AddingTags_StagesOnePendingChange_AndPublishesThemInOrder()
+    {
+        WithPublishAccepted();
+        var page = RenderEditor(EditorFixtures.V9Structured());
+        Navigate(page, "Package");
+        Assert.Contains("No tags.", page.Markup, StringComparison.Ordinal);
+
+        AddTag(page, "oncology");
+        AddTag(page, "  Breast  ");
+        AddTag(page, "new-patient");
+
+        Assert.Equal(new[] { "oncology", "Breast", "new-patient" }, TagTexts(page));
+        Assert.Contains("●", page.FindAll("button.editor-nav__item").First(button => button.TextContent.Contains("Package")).TextContent);
+        Assert.Equal(string.Empty, page.Find("input[aria-label='New tag']").GetAttribute("value"));
+
+        Publish(page);
+
+        var manifest = SentManifest(sent!);
+        Assert.Equal(new[] { "oncology", "Breast", "new-patient" }, manifest.GetProperty("tags").EnumerateArray().Select(tag => tag.GetString()));
+        var result = ValidateSent(sent);
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void RemovingAndReordering_AreTheAuthorsToDo_AndBackToLoadedIsNoChange()
+    {
+        WithPublishAccepted();
+        var page = RenderEditor(EditorFixtures.WithTags(EditorFixtures.V9Structured(), "oncology", "breast", "new-patient"));
+        Navigate(page, "Package");
+        Assert.Equal(new[] { "oncology", "breast", "new-patient" }, TagTexts(page));
+        Assert.True(page.Find("button[aria-label='Move tag oncology earlier']").HasAttribute("disabled"));
+        Assert.True(page.Find("button[aria-label='Move tag new-patient later']").HasAttribute("disabled"));
+
+        page.Find("button[aria-label='Move tag new-patient earlier']").Click();
+        Assert.Equal(new[] { "oncology", "new-patient", "breast" }, TagTexts(page));
+        Assert.Contains("●", page.FindAll("button.editor-nav__item").First(button => button.TextContent.Contains("Package")).TextContent);
+
+        // Back to the loaded order: nothing pending, as with a retyped title.
+        page.Find("button[aria-label='Move tag new-patient later']").Click();
+        Assert.Equal(new[] { "oncology", "breast", "new-patient" }, TagTexts(page));
+        Assert.DoesNotContain("●", page.FindAll("button.editor-nav__item").First(button => button.TextContent.Contains("Package")).TextContent);
+
+        page.Find("button[aria-label='Remove tag breast']").Click();
+        Publish(page);
+
+        Assert.Equal(new[] { "oncology", "new-patient" }, SentManifest(sent!).GetProperty("tags").EnumerateArray().Select(tag => tag.GetString()));
+    }
+
+    [Fact]
+    public void RemovingTheLastTag_PublishesAnEmptyArray_NotAnAbsence()
+    {
+        // The empty set is a value v9 requires; the key stays.
+        WithPublishAccepted();
+        var page = RenderEditor(EditorFixtures.WithTags(EditorFixtures.V9Structured(), "oncology"));
+        Navigate(page, "Package");
+
+        page.Find("button[aria-label='Remove tag oncology']").Click();
+        Assert.Contains("No tags.", page.Markup, StringComparison.Ordinal);
+        Publish(page);
+
+        var tags = SentManifest(sent!).GetProperty("tags");
+        Assert.Equal(JsonValueKind.Array, tags.ValueKind);
+        Assert.Equal(0, tags.GetArrayLength());
+        Assert.True(ValidateSent(sent).IsValid);
+    }
+
+    [Theory]
+    [InlineData("   ", "A tag must not be empty.")]
+    [InlineData("ONCOLOGY", "That tag is already declared (tags are distinct ignoring case).")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "A tag must be at most 32 characters.")]
+    public void ATagTheServerWouldRefuse_IsRefusedAtTheAddButton(string tag, string expected)
+    {
+        var page = RenderEditor(EditorFixtures.WithTags(EditorFixtures.V9Structured(), "oncology"));
+        Navigate(page, "Package");
+
+        AddTag(page, tag);
+
+        Assert.Equal(new[] { "oncology" }, TagTexts(page));
+        Assert.Equal(expected, TagsHint(page));
+        Assert.DoesNotContain("●", page.FindAll("button.editor-nav__item").First(button => button.TextContent.Contains("Package")).TextContent);
+    }
+
+    [Fact]
+    public void TheTwentyFirstTag_IsRefused()
+    {
+        var twenty = Enumerable.Range(1, 20).Select(i => $"tag-{i}").ToArray();
+        var page = RenderEditor(EditorFixtures.WithTags(EditorFixtures.V9Structured(), twenty));
+        Navigate(page, "Package");
+
+        Assert.True(page.Find("input[aria-label='New tag']").HasAttribute("disabled"));
+        Assert.Equal(20, TagTexts(page).Count);
+    }
+
+    [Fact]
+    public void Tags_RoundTripThroughTheDraft()
+    {
+        var package = EditorFixtures.V9Structured();
+        WithDraft(package, """{ "Version": 13, "Tags": ["oncology", "breast"] }""");
+
+        var page = RenderEditor(package);
+        Navigate(page, "Package");
+
+        Assert.Equal(new[] { "oncology", "breast" }, TagTexts(page));
+        Assert.Contains("●", page.FindAll("button.editor-nav__item").First(button => button.TextContent.Contains("Package")).TextContent);
+    }
+
+    [Fact]
+    public void ADraftWithABadTag_IsRefusedAtTheDesk_InTheServersWords()
+    {
+        // The Add button never lets these through; a draft can carry them.
+        WithPublishAccepted();
+        var package = EditorFixtures.V9Structured();
+        WithDraft(package, """{ "Version": 13, "Tags": ["oncology", " Oncology "] }""");
+        var page = RenderEditor(package);
+
+        Publish(page);
+
+        Assert.Null(sent);
+        Assert.Contains("tags[1] must not begin or end with whitespace.", Refusals(page));
+        Assert.Contains("tags[1] repeats tags[0]; tags are distinct ignoring case.", Refusals(page));
+    }
+
+    [Fact]
+    public void TagsOnAV8Package_AreRefusedAtTheDesk_UntilUpgraded()
+    {
+        // A v8 package has no pane; a draft's tags restored onto one are named
+        // as needing the version (the #429 posture), and upgrading lets them
+        // through — with the upgrade's own empty array replaced by the edit.
+        WithPublishAccepted();
+        var package = EditorFixtures.V8();
+        WithDraft(package, """{ "Version": 13, "Tags": ["too-early"] }""");
+        var page = RenderEditor(package);
+
+        Publish(page);
+        Assert.Null(sent);
+        Assert.Contains(Refusals(page), refusal => refusal.StartsWith("The package declares tags, which requires specVersion 9.", StringComparison.Ordinal));
+
+        UpgradeTo(page, 9);
+        Publish(page);
+        Assert.Equal(new[] { "too-early" }, SentManifest(sent!).GetProperty("tags").EnumerateArray().Select(tag => tag.GetString()));
+        Assert.True(ValidateSent(sent).IsValid, string.Join(" | ", ValidateSent(sent).Errors));
+    }
+
+    [Fact]
+    public void OnAForeignPackage_TheTagControlsAreDisabled()
+    {
+        var page = RenderEditor(EditorFixtures.WithTags(EditorFixtures.NotMine() with { SpecVersion = 9 }, "theirs"));
+        Navigate(page, "Package");
+
+        Assert.True(page.Find("input[aria-label='New tag']").HasAttribute("disabled"));
+        Assert.True(page.Find("button[aria-label='Remove tag theirs']").HasAttribute("disabled"));
     }
 }

@@ -135,11 +135,14 @@
                     <ul>
                         <li>Publishing creates a new version of <strong>your own</strong> package from this content — not a new version of <code>@content.Name</code>.</li>
                         <li>Any customisation your package already carries is not in this content, and will not be in what you publish.</li>
-                        @if (WorkflowManifestReader.ReadTitle(content.Manifest) != null || WorkflowManifestReader.ReadDescription(content.Manifest) != null)
+                        @if (WorkflowManifestReader.ReadTitle(content.Manifest) != null
+                            || WorkflowManifestReader.ReadDescription(content.Manifest) != null
+                            || WorkflowManifestReader.ReadTags(content.Manifest) is { Count: > 0 })
                         {
-                            @* #432: a fork across names starts with no title. Said
-                               here, before the publish, not discovered after it. *@
-                            <li>Its title and description are not carried over: your version starts with no title and shows as its ref until you name it in the Package pane after publishing.</li>
+                            @* #432/#453: a fork across names starts with no title and
+                               no tags. Said here, before the publish, not discovered
+                               after it. *@
+                            <li>Its title, description and tags are not carried over: your version starts with no title and no tags, and shows as its ref until you name it in the Package pane after publishing.</li>
                         }
                         <li>Your consults switch to the published version immediately.</li>
                     </ul>
@@ -327,7 +330,7 @@
                         <button type="button"
                                 class="editor-nav__item @(selectedKey == PackageKey ? "editor-nav__item--selected" : "")"
                                 @onclick="() => Select(PackageKey)">
-                            <span class="editor-nav__dot">@(titleEdit != null || descriptionEdit != null ? "●" : "")</span>
+                            <span class="editor-nav__dot">@(titleEdit != null || descriptionEdit != null || tagsEdit != null ? "●" : "")</span>
                             <span>Package</span>
                         </button>
                     }
@@ -573,11 +576,60 @@
                                     : $"{EffectiveDescription.Length}/{WorkflowPackageMetadata.MaxDescriptionLength} characters")
                             </span>
                         </label>
+                        @* #453: the labels the package is found by. Required at 9
+                           — the empty set is a stated answer, shown as such — and
+                           never suggested. Order is the author's: the buttons move
+                           a tag, nothing sorts. *@
+                        <div class="package-field">
+                            <span>Tags</span>
+                            @if (EffectiveTags.Count == 0)
+                            {
+                                <span class="muted-text">No tags.</span>
+                            }
+                            else
+                            {
+                                <ul class="package-tags" aria-label="Package tags">
+                                    @for (var i = 0; i < EffectiveTags.Count; i++)
+                                    {
+                                        var index = i;
+                                        var tag = EffectiveTags[index];
+                                        <li class="package-tag">
+                                            <span class="package-tag__text">@tag</span>
+                                            <button type="button" class="package-tag__button" disabled="@(!EditingOwnPackage || index == 0)"
+                                                    title="Move earlier" aria-label="Move tag @tag earlier"
+                                                    @onclick="() => MoveTagAsync(index, -1)">◀</button>
+                                            <button type="button" class="package-tag__button" disabled="@(!EditingOwnPackage || index == EffectiveTags.Count - 1)"
+                                                    title="Move later" aria-label="Move tag @tag later"
+                                                    @onclick="() => MoveTagAsync(index, 1)">▶</button>
+                                            <button type="button" class="package-tag__button" disabled="@(!EditingOwnPackage)"
+                                                    title="Remove" aria-label="Remove tag @tag"
+                                                    @onclick="() => RemoveTagAsync(index)">✕</button>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                            <div class="package-tags__add">
+                                <input class="node-field__input"
+                                       maxlength="@WorkflowPackageMetadata.MaxTagLength"
+                                       value="@newTag"
+                                       placeholder="Add a tag"
+                                       disabled="@(!EditingOwnPackage || EffectiveTags.Count >= WorkflowPackageMetadata.MaxTags)"
+                                       @oninput="args => newTag = args.Value?.ToString() ?? string.Empty"
+                                       @onkeydown="OnNewTagKeyDownAsync"
+                                       aria-label="New tag" />
+                                <button type="button" class="node-field__button"
+                                        disabled="@(!EditingOwnPackage || string.IsNullOrWhiteSpace(newTag) || EffectiveTags.Count >= WorkflowPackageMetadata.MaxTags)"
+                                        @onclick="AddTagAsync">Add tag</button>
+                            </div>
+                            <span class="muted-text">
+                                @(newTagProblem ?? $"{EffectiveTags.Count}/{WorkflowPackageMetadata.MaxTags} tags; each at most {WorkflowPackageMetadata.MaxTagLength} characters, distinct ignoring case.")
+                            </span>
+                        </div>
                         @if (!EditingOwnPackage)
                         {
-                            @* The server clears both on a fork across names, so the
+                            @* The server clears all three on a fork across names, so the
                                fields do not accept what it would strip. *@
-                            <p class="muted-text">A fork starts with no title. Publish your version first, then name it here.</p>
+                            <p class="muted-text">A fork starts with no title and no tags. Publish your version first, then name it here.</p>
                         }
                     }
                     else if (selectedKey == InputsKey)
@@ -1339,11 +1391,18 @@
     // refuses in the server's words, not a clearing.
     private string? titleEdit;
     private string? descriptionEdit;
+    // #453: the tags as edited; null means unchanged. Never null once edited —
+    // an empty list is the stated empty set, which v9 requires and accepts.
+    private List<string>? tagsEdit;
+    private string newTag = string.Empty;
+    private string? newTagProblem;
 
     private string? LoadedTitle => content == null ? null : WorkflowManifestReader.ReadTitle(content.Manifest);
     private string? LoadedDescription => content == null ? null : WorkflowManifestReader.ReadDescription(content.Manifest);
+    private IReadOnlyList<string> LoadedTags => content == null ? Array.Empty<string>() : WorkflowManifestReader.ReadTags(content.Manifest) ?? Array.Empty<string>();
     private string? EffectiveTitle => titleEdit ?? LoadedTitle;
     private string? EffectiveDescription => descriptionEdit ?? LoadedDescription;
+    private IReadOnlyList<string> EffectiveTags => tagsEdit ?? LoadedTags;
 
     /// <summary>
     /// Mirrors WorkflowPackageValidator.AcceptedSpecVersions' maximum — the
@@ -1508,6 +1567,9 @@
                 () => "title", () => titleEdit != null),
             new("descriptionEdit", () => descriptionEdit != null ? 1 : 0, () => descriptionEdit = null,
                 () => "description", () => descriptionEdit != null),
+            // #453: the tags, as a set — one pending change however many moved.
+            new("tagsEdit", () => tagsEdit != null ? 1 : 0, () => tagsEdit = null,
+                () => "tags", () => tagsEdit != null),
 
             new("variableAdds", () => VariableAddCount, variableAdds.Clear,
                 () => $"+{VariableAddCount} var", () => VariableAddCount > 0),
@@ -2304,6 +2366,96 @@
         await PendingChangedAsync();
     }
 
+    // ----- #453: tags ---------------------------------------------------------
+
+    /// <summary>
+    /// The pane's own check on a tag about to be added, in the server's words
+    /// where it has them. Trimmed first: the input box is where whitespace
+    /// arrives, and trimming here is what keeps "trimmed" a rule the desk
+    /// never has to report. Returns null when the tag may be added.
+    /// </summary>
+    private string? ProblemWith(string candidate)
+    {
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            return "A tag must not be empty.";
+        }
+
+        if (candidate.Contains('\n') || candidate.Contains('\r'))
+        {
+            return "A tag must be a single line.";
+        }
+
+        if (candidate.Length > WorkflowPackageMetadata.MaxTagLength)
+        {
+            return $"A tag must be at most {WorkflowPackageMetadata.MaxTagLength} characters.";
+        }
+
+        if (EffectiveTags.Count >= WorkflowPackageMetadata.MaxTags)
+        {
+            return $"At most {WorkflowPackageMetadata.MaxTags} tags.";
+        }
+
+        if (EffectiveTags.Any(existing => string.Equals(existing, candidate, StringComparison.OrdinalIgnoreCase)))
+        {
+            return "That tag is already declared (tags are distinct ignoring case).";
+        }
+
+        return null;
+    }
+
+    private async Task AddTagAsync()
+    {
+        var candidate = newTag.Trim();
+        newTagProblem = ProblemWith(candidate);
+
+        if (newTagProblem != null)
+        {
+            return;
+        }
+
+        var tags = EffectiveTags.ToList();
+        tags.Add(candidate);
+        newTag = string.Empty;
+        await SetTagsAsync(tags);
+    }
+
+    private async Task OnNewTagKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+        {
+            await AddTagAsync();
+        }
+    }
+
+    private async Task RemoveTagAsync(int index)
+    {
+        var tags = EffectiveTags.ToList();
+        tags.RemoveAt(index);
+        newTagProblem = null;
+        await SetTagsAsync(tags);
+    }
+
+    private async Task MoveTagAsync(int index, int by)
+    {
+        var target = index + by;
+        if (target < 0 || target >= EffectiveTags.Count)
+        {
+            return;
+        }
+
+        var tags = EffectiveTags.ToList();
+        (tags[index], tags[target]) = (tags[target], tags[index]);
+        await SetTagsAsync(tags);
+    }
+
+    /// <summary>Back to the loaded set is no pending change, as with the title.</summary>
+    private async Task SetTagsAsync(List<string> tags)
+    {
+        tagsEdit = tags.SequenceEqual(LoadedTags, StringComparer.Ordinal) ? null : tags;
+        await PendingChangedAsync();
+    }
+
     /// <summary>
     /// The desk's mirror of the server's metadata closure (v9 § 4): below 9 a
     /// title is named as needing the version, the way a typed input is; at 9
@@ -2328,6 +2480,13 @@
             if (!string.IsNullOrEmpty(description))
             {
                 errors.Add($"The package declares a description, which requires specVersion 9. {upgrade}");
+            }
+
+            // #453: only an EDIT is named — a v8 package has no tags to
+            // declare, and a v9 draft restored onto one is the #429 posture.
+            if (tagsEdit is { Count: > 0 })
+            {
+                errors.Add($"The package declares tags, which requires specVersion 9. {upgrade}");
             }
 
             return errors;
@@ -2362,6 +2521,48 @@
             else if (description.Length > WorkflowPackageMetadata.MaxDescriptionLength)
             {
                 errors.Add($"description must be at most {WorkflowPackageMetadata.MaxDescriptionLength} characters.");
+            }
+        }
+
+        // #453: the server's sentences, by position. The pane refuses each of
+        // these at the Add button, so this catches a restored draft, not a
+        // keystroke.
+        var tags = EffectiveTags;
+        if (tags.Count > WorkflowPackageMetadata.MaxTags)
+        {
+            errors.Add($"tags must declare at most {WorkflowPackageMetadata.MaxTags} tags.");
+        }
+
+        for (var i = 0; i < tags.Count; i++)
+        {
+            if (string.IsNullOrWhiteSpace(tags[i]))
+            {
+                errors.Add($"tags[{i}] must not be empty.");
+                continue;
+            }
+
+            if (tags[i].Contains('\n') || tags[i].Contains('\r'))
+            {
+                errors.Add($"tags[{i}] must be a single line.");
+            }
+
+            if (!string.Equals(tags[i], tags[i].Trim(), StringComparison.Ordinal))
+            {
+                errors.Add($"tags[{i}] must not begin or end with whitespace.");
+            }
+
+            if (tags[i].Length > WorkflowPackageMetadata.MaxTagLength)
+            {
+                errors.Add($"tags[{i}] must be at most {WorkflowPackageMetadata.MaxTagLength} characters.");
+            }
+
+            for (var j = 0; j < i; j++)
+            {
+                if (!string.IsNullOrWhiteSpace(tags[j]) && string.Equals(tags[j].Trim(), tags[i].Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    errors.Add($"tags[{i}] repeats tags[{j}]; tags are distinct ignoring case.");
+                    break;
+                }
             }
         }
 
@@ -4376,7 +4577,9 @@
         int? SpecVersionBump = null,
         // #432: the title and description as edited; "" is a clearing.
         string? Title = null,
-        string? Description = null);
+        string? Description = null,
+        // #453: the tags as edited; an empty list is the stated empty set.
+        List<string>? Tags = null);
 
     // #316: Type and Values ride here or a typed input is silently untyped on
     // reload. Trailing optionals — a draft written before v8 restores with null.
@@ -4415,6 +4618,7 @@
         int? draftSpecVersionBump = null;
         string? draftTitle = null;
         string? draftDescription = null;
+        List<string>? draftTags = null;
         List<DraftInput>? draftInputs = null;
         List<DraftResult>? draftResults = null;
         Dictionary<string, string>? draftAddedScalars = null;
@@ -4444,6 +4648,7 @@
                 draftSpecVersionBump = payload?.SpecVersionBump;
                 draftTitle = payload?.Title;
                 draftDescription = payload?.Description;
+                draftTags = payload?.Tags;
             }
             else
             {
@@ -4647,6 +4852,12 @@
             descriptionEdit = restoredDescription;
         }
 
+        // #453: same posture — restored whatever the version.
+        if (draftTags is { } restoredTags && !restoredTags.SequenceEqual(LoadedTags, StringComparer.Ordinal))
+        {
+            tagsEdit = restoredTags;
+        }
+
         if (IsV7 && draftInputs is { Count: > 0 })
         {
             inputsEdit = draftInputs
@@ -4729,7 +4940,7 @@
         }
 
         var payload = new DraftPayload(
-            12,
+            13,
             edits,
             addedItems.Select(a => new DraftAdded(a.Collection, a.Id, a.Name, a.Content)).ToList(),
             removedFiles.ToList(),
@@ -4755,7 +4966,8 @@
             new Dictionary<string, string>(addedScalars, StringComparer.Ordinal),
             specVersionBump,
             titleEdit,
-            descriptionEdit);
+            descriptionEdit,
+            tagsEdit);
         await JS.InvokeVoidAsync("localStorage.setItem", DraftKey, JsonSerializer.Serialize(payload));
     }
 
@@ -5158,11 +5370,28 @@
             {
                 root["SpecVersion"] = bumped;
             }
+
+            // #453: v9 requires tags, so the minimal v9 migration is TWO
+            // edits — the version line and an empty tags array. Written only
+            // when the manifest has no tags key in either casing: a package
+            // that already states them keeps them.
+            if (bumped >= 9 && root["tags"] is null && root["Tags"] is null)
+            {
+                root["tags"] = new System.Text.Json.Nodes.JsonArray();
+            }
         }
 
         // #432: the title and description, written as edited.
         WriteMetadata(root, "title", titleEdit);
         WriteMetadata(root, "description", descriptionEdit);
+
+        // #453: the tags, written as edited — always as an array, never removed:
+        // the empty set is a value. Casing follows the key as read.
+        if (tagsEdit is { } editedTags)
+        {
+            var tagsKey = root["Tags"] is not null ? "Tags" : "tags";
+            root[tagsKey] = new System.Text.Json.Nodes.JsonArray(editedTags.Select(tag => (System.Text.Json.Nodes.JsonNode?)tag).ToArray());
+        }
 
         // New folders (#154): one data-map entry per pending collection; the
         // directory value's trailing slash is what marks it as a collection.

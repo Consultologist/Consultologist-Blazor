@@ -445,7 +445,7 @@ public class WorkflowPackageDescribeTests
         // #432: the pinned-package response carries the title; the client
         // shows the ref when it is null.
         var titled = WorkflowPackages.Describe(Package(
-            V7Fixtures.Minimal() with { SpecVersion = 9, Title = "Breast oncology consults" },
+            V7Fixtures.Minimal() with { SpecVersion = 9, Title = "Breast oncology consults", Tags = new List<string>() },
             new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
         var untitled = WorkflowPackages.Describe(Package(
             V7Fixtures.Minimal(),

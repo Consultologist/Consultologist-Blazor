@@ -110,6 +110,17 @@ public class ManifestReaderTests
     }
 
     [Fact]
+    public void ReadTags_ReadsTheArray_EmptyIsStated_AbsentIsNull()
+    {
+        // #453: the pane and the foreign notice read this; [] and absence are
+        // different answers.
+        Assert.Equal(new[] { "oncology", "Breast" }, WorkflowManifestReader.ReadTags(Parse("""{ "specVersion": 9, "tags": ["oncology", "Breast"] }""")));
+        Assert.Empty(WorkflowManifestReader.ReadTags(Parse("""{ "specVersion": 9, "tags": [] }"""))!);
+        Assert.Null(WorkflowManifestReader.ReadTags(Parse("""{ "specVersion": 8 }""")));
+        Assert.Equal(new[] { "oncology" }, WorkflowManifestReader.ReadTags(Parse("""{ "SpecVersion": 9, "Tags": ["oncology"] }""")));
+    }
+
+    [Fact]
     public void LegacyManifest_ReadsNeitherSection()
     {
         var manifest = Parse("""{ "result": "node:assemble-note" }""");

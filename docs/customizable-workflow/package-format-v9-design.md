@@ -342,6 +342,57 @@ description: Referral triage and consult notes for the breast clinic.
   sentences at 9 and names the version below it; the publish success quotes
   the title it carried.
 
+*Amended 2026-08-23 (#453): **tags**.* A third field beside the two above,
+and the one v9 field that is **required**:
+
+```json
+"tags": ["oncology", "Breast", "new-patient"]
+```
+
+- **Required at 9; an empty array is how a package says it has none.** A v9
+  manifest without `tags` is refused (`tags is required in specVersion 9
+  (an empty array when the package has none).`); a pre-v9 manifest with it is
+  refused (`tags requires specVersion 9.`), like a title. This is deliberately
+  *not* the other sections' convention (absent = none, empty refused): every
+  v9 manifest states its tags, so a reader never wonders whether absence was
+  a choice, and `null` is never a spelling of "none" on a v9 manifest.
+  **The minimal v9 migration is therefore two edits** — the `specVersion`
+  line and `"tags": []` — and the editor's *Upgrade to specVersion 9* writes
+  both when the manifest has no tags key.
+- **Each tag** is a label held to a label's rules: trimmed, non-empty, a
+  single line, at most `MaxTagLength` (32 UTF-16 code units); at most
+  `MaxTags` (20) per package; **distinct ignoring case**, since a filter
+  treats `Oncology` and `oncology` as one; **order as authored, never
+  sorted**. The validator's sentences name the position (`tags[2] must not
+  be empty.`), never the text; every rule reports, so a tag that is both too
+  long and a repeat is told both. Authored content, the safety class of a
+  label.
+- **A fork across names clears tags to `[]`** — not to null, since the
+  stamped manifest must state them — on the same rule as title and
+  description; a republish keeps them; a pre-v9 source has none to clear.
+  The foreign-package notice says tags are not carried over.
+- **Listings carry per-version `tags`** beside `titles`, read the same light
+  way (one read per manifest, cached); **the picker filters by them** — one
+  chip per declared tag across every listed version, distinct ignoring case,
+  first-seen casing; pressing one narrows every group to the versions that
+  carry it, keeps the selection listed, and keeps a group's `@latest` while
+  any of its versions matches.
+- **The editor's Package pane edits them** in the author's order — add
+  (trimmed; Enter or the button), remove, move earlier or later — refusing
+  at the Add button what the server would refuse, in its words; one pending
+  change for the set; the draft carries them; the empty set is written as
+  `[]`, never removed.
+- **Stamped on the job record** (`packageTags`) at start beside
+  `packageTitle`, for the same reason; History shows a **Tags** row on the
+  provenance list, in authored order, and no row for a package that declared
+  none. Not evidence of what ran — the ref is — but the labels the record is
+  found by.
+- **The registry release (#430)** publishes the schema (`tags` required at 9,
+  `maxItems`, single-line string items), the prose, and the conformance cases
+  this amendment's code already generates (`v9-minimal-is-v8-plus-two-lines`,
+  `v9-tagged`, `invalid-tags-omitted-at-v9`, `invalid-tags-before-v9`,
+  `invalid-tag-repeated-ignoring-case`); `general@vNext` carries the section.
+
 ## 5. Fanning over caller data (normative)
 
 ### Declaration

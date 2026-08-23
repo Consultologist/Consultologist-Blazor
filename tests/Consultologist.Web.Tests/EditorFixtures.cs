@@ -174,6 +174,7 @@ public static class EditorFixtures
           "name": "acct-1234567890ab",
           "version": "v2026.08.1",
           "specVersion": 9,
+          "tags": [],
           "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
           "inputs": [
             { "id": "consult_draft", "label": "Consult draft", "required": true },
@@ -210,6 +211,7 @@ public static class EditorFixtures
           "name": "acct-1234567890ab",
           "version": "v2026.08.1",
           "specVersion": 9,
+          "tags": [],
           "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
           "inputs": [
             { "id": "consult_draft", "label": "Consult draft", "required": true },
@@ -241,6 +243,15 @@ public static class EditorFixtures
           ]
         }
         """, 9);
+
+    /// <summary>#453: the same package carrying these tags.</summary>
+    public static WorkflowPackageContentResponse WithTags(WorkflowPackageContentResponse package, params string[] tags)
+    {
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["tags"] = new System.Text.Json.Nodes.JsonArray(tags.Select(tag => (System.Text.Json.Nodes.JsonNode?)tag).ToArray());
+
+        return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
 
     /// <summary>#432: the same package carrying a title (and, optionally, a description).</summary>
     public static WorkflowPackageContentResponse WithTitle(WorkflowPackageContentResponse package, string title, string? description = null)

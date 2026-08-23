@@ -101,6 +101,18 @@ public class SpecVersionMirrorTests
     }
 
     [Fact]
+    public void TheClientsTagLimits_AreTheServers()
+    {
+        // #453: the pane's per-tag maxlength and its count ceiling.
+        Assert.Equal(
+            WorkflowPackageMetadata.MaxTagLength,
+            Consultologist.Web.Services.Workflow.WorkflowPackageMetadata.MaxTagLength);
+        Assert.Equal(
+            WorkflowPackageMetadata.MaxTags,
+            Consultologist.Web.Services.Workflow.WorkflowPackageMetadata.MaxTags);
+    }
+
+    [Fact]
     public void TheClientsItemFields_AreTheServers()
     {
         // What a binding may read from an input fan's item (v9 § 5).

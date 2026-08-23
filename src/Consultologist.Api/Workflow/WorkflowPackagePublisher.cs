@@ -178,7 +178,10 @@ public sealed class WorkflowPackagePublisher
         // source, never the client's manifest name, which is ignored above.
         if (!string.Equals(sourceRef.Name, name, StringComparison.Ordinal))
         {
-            stamped = stamped with { Title = null, Description = null };
+            // #453: tags likewise — cleared to the empty set, not to null,
+            // because a v9 manifest must state them and the stamped manifest
+            // is validated next. A pre-v9 source has none to clear.
+            stamped = stamped with { Title = null, Description = null, Tags = stamped.Tags is null ? null : new List<string>() };
         }
 
         var catalogSchemas = _catalog.Entries.Values

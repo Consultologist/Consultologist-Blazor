@@ -24,7 +24,8 @@ public class HistoryDetailTests : ClientRenderTestContext
         int? packageSpecVersion = null,
         int? schemaVersion = null,
         string? workflowPackage = null,
-        string? packageTitle = null)
+        string? packageTitle = null,
+        IReadOnlyList<string>? packageTags = null)
     {
         // Terminal status only: a non-terminal row would start the page's real
         // 5-second polling loop.
@@ -57,7 +58,29 @@ public class HistoryDetailTests : ClientRenderTestContext
             SchemaVersion: schemaVersion,
             PackageSpecVersion: packageSpecVersion,
             WorkflowPackage: workflowPackage,
-            PackageTitle: packageTitle));
+            PackageTitle: packageTitle,
+            PackageTags: packageTags));
+    }
+
+    [Fact]
+    public void ATaggedPackage_ShowsItsTagsOnTheProvenanceList()
+    {
+        // #453: a Tags row beside Lineage and Agents, in authored order; no
+        // row for a package that declared none, and none before v9.
+        WithJob(3, workflowPackage: "general@v2026.08.1", packageTitle: "Breast oncology consults", packageTags: new[] { "oncology", "Breast" });
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var list = page.Find(".provenance-list");
+        Assert.Contains("Tags", list.QuerySelectorAll("dt").Select(term => term.TextContent.Trim()));
+        Assert.Equal("oncology · Breast", page.Find(".provenance-tags").TextContent.Trim());
+
+        WithJob(3, workflowPackage: "general@v2026.08.1", packageTags: Array.Empty<string>());
+        var none = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+        Assert.DoesNotContain("Tags", none.Find(".provenance-list").QuerySelectorAll("dt").Select(term => term.TextContent.Trim()));
+
+        WithJob(3, workflowPackage: "general@v2026.08.1");
+        var before = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+        Assert.DoesNotContain("Tags", before.Find(".provenance-list").QuerySelectorAll("dt").Select(term => term.TextContent.Trim()));
     }
 
     [Fact]

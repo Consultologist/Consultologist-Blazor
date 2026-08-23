@@ -266,6 +266,9 @@ public static class WorkflowManifestReader
 
     public static string? ReadDescription(JsonElement manifest) => ReadString(manifest, "description");
 
+    /// <summary>#453: the package's tags in authored order; null when the section is absent (pre-v9), empty when it states none.</summary>
+    public static IReadOnlyList<string>? ReadTags(JsonElement manifest) => ReadStringArray(manifest, "tags");
+
     /// <summary>The raw result reference ("node:x"), for the deliverable selector.</summary>
     public static string? ReadResultRef(JsonElement manifest) => ReadString(manifest, "result");
 

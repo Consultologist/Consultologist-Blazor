@@ -8,6 +8,23 @@
 @inject IAccountEndpointService AccountService
 
 <span class="package-picker">
+    @* #453: one chip per tag declared by any listed version; pressing one
+       narrows every group to the versions that carry it. The selected ref
+       always stays listed, so the control never shows something it is not. *@
+    @if (allTags.Count > 0)
+    {
+        <span class="package-picker__tags" role="group" aria-label="Filter packages by tag">
+            @foreach (var tag in allTags)
+            {
+                var isActive = string.Equals(tag, activeTag, StringComparison.OrdinalIgnoreCase);
+                <button type="button"
+                        class="package-picker__tag @(isActive ? "package-picker__tag--active" : "")"
+                        aria-pressed="@(isActive ? "true" : "false")"
+                        disabled="@Disabled"
+                        @onclick="() => ToggleTag(tag)">@tag</button>
+            }
+        </span>
+    }
     <select value="@selectedRef"
             @onchange="OnSelectionChangedAsync"
             disabled="@(Disabled || isPinning || groups.Count == 0)"
@@ -16,7 +33,7 @@
         {
             <option value="@selectedRef" selected="true">@selectedRef</option>
         }
-        @foreach (var group in groups)
+        @foreach (var group in VisibleGroups)
         {
             <optgroup label="@group.Label">
                 @foreach (var option in group.Options)
@@ -68,10 +85,14 @@
     /// <summary>The ref just chosen. Empty for the pin-writing caller, which re-reads the server.</summary>
     [Parameter] public EventCallback<string> OnSelected { get; set; }
 
-    private sealed record PickerOption(string Value, string Label, bool Disabled = false);
+    // #453: Tags is the version's declared set (null for @latest and for
+    // versions below 9, which have none to declare).
+    private sealed record PickerOption(string Value, string Label, bool Disabled = false, IReadOnlyList<string>? Tags = null);
     private sealed record PickerGroup(string Label, List<PickerOption> Options);
 
     private List<PickerGroup> groups = new();
+    private List<string> allTags = new();
+    private string? activeTag;
     private string selectedRef = DefaultRef;
     private bool isPinning;
     private string? pinError;
@@ -148,7 +169,63 @@
         }
 
         groups = built;
+        // Distinct ignoring case, first-seen casing, sorted the same way.
+        allTags = built
+            .SelectMany(group => group.Options)
+            .SelectMany(option => option.Tags ?? Array.Empty<string>())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
+
+    /// <summary>
+    /// #453: the groups as the active tag leaves them. A version is listed when
+    /// it carries the tag, or is the selection (the control must keep showing
+    /// what is pinned); a group's @latest stays while any of its versions
+    /// does, since that is what it follows; an emptied group is dropped.
+    /// </summary>
+    private IEnumerable<PickerGroup> VisibleGroups
+    {
+        get
+        {
+            if (activeTag is null)
+            {
+                return groups;
+            }
+
+            var visible = new List<PickerGroup>();
+
+            foreach (var group in groups)
+            {
+                var matching = group.Options
+                    .Where(option => option.Value == selectedRef || Carries(option, activeTag))
+                    .ToList();
+                var anyVersionMatches = group.Options.Any(option => Carries(option, activeTag));
+
+                if (anyVersionMatches)
+                {
+                    var latest = group.Options.FirstOrDefault(option => option.Value.EndsWith("@latest", StringComparison.Ordinal));
+                    if (latest != null && !matching.Contains(latest))
+                    {
+                        matching.Insert(0, latest);
+                    }
+                }
+
+                if (matching.Count > 0)
+                {
+                    visible.Add(new PickerGroup(group.Label, matching));
+                }
+            }
+
+            return visible;
+        }
+    }
+
+    private static bool Carries(PickerOption option, string tag) =>
+        option.Tags?.Any(declared => string.Equals(declared, tag, StringComparison.OrdinalIgnoreCase)) == true;
+
+    private void ToggleTag(string tag) =>
+        activeTag = string.Equals(tag, activeTag, StringComparison.OrdinalIgnoreCase) ? null : tag;
 
     private static PickerGroup BuildGroup(string label, PublicPackageView package)
     {
@@ -172,7 +249,9 @@
                 unsupported ? $"{version} — unsupported (spec {spec})"
                     : !string.IsNullOrWhiteSpace(title) ? $"{title} — {version}"
                     : version,
-                unsupported));
+                unsupported,
+                // #453: what the version declares, for the filter.
+                package.Tags?.GetValueOrDefault(version)));
         }
 
         return new PickerGroup(label, options);

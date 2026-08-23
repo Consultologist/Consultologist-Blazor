@@ -20,7 +20,10 @@ public sealed record PublicPackageSummary(
     IReadOnlyDictionary<string, int>? SpecVersions = null,
     // v9 § 4 (#432): per-version titles, for the versions that declare one.
     // The picker shows the ref beside it; absence means untitled.
-    IReadOnlyDictionary<string, string>? Titles = null);
+    IReadOnlyDictionary<string, string>? Titles = null,
+    // #453: per-version tags, for the versions that declare the section (v9
+    // and up; an empty list is a stated none). The picker filters by them.
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? Tags = null);
 
 public sealed record PublicCatalogSummary(
     string? Latest,
@@ -47,8 +50,8 @@ public sealed class PublicRegistryReader
     // (singleton service, so this outlives requests).
     private readonly ConcurrentDictionary<string, ManifestListing> _listingCache = new(StringComparer.Ordinal);
 
-    /// <summary>What the selector reads off one manifest: its spec version and, from v9, its title.</summary>
-    private sealed record ManifestListing(int? SpecVersion, string? Title);
+    /// <summary>What the selector reads off one manifest: its spec version and, from v9, its title and tags.</summary>
+    private sealed record ManifestListing(int? SpecVersion, string? Title, IReadOnlyList<string>? Tags = null);
 
     public PublicRegistryReader(IConfiguration configuration)
     {
@@ -101,6 +104,7 @@ public sealed class PublicRegistryReader
         // unselectable (#134) — and, from v9, titles (#432). One read each.
         var specVersions = new Dictionary<string, int>(StringComparer.Ordinal);
         var titles = new Dictionary<string, string>(StringComparer.Ordinal);
+        var tags = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
 
         foreach (var manifestPath in packageNames.Where(n => n.Split('/') is { Length: 3 } parts && parts[2] == "manifest.json"))
         {
@@ -116,9 +120,16 @@ public sealed class PublicRegistryReader
             {
                 titles[key] = title;
             }
+
+            if (listing.Tags is { } declared)
+            {
+                tags[key] = declared;
+            }
         }
 
-        return Assemble(packageNames, contractNames, agentNames, smallFiles, DateTimeOffset.UtcNow, specVersions, titles.Count > 0 ? titles : null);
+        return Assemble(
+            packageNames, contractNames, agentNames, smallFiles, DateTimeOffset.UtcNow,
+            specVersions, titles.Count > 0 ? titles : null, tags.Count > 0 ? tags : null);
     }
 
     private async Task<ManifestListing> GetListingAsync(string containerName, string blobPath, CancellationToken cancellationToken)
@@ -137,7 +148,8 @@ public sealed class PublicRegistryReader
             var manifestJson = await ReadTextAsync(containerName, blobPath, cancellationToken);
             listing = new ManifestListing(
                 AccountPackageListing.ReadSpecVersion(manifestJson),
-                AccountPackageListing.ReadTitle(manifestJson));
+                AccountPackageListing.ReadTitle(manifestJson),
+                AccountPackageListing.ReadTags(manifestJson));
         }
         catch (RequestFailedException)
         {
@@ -160,7 +172,8 @@ public sealed class PublicRegistryReader
         IReadOnlyDictionary<string, string> smallFiles,
         DateTimeOffset nowUtc,
         IReadOnlyDictionary<string, int>? specVersions = null,
-        IReadOnlyDictionary<string, string>? titles = null)
+        IReadOnlyDictionary<string, string>? titles = null,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? tags = null)
     {
         // Packages: {name}/{version}/manifest.json + {name}/latest.json.
         var packages = packageBlobs
@@ -173,7 +186,8 @@ public sealed class PublicRegistryReader
                 ReadPointer(smallFiles.GetValueOrDefault($"{WorkflowPackageBlobContainerFactory.ContainerName}/{g.Key}/latest.json")),
                 SortVersions(g.Select(parts => parts[1])),
                 BuildVersionMap(g.Key, g.Select(parts => parts[1]), specVersions),
-                BuildVersionMap(g.Key, g.Select(parts => parts[1]), titles)))
+                BuildVersionMap(g.Key, g.Select(parts => parts[1]), titles),
+                BuildVersionMap(g.Key, g.Select(parts => parts[1]), tags)))
             .ToList();
 
         // Catalog: {version}/output-contracts.json + latest.json.

@@ -94,6 +94,18 @@ public class PackageFormatSchemaTests
         Assert.False(PackageFormatSchema.Build(8)["properties"]!.AsObject().ContainsKey("description"));
         // The schema's own title is a different field that shares the name.
         Assert.Equal("Consultologist workflow package manifest, specVersion 9", schema["title"]!.GetValue<string>());
+
+        // #453: tags — required at 9, an array of single-line labels, absent before.
+        var tags = schema["properties"]!["tags"]!;
+        Assert.Equal("array", tags["type"]!.GetValue<string>());
+        Assert.Equal(WorkflowPackageMetadata.MaxTags, tags["maxItems"]!.GetValue<int>());
+        Assert.Equal("string", tags["items"]!["type"]!.GetValue<string>());
+        Assert.Equal(1, tags["items"]!["minLength"]!.GetValue<int>());
+        Assert.Equal(WorkflowPackageMetadata.MaxTagLength, tags["items"]!["maxLength"]!.GetValue<int>());
+        Assert.Equal(@"^[^\r\n]*$", tags["items"]!["pattern"]!.GetValue<string>());
+        Assert.Contains("tags", schema["required"]!.AsArray().Select(n => n!.GetValue<string>()));
+        Assert.DoesNotContain("tags", PackageFormatSchema.Build(8)["required"]!.AsArray().Select(n => n!.GetValue<string>()));
+        Assert.False(PackageFormatSchema.Build(8)["properties"]!.AsObject().ContainsKey("tags"));
     }
 
     [Fact]

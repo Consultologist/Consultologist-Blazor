@@ -11,8 +11,9 @@ namespace Consultologist.Api.Tests;
 /// </summary>
 public static class V9Fixtures
 {
+    // #453: tags are required at 9; the minimal v9 manifest states none.
     public static WorkflowPackageManifest Minimal()
-        => V8Fixtures.Typed() with { SpecVersion = 9 };
+        => V8Fixtures.Typed() with { SpecVersion = 9, Tags = new List<string>() };
 
     /// <summary>A number, an object, an array of text and an array of objects.</summary>
     public static WorkflowPackageManifest Structured()
@@ -61,7 +62,7 @@ public static class V9Fixtures
 
     /// <summary>The v8 conditional package, at v9, over the structured inputs.</summary>
     public static WorkflowPackageManifest Conditional(string? when)
-        => V8Fixtures.Conditional(when) with { SpecVersion = 9, Inputs = Structured().Inputs };
+        => V8Fixtures.Conditional(when) with { SpecVersion = 9, Inputs = Structured().Inputs, Tags = new List<string>() };
 
     /// <summary>
     /// #426: the structured package with a node fanning over the caller's
@@ -1109,6 +1110,12 @@ public class WorkflowV9MetadataTests
 
         Assert.Contains("title requires specVersion 9.", errors);
         Assert.Contains("description requires specVersion 9.", errors);
+
+        // #453: and tags — even an empty array is a v9 section.
+        var tagged = (specVersion == 7 ? V7Fixtures.Minimal() : V8Fixtures.Typed()) with { Tags = new List<string>() };
+        Assert.Contains(
+            "tags requires specVersion 9.",
+            (specVersion == 7 ? V7Fixtures.Validate(tagged) : V8Fixtures.Validate(tagged)).Errors);
     }
 
     [Theory]
@@ -1161,5 +1168,106 @@ public class WorkflowV9MetadataTests
         Assert.Contains(
             "description must be at most 500 characters.",
             Errors(V9Fixtures.Minimal() with { Description = new string('x', 501) }));
+    }
+}
+
+/// <summary>
+/// #453, v9 § 4: tags — required at 9, an empty array when there are none,
+/// each one a label held to a label's rules, named by position.
+/// </summary>
+public class WorkflowV9TagsTests
+{
+    private static List<string> Errors(WorkflowPackageManifest manifest) => V9Fixtures.Validate(manifest).Errors.ToList();
+
+    private static WorkflowPackageManifest Tagged(params string[] tags) => V9Fixtures.Minimal() with { Tags = tags.ToList() };
+
+    [Fact]
+    public void Tags_AreAcceptedAtNine_InAuthoredOrder()
+    {
+        var manifest = Tagged("oncology", "Breast", "new-patient");
+
+        Assert.True(V9Fixtures.Validate(manifest).IsValid, string.Join(" | ", Errors(manifest)));
+        Assert.Equal(new[] { "oncology", "Breast", "new-patient" }, manifest.Tags);
+    }
+
+    [Fact]
+    public void AnEmptyArray_IsHowAPackageSaysItHasNone()
+    {
+        Assert.True(V9Fixtures.Validate(Tagged()).IsValid);
+    }
+
+    [Fact]
+    public void OmittingTags_IsRefusedAtNine_ByName()
+    {
+        // Deliberately not the other sections' convention (absent = none):
+        // every v9 manifest states its tags, and null is never the spelling.
+        var errors = Errors(V9Fixtures.Minimal() with { Tags = null });
+
+        Assert.Equal(new[] { "tags is required in specVersion 9 (an empty array when the package has none)." }, errors);
+    }
+
+    [Fact]
+    public void TheStrictReader_TreatsNullAsOmitted()
+    {
+        // "tags": null reaches the record as null, which the validator reads as
+        // omitted — so the JSON spelling null is refused like absence is.
+        var json = """{ "name": "x", "version": "v2026.08.1", "specVersion": 9, "tags": null }""";
+        var manifest = System.Text.Json.JsonSerializer.Deserialize<WorkflowPackageManifest>(json, WorkflowPackageManifestJson.ReadOptions)!;
+
+        Assert.Null(manifest.Tags);
+    }
+
+    [Theory]
+    [InlineData("", "tags[1] must not be empty.")]
+    [InlineData("   ", "tags[1] must not be empty.")]
+    [InlineData("\n", "tags[1] must not be empty.")]
+    [InlineData("breast\nclinic", "tags[1] must be a single line.")]
+    [InlineData("breast\r\nclinic", "tags[1] must be a single line.")]
+    [InlineData(" breast", "tags[1] must not begin or end with whitespace.")]
+    [InlineData("breast ", "tags[1] must not begin or end with whitespace.")]
+    [InlineData("ONCOLOGY", "tags[1] repeats tags[0]; tags are distinct ignoring case.")]
+    [InlineData("oncology", "tags[1] repeats tags[0]; tags are distinct ignoring case.")]
+    public void ATag_IsHeldToItsRules_ByPosition(string tag, string expected)
+    {
+        var errors = Errors(Tagged("oncology", tag));
+
+        Assert.Equal(new[] { expected }, errors);
+    }
+
+    [Fact]
+    public void ATag_IsAtMostThirtyTwoCharacters()
+    {
+        Assert.True(V9Fixtures.Validate(Tagged(new string('a', WorkflowPackageMetadata.MaxTagLength))).IsValid);
+        Assert.Equal(
+            new[] { $"tags[0] must be at most {WorkflowPackageMetadata.MaxTagLength} characters." },
+            Errors(Tagged(new string('a', WorkflowPackageMetadata.MaxTagLength + 1))));
+    }
+
+    [Fact]
+    public void AtMostTwentyTags()
+    {
+        var twenty = Enumerable.Range(0, WorkflowPackageMetadata.MaxTags).Select(i => $"tag-{i}").ToArray();
+        Assert.True(V9Fixtures.Validate(Tagged(twenty)).IsValid);
+
+        var errors = Errors(Tagged(twenty.Append("one-more").ToArray()));
+        Assert.Equal(new[] { $"tags must declare at most {WorkflowPackageMetadata.MaxTags} tags." }, errors);
+    }
+
+    [Fact]
+    public void ATagWithTwoProblems_IsToldBoth_AndARepeatIsJudgedTrimmed()
+    {
+        // Too long and a case-insensitive repeat of an earlier one: both
+        // sentences, at the later position. The repeat is judged on trimmed
+        // text so " Oncology " is still the same label as "oncology".
+        var errors = Errors(Tagged("oncology", new string('b', 33), " Oncology "));
+
+        Assert.Equal(
+            new[]
+            {
+                "tags[1] must be at most 32 characters.",
+                "tags[2] must not begin or end with whitespace.",
+                "tags[2] repeats tags[0]; tags are distinct ignoring case."
+            },
+            errors);
     }
 }

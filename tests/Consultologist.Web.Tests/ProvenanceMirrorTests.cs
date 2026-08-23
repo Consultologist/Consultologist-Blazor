@@ -69,6 +69,26 @@ public class ProvenanceMirrorTests
     }
 
     [Fact]
+    public void ThePackageTags_ReachTheClient_InOrder_AndEmptyStaysEmpty()
+    {
+        // #453: the trailing tags, through the wire. An empty list is a stated
+        // none and must not arrive as null.
+        var tagged = new ApiModels.ConsultGenerationJobResponse(
+            "job-1", "user-1", "Completed", 1, 1, 0,
+            new Dictionary<string, string>(), new Dictionary<string, string>(), true,
+            PackageSpecVersion: 9,
+            PackageTags: new[] { "oncology", "Breast" });
+        var none = tagged with { PackageTags = Array.Empty<string>() };
+
+        var mirroredTagged = JsonSerializer.Deserialize<WebAI.ConsultGenerationJobResponse>(JsonSerializer.Serialize(tagged, Web), Web)!;
+        var mirroredNone = JsonSerializer.Deserialize<WebAI.ConsultGenerationJobResponse>(JsonSerializer.Serialize(none, Web), Web)!;
+
+        Assert.Equal(new[] { "oncology", "Breast" }, mirroredTagged.PackageTags);
+        Assert.NotNull(mirroredNone.PackageTags);
+        Assert.Empty(mirroredNone.PackageTags!);
+    }
+
+    [Fact]
     public void TwoDocumentsForOneSlot_ReachTheServerInOrder()
     {
         var request = new WebAI.ConsultGenerationRequest(

@@ -644,6 +644,20 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
                 Canonical(property.Value),
                 Canonical(after.GetProperty(property.Name)));
         }
+
+        // #453: the v9 rung adds exactly one more key — an empty tags array,
+        // which v9 requires — and nothing else. Below 9, no key appears.
+        var added = after.EnumerateObject().Select(p => p.Name).Except(before.EnumerateObject().Select(p => p.Name)).ToList();
+        if (to >= 9)
+        {
+            Assert.Equal(new[] { "tags" }, added);
+            Assert.Equal(JsonValueKind.Array, after.GetProperty("tags").ValueKind);
+            Assert.Equal(0, after.GetProperty("tags").GetArrayLength());
+        }
+        else
+        {
+            Assert.Empty(added);
+        }
     }
 
     /// <summary>

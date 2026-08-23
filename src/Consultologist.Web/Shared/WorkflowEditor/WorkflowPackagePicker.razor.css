@@ -25,3 +25,31 @@
 	font-size: 0.75rem;
 	color: var(--error-foreground, #a4262c);
 }
+
+/* #453: the tag filter — one pressed at a time. */
+.package-picker__tags {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 0.25rem;
+}
+
+.package-picker__tag {
+	font-size: 0.7rem;
+	padding: 0.1rem 0.5rem;
+	border: 1px solid var(--consultologist-border);
+	border-radius: 999px;
+	background: var(--consultologist-surface);
+	color: inherit;
+	cursor: pointer;
+}
+
+.package-picker__tag--active {
+	background: var(--consultologist-accent);
+	color: var(--consultologist-on-accent, #fff);
+	border-color: var(--consultologist-accent);
+}
+
+.package-picker__tag:disabled {
+	cursor: default;
+	opacity: 0.7;
+}
