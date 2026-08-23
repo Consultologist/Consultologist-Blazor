@@ -81,8 +81,7 @@ public static class WorkflowInputTypes
     public const string Enum = "enum";
     public const string Boolean = "boolean";
 
-    // v9 (#424). The editor and the setup form learn these in #429; until
-    // then they are names the client can read off a response.
+    // v9 (#424): a number, an object of scalar fields, an array of elements.
     public const string Number = "number";
     public const string Object = "object";
     public const string Array = "array";
@@ -90,10 +89,30 @@ public static class WorkflowInputTypes
     /// <summary>Every type the format has — pinned against the server's in SpecVersionMirrorTests.</summary>
     public static readonly IReadOnlyList<string> All = new[] { Text, Date, Enum, Boolean, Number, Object, Array };
 
+    /// <summary>The types a field may be. Mirrors the server's; pinned.</summary>
+    public static readonly IReadOnlyList<string> Scalars = new[] { Text, Date, Enum, Boolean, Number };
+
+    /// <summary>What an array may hold: a scalar, or a one-level object. Mirrors the server's; pinned.</summary>
+    public static readonly IReadOnlyList<string> ElementTypes = new[] { Text, Date, Enum, Boolean, Number, Object };
+
     public static string Of(WorkflowPackageInputResponse input) => input.Type ?? Text;
 
     /// <summary>The same default for the editor's view of a declaration.</summary>
     public static string Of(WorkflowManifestReader.InputView input) => input.Type ?? Text;
+
+    public static string Of(WorkflowManifestReader.FieldView field) => field.Type ?? Text;
+
+    /// <summary>An object, or an array of objects — the declarations that carry fields.</summary>
+    public static bool DeclaresObject(WorkflowManifestReader.InputView input) =>
+        Of(input) == Object || (Of(input) == Array && input.Items == Object);
+
+    /// <summary>An enum, or an array of enums — the declarations that carry values.</summary>
+    public static bool DeclaresValues(WorkflowManifestReader.InputView input) =>
+        Of(input) == Enum || (Of(input) == Array && input.Items == Enum);
+
+    /// <summary>The shapes v9 added (#424); below 9 any of them is refused by name.</summary>
+    public static bool RequiresV9(WorkflowManifestReader.InputView input) =>
+        Of(input) is Number or Object or Array || input.Items != null || input.Fields != null;
 }
 
 /// <summary>One declared deliverable — blocks and result tabs group by these.</summary>
