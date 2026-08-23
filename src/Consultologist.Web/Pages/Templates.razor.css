@@ -411,3 +411,44 @@
 .editor-bar__title {
 	font-weight: 600;
 }
+
+/* #453: the Package pane's tags — a list in the author's order, with its
+   own add line. */
+.package-tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.package-tag {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.15rem;
+	border: 1px solid var(--consultologist-border);
+	border-radius: 999px;
+	padding: 0.1rem 0.35rem 0.1rem 0.6rem;
+	font-size: 0.85rem;
+}
+
+.package-tag__button {
+	border: none;
+	background: none;
+	cursor: pointer;
+	padding: 0 0.2rem;
+	font-size: 0.7rem;
+	color: var(--consultologist-muted, #666);
+}
+
+.package-tag__button:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.package-tags__add {
+	display: flex;
+	gap: 0.5rem;
+	align-items: center;
+}
