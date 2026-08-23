@@ -63,8 +63,11 @@
 
         if (node.ForEach != null)
         {
-            options.Add("item:name");
-            options.Add("item:content");
+            // A data fan's items carry name and content; an input fan's carry
+            // id, name and value (v9 § 5) — the server refuses the other set.
+            options.AddRange(WorkflowInputFans.IsInputFan(node.ForEach)
+                ? WorkflowInputFans.ItemFields.Select(field => $"item:{field}")
+                : new[] { "item:name", "item:content" });
         }
 
         options.AddRange(scalars.Select(scalar => $"data:{scalar}"));

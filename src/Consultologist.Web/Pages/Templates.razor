@@ -77,11 +77,19 @@
                        a refusal. It stages a pending change and publishes like any
                        other edit, which is why a bump with nothing else changed is
                        possible: PendingCount opens the button beside it. *@
-                    @if (CanUpgradeSpecVersion)
+                    @if (OffersRunnableUpgrade)
                     {
                         <FluentButton Appearance="Appearance.Outline"
                                       Disabled="@isPublishing"
-                                      @onclick="UpgradeSpecVersion">
+                                      @onclick="() => UpgradeSpecVersionTo(RunnableSpecVersion)">
+                            Upgrade to specVersion @RunnableSpecVersion
+                        </FluentButton>
+                    }
+                    @if (OffersNewestUpgrade)
+                    {
+                        <FluentButton Appearance="Appearance.Outline"
+                                      Disabled="@isPublishing"
+                                      @onclick="() => UpgradeSpecVersionTo(NewestSpecVersion)">
                             Upgrade to specVersion @NewestSpecVersion
                         </FluentButton>
                     }
@@ -125,6 +133,16 @@
                         <li>Any customisation your package already carries is not in this content, and will not be in what you publish.</li>
                         <li>Your consults switch to the published version immediately.</li>
                     </ul>
+                </FluentMessageBar>
+            }
+
+            @* #429 (v9 § 10): a format the registry accepts before the engine
+               runs it. A deferred state gets a visible name and an up-front
+               notification — never a silent hold. *@
+            @if (NotYetRunnable)
+            {
+                <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">
+                    specVersion @EffectiveSpecVersion is publishable but not yet runnable: consults pinned to a specVersion @EffectiveSpecVersion package will refuse to start until the engine runs it (#430).
                 </FluentMessageBar>
             }
 
@@ -501,6 +519,7 @@
                                 <p class="muted-text">
                                     The fields a clinician fills before a run. Nodes bind them as
                                     <code>input:&lt;id&gt;</code>; renaming one re-points every binding that used it.
+                                    An object declares its fields here; an array says what its entries are.
                                 </p>
                             </div>
                         </div>
@@ -525,30 +544,52 @@
                                                aria-label="@($"Required for input {slot.Id}")" />
                                         required
                                     </label>
-                                    @* v8: the declared type decides the intake control and,
-                                       for enum and boolean, what a condition can read. *@
+                                    @* v8: the declared type decides the intake control and
+                                       what a condition can read. v9 (#429): a number, an
+                                       object of fields, an array of elements. *@
                                     <select class="node-field__input declared-row__type"
                                             value="@WorkflowInputTypes.Of(slot)"
                                             @onchange="args => RetypeInputAsync(slot, args.Value?.ToString())"
                                             aria-label="@($"Type for input {slot.Id}")">
-                                        @* v9 (#429): a type this editor does not yet author is
-                                           shown as itself rather than as "text". Choosing it
-                                           again is a no-op. *@
-                                        @if (WorkflowInputTypes.Of(slot) is not (WorkflowInputTypes.Text or WorkflowInputTypes.Date or WorkflowInputTypes.Enum or WorkflowInputTypes.Boolean))
+                                        @* A type the vocabulary does not know is shown as
+                                           itself rather than as "text". *@
+                                        @if (!WorkflowInputTypes.All.Contains(WorkflowInputTypes.Of(slot)))
                                         {
                                             <option value="@WorkflowInputTypes.Of(slot)">@WorkflowInputTypes.Of(slot)</option>
                                         }
-                                        <option value="@WorkflowInputTypes.Text">text</option>
-                                        <option value="@WorkflowInputTypes.Date">date</option>
-                                        <option value="@WorkflowInputTypes.Enum">enum</option>
-                                        <option value="@WorkflowInputTypes.Boolean">boolean</option>
+                                        @foreach (var type in WorkflowInputTypes.All)
+                                        {
+                                            <option value="@type">@type</option>
+                                        }
                                     </select>
+                                    @if (WorkflowInputTypes.Of(slot) == WorkflowInputTypes.Array)
+                                    {
+                                        @* Explicit initialisation: an array says what its
+                                           entries are, or the desk refuses the publish. *@
+                                        <select class="node-field__input declared-row__items"
+                                                value="@(slot.Items ?? string.Empty)"
+                                                @onchange="args => SetInputItemsAsync(slot, args.Value?.ToString())"
+                                                aria-label="@($"Items for input {slot.Id}")">
+                                            @if (slot.Items is null)
+                                            {
+                                                <option value="">entries of…</option>
+                                            }
+                                            else if (!WorkflowInputTypes.ElementTypes.Contains(slot.Items))
+                                            {
+                                                <option value="@slot.Items">@slot.Items</option>
+                                            }
+                                            @foreach (var element in WorkflowInputTypes.ElementTypes)
+                                            {
+                                                <option value="@element">@element</option>
+                                            }
+                                        </select>
+                                    }
                                     <button type="button" class="aggregate-row__button" title="Remove input"
                                             disabled="@(EffectiveInputs.Count == 1 || ConditionLock(slot) != null)"
                                             @onclick="() => RemoveInputAsync(slot)">×</button>
                                 </li>
 
-                                @if (WorkflowInputTypes.Of(slot) == WorkflowInputTypes.Enum)
+                                @if (WorkflowInputTypes.DeclaresValues(slot))
                                 {
                                     <li class="declared-row__values">
                                         @foreach (var value in slot.Values ?? Array.Empty<string>())
@@ -563,6 +604,82 @@
                                         <input class="node-field__input" placeholder="follow_up"
                                                @onchange="args => AddEnumValueAsync(slot, args.Value?.ToString())"
                                                aria-label="@($"Add a value to {slot.Id}")" />
+                                    </li>
+                                }
+
+                                @if (WorkflowInputTypes.DeclaresObject(slot))
+                                {
+                                    @* v9: an object's fields — each a scalar with its own
+                                       id, label, requiredness and type. Their own classes,
+                                       so the input rows' positions do not move. *@
+                                    <li class="declared-row__fields" data-fields-for="@slot.Id">
+                                        <ul class="declared-list">
+                                            @foreach (var field in slot.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>())
+                                            {
+                                                var member = field;
+                                                <li class="declared-field" data-field="@($"{slot.Id}.{member.Id}")">
+                                                    <input class="node-field__input declared-field__id"
+                                                           value="@member.Id"
+                                                           @onchange="args => RenameFieldAsync(slot, member, args.Value?.ToString())"
+                                                           aria-label="@($"Id for field {slot.Id}.{member.Id}")" />
+                                                    <input class="node-field__input declared-field__label"
+                                                           value="@member.Label"
+                                                           @onchange="args => RelabelFieldAsync(slot, member, args.Value?.ToString())"
+                                                           aria-label="@($"Label for field {slot.Id}.{member.Id}")" />
+                                                    <label class="declared-row__required">
+                                                        <input type="checkbox"
+                                                               checked="@member.Required"
+                                                               @onchange="args => SetFieldRequiredAsync(slot, member, args.Value is true)"
+                                                               aria-label="@($"Required for field {slot.Id}.{member.Id}")" />
+                                                        required
+                                                    </label>
+                                                    <select class="node-field__input declared-field__type"
+                                                            value="@WorkflowInputTypes.Of(member)"
+                                                            @onchange="args => RetypeFieldAsync(slot, member, args.Value?.ToString())"
+                                                            aria-label="@($"Type for field {slot.Id}.{member.Id}")">
+                                                        @if (!WorkflowInputTypes.Scalars.Contains(WorkflowInputTypes.Of(member)))
+                                                        {
+                                                            <option value="@WorkflowInputTypes.Of(member)">@WorkflowInputTypes.Of(member)</option>
+                                                        }
+                                                        @foreach (var fieldType in WorkflowInputTypes.Scalars)
+                                                        {
+                                                            <option value="@fieldType">@fieldType</option>
+                                                        }
+                                                    </select>
+                                                    <button type="button" class="aggregate-row__button" title="Remove field"
+                                                            disabled="@(FieldLock(slot, member) != null)"
+                                                            @onclick="() => RemoveFieldAsync(slot, member)">×</button>
+                                                </li>
+                                                @if (WorkflowInputTypes.Of(member) == WorkflowInputTypes.Enum)
+                                                {
+                                                    <li class="declared-field__values" data-values-for="@($"{slot.Id}.{member.Id}")">
+                                                        @foreach (var value in member.Values ?? Array.Empty<string>())
+                                                        {
+                                                            var declaredValue = value;
+                                                            <span class="input-field__chip" data-field-enum-value="@declaredValue">
+                                                                @declaredValue
+                                                                <button type="button" class="aggregate-row__button" title="Remove value"
+                                                                        @onclick="() => RemoveFieldValueAsync(slot, member, declaredValue)">×</button>
+                                                            </span>
+                                                        }
+                                                        <input class="node-field__input" placeholder="female"
+                                                               @onchange="args => AddFieldValueAsync(slot, member, args.Value?.ToString())"
+                                                               aria-label="@($"Add a value to {slot.Id}.{member.Id}")" />
+                                                    </li>
+                                                }
+                                                @if (FieldLock(slot, member) is { } fieldLockedBy)
+                                                {
+                                                    <li class="declared-row__note"><span class="muted-text">@fieldLockedBy</span></li>
+                                                }
+                                            }
+                                        </ul>
+                                        <div class="add-variable__form">
+                                            <input class="node-field__input" placeholder="age"
+                                                   value="@NewFieldId(slot.Id)"
+                                                   @onchange="args => newFieldIds[slot.Id] = args.Value?.ToString() ?? string.Empty"
+                                                   aria-label="@($"New field id for {slot.Id}")" />
+                                            <button type="button" class="variable-chips__add" @onclick="() => AddFieldAsync(slot)">+ Field</button>
+                                        </div>
                                     </li>
                                 }
 
@@ -636,56 +753,99 @@
 
                                     @* v8: when this document is produced. Three controls
                                        rather than a text field — the literal follows the
-                                       chosen input's type, which is what makes the closed
-                                       grammar authorable instead of a string to get wrong. *@
+                                       chosen operand's type, which is what makes the closed
+                                       grammar authorable instead of a string to get wrong.
+                                       v9 (#429): the operand may be a path into an object
+                                       or the count of an array, and a number or a date may
+                                       be ordered. *@
                                     <li class="declared-row__when" data-when-for="@deliverable.Id">
-                                        @if (ConditionableInputs.Count == 0)
+                                        @if (ConditionOperands.Count == 0)
                                         {
                                             <span class="muted-text">
-                                                Always produced. Declare an enum or boolean input to make it conditional.
+                                                @(EffectiveSpecVersion >= 9
+                                                    ? "Always produced. Declare an enum, boolean, number, date, object or array input to make it conditional."
+                                                    : "Always produced. Declare an enum or boolean input to make it conditional.")
                                             </span>
                                         }
                                         else
                                         {
-                                            var conditionInput = WorkflowResultConditionText.InputOf(deliverable.When);
-                                            var conditionOn = ConditionableInputs.FirstOrDefault(i => i.Id == conditionInput);
+                                            var operandKey = WorkflowResultConditionText.OperandOf(deliverable.When);
+                                            var operand = ConditionOperands.FirstOrDefault(candidate => candidate.Key == operandKey);
                                             <select class="node-field__input"
-                                                    value="@(conditionOn?.Id ?? string.Empty)"
+                                                    value="@(operandKey ?? string.Empty)"
                                                     @onchange="args => SetResultConditionAsync(deliverable, args.Value?.ToString())"
-                                                    aria-label="@($"Condition input for {deliverable.Id}")">
+                                                    aria-label="@($"Condition operand for {deliverable.Id}")">
                                                 <option value="">always produced</option>
-                                                @foreach (var candidate in ConditionableInputs)
+                                                @if (operandKey != null && operand is null)
                                                 {
-                                                    <option value="@candidate.Id">when @candidate.Id</option>
+                                                    @* A loaded condition naming something not offered
+                                                       here — shown as itself, never rewritten. *@
+                                                    <option value="@operandKey">when @operandKey</option>
+                                                }
+                                                @foreach (var candidate in ConditionOperands)
+                                                {
+                                                    <option value="@candidate.Key">when @candidate.Key</option>
                                                 }
                                             </select>
 
-                                            @if (conditionOn is { } tested)
+                                            @if (operand is { } tested)
                                             {
-                                                <select class="node-field__input"
-                                                        value="@(WorkflowResultConditionText.IsNegated(deliverable.When) ? "not" : "is")"
-                                                        @onchange="args => SetConditionOperatorAsync(deliverable, tested.Id, args.Value?.ToString())"
-                                                        aria-label="@($"Condition operator for {deliverable.Id}")">
-                                                    <option value="is">is</option>
-                                                    <option value="not">is not</option>
-                                                </select>
-                                                <select class="node-field__input"
-                                                        value="@(WorkflowResultConditionText.LiteralOf(deliverable.When) ?? string.Empty)"
-                                                        @onchange="args => SetResultConditionAsync(deliverable, tested.Id, null, args.Value?.ToString())"
-                                                        aria-label="@($"Condition value for {deliverable.Id}")">
-                                                    @if (WorkflowInputTypes.Of(tested) == WorkflowInputTypes.Boolean)
+                                                @if (tested.Type == WorkflowInputTypes.Array)
+                                                {
+                                                    <span class="muted-text declared-row__literal">has entries</span>
+                                                }
+                                                else
+                                                {
+                                                    <select class="node-field__input"
+                                                            value="@(WorkflowResultConditionText.OperatorOf(deliverable.When) ?? "==")"
+                                                            @onchange="args => SetConditionOperatorAsync(deliverable, tested.Key, args.Value?.ToString())"
+                                                            aria-label="@($"Condition operator for {deliverable.Id}")">
+                                                        @foreach (var symbol in OperatorsFor(tested.Type))
+                                                        {
+                                                            <option value="@symbol">@OperatorWord(symbol)</option>
+                                                        }
+                                                    </select>
+                                                    @if (tested.Type == WorkflowInputTypes.Boolean)
                                                     {
-                                                        <option value="true">true</option>
-                                                        <option value="false">false</option>
+                                                        <select class="node-field__input declared-row__literal"
+                                                                value="@(WorkflowResultConditionText.LiteralOf(deliverable.When) ?? string.Empty)"
+                                                                @onchange="args => SetResultConditionAsync(deliverable, tested.Key, null, args.Value?.ToString())"
+                                                                aria-label="@($"Condition value for {deliverable.Id}")">
+                                                            <option value="true">true</option>
+                                                            <option value="false">false</option>
+                                                        </select>
+                                                    }
+                                                    else if (tested.Type == WorkflowInputTypes.Enum)
+                                                    {
+                                                        <select class="node-field__input declared-row__literal"
+                                                                value="@(WorkflowResultConditionText.LiteralOf(deliverable.When) ?? string.Empty)"
+                                                                @onchange="args => SetResultConditionAsync(deliverable, tested.Key, null, args.Value?.ToString())"
+                                                                aria-label="@($"Condition value for {deliverable.Id}")">
+                                                            @foreach (var option in tested.Values ?? Array.Empty<string>())
+                                                            {
+                                                                <option value="@option">@option</option>
+                                                            }
+                                                        </select>
+                                                    }
+                                                    else if (tested.Type == WorkflowInputTypes.Date)
+                                                    {
+                                                        <input type="date"
+                                                               class="node-field__input declared-row__literal"
+                                                               value="@(WorkflowResultConditionText.LiteralOf(deliverable.When) ?? string.Empty)"
+                                                               @onchange="args => SetResultConditionAsync(deliverable, tested.Key, null, args.Value?.ToString())"
+                                                               aria-label="@($"Condition value for {deliverable.Id}")" />
                                                     }
                                                     else
                                                     {
-                                                        @foreach (var option in tested.Values ?? Array.Empty<string>())
-                                                        {
-                                                            <option value="@option">@option</option>
-                                                        }
+                                                        @* A number as spelled, or a count as a whole number. *@
+                                                        <input type="text"
+                                                               inputmode="@(tested.Type == CountType ? "numeric" : "decimal")"
+                                                               class="node-field__input declared-row__literal"
+                                                               value="@(WorkflowResultConditionText.LiteralOf(deliverable.When) ?? string.Empty)"
+                                                               @onchange="args => SetResultConditionAsync(deliverable, tested.Key, null, args.Value?.ToString())"
+                                                               aria-label="@($"Condition value for {deliverable.Id}")" />
                                                     }
-                                                </select>
+                                                }
                                             }
                                         }
                                     </li>
@@ -762,6 +922,7 @@
                                              Editable="true"
                                              Scalars="@ScalarIds"
                                              Collections="@CollectionIds"
+                                             ArrayInputs="@ArrayInputIds"
                                              ContractOptions="@ContractOptions"
                                              PromptOptions="@EffectivePrompts.Select(p => p.Id).ToList()"
                                              AllowPromptChange="@(EffectiveSpecVersion >= 6)"
@@ -856,11 +1017,11 @@
                                 }
                                 <label class="input-field">
                                     <span>for each</span>
-                                    <select class="binding-row__select" @bind="newNodeForEach">
+                                    <select class="binding-row__select" @bind="newNodeForEach" aria-label="New node forEach">
                                         <option value="">— runs once —</option>
-                                        @foreach (var collectionId in CollectionIds)
+                                        @foreach (var option in WorkflowNodeSummary.ForEachOptions(CollectionIds, ArrayInputIds))
                                         {
-                                            <option value="@($"data:{collectionId}")">data:@collectionId</option>
+                                            <option value="@option">@option</option>
                                         }
                                     </select>
                                 </label>
@@ -896,6 +1057,7 @@
                                              Editable="true"
                                              Scalars="@ScalarIds"
                                              Collections="@CollectionIds"
+                                             ArrayInputs="@ArrayInputIds"
                                              ContractOptions="@ContractOptions"
                                              PromptOptions="@EffectivePrompts.Select(p => p.Id).ToList()"
                                              AllowPromptChange="@(EffectiveSpecVersion >= 6)"
@@ -1102,13 +1264,27 @@
     private int? specVersionBump;
 
     /// <summary>
-    /// Mirrors WorkflowPackageStore.SupportedSpecVersions' maximum. The client
-    /// has no endpoint for it, and WorkflowPackagePicker already mirrors the
-    /// floor the same way — both by hand, because Consultologist.Web references
-    /// no project and so cannot see the engine's constant. internal so
-    /// SpecVersionMirrorTests can prove the mirror still matches.
+    /// Mirrors WorkflowPackageValidator.AcceptedSpecVersions' maximum — the
+    /// newest format the registry will PUBLISH. The client has no endpoint for
+    /// it, and WorkflowPackagePicker already mirrors the floor the same way —
+    /// both by hand, because Consultologist.Web references no project and so
+    /// cannot see the engine's constant. internal so SpecVersionMirrorTests
+    /// can prove the mirror still matches. Not necessarily runnable: see
+    /// RunnableSpecVersion.
     /// </summary>
-    internal const int NewestSpecVersion = 8;
+    internal const int NewestSpecVersion = 9;
+
+    /// <summary>
+    /// Mirrors WorkflowPackageStore.SupportedSpecVersions' maximum — the
+    /// newest format the engine will RUN. Below NewestSpecVersion while a
+    /// format is publishable but not yet executable (v9 § 10), which the
+    /// editor says up front rather than letting an author publish into
+    /// silence. #430 moves it to 9, and the two ceilings become one.
+    /// </summary>
+    internal const int RunnableSpecVersion = 8;
+
+    /// <summary>A staged bump past the runnable ceiling, or a loaded package already past it.</summary>
+    private bool NotYetRunnable => EffectiveSpecVersion > RunnableSpecVersion;
 
     /// <summary>The version this publish will carry: the bump, or what is loaded.</summary>
     /// <summary>
@@ -1173,23 +1349,30 @@
     /// existing publish guard opens on it — a version bump with nothing else
     /// changed is a legitimate publish, and the one that proves a migration.
     /// </summary>
-    private async Task UpgradeSpecVersion()
+    private async Task UpgradeSpecVersionTo(int target)
     {
-        if (!CanUpgradeSpecVersion)
+        if (!CanUpgradeTo(target))
         {
             return;
         }
 
-        specVersionBump = NewestSpecVersion;
+        specVersionBump = target;
         await PendingChangedAsync();
     }
 
-    private bool CanUpgradeSpecVersion =>
+    private bool CanUpgradeTo(int target) =>
         // Loaded on purpose, and one of only two sites that want it: the
         // question is whether the package as published has anywhere to go up
         // to. The pending side is the specVersionBump == null clause, which is
-        // what hides the button once it has been pressed.
-        content != null && specVersionBump == null && LoadedSpecVersion < NewestSpecVersion;
+        // what hides the buttons once one has been pressed.
+        content != null && specVersionBump == null && LoadedSpecVersion < target && target <= NewestSpecVersion;
+
+    // #429: one button per rung. The runnable ceiling is the migration every
+    // package should take; the newest is opt-in while it is not yet runnable,
+    // and the two collapse into one when #430 makes them equal.
+    private bool OffersRunnableUpgrade => CanUpgradeTo(RunnableSpecVersion);
+
+    private bool OffersNewestUpgrade => RunnableSpecVersion < NewestSpecVersion && CanUpgradeTo(NewestSpecVersion);
 
     private IReadOnlyList<PendingKind>? pendingKinds;
 
@@ -1668,6 +1851,13 @@
     private IReadOnlyList<string> DeclaredInputIds =>
         EffectiveInputs.Select(input => input.Id).ToList();
 
+    // v9 (#429): what a node may fan — the declared arrays, from 9. Empty
+    // below, so a v8 publish cannot be composed with an input fan.
+    private IReadOnlyList<string> ArrayInputIds =>
+        EffectiveSpecVersion >= 9
+            ? EffectiveInputs.Where(input => WorkflowInputTypes.Of(input) == WorkflowInputTypes.Array).Select(input => input.Id).ToList()
+            : Array.Empty<string>();
+
     private IReadOnlyList<WorkflowManifestReader.InputView> EffectiveInputs =>
         inputsEdit ?? (content != null && IsV7
             ? WorkflowManifestReader.ReadInputs(content.Manifest)
@@ -1712,27 +1902,79 @@
         if (EffectiveSpecVersion < 8)
         {
             var typed = inputs
-                .Where(input => input.Type != null || input.Values is { Count: > 0 })
+                .Where(input => !WorkflowInputTypes.RequiresV9(input)
+                    && (input.Type != null || input.Values is { Count: > 0 }))
                 .Select(input => $"'{input.Id}'")
                 .ToList();
 
             if (typed.Count > 0)
             {
                 errors.Add(
-                    $"Input {string.Join(", ", typed)} declares a type or values, which requires specVersion "
-                    + $"{NewestSpecVersion}. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.");
+                    $"Input {string.Join(", ", typed)} declares a type or values, which requires specVersion 8. "
+                    + $"Use \"Upgrade to specVersion {RunnableSpecVersion}\" and publish.");
             }
 
             var conditional = EffectiveResults
-                .Where(result => !string.IsNullOrWhiteSpace(result.When))
+                .Where(result => !string.IsNullOrWhiteSpace(result.When)
+                    && !WorkflowResultConditionText.IsV9Form(result.When))
                 .Select(result => $"'{result.Id}'")
                 .ToList();
 
             if (conditional.Count > 0)
             {
                 errors.Add(
-                    $"Document {string.Join(", ", conditional)} declares when, which requires specVersion "
-                    + $"{NewestSpecVersion}. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.");
+                    $"Document {string.Join(", ", conditional)} declares when, which requires specVersion 8. "
+                    + $"Use \"Upgrade to specVersion {RunnableSpecVersion}\" and publish.");
+            }
+        }
+
+        // #429: the v9 shapes, named the same way. The editor offers them only
+        // at 9, but a draft, a fork or a typed value can still carry one.
+        if (EffectiveSpecVersion < 9)
+        {
+            var upgrade = $"Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.";
+
+            errors.AddRange(inputs
+                .Where(WorkflowInputTypes.RequiresV9)
+                .Select(input => $"Input '{input.Id}' declares a type that requires specVersion 9. {upgrade}"));
+
+            errors.AddRange(EffectiveResults
+                .Where(result => WorkflowResultConditionText.IsV9Form(result.When))
+                .Select(result => $"Document '{result.Id}' declares a condition form that requires specVersion 9. {upgrade}"));
+
+            errors.AddRange(EffectiveNodes
+                .Where(node => WorkflowInputFans.IsInputFan(node.ForEach))
+                .Select(node => $"Node '{node.Id}' fans an input, which requires specVersion 9. {upgrade}"));
+        }
+        else
+        {
+            // The shapes a v9 declaration must finish before it can publish
+            // (explicit initialisation: an array starts with no entry type, an
+            // object with no fields). The server refuses these too; said here
+            // first, beside the control.
+            errors.AddRange(inputs
+                .Where(input => WorkflowInputTypes.Of(input) == WorkflowInputTypes.Array && input.Items is null)
+                .Select(input => $"Input '{input.Id}' is an array and must declare what its entries are."));
+
+            errors.AddRange(inputs
+                .Where(input => WorkflowInputTypes.DeclaresObject(input) && input.Fields is not { Count: > 0 })
+                .Select(input => $"Input '{input.Id}' is an object and must declare at least one field."));
+
+            foreach (var input in inputs.Where(input => input.Fields is { Count: > 0 }))
+            {
+                errors.AddRange(input.Fields!
+                    .GroupBy(field => field.Id)
+                    .Where(group => group.Count() > 1)
+                    .Select(group => $"Input '{input.Id}' declares duplicate field id '{group.Key}'."));
+
+                errors.AddRange(input.Fields!
+                    .Where(field => string.IsNullOrWhiteSpace(field.Label))
+                    .Select(field => $"Input '{input.Id}' field '{field.Id}' has no label."));
+
+                errors.AddRange(input.Fields!
+                    .Where(field => WorkflowInputTypes.Of(field) == WorkflowInputTypes.Enum && (field.Values?.Count ?? 0) < 2)
+                    .Select(field => $"Input '{input.Id}' field '{field.Id}' declares {field.Values?.Count ?? 0} enum "
+                        + $"value{((field.Values?.Count ?? 0) == 1 ? string.Empty : "s")}; an enum needs at least two."));
             }
         }
 
@@ -1767,7 +2009,7 @@
         // Checked here rather than refused at the click because the in-progress
         // state is legitimate; what is not legitimate is publishing it.
         errors.AddRange(inputs
-            .Where(input => WorkflowInputTypes.Of(input) == WorkflowInputTypes.Enum
+            .Where(input => WorkflowInputTypes.DeclaresValues(input)
                 && (input.Values?.Count ?? 0) < 2)
             .Select(input => $"Input '{input.Id}' declares {input.Values?.Count ?? 0} enum "
                 + $"value{((input.Values?.Count ?? 0) == 1 ? string.Empty : "s")}; an enum needs at least two."));
@@ -1790,12 +2032,22 @@
 
             var literal = WorkflowResultConditionText.LiteralOf(conditioned.When);
 
-            if (WorkflowInputTypes.Of(tested) == WorkflowInputTypes.Enum
-                && literal != null
-                && tested.Values?.Contains(literal, StringComparer.Ordinal) != true)
+            if (EffectiveSpecVersion < 9)
             {
-                errors.Add(
-                    $"Result '{conditioned.Id}' condition compares '{tested.Id}' to '{literal}', which it does not declare.");
+                if (WorkflowInputTypes.Of(tested) == WorkflowInputTypes.Enum
+                    && literal != null
+                    && tested.Values?.Contains(literal, StringComparer.Ordinal) != true)
+                {
+                    errors.Add(
+                        $"Result '{conditioned.Id}' condition compares '{tested.Id}' to '{literal}', which it does not declare.");
+                }
+
+                continue;
+            }
+
+            if (V9ConditionComplaint(conditioned, tested) is { } complaint)
+            {
+                errors.Add(complaint);
             }
         }
 
@@ -1825,6 +2077,108 @@
 
         return errors;
     }
+
+    /// <summary>
+    /// The desk's mirror of the server's v9 condition closure (#427): the
+    /// operand is resolved to a type — the input's, one field's, or a count —
+    /// and the operator and literal are held to it, in the server's words.
+    /// Null when the condition is sound.
+    /// </summary>
+    private static string? V9ConditionComplaint(
+        WorkflowManifestReader.ResultView result,
+        WorkflowManifestReader.InputView tested)
+    {
+        var prefix = $"Result '{result.Id}' condition";
+        var when = result.When;
+        var operand = WorkflowResultConditionText.OperandOf(when) ?? tested.Id;
+        var op = WorkflowResultConditionText.OperatorOf(when);
+        var literal = WorkflowResultConditionText.LiteralOf(when);
+        var inputType = WorkflowInputTypes.Of(tested);
+        string type;
+        IReadOnlyList<string>? values;
+
+        if (WorkflowResultConditionText.IsCount(when))
+        {
+            if (inputType != WorkflowInputTypes.Array)
+            {
+                return $"{prefix} counts '{tested.Id}', which is a {inputType}; only an array has a count.";
+            }
+
+            type = CountType;
+            values = null;
+        }
+        else if (WorkflowResultConditionText.FieldOf(when) is { } fieldId)
+        {
+            if (inputType != WorkflowInputTypes.Object)
+            {
+                return $"{prefix} reads field '{fieldId}' of '{tested.Id}', which is a {inputType}, not an object.";
+            }
+
+            var field = tested.Fields?.FirstOrDefault(f => f.Id == fieldId);
+
+            if (field is null)
+            {
+                return $"{prefix} reads field '{fieldId}' of '{tested.Id}', which it does not declare.";
+            }
+
+            type = WorkflowInputTypes.Of(field);
+            values = field.Values;
+        }
+        else
+        {
+            type = inputType;
+            values = tested.Values;
+        }
+
+        if (op is null)
+        {
+            return type switch
+            {
+                WorkflowInputTypes.Boolean or WorkflowInputTypes.Array => null,
+                CountType => $"{prefix} '{operand}' needs a comparison; write count({tested.Id}) > 0.",
+                WorkflowInputTypes.Enum => $"{prefix} '{operand}' tests an enum for truth; compare it to one of its values instead.",
+                _ => $"{prefix} '{operand}' tests a {type} for truth; only a boolean or an array can be tested bare."
+            };
+        }
+
+        if (string.IsNullOrEmpty(literal))
+        {
+            return $"{prefix} compares against nothing; write a value after the operator.";
+        }
+
+        if (type == WorkflowInputTypes.Text)
+        {
+            return $"{prefix} reads '{operand}', which is a text: a text input cannot be tested.";
+        }
+
+        if (type is WorkflowInputTypes.Object or WorkflowInputTypes.Array)
+        {
+            return $"{prefix} compares '{operand}', which is an {type}; compare one of its fields, or its count, instead.";
+        }
+
+        if (WorkflowResultConditionText.IsOrdered(when) && type is not (WorkflowInputTypes.Number or WorkflowInputTypes.Date or CountType))
+        {
+            return $"{prefix} compares '{operand}' with {op}, which is a {type}; ordering operators apply to a number or a date.";
+        }
+
+        return type switch
+        {
+            WorkflowInputTypes.Boolean when literal is not ("true" or "false") =>
+                $"{prefix} compares boolean '{operand}' to '{literal}'; use true or false.",
+            WorkflowInputTypes.Enum when values?.Contains(literal, StringComparer.Ordinal) != true =>
+                $"{prefix} compares '{operand}' to '{literal}', which it does not declare.",
+            WorkflowInputTypes.Number when !Consultologist.Web.Services.AI.ConsultInputValue.TryParseNumber(literal, out _) =>
+                $"{prefix} compares '{operand}' to '{literal}', which is not a plain decimal.",
+            WorkflowInputTypes.Date when !DateOnly.TryParseExact(literal, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _) =>
+                $"{prefix} compares '{operand}' to '{literal}', which is not a date written YYYY-MM-DD.",
+            CountType when !int.TryParse(literal, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out _) =>
+                $"{prefix} compares '{operand}' to '{literal}', which is not a whole number.",
+            _ => null
+        };
+    }
+
+    /// <summary>The pseudo-type of count(x): a whole number, ordered.</summary>
+    private const string CountType = "count";
 
     private async Task AddInputAsync()
     {
@@ -1860,10 +2214,10 @@
             .ToList();
 
     /// <summary>
-    /// Only enum and boolean inputs can be tested (#314), so retyping one a
-    /// condition reads, or removing it, would compose a package the validator
-    /// rejects. Refused here rather than at publish, naming the document that
-    /// depends on it.
+    /// A condition's operand is typed by the declaration it reads — bare, by
+    /// path, or by count (#314, #427) — so retyping an input a condition reads,
+    /// or removing it, would compose a package the validator rejects. Refused
+    /// here rather than at publish, naming the document that depends on it.
     /// </summary>
     private string? ConditionLock(WorkflowManifestReader.InputView input)
     {
@@ -1972,8 +2326,15 @@
     {
         var type = string.IsNullOrWhiteSpace(value) ? WorkflowInputTypes.Text : value!.Trim();
 
-        if (type is not (WorkflowInputTypes.Enum or WorkflowInputTypes.Boolean)
-            && ConditionLock(input) is { } locked)
+        if (type == WorkflowInputTypes.Of(input))
+        {
+            return;
+        }
+
+        // #429: a condition's operand is typed by the declaration — a path, a
+        // count, an ordering each want a particular type — so any retype under
+        // a condition is refused, naming the document.
+        if (ConditionLock(input) is { } locked)
         {
             declaredError = locked;
             return;
@@ -1998,8 +2359,10 @@
                 // as the word — a v7 declaration stays byte-identical.
                 Type = type == WorkflowInputTypes.Text ? null : type,
                 Values = keepsValues ? inputs[index].Values ?? new List<string>() : null,
+                // An array starts with no entry type (explicit initialisation);
+                // an object starts with no fields, which the desk refuses.
                 Items = keepsItems ? inputs[index].Items : null,
-                Fields = keepsFields ? inputs[index].Fields : null
+                Fields = keepsFields ? inputs[index].Fields ?? new List<WorkflowManifestReader.FieldView>() : null
             };
             declaredError = null;
         }
@@ -2073,14 +2436,348 @@
         await CommitDeclarationAsync();
     }
 
+    // ----- #429: an array's element type and an object's fields ------------
+
+    private readonly Dictionary<string, string> newFieldIds = new(StringComparer.Ordinal);
+
+    private string NewFieldId(string inputId) => newFieldIds.GetValueOrDefault(inputId, string.Empty);
+
+    /// <summary>One declaration, changed in place; false when the id is gone.</summary>
+    private bool UpdateInput(string inputId, Func<WorkflowManifestReader.InputView, WorkflowManifestReader.InputView> change)
+    {
+        var inputs = MutableInputs();
+        var index = inputs.FindIndex(existing => existing.Id == inputId);
+
+        if (index < 0)
+        {
+            return false;
+        }
+
+        inputs[index] = change(inputs[index]);
+        return true;
+    }
+
+    /// <summary>One field of one declaration, changed in place.</summary>
+    private bool UpdateField(string inputId, string fieldId, Func<WorkflowManifestReader.FieldView, WorkflowManifestReader.FieldView> change) =>
+        UpdateInput(inputId, input => input with
+        {
+            Fields = (input.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>())
+                .Select(field => field.Id == fieldId ? change(field) : field)
+                .ToList()
+        });
+
+    private async Task SetInputItemsAsync(WorkflowManifestReader.InputView input, string? value)
+    {
+        var items = string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
+
+        if (ConditionLock(input) is { } locked)
+        {
+            declaredError = locked;
+            return;
+        }
+
+        // Fields belong to an array of objects, values to an array of enums;
+        // kept across a change that still wants them, cleared otherwise.
+        UpdateInput(input.Id, existing => existing with
+        {
+            Items = items,
+            Fields = items == WorkflowInputTypes.Object ? existing.Fields ?? new List<WorkflowManifestReader.FieldView>() : null,
+            Values = items == WorkflowInputTypes.Enum ? existing.Values ?? new List<string>() : null
+        });
+        declaredError = null;
+        await CommitDeclarationAsync();
+    }
+
+    private async Task AddFieldAsync(WorkflowManifestReader.InputView input)
+    {
+        var id = NewFieldId(input.Id).Trim();
+
+        if (!DeclaredIdPattern.IsMatch(id))
+        {
+            declaredError = $"Field id '{id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
+            return;
+        }
+
+        if (input.Fields?.Any(field => field.Id == id) == true)
+        {
+            declaredError = $"Input '{input.Id}' declares duplicate field id '{id}'.";
+            return;
+        }
+
+        // Text by default, as an input is; required until said otherwise.
+        UpdateInput(input.Id, existing => existing with
+        {
+            Fields = (existing.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>())
+                .Append(new WorkflowManifestReader.FieldView(id, id, true))
+                .ToList()
+        });
+        newFieldIds.Remove(input.Id);
+        declaredError = null;
+        await CommitDeclarationAsync();
+    }
+
+    private async Task RenameFieldAsync(WorkflowManifestReader.InputView input, WorkflowManifestReader.FieldView field, string? value)
+    {
+        var id = (value ?? string.Empty).Trim();
+
+        if (id == field.Id)
+        {
+            return;
+        }
+
+        if (!DeclaredIdPattern.IsMatch(id))
+        {
+            declaredError = $"Field id '{id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
+            return;
+        }
+
+        if (input.Fields?.Any(existing => existing.Id == id) == true)
+        {
+            declaredError = $"Input '{input.Id}' declares duplicate field id '{id}'.";
+            return;
+        }
+
+        UpdateField(input.Id, field.Id, existing => existing with { Id = id });
+        CascadeFieldRename(input.Id, field.Id, id);
+        declaredError = null;
+        await CommitDeclarationAsync();
+    }
+
     /// <summary>
-    /// The deliverable's condition, composed from the three controls. Null
-    /// input clears it — an unconditional deliverable always fires.
+    /// A condition names a field the way a binding names an input, so a rename
+    /// has to reach it. Touched only when a condition actually reads the old
+    /// field — MutableResults() would otherwise mark the documents pending for
+    /// a rename that has nothing to do with them.
+    /// </summary>
+    private void CascadeFieldRename(string inputId, string oldField, string newField)
+    {
+        if (!EffectiveResults.Any(result =>
+            WorkflowResultConditionText.ReadsInput(result.When, inputId)
+            && WorkflowResultConditionText.FieldOf(result.When) == oldField))
+        {
+            return;
+        }
+
+        var results = MutableResults();
+
+        for (var index = 0; index < results.Count; index++)
+        {
+            if (results[index].When is { } when)
+            {
+                results[index] = results[index] with
+                {
+                    When = WorkflowResultConditionText.RenameField(when, inputId, oldField, newField)
+                };
+            }
+        }
+    }
+
+    private async Task RelabelFieldAsync(WorkflowManifestReader.InputView input, WorkflowManifestReader.FieldView field, string? value)
+    {
+        var label = (value ?? string.Empty).Trim();
+
+        if (label.Length == 0)
+        {
+            declaredError = $"Input '{input.Id}' field '{field.Id}' has no label.";
+            return;
+        }
+
+        UpdateField(input.Id, field.Id, existing => existing with { Label = label });
+        await CommitDeclarationAsync();
+    }
+
+    private async Task SetFieldRequiredAsync(WorkflowManifestReader.InputView input, WorkflowManifestReader.FieldView field, bool required)
+    {
+        UpdateField(input.Id, field.Id, existing => existing with { Required = required });
+        await CommitDeclarationAsync();
+    }
+
+    private async Task RetypeFieldAsync(WorkflowManifestReader.InputView input, WorkflowManifestReader.FieldView field, string? value)
+    {
+        var type = string.IsNullOrWhiteSpace(value) ? WorkflowInputTypes.Text : value!.Trim();
+
+        if (type == WorkflowInputTypes.Of(field))
+        {
+            return;
+        }
+
+        if (FieldLock(input, field) is { } locked)
+        {
+            declaredError = locked;
+            return;
+        }
+
+        UpdateField(input.Id, field.Id, existing => existing with
+        {
+            Type = type == WorkflowInputTypes.Text ? null : type,
+            Values = type == WorkflowInputTypes.Enum ? existing.Values ?? new List<string>() : null
+        });
+        declaredError = null;
+        await CommitDeclarationAsync();
+    }
+
+    private async Task RemoveFieldAsync(WorkflowManifestReader.InputView input, WorkflowManifestReader.FieldView field)
+    {
+        if (FieldLock(input, field) is { } locked)
+        {
+            declaredError = locked;
+            return;
+        }
+
+        UpdateInput(input.Id, existing => existing with
+        {
+            Fields = (existing.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>()).Where(f => f.Id != field.Id).ToList()
+        });
+        await CommitDeclarationAsync();
+    }
+
+    private async Task AddFieldValueAsync(WorkflowManifestReader.InputView input, WorkflowManifestReader.FieldView field, string? value)
+    {
+        var candidate = (value ?? string.Empty).Trim();
+
+        if (!DeclaredIdPattern.IsMatch(candidate))
+        {
+            declaredError = $"Value '{candidate}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
+            return;
+        }
+
+        if (field.Values?.Contains(candidate, StringComparer.Ordinal) == true)
+        {
+            declaredError = $"Field '{input.Id}.{field.Id}' already declares '{candidate}'.";
+            return;
+        }
+
+        UpdateField(input.Id, field.Id, existing => existing with
+        {
+            Values = (existing.Values ?? Array.Empty<string>()).Append(candidate).ToList()
+        });
+        declaredError = null;
+        await CommitDeclarationAsync();
+    }
+
+    private async Task RemoveFieldValueAsync(WorkflowManifestReader.InputView input, WorkflowManifestReader.FieldView field, string value)
+    {
+        var dependents = EffectiveResults
+            .Where(result => WorkflowResultConditionText.ReadsInput(result.When, input.Id)
+                && WorkflowResultConditionText.FieldOf(result.When) == field.Id
+                && WorkflowResultConditionText.LiteralOf(result.When) == value)
+            .Select(result => result.Label)
+            .ToList();
+
+        if (dependents.Count > 0)
+        {
+            declaredError =
+                $"Value '{value}' is what {string.Join(", ", dependents.Select(d => $"'{d}'"))} tests for; "
+                + "change that document's condition first.";
+            return;
+        }
+
+        UpdateField(input.Id, field.Id, existing => existing with
+        {
+            Values = (existing.Values ?? Array.Empty<string>()).Where(v => v != value).ToList()
+        });
+        await CommitDeclarationAsync();
+    }
+
+    /// <summary>
+    /// A field a condition reads by path cannot be retyped or removed — the
+    /// field's twin of <see cref="ConditionLock"/>.
+    /// </summary>
+    private string? FieldLock(WorkflowManifestReader.InputView input, WorkflowManifestReader.FieldView field)
+    {
+        var dependents = EffectiveResults
+            .Where(result => WorkflowResultConditionText.ReadsInput(result.When, input.Id)
+                && WorkflowResultConditionText.FieldOf(result.When) == field.Id)
+            .Select(result => result.Label)
+            .ToList();
+
+        return dependents.Count == 0
+            ? null
+            : $"Field '{input.Id}.{field.Id}' is tested by {string.Join(", ", dependents.Select(d => $"'{d}'"))}; change that document's condition first.";
+    }
+
+    /// <summary>
+    /// One thing a condition may read (#314, #427): its key as the grammar
+    /// spells it, the type its literal follows, and an enum's values.
+    /// </summary>
+    private sealed record ConditionOperand(string Key, string Type, IReadOnlyList<string>? Values);
+
+    /// <summary>
+    /// What a condition may read, in declaration order: an enum or a boolean;
+    /// from 9, a number or a date, each testable field of an object (text is
+    /// never testable, and an array's element fields are not read by path),
+    /// and an array's count or its bare "has entries". Below 9 exactly the v8
+    /// list, so no v9 form can be composed into a v8 publish.
+    /// </summary>
+    private IReadOnlyList<ConditionOperand> ConditionOperands
+    {
+        get
+        {
+            var v9 = EffectiveSpecVersion >= 9;
+            var operands = new List<ConditionOperand>();
+
+            foreach (var input in EffectiveInputs)
+            {
+                var type = WorkflowInputTypes.Of(input);
+
+                switch (type)
+                {
+                    case WorkflowInputTypes.Enum or WorkflowInputTypes.Boolean:
+                        operands.Add(new ConditionOperand(input.Id, type, input.Values));
+                        break;
+                    case WorkflowInputTypes.Number or WorkflowInputTypes.Date when v9:
+                        operands.Add(new ConditionOperand(input.Id, type, null));
+                        break;
+                    case WorkflowInputTypes.Object when v9:
+                        // 'field' is a keyword inside a property accessor (C# 14).
+                        foreach (var member in input.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>())
+                        {
+                            var fieldType = WorkflowInputTypes.Of(member);
+
+                            if (fieldType is WorkflowInputTypes.Enum or WorkflowInputTypes.Boolean or WorkflowInputTypes.Number or WorkflowInputTypes.Date)
+                            {
+                                operands.Add(new ConditionOperand($"{input.Id}.{member.Id}", fieldType, member.Values));
+                            }
+                        }
+
+                        break;
+                    case WorkflowInputTypes.Array when v9:
+                        operands.Add(new ConditionOperand($"count({input.Id})", CountType, null));
+                        operands.Add(new ConditionOperand(input.Id, WorkflowInputTypes.Array, null));
+                        break;
+                }
+            }
+
+            return operands;
+        }
+    }
+
+    /// <summary>Equality for every operand; ordering for a number, a date or a count.</summary>
+    private static IReadOnlyList<string> OperatorsFor(string type) =>
+        type is WorkflowInputTypes.Number or WorkflowInputTypes.Date or CountType
+            ? new[] { "==", "!=", ">", "<", ">=", "<=" }
+            : new[] { "==", "!=" };
+
+    /// <summary>How the select reads each operator; the condition is composed from the symbol.</summary>
+    private static string OperatorWord(string symbol) => symbol switch
+    {
+        "==" => "is",
+        "!=" => "is not",
+        ">" => "is more than",
+        "<" => "is less than",
+        ">=" => "is at least",
+        "<=" => "is at most",
+        _ => symbol
+    };
+
+    /// <summary>
+    /// The deliverable's condition, composed from the three controls. An empty
+    /// operand clears it — an unconditional deliverable always fires.
     /// </summary>
     private async Task SetResultConditionAsync(
         WorkflowManifestReader.ResultView result,
-        string? inputId,
-        bool? negated = null,
+        string? operandKey,
+        string? op = null,
         string? literal = null)
     {
         var results = MutableResults();
@@ -2091,33 +2788,53 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(inputId))
+        if (string.IsNullOrWhiteSpace(operandKey))
         {
             results[index] = results[index] with { When = null };
             await CommitDeclarationAsync();
             return;
         }
 
-        var input = EffectiveInputs.FirstOrDefault(i => i.Id == inputId);
-        var isNegated = negated ?? WorkflowResultConditionText.IsNegated(results[index].When);
-        var value = literal ?? WorkflowResultConditionText.LiteralOf(results[index].When);
+        var key = operandKey!.Trim();
+        var operand = ConditionOperands.FirstOrDefault(candidate => candidate.Key == key);
 
-        // A literal the new input cannot take is dropped rather than carried:
-        // switching from one enum to another must not leave the old value.
-        if (input != null && WorkflowInputTypes.Of(input) == WorkflowInputTypes.Enum
-            && (value is null || input.Values?.Contains(value, StringComparer.Ordinal) != true))
+        if (operand is null)
         {
-            value = input.Values?.FirstOrDefault();
+            // A loaded condition naming something not offered: left as written.
+            return;
         }
-        else if (input != null && WorkflowInputTypes.Of(input) == WorkflowInputTypes.Boolean
-            && value is not ("true" or "false"))
+
+        if (operand.Type == WorkflowInputTypes.Array)
         {
-            value = "true";
+            results[index] = results[index] with { When = WorkflowResultConditionText.Compose(key, null, null) };
+            await CommitDeclarationAsync();
+            return;
         }
+
+        var current = results[index].When;
+        var symbol = op ?? WorkflowResultConditionText.OperatorOf(current);
+        if (symbol is null || !OperatorsFor(operand.Type).Contains(symbol))
+        {
+            symbol = "==";
+        }
+
+        // A literal the new operand cannot take is dropped rather than carried:
+        // switching from one enum to another must not leave the old value, and
+        // a number's spelling does not become a date by changing the operand.
+        var value = literal ?? WorkflowResultConditionText.LiteralOf(current) ?? string.Empty;
+        value = operand.Type switch
+        {
+            WorkflowInputTypes.Enum => operand.Values?.Contains(value, StringComparer.Ordinal) == true ? value : operand.Values?.FirstOrDefault() ?? string.Empty,
+            WorkflowInputTypes.Boolean => value is "true" or "false" ? value : "true",
+            WorkflowInputTypes.Number => Consultologist.Web.Services.AI.ConsultInputValue.TryParseNumber(value, out _) ? value : string.Empty,
+            WorkflowInputTypes.Date => DateOnly.TryParseExact(value, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _) ? value : string.Empty,
+            CountType => int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out _) ? value : string.Empty,
+            _ => value
+        };
 
         results[index] = results[index] with
         {
-            When = WorkflowResultConditionText.Compose(inputId!.Trim(), isNegated, value)
+            When = WorkflowResultConditionText.Compose(key, symbol, value)
         };
 
         await CommitDeclarationAsync();
@@ -2126,14 +2843,9 @@
     // Razor cannot parse a nested string literal inside an attribute lambda,
     // which is the only reason this is a method rather than inline.
     private Task SetConditionOperatorAsync(
-        WorkflowManifestReader.ResultView result, string inputId, string? choice) =>
-        SetResultConditionAsync(result, inputId, choice == "not");
+        WorkflowManifestReader.ResultView result, string operandKey, string? symbol) =>
+        SetResultConditionAsync(result, operandKey, op: symbol);
 
-    /// <summary>Inputs a condition may read: enum and boolean only (#314).</summary>
-    private IReadOnlyList<WorkflowManifestReader.InputView> ConditionableInputs =>
-        EffectiveInputs
-            .Where(input => WorkflowInputTypes.Of(input) is WorkflowInputTypes.Enum or WorkflowInputTypes.Boolean)
-            .ToList();
 
     private async Task RelabelInputAsync(WorkflowManifestReader.InputView input, string? value)
     {
@@ -4108,10 +4820,13 @@
             // immutable, so this is the only moment they can be read. Held
             // across LoadAsync, which resets the rest of the page state.
             var warnings = outcome.Response.Warnings ?? new List<string>();
+            // #429: likewise read before LoadAsync clears the bump.
+            var notYetRunnable = NotYetRunnable;
             await LoadAsync();
-            publishSuccess = sourceWasForeign
+            publishSuccess = (sourceWasForeign
                 ? $"Published {publishedRef} from {sourceRef} and switched your consults to it."
-                : $"Published {publishedRef} and switched your consults to it.";
+                : $"Published {publishedRef} and switched your consults to it.")
+                + (notYetRunnable ? " It is not yet runnable." : string.Empty);
             publishWarnings = warnings;
         }
         catch (AccessTokenNotAvailableException exception)
@@ -4174,6 +4889,7 @@
         newNodeForEach = string.Empty;
         newNodeOutput = string.Empty;
         newNodeKind = "prompt";
+        newFieldIds.Clear();
     }
 
     /// <summary>

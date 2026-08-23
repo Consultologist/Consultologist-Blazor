@@ -50,13 +50,49 @@ public class SpecVersionMirrorTests
     }
 
     [Fact]
-    public void TheEditorsCeiling_IsTheNewestFormatTheEngineRuns()
+    public void TheEditorsCeiling_IsTheNewestFormatTheRegistryAccepts()
     {
-        // What "Upgrade to specVersion N" stamps. Ahead of the engine, publish
-        // refuses the package the author just built; behind it, the newest
-        // format is unreachable from the editor — which was #347's defect.
+        // What the newest "Upgrade to specVersion N" stamps (#429). Ahead of
+        // the registry, publish refuses the package the author just built;
+        // behind it, the newest format is unreachable from the editor — which
+        // was #347's defect.
+        Assert.Equal(
+            WorkflowPackageValidator.AcceptedSpecVersions.Max(),
+            Templates.NewestSpecVersion);
+    }
+
+    [Fact]
+    public void TheEditorsRunnableCeiling_IsTheNewestFormatTheEngineRuns()
+    {
+        // The other button, and the line the not-yet-runnable notice is drawn
+        // at. #430 moves this to 9 and the two ceilings become one.
         Assert.Equal(
             WorkflowPackageStore.SupportedSpecVersions.Max(),
-            Templates.NewestSpecVersion);
+            Templates.RunnableSpecVersion);
+    }
+
+    [Fact]
+    public void TheClientsElementTypes_AreTheServers()
+    {
+        Assert.Equal(
+            WorkflowInputTypes.ElementTypes,
+            Consultologist.Web.Services.Workflow.WorkflowInputTypes.ElementTypes);
+    }
+
+    [Fact]
+    public void TheClientsScalars_AreTheServers()
+    {
+        Assert.Equal(
+            WorkflowInputTypes.Scalars,
+            Consultologist.Web.Services.Workflow.WorkflowInputTypes.Scalars);
+    }
+
+    [Fact]
+    public void TheClientsItemFields_AreTheServers()
+    {
+        // What a binding may read from an input fan's item (v9 § 5).
+        Assert.Equal(
+            WorkflowInputFans.ItemFields,
+            Consultologist.Web.Services.Workflow.WorkflowInputFans.ItemFields);
     }
 }

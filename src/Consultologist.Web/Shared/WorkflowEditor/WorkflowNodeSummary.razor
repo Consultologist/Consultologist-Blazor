@@ -84,13 +84,13 @@
                                 @onchange="args => EmitNodeChangeAsync(node, forEach: args.Value?.ToString())"
                                 aria-label="Node forEach collection">
                             <option value="">— runs once —</option>
-                            @if (node.ForEach != null && !Collections.Contains(ForEachCollectionId(node.ForEach)))
+                            @if (node.ForEach != null && !ForEachOptions(Collections, ArrayInputs).Contains(node.ForEach))
                             {
                                 <option value="@node.ForEach">@node.ForEach</option>
                             }
-                            @foreach (var collectionId in Collections)
+                            @foreach (var option in ForEachOptions(Collections, ArrayInputs))
                             {
-                                <option value="@($"data:{collectionId}")">data:@collectionId</option>
+                                <option value="@option">@option</option>
                             }
                         </select>
                     </label>
@@ -281,6 +281,9 @@
     /// <summary>The package's declared input ids (v7); empty means the frozen consult_draft slot.</summary>
     [Parameter] public IReadOnlyList<string> Inputs { get; set; } = Array.Empty<string>();
     [Parameter] public IReadOnlyList<string> Collections { get; set; } = Array.Empty<string>();
+
+    /// <summary>v9 (#429): the declared inputs a node may fan — arrays only. Empty below 9.</summary>
+    [Parameter] public IReadOnlyList<string> ArrayInputs { get; set; } = Array.Empty<string>();
     [Parameter] public IReadOnlyList<string> ContractOptions { get; set; } = Array.Empty<string>();
     [Parameter] public IReadOnlyList<string> PromptOptions { get; set; } = Array.Empty<string>();
     [Parameter] public bool AllowPromptChange { get; set; }
@@ -322,8 +325,11 @@
         await OnAggregateChanged.InvokeAsync(new AggregateChange(node.Id, sources));
     }
 
-    private static string ForEachCollectionId(string forEach) =>
-        forEach.StartsWith("data:", StringComparison.Ordinal) ? forEach["data:".Length..] : forEach;
+    /// <summary>What a node may fan: every data collection, then every array input (v9 § 5).</summary>
+    internal static IReadOnlyList<string> ForEachOptions(IReadOnlyList<string> collections, IReadOnlyList<string> arrayInputs) =>
+        collections.Select(collectionId => $"data:{collectionId}")
+            .Concat(arrayInputs.Select(inputId => $"{WorkflowInputFans.Prefix}{inputId}"))
+            .ToList();
 
     // Each field edit emits the node's complete effective tuple; the host
     // compares it against the manifest original (self-removing edits, like
