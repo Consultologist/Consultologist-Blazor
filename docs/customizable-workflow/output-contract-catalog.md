@@ -66,6 +66,23 @@ bundled like the agent manifests. Requirements that matter more than the spellin
    > strand a package that was valid when published, and the remedy would be a new
    > package version rather than a fix. The check covers public packages only;
    > `acct-*` forks live in the private account a public CI job cannot read.
+   >
+   > **The stamp (2026-08-23, #433, #377's own recommendation).** Publish now
+   > records the match once, in `publish.json` beside the manifest: the catalog
+   > the version was validated under and the contract id each declared schema
+   > resolved to. Load takes a stamp's word — the validator's closure is
+   > satisfied by it, and the embedded schema is not re-matched — and proves
+   > only that each stamped contract id still exists in the running catalog, so
+   > the activity's agent lookup cannot fail. A stamped version is stranded only
+   > when a contract it was published under is gone, and load says so naming
+   > both catalogs. This dissolves most of the stranding class for stamped
+   > versions; every version published before the stamp existed (and every
+   > public version until consultologist-workflows#19 lands) re-matches as it
+   > always did. The strand check above now has two premises — id survival for
+   > a stamped version, schema match for an unstamped one — and remains the
+   > guard for the history. Attestation (3, below) is unchanged: it proves the
+   > catalog's entries are what git and the registry say, which is what makes
+   > "the id still exists" worth anything.
 3. **Attestation iterates the catalog**: every entry's agent is attested against its
    `agents/{name}.yaml`, including the embedded-schema comparison — an entry whose
    agent schema drifts from the catalog schema is a startup failure.
