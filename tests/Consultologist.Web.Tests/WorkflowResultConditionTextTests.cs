@@ -111,6 +111,18 @@ public class WorkflowResultConditionTextTests
     }
 
     [Theory]
+    [InlineData("patient.age", ">=", "65", "patient.age >= 65")]
+    [InlineData("prior_notes", null, null, "prior_notes")]
+    [InlineData("count(prior_notes)", ">", "", "count(prior_notes) >")]
+    [InlineData("encounter_kind", "==", "follow_up", "encounter_kind == follow_up")]
+    public void Compose_WritesTheWholeGrammar(string operand, string? op, string? literal, string expected)
+    {
+        // An empty literal is kept rather than folded to the bare form, so the
+        // desk can say "compares against nothing".
+        Assert.Equal(expected, WorkflowResultConditionText.Compose(operand, op, literal));
+    }
+
+    [Theory]
     [InlineData("encounter_kind == follow_up")]
     [InlineData("encounter_kind != follow_up")]
     [InlineData("billable")]

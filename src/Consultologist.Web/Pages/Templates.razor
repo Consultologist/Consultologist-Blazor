@@ -753,56 +753,99 @@
 
                                     @* v8: when this document is produced. Three controls
                                        rather than a text field — the literal follows the
-                                       chosen input's type, which is what makes the closed
-                                       grammar authorable instead of a string to get wrong. *@
+                                       chosen operand's type, which is what makes the closed
+                                       grammar authorable instead of a string to get wrong.
+                                       v9 (#429): the operand may be a path into an object
+                                       or the count of an array, and a number or a date may
+                                       be ordered. *@
                                     <li class="declared-row__when" data-when-for="@deliverable.Id">
-                                        @if (ConditionableInputs.Count == 0)
+                                        @if (ConditionOperands.Count == 0)
                                         {
                                             <span class="muted-text">
-                                                Always produced. Declare an enum or boolean input to make it conditional.
+                                                @(EffectiveSpecVersion >= 9
+                                                    ? "Always produced. Declare an enum, boolean, number, date, object or array input to make it conditional."
+                                                    : "Always produced. Declare an enum or boolean input to make it conditional.")
                                             </span>
                                         }
                                         else
                                         {
-                                            var conditionInput = WorkflowResultConditionText.InputOf(deliverable.When);
-                                            var conditionOn = ConditionableInputs.FirstOrDefault(i => i.Id == conditionInput);
+                                            var operandKey = WorkflowResultConditionText.OperandOf(deliverable.When);
+                                            var operand = ConditionOperands.FirstOrDefault(candidate => candidate.Key == operandKey);
                                             <select class="node-field__input"
-                                                    value="@(conditionOn?.Id ?? string.Empty)"
+                                                    value="@(operandKey ?? string.Empty)"
                                                     @onchange="args => SetResultConditionAsync(deliverable, args.Value?.ToString())"
-                                                    aria-label="@($"Condition input for {deliverable.Id}")">
+                                                    aria-label="@($"Condition operand for {deliverable.Id}")">
                                                 <option value="">always produced</option>
-                                                @foreach (var candidate in ConditionableInputs)
+                                                @if (operandKey != null && operand is null)
                                                 {
-                                                    <option value="@candidate.Id">when @candidate.Id</option>
+                                                    @* A loaded condition naming something not offered
+                                                       here — shown as itself, never rewritten. *@
+                                                    <option value="@operandKey">when @operandKey</option>
+                                                }
+                                                @foreach (var candidate in ConditionOperands)
+                                                {
+                                                    <option value="@candidate.Key">when @candidate.Key</option>
                                                 }
                                             </select>
 
-                                            @if (conditionOn is { } tested)
+                                            @if (operand is { } tested)
                                             {
-                                                <select class="node-field__input"
-                                                        value="@(WorkflowResultConditionText.IsNegated(deliverable.When) ? "not" : "is")"
-                                                        @onchange="args => SetConditionOperatorAsync(deliverable, tested.Id, args.Value?.ToString())"
-                                                        aria-label="@($"Condition operator for {deliverable.Id}")">
-                                                    <option value="is">is</option>
-                                                    <option value="not">is not</option>
-                                                </select>
-                                                <select class="node-field__input"
-                                                        value="@(WorkflowResultConditionText.LiteralOf(deliverable.When) ?? string.Empty)"
-                                                        @onchange="args => SetResultConditionAsync(deliverable, tested.Id, null, args.Value?.ToString())"
-                                                        aria-label="@($"Condition value for {deliverable.Id}")">
-                                                    @if (WorkflowInputTypes.Of(tested) == WorkflowInputTypes.Boolean)
+                                                @if (tested.Type == WorkflowInputTypes.Array)
+                                                {
+                                                    <span class="muted-text declared-row__literal">has entries</span>
+                                                }
+                                                else
+                                                {
+                                                    <select class="node-field__input"
+                                                            value="@(WorkflowResultConditionText.OperatorOf(deliverable.When) ?? "==")"
+                                                            @onchange="args => SetConditionOperatorAsync(deliverable, tested.Key, args.Value?.ToString())"
+                                                            aria-label="@($"Condition operator for {deliverable.Id}")">
+                                                        @foreach (var symbol in OperatorsFor(tested.Type))
+                                                        {
+                                                            <option value="@symbol">@OperatorWord(symbol)</option>
+                                                        }
+                                                    </select>
+                                                    @if (tested.Type == WorkflowInputTypes.Boolean)
                                                     {
-                                                        <option value="true">true</option>
-                                                        <option value="false">false</option>
+                                                        <select class="node-field__input declared-row__literal"
+                                                                value="@(WorkflowResultConditionText.LiteralOf(deliverable.When) ?? string.Empty)"
+                                                                @onchange="args => SetResultConditionAsync(deliverable, tested.Key, null, args.Value?.ToString())"
+                                                                aria-label="@($"Condition value for {deliverable.Id}")">
+                                                            <option value="true">true</option>
+                                                            <option value="false">false</option>
+                                                        </select>
+                                                    }
+                                                    else if (tested.Type == WorkflowInputTypes.Enum)
+                                                    {
+                                                        <select class="node-field__input declared-row__literal"
+                                                                value="@(WorkflowResultConditionText.LiteralOf(deliverable.When) ?? string.Empty)"
+                                                                @onchange="args => SetResultConditionAsync(deliverable, tested.Key, null, args.Value?.ToString())"
+                                                                aria-label="@($"Condition value for {deliverable.Id}")">
+                                                            @foreach (var option in tested.Values ?? Array.Empty<string>())
+                                                            {
+                                                                <option value="@option">@option</option>
+                                                            }
+                                                        </select>
+                                                    }
+                                                    else if (tested.Type == WorkflowInputTypes.Date)
+                                                    {
+                                                        <input type="date"
+                                                               class="node-field__input declared-row__literal"
+                                                               value="@(WorkflowResultConditionText.LiteralOf(deliverable.When) ?? string.Empty)"
+                                                               @onchange="args => SetResultConditionAsync(deliverable, tested.Key, null, args.Value?.ToString())"
+                                                               aria-label="@($"Condition value for {deliverable.Id}")" />
                                                     }
                                                     else
                                                     {
-                                                        @foreach (var option in tested.Values ?? Array.Empty<string>())
-                                                        {
-                                                            <option value="@option">@option</option>
-                                                        }
+                                                        @* A number as spelled, or a count as a whole number. *@
+                                                        <input type="text"
+                                                               inputmode="@(tested.Type == CountType ? "numeric" : "decimal")"
+                                                               class="node-field__input declared-row__literal"
+                                                               value="@(WorkflowResultConditionText.LiteralOf(deliverable.When) ?? string.Empty)"
+                                                               @onchange="args => SetResultConditionAsync(deliverable, tested.Key, null, args.Value?.ToString())"
+                                                               aria-label="@($"Condition value for {deliverable.Id}")" />
                                                     }
-                                                </select>
+                                                }
                                             }
                                         }
                                     </li>
@@ -2645,13 +2688,87 @@
     }
 
     /// <summary>
-    /// The deliverable's condition, composed from the three controls. Null
-    /// input clears it — an unconditional deliverable always fires.
+    /// One thing a condition may read (#314, #427): its key as the grammar
+    /// spells it, the type its literal follows, and an enum's values.
+    /// </summary>
+    private sealed record ConditionOperand(string Key, string Type, IReadOnlyList<string>? Values);
+
+    /// <summary>
+    /// What a condition may read, in declaration order: an enum or a boolean;
+    /// from 9, a number or a date, each testable field of an object (text is
+    /// never testable, and an array's element fields are not read by path),
+    /// and an array's count or its bare "has entries". Below 9 exactly the v8
+    /// list, so no v9 form can be composed into a v8 publish.
+    /// </summary>
+    private IReadOnlyList<ConditionOperand> ConditionOperands
+    {
+        get
+        {
+            var v9 = EffectiveSpecVersion >= 9;
+            var operands = new List<ConditionOperand>();
+
+            foreach (var input in EffectiveInputs)
+            {
+                var type = WorkflowInputTypes.Of(input);
+
+                switch (type)
+                {
+                    case WorkflowInputTypes.Enum or WorkflowInputTypes.Boolean:
+                        operands.Add(new ConditionOperand(input.Id, type, input.Values));
+                        break;
+                    case WorkflowInputTypes.Number or WorkflowInputTypes.Date when v9:
+                        operands.Add(new ConditionOperand(input.Id, type, null));
+                        break;
+                    case WorkflowInputTypes.Object when v9:
+                        // 'field' is a keyword inside a property accessor (C# 14).
+                        foreach (var member in input.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>())
+                        {
+                            var fieldType = WorkflowInputTypes.Of(member);
+
+                            if (fieldType is WorkflowInputTypes.Enum or WorkflowInputTypes.Boolean or WorkflowInputTypes.Number or WorkflowInputTypes.Date)
+                            {
+                                operands.Add(new ConditionOperand($"{input.Id}.{member.Id}", fieldType, member.Values));
+                            }
+                        }
+
+                        break;
+                    case WorkflowInputTypes.Array when v9:
+                        operands.Add(new ConditionOperand($"count({input.Id})", CountType, null));
+                        operands.Add(new ConditionOperand(input.Id, WorkflowInputTypes.Array, null));
+                        break;
+                }
+            }
+
+            return operands;
+        }
+    }
+
+    /// <summary>Equality for every operand; ordering for a number, a date or a count.</summary>
+    private static IReadOnlyList<string> OperatorsFor(string type) =>
+        type is WorkflowInputTypes.Number or WorkflowInputTypes.Date or CountType
+            ? new[] { "==", "!=", ">", "<", ">=", "<=" }
+            : new[] { "==", "!=" };
+
+    /// <summary>How the select reads each operator; the condition is composed from the symbol.</summary>
+    private static string OperatorWord(string symbol) => symbol switch
+    {
+        "==" => "is",
+        "!=" => "is not",
+        ">" => "is more than",
+        "<" => "is less than",
+        ">=" => "is at least",
+        "<=" => "is at most",
+        _ => symbol
+    };
+
+    /// <summary>
+    /// The deliverable's condition, composed from the three controls. An empty
+    /// operand clears it — an unconditional deliverable always fires.
     /// </summary>
     private async Task SetResultConditionAsync(
         WorkflowManifestReader.ResultView result,
-        string? inputId,
-        bool? negated = null,
+        string? operandKey,
+        string? op = null,
         string? literal = null)
     {
         var results = MutableResults();
@@ -2662,33 +2779,53 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(inputId))
+        if (string.IsNullOrWhiteSpace(operandKey))
         {
             results[index] = results[index] with { When = null };
             await CommitDeclarationAsync();
             return;
         }
 
-        var input = EffectiveInputs.FirstOrDefault(i => i.Id == inputId);
-        var isNegated = negated ?? WorkflowResultConditionText.IsNegated(results[index].When);
-        var value = literal ?? WorkflowResultConditionText.LiteralOf(results[index].When);
+        var key = operandKey!.Trim();
+        var operand = ConditionOperands.FirstOrDefault(candidate => candidate.Key == key);
 
-        // A literal the new input cannot take is dropped rather than carried:
-        // switching from one enum to another must not leave the old value.
-        if (input != null && WorkflowInputTypes.Of(input) == WorkflowInputTypes.Enum
-            && (value is null || input.Values?.Contains(value, StringComparer.Ordinal) != true))
+        if (operand is null)
         {
-            value = input.Values?.FirstOrDefault();
+            // A loaded condition naming something not offered: left as written.
+            return;
         }
-        else if (input != null && WorkflowInputTypes.Of(input) == WorkflowInputTypes.Boolean
-            && value is not ("true" or "false"))
+
+        if (operand.Type == WorkflowInputTypes.Array)
         {
-            value = "true";
+            results[index] = results[index] with { When = WorkflowResultConditionText.Compose(key, null, null) };
+            await CommitDeclarationAsync();
+            return;
         }
+
+        var current = results[index].When;
+        var symbol = op ?? WorkflowResultConditionText.OperatorOf(current);
+        if (symbol is null || !OperatorsFor(operand.Type).Contains(symbol))
+        {
+            symbol = "==";
+        }
+
+        // A literal the new operand cannot take is dropped rather than carried:
+        // switching from one enum to another must not leave the old value, and
+        // a number's spelling does not become a date by changing the operand.
+        var value = literal ?? WorkflowResultConditionText.LiteralOf(current) ?? string.Empty;
+        value = operand.Type switch
+        {
+            WorkflowInputTypes.Enum => operand.Values?.Contains(value, StringComparer.Ordinal) == true ? value : operand.Values?.FirstOrDefault() ?? string.Empty,
+            WorkflowInputTypes.Boolean => value is "true" or "false" ? value : "true",
+            WorkflowInputTypes.Number => Consultologist.Web.Services.AI.ConsultInputValue.TryParseNumber(value, out _) ? value : string.Empty,
+            WorkflowInputTypes.Date => DateOnly.TryParseExact(value, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _) ? value : string.Empty,
+            CountType => int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out _) ? value : string.Empty,
+            _ => value
+        };
 
         results[index] = results[index] with
         {
-            When = WorkflowResultConditionText.Compose(inputId!.Trim(), isNegated, value)
+            When = WorkflowResultConditionText.Compose(key, symbol, value)
         };
 
         await CommitDeclarationAsync();
@@ -2697,14 +2834,9 @@
     // Razor cannot parse a nested string literal inside an attribute lambda,
     // which is the only reason this is a method rather than inline.
     private Task SetConditionOperatorAsync(
-        WorkflowManifestReader.ResultView result, string inputId, string? choice) =>
-        SetResultConditionAsync(result, inputId, choice == "not");
+        WorkflowManifestReader.ResultView result, string operandKey, string? symbol) =>
+        SetResultConditionAsync(result, operandKey, op: symbol);
 
-    /// <summary>Inputs a condition may read: enum and boolean only (#314).</summary>
-    private IReadOnlyList<WorkflowManifestReader.InputView> ConditionableInputs =>
-        EffectiveInputs
-            .Where(input => WorkflowInputTypes.Of(input) is WorkflowInputTypes.Enum or WorkflowInputTypes.Boolean)
-            .ToList();
 
     private async Task RelabelInputAsync(WorkflowManifestReader.InputView input, string? value)
     {

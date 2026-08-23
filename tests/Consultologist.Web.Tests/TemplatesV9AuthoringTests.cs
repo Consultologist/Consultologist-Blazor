@@ -228,6 +228,141 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         Assert.Equal(WorkflowInputTypes.Array, page.FindAll("select.declared-row__type")[1].GetAttribute("value"));
     }
 
+    // ----- the results editor at 9 -----------------------------------------
+
+    private static IReadOnlyList<string?> Options(IRenderedComponent<Templates> page, string selector) =>
+        page.Find(selector).QuerySelectorAll("option").Select(option => option.GetAttribute("value")).ToList();
+
+    [Fact]
+    public void TheOperandPicker_OffersEveryTestableForm()
+    {
+        // consult_draft is text (never testable); labs.name is text and labs is
+        // an array, whose element fields are not read by path — only an
+        // object's are. So labs offers its count and its bare form only.
+        var page = RenderEditor(EditorFixtures.V9Structured());
+        Navigate(page, "Documents");
+
+        // Declaration order: prior_notes, patient, labs.
+        Assert.Equal(
+            new[] { "", "count(prior_notes)", "prior_notes", "patient.age", "patient.sex", "count(labs)", "labs" },
+            Options(page, "select[aria-label='Condition operand for consult_note']"));
+    }
+
+    [Fact]
+    public void ChoosingANumberPath_OffersOrderingAndADecimalInput()
+    {
+        var page = RenderEditor(EditorFixtures.V9Structured());
+        Navigate(page, "Documents");
+
+        page.Find("select[aria-label='Condition operand for consult_note']").Change("patient.age");
+
+        var operators = page.Find("select[aria-label='Condition operator for consult_note']");
+        Assert.Equal(new[] { "==", "!=", ">", "<", ">=", "<=" }, operators.QuerySelectorAll("option").Select(o => o.GetAttribute("value")));
+        Assert.Equal(
+            new[] { "is", "is not", "is more than", "is less than", "is at least", "is at most" },
+            operators.QuerySelectorAll("option").Select(o => o.TextContent));
+        Assert.Equal("decimal", page.Find("input[aria-label='Condition value for consult_note']").GetAttribute("inputmode"));
+    }
+
+    [Theory]
+    [InlineData("patient.age", ">=", "65", "patient.age >= 65")]
+    [InlineData("count(prior_notes)", ">", "1", "count(prior_notes) > 1")]
+    [InlineData("patient.sex", "!=", "male", "patient.sex != male")]
+    [InlineData("prior_notes", null, null, "prior_notes")]
+    public async Task AComposedCondition_PublishesThroughTheValidator(string operand, string? op, string? literal, string expected)
+    {
+        WorkflowPackagePublishRequest? sent = null;
+        WorkflowService.PublishPackageAsync(Arg.Do<WorkflowPackagePublishRequest>(request => sent = request))
+            .Returns(new WorkflowPublishOutcome(
+                new WorkflowPackagePublishResponse("acct-1234567890ab", "v2026.08.2", "acct-1234567890ab@v2026.08.2"),
+                Array.Empty<string>()));
+        var page = RenderEditor(EditorFixtures.V9Structured());
+        Navigate(page, "Documents");
+
+        page.Find("select[aria-label='Condition operand for consult_note']").Change(operand);
+        if (op != null)
+        {
+            page.Find("select[aria-label='Condition operator for consult_note']").Change(op);
+            page.Find("[aria-label='Condition value for consult_note']").Change(literal!);
+        }
+
+        Publish(page);
+
+        await WorkflowService.Received(1).PublishPackageAsync(Arg.Any<WorkflowPackagePublishRequest>());
+        var when = System.Text.Json.JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement.GetProperty("results")[0].GetProperty("when").GetString();
+        Assert.Equal(expected, when);
+
+        var manifest = System.Text.Json.JsonSerializer.Deserialize<Consultologist.Api.Workflow.WorkflowPackageManifest>(
+            sent.Manifest.GetRawText(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
+        var result = Consultologist.Api.Workflow.WorkflowPackageValidator.Validate(
+            manifest, sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal));
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void ADateInput_OffersADateLiteral()
+    {
+        var page = RenderEditor(EditorFixtures.V9Structured());
+        Navigate(page, "Inputs");
+        page.Find("input[aria-label='New input id']").Change("seen_on");
+        page.FindAll("button").First(button => button.TextContent.Trim() == "+ Input").Click();
+        page.FindAll("select.declared-row__type").Last().Change(WorkflowInputTypes.Date);
+        Navigate(page, "Documents");
+
+        page.Find("select[aria-label='Condition operand for consult_note']").Change("seen_on");
+        page.Find("select[aria-label='Condition operator for consult_note']").Change(">=");
+        page.Find("input[aria-label='Condition value for consult_note']").Change("2026-01-01");
+
+        Assert.Equal("date", page.Find("input[aria-label='Condition value for consult_note']").GetAttribute("type"));
+        Assert.Contains("when seen_on", page.Find("select[aria-label='Condition operand for consult_note']").TextContent);
+    }
+
+    [Fact]
+    public void OnAV8Package_OnlyTheV8FormsAreOffered()
+    {
+        // A v8 publish can only carry v8 conditions: the picker offers plain
+        // enum and boolean ids, and is/is not.
+        var page = RenderEditor(EditorFixtures.V8());
+        Navigate(page, "Inputs");
+        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Enum);
+        page.Find("li.declared-row__values input").Change("new_patient");
+        page.Find("li.declared-row__values input").Change("follow_up");
+        Navigate(page, "Documents");
+
+        Assert.Equal(new[] { "", "prior_notes" }, Options(page, "select[aria-label='Condition operand for consult_note']"));
+        page.Find("select[aria-label='Condition operand for consult_note']").Change("prior_notes");
+        Assert.Equal(new[] { "==", "!=" }, Options(page, "select[aria-label='Condition operator for consult_note']"));
+    }
+
+    [Fact]
+    public void SwitchingOperand_CoercesTheLiteral()
+    {
+        var package = EditorFixtures.V9Structured();
+        WithDraftedCondition(package, "patient.age >= 65");
+        var page = RenderEditor(package);
+        Navigate(page, "Documents");
+
+        page.Find("select[aria-label='Condition operand for consult_note']").Change("patient.sex");
+
+        // >= is not an enum's operator and 65 is not one of its values: the
+        // condition becomes equality to the first declared value.
+        Assert.Equal("==", page.Find("select[aria-label='Condition operator for consult_note']").GetAttribute("value"));
+        Assert.Equal("female", page.Find("select[aria-label='Condition value for consult_note']").GetAttribute("value"));
+    }
+
+    [Fact]
+    public void ALoadedConditionNamingSomethingNotOffered_IsShownAsItself()
+    {
+        var package = EditorFixtures.V9Structured();
+        WithDraftedCondition(package, "patient.family_name == Smith");
+        var page = RenderEditor(package);
+        Navigate(page, "Documents");
+
+        var picker = page.Find("select[aria-label='Condition operand for consult_note']");
+        Assert.Equal("patient.family_name", picker.GetAttribute("value"));
+        Assert.Contains("patient.family_name", Options(page, "select[aria-label='Condition operand for consult_note']"));
+    }
+
     // ----- the gate below 9 ------------------------------------------------
 
     [Fact]

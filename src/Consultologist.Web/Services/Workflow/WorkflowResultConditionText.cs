@@ -8,10 +8,10 @@ namespace Consultologist.Web.Services.Workflow;
 /// thing to keep in step.
 ///
 /// #427: it reads the whole v9 grammar — six operators, a path into a field,
-/// count() — even though the editor composes only the v8 forms (#429). A
-/// condition the editor cannot yet write must still name its input
-/// correctly, or the pre-publish check refuses a package the engine accepts
-/// and a rename leaves the condition reading an input that no longer exists.
+/// count() — and since #429 composes it too. A loaded condition must name its
+/// input correctly whatever form it takes, or the pre-publish check refuses a
+/// package the engine accepts and a rename leaves the condition reading an
+/// input that no longer exists.
 /// </summary>
 public static class WorkflowResultConditionText
 {
@@ -46,11 +46,19 @@ public static class WorkflowResultConditionText
     public static bool ReadsInput(string? when, string inputId) =>
         string.Equals(InputOf(when), inputId, StringComparison.Ordinal);
 
-    /// <summary>Compose: null literal is the bare truthy form.</summary>
+    /// <summary>
+    /// Compose the whole grammar (#429): an operand, an operator and a literal.
+    /// A null operator or literal is the bare form; an empty literal is kept,
+    /// so the desk can name it rather than the condition quietly becoming bare.
+    /// </summary>
+    public static string Compose(string operand, string? op, string? literal) =>
+        op is null || literal is null
+            ? operand
+            : $"{operand} {op} {literal}".TrimEnd();
+
+    /// <summary>The v8 shape, kept: equality or its negation on a plain input.</summary>
     public static string Compose(string inputId, bool negated, string? literal) =>
-        literal is null
-            ? inputId
-            : $"{inputId} {(negated ? "!=" : "==")} {literal}";
+        Compose(inputId, negated ? "!=" : "==", literal);
 
     /// <summary>The operator, or null for the bare form.</summary>
     public static string? OperatorOf(string? when) =>
