@@ -922,6 +922,7 @@
                                              Editable="true"
                                              Scalars="@ScalarIds"
                                              Collections="@CollectionIds"
+                                             ArrayInputs="@ArrayInputIds"
                                              ContractOptions="@ContractOptions"
                                              PromptOptions="@EffectivePrompts.Select(p => p.Id).ToList()"
                                              AllowPromptChange="@(EffectiveSpecVersion >= 6)"
@@ -1016,11 +1017,11 @@
                                 }
                                 <label class="input-field">
                                     <span>for each</span>
-                                    <select class="binding-row__select" @bind="newNodeForEach">
+                                    <select class="binding-row__select" @bind="newNodeForEach" aria-label="New node forEach">
                                         <option value="">— runs once —</option>
-                                        @foreach (var collectionId in CollectionIds)
+                                        @foreach (var option in WorkflowNodeSummary.ForEachOptions(CollectionIds, ArrayInputIds))
                                         {
-                                            <option value="@($"data:{collectionId}")">data:@collectionId</option>
+                                            <option value="@option">@option</option>
                                         }
                                     </select>
                                 </label>
@@ -1056,6 +1057,7 @@
                                              Editable="true"
                                              Scalars="@ScalarIds"
                                              Collections="@CollectionIds"
+                                             ArrayInputs="@ArrayInputIds"
                                              ContractOptions="@ContractOptions"
                                              PromptOptions="@EffectivePrompts.Select(p => p.Id).ToList()"
                                              AllowPromptChange="@(EffectiveSpecVersion >= 6)"
@@ -1848,6 +1850,13 @@
     // back to the frozen consult_draft slot.
     private IReadOnlyList<string> DeclaredInputIds =>
         EffectiveInputs.Select(input => input.Id).ToList();
+
+    // v9 (#429): what a node may fan — the declared arrays, from 9. Empty
+    // below, so a v8 publish cannot be composed with an input fan.
+    private IReadOnlyList<string> ArrayInputIds =>
+        EffectiveSpecVersion >= 9
+            ? EffectiveInputs.Where(input => WorkflowInputTypes.Of(input) == WorkflowInputTypes.Array).Select(input => input.Id).ToList()
+            : Array.Empty<string>();
 
     private IReadOnlyList<WorkflowManifestReader.InputView> EffectiveInputs =>
         inputsEdit ?? (content != null && IsV7

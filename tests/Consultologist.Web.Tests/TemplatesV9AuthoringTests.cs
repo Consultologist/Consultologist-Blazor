@@ -363,6 +363,89 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         Assert.Contains("patient.family_name", Options(page, "select[aria-label='Condition operand for consult_note']"));
     }
 
+    // ----- the nodes editor at 9 -------------------------------------------
+
+    private static IReadOnlyList<string?> ForEachOptions(IRenderedComponent<Templates> page) =>
+        page.FindAll("select[aria-label='Node forEach collection']").First()
+            .QuerySelectorAll("option").Select(option => option.GetAttribute("value")).ToList();
+
+    [Fact]
+    public void TheForEachPicker_OffersArrayInputsAtNine()
+    {
+        var page = RenderEditor(EditorFixtures.V9Structured());
+        Navigate(page, "Graph");
+
+        var options = ForEachOptions(page);
+        Assert.Contains("input:prior_notes", options);
+        Assert.Contains("input:labs", options);
+        Assert.DoesNotContain("input:patient", options);
+        Assert.Contains("data:standards", options);
+    }
+
+    [Fact]
+    public void TheForEachPicker_OffersNoInputsBelowNine()
+    {
+        var page = RenderEditor(EditorFixtures.V8());
+        Navigate(page, "Inputs");
+        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
+        Navigate(page, "Graph");
+
+        Assert.DoesNotContain(ForEachOptions(page), option => option!.StartsWith("input:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void FanningAnInput_OffersItsItemFields()
+    {
+        var page = RenderEditor(EditorFixtures.V9Structured());
+        Navigate(page, "Graph");
+
+        page.FindAll("select[aria-label='Node forEach collection']").First().Change("input:prior_notes");
+
+        var sources = Options(page, "select[aria-label='Source for section_name']");
+        Assert.Contains("item:id", sources);
+        Assert.Contains("item:name", sources);
+        Assert.Contains("item:value", sources);
+        Assert.DoesNotContain("item:content", sources);
+
+        page.FindAll("select[aria-label='Node forEach collection']").First().Change("data:standards");
+
+        Assert.Contains("item:content", Options(page, "select[aria-label='Source for section_name']"));
+        Assert.DoesNotContain("item:value", Options(page, "select[aria-label='Source for section_name']"));
+    }
+
+    [Fact]
+    public void TheNewNodeForm_OffersInputFans()
+    {
+        var page = RenderEditor(EditorFixtures.V9Structured());
+        Navigate(page, "+ Node");
+
+        Assert.Contains("input:prior_notes", Options(page, "select[aria-label='New node forEach']"));
+    }
+
+    [Fact]
+    public async Task ANodeFanningAnInput_PublishesThroughTheValidator()
+    {
+        WorkflowPackagePublishRequest? sent = null;
+        WorkflowService.PublishPackageAsync(Arg.Do<WorkflowPackagePublishRequest>(request => sent = request))
+            .Returns(new WorkflowPublishOutcome(
+                new WorkflowPackagePublishResponse("acct-1234567890ab", "v2026.08.2", "acct-1234567890ab@v2026.08.2"),
+                Array.Empty<string>()));
+        var page = RenderEditor(EditorFixtures.V9Structured());
+        Navigate(page, "Graph");
+
+        page.FindAll("select[aria-label='Node forEach collection']").First().Change("input:prior_notes");
+        page.Find("select[aria-label='Source for section_name']").Change("item:value");
+        Publish(page);
+
+        await WorkflowService.Received(1).PublishPackageAsync(Arg.Any<WorkflowPackagePublishRequest>());
+        var manifest = System.Text.Json.JsonSerializer.Deserialize<Consultologist.Api.Workflow.WorkflowPackageManifest>(
+            sent!.Manifest.GetRawText(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
+        Assert.Equal("input:prior_notes", manifest.Nodes![0].ForEach);
+        var result = Consultologist.Api.Workflow.WorkflowPackageValidator.Validate(
+            manifest, sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal));
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
     // ----- the gate below 9 ------------------------------------------------
 
     [Fact]
