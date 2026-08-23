@@ -140,7 +140,11 @@ public record ConsultGenerationJobResponse(
     // null whenever this is set. Two fields, because "nothing ran" and "ran
     // and failed" are different facts and a reader should not infer one from
     // an event label.
-    string? StartFailure = null);
+    string? StartFailure = null,
+    // #453: the package's tags as they were at the pinned version — stamped,
+    // since History cannot read the manifest. Null before v9 and on every
+    // job before it; empty for a v9 package that declared none.
+    IReadOnlyList<string>? PackageTags = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and

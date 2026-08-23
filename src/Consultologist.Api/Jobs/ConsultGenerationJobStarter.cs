@@ -644,7 +644,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // that nothing outside can read, and a pin can be re-pointed.
                 PackageSpecVersion: specVersion,
                 // #432: and its title, as the pinned manifest carries it.
-                PackageTitle: package.Manifest.Title));
+                PackageTitle: package.Manifest.Title,
+                // #453: and its tags.
+                PackageTags: package.Manifest.Tags));
 
         var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(
             nameof(ConsultGenerationOrchestrator),
@@ -754,7 +756,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     SkippedDocuments: notProduced,
                     PackageSpecVersion: specVersion,
                     InputDocumentOrigins: inputOrigins,
-                    PackageTitle: package.Manifest.Title),
+                    PackageTitle: package.Manifest.Title,
+                    PackageTags: package.Manifest.Tags),
                 detail));
 
         return new ConsultGenerationJobStartOutcome(

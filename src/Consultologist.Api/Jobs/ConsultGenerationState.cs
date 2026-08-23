@@ -97,6 +97,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.ScheduledAtUtc ??= input.ScheduledAtUtc;
         State.PackageSpecVersion ??= input.PackageSpecVersion;
         State.PackageTitle ??= input.PackageTitle;
+        State.PackageTags ??= input.PackageTags?.ToList();
         State.InputOrigins ??= input.InputOrigins?.ToDictionary(
             pair => pair.Key,
             pair => pair.Value,
@@ -445,7 +446,11 @@ public sealed record ConsultGenerationJobInitialize(
     // #432: the package's title as the pinned manifest carried it — what the
     // reader sees beside the ref, as it was when the job ran. Appended last
     // for the reason PackageSpecVersion gives.
-    string? PackageTitle = null);
+    string? PackageTitle = null,
+    // #453: and its tags, as the pinned manifest carried them — authored
+    // labels, the safety class of the title; null before v9, an empty list
+    // for a v9 package that declared none. Appended last, same reason.
+    IReadOnlyList<string>? PackageTags = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -522,6 +527,8 @@ public sealed class ConsultGenerationJobState
 
     /// <summary>#432: the package's title at the pinned version; null when untitled, and on every job before it.</summary>
     public string? PackageTitle { get; set; }
+    /// <summary>#453: the package's tags at the pinned version; null before v9 and on every job before it.</summary>
+    public List<string>? PackageTags { get; set; }
     public string? AnalysisStatus { get; set; }
     public string? AnalysisError { get; set; }
     public int CompletedStageCount { get; set; }
@@ -767,6 +774,7 @@ public sealed class ConsultGenerationJobState
             PackageSpecVersion: PackageSpecVersion,
             PackageTitle: PackageTitle,
             StartFailure: StartFailure,
+            PackageTags: PackageTags,
             // Derived, never stored: the deliverable hash of a partial job is
             // undefined, so only completed jobs carry it (provenance.md). The
             // three-way dispatch: v7 document set → v3, v6 single document →

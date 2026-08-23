@@ -32,7 +32,8 @@ public class ConsultGenerationStartFailureRecordTests
             Source: ConsultGenerationJobSources.Email,
             SkippedDocuments: new[] { new ConsultSkippedDocument("patient_letter", "Patient letter", "wanted billable = true; it was not supplied") },
             PackageSpecVersion: 8,
-            PackageTitle: "Breast oncology consults"),
+            PackageTitle: "Breast oncology consults",
+            PackageTags: new[] { "oncology" }),
         Reason);
 
     [Fact]
@@ -78,6 +79,7 @@ public class ConsultGenerationStartFailureRecordTests
         Assert.Equal("output-contracts@v2026.07.2", response.CatalogRef);
         Assert.Equal(8, response.PackageSpecVersion);
         Assert.Equal("Breast oncology consults", response.PackageTitle);
+        Assert.Equal(new[] { "oncology" }, response.PackageTags);
         Assert.Equal(ConsultGenerationJobSources.Email, response.Source);
         Assert.Equal("Patient letter", Assert.Single(response.SkippedDocuments!).Label);
         Assert.Null(response.Nodes);

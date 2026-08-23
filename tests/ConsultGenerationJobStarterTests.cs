@@ -878,6 +878,9 @@ public class ConsultGenerationJobStarterTests
         Assert.All(recorded.Initialize.SkippedDocuments!, s => Assert.Contains("not supplied", s.Reason));
         Assert.Null(recorded.Initialize.Nodes);
         Assert.Null(recorded.Initialize.ItemSteps);
+        // #453: a v8 package has no tags section; the record says null, as a
+        // started job's would.
+        Assert.Null(recorded.Initialize.PackageTags);
         await _entities.DidNotReceive().SignalEntityAsync(
             Arg.Any<EntityInstanceId>(), nameof(ConsultGenerationJobEntity.Initialize), Arg.Any<object>());
         await _client.DidNotReceive().ScheduleNewOrchestrationInstanceAsync(
@@ -973,12 +976,13 @@ public class ConsultGenerationJobStarterTests
     /// declaration, whose consult_draft, seen_on and encounter_kind are all
     /// required and whose seen_on is a date.
     /// </summary>
-    private void WithTypedPackage(string? title = null)
+    private void WithTypedPackage(string? title = null, List<string>? tags = null)
     {
         // #432: a title rides on a v9 manifest; the typed v8 shape otherwise.
+        // #453: tags likewise — a stated empty set unless the test says.
         var manifest = title is null
             ? V8Fixtures.Typed()
-            : V8Fixtures.Typed() with { SpecVersion = 9, Title = title, Tags = new List<string>() };
+            : V8Fixtures.Typed() with { SpecVersion = 9, Title = title, Tags = tags ?? new List<string>() };
         var errors = new List<string>();
 
         _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
@@ -1098,6 +1102,30 @@ public class ConsultGenerationJobStarterTests
 
         Assert.NotNull(initialize);
         Assert.Equal(title, initialize!.PackageTitle);
+    }
+
+    [Fact]
+    public async Task TheStarter_RecordsThePackagesTagsOnTheJob_AndNullBeforeNine()
+    {
+        // #453: stamped beside the title, in authored order. A v8 package has
+        // no section, and the record says so with null rather than [].
+        WithTypedPackage("Breast oncology consults", new List<string> { "oncology", "Breast" });
+        ConsultGenerationJobInitialize? initialize = null;
+        await _entities.SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(),
+            nameof(ConsultGenerationJobEntity.Initialize),
+            Arg.Do<object>(payload => initialize = payload as ConsultGenerationJobInitialize));
+
+        await StartWithAsync(("consult_draft", Referral), ("seen_on", "2026-08-10"), ("encounter_kind", "follow_up"));
+
+        Assert.Equal(new[] { "oncology", "Breast" }, initialize!.PackageTags);
+
+        WithTypedPackage();
+        initialize = null;
+        await StartWithAsync(("consult_draft", Referral), ("seen_on", "2026-08-10"), ("encounter_kind", "follow_up"));
+
+        Assert.NotNull(initialize);
+        Assert.Null(initialize!.PackageTags);
     }
 
     [Fact]
