@@ -242,6 +242,19 @@ public static class EditorFixtures
         }
         """, 9);
 
+    /// <summary>#432: the same package carrying a title (and, optionally, a description).</summary>
+    public static WorkflowPackageContentResponse WithTitle(WorkflowPackageContentResponse package, string title, string? description = null)
+    {
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["title"] = title;
+        if (description != null)
+        {
+            root["description"] = description;
+        }
+
+        return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
+
     /// <summary>The v7 shape: declared inputs and a results list.</summary>
     public static WorkflowPackageContentResponse V7() => Package("""
         {

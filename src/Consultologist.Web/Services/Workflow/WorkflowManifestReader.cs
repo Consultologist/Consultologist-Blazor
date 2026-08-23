@@ -261,6 +261,11 @@ public static class WorkflowManifestReader
     /// <summary>The fork's parent ref, or null for root packages.</summary>
     public static string? ReadDerivedFrom(JsonElement manifest) => ReadString(manifest, "derivedFrom");
 
+    /// <summary>v9 § 4 (#432): the package's title, or null when it has none — the ref is the stated fallback.</summary>
+    public static string? ReadTitle(JsonElement manifest) => ReadString(manifest, "title");
+
+    public static string? ReadDescription(JsonElement manifest) => ReadString(manifest, "description");
+
     /// <summary>The raw result reference ("node:x"), for the deliverable selector.</summary>
     public static string? ReadResultRef(JsonElement manifest) => ReadString(manifest, "result");
 

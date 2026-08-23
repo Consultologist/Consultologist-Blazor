@@ -141,11 +141,12 @@ public class WorkflowPackagePublisherTests
         DateTimeOffset? nowUtc = null,
         FakeRegistryWriter? writer = null,
         WorkflowPackageManifest? parentManifest = null,
-        Dictionary<string, string>? parentFiles = null)
+        Dictionary<string, string>? parentFiles = null,
+        string sourceRef = SourceRef)
     {
         writer ??= new FakeRegistryWriter();
         var settings = new FakeSettingsStore();
-        var store = new FakePackageStore(SourceRef, parentManifest, parentFiles);
+        var store = new FakePackageStore(sourceRef, parentManifest, parentFiles);
         var publisher = new WorkflowPackagePublisher(
             store,
             writer,
@@ -460,6 +461,54 @@ public class WorkflowPackagePublisherTests
         Assert.True(second.Succeeded);
         Assert.Equal("v2026.07.2", second.Response!.Version);
         Assert.Equal("v2026.07.2", writer.LatestPointers[AccountName]);
+    }
+
+    // ----- #432: a fork across names starts with no title ------------------
+
+    private static WorkflowPackageManifest Titled() => V9Fixtures.Minimal() with
+    {
+        Title = "Breast oncology consults",
+        Description = "Referral triage and consult notes for the breast clinic."
+    };
+
+    [Fact]
+    public async Task Publish_AForkAcrossNames_ClearsTitleAndDescription()
+    {
+        // The parent's words about the parent: inherited, they would name a
+        // diverging package after something it no longer is.
+        var (publisher, writer, _) = CreatePublisher();
+        var manifest = Titled();
+
+        var result = await publisher.PublishAsync(
+            OwnerId, Request(manifest: manifest, files: V5Fixtures.Files(manifest)), CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        var stored = writer.ReadManifest(AccountName, "v2026.07.1");
+        Assert.Null(stored.Title);
+        Assert.Null(stored.Description);
+        var raw = writer.Blobs[$"{AccountName}/v2026.07.1/manifest.json"];
+        Assert.DoesNotContain("\"title\"", raw);
+        Assert.DoesNotContain("\"description\"", raw);
+    }
+
+    [Fact]
+    public async Task Publish_ARepublishOfTheSamePackage_KeepsTitleAndDescription()
+    {
+        // The source is the account's own package: no name is crossed.
+        var writer = new FakeRegistryWriter();
+        await writer.CreateManifestAsync(AccountName, "v2026.07.1", "{}", CancellationToken.None);
+        var (publisher, _, _) = CreatePublisher(writer: writer, sourceRef: $"{AccountName}@v2026.07.1");
+        var manifest = Titled();
+
+        var result = await publisher.PublishAsync(
+            OwnerId,
+            Request(source: $"{AccountName}@v2026.07.1", manifest: manifest, files: V5Fixtures.Files(manifest)),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        var stored = writer.ReadManifest(AccountName, "v2026.07.2");
+        Assert.Equal("Breast oncology consults", stored.Title);
+        Assert.Equal("Referral triage and consult notes for the breast clinic.", stored.Description);
     }
 
     [Fact]

@@ -131,6 +131,12 @@
                     <ul>
                         <li>Publishing creates a new version of <strong>your own</strong> package from this content — not a new version of <code>@content.Name</code>.</li>
                         <li>Any customisation your package already carries is not in this content, and will not be in what you publish.</li>
+                        @if (WorkflowManifestReader.ReadTitle(content.Manifest) != null || WorkflowManifestReader.ReadDescription(content.Manifest) != null)
+                        {
+                            @* #432: a fork across names starts with no title. Said
+                               here, before the publish, not discovered after it. *@
+                            <li>Its title and description are not carried over: your version starts with no title and shows as its ref until you name it in the Package pane after publishing.</li>
+                        }
                         <li>Your consults switch to the published version immediately.</li>
                     </ul>
                 </FluentMessageBar>

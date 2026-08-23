@@ -172,6 +172,15 @@ public sealed class WorkflowPackagePublisher
             DerivedFrom = sourceRef.ToString()
         };
 
+        // v9 § 4 (#432): a fork across names starts with no title — and no
+        // description, both being the parent's words about the parent. A
+        // republish of the same package keeps them. Decided on the validated
+        // source, never the client's manifest name, which is ignored above.
+        if (!string.Equals(sourceRef.Name, name, StringComparison.Ordinal))
+        {
+            stamped = stamped with { Title = null, Description = null };
+        }
+
         var catalogSchemas = _catalog.Entries.Values
             .Where(entry => entry.SchemaJson != null)
             .ToDictionary(entry => entry.ContractId, entry => entry.SchemaJson!, StringComparer.Ordinal);
