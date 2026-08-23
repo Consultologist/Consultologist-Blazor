@@ -139,6 +139,213 @@ public class ConformanceFixtureExport
             "Two tags that differ only in case. A filter treats them as one, so the manifest may not declare two.",
             v9 with { Tags = new List<string> { "oncology", "Oncology" } });
 
+        // ----- #430: the v9 release's coverage — a rejection case for every
+        // publish-time refusal the design record names (§§ 4–6). § 7's rules
+        // (document multiplicity, the aggregate cap, the content floor) and
+        // the supplied-value rules of § 4's wire table are START-TIME: they
+        // guard a request, not a manifest, so the validator this suite replays
+        // never says them and no case can carry them. The same holds for the
+        // empty fan (v9 § 5, #434): an empty array is a request.
+
+        // § 4 metadata — title and description (#432).
+        Invalid("invalid-title-before-v9", 8,
+            "A title on a v8 manifest. The section arrives at 9; before it, a known field is an error, never ignored.",
+            v8Typed with { Title = "Breast oncology consults" });
+        Invalid("invalid-description-before-v9", 8,
+            "A description on a v8 manifest, for the same rule.",
+            v8Typed with { Description = "Referral triage." });
+        Invalid("invalid-title-empty", 9,
+            "A whitespace-only title. Clearing is done by omitting the field, not by blanking it.",
+            v9 with { Title = "   " });
+        Invalid("invalid-title-multiline", 9,
+            "A title spanning lines. It is shown beside the ref on one line everywhere.",
+            v9 with { Title = "Breast\nclinic" });
+        Invalid("invalid-title-too-long", 9,
+            "A title over 80 UTF-16 code units.",
+            v9 with { Title = new string('a', 81) });
+        Invalid("invalid-description-empty", 9,
+            "A whitespace-only description.",
+            v9 with { Description = " " });
+        Invalid("invalid-description-too-long", 9,
+            "A description over 500 UTF-16 code units.",
+            v9 with { Description = new string('a', 501) });
+
+        // § 4 metadata — tags (#453), beyond the three cases above.
+        Invalid("invalid-tag-empty", 9,
+            "A blank tag, named by position.",
+            v9 with { Tags = new List<string> { "oncology", "   " } });
+        Invalid("invalid-tag-multiline", 9,
+            "A tag spanning lines.",
+            v9 with { Tags = new List<string> { "breast\nclinic" } });
+        Invalid("invalid-tag-untrimmed", 9,
+            "A tag with leading or trailing whitespace. The stored spelling is the label.",
+            v9 with { Tags = new List<string> { " oncology" } });
+        Invalid("invalid-tag-too-long", 9,
+            "A tag over 32 UTF-16 code units.",
+            v9 with { Tags = new List<string> { new string('a', 33) } });
+        Invalid("invalid-too-many-tags", 9,
+            "Twenty-one tags. Twenty is the ceiling.",
+            v9 with { Tags = Enumerable.Range(0, 21).Select(i => $"tag-{i}").ToList() });
+
+        // § 4 structured inputs — version gates at 8.
+        Invalid("invalid-structured-type-at-v8", 8,
+            "A number input on a v8 manifest. The scalar set widens at 9.",
+            V8Fixtures.Typed() with { Inputs = V8Fixtures.Typed().Inputs!
+                .Append(new WorkflowInputSpec("length_of_stay", "Length of stay", Required: false, Type: WorkflowInputTypes.Number)).ToList() });
+        Invalid("invalid-items-at-v8", 8,
+            "An items declaration on a v8 manifest. Arrays arrive at 9.",
+            V8Fixtures.Typed() with { Inputs = V8Fixtures.Typed().Inputs!
+                .Append(new WorkflowInputSpec("prior_notes", "Prior notes", Required: false, Items: WorkflowInputTypes.Text)).ToList() });
+        Invalid("invalid-fields-at-v8", 8,
+            "A fields declaration on a v8 manifest. Objects arrive at 9.",
+            V8Fixtures.Typed() with { Inputs = V8Fixtures.Typed().Inputs!
+                .Append(new WorkflowInputSpec("patient", "Patient", Required: false,
+                    Fields: new List<WorkflowFieldSpec> { new("age", "Age") })).ToList() });
+
+        // § 4 structured inputs — shape rules at 9.
+        Invalid("invalid-unknown-input-type", 9,
+            "A type name outside the v9 vocabulary.",
+            V9Fixtures.WithInput(new WorkflowInputSpec("stamp", "Timestamp", Required: false, Type: "timestamp")));
+        Invalid("invalid-array-without-items", 9,
+            "An array that does not say what its elements are.",
+            V9Fixtures.WithInput(new WorkflowInputSpec("prior_notes", "Prior notes", Required: false, Type: WorkflowInputTypes.Array)));
+        Invalid("invalid-array-of-arrays", 9,
+            "items: array. Structure is one level deep by design.",
+            V9Fixtures.WithInput(new WorkflowInputSpec("prior_notes", "Prior notes", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Array)));
+        Invalid("invalid-unknown-items-type", 9,
+            "An items name outside the element vocabulary.",
+            V9Fixtures.WithInput(new WorkflowInputSpec("prior_notes", "Prior notes", Required: false, Type: WorkflowInputTypes.Array, Items: "attachment")));
+        Invalid("invalid-items-on-a-scalar", 9,
+            "items on a non-array input.",
+            V9Fixtures.WithInput(new WorkflowInputSpec("seen_on", "Seen on", Type: WorkflowInputTypes.Date, Items: WorkflowInputTypes.Text)));
+        Invalid("invalid-array-of-objects-without-fields", 9,
+            "An array of objects that does not declare the object's fields.",
+            V9Fixtures.WithInput(new WorkflowInputSpec("medications", "Medications", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Object)));
+        Invalid("invalid-object-without-fields", 9,
+            "An object with no fields is a shape that admits nothing.",
+            V9Fixtures.WithInput(new WorkflowInputSpec("patient", "Patient", Required: false, Type: WorkflowInputTypes.Object)));
+        Invalid("invalid-fields-on-a-scalar", 9,
+            "fields on a non-object input.",
+            V9Fixtures.WithInput(new WorkflowInputSpec("seen_on", "Seen on", Type: WorkflowInputTypes.Date,
+                Fields: new List<WorkflowFieldSpec> { new("year", "Year") })));
+        Invalid("invalid-object-field-bad-id", 9,
+            "A field id that is not snake_case. Ids are read in conditions and bindings.",
+            V9Fixtures.WithInput(new WorkflowInputSpec("patient", "Patient", Required: false, Type: WorkflowInputTypes.Object,
+                Fields: new List<WorkflowFieldSpec> { new("Family Name", "Family name") })));
+        Invalid("invalid-object-duplicate-field", 9,
+            "The same field id twice.",
+            V9Fixtures.WithInput(new WorkflowInputSpec("patient", "Patient", Required: false, Type: WorkflowInputTypes.Object,
+                Fields: new List<WorkflowFieldSpec> { new("age", "Age"), new("age", "Age again") })));
+        Invalid("invalid-object-field-without-label", 9,
+            "A field with no label. The intake renders the label.",
+            V9Fixtures.WithInput(new WorkflowInputSpec("patient", "Patient", Required: false, Type: WorkflowInputTypes.Object,
+                Fields: new List<WorkflowFieldSpec> { new("age", " ") })));
+        Invalid("invalid-object-field-structured", 9,
+            "A field typed object. Structure is one level deep: a field holds a scalar.",
+            V9Fixtures.WithInput(new WorkflowInputSpec("patient", "Patient", Required: false, Type: WorkflowInputTypes.Object,
+                Fields: new List<WorkflowFieldSpec> { new("history", "History", Type: WorkflowInputTypes.Object) })));
+        Invalid("invalid-object-field-unknown-type", 9,
+            "A field type outside the scalar vocabulary.",
+            V9Fixtures.WithInput(new WorkflowInputSpec("patient", "Patient", Required: false, Type: WorkflowInputTypes.Object,
+                Fields: new List<WorkflowFieldSpec> { new("age", "Age", Type: "years") })));
+        Invalid("invalid-object-field-values-on-non-enum", 9,
+            "values on a non-enum field.",
+            V9Fixtures.WithInput(new WorkflowInputSpec("patient", "Patient", Required: false, Type: WorkflowInputTypes.Object,
+                Fields: new List<WorkflowFieldSpec> { new("age", "Age", Type: WorkflowInputTypes.Number, Values: new List<string> { "old" }) })));
+        Invalid("invalid-field-enum-single-value", 9,
+            "A field enum with one value is a constant, not a choice — the enum rules hold inside an object too.",
+            V9Fixtures.WithInput(new WorkflowInputSpec("patient", "Patient", Required: false, Type: WorkflowInputTypes.Object,
+                Fields: new List<WorkflowFieldSpec> { new("sex", "Sex", Type: WorkflowInputTypes.Enum, Values: new List<string> { "female" }) })));
+
+        // § 5 — fanning over a caller-supplied array.
+        cases.Add(new Case("v9-fanned-array", 9,
+            "A required array of text fanned by forEach, its elements bound as item:value.",
+            V9Fixtures.Fanned(), V6Fixtures.Files(V9Fixtures.Fanned())));
+        var fannedOptional = V9Fixtures.Fanned() with
+        {
+            Inputs = V9Fixtures.Fanned().Inputs!
+                .Select(input => input.Id == "prior_notes" ? input with { Required = false } : input)
+                .ToList()
+        };
+        cases.Add(new Case("v9-fanned-optional-input-warns", 9,
+            "An optional array fanned by forEach: valid, with the warning that an empty consult is refused at start. The demonstration package carries exactly this shape on purpose.",
+            fannedOptional, V6Fixtures.Files(fannedOptional)));
+        Invalid("invalid-fan-of-undeclared-input", 9,
+            "forEach naming an input the manifest does not declare.",
+            V9Fixtures.Fanned(forEach: "input:missing_notes"));
+        Invalid("invalid-fan-of-a-non-array", 9,
+            "forEach over a text input. Only an array can be fanned.",
+            V9Fixtures.Fanned(forEach: "input:consult_draft"));
+        Invalid("invalid-fan-item-field", 9,
+            "A binding reading an item field an input fan does not carry (they carry: id, name, value).",
+            V9Fixtures.Fanned(binding: "item:text"));
+        Invalid("invalid-input-fan-before-v9", 8,
+            "forEach over an input on a v8 manifest, where forEach must be a data: collection reference.",
+            V8Fixtures.Typed() with { Nodes = V9Fixtures.Fanned().Nodes, Prompts = V9Fixtures.Fanned().Prompts,
+                Inputs = V8Fixtures.Typed().Inputs!.Append(new WorkflowInputSpec("prior_notes", "Prior notes")).ToList() });
+
+        // § 6 — the condition grammar, each refusal by name. Ids and triggers
+        // mirror WorkflowV9Tests.TheGrammarRejects; the recorded sentence is
+        // whatever the validator says, as everywhere in this suite.
+        var conditionRefusals = new (string Id, string When, string Description)[]
+        {
+            ("orders-an-enum", "encounter_kind > follow_up", "An ordering operator on an enum. Ordering applies to a number or a date."),
+            ("orders-a-boolean", "billable >= true", "An ordering operator on a boolean."),
+            ("orders-an-enum-field", "patient.sex < female", "An ordering operator on an enum field."),
+            ("tests-a-text", "consult_draft == urgent", "A text input in a condition. Free text is never compared."),
+            ("tests-a-text-field", "patient.family_name == Smith", "A text field, for the same rule."),
+            ("bare-enum", "encounter_kind", "A bare enum tests nothing; compare it to one of its values."),
+            ("bare-number", "length_of_stay", "A bare number tested for truth."),
+            ("bare-object", "patient", "A bare object tested for truth."),
+            ("bare-number-field", "patient.age", "A bare number field tested for truth."),
+            ("compares-an-object", "patient == x", "A whole object compared. Its fields or its count are what compare."),
+            ("compares-an-array", "prior_notes == x", "A whole array compared."),
+            ("path-into-a-date", "seen_on.year == 2026", "A field read of a non-object."),
+            ("path-into-an-array", "medications.name == x", "A field read of an array."),
+            ("path-to-undeclared-field", "patient.weight > 90", "A field the object does not declare."),
+            ("counts-an-object", "count(patient) > 0", "count() of a non-array."),
+            ("bare-count", "count(prior_notes)", "count() without a comparison."),
+            ("count-not-whole", "count(prior_notes) > 1.5", "A count compared to a non-whole number."),
+            ("count-negative", "count(prior_notes) > -1", "A count compared to a negative literal."),
+            ("number-literal-not-decimal", "length_of_stay > abc", "A number compared to a non-decimal literal."),
+            ("number-literal-exponent", "length_of_stay > 1e3", "Exponent form. A literal is a plain decimal, as a supplied value is."),
+            ("date-literal-not-iso", "seen_on > 2026-1-1", "A date literal not written YYYY-MM-DD."),
+            ("enum-literal-undeclared", "patient.sex == other", "A value the enum does not declare."),
+            ("boolean-literal-not-true-false", "billable == yes", "A boolean compared to a word."),
+            ("reads-undeclared-input", "urgency == high", "An input the manifest does not declare."),
+            ("counts-undeclared-input", "count(urgency) > 0", "count() of an undeclared input."),
+            ("trailing-operator", "patient.age >=", "An operator with nothing after it."),
+            ("blank", "   ", "A blank condition."),
+            ("stray-quote", "encounter_kind == \"new_patient", "An unbalanced quote in the literal."),
+        };
+
+        foreach (var refusal in conditionRefusals)
+        {
+            Invalid($"invalid-condition-{refusal.Id}", 9, refusal.Description, V9Fixtures.Conditional(refusal.When));
+        }
+
+        // § 6 — the v9 forms are refused by name on a v8 manifest.
+        Invalid("invalid-condition-path-at-v8", 8,
+            "A field read on a v8 manifest. Paths arrive at 9.",
+            V8Fixtures.Conditional("seen_on.year == 2026"));
+        Invalid("invalid-condition-count-at-v8", 8,
+            "count() on a v8 manifest.",
+            V8Fixtures.Conditional("count(consult_draft) > 0"));
+        Invalid("invalid-condition-ordering-at-v8", 8,
+            "An ordering operator on a v8 manifest, where only equality and bare booleans compare.",
+            V8Fixtures.Conditional("seen_on > 2026-01-01"));
+
+        // § 4/§ 6 together — the accepted showcase: the demo package's shape.
+        var v9Structured = V9Fixtures.Conditional("patient.age >= 65") with
+        {
+            Title = "Structured intake demo",
+            Description = "An array fanned by forEach, an object read by path, a number ordered, a count() gate.",
+            Tags = new List<string> { "demo", "structured-intake" }
+        };
+        cases.Add(new Case("v9-structured-consult", 9,
+            "The v9 width in one valid manifest: structured inputs, a path condition, title, description and tags.",
+            v9Structured, V6Fixtures.Files(v9Structured)));
+
         return cases;
     }
 
