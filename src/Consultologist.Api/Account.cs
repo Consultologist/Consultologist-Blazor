@@ -247,7 +247,8 @@ public sealed class Account
                     j.CompletedBlockCount,
                     j.FailedBlockCount,
                     j.Source,
-                    j.ScheduledAtUtc)).ToArray(),
+                    j.ScheduledAtUtc,
+                    j.FailedAtStart)).ToArray(),
                 nextToken),
             cancellationToken);
 
@@ -494,7 +495,9 @@ public sealed record AccountJobSummaryResponse(
     int CompletedBlockCount,
     int FailedBlockCount,
     string? Source = null,
-    DateTimeOffset? ScheduledAtUtc = null);
+    DateTimeOffset? ScheduledAtUtc = null,
+    // #434: see ConsultGenerationJobIndexEntry.FailedAtStart.
+    bool FailedAtStart = false);
 
 public sealed record AccountJobsResponse(
     IReadOnlyList<AccountJobSummaryResponse> Jobs,

@@ -30,6 +30,37 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
 
     public async Task Initialize(ConsultGenerationJobInitialize input)
     {
+        Seed(input);
+
+        await _indexStore.UpsertAsync(State.ToIndexEntry(), CancellationToken.None);
+    }
+
+    /// <summary>
+    /// #434: a well-formed, authorized request met a package whose conditions
+    /// left nothing to produce. The row exists so the operator has something
+    /// to point at; nothing ran and nothing was spent, so it is born terminal
+    /// — Failed, with <see cref="ConsultGenerationJobState.StartFailure"/>
+    /// saying why and <see cref="ConsultGenerationJobState.FailureError"/>
+    /// left null, which is how a reader tells "failed at start" from "ran and
+    /// failed". Its own operation for the reason <see cref="Cancel"/> is:
+    /// one signal, one write, no orchestration to order it against.
+    /// </summary>
+    public async Task RecordStartFailure(ConsultGenerationJobStartFailure input)
+    {
+        Seed(input.Initialize);
+
+        var state = State;
+        state.Status = ConsultGenerationJobStatuses.Failed;
+        state.StartFailure = input.Reason;
+        state.CompletedAtUtc = DateTimeOffset.UtcNow;
+        state.History.Add(new JobHistoryEvent("failure", "No document applies", input.Reason, DateTimeOffset.UtcNow));
+        State = state;
+
+        await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+    }
+
+    private void Seed(ConsultGenerationJobInitialize input)
+    {
         if (State == null || State.Blocks.Count == 0)
         {
             State = ConsultGenerationJobState.Create(input.JobId, input.AppUserId, input.Items);
@@ -84,8 +115,6 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         {
             State.Status = ConsultGenerationJobStatuses.Scheduled;
         }
-
-        await _indexStore.UpsertAsync(State.ToIndexEntry(), CancellationToken.None);
     }
 
     public async Task MarkRunning()
@@ -437,6 +466,13 @@ public sealed record ConsultGenerationNodeFailure(
 public sealed record ConsultGenerationJobFinalize(string Status, string? Error = null);
 
 /// <summary>
+/// #434: everything Initialize would have been given, plus the sentence that
+/// says why nothing will run — authored package content (deliverable labels
+/// and what each condition wanted), never a supplied value.
+/// </summary>
+public sealed record ConsultGenerationJobStartFailure(ConsultGenerationJobInitialize Initialize, string Reason);
+
+/// <summary>
 /// One completed v7 deliverable: the result aggregator's rendered output with
 /// its authored identity. Ordinal is the result-set position — aggregators
 /// complete in data-dependent order, so the position travels with the payload.
@@ -502,6 +538,11 @@ public sealed class ConsultGenerationJobState
     public Dictionary<string, ConsultGenerationItemProgressState> ItemProgress { get; set; } = new();
     public List<JobHistoryEvent> History { get; set; } = new();
     public string? FailureError { get; set; }
+    // #434: set when the job was created already Failed because no deliverable
+    // applied to its inputs. Nothing ran: FailureError stays null, there are
+    // no blocks, and TotalBlockCount is a stated zero. Null on every job that
+    // started.
+    public string? StartFailure { get; set; }
     public string? WorkflowPackage { get; set; }
     public string? EffectiveInputHash { get; set; }
 
@@ -592,7 +633,8 @@ public sealed class ConsultGenerationJobState
             Blocks.Values.Count(b => b.Status == ConsultGenerationBlockStatuses.Completed),
             Blocks.Values.Count(b => b.Status == ConsultGenerationBlockStatuses.Failed),
             Source,
-            ScheduledAtUtc);
+            ScheduledAtUtc,
+            FailedAtStart: StartFailure != null);
     }
 
     public ConsultNodeOutputState GetOrAddNodeOutput(string nodeId, string label)
@@ -724,6 +766,7 @@ public sealed class ConsultGenerationJobState
             CatalogRef: CatalogRef,
             PackageSpecVersion: PackageSpecVersion,
             PackageTitle: PackageTitle,
+            StartFailure: StartFailure,
             // Derived, never stored: the deliverable hash of a partial job is
             // undefined, so only completed jobs carry it (provenance.md). The
             // three-way dispatch: v7 document set → v3, v6 single document →

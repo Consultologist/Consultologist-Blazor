@@ -107,7 +107,8 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
             CompletedBlockCount = entry.CompletedBlockCount,
             FailedBlockCount = entry.FailedBlockCount,
             Source = entry.Source,
-            ScheduledAtUtc = entry.ScheduledAtUtc
+            ScheduledAtUtc = entry.ScheduledAtUtc,
+            FailedAtStart = entry.FailedAtStart
         };
     }
 
@@ -124,7 +125,8 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
             entity.CompletedBlockCount,
             entity.FailedBlockCount,
             entity.Source,
-            entity.ScheduledAtUtc);
+            entity.ScheduledAtUtc,
+            entity.FailedAtStart);
     }
 
     private static string FormatRowKey(DateTimeOffset createdAtUtc, string jobId)
@@ -173,7 +175,10 @@ public sealed record ConsultGenerationJobIndexEntry(
     int CompletedBlockCount,
     int FailedBlockCount,
     string? Source = null,
-    DateTimeOffset? ScheduledAtUtc = null);
+    DateTimeOffset? ScheduledAtUtc = null,
+    // #434: created already Failed because no deliverable applied. Additive
+    // column; rows written before it read false.
+    bool FailedAtStart = false);
 
 internal sealed class ConsultGenerationJobIndexEntity : ITableEntity
 {
@@ -191,4 +196,5 @@ internal sealed class ConsultGenerationJobIndexEntity : ITableEntity
     public int FailedBlockCount { get; set; }
     public string? Source { get; set; }
     public DateTimeOffset? ScheduledAtUtc { get; set; }
+    public bool FailedAtStart { get; set; }
 }

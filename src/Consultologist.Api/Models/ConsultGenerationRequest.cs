@@ -134,7 +134,13 @@ public record ConsultGenerationJobResponse(
     int? PackageSpecVersion = null,
     // #432: the package's title at the pinned version, beside the ref. Null on
     // an untitled package and on every job before it; the ref is the fallback.
-    string? PackageTitle = null);
+    string? PackageTitle = null,
+    // #434: why this job was created already Failed — no deliverable applied
+    // to its inputs. Null on every job that started; RuntimeFailureError is
+    // null whenever this is set. Two fields, because "nothing ran" and "ran
+    // and failed" are different facts and a reader should not infer one from
+    // an event label.
+    string? StartFailure = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
