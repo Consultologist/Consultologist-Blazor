@@ -725,6 +725,30 @@ of a package was thinner than the registry's.
 Neither `inputsEdit` nor `resultsEdit` changes kind — both are whole-list
 edits — so the pending-change registry and the draft slices are untouched.
 
+*Amended 2026-08-22 (#429), what landing it settled:*
+- **Two ceilings.** The editor mirrors `AcceptedSpecVersions.Max()` as the
+  newest format it publishes and `SupportedSpecVersions.Max()` as the newest
+  the engine runs, one Upgrade button per rung; a staged bump past the
+  runnable ceiling, or a loaded package already past it, is named up front
+  (*"specVersion 9 is publishable but not yet runnable: consults pinned to a
+  specVersion 9 package will refuse to start until the engine runs it"*) and
+  the publish success says so again. #430 makes the two equal.
+- **The desk speaks first, in the server's words** — except where explicit
+  initialisation needs its own: *"is an array and must declare what its
+  entries are"*, *"is an object and must declare at least one field."*
+- **Below 9 every picker offers exactly the v8 forms**, so no v9 shape can be
+  composed into a v8 publish; a v9 shape that arrives another way (a draft,
+  a fork) is refused by name, as a v8 shape below 8 is.
+- **Paths are offered for an object's enum, boolean, number and date fields
+  only** — never a text field, never an array's element fields, which the
+  engine does not read by path. Arrays offer `count(id)` and the bare form.
+- **Operators read as words** (is, is not, is more than, is less than, is at
+  least, is at most; "has entries" for a bare array) and compose to symbols.
+- **Input fans bind `item:id`, `item:name`, `item:value`**; data fans keep
+  `item:name`, `item:content`.
+- The draft slices did grow after all (`DraftInput` mirrors `InputView`, so
+  `Items` and `Fields` ride it — PR A of #429); the registry did not.
+
 ## 12. Content & rollout
 
 1. `general@vNext` migrates to **minimal v9**: `specVersion: 9` and nothing
