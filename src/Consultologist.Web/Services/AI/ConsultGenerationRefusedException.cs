@@ -13,11 +13,19 @@ namespace Consultologist.Web.Services.AI;
 /// </summary>
 public sealed class ConsultGenerationRefusedException : Exception
 {
-    public ConsultGenerationRefusedException(HttpStatusCode status, string detail)
+    public ConsultGenerationRefusedException(HttpStatusCode status, string detail, string? jobId = null)
         : base(detail)
     {
         Status = status;
+        JobId = jobId;
     }
 
     public HttpStatusCode Status { get; }
+
+    /// <summary>
+    /// #434: the refusal that left a row — a well-formed request the package
+    /// produced nothing for — says where the row is. Null for every other
+    /// refusal, which left nothing.
+    /// </summary>
+    public string? JobId { get; }
 }

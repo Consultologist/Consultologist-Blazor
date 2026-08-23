@@ -44,7 +44,9 @@ public sealed record AccountJobSummaryResponse(
     int CompletedBlockCount,
     int FailedBlockCount,
     string? Source = null,
-    DateTimeOffset? ScheduledAtUtc = null);
+    DateTimeOffset? ScheduledAtUtc = null,
+    // #434: mirrors the Api's AccountJobSummaryResponse.FailedAtStart.
+    bool FailedAtStart = false);
 
 public sealed record AccountJobsResponse(
     IReadOnlyList<AccountJobSummaryResponse> Jobs,

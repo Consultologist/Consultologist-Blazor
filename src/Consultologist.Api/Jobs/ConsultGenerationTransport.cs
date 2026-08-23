@@ -213,7 +213,10 @@ public sealed class ConsultGenerationJobs
                 return await CreateJsonResponseAsync(
                     req,
                     status,
-                    new { error = outcome.ErrorDetail },
+                    // #434: the same status and the same sentence; when the
+                    // refusal left a row (NoApplicableDeliverable, the only
+                    // kind that does) the body also says where it is.
+                    new { error = outcome.ErrorDetail, jobId = outcome.JobId },
                     cancellationToken,
                     outcome.RetryAfter);
             }
@@ -447,7 +450,7 @@ public sealed class ConsultGenerationJobs
             return await CreateJsonResponseAsync(
                 req,
                 StatusFor(outcome.Error.Value),
-                new { error = $"The consult was cancelled but could not be rescheduled: {outcome.ErrorDetail}" },
+                new { error = $"The consult was cancelled but could not be rescheduled: {outcome.ErrorDetail}", jobId = outcome.JobId },
                 cancellationToken);
         }
 

@@ -305,6 +305,9 @@ public class ConsultGenerationJobStarterTests
     // the fan's items from the request under the literal forEach key, expands
     // one block per element, and stamps TotalBlockCount once at start.
 
+    // #434: the one refusal that signals the entity.
+    private ConsultGenerationJobStartFailure? _recordedStartFailure;
+
     private async Task<(ConsultGenerationJobStartOutcome Outcome, ConsultGenerationJobInitialize? Initialize, ConsultGenerationOrchestrationInput? Input)>
         StartFannedAsync(WorkflowPackageManifest manifest, ConsultInputValue? priorNotes, string fannedId = "prior_notes")
     {
@@ -320,6 +323,10 @@ public class ConsultGenerationJobStarterTests
             Arg.Any<EntityInstanceId>(),
             nameof(ConsultGenerationJobEntity.Initialize),
             Arg.Do<object>(payload => initialize = payload as ConsultGenerationJobInitialize));
+        await _entities.SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(),
+            nameof(ConsultGenerationJobEntity.RecordStartFailure),
+            Arg.Do<object>(payload => _recordedStartFailure = payload as ConsultGenerationJobStartFailure));
 
         ConsultGenerationOrchestrationInput? orchestrationInput = null;
         _client.ScheduleNewOrchestrationInstanceAsync(
@@ -385,10 +392,11 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public async Task AnEmptyFan_IsRefusedAtStart_NamingTheInput()
+    public async Task AnEmptyFan_IsRefusedAtStart_NamingTheInput_AndLeavesARow()
     {
         // No items, no blocks, no document: v8's empty fire set in different
-        // clothes, refused the same way and through the same enum value.
+        // clothes, refused the same way and through the same enum value —
+        // and, since #434, recorded the same way too.
         var (outcome, initialize, _) = await StartFannedAsync(V9Fixtures.Fanned(),
             ConsultInputValue.OfArray(Array.Empty<ConsultInputValue>()));
 
@@ -397,21 +405,35 @@ public class ConsultGenerationJobStarterTests
         Assert.NotNull(outcome.Error);
         Assert.Null(outcome.JobId);
         Assert.Null(initialize);
+        Assert.Null(_recordedStartFailure);
 
         var manifest = V9Fixtures.Fanned();
         manifest = manifest with
         {
             Inputs = manifest.Inputs!.Select(i => i.Id == "prior_notes" ? i with { Required = false } : i).ToList()
         };
-        var (absent, absentInit, _) = await StartFannedAsync(manifest, priorNotes: null);
+        var (absent, absentInit, absentRun) = await StartFannedAsync(manifest, priorNotes: null);
 
         Assert.Equal(ConsultGenerationJobStartError.NoApplicableDeliverable, absent.Error);
-        Assert.Null(absent.JobId);
-        Assert.Null(absentInit);
         Assert.Equal(
             "No document applies to these inputs. 'Prior notes' has no entries, and every document this package produces is written from them.",
             absent.ErrorDetail);
         Assert.Equal(absent.ErrorDetail, absent.SenderSafeDetail);
+
+        // The row: born Failed, nothing scheduled, every deliverable listed as
+        // not produced for the fan's reason.
+        Assert.NotNull(absent.JobId);
+        Assert.Null(absentInit);
+        Assert.Null(absentRun);
+        var recorded = Assert.IsType<ConsultGenerationJobStartFailure>(_recordedStartFailure);
+        Assert.Equal(absent.ErrorDetail, recorded.Reason);
+        Assert.Equal(absent.JobId, recorded.Initialize.JobId);
+        Assert.Empty(recorded.Initialize.Items);
+        var notProduced = Assert.Single(recorded.Initialize.SkippedDocuments!);
+        Assert.Equal(("consult", "Consultation note"), (notProduced.ResultId, notProduced.Label));
+        Assert.Equal("'Prior notes' has no entries, and every document this package produces is written from them", notProduced.Reason);
+        Assert.Equal(9, recorded.Initialize.PackageSpecVersion);
+        Assert.Equal(ConsultGenerationProvenance.StructuredInputsHashVersion, recorded.Initialize.EffectiveInputHashVersion);
     }
 
     [Fact]
@@ -806,6 +828,12 @@ public class ConsultGenerationJobStarterTests
                         new WorkflowResultCondition("billable", "true", false))
                 }));
 
+        ConsultGenerationJobStartFailure? recorded = null;
+        await _entities.SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(),
+            nameof(ConsultGenerationJobEntity.RecordStartFailure),
+            Arg.Do<object>(payload => recorded = payload as ConsultGenerationJobStartFailure));
+
         var outcome = await CreateStarter().StartAsync(
             _client,
             new ConsultGenerationRequest(null, Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
@@ -815,11 +843,10 @@ public class ConsultGenerationJobStarterTests
                 ["encounter_kind"] = "follow_up"
             }),
             "user-1",
-            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.Email, "sender@example.org"),
             CancellationToken.None);
 
         Assert.Equal(ConsultGenerationJobStartError.NoApplicableDeliverable, outcome.Error);
-        Assert.Null(outcome.JobId);
         Assert.Contains("Consultation note", outcome.ErrorDetail);
         Assert.Contains("Patient letter", outcome.ErrorDetail);
         Assert.Contains("not supplied", outcome.ErrorDetail);
@@ -829,6 +856,62 @@ public class ConsultGenerationJobStarterTests
         // branch of Explain can only ever print a declared enum value or a
         // boolean, because anything else was refused before conditions ran.
         Assert.Equal(outcome.ErrorDetail, outcome.SenderSafeDetail);
+
+        // #434: refused AND recorded. The outcome carries the job id beside
+        // the error; the entity was told once, with the provenance a run would
+        // have had and the deliverables that did not apply; nothing was
+        // scheduled and Initialize was never signalled.
+        Assert.NotNull(outcome.JobId);
+        Assert.NotNull(recorded);
+        Assert.Equal(outcome.JobId, recorded!.Initialize.JobId);
+        Assert.Equal(outcome.ErrorDetail, recorded.Reason);
+        Assert.Empty(recorded.Initialize.Items);
+        Assert.Equal($"{manifest.Name}@{manifest.Version}", recorded.Initialize.WorkflowPackage);
+        Assert.Equal(ConsultGenerationProvenance.TypedInputsHashVersion, recorded.Initialize.EffectiveInputHashVersion);
+        Assert.NotNull(recorded.Initialize.EffectiveInputHash);
+        Assert.Equal(8, recorded.Initialize.PackageSpecVersion);
+        Assert.Equal(ConsultGenerationJobSources.Email, recorded.Initialize.Source);
+        Assert.Equal("user-1", recorded.Initialize.AppUserId);
+        Assert.Equal(
+            new[] { ("consult_note", "Consultation note"), ("patient_letter", "Patient letter") },
+            recorded.Initialize.SkippedDocuments!.Select(s => (s.ResultId, s.Label)));
+        Assert.All(recorded.Initialize.SkippedDocuments!, s => Assert.Contains("not supplied", s.Reason));
+        Assert.Null(recorded.Initialize.Nodes);
+        Assert.Null(recorded.Initialize.ItemSteps);
+        await _entities.DidNotReceive().SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(), nameof(ConsultGenerationJobEntity.Initialize), Arg.Any<object>());
+        await _client.DidNotReceive().ScheduleNewOrchestrationInstanceAsync(
+            Arg.Any<TaskName>(), Arg.Any<object?>(), Arg.Any<StartOrchestrationOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TheOtherRefusals_StillLeaveNoRow()
+    {
+        // #434 draws a line: a row exists when a well-formed, authorized
+        // request met a package that produced nothing. A request problem —
+        // here a missing required input — creates nothing, as before.
+        var manifest = V8Fixtures.Conditional();
+        var files = V6Fixtures.Files(manifest);
+        var data = WorkflowDataResolver.Resolve(manifest, files, new List<string>());
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackage(manifest, Nodes: manifest.Nodes, SchemaContracts: TestOutputContracts.CatalogSchemas, Data: data,
+                Results: new List<WorkflowResolvedResult> { new("consult_note", "assemble-note", "Consultation note") }));
+
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(null, Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["consult_draft"] = Referral
+            }),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, outcome.Error);
+        Assert.Null(outcome.JobId);
+        await _entities.DidNotReceiveWithAnyArgs().SignalEntityAsync(default, default!, default);
     }
 
     [Fact]

@@ -439,6 +439,12 @@ spends nothing, and running would create a job record whose only content is
 that it produced nothing. It needs no part of #337 — the refusal is a value
 in the existing start-failure enum, as the empty fire set was.
 
+*Amended 2026-08-23 (#434).* And, like the empty fire set, it now leaves a
+job record born Failed (v8 design § 5, amended the same day): every declared
+deliverable is listed as not produced, each with the fan's sentence as its
+reason, since all of them are written from the input that had no entries.
+Same mechanism, nothing extra built here.
+
 *Note, 2026-08-21:* #337 is now scheduled — the empty-fire-set class gains
 a Failed job record so History has a row to point at. The empty fan is that
 class, so it inherits the record through the same mechanism, with no format

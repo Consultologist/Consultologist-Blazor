@@ -343,6 +343,32 @@ public class ConsultsSetupTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ARefusalThatLeftARow_LinksToItInHistory()
+    {
+        // #434: the sentence is unchanged; what is new is that a record exists,
+        // and the user is told so where the sentence is.
+        WhenSubmitThrows(new ConsultGenerationRefusedException(
+            HttpStatusCode.UnprocessableEntity, Refusal, "bb4df62f2bea4dd193a92ae0e6798370"));
+
+        var page = SubmitOneDraft();
+
+        Assert.Contains(Refusal, page.Markup, StringComparison.Ordinal);
+        var link = page.Find("a.refusal-history-link");
+        Assert.Equal("/history/bb4df62f2bea4dd193a92ae0e6798370", link.GetAttribute("href"));
+        Assert.Equal("View in History", link.TextContent.Trim());
+    }
+
+    [Fact]
+    public void ARefusalThatLeftNothing_HasNoLink()
+    {
+        WhenSubmitThrows(new ConsultGenerationRefusedException(HttpStatusCode.UnprocessableEntity, Refusal));
+
+        var page = SubmitOneDraft();
+
+        Assert.Empty(page.FindAll("a.refusal-history-link"));
+    }
+
+    [Fact]
     public void ARealFailure_KeepsItsPrefix()
     {
         // The narrow half: a transport fault is still a fault, and saying so

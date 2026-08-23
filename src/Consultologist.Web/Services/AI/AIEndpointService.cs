@@ -89,11 +89,17 @@ public class AIEndpointService : IAIEndpointService
             body);
 
         return ReadErrorDetail(body) is { } detail
-            ? new ConsultGenerationRefusedException(response.StatusCode, detail)
+            ? new ConsultGenerationRefusedException(response.StatusCode, detail, ReadRefusalJobId(body))
             : new HttpRequestException($"Azure Function call failed: {response.StatusCode}");
     }
 
-    private static string? ReadErrorDetail(string body)
+    private static string? ReadErrorDetail(string body) => ReadStringProperty(body, "error");
+
+    // #434: the one refusal that left a row says where it is. Read the same
+    // tolerant way as the sentence; absent or null means no row.
+    private static string? ReadRefusalJobId(string body) => ReadStringProperty(body, "jobId");
+
+    private static string? ReadStringProperty(string body, string name)
     {
         if (string.IsNullOrWhiteSpace(body))
         {
@@ -114,7 +120,7 @@ public class AIEndpointService : IAIEndpointService
             // whose serializer casing is not ours to assume.
             foreach (var property in document.RootElement.EnumerateObject())
             {
-                if (string.Equals(property.Name, "error", StringComparison.OrdinalIgnoreCase)
+                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)
                     && property.Value.ValueKind == JsonValueKind.String
                     && !string.IsNullOrWhiteSpace(property.Value.GetString()))
                 {
@@ -501,7 +507,10 @@ public record ConsultGenerationJobResponse(
     int? PackageSpecVersion = null,
     // #432: the package's title as it was at the pinned version; null when
     // untitled, and the chip shows the ref alone.
-    string? PackageTitle = null);
+    string? PackageTitle = null,
+    // #434: mirrors the Api's ConsultGenerationJobResponse.StartFailure — why
+    // the job was created already Failed. Null on every job that started.
+    string? StartFailure = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultSkippedDocument.</summary>
 public record ConsultSkippedDocumentResponse(string ResultId, string Label, string Reason);

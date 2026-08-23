@@ -326,7 +326,14 @@
 
                         @if (!string.IsNullOrEmpty(aiRequestError))
                         {
-                            <FluentMessageBar Intent="MessageIntent.Error">@aiRequestError</FluentMessageBar>
+                            <FluentMessageBar Intent="MessageIntent.Error">
+                                @aiRequestError
+                                @if (refusedJobId != null)
+                                {
+                                    @* #434: nothing was produced, and a record says so. *@
+                                    <a class="refusal-history-link" href="/history/@refusedJobId">View in History</a>
+                                }
+                            </FluentMessageBar>
                         }
 
                         @if (!string.IsNullOrEmpty(scheduleConfirmation))
@@ -655,7 +662,14 @@
 
                             @if (!string.IsNullOrEmpty(aiRequestError))
                             {
-                                <FluentMessageBar Intent="MessageIntent.Error">@aiRequestError</FluentMessageBar>
+                                <FluentMessageBar Intent="MessageIntent.Error">
+                                @aiRequestError
+                                @if (refusedJobId != null)
+                                {
+                                    @* #434: nothing was produced, and a record says so. *@
+                                    <a class="refusal-history-link" href="/history/@refusedJobId">View in History</a>
+                                }
+                            </FluentMessageBar>
                             }
                         </div>
                     </section>
@@ -805,6 +819,9 @@
   private string? blocksLoadError;
   private bool isAiRequestLoading;
   private string? aiRequestError;
+  // #434: set beside aiRequestError when the refusal left a row in History —
+  // a well-formed request the package produced nothing for. Cleared with it.
+  private string? refusedJobId;
 
   // #157: "run overnight" preset — next 2:00 AM browser-local, sent as UTC.
   // #390: the time is no longer a preset. scheduledAtLocal is the datetime-local
@@ -1063,6 +1080,7 @@
     jobNodes = null;
     jobCollections = null;
     aiRequestError = null;
+    refusedJobId = null;
     aiProgressNotice = null;
     scheduleConfirmation = null;
     generatedBlocks = new();
@@ -1119,6 +1137,7 @@
       catch (ConsultGenerationRefusedException refusal)
       {
         aiRequestError = refusal.Message;
+        refusedJobId = refusal.JobId;
       }
       catch (Exception ex)
       {
@@ -1161,6 +1180,7 @@
     catch (ConsultGenerationRefusedException refusal)
     {
       aiRequestError = refusal.Message;
+      refusedJobId = refusal.JobId;
     }
     catch (Exception ex)
     {

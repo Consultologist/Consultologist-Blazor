@@ -356,8 +356,9 @@ public class EmailIntakeProcessorTests
     {
         const string detail = "No document applies to these inputs. "
             + "'Consultation note' needs billable to be 'true'; it is not supplied.";
+        // #434: the starter left a row born Failed, and says so beside the error.
         SetupStartFailure(new ConsultGenerationJobStartOutcome(
-            null, ConsultGenerationJobStartError.NoApplicableDeliverable, detail, SenderSafeDetail: detail));
+            "job-nothing", ConsultGenerationJobStartError.NoApplicableDeliverable, detail, SenderSafeDetail: detail));
 
         var summary = await CreateProcessor().RunOnceAsync(_client, CancellationToken.None);
 
@@ -369,10 +370,31 @@ public class EmailIntakeProcessorTests
             Arg.Is<string>(body => body.Contains("needs billable to be 'true'")),
             Arg.Any<CancellationToken>());
         // Nothing went wrong here — the package simply declares no document for
-        // these inputs — so it is not filed under start-failed.
+        // these inputs — so it is not filed under start-failed. The claim
+        // carries the row's id (#434): the operator's way from the message to
+        // History. Still Rejected, not Processed — the reply said no document.
         await _claims.Received(1).UpdateAsync(
-            Arg.Is<EmailIntakeClaim>(c => c.Outcome == EmailIntakeOutcomes.RejectedNoDeliverable),
+            Arg.Is<EmailIntakeClaim>(c => c.Outcome == EmailIntakeOutcomes.RejectedNoDeliverable && c.JobId == "job-nothing"),
             Arg.Any<CancellationToken>());
+        await _mail.Received(1).MoveMessageAsync(Mailbox, "g-1", "folder-Rejected", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ClaimLost_RejectedClaimWithARow_RepairsToRejected()
+    {
+        // #434: a rejected claim can carry a job id now. The repair branch
+        // files by outcome, not by the id's presence — otherwise the message
+        // whose sender was told "no document applies" lands in Processed.
+        SetupSingleUnread();
+        _claims.TryClaimAsync(Arg.Any<EmailIntakeClaim>(), Arg.Any<CancellationToken>()).Returns(false);
+        _claims.GetAsync("<m1@x>", Arg.Any<CancellationToken>())
+            .Returns(new EmailIntakeClaim("<m1@x>", "g-1", null, _time.GetUtcNow().AddMinutes(-1), "user-1", "job-nothing", EmailIntakeOutcomes.RejectedNoDeliverable));
+
+        var summary = await CreateProcessor().RunOnceAsync(_client, CancellationToken.None);
+
+        Assert.Equal(1, summary.Repaired);
+        await _mail.Received(1).MoveMessageAsync(Mailbox, "g-1", "folder-Rejected", Arg.Any<CancellationToken>());
+        await _starter.DidNotReceiveWithAnyArgs().StartAsync(default!, default!, default!, default!, default);
     }
 
     [Fact]
