@@ -519,6 +519,7 @@
                                 <p class="muted-text">
                                     The fields a clinician fills before a run. Nodes bind them as
                                     <code>input:&lt;id&gt;</code>; renaming one re-points every binding that used it.
+                                    An object declares its fields here; an array says what its entries are.
                                 </p>
                             </div>
                         </div>
@@ -543,30 +544,52 @@
                                                aria-label="@($"Required for input {slot.Id}")" />
                                         required
                                     </label>
-                                    @* v8: the declared type decides the intake control and,
-                                       for enum and boolean, what a condition can read. *@
+                                    @* v8: the declared type decides the intake control and
+                                       what a condition can read. v9 (#429): a number, an
+                                       object of fields, an array of elements. *@
                                     <select class="node-field__input declared-row__type"
                                             value="@WorkflowInputTypes.Of(slot)"
                                             @onchange="args => RetypeInputAsync(slot, args.Value?.ToString())"
                                             aria-label="@($"Type for input {slot.Id}")">
-                                        @* v9 (#429): a type this editor does not yet author is
-                                           shown as itself rather than as "text". Choosing it
-                                           again is a no-op. *@
-                                        @if (WorkflowInputTypes.Of(slot) is not (WorkflowInputTypes.Text or WorkflowInputTypes.Date or WorkflowInputTypes.Enum or WorkflowInputTypes.Boolean))
+                                        @* A type the vocabulary does not know is shown as
+                                           itself rather than as "text". *@
+                                        @if (!WorkflowInputTypes.All.Contains(WorkflowInputTypes.Of(slot)))
                                         {
                                             <option value="@WorkflowInputTypes.Of(slot)">@WorkflowInputTypes.Of(slot)</option>
                                         }
-                                        <option value="@WorkflowInputTypes.Text">text</option>
-                                        <option value="@WorkflowInputTypes.Date">date</option>
-                                        <option value="@WorkflowInputTypes.Enum">enum</option>
-                                        <option value="@WorkflowInputTypes.Boolean">boolean</option>
+                                        @foreach (var type in WorkflowInputTypes.All)
+                                        {
+                                            <option value="@type">@type</option>
+                                        }
                                     </select>
+                                    @if (WorkflowInputTypes.Of(slot) == WorkflowInputTypes.Array)
+                                    {
+                                        @* Explicit initialisation: an array says what its
+                                           entries are, or the desk refuses the publish. *@
+                                        <select class="node-field__input declared-row__items"
+                                                value="@(slot.Items ?? string.Empty)"
+                                                @onchange="args => SetInputItemsAsync(slot, args.Value?.ToString())"
+                                                aria-label="@($"Items for input {slot.Id}")">
+                                            @if (slot.Items is null)
+                                            {
+                                                <option value="">entries of…</option>
+                                            }
+                                            else if (!WorkflowInputTypes.ElementTypes.Contains(slot.Items))
+                                            {
+                                                <option value="@slot.Items">@slot.Items</option>
+                                            }
+                                            @foreach (var element in WorkflowInputTypes.ElementTypes)
+                                            {
+                                                <option value="@element">@element</option>
+                                            }
+                                        </select>
+                                    }
                                     <button type="button" class="aggregate-row__button" title="Remove input"
                                             disabled="@(EffectiveInputs.Count == 1 || ConditionLock(slot) != null)"
                                             @onclick="() => RemoveInputAsync(slot)">×</button>
                                 </li>
 
-                                @if (WorkflowInputTypes.Of(slot) == WorkflowInputTypes.Enum)
+                                @if (WorkflowInputTypes.DeclaresValues(slot))
                                 {
                                     <li class="declared-row__values">
                                         @foreach (var value in slot.Values ?? Array.Empty<string>())
@@ -581,6 +604,82 @@
                                         <input class="node-field__input" placeholder="follow_up"
                                                @onchange="args => AddEnumValueAsync(slot, args.Value?.ToString())"
                                                aria-label="@($"Add a value to {slot.Id}")" />
+                                    </li>
+                                }
+
+                                @if (WorkflowInputTypes.DeclaresObject(slot))
+                                {
+                                    @* v9: an object's fields — each a scalar with its own
+                                       id, label, requiredness and type. Their own classes,
+                                       so the input rows' positions do not move. *@
+                                    <li class="declared-row__fields" data-fields-for="@slot.Id">
+                                        <ul class="declared-list">
+                                            @foreach (var field in slot.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>())
+                                            {
+                                                var member = field;
+                                                <li class="declared-field" data-field="@($"{slot.Id}.{member.Id}")">
+                                                    <input class="node-field__input declared-field__id"
+                                                           value="@member.Id"
+                                                           @onchange="args => RenameFieldAsync(slot, member, args.Value?.ToString())"
+                                                           aria-label="@($"Id for field {slot.Id}.{member.Id}")" />
+                                                    <input class="node-field__input declared-field__label"
+                                                           value="@member.Label"
+                                                           @onchange="args => RelabelFieldAsync(slot, member, args.Value?.ToString())"
+                                                           aria-label="@($"Label for field {slot.Id}.{member.Id}")" />
+                                                    <label class="declared-row__required">
+                                                        <input type="checkbox"
+                                                               checked="@member.Required"
+                                                               @onchange="args => SetFieldRequiredAsync(slot, member, args.Value is true)"
+                                                               aria-label="@($"Required for field {slot.Id}.{member.Id}")" />
+                                                        required
+                                                    </label>
+                                                    <select class="node-field__input declared-field__type"
+                                                            value="@WorkflowInputTypes.Of(member)"
+                                                            @onchange="args => RetypeFieldAsync(slot, member, args.Value?.ToString())"
+                                                            aria-label="@($"Type for field {slot.Id}.{member.Id}")">
+                                                        @if (!WorkflowInputTypes.Scalars.Contains(WorkflowInputTypes.Of(member)))
+                                                        {
+                                                            <option value="@WorkflowInputTypes.Of(member)">@WorkflowInputTypes.Of(member)</option>
+                                                        }
+                                                        @foreach (var fieldType in WorkflowInputTypes.Scalars)
+                                                        {
+                                                            <option value="@fieldType">@fieldType</option>
+                                                        }
+                                                    </select>
+                                                    <button type="button" class="aggregate-row__button" title="Remove field"
+                                                            disabled="@(FieldLock(slot, member) != null)"
+                                                            @onclick="() => RemoveFieldAsync(slot, member)">×</button>
+                                                </li>
+                                                @if (WorkflowInputTypes.Of(member) == WorkflowInputTypes.Enum)
+                                                {
+                                                    <li class="declared-field__values" data-values-for="@($"{slot.Id}.{member.Id}")">
+                                                        @foreach (var value in member.Values ?? Array.Empty<string>())
+                                                        {
+                                                            var declaredValue = value;
+                                                            <span class="input-field__chip" data-field-enum-value="@declaredValue">
+                                                                @declaredValue
+                                                                <button type="button" class="aggregate-row__button" title="Remove value"
+                                                                        @onclick="() => RemoveFieldValueAsync(slot, member, declaredValue)">×</button>
+                                                            </span>
+                                                        }
+                                                        <input class="node-field__input" placeholder="female"
+                                                               @onchange="args => AddFieldValueAsync(slot, member, args.Value?.ToString())"
+                                                               aria-label="@($"Add a value to {slot.Id}.{member.Id}")" />
+                                                    </li>
+                                                }
+                                                @if (FieldLock(slot, member) is { } fieldLockedBy)
+                                                {
+                                                    <li class="declared-row__note"><span class="muted-text">@fieldLockedBy</span></li>
+                                                }
+                                            }
+                                        </ul>
+                                        <div class="add-variable__form">
+                                            <input class="node-field__input" placeholder="age"
+                                                   value="@NewFieldId(slot.Id)"
+                                                   @onchange="args => newFieldIds[slot.Id] = args.Value?.ToString() ?? string.Empty"
+                                                   aria-label="@($"New field id for {slot.Id}")" />
+                                            <button type="button" class="variable-chips__add" @onclick="() => AddFieldAsync(slot)">+ Field</button>
+                                        </div>
                                     </li>
                                 }
 
@@ -2063,10 +2162,10 @@
             .ToList();
 
     /// <summary>
-    /// Only enum and boolean inputs can be tested (#314), so retyping one a
-    /// condition reads, or removing it, would compose a package the validator
-    /// rejects. Refused here rather than at publish, naming the document that
-    /// depends on it.
+    /// A condition's operand is typed by the declaration it reads — bare, by
+    /// path, or by count (#314, #427) — so retyping an input a condition reads,
+    /// or removing it, would compose a package the validator rejects. Refused
+    /// here rather than at publish, naming the document that depends on it.
     /// </summary>
     private string? ConditionLock(WorkflowManifestReader.InputView input)
     {
@@ -2175,8 +2274,15 @@
     {
         var type = string.IsNullOrWhiteSpace(value) ? WorkflowInputTypes.Text : value!.Trim();
 
-        if (type is not (WorkflowInputTypes.Enum or WorkflowInputTypes.Boolean)
-            && ConditionLock(input) is { } locked)
+        if (type == WorkflowInputTypes.Of(input))
+        {
+            return;
+        }
+
+        // #429: a condition's operand is typed by the declaration — a path, a
+        // count, an ordering each want a particular type — so any retype under
+        // a condition is refused, naming the document.
+        if (ConditionLock(input) is { } locked)
         {
             declaredError = locked;
             return;
@@ -2201,8 +2307,10 @@
                 // as the word — a v7 declaration stays byte-identical.
                 Type = type == WorkflowInputTypes.Text ? null : type,
                 Values = keepsValues ? inputs[index].Values ?? new List<string>() : null,
+                // An array starts with no entry type (explicit initialisation);
+                // an object starts with no fields, which the desk refuses.
                 Items = keepsItems ? inputs[index].Items : null,
-                Fields = keepsFields ? inputs[index].Fields : null
+                Fields = keepsFields ? inputs[index].Fields ?? new List<WorkflowManifestReader.FieldView>() : null
             };
             declaredError = null;
         }
@@ -2274,6 +2382,266 @@
         }
 
         await CommitDeclarationAsync();
+    }
+
+    // ----- #429: an array's element type and an object's fields ------------
+
+    private readonly Dictionary<string, string> newFieldIds = new(StringComparer.Ordinal);
+
+    private string NewFieldId(string inputId) => newFieldIds.GetValueOrDefault(inputId, string.Empty);
+
+    /// <summary>One declaration, changed in place; false when the id is gone.</summary>
+    private bool UpdateInput(string inputId, Func<WorkflowManifestReader.InputView, WorkflowManifestReader.InputView> change)
+    {
+        var inputs = MutableInputs();
+        var index = inputs.FindIndex(existing => existing.Id == inputId);
+
+        if (index < 0)
+        {
+            return false;
+        }
+
+        inputs[index] = change(inputs[index]);
+        return true;
+    }
+
+    /// <summary>One field of one declaration, changed in place.</summary>
+    private bool UpdateField(string inputId, string fieldId, Func<WorkflowManifestReader.FieldView, WorkflowManifestReader.FieldView> change) =>
+        UpdateInput(inputId, input => input with
+        {
+            Fields = (input.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>())
+                .Select(field => field.Id == fieldId ? change(field) : field)
+                .ToList()
+        });
+
+    private async Task SetInputItemsAsync(WorkflowManifestReader.InputView input, string? value)
+    {
+        var items = string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
+
+        if (ConditionLock(input) is { } locked)
+        {
+            declaredError = locked;
+            return;
+        }
+
+        // Fields belong to an array of objects, values to an array of enums;
+        // kept across a change that still wants them, cleared otherwise.
+        UpdateInput(input.Id, existing => existing with
+        {
+            Items = items,
+            Fields = items == WorkflowInputTypes.Object ? existing.Fields ?? new List<WorkflowManifestReader.FieldView>() : null,
+            Values = items == WorkflowInputTypes.Enum ? existing.Values ?? new List<string>() : null
+        });
+        declaredError = null;
+        await CommitDeclarationAsync();
+    }
+
+    private async Task AddFieldAsync(WorkflowManifestReader.InputView input)
+    {
+        var id = NewFieldId(input.Id).Trim();
+
+        if (!DeclaredIdPattern.IsMatch(id))
+        {
+            declaredError = $"Field id '{id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
+            return;
+        }
+
+        if (input.Fields?.Any(field => field.Id == id) == true)
+        {
+            declaredError = $"Input '{input.Id}' declares duplicate field id '{id}'.";
+            return;
+        }
+
+        // Text by default, as an input is; required until said otherwise.
+        UpdateInput(input.Id, existing => existing with
+        {
+            Fields = (existing.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>())
+                .Append(new WorkflowManifestReader.FieldView(id, id, true))
+                .ToList()
+        });
+        newFieldIds.Remove(input.Id);
+        declaredError = null;
+        await CommitDeclarationAsync();
+    }
+
+    private async Task RenameFieldAsync(WorkflowManifestReader.InputView input, WorkflowManifestReader.FieldView field, string? value)
+    {
+        var id = (value ?? string.Empty).Trim();
+
+        if (id == field.Id)
+        {
+            return;
+        }
+
+        if (!DeclaredIdPattern.IsMatch(id))
+        {
+            declaredError = $"Field id '{id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
+            return;
+        }
+
+        if (input.Fields?.Any(existing => existing.Id == id) == true)
+        {
+            declaredError = $"Input '{input.Id}' declares duplicate field id '{id}'.";
+            return;
+        }
+
+        UpdateField(input.Id, field.Id, existing => existing with { Id = id });
+        CascadeFieldRename(input.Id, field.Id, id);
+        declaredError = null;
+        await CommitDeclarationAsync();
+    }
+
+    /// <summary>
+    /// A condition names a field the way a binding names an input, so a rename
+    /// has to reach it. Touched only when a condition actually reads the old
+    /// field — MutableResults() would otherwise mark the documents pending for
+    /// a rename that has nothing to do with them.
+    /// </summary>
+    private void CascadeFieldRename(string inputId, string oldField, string newField)
+    {
+        if (!EffectiveResults.Any(result =>
+            WorkflowResultConditionText.ReadsInput(result.When, inputId)
+            && WorkflowResultConditionText.FieldOf(result.When) == oldField))
+        {
+            return;
+        }
+
+        var results = MutableResults();
+
+        for (var index = 0; index < results.Count; index++)
+        {
+            if (results[index].When is { } when)
+            {
+                results[index] = results[index] with
+                {
+                    When = WorkflowResultConditionText.RenameField(when, inputId, oldField, newField)
+                };
+            }
+        }
+    }
+
+    private async Task RelabelFieldAsync(WorkflowManifestReader.InputView input, WorkflowManifestReader.FieldView field, string? value)
+    {
+        var label = (value ?? string.Empty).Trim();
+
+        if (label.Length == 0)
+        {
+            declaredError = $"Input '{input.Id}' field '{field.Id}' has no label.";
+            return;
+        }
+
+        UpdateField(input.Id, field.Id, existing => existing with { Label = label });
+        await CommitDeclarationAsync();
+    }
+
+    private async Task SetFieldRequiredAsync(WorkflowManifestReader.InputView input, WorkflowManifestReader.FieldView field, bool required)
+    {
+        UpdateField(input.Id, field.Id, existing => existing with { Required = required });
+        await CommitDeclarationAsync();
+    }
+
+    private async Task RetypeFieldAsync(WorkflowManifestReader.InputView input, WorkflowManifestReader.FieldView field, string? value)
+    {
+        var type = string.IsNullOrWhiteSpace(value) ? WorkflowInputTypes.Text : value!.Trim();
+
+        if (type == WorkflowInputTypes.Of(field))
+        {
+            return;
+        }
+
+        if (FieldLock(input, field) is { } locked)
+        {
+            declaredError = locked;
+            return;
+        }
+
+        UpdateField(input.Id, field.Id, existing => existing with
+        {
+            Type = type == WorkflowInputTypes.Text ? null : type,
+            Values = type == WorkflowInputTypes.Enum ? existing.Values ?? new List<string>() : null
+        });
+        declaredError = null;
+        await CommitDeclarationAsync();
+    }
+
+    private async Task RemoveFieldAsync(WorkflowManifestReader.InputView input, WorkflowManifestReader.FieldView field)
+    {
+        if (FieldLock(input, field) is { } locked)
+        {
+            declaredError = locked;
+            return;
+        }
+
+        UpdateInput(input.Id, existing => existing with
+        {
+            Fields = (existing.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>()).Where(f => f.Id != field.Id).ToList()
+        });
+        await CommitDeclarationAsync();
+    }
+
+    private async Task AddFieldValueAsync(WorkflowManifestReader.InputView input, WorkflowManifestReader.FieldView field, string? value)
+    {
+        var candidate = (value ?? string.Empty).Trim();
+
+        if (!DeclaredIdPattern.IsMatch(candidate))
+        {
+            declaredError = $"Value '{candidate}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
+            return;
+        }
+
+        if (field.Values?.Contains(candidate, StringComparer.Ordinal) == true)
+        {
+            declaredError = $"Field '{input.Id}.{field.Id}' already declares '{candidate}'.";
+            return;
+        }
+
+        UpdateField(input.Id, field.Id, existing => existing with
+        {
+            Values = (existing.Values ?? Array.Empty<string>()).Append(candidate).ToList()
+        });
+        declaredError = null;
+        await CommitDeclarationAsync();
+    }
+
+    private async Task RemoveFieldValueAsync(WorkflowManifestReader.InputView input, WorkflowManifestReader.FieldView field, string value)
+    {
+        var dependents = EffectiveResults
+            .Where(result => WorkflowResultConditionText.ReadsInput(result.When, input.Id)
+                && WorkflowResultConditionText.FieldOf(result.When) == field.Id
+                && WorkflowResultConditionText.LiteralOf(result.When) == value)
+            .Select(result => result.Label)
+            .ToList();
+
+        if (dependents.Count > 0)
+        {
+            declaredError =
+                $"Value '{value}' is what {string.Join(", ", dependents.Select(d => $"'{d}'"))} tests for; "
+                + "change that document's condition first.";
+            return;
+        }
+
+        UpdateField(input.Id, field.Id, existing => existing with
+        {
+            Values = (existing.Values ?? Array.Empty<string>()).Where(v => v != value).ToList()
+        });
+        await CommitDeclarationAsync();
+    }
+
+    /// <summary>
+    /// A field a condition reads by path cannot be retyped or removed — the
+    /// field's twin of <see cref="ConditionLock"/>.
+    /// </summary>
+    private string? FieldLock(WorkflowManifestReader.InputView input, WorkflowManifestReader.FieldView field)
+    {
+        var dependents = EffectiveResults
+            .Where(result => WorkflowResultConditionText.ReadsInput(result.When, input.Id)
+                && WorkflowResultConditionText.FieldOf(result.When) == field.Id)
+            .Select(result => result.Label)
+            .ToList();
+
+        return dependents.Count == 0
+            ? null
+            : $"Field '{input.Id}.{field.Id}' is tested by {string.Join(", ", dependents.Select(d => $"'{d}'"))}; change that document's condition first.";
     }
 
     /// <summary>
@@ -4380,6 +4748,7 @@
         newNodeForEach = string.Empty;
         newNodeOutput = string.Empty;
         newNodeKind = "prompt";
+        newFieldIds.Clear();
     }
 
     /// <summary>

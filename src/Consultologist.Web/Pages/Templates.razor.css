@@ -356,3 +356,38 @@
 	font-size: 0.8rem;
 	color: var(--consultologist-text-muted);
 }
+
+/* #429: an object's fields, indented under their input. */
+.declared-row__fields {
+	padding-left: 1.2rem;
+	border-left: 2px solid var(--consultologist-border);
+}
+
+.declared-field {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.declared-field__id {
+	min-width: 8rem;
+	font-family: var(--consultologist-font-mono, monospace);
+	font-size: 0.85rem;
+}
+
+.declared-row__items {
+	max-width: 9rem;
+}
+
+/* The chip the enum editors borrow, styled here since Consults' sheet is scoped. */
+.input-field__chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	padding: 0.15rem 0.5rem;
+	border: 1px solid var(--consultologist-border);
+	border-radius: 999px;
+	background: var(--consultologist-surface-muted, var(--consultologist-surface));
+	font-size: 0.8rem;
+}
