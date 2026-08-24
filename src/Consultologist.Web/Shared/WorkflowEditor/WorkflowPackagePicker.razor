@@ -325,9 +325,12 @@
 
     private static PickerGroup BuildGroup(string root, IReadOnlyList<string> folders, string leaf, PublicPackageView package)
     {
+        // #406: for a package you own, latest moves when you press Publish —
+        // and publish re-pins you to that version anyway — so it is named
+        // for what it follows. The root decides, not the name.
         var options = new List<PickerOption>
         {
-            new($"{package.Name}@latest", "latest — follows updates")
+            new($"{package.Name}@latest", root == MineRoot ? "latest — your newest publish" : "latest — follows updates")
         };
 
         // Registry listings are CalVer-ascending; the tree reads newest first.
