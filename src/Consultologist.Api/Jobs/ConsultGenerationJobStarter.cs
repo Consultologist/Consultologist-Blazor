@@ -387,6 +387,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // resolution and the outcome rule all walk the result list and need no
         // change at all.
         var skipped = new List<ConsultSkippedDocument>();
+        // #434: the deliverables as declared, before the fire set narrows
+        // package.Results — the born-Failed record lists every one of them.
+        var declaredResults = package.Results ?? new List<WorkflowResolvedResult>();
 
         if (package.Results is { Count: > 0 })
         {
@@ -507,12 +510,19 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             var emptyFans = inputFans.Where(fan => fan.Value.Count == 0).Select(fan => fan.Key).ToList();
             if (emptyFans.Count > 0)
             {
-                var emptyReasons = emptyFans.Select(key =>
-                    $"'{inputsById[WorkflowInputFans.InputIdOf(key)].Label}' has no entries, and every document this package produces is written from them").ToList();
+                var emptyLabels = emptyFans.Select(key => $"'{inputsById[WorkflowInputFans.InputIdOf(key)].Label}'").ToList();
                 var emptyDetail = "No document applies to these inputs. "
-                    + string.Join(" ", emptyReasons.Select(reason => $"{reason}."));
-                var notProduced = (package.Results ?? new List<WorkflowResolvedResult>())
-                    .Select(result => new ConsultSkippedDocument(result.Id, result.Label, string.Join("; ", emptyReasons)))
+                    + string.Join(" ", emptyLabels.Select(label => $"{label} has no entries, and every document this package produces is written from them."));
+                // Every declared deliverable, in declaration order: the ones the
+                // fire set skipped keep their condition's reason; the ones that
+                // would have fired are not produced because they are written
+                // from the empty fan. Phrased to follow "not produced — it".
+                var fanReason = $"is written from {string.Join(" and ", emptyLabels)}, which has no entries";
+                var conditionSkipped = skipped.ToDictionary(document => document.ResultId, StringComparer.Ordinal);
+                var notProduced = declaredResults
+                    .Select(result => conditionSkipped.TryGetValue(result.Id, out var byCondition)
+                        ? byCondition
+                        : new ConsultSkippedDocument(result.Id, result.Label, fanReason))
                     .ToList();
 
                 _logger.LogWarning(

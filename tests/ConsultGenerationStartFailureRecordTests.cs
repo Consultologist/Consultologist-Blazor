@@ -51,6 +51,8 @@ public class ConsultGenerationStartFailureRecordTests
         Assert.NotNull(state.CompletedAtUtc);
         Assert.Null(state.StartedAtUtc);
         Assert.True(ConsultGenerationJobEntity.IsTerminal(state.Status));
+        // Its storage shape is the current one, as a job that ran would show.
+        Assert.Equal(7, state.SchemaVersion);
         Assert.Single(state.History);
         Assert.Equal(("failure", "No document applies", Reason), (state.History[0].Kind, state.History[0].Label, state.History[0].Detail));
 
