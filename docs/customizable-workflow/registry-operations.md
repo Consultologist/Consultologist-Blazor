@@ -206,6 +206,29 @@ repo-owned packages from the anonymous chain view and the caller's own fork from
 account's `acct-*` versions). The pin resolver remains the sole authority on
 what a pin may reference.
 
+**Since #447 (2026-08-24) ownership is a record, not the name.** An account
+holds many packages — its first is still `acct-<12 hex>`, its others are
+`acct-<12 hex>-<slug>` — and the `PackageOwners` table on the account-storage
+account (`PartitionKey` = AppUserId, `RowKey` = package name) says which
+account may read, pin, publish to, or walk the lineage of an `acct-*` package.
+The publisher writes the row before its first upload; nothing else writes
+one. `GET /api/WorkflowPackages/MinePackages` lists the set (`Mine` still
+serves the first package to older clients). #462 retired the derived-name
+fallback and the startup backfill once every existing package was recorded.
+To check the two agree — the registry's names against the table's rows —
+read-only, with identity auth:
+
+```
+az storage blob list --account-name consultologistjobqueue --container-name workflow-packages \
+  --auth-mode login --query "[].name" -o tsv | awk -F/ 'NF==3 && $3=="manifest.json" {print $1}' | sort -u
+az storage entity query --account-name consultologistjobqueue --table-name PackageOwners \
+  --auth-mode login --query "items[].[PartitionKey, RowKey]" -o tsv
+```
+
+Every name from the first must appear once in the second under the account
+whose id starts with the name's 12 hex. A name with no row is unreachable by
+anyone; the remedy is one `az storage entity insert` under the right account.
+
 ## Lineage (#89)
 
 `GET /api/WorkflowPackages/Lineage?ref=name@vYYYY.MM.N` (authorized; owner-only

@@ -9,9 +9,9 @@ namespace Consultologist.Api.Workflow;
 /// author-chosen slug — acct-7bca2dcc1ed4-breast-oncology — so every package
 /// of an account shares the root, which is what routes it to the private
 /// registry and what #448 later lets become a path. Ownership is a RECORD
-/// (WorkflowPackageOwnership), asked through WorkflowPackageAccess; the
-/// equality here survives only as that rule's fallback for the derived name.
-/// Repo-owned names remain open to all accounts.
+/// (WorkflowPackageOwnership), asked through WorkflowPackageAccess — the name
+/// says nothing about who may read it (#462). Repo-owned names remain open
+/// to all accounts.
 /// </summary>
 public static partial class WorkflowPackageNaming
 {
@@ -77,7 +77,4 @@ public static partial class WorkflowPackageNaming
 
     public static bool IsAccountPackage(string name) =>
         name.StartsWith(AccountPrefix, StringComparison.Ordinal);
-
-    public static bool CanAccess(string name, string appUserId) =>
-        !IsAccountPackage(name) || string.Equals(name, ForAccount(appUserId), StringComparison.Ordinal);
 }
