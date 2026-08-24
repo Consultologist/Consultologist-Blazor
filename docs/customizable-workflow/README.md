@@ -48,6 +48,8 @@ yet; these notes are the input to a future milestone plan.
 - [content-repos.md](content-repos.md) — splitting workflow and agent content into
   dedicated GitOps repos publishing to the registry (CI-only writes, full agent GitOps,
   migration checklist)
+- [package-format-library.md](package-format-library.md) — what defines the format
+  lives in `src/Consultologist.PackageFormat` (#450); what runs it stays with the engine.
 - [registry-operations.md](registry-operations.md) — browsing and inspecting the
   package registry (az CLI, portal, Storage Explorer) and the publish flow
 - [decoupling-roadmap.md](decoupling-roadmap.md) — post-milestone-2 forecast: phase

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Consultologist.Api.Workflow;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
 
 /// <summary>

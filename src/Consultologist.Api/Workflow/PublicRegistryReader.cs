@@ -5,6 +5,7 @@ using Azure.Storage.Blobs;
 using Consultologist.Api.Agents;
 using Microsoft.Extensions.Configuration;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Workflow;
 
 public sealed record PublicChainResponse(

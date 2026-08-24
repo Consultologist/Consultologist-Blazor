@@ -3,6 +3,7 @@ using Consultologist.Api.Jobs;
 using Consultologist.Api.Models;
 using NSubstitute;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
 
 /// <summary>

@@ -1,3 +1,5 @@
+using Consultologist.PackageFormat;
+
 namespace Consultologist.Api.Workflow;
 
 /// <summary>One deliverable block: in v5 a section (standards item), in v6 a result-aggregator expansion entry.</summary>

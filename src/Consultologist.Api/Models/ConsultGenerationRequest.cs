@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Models;
 
 public record ConsultGenerationRequest(

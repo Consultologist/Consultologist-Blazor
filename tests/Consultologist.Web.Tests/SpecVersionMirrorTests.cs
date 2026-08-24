@@ -2,6 +2,7 @@ using Consultologist.Api.Workflow;
 using Consultologist.Web.Pages;
 using Consultologist.Web.Shared.WorkflowEditor;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Web.Tests;
 
 /// <summary>

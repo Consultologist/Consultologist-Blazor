@@ -1,6 +1,7 @@
 using Consultologist.Api.Models;
 using Consultologist.Api.Workflow;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
 
 public class PromptTemplateRendererTests

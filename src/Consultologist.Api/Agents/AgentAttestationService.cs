@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Agents;
 
 /// <summary>

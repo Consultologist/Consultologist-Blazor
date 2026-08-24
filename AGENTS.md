@@ -18,9 +18,10 @@ All `bin`/`obj` output is centralized to `build/bin|obj/<ProjectName>/` via `Dir
 
 ## Architecture
 
-Two independently deployed applications in one solution, plus two test projects:
+Two independently deployed applications in one solution, a shared format library, plus two test projects:
 
 - **`src/Consultologist.Web`** — standalone Blazor WebAssembly PWA (Fluent UI). Auth is Microsoft Entra ID via MSAL (`Microsoft.Authentication.WebAssembly.Msal`); config lives in `wwwroot/appsettings.json`. Deployed to Azure Static Web Apps.
+- **`src/Consultologist.PackageFormat`** — the workflow package format as a class library (#450): manifest records, the validator, the wire value, conditions, fans, rendering, the stamp. Referenced by the Api; no Azure or engine dependency (`docs/customizable-workflow/package-format-library.md`).
 - **`src/Consultologist.Api`** — .NET 10 isolated Azure Functions. Deployed to a separate Azure Function App (the SWA's `api_location` is intentionally empty); the frontend calls it cross-origin, so every HTTP function applies `FunctionCors` manually and new endpoints must too.
 - **`tests/Consultologist.Api.Tests.csproj`** — xUnit + NSubstitute against the Api project. `Consultologist.Api.csproj` grants `InternalsVisibleTo` to it.
 - **`tests/Consultologist.Web.Tests/`** — bUnit render tests for the client (#224). `dotnet build` type-checks Razor markup but never renders it, so bind expressions and component wiring fail only at runtime; these cover the pages with a demonstrated failure history (Consults setup and result, History provenance).
@@ -35,7 +36,7 @@ Two independently deployed applications in one solution, plus two test projects:
 
 ### Conventions and constraints
 
-- Namespaces mirror folders (`Consultologist.Api.Jobs`, `Consultologist.Web.Services.AI`, …).
+- Namespaces mirror folders (`Consultologist.Api.Jobs`, `Consultologist.Web.Services.AI`, `Consultologist.PackageFormat`, …).
 - `[Function("Name")]` strings and durable orchestrator/entity/activity class names are the deployed contract — renaming a function string or an activity class affects the live Function App and any in-flight durable orchestrations; namespaces are safe to change.
 - The scoped-CSS bundle is named after the assembly: `wwwroot/index.html` links `Consultologist.Web.styles.css`. Renaming the Web project breaks this link unless index.html is updated.
 - CI is path-filtered: the Function App deploys only on `src/Consultologist.Api/**` changes; the SWA deploy ignores api/tests/docs/markdown changes but builds previews for every PR. Tests run in their own workflow.

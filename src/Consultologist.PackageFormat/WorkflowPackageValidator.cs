@@ -5,9 +5,8 @@ using System.Text.Json.Nodes;
 using Scriban;
 using Scriban.Runtime;
 
-using Consultologist.Api.Models;
 
-namespace Consultologist.Api.Workflow;
+namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// Validates specVersion-5, -6 and -7 packages: a manifest declares the rule set
@@ -1470,7 +1469,7 @@ public static class WorkflowPackageValidator
     }
 
     /// <summary>Sorted-key serialization with title/description stripped recursively.</summary>
-    internal static string CanonicalizeSchema(JsonNode? node)
+    public static string CanonicalizeSchema(JsonNode? node)
     {
         if (node is JsonObject obj)
         {

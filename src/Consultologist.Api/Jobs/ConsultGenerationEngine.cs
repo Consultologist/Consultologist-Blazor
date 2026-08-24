@@ -6,6 +6,7 @@ using Microsoft.DurableTask;
 using Microsoft.DurableTask.Entities;
 using Microsoft.Extensions.Logging;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Jobs;
 
 public sealed class ConsultGenerationOrchestrator

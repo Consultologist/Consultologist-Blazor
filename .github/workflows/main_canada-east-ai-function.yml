@@ -9,6 +9,7 @@ on:
       - main
     paths:
       - "src/Consultologist.Api/**" # Only run when API code changes
+      - "src/Consultologist.PackageFormat/**" # #450: ships inside the Function App
   workflow_dispatch:
 
 env:

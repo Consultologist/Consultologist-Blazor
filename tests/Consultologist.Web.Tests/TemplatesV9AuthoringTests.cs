@@ -115,9 +115,9 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         Assert.False(fields[1].GetProperty("required").GetBoolean());
         Assert.Equal(new[] { "clinic", "ward" }, fields[1].GetProperty("values").EnumerateArray().Select(v => v.GetString()));
 
-        var manifest = System.Text.Json.JsonSerializer.Deserialize<Consultologist.Api.Workflow.WorkflowPackageManifest>(
+        var manifest = System.Text.Json.JsonSerializer.Deserialize<Consultologist.PackageFormat.WorkflowPackageManifest>(
             sent.Manifest.GetRawText(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
-        var result = Consultologist.Api.Workflow.WorkflowPackageValidator.Validate(
+        var result = Consultologist.PackageFormat.WorkflowPackageValidator.Validate(
             manifest, sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal));
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
@@ -292,9 +292,9 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var when = System.Text.Json.JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement.GetProperty("results")[0].GetProperty("when").GetString();
         Assert.Equal(expected, when);
 
-        var manifest = System.Text.Json.JsonSerializer.Deserialize<Consultologist.Api.Workflow.WorkflowPackageManifest>(
+        var manifest = System.Text.Json.JsonSerializer.Deserialize<Consultologist.PackageFormat.WorkflowPackageManifest>(
             sent.Manifest.GetRawText(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
-        var result = Consultologist.Api.Workflow.WorkflowPackageValidator.Validate(
+        var result = Consultologist.PackageFormat.WorkflowPackageValidator.Validate(
             manifest, sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal));
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
@@ -457,10 +457,10 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         Publish(page);
 
         await WorkflowService.Received(1).PublishPackageAsync(Arg.Any<WorkflowPackagePublishRequest>());
-        var manifest = System.Text.Json.JsonSerializer.Deserialize<Consultologist.Api.Workflow.WorkflowPackageManifest>(
+        var manifest = System.Text.Json.JsonSerializer.Deserialize<Consultologist.PackageFormat.WorkflowPackageManifest>(
             sent!.Manifest.GetRawText(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
         Assert.Equal("input:prior_notes", manifest.Nodes![0].ForEach);
-        var result = Consultologist.Api.Workflow.WorkflowPackageValidator.Validate(
+        var result = Consultologist.PackageFormat.WorkflowPackageValidator.Validate(
             manifest, sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal));
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }

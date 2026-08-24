@@ -1,12 +1,11 @@
 using System.Globalization;
 using System.Text.Json;
-using Consultologist.Api.Models;
 using Scriban;
 using Scriban.Functions;
 using Scriban.Parsing;
 using Scriban.Runtime;
 
-namespace Consultologist.Api.Workflow;
+namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// Renders a prompt template in strict mode: exactly the declared

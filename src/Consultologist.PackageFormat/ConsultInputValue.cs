@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Consultologist.Api.Models;
+namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// The JSON kind a supplied value arrived as. Closed: the converter admits

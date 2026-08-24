@@ -5,6 +5,7 @@ using Azure;
 using Azure.Storage.Blobs;
 using Consultologist.Api.Workflow;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Agents;
 
 /// <summary>
@@ -38,10 +39,10 @@ public sealed record OutputContractEntry(
 /// baseline. The package declares the contract, the catalog declares the
 /// executor, and startup attestation verifies every entry.
 /// </summary>
-public sealed class OutputContractCatalog
+public sealed class OutputContractCatalog : IOutputContractResolver
 {
-    /// <summary>The registry artifact's name and container: output-contracts@vYYYY.MM.N.</summary>
-    public const string RegistryName = "output-contracts";
+    /// <summary>The registry artifact's name and container: output-contracts@vYYYY.MM.N — the format's constant, aliased.</summary>
+    public const string RegistryName = OutputContractRegistry.Name;
     public const string CatalogFileName = "output-contracts.json";
 
     private readonly Dictionary<string, OutputContractEntry> _entries;

@@ -5,6 +5,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using Consultologist.Api.Models;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Workflow;
 
 internal static class ConsultGenerationProvenance

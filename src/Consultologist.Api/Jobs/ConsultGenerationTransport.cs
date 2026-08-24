@@ -19,6 +19,7 @@ using Microsoft.DurableTask.Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Jobs;
 
 public sealed class ConsultGenerationJobs

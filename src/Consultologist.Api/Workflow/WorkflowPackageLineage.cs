@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Azure;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Workflow;
 
 /// <summary>

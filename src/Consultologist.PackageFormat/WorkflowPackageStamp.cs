@@ -1,9 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
-using Consultologist.Api.Agents;
 
-namespace Consultologist.Api.Workflow;
+namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// The publication stamp (#433, #377): what each declared schema resolved to,
@@ -55,7 +54,7 @@ public sealed record WorkflowPackageStamp(
     public static WorkflowPackageStamp Compute(
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, string> files,
-        OutputContractCatalog catalog,
+        IOutputContractResolver catalog,
         List<string> errors)
     {
         var contracts = new SortedDictionary<string, string>(StringComparer.Ordinal);
@@ -131,10 +130,10 @@ public sealed record WorkflowPackageStamp(
         if (document.CatalogRef is null
             || !WorkflowPackageRef.TryParse(document.CatalogRef, out var catalogRef)
             || catalogRef!.IsLatest
-            || !string.Equals(catalogRef.Name, OutputContractCatalog.RegistryName, StringComparison.Ordinal))
+            || !string.Equals(catalogRef.Name, OutputContractRegistry.Name, StringComparison.Ordinal))
         {
             throw new WorkflowPackageContentException(
-                $"{prefix} must declare catalogRef as {OutputContractCatalog.RegistryName}@vYYYY.MM.N.");
+                $"{prefix} must declare catalogRef as {OutputContractRegistry.Name}@vYYYY.MM.N.");
         }
 
         if (document.Contracts is null)

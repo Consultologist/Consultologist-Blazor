@@ -1,4 +1,4 @@
-namespace Consultologist.Api.Workflow;
+namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// Prompt variable → the declared input behind it, for every variable bound

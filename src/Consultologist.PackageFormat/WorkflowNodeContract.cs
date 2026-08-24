@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Consultologist.Api.Workflow;
+namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// The node vocabulary: binding-reference parsing, the closed concept-renderer

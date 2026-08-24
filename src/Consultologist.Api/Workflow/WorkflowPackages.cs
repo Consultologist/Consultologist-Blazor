@@ -6,6 +6,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Workflow;
 
 public sealed class WorkflowPackages

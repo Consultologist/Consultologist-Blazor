@@ -38,6 +38,7 @@ using System.Text.Json;
 using Consultologist.Api.Agents;
 using Consultologist.Api.Workflow;
 
+using Consultologist.PackageFormat;
 var packageDir = args.FirstOrDefault(argument => !argument.StartsWith("--", StringComparison.Ordinal));
 var wantsDiagram = args.Contains("--dag", StringComparer.Ordinal);
 

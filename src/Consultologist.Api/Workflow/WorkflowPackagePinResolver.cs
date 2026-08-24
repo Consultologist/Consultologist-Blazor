@@ -1,6 +1,7 @@
 using Consultologist.Api.Auth;
 using Microsoft.Extensions.Logging;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Workflow;
 
 public interface IWorkflowPackagePinResolver

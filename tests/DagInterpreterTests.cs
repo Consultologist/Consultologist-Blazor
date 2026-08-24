@@ -6,6 +6,7 @@ using Consultologist.Api.Models;
 using Consultologist.Api.Workflow;
 using NSubstitute;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
 
 /// <summary>

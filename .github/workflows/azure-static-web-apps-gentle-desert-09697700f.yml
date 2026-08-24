@@ -6,6 +6,7 @@ on:
       - main
     paths-ignore:
       - "src/Consultologist.Api/**" # Don't rebuild static web app when only API changes
+      - "src/Consultologist.PackageFormat/**" # #450: the format library is the API's, not the client's
       - "tests/**" # ...or when only tests change
       - "docs/**" # ...or when only documentation changes
       - "*.md"

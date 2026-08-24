@@ -49,11 +49,11 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
     private static System.Text.Json.JsonElement SentManifest(WorkflowPackagePublishRequest request) =>
         System.Text.Json.JsonDocument.Parse(request.Manifest.GetRawText()).RootElement;
 
-    private static Consultologist.Api.Workflow.WorkflowPackageValidator.ValidationResult ValidateSent(WorkflowPackagePublishRequest request)
+    private static Consultologist.PackageFormat.WorkflowPackageValidator.ValidationResult ValidateSent(WorkflowPackagePublishRequest request)
     {
-        var manifest = System.Text.Json.JsonSerializer.Deserialize<Consultologist.Api.Workflow.WorkflowPackageManifest>(
+        var manifest = System.Text.Json.JsonSerializer.Deserialize<Consultologist.PackageFormat.WorkflowPackageManifest>(
             request.Manifest.GetRawText(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
-        return Consultologist.Api.Workflow.WorkflowPackageValidator.Validate(
+        return Consultologist.PackageFormat.WorkflowPackageValidator.Validate(
             manifest, request.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal));
     }
 
