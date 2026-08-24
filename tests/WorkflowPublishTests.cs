@@ -99,7 +99,7 @@ public class ForeignPinFallbackTests
     {
         var settings = new FakeSettingsStore();
         await settings.SaveAsync(OwnerId, WorkflowPackagePinResolver.PackagePinSettingKey, "acct-999999999999@v2026.07.1", "text/plain", CancellationToken.None);
-        var resolver = new WorkflowPackagePinResolver(settings, NullLogger<WorkflowPackagePinResolver>.Instance);
+        var resolver = new WorkflowPackagePinResolver(settings, new FakeOwnership(), NullLogger<WorkflowPackagePinResolver>.Instance);
 
         var resolved = await resolver.ResolvePinAsync(OwnerId, CancellationToken.None);
 
@@ -111,7 +111,7 @@ public class ForeignPinFallbackTests
     {
         var settings = new FakeSettingsStore();
         await settings.SaveAsync(OwnerId, WorkflowPackagePinResolver.PackagePinSettingKey, "acct-0123456789ab@v2026.07.1", "text/plain", CancellationToken.None);
-        var resolver = new WorkflowPackagePinResolver(settings, NullLogger<WorkflowPackagePinResolver>.Instance);
+        var resolver = new WorkflowPackagePinResolver(settings, new FakeOwnership(), NullLogger<WorkflowPackagePinResolver>.Instance);
 
         var resolved = await resolver.ResolvePinAsync(OwnerId, CancellationToken.None);
 
@@ -143,7 +143,8 @@ public class WorkflowPackagePublisherTests
         FakeRegistryWriter? writer = null,
         WorkflowPackageManifest? parentManifest = null,
         Dictionary<string, string>? parentFiles = null,
-        string sourceRef = SourceRef)
+        string sourceRef = SourceRef,
+        FakeOwnership? ownership = null)
     {
         writer ??= new FakeRegistryWriter();
         var settings = new FakeSettingsStore();
@@ -154,7 +155,8 @@ public class WorkflowPackagePublisherTests
             settings,
             Catalog,
             new FixedTimeProvider(nowUtc ?? new DateTimeOffset(2026, 7, 16, 12, 0, 0, TimeSpan.Zero)),
-            NullLogger<WorkflowPackagePublisher>.Instance);
+            NullLogger<WorkflowPackagePublisher>.Instance,
+            ownership ?? new FakeOwnership());
         return (publisher, writer, settings);
     }
 
@@ -535,6 +537,137 @@ public class WorkflowPackagePublisherTests
         Assert.Equal("Breast oncology consults", stored.Title);
         Assert.Equal("Referral triage and consult notes for the breast clinic.", stored.Description);
         Assert.Equal(new[] { "oncology", "breast" }, stored.Tags);
+    }
+
+    // ----- #447: where a publish goes ----------------------------------------
+
+    [Fact]
+    public async Task Publish_WithNoTarget_GoesToTheDerivedName_AndRecordsIt()
+    {
+        // Every client before #447: the account's first package. Now recorded.
+        var ownership = new FakeOwnership();
+        var (publisher, _, _) = CreatePublisher(ownership: ownership);
+
+        var result = await publisher.PublishAsync(OwnerId, Request(), CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        Assert.Equal(AccountName, result.Response!.Name);
+        Assert.Contains((OwnerId, AccountName), ownership.Records);
+    }
+
+    [Fact]
+    public async Task Publish_AsANewPackage_MintsTheSluggedName_ClearsMetadata_RecordsAndPins()
+    {
+        var ownership = new FakeOwnership();
+        var (publisher, writer, settings) = CreatePublisher(ownership: ownership);
+        var manifest = Titled();
+
+        var result = await publisher.PublishAsync(
+            OwnerId,
+            Request(manifest: manifest, files: V5Fixtures.Files(manifest)) with { NewPackageSlug = "breast-oncology" },
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        Assert.Equal("acct-0123456789ab-breast-oncology", result.Response!.Name);
+        Assert.Equal("v2026.07.1", result.Response.Version);
+        var stored = writer.ReadManifest("acct-0123456789ab-breast-oncology", "v2026.07.1");
+        Assert.Equal(SourceRef, stored.DerivedFrom);
+        // A fork across names: the parent's words about the parent are cleared.
+        Assert.Null(stored.Title);
+        Assert.Empty(stored.Tags!);
+        Assert.Contains((OwnerId, "acct-0123456789ab-breast-oncology"), ownership.Records);
+        var pin = await settings.GetAsync(OwnerId, WorkflowPackagePinResolver.PackagePinSettingKey, CancellationToken.None);
+        Assert.Equal("acct-0123456789ab-breast-oncology@v2026.07.1", pin!.Value);
+    }
+
+    [Fact]
+    public async Task Publish_ToATarget_RepublishesThatPackage_WhenRecorded()
+    {
+        var ownership = new FakeOwnership();
+        ownership.Records.Add((OwnerId, "acct-0123456789ab-breast-oncology"));
+        var writer = new FakeRegistryWriter();
+        await writer.CreateManifestAsync("acct-0123456789ab-breast-oncology", "v2026.07.1", "{}", CancellationToken.None);
+        var (publisher, _, _) = CreatePublisher(writer: writer, ownership: ownership, sourceRef: "acct-0123456789ab-breast-oncology@v2026.07.1");
+        var manifest = Titled();
+
+        var result = await publisher.PublishAsync(
+            OwnerId,
+            Request(source: "acct-0123456789ab-breast-oncology@v2026.07.1", manifest: manifest, files: V5Fixtures.Files(manifest))
+                with { Target = "acct-0123456789ab-breast-oncology" },
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        Assert.Equal("acct-0123456789ab-breast-oncology@v2026.07.2", result.Response!.Ref);
+        // A republish of the same package keeps its metadata.
+        Assert.Equal("Breast oncology consults", writer.ReadManifest("acct-0123456789ab-breast-oncology", "v2026.07.2").Title);
+    }
+
+    [Fact]
+    public async Task Publish_ToATargetNotOwned_IsForbidden()
+    {
+        var (publisher, _, _) = CreatePublisher();
+
+        var result = await publisher.PublishAsync(OwnerId, Request() with { Target = "acct-999999999999" }, CancellationToken.None);
+
+        Assert.True(result.Forbidden);
+        Assert.Contains("Target package is not owned by this account.", result.Errors);
+
+        // And a slugged name of one's own root with no record is nobody's yet.
+        var unrecorded = await publisher.PublishAsync(OwnerId, Request() with { Target = "acct-0123456789ab-breast-oncology" }, CancellationToken.None);
+        Assert.True(unrecorded.Forbidden);
+    }
+
+    [Theory]
+    [InlineData("general", "Target must be one of this account's packages.")]
+    [InlineData("not a name", "Target must be one of this account's packages.")]
+    public async Task Publish_ToATargetThatIsNotAnAccountPackage_IsRefused(string target, string expected)
+    {
+        var (publisher, _, _) = CreatePublisher();
+
+        var result = await publisher.PublishAsync(OwnerId, Request() with { Target = target }, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(expected, result.Errors);
+    }
+
+    [Theory]
+    [InlineData("Breast")]
+    [InlineData("breast-")]
+    [InlineData("")]
+    public async Task Publish_AsANewPackage_WithABadSlug_IsRefused(string slug)
+    {
+        var (publisher, _, _) = CreatePublisher();
+
+        var result = await publisher.PublishAsync(OwnerId, Request() with { NewPackageSlug = slug }, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Errors, error => error.StartsWith("NewPackageSlug must be", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Publish_AsANewPackage_WhoseNameExists_IsRefused()
+    {
+        var writer = new FakeRegistryWriter();
+        await writer.CreateManifestAsync("acct-0123456789ab-breast-oncology", "v2026.07.1", "{}", CancellationToken.None);
+        await writer.SetLatestPointerAsync("acct-0123456789ab-breast-oncology", "v2026.07.1", CancellationToken.None);
+        var (publisher, _, _) = CreatePublisher(writer: writer);
+
+        var result = await publisher.PublishAsync(OwnerId, Request() with { NewPackageSlug = "breast-oncology" }, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("A package named acct-0123456789ab-breast-oncology already exists; choose another slug, or publish a new version of it.", result.Errors);
+    }
+
+    [Fact]
+    public async Task Publish_WithBothTargetAndSlug_IsRefused()
+    {
+        var (publisher, _, _) = CreatePublisher();
+
+        var result = await publisher.PublishAsync(
+            OwnerId, Request() with { Target = AccountName, NewPackageSlug = "x" }, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Errors, error => error.StartsWith("Target and NewPackageSlug are exclusive", StringComparison.Ordinal));
     }
 
     // ----- #433: the publication stamp -------------------------------------
@@ -1267,5 +1400,23 @@ public class AccountPackageListingSpecTests
             DateTimeOffset.UtcNow);
 
         Assert.Null(Assert.Single(chain.Packages).SpecVersions);
+    }
+}
+
+/// <summary>#447: ownership records, in memory. Empty by default, so the derived-name fallback carries every pre-#447 fact unchanged.</summary>
+public sealed class FakeOwnership : IWorkflowPackageOwnership
+{
+    public HashSet<(string AppUserId, string Name)> Records { get; } = new();
+
+    public Task<bool> OwnsAsync(string appUserId, string name, CancellationToken cancellationToken) =>
+        Task.FromResult(Records.Contains((appUserId, name)));
+
+    public Task<IReadOnlyList<string>> ListAsync(string appUserId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<string>>(Records.Where(r => r.AppUserId == appUserId).Select(r => r.Name).OrderBy(n => n, StringComparer.Ordinal).ToList());
+
+    public Task RecordAsync(string appUserId, string name, CancellationToken cancellationToken)
+    {
+        Records.Add((appUserId, name));
+        return Task.CompletedTask;
     }
 }

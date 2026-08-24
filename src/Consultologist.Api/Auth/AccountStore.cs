@@ -19,6 +19,9 @@ public interface IAccountStore
 {
     Task<AppAccount> ResolveOrCreateAsync(AuthenticatedUser user, CancellationToken cancellationToken);
 
+    /// <summary>Every app user id (#447's backfill maps package roots to accounts by them).</summary>
+    Task<IReadOnlyList<string>> ListAppUserIdsAsync(CancellationToken cancellationToken);
+
     Task<IdentityLinkOutcome> LinkIdentityAsync(
         string appUserId,
         string provider,
@@ -50,6 +53,20 @@ public sealed class AccountStore : IAccountStore
         _appUsers = StorageTables.CreateClient(configuration, credential, AppUsersTableName, "AccountStorage");
         _identityLinks = StorageTables.CreateClient(configuration, credential, IdentityLinksTableName, "AccountStorage");
         _userIdentityLinks = StorageTables.CreateClient(configuration, credential, UserIdentityLinksTableName, "AccountStorage");
+    }
+
+    public async Task<IReadOnlyList<string>> ListAppUserIdsAsync(CancellationToken cancellationToken)
+    {
+        await _appUsers.CreateIfNotExistsAsync(cancellationToken);
+        var ids = new List<string>();
+
+        await foreach (var entity in _appUsers.QueryAsync<AppUserEntity>(
+            entity => entity.PartitionKey == "app-user", select: new[] { "RowKey" }, cancellationToken: cancellationToken))
+        {
+            ids.Add(entity.RowKey);
+        }
+
+        return ids;
     }
 
     public async Task<AppAccount> ResolveOrCreateAsync(AuthenticatedUser user, CancellationToken cancellationToken)

@@ -68,6 +68,21 @@ public static class AccountPackageListing
     }
 
     /// <summary>
+    /// The distinct package names a blob listing holds a manifest for —
+    /// {name}/{version}/manifest.json and nothing else — in ordinal order.
+    /// #447: the one place the listing's three-part filter lives, so a nested
+    /// path (#448) fails a test here rather than vanishing from a picker.
+    /// </summary>
+    public static IReadOnlyList<string> NamesIn(IEnumerable<string> blobNames) =>
+        blobNames
+            .Select(blobName => blobName.Split('/'))
+            .Where(parts => parts.Length == 3 && parts[2] == "manifest.json")
+            .Select(parts => parts[0])
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>
     /// Reads just the tags out of a manifest document (#453): the array's
     /// string entries in authored order; null when absent, not an array, or
     /// the document is unreadable; an empty list when the array is empty.

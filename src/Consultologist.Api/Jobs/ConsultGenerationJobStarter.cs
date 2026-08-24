@@ -125,19 +125,22 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly IWorkflowPackagePinResolver _pinResolver;
     private readonly OutputContractCatalog _catalog;
     private readonly IAccountRateLimiter _rateLimiter;
+    private readonly IWorkflowPackageOwnership _ownership;
 
     public ConsultGenerationJobStarter(
         ILogger<ConsultGenerationJobStarter> logger,
         IWorkflowPackageStore packageStore,
         IWorkflowPackagePinResolver pinResolver,
         OutputContractCatalog catalog,
-        IAccountRateLimiter rateLimiter)
+        IAccountRateLimiter rateLimiter,
+        IWorkflowPackageOwnership ownership)
     {
         _logger = logger;
         _packageStore = packageStore;
         _pinResolver = pinResolver;
         _catalog = catalog;
         _rateLimiter = rateLimiter;
+        _ownership = ownership;
     }
 
     public async Task<ConsultGenerationJobStartOutcome> StartAsync(
@@ -193,7 +196,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
             packageRef = await _pinResolver.ResolvePinAsync(appUserId, cancellationToken);
         }
-        else if (!WorkflowPackageNaming.CanAccess(packageRef!.Name, appUserId))
+        else if (!await _ownership.CanAccessAsync(packageRef!.Name, appUserId, cancellationToken))
         {
             // The acct-* access rule at job start: a caller-supplied ref to a
             // foreign account package is rejected before any registry read.

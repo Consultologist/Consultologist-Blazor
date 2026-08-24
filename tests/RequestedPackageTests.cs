@@ -54,7 +54,10 @@ public class RequestedPackageTests
     {
         var requested = Parse($"?ref={OwnedPackage}@v2026.08.16");
 
-        Assert.Equal(WorkflowPackages.RequestedPackageKind.Resolved, requested.Kind);
+        // #447: an account package is handed back for the ownership check,
+        // which the endpoint makes with the record store. Whose it is, this
+        // static no longer knows.
+        Assert.Equal(WorkflowPackages.RequestedPackageKind.AccountPackage, requested.Kind);
         Assert.Equal(OwnedPackage, requested.Ref!.Name);
     }
 
@@ -66,8 +69,10 @@ public class RequestedPackageTests
         // refusing here is the only thing between two accounts.
         var requested = Parse("?ref=acct-999999999999@v2026.07.1");
 
-        Assert.Equal(WorkflowPackages.RequestedPackageKind.Forbidden, requested.Kind);
-        Assert.Null(requested.Ref);
+        // #447: the same kind as one's own — the refusal is the endpoint's,
+        // through WorkflowPackageAccess (tested beside this file).
+        Assert.Equal(WorkflowPackages.RequestedPackageKind.AccountPackage, requested.Kind);
+        Assert.Equal("acct-999999999999", requested.Ref!.Name);
     }
 
     [Fact]

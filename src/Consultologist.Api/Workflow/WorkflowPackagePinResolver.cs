@@ -20,11 +20,16 @@ public sealed class WorkflowPackagePinResolver : IWorkflowPackagePinResolver
     private const string DefaultPinFallback = "general@latest";
 
     private readonly IAccountSettingsStore _settingsStore;
+    private readonly IWorkflowPackageOwnership _ownership;
     private readonly ILogger<WorkflowPackagePinResolver> _logger;
 
-    public WorkflowPackagePinResolver(IAccountSettingsStore settingsStore, ILogger<WorkflowPackagePinResolver> logger)
+    public WorkflowPackagePinResolver(
+        IAccountSettingsStore settingsStore,
+        IWorkflowPackageOwnership ownership,
+        ILogger<WorkflowPackagePinResolver> logger)
     {
         _settingsStore = settingsStore;
+        _ownership = ownership;
         _logger = logger;
     }
 
@@ -35,7 +40,7 @@ public sealed class WorkflowPackagePinResolver : IWorkflowPackagePinResolver
         {
             // The acct-* access rule: a foreign account package behaves like a
             // malformed pin — warn and fall through to the default.
-            if (WorkflowPackageNaming.CanAccess(accountRef!.Name, appUserId))
+            if (await _ownership.CanAccessAsync(accountRef!.Name, appUserId, cancellationToken))
             {
                 return accountRef!;
             }
