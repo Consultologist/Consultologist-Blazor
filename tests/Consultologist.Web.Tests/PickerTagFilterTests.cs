@@ -45,11 +45,9 @@ public class PickerTagFilterTests : ClientRenderTestContext
     private static IReadOnlyList<string> Chips(IRenderedComponent<WorkflowPackagePicker> picker) =>
         picker.FindAll(".package-picker__tag").Select(chip => chip.TextContent.Trim()).ToList();
 
-    private static IReadOnlyList<string> Options(IRenderedComponent<WorkflowPackagePicker> picker) =>
-        picker.FindAll("option").Select(option => option.GetAttribute("value")!).ToList();
+    private static IReadOnlyList<string> Options(IRenderedComponent<WorkflowPackagePicker> picker) => PickerTree.Refs(picker);
 
-    private static IReadOnlyList<string> Groups(IRenderedComponent<WorkflowPackagePicker> picker) =>
-        picker.FindAll("optgroup").Select(group => group.GetAttribute("label")!).ToList();
+    private static IReadOnlyList<string> Groups(IRenderedComponent<WorkflowPackagePicker> picker) => PickerTree.Packages(picker);
 
     private static void Press(IRenderedComponent<WorkflowPackagePicker> picker, string tag) =>
         picker.FindAll(".package-picker__tag").Single(chip => chip.TextContent.Trim() == tag).Click();
@@ -59,6 +57,7 @@ public class PickerTagFilterTests : ClientRenderTestContext
     {
         WithRegistry();
         var picker = Render<WorkflowPackagePicker>(parameters => parameters.Add(p => p.WritesPin, false).Add(p => p.Selected, "general@latest"));
+        PickerTree.Open(picker);
 
         // "General" (public, seen first) and "general" (fork) are one chip.
         Assert.Equal(new[] { "cardiology", "General", "new-patient", "oncology" }, Chips(picker));
@@ -70,13 +69,15 @@ public class PickerTagFilterTests : ClientRenderTestContext
     {
         WithRegistry();
         var picker = Render<WorkflowPackagePicker>(parameters => parameters.Add(p => p.WritesPin, false).Add(p => p.Selected, "general@v2026.08.1"));
+        PickerTree.Open(picker);
 
         Press(picker, "oncology");
 
         // Only the fork carries oncology; general stays for the selection's
         // sake (its @latest goes — no general version carries the tag);
         // cardiology is gone.
-        Assert.Equal(new[] { "general", "Mine — acct-1234567890ab" }, Groups(picker));
+        // #448: package leaves — general under Provided, the flat fork as a leaf under Mine.
+        Assert.Equal(new[] { "general", "acct-1234567890ab" }, Groups(picker));
         Assert.Equal(
             new[] { "general@v2026.08.1", "acct-1234567890ab@latest", "acct-1234567890ab@v2026.09.2", "acct-1234567890ab@v2026.09.1" },
             Options(picker));
@@ -88,6 +89,7 @@ public class PickerTagFilterTests : ClientRenderTestContext
     {
         WithRegistry();
         var picker = Render<WorkflowPackagePicker>(parameters => parameters.Add(p => p.WritesPin, false).Add(p => p.Selected, "cardiology@v2026.09.1"));
+        PickerTree.Open(picker);
 
         Press(picker, "General");
 
@@ -109,6 +111,7 @@ public class PickerTagFilterTests : ClientRenderTestContext
     {
         WithRegistry();
         var picker = Render<WorkflowPackagePicker>(parameters => parameters.Add(p => p.WritesPin, false).Add(p => p.Selected, "general@latest"));
+        PickerTree.Open(picker);
         var all = Options(picker);
 
         Press(picker, "cardiology");
@@ -126,6 +129,7 @@ public class PickerTagFilterTests : ClientRenderTestContext
             new[] { new PublicPackageView("general", "v2026.08.1", new List<string> { "v2026.08.1" }, new Dictionary<string, int> { ["v2026.08.1"] = 8 }) },
             null));
         var picker = Render<WorkflowPackagePicker>(parameters => parameters.Add(p => p.WritesPin, false).Add(p => p.Selected, "general@latest"));
+        PickerTree.Open(picker);
 
         Assert.Empty(picker.FindAll(".package-picker__tags"));
     }

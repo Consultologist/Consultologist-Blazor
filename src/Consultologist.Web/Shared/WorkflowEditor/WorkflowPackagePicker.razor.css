@@ -4,7 +4,16 @@
 	gap: 0.5rem;
 }
 
-.package-picker select {
+.package-picker {
+	position: relative;
+	flex-wrap: wrap;
+}
+
+/* #448: the trigger shows the ref; the panel below it draws the tree. */
+.package-picker__trigger {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
 	font-family: var(--consultologist-font-mono, monospace);
 	font-size: 0.75rem;
 	padding: 0.2rem 0.6rem;
@@ -16,9 +25,23 @@
 	cursor: pointer;
 }
 
-.package-picker select:disabled {
+.package-picker__trigger:disabled {
 	cursor: default;
 	opacity: 0.7;
+}
+
+.package-picker__panel {
+	flex-basis: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+	padding: 0.5rem;
+	border: 1px solid var(--consultologist-border);
+	border-radius: var(--consultologist-radius-sm, 6px);
+	background: var(--consultologist-surface);
+	max-height: 24rem;
+	overflow: auto;
+	min-width: 18rem;
 }
 
 .package-picker__error {

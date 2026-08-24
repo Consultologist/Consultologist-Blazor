@@ -39,4 +39,22 @@ public static class WorkflowPackageNames
         && slug.Length <= MaxSlugLength
         && !slug.EndsWith('-')
         && System.Text.RegularExpressions.Regex.IsMatch(slug, "^[a-z0-9][a-z0-9-]*$");
+
+    /// <summary>#448: mirrors WorkflowPackageNaming.MaxPathSegments; pinned in SpecVersionMirrorTests.</summary>
+    public const int MaxPathSegments = 3;
+
+    /// <summary>The longest path the input accepts: three slugs and two separators.</summary>
+    public const int MaxPathLength = MaxPathSegments * MaxSlugLength + MaxPathSegments - 1;
+
+    /// <summary>#448: the server's path rule, mirrored — one to three slugs joined by '/'.</summary>
+    public static bool IsValidPath(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return false;
+        }
+
+        var segments = path.Split('/');
+        return segments.Length <= MaxPathSegments && segments.All(IsValidSlug);
+    }
 }

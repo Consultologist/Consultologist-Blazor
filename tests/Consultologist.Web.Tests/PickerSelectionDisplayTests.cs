@@ -29,11 +29,6 @@ public class PickerSelectionDisplayTests : ClientRenderTestContext
             },
             null));
 
-    private static IReadOnlyList<string> SelectedOptions(IRenderedComponent<Templates> page) =>
-        page.FindAll("select[aria-label='Workflow package'] option")
-            .Where(option => option.HasAttribute("selected"))
-            .Select(option => option.GetAttribute("value")!)
-            .ToList();
 
     [Fact]
     public void ChangingTheSelection_ChangesWhatIsDisplayed()
@@ -47,40 +42,45 @@ public class PickerSelectionDisplayTests : ClientRenderTestContext
         var picker = Render<WorkflowPackagePicker>(parameters => parameters
             .Add(p => p.WritesPin, false)
             .Add(p => p.Selected, "general@v2026.08.1"));
+        PickerTree.Open(picker);
 
         picker.Render(parameters => parameters
             .Add(p => p.WritesPin, false)
             .Add(p => p.Selected, "general@v2026.07.10"));
 
-        Assert.Equal(
-            new[] { "general@v2026.07.10" },
-            picker.FindAll("option")
-                .Where(option => option.HasAttribute("selected"))
-                .Select(option => option.GetAttribute("value")!));
+        Assert.Equal("general@v2026.07.10", PickerTree.Shown(picker));
+        Assert.Equal(new[] { "general@v2026.07.10" }, PickerTree.SelectedRefs(picker));
     }
 
     [Fact]
-    public void AChosenVersion_IsTheOptionMarkedSelected()
+    public async Task AChosenVersion_IsTheOptionMarkedSelected()
     {
         WithRegistry();
         WorkflowService.GetCurrentPackageContentAsync(Arg.Any<string?>()).Returns(EditorFixtures.V7());
         var page = Render<Templates>();
 
-        page.Find("select[aria-label='Workflow package']").Change("general@v2026.07.10");
+        PickerTree.Open(page);
+        await PickerTree.SelectAsync(page, "general@v2026.07.10");
 
-        Assert.Equal(new[] { "general@v2026.07.10" }, SelectedOptions(page));
+        // Selecting closes the panel; the trigger shows the choice, and the
+        // reopened tree marks it.
+        Assert.Equal("general@v2026.07.10", PickerTree.Shown(page));
+        PickerTree.Open(page);
+        Assert.Equal(new[] { "general@v2026.07.10" }, PickerTree.SelectedRefs(page));
     }
 
     [Fact]
-    public void ExactlyOneOption_IsEverMarkedSelected()
+    public async Task ExactlyOneOption_IsEverMarkedSelected()
     {
         // Two would let the browser choose, which is how this went unnoticed.
         WithRegistry();
         WorkflowService.GetCurrentPackageContentAsync(Arg.Any<string?>()).Returns(EditorFixtures.V7());
         var page = Render<Templates>();
 
-        page.Find("select[aria-label='Workflow package']").Change("general@v2026.08.1");
+        PickerTree.Open(page);
+        await PickerTree.SelectAsync(page, "general@v2026.08.1");
+        PickerTree.Open(page);
 
-        Assert.Single(SelectedOptions(page));
+        Assert.Single(PickerTree.SelectedRefs(page));
     }
 }

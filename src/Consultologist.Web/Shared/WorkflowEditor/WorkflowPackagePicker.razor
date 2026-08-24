@@ -1,50 +1,60 @@
-@* The package pin selector (#134): one grouped dropdown over the repo-owned
-   public packages and the caller's fork versions. Selecting pins immediately
-   (the generic account-settings PUT); the pin resolver validates shape and
-   access on every read, so a stale or bad option can never take effect. *@
+@* The package pin selector (#134), a tree since #448: the path is the
+   identity, so the control draws it — Provided and Mine as roots, folders
+   from the path segments, packages as leaves, versions beneath. Selecting a
+   version pins immediately (the generic account-settings PUT); the pin
+   resolver validates shape and access on every read, so a stale or bad
+   choice can never take effect. *@
 @using Consultologist.Web.Services.Accounts
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
 @inject IWorkflowEndpointService WorkflowService
 @inject IAccountEndpointService AccountService
 
 <span class="package-picker">
-    @* #453: one chip per tag declared by any listed version; pressing one
-       narrows every group to the versions that carry it. The selected ref
-       always stays listed, so the control never shows something it is not. *@
-    @if (allTags.Count > 0)
+    @* The trigger always shows the ref: what the consults run, as recorded. *@
+    <button type="button"
+            class="package-picker__trigger"
+            aria-label="Workflow package"
+            aria-expanded="@(isOpen ? "true" : "false")"
+            disabled="@(Disabled || isPinning)"
+            @onclick="() => isOpen = !isOpen">
+        <span class="package-picker__ref">@selectedRef</span>
+        <span class="package-picker__caret" aria-hidden="true">@(isOpen ? "▴" : "▾")</span>
+    </button>
+    @if (isOpen)
     {
-        <span class="package-picker__tags" role="group" aria-label="Filter packages by tag">
-            @foreach (var tag in allTags)
+        <div class="package-picker__panel">
+            @* #453: one chip per tag declared by any listed version; pressing one
+               prunes the tree to the versions that carry it. The selected ref
+               always stays listed, so the control never shows something it is not. *@
+            @if (allTags.Count > 0)
             {
-                var isActive = string.Equals(tag, activeTag, StringComparison.OrdinalIgnoreCase);
-                <button type="button"
-                        class="package-picker__tag @(isActive ? "package-picker__tag--active" : "")"
-                        aria-pressed="@(isActive ? "true" : "false")"
-                        disabled="@Disabled"
-                        @onclick="() => ToggleTag(tag)">@tag</button>
+                <span class="package-picker__tags" role="group" aria-label="Filter packages by tag">
+                    @foreach (var tag in allTags)
+                    {
+                        var isActive = string.Equals(tag, activeTag, StringComparison.OrdinalIgnoreCase);
+                        <button type="button"
+                                class="package-picker__tag @(isActive ? "package-picker__tag--active" : "")"
+                                aria-pressed="@(isActive ? "true" : "false")"
+                                disabled="@Disabled"
+                                @onclick="() => ToggleTag(tag)">@tag</button>
+                    }
+                </span>
             }
-        </span>
+            @if (groups.Count == 0)
+            {
+                <span class="muted-text">No packages listed; the pin stands as <code>@selectedRef</code>.</span>
+            }
+            else
+            {
+                <FluentTreeView OnSelectedChange="OnTreeSelectedChangeAsync">
+                    @foreach (var root in BuildTree())
+                    {
+                        @RenderNode(root)
+                    }
+                </FluentTreeView>
+            }
+        </div>
     }
-    <select value="@selectedRef"
-            @onchange="OnSelectionChangedAsync"
-            disabled="@(Disabled || isPinning || groups.Count == 0)"
-            aria-label="Workflow package">
-        @if (groups.Count == 0)
-        {
-            <option value="@selectedRef" selected="true">@selectedRef</option>
-        }
-        @foreach (var group in VisibleGroups)
-        {
-            <optgroup label="@group.Label">
-                @foreach (var option in group.Options)
-                {
-                    <option value="@option.Value"
-                            disabled="@option.Disabled"
-                            selected="@(option.Value == selectedRef)">@option.Label</option>
-                }
-            </optgroup>
-        }
-    </select>
     @if (pinError != null)
     {
         <span class="package-picker__error">@pinError</span>
@@ -54,6 +64,8 @@
 @code {
     private const string PinSettingKey = "consult.workflowPackage";
     private const string DefaultRef = "general@latest";
+    private const string ProvidedRoot = "Provided";
+    private const string MineRoot = "Mine";
 
     // The oldest format the engine still runs; older registry history stays
     // listed but unselectable. Unknown spec = selectable — the pin resolver
@@ -88,13 +100,23 @@
     // #453: Tags is the version's declared set (null for @latest and for
     // versions below 9, which have none to declare).
     private sealed record PickerOption(string Value, string Label, bool Disabled = false, IReadOnlyList<string>? Tags = null);
-    private sealed record PickerGroup(string Label, List<PickerOption> Options);
+
+    /// <summary>
+    /// One package: where it sits in the tree (root + folders + leaf) and its
+    /// version options. Label is the leaf as shown — the latest title, or the
+    /// last path segment.
+    /// </summary>
+    private sealed record PickerGroup(string Root, IReadOnlyList<string> Folders, string Label, string Name, List<PickerOption> Options);
+
+    /// <summary>A node of the drawn tree: a folder, a package, or a version (Value set).</summary>
+    private sealed record TreeNode(string Id, string Text, List<TreeNode> Children, string? Value = null, bool Disabled = false);
 
     private List<PickerGroup> groups = new();
     private List<string> allTags = new();
     private string? activeTag;
     private string selectedRef = DefaultRef;
     private bool isPinning;
+    private bool isOpen;
     private string? pinError;
 
     /// <summary>
@@ -139,7 +161,7 @@
             }
             catch
             {
-                // The default stands; the options below still render.
+                // The default stands; the tree below still renders.
             }
         }
 
@@ -150,18 +172,22 @@
         {
             if (!string.IsNullOrWhiteSpace(package.Name))
             {
-                built.Add(BuildGroup(package.Name!, package));
+                // #448: a public package's path is its whole name.
+                var segments = package.Name!.Split('/');
+                built.Add(BuildGroup(ProvidedRoot, segments[..^1], segments[^1], package));
             }
         }
 
-        // #447: one group per package the account owns, named by the latest
-        // version's title when it has one and by the ref otherwise — the
-        // stated fallback everywhere a title is shown.
+        // #447: one entry per package the account owns; #448: filed under
+        // Mine by the path after the account root, which every one of them
+        // shares (a #447 flat name, acct-<root>-<slug>, is a leaf at the root).
         foreach (var mine in await WorkflowService.GetMyPackagesAsync() ?? Array.Empty<PublicPackageView>())
         {
             if (mine is { Versions.Count: > 0 } && !string.IsNullOrWhiteSpace(mine.Name))
             {
-                built.Add(BuildGroup($"Mine — {MineLabel(mine)}", mine));
+                var segments = mine.Name!.Split('/');
+                var underRoot = segments.Length > 1 ? segments[1..] : segments;
+                built.Add(BuildGroup(MineRoot, underRoot[..^1], underRoot[^1], mine));
             }
         }
 
@@ -169,7 +195,7 @@
         // has to render as what it is.
         if (built.SelectMany(group => group.Options).All(option => option.Value != selectedRef))
         {
-            built.Insert(0, new PickerGroup(WritesPin ? "Current pin" : "Current selection",
+            built.Insert(0, new PickerGroup(WritesPin ? "Current pin" : "Current selection", Array.Empty<string>(), selectedRef, selectedRef,
                 new List<PickerOption> { new(selectedRef, selectedRef) }));
         }
 
@@ -186,8 +212,8 @@
     /// <summary>
     /// #453: the groups as the active tag leaves them. A version is listed when
     /// it carries the tag, or is the selection (the control must keep showing
-    /// what is pinned); a group's @latest stays while any of its versions
-    /// does, since that is what it follows; an emptied group is dropped.
+    /// what is pinned); a package's @latest stays while any of its versions
+    /// does, since that is what it follows; an emptied package is dropped.
     /// </summary>
     private IEnumerable<PickerGroup> VisibleGroups
     {
@@ -218,7 +244,7 @@
 
                 if (matching.Count > 0)
                 {
-                    visible.Add(new PickerGroup(group.Label, matching));
+                    visible.Add(group with { Options = matching });
                 }
             }
 
@@ -232,27 +258,85 @@
     private void ToggleTag(string tag) =>
         activeTag = string.Equals(tag, activeTag, StringComparison.OrdinalIgnoreCase) ? null : tag;
 
-    private static string MineLabel(PublicPackageView package)
+    /// <summary>
+    /// The tree as drawn: roots in listing order, folders from the path,
+    /// packages as leaves labelled by their latest title or last segment,
+    /// versions beneath. Node ids are "folder:…" / "package:…" for the
+    /// structure and the ref itself for a version — the only ids a
+    /// selection acts on.
+    /// </summary>
+    private List<TreeNode> BuildTree()
+    {
+        var roots = new List<TreeNode>();
+
+        foreach (var group in VisibleGroups)
+        {
+            var root = roots.FirstOrDefault(node => node.Text == group.Root)
+                ?? Add(roots, new TreeNode($"root:{group.Root}", group.Root, new List<TreeNode>()));
+            var parent = root;
+            var path = group.Root;
+
+            foreach (var folder in group.Folders)
+            {
+                path = $"{path}/{folder}";
+                var next = parent.Children.FirstOrDefault(node => node.Text == folder && node.Value == null && node.Id.StartsWith("folder:", StringComparison.Ordinal));
+                parent = next ?? Add(parent.Children, new TreeNode($"folder:{path}", folder, new List<TreeNode>()));
+            }
+
+            var package = new TreeNode(
+                $"package:{group.Name}",
+                group.Label,
+                group.Options.Select(option => new TreeNode(option.Value, option.Label, new List<TreeNode>(), option.Value, option.Disabled)).ToList());
+            parent.Children.Add(package);
+        }
+
+        return roots;
+
+        static TreeNode Add(List<TreeNode> siblings, TreeNode node)
+        {
+            siblings.Add(node);
+            return node;
+        }
+    }
+
+    private bool ContainsSelection(TreeNode node) =>
+        node.Value == selectedRef || node.Children.Any(ContainsSelection);
+
+    private RenderFragment RenderNode(TreeNode node) => __builder =>
+    {
+        <FluentTreeItem Id="@node.Id"
+                        Text="@node.Text"
+                        Disabled="@node.Disabled"
+                        InitiallyExpanded="@(node.Value == null && ContainsSelection(node))"
+                        Selected="@(node.Value == selectedRef)">
+            @foreach (var child in node.Children)
+            {
+                @RenderNode(child)
+            }
+        </FluentTreeItem>
+    };
+
+    private static string LeafLabel(PublicPackageView package, string leaf)
     {
         var newest = package.Latest ?? package.Versions!.Last();
         var title = package.Titles?.GetValueOrDefault(newest);
-        return string.IsNullOrWhiteSpace(title) ? package.Name! : $"{title} ({package.Name})";
+        return string.IsNullOrWhiteSpace(title) ? leaf : $"{title} ({leaf})";
     }
 
-    private static PickerGroup BuildGroup(string label, PublicPackageView package)
+    private static PickerGroup BuildGroup(string root, IReadOnlyList<string> folders, string leaf, PublicPackageView package)
     {
         var options = new List<PickerOption>
         {
             new($"{package.Name}@latest", "latest — follows updates")
         };
 
-        // Registry listings are CalVer-ascending; the dropdown reads newest first.
+        // Registry listings are CalVer-ascending; the tree reads newest first.
         foreach (var version in (package.Versions ?? new List<string>()).AsEnumerable().Reverse())
         {
             var spec = package.SpecVersions?.GetValueOrDefault(version);
             var unsupported = spec is int value && value < MinSupportedSpecVersion;
             // v9 § 4 (#432): a titled version reads as its title with the
-            // version beside it; the group label keeps the name, so the ref is
+            // version beside it; the leaf keeps the name, so the ref is
             // always in view. Untitled versions read as they did.
             var title = package.Titles?.GetValueOrDefault(version);
 
@@ -266,15 +350,26 @@
                 package.Tags?.GetValueOrDefault(version)));
         }
 
-        return new PickerGroup(label, options);
+        return new PickerGroup(root, folders, LeafLabel(package, leaf), package.Name!, options);
     }
 
-    private async Task OnSelectionChangedAsync(ChangeEventArgs args)
+    /// <summary>Only a version node carries a ref; folders and packages just open.</summary>
+    private async Task OnTreeSelectedChangeAsync(FluentTreeItem item)
     {
-        var newRef = args.Value?.ToString();
+        if (!item.Selected || item.Id is null || item.Id.StartsWith("root:", StringComparison.Ordinal)
+            || item.Id.StartsWith("folder:", StringComparison.Ordinal) || item.Id.StartsWith("package:", StringComparison.Ordinal))
+        {
+            return;
+        }
 
+        await SelectRefAsync(item.Id);
+    }
+
+    private async Task SelectRefAsync(string newRef)
+    {
         if (string.IsNullOrWhiteSpace(newRef) || newRef == selectedRef)
         {
+            isOpen = false;
             return;
         }
 
@@ -283,6 +378,7 @@
             // No network, so no isPinning window and nothing to fail: the
             // parent decides what to do with the choice.
             selectedRef = newRef;
+            isOpen = false;
             await OnSelected.InvokeAsync(newRef);
             return;
         }
@@ -294,6 +390,7 @@
         {
             await AccountService.SaveSettingAsync(PinSettingKey, newRef, "text/plain");
             selectedRef = newRef;
+            isOpen = false;
             await OnPinned.InvokeAsync();
         }
         catch (AccessTokenNotAvailableException exception)

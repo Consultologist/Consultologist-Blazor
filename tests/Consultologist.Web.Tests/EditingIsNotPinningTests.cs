@@ -43,31 +43,34 @@ public class EditingIsNotPinningTests : ClientRenderTestContext
         });
     }
 
-    private static void Choose(IRenderedComponent<Templates> page, string packageRef) =>
-        page.Find("select[aria-label='Workflow package']").Change(packageRef);
+    private static async Task ChooseAsync(IRenderedComponent<Templates> page, string packageRef)
+    {
+        PickerTree.Open(page);
+        await PickerTree.SelectAsync(page, packageRef);
+    }
 
     [Fact]
-    public void ChoosingAPackageInTheEditor_DoesNotChangeWhatYourConsultsRun()
+    public async Task ChoosingAPackageInTheEditor_DoesNotChangeWhatYourConsultsRun()
     {
         // The defect, in one assertion.
         WithRegistry();
         WorkflowService.GetCurrentPackageContentAsync(Arg.Any<string?>()).Returns(EditorFixtures.V7());
         var page = Render<Templates>();
 
-        Choose(page, "general@v2026.08.1");
+        await ChooseAsync(page, "general@v2026.08.1");
 
         AccountService.DidNotReceive().SaveSettingAsync(PinKey, Arg.Any<string>(), Arg.Any<string>());
     }
 
     [Fact]
-    public void ChoosingAPackageInTheEditor_LoadsThatPackage()
+    public async Task ChoosingAPackageInTheEditor_LoadsThatPackage()
     {
         // The other half: it must still do the thing it appears to do.
         WithRegistry();
         WorkflowService.GetCurrentPackageContentAsync(Arg.Any<string?>()).Returns(EditorFixtures.V7());
         var page = Render<Templates>();
 
-        Choose(page, "general@v2026.08.1");
+        await ChooseAsync(page, "general@v2026.08.1");
 
         WorkflowService.Received().GetCurrentPackageContentAsync("general@v2026.08.1");
     }
