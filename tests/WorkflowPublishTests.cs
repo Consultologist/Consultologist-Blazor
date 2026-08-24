@@ -1243,18 +1243,24 @@ public class WorkflowPackageLineageTests
     }
 
     [Fact]
-    public async Task Walk_DepthCap_Trips()
+    public async Task Walk_ALongChain_WalksToItsRoot()
     {
+        // #463: a chain is as long as a package's history — one hop per
+        // republish — and the tenth was already published when a cap of ten
+        // fired. Forty versions back to a root, no cap, the visited set as the
+        // only guard.
         var derivedFrom = new Dictionary<string, string?>();
-        for (var i = 1; i <= WorkflowPackageLineageResolver.MaxDepth + 2; i++)
+        for (var i = 1; i <= 40; i++)
         {
             derivedFrom[$"p@v2026.07.{i}"] = $"p@v2026.07.{i + 1}";
         }
+        derivedFrom["p@v2026.07.41"] = null;
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            WorkflowPackageLineageResolver.WalkAsync(Ref("p@v2026.07.1"), Reader(derivedFrom)));
+        var chain = await WorkflowPackageLineageResolver.WalkAsync(Ref("p@v2026.07.1"), Reader(derivedFrom));
 
-        Assert.Contains("depth cap", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(41, chain.Count);
+        Assert.Equal("p@v2026.07.1", chain[0]);
+        Assert.Equal("p@v2026.07.41", chain[^1]);
     }
 
     [Fact]

@@ -13,9 +13,6 @@ namespace Consultologist.Api.Workflow;
 /// </summary>
 public sealed class WorkflowPackageLineageResolver
 {
-    /// <summary>Defensive: publish stamping prevents cycles and deep chains by construction.</summary>
-    public const int MaxDepth = 10;
-
     /// <summary>
     /// Permissive on purpose, unlike the load and publish paths (#416). Lineage
     /// walks backwards through history, and history contains manifests this
@@ -69,11 +66,11 @@ public sealed class WorkflowPackageLineageResolver
                 throw new InvalidOperationException($"Workflow package lineage of '{start}' contains a cycle at '{currentRef}'.");
             }
 
-            if (chain.Count >= MaxDepth)
-            {
-                throw new InvalidOperationException($"Workflow package lineage of '{start}' exceeds the depth cap of {MaxDepth}.");
-            }
-
+            // No depth cap (#463): every republish derives from its predecessor,
+            // so a chain grows by one per version and a cap of ten fired on the
+            // operator's own package. The visited set is what terminates the
+            // walk; a chain is as long as a package's history, and that is the
+            // point of showing it.
             chain.Add(currentRef);
 
             var derivedFrom = await readDerivedFrom(current);
