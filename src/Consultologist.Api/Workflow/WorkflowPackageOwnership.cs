@@ -1,0 +1,124 @@
+using Azure;
+using Azure.Core;
+using Azure.Data.Tables;
+using Consultologist.Api.Auth;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+
+namespace Consultologist.Api.Workflow;
+
+/// <summary>
+/// Which account owns which account package — a record, not a substring of
+/// the name (#447, #371 step 2). Before this an account had exactly one
+/// package and the name WAS the authorization; now an account holds many,
+/// and every read that used to compare a name to
+/// <see cref="WorkflowPackageNaming.ForAccount(string)"/> asks here instead.
+/// </summary>
+public interface IWorkflowPackageOwnership
+{
+    Task<bool> OwnsAsync(string appUserId, string name, CancellationToken cancellationToken);
+
+    /// <summary>Every package name recorded for the account, ordinal order.</summary>
+    Task<IReadOnlyList<string>> ListAsync(string appUserId, CancellationToken cancellationToken);
+
+    /// <summary>Idempotent: recording twice is one record.</summary>
+    Task RecordAsync(string appUserId, string name, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// The acct-* access rule, in one place for its six enforcement points:
+/// repo-owned names are open to everyone; an account package is readable by
+/// the account that owns it — by record, or, until the startup backfill has
+/// been proven and this clause retired (follow-up to #447), by the derived
+/// name every account's first package carries.
+/// </summary>
+public static class WorkflowPackageAccess
+{
+    public static async Task<bool> CanAccessAsync(
+        this IWorkflowPackageOwnership ownership,
+        string name,
+        string appUserId,
+        CancellationToken cancellationToken)
+    {
+        if (!WorkflowPackageNaming.IsAccountPackage(name))
+        {
+            return true;
+        }
+
+        if (await ownership.OwnsAsync(appUserId, name, cancellationToken))
+        {
+            return true;
+        }
+
+        // The derived-name fallback: the first package's name is the account's
+        // by construction. Kept until the backfill has written every record.
+        return WorkflowPackageNaming.CanAccess(name, appUserId);
+    }
+}
+
+public sealed class WorkflowPackageOwnership : IWorkflowPackageOwnership
+{
+    private const string TableName = "PackageOwners";
+    private readonly TableClient _owners;
+    private readonly ILogger<WorkflowPackageOwnership> _logger;
+
+    public WorkflowPackageOwnership(IConfiguration configuration, TokenCredential credential, ILogger<WorkflowPackageOwnership> logger)
+    {
+        _owners = StorageTables.CreateClient(configuration, credential, TableName, "AccountStorage");
+        _logger = logger;
+    }
+
+    public async Task<bool> OwnsAsync(string appUserId, string name, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _owners.CreateIfNotExistsAsync(cancellationToken);
+            await _owners.GetEntityAsync<PackageOwnerEntity>(appUserId, name, cancellationToken: cancellationToken);
+            return true;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return false;
+        }
+        catch (RequestFailedException ex)
+        {
+            // Fail closed: an unreadable record is no record. The caller's
+            // sentence is the same refusal; the log says why.
+            _logger.LogError(ex, "Package ownership lookup failed; refusing. Package={Package}", name);
+            return false;
+        }
+    }
+
+    public async Task<IReadOnlyList<string>> ListAsync(string appUserId, CancellationToken cancellationToken)
+    {
+        await _owners.CreateIfNotExistsAsync(cancellationToken);
+        var names = new List<string>();
+
+        await foreach (var entity in _owners.QueryAsync<PackageOwnerEntity>(
+            entity => entity.PartitionKey == appUserId, cancellationToken: cancellationToken))
+        {
+            names.Add(entity.RowKey);
+        }
+
+        names.Sort(StringComparer.Ordinal);
+        return names;
+    }
+
+    public async Task RecordAsync(string appUserId, string name, CancellationToken cancellationToken)
+    {
+        await _owners.CreateIfNotExistsAsync(cancellationToken);
+        await _owners.UpsertEntityAsync(
+            new PackageOwnerEntity { PartitionKey = appUserId, RowKey = name, RecordedAtUtc = DateTimeOffset.UtcNow },
+            TableUpdateMode.Merge,
+            cancellationToken);
+    }
+}
+
+internal sealed class PackageOwnerEntity : ITableEntity
+{
+    public string PartitionKey { get; set; } = string.Empty;
+    public string RowKey { get; set; } = string.Empty;
+    public DateTimeOffset? Timestamp { get; set; }
+    public ETag ETag { get; set; }
+    public DateTimeOffset RecordedAtUtc { get; set; }
+}
