@@ -777,7 +777,8 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         Assert.Contains("which is not your package", notice);
         // The consequence, not just the fact. Knowing it is general's content
         // is useless without knowing what Publish will do with it.
-        Assert.Contains("new version of your own package", notice);
+        // #447: a package that is not mine can only become a NEW package of mine.
+        Assert.Contains("new package of your own", notice);
         Assert.Contains("consults switch to the published version", notice);
     }
 
@@ -815,7 +816,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish")).Click();
 
         Assert.Contains("Published acct-1234567890ab@v2026.07.2", page.Markup, StringComparison.Ordinal);
-        Assert.Contains("from general@v2026.07.1", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("as a new package from general@v2026.07.1", page.Markup, StringComparison.Ordinal);
     }
 
     /// <summary>The warning bar's text, tags stripped.</summary>
