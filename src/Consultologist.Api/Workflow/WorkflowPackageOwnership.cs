@@ -65,7 +65,7 @@ public sealed class WorkflowPackageOwnership : IWorkflowPackageOwnership
         try
         {
             await _owners.CreateIfNotExistsAsync(cancellationToken);
-            await _owners.GetEntityAsync<PackageOwnerEntity>(appUserId, name, cancellationToken: cancellationToken);
+            await _owners.GetEntityAsync<PackageOwnerEntity>(appUserId, PackageOwnerEntity.KeyFor(name), cancellationToken: cancellationToken);
             return true;
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
@@ -89,7 +89,7 @@ public sealed class WorkflowPackageOwnership : IWorkflowPackageOwnership
         await foreach (var entity in _owners.QueryAsync<PackageOwnerEntity>(
             entity => entity.PartitionKey == appUserId, cancellationToken: cancellationToken))
         {
-            names.Add(entity.RowKey);
+            names.Add(PackageOwnerEntity.NameOf(entity.RowKey));
         }
 
         names.Sort(StringComparer.Ordinal);
@@ -100,7 +100,7 @@ public sealed class WorkflowPackageOwnership : IWorkflowPackageOwnership
     {
         await _owners.CreateIfNotExistsAsync(cancellationToken);
         await _owners.UpsertEntityAsync(
-            new PackageOwnerEntity { PartitionKey = appUserId, RowKey = name, RecordedAtUtc = DateTimeOffset.UtcNow },
+            new PackageOwnerEntity { PartitionKey = appUserId, RowKey = PackageOwnerEntity.KeyFor(name), RecordedAtUtc = DateTimeOffset.UtcNow },
             TableUpdateMode.Merge,
             cancellationToken);
     }
@@ -108,6 +108,15 @@ public sealed class WorkflowPackageOwnership : IWorkflowPackageOwnership
 
 internal sealed class PackageOwnerEntity : ITableEntity
 {
+    /// <summary>
+    /// #448: a nested name holds '/', which a table key may not. '|' is
+    /// legal in a key and illegal in a name, so the mapping is exact both
+    /// ways; flat names (every pre-#448 row) are their own key.
+    /// </summary>
+    public static string KeyFor(string name) => name.Replace('/', '|');
+
+    public static string NameOf(string rowKey) => rowKey.Replace('|', '/');
+
     public string PartitionKey { get; set; } = string.Empty;
     public string RowKey { get; set; } = string.Empty;
     public DateTimeOffset? Timestamp { get; set; }

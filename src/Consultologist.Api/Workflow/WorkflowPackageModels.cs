@@ -110,8 +110,9 @@ public sealed record WorkflowPackagePublishRequest(
     Dictionary<string, string>? Files = null,
     // #447: where it goes. Target names one of the account's packages for a
     // new version; NewPackageSlug names a package the account does not have
-    // yet (acct-<root>-<slug>); both null is every older client — the
-    // account's first, derived name. Both set is refused.
+    // yet — a slug or, since #448, a folder path (acct-<root>/oncology/breast);
+    // both null is every older client — the account's first, derived name.
+    // Both set is refused.
     string? Target = null,
     string? NewPackageSlug = null);
 

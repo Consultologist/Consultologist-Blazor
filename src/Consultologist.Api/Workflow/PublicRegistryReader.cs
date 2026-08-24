@@ -110,7 +110,7 @@ public sealed class PublicRegistryReader
         var titles = new Dictionary<string, string>(StringComparer.Ordinal);
         var tags = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
 
-        foreach (var manifestPath in packageNames.Where(n => n.Split('/') is { Length: 3 } parts && parts[2] == "manifest.json"))
+        foreach (var manifestPath in packageNames.Where(n => WorkflowPackageRef.TryParseManifestPath(n, out _, out _)))
         {
             var listing = await GetListingAsync(WorkflowPackageBlobContainerFactory.ContainerName, manifestPath, cancellationToken);
             var key = manifestPath[..^"/manifest.json".Length];
@@ -179,19 +179,20 @@ public sealed class PublicRegistryReader
         IReadOnlyDictionary<string, string>? titles = null,
         IReadOnlyDictionary<string, IReadOnlyList<string>>? tags = null)
     {
-        // Packages: {name}/{version}/manifest.json + {name}/latest.json.
+        // Packages: {name}/{version}/manifest.json + {name}/latest.json — the
+        // name read from the right (#448), so a nested one groups as itself.
         var packages = packageBlobs
-            .Select(n => n.Split('/'))
-            .Where(parts => parts.Length == 3 && parts[2] == "manifest.json")
-            .GroupBy(parts => parts[0], StringComparer.Ordinal)
+            .Select(n => WorkflowPackageRef.TryParseManifestPath(n, out var name, out var version) ? (Name: name, Version: version) : default)
+            .Where(parsed => parsed.Name != null)
+            .GroupBy(parsed => parsed.Name, StringComparer.Ordinal)
             .OrderBy(g => g.Key, StringComparer.Ordinal)
             .Select(g => new PublicPackageSummary(
                 g.Key,
                 ReadPointer(smallFiles.GetValueOrDefault($"{WorkflowPackageBlobContainerFactory.ContainerName}/{g.Key}/latest.json")),
-                SortVersions(g.Select(parts => parts[1])),
-                BuildVersionMap(g.Key, g.Select(parts => parts[1]), specVersions),
-                BuildVersionMap(g.Key, g.Select(parts => parts[1]), titles),
-                BuildVersionMap(g.Key, g.Select(parts => parts[1]), tags)))
+                SortVersions(g.Select(parsed => parsed.Version)),
+                BuildVersionMap(g.Key, g.Select(parsed => parsed.Version), specVersions),
+                BuildVersionMap(g.Key, g.Select(parsed => parsed.Version), titles),
+                BuildVersionMap(g.Key, g.Select(parsed => parsed.Version), tags)))
             .ToList();
 
         // Catalog: {version}/output-contracts.json + latest.json.

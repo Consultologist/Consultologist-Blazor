@@ -250,7 +250,7 @@ public sealed class WorkflowPackages
                 var titles = new Dictionary<string, string>(StringComparer.Ordinal);
                 var tags = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
 
-                foreach (var manifestPath in blobNames.Where(n => n.Split('/') is { Length: 3 } parts && parts[0] == name && parts[2] == "manifest.json"))
+                foreach (var manifestPath in blobNames.Where(n => WorkflowPackageRef.TryParseManifestPath(n, out var owner, out _) && owner == name))
                 {
                     if (!ListingCache.TryGetValue(manifestPath, out var listing))
                     {
@@ -263,7 +263,7 @@ public sealed class WorkflowPackages
                         ListingCache[manifestPath] = listing;
                     }
 
-                    var version = manifestPath.Split('/')[1];
+                    WorkflowPackageRef.TryParseManifestPath(manifestPath, out _, out var version);
 
                     if (listing.SpecVersion is int value)
                     {

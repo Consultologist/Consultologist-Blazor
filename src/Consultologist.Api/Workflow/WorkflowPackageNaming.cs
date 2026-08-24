@@ -29,21 +29,44 @@ public static partial class WorkflowPackageNaming
         && !slug.EndsWith('-')
         && SlugPattern().IsMatch(slug);
 
-    /// <summary>The account's further package: its root plus the slug (#447).</summary>
-    public static string ForAccount(string appUserId, string slug)
+    /// <summary>
+    /// #448: a path under the account's root — one to three slugs joined by
+    /// '/', so the whole name (root included) stays within
+    /// WorkflowPackageRef.MaxSegments. A single slug is a one-segment path.
+    /// </summary>
+    public const int MaxPathSegments = WorkflowPackageRef.MaxSegments - 1;
+
+    public static bool IsValidPath(string? path)
     {
-        if (!IsValidSlug(slug))
+        if (string.IsNullOrEmpty(path))
         {
-            throw new ArgumentException($"'{slug}' is not a valid package slug.", nameof(slug));
+            return false;
         }
 
-        return $"{ForAccount(appUserId)}-{slug}";
+        var segments = path.Split('/');
+        return segments.Length <= MaxPathSegments && segments.All(IsValidSlug);
     }
 
     /// <summary>
-    /// The 12-hex account root of an account-package name — acct-&lt;root&gt; or
-    /// acct-&lt;root&gt;-&lt;slug&gt; — or null when the name is not shaped like one.
-    /// The backfill maps names to accounts by it.
+    /// The account's further package: its root, then the path (#448) —
+    /// acct-&lt;root&gt;/oncology/breast. The root is the drive; folders follow.
+    /// (#447's flat acct-&lt;root&gt;-&lt;slug&gt; names stay legal forever; new ones
+    /// take this form.)
+    /// </summary>
+    public static string ForAccount(string appUserId, string path)
+    {
+        if (!IsValidPath(path))
+        {
+            throw new ArgumentException($"'{path}' is not a valid package path.", nameof(path));
+        }
+
+        return $"{ForAccount(appUserId)}/{path}";
+    }
+
+    /// <summary>
+    /// The 12-hex account root of an account-package name — acct-&lt;root&gt;,
+    /// acct-&lt;root&gt;-&lt;slug&gt; (#447's flat form) or acct-&lt;root&gt;/&lt;path&gt; (#448) —
+    /// or null when the name is not shaped like one.
     /// </summary>
     public static string? AccountRootOf(string name)
     {
@@ -59,7 +82,11 @@ public static partial class WorkflowPackageNaming
         }
 
         var rest = name[(AccountPrefix.Length + AccountIdHexLength)..];
-        return rest.Length == 0 || (rest[0] == '-' && IsValidSlug(rest[1..])) ? root : null;
+        return rest.Length == 0
+            || (rest[0] == '-' && IsValidSlug(rest[1..]))
+            || (rest[0] == '/' && IsValidPath(rest[1..]))
+                ? root
+                : null;
     }
 
     public static string ForAccount(string appUserId)
