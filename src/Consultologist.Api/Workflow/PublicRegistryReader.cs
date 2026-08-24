@@ -26,6 +26,9 @@ public sealed record PublicPackageSummary(
     // and up; an empty list is a stated none). The picker filters by them.
     IReadOnlyDictionary<string, IReadOnlyList<string>>? Tags = null);
 
+/// <summary>#447: every package an account owns, for the picker's own groups.</summary>
+public sealed record AccountPackagesResponse(IReadOnlyList<PublicPackageSummary> Packages);
+
 public sealed record PublicCatalogSummary(
     string? Latest,
     IReadOnlyList<string> Versions,

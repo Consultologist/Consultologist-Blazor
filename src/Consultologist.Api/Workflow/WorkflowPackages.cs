@@ -22,6 +22,7 @@ public sealed class WorkflowPackages
     private readonly WorkflowPackageLineageResolver _lineage;
     private readonly WorkflowPackageBlobContainerFactory _containerFactory;
     private readonly IAccountAuthorizer _authorizer;
+    private readonly IWorkflowPackageOwnership _ownership;
     private readonly ILogger<WorkflowPackages> _logger;
 
     public WorkflowPackages(
@@ -31,8 +32,10 @@ public sealed class WorkflowPackages
         WorkflowPackageLineageResolver lineage,
         WorkflowPackageBlobContainerFactory containerFactory,
         IAccountAuthorizer authorizer,
+        IWorkflowPackageOwnership ownership,
         ILogger<WorkflowPackages> logger)
     {
+        _ownership = ownership;
         _packageStore = packageStore;
         _pinResolver = pinResolver;
         _publisher = publisher;
@@ -148,87 +151,155 @@ public sealed class WorkflowPackages
             return AccountAuthorizer.CreateForbiddenResponse(req);
         }
 
-        // The selector's "My fork" group: the account package's versions from
-        // the private registry (#134). No forks published yet is a normal,
-        // empty answer — including a registry whose container does not exist.
+        // The selector's "My fork" group, as every client before #447 reads it:
+        // the account's FIRST package — the derived name — and its versions.
+        // MinePackages below is the set; this stays until that client retires.
         var name = WorkflowPackageNaming.ForAccount(account.AppUserId);
+        var listed = await ListAccountPackagesAsync(name, new HashSet<string>(StringComparer.Ordinal) { name }, cancellationToken);
+
+        if (listed.Error != null)
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.ServiceUnavailable, new { error = listed.Error }, cancellationToken);
+        }
+
+        return await CreateJsonResponseAsync(
+            req,
+            HttpStatusCode.OK,
+            listed.Packages.FirstOrDefault() ?? AccountPackageListing.Build(name, Array.Empty<string>(), null),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// #447: every package the account owns, each with its versions, titles and
+    /// tags — one blob listing under the account's root, which every one of
+    /// its packages shares, restricted to the names ownership records (and
+    /// the derived first name, recorded or not).
+    /// </summary>
+    [Function("WorkflowPackageMinePackages")]
+    public async Task<HttpResponseData> GetMinePackagesAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", "options", Route = "WorkflowPackages/MinePackages")] HttpRequestData req)
+    {
+        var cancellationToken = req.FunctionContext.CancellationToken;
+
+        if (string.Equals(req.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        {
+            var optionsResponse = req.CreateResponse(HttpStatusCode.OK);
+            FunctionCors.Apply(req, optionsResponse);
+            return optionsResponse;
+        }
+
+        var account = await _authorizer.AuthorizeAsync(req, cancellationToken);
+
+        if (account == null)
+        {
+            return AccountAuthorizer.CreateUnauthorizedResponse(req);
+        }
+
+        if (!AccountAuthorizer.CanUseApp(account))
+        {
+            return AccountAuthorizer.CreateForbiddenResponse(req);
+        }
+
+        var root = WorkflowPackageNaming.ForAccount(account.AppUserId);
+        var owned = new HashSet<string>(await _ownership.ListAsync(account.AppUserId, cancellationToken), StringComparer.Ordinal) { root };
+        var listed = await ListAccountPackagesAsync(root, owned, cancellationToken);
+
+        if (listed.Error != null)
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.ServiceUnavailable, new { error = listed.Error }, cancellationToken);
+        }
+
+        return await CreateJsonResponseAsync(req, HttpStatusCode.OK, new AccountPackagesResponse(listed.Packages), cancellationToken);
+    }
+
+    private readonly record struct AccountListing(IReadOnlyList<PublicPackageSummary> Packages, string? Error);
+
+    /// <summary>
+    /// Lists the private registry under <paramref name="prefix"/> and builds a
+    /// summary per owned name that has a manifest there, in ordinal order.
+    /// Per-version spec, title and tags are one read each, cached for the
+    /// process lifetime (versions are immutable).
+    /// </summary>
+    private async Task<AccountListing> ListAccountPackagesAsync(
+        string prefix,
+        IReadOnlySet<string> ownedNames,
+        CancellationToken cancellationToken)
+    {
         var container = _containerFactory.GetContainer();
         var blobNames = new List<string>();
-        string? latestPointerJson = null;
-        var specVersions = new Dictionary<string, int>(StringComparer.Ordinal);
-        var titles = new Dictionary<string, string>(StringComparer.Ordinal);
-        var tags = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        var packages = new List<PublicPackageSummary>();
 
         try
         {
-            await foreach (var blob in container.GetBlobsAsync(prefix: $"{name}/", cancellationToken: cancellationToken))
+            await foreach (var blob in container.GetBlobsAsync(prefix: prefix, cancellationToken: cancellationToken))
             {
                 blobNames.Add(blob.Name);
             }
 
-            var latestPath = $"{name}/latest.json";
-            if (blobNames.Contains(latestPath))
+            foreach (var name in AccountPackageListing.NamesIn(blobNames).Where(ownedNames.Contains))
             {
-                var download = await container.GetBlobClient(latestPath).DownloadContentAsync(cancellationToken);
-                latestPointerJson = download.Value.Content.ToString();
-            }
-
-            // Per-version spec, so the selector can mark unsupported history —
-            // and the title, so it can name the version. One read each.
-            foreach (var manifestPath in blobNames.Where(n => n.Split('/') is { Length: 3 } parts && parts[2] == "manifest.json"))
-            {
-                if (!ListingCache.TryGetValue(manifestPath, out var listing))
+                string? latestPointerJson = null;
+                var latestPath = $"{name}/latest.json";
+                if (blobNames.Contains(latestPath))
                 {
-                    var manifest = await container.GetBlobClient(manifestPath).DownloadContentAsync(cancellationToken);
-                    var manifestJson = manifest.Value.Content.ToString();
-                    listing = (
-                        AccountPackageListing.ReadSpecVersion(manifestJson),
-                        AccountPackageListing.ReadTitle(manifestJson),
-                        AccountPackageListing.ReadTags(manifestJson));
-                    ListingCache[manifestPath] = listing;
+                    var download = await container.GetBlobClient(latestPath).DownloadContentAsync(cancellationToken);
+                    latestPointerJson = download.Value.Content.ToString();
                 }
 
-                var version = manifestPath.Split('/')[1];
+                var specVersions = new Dictionary<string, int>(StringComparer.Ordinal);
+                var titles = new Dictionary<string, string>(StringComparer.Ordinal);
+                var tags = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
 
-                if (listing.SpecVersion is int value)
+                foreach (var manifestPath in blobNames.Where(n => n.Split('/') is { Length: 3 } parts && parts[0] == name && parts[2] == "manifest.json"))
                 {
-                    specVersions[version] = value;
+                    if (!ListingCache.TryGetValue(manifestPath, out var listing))
+                    {
+                        var manifest = await container.GetBlobClient(manifestPath).DownloadContentAsync(cancellationToken);
+                        var manifestJson = manifest.Value.Content.ToString();
+                        listing = (
+                            AccountPackageListing.ReadSpecVersion(manifestJson),
+                            AccountPackageListing.ReadTitle(manifestJson),
+                            AccountPackageListing.ReadTags(manifestJson));
+                        ListingCache[manifestPath] = listing;
+                    }
+
+                    var version = manifestPath.Split('/')[1];
+
+                    if (listing.SpecVersion is int value)
+                    {
+                        specVersions[version] = value;
+                    }
+
+                    if (listing.Title is { } title)
+                    {
+                        titles[version] = title;
+                    }
+
+                    if (listing.Tags is { } declared)
+                    {
+                        tags[version] = declared;
+                    }
                 }
 
-                if (listing.Title is { } title)
-                {
-                    titles[version] = title;
-                }
-
-                if (listing.Tags is { } declared)
-                {
-                    tags[version] = declared;
-                }
+                packages.Add(AccountPackageListing.Build(
+                    name, blobNames, latestPointerJson,
+                    specVersions.Count > 0 ? specVersions : null,
+                    titles.Count > 0 ? titles : null,
+                    tags.Count > 0 ? tags : null));
             }
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
-            blobNames.Clear();
+            // No container yet: no packages, a normal answer.
+            return new AccountListing(Array.Empty<PublicPackageSummary>(), null);
         }
         catch (RequestFailedException ex)
         {
-            _logger.LogError(ex, "Account package listing failed. Package={Package}", name);
-            var errorResponse = req.CreateResponse(HttpStatusCode.ServiceUnavailable);
-            FunctionCors.Apply(req, errorResponse);
-            await errorResponse.WriteAsJsonAsync(new { error = "Workflow package registry is unavailable." }, cancellationToken);
-            return errorResponse;
+            _logger.LogError(ex, "Account package listing failed. Prefix={Prefix}", prefix);
+            return new AccountListing(Array.Empty<PublicPackageSummary>(), "Workflow package registry is unavailable.");
         }
 
-        var response = req.CreateResponse(HttpStatusCode.OK);
-        FunctionCors.Apply(req, response);
-        await response.WriteAsJsonAsync(
-            AccountPackageListing.Build(
-                name, blobNames, latestPointerJson,
-                specVersions.Count > 0 ? specVersions : null,
-                titles.Count > 0 ? titles : null,
-                tags.Count > 0 ? tags : null),
-            cancellationToken);
-        return response;
+        return new AccountListing(packages, null);
     }
 
     [Function("WorkflowPackageContent")]
@@ -264,7 +335,8 @@ public sealed class WorkflowPackages
                 new { error = "ref must be a package reference (name@vYYYY.MM.N or name@latest)." }, cancellationToken);
         }
 
-        if (requested.Kind == RequestedPackageKind.Forbidden)
+        if (requested.Kind == RequestedPackageKind.AccountPackage
+            && !await _ownership.CanAccessAsync(requested.Ref!.Name, account.AppUserId, cancellationToken))
         {
             return await CreateJsonResponseAsync(req, HttpStatusCode.Forbidden,
                 new { error = "Workflow package is not accessible from this account." }, cancellationToken);
@@ -341,7 +413,8 @@ public sealed class WorkflowPackages
                 new { error = "ref must be a package reference (name@vYYYY.MM.N or name@latest)." }, cancellationToken);
         }
 
-        if (requested.Kind == RequestedPackageKind.Forbidden)
+        if (requested.Kind == RequestedPackageKind.AccountPackage
+            && !await _ownership.CanAccessAsync(requested.Ref!.Name, account.AppUserId, cancellationToken))
         {
             return await CreateJsonResponseAsync(req, HttpStatusCode.Forbidden,
                 new { error = "Workflow package is not accessible from this account." }, cancellationToken);
@@ -475,7 +548,7 @@ public sealed class WorkflowPackages
                 new { error = "ref must be a concrete package reference (name@vYYYY.MM.N)." }, cancellationToken);
         }
 
-        if (!WorkflowPackageNaming.CanAccess(packageRef.Name, account.AppUserId))
+        if (!await _ownership.CanAccessAsync(packageRef.Name, account.AppUserId, cancellationToken))
         {
             return await CreateJsonResponseAsync(req, HttpStatusCode.Forbidden,
                 new { error = "Workflow package is not accessible from this account." }, cancellationToken);
@@ -494,8 +567,18 @@ public sealed class WorkflowPackages
 
         // The acct-* rule on every hop — unreachable by construction (publish
         // stamping validates sources), enforced anyway.
-        if (chain.Any(hop => WorkflowPackageRef.TryParse(hop, out var hopRef)
-            && !WorkflowPackageNaming.CanAccess(hopRef!.Name, account.AppUserId)))
+        var crosses = false;
+        foreach (var hop in chain)
+        {
+            if (WorkflowPackageRef.TryParse(hop, out var hopRef)
+                && !await _ownership.CanAccessAsync(hopRef!.Name, account.AppUserId, cancellationToken))
+            {
+                crosses = true;
+                break;
+            }
+        }
+
+        if (crosses)
         {
             return await CreateJsonResponseAsync(req, HttpStatusCode.Forbidden,
                 new { error = "Workflow package lineage crosses another account's package." }, cancellationToken);
@@ -590,15 +673,16 @@ public sealed class WorkflowPackages
         Pin,
         Resolved,
         Malformed,
-        Forbidden
+        /// <summary>An acct-* ref: parsed, and owed the ownership check the endpoint makes (#447).</summary>
+        AccountPackage
     }
 
     internal readonly record struct RequestedPackage(RequestedPackageKind Kind, WorkflowPackageRef? Ref);
 
     /// <summary>
-    /// Reads an optional <c>ref</c> and applies the same access rule the
-    /// publisher applies to its Source — a foreign acct-* package is refused
-    /// here rather than resolved and served.
+    /// Reads an optional <c>ref</c>; an acct-* ref is handed back for the
+    /// ownership check (#447), which the endpoint makes before serving —
+    /// a foreign account package is refused rather than resolved.
     ///
     /// Unlike the lineage endpoint, <c>@latest</c> is accepted: the picker
     /// offers it, the pin permits it, and the store resolves it. The response
@@ -623,9 +707,11 @@ public sealed class WorkflowPackages
             return new RequestedPackage(RequestedPackageKind.Malformed, null);
         }
 
-        return WorkflowPackageNaming.CanAccess(packageRef!.Name, appUserId)
-            ? new RequestedPackage(RequestedPackageKind.Resolved, packageRef)
-            : new RequestedPackage(RequestedPackageKind.Forbidden, null);
+        // #447: ownership is a record, read asynchronously by the endpoint.
+        // This static says only whether the check is owed.
+        return WorkflowPackageNaming.IsAccountPackage(packageRef!.Name)
+            ? new RequestedPackage(RequestedPackageKind.AccountPackage, packageRef)
+            : new RequestedPackage(RequestedPackageKind.Resolved, packageRef);
     }
 
     private static async Task<HttpResponseData> CreateJsonResponseAsync<T>(

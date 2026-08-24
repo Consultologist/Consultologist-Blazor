@@ -72,6 +72,7 @@ public sealed class WorkflowPackagePublisher
     private readonly IWorkflowPackageStore _packageStore;
     private readonly IWorkflowPackageRegistryWriter _writer;
     private readonly IAccountSettingsStore _settingsStore;
+    private readonly IWorkflowPackageOwnership _ownership;
     private readonly OutputContractCatalog _catalog;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<WorkflowPackagePublisher> _logger;
@@ -82,7 +83,8 @@ public sealed class WorkflowPackagePublisher
         IAccountSettingsStore settingsStore,
         OutputContractCatalog catalog,
         TimeProvider timeProvider,
-        ILogger<WorkflowPackagePublisher> logger)
+        ILogger<WorkflowPackagePublisher> logger,
+        IWorkflowPackageOwnership ownership)
     {
         _packageStore = packageStore;
         _writer = writer;
@@ -90,6 +92,7 @@ public sealed class WorkflowPackagePublisher
         _catalog = catalog;
         _timeProvider = timeProvider;
         _logger = logger;
+        _ownership = ownership;
     }
 
     public async Task<WorkflowPackagePublishResult> PublishAsync(
@@ -124,12 +127,19 @@ public sealed class WorkflowPackagePublisher
             return new WorkflowPackagePublishResult(null, errors);
         }
 
-        if (!WorkflowPackageNaming.CanAccess(sourceRef!.Name, appUserId))
+        if (!await _ownership.CanAccessAsync(sourceRef!.Name, appUserId, cancellationToken))
         {
             return new WorkflowPackagePublishResult(
                 null,
                 new[] { "Source package is not accessible from this account." },
                 Forbidden: true);
+        }
+
+        // #447: where it goes, decided before anything is read or written.
+        var target = await ResolveTargetNameAsync(appUserId, request, cancellationToken);
+        if (target.Result != null)
+        {
+            return target.Result;
         }
 
         var manifest = request.Manifest!;
@@ -160,7 +170,11 @@ public sealed class WorkflowPackagePublisher
                 new[] { $"Source package {sourceRef} could not be resolved: it is not in the registry or is not executable." });
         }
 
-        var name = WorkflowPackageNaming.ForAccount(appUserId);
+        var name = target.Name!;
+        // Recorded before a byte is written: an orphan record for a publish
+        // that then fails is harmless (the listing shows only names with
+        // blobs), while a package with no record is unreachable.
+        await _ownership.RecordAsync(appUserId, name, cancellationToken);
         var nowUtc = _timeProvider.GetUtcNow();
         var version = CalVerVersion.AssignNext(await ReadLatestAsync(name, cancellationToken), nowUtc);
 
@@ -479,5 +493,61 @@ public sealed class WorkflowPackagePublisher
         {
             errors.Add($"File '{stray}' is not referenced by the manifest.");
         }
+    }
+
+    private readonly record struct TargetName(string? Name, WorkflowPackagePublishResult? Result);
+
+    /// <summary>
+    /// #447: Target (a new version of a package the account owns), or
+    /// NewPackageSlug (a package it does not have yet), or neither (the
+    /// derived first-package name every older client publishes to).
+    /// </summary>
+    private async Task<TargetName> ResolveTargetNameAsync(
+        string appUserId,
+        WorkflowPackagePublishRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Target != null && request.NewPackageSlug != null)
+        {
+            return new(null, new WorkflowPackagePublishResult(null, new[] { "Target and NewPackageSlug are exclusive: name the package to republish, or the slug of a new one." }));
+        }
+
+        if (request.NewPackageSlug != null)
+        {
+            if (!WorkflowPackageNaming.IsValidSlug(request.NewPackageSlug))
+            {
+                return new(null, new WorkflowPackagePublishResult(null, new[]
+                {
+                    $"NewPackageSlug must be lowercase letters, digits and hyphens, start with a letter or digit, not end with a hyphen, and be at most {WorkflowPackageNaming.MaxSlugLength} characters."
+                }));
+            }
+
+            var name = WorkflowPackageNaming.ForAccount(appUserId, request.NewPackageSlug);
+
+            if (await _writer.ReadLatestVersionAsync(name, cancellationToken) != null
+                || await _ownership.OwnsAsync(appUserId, name, cancellationToken))
+            {
+                return new(null, new WorkflowPackagePublishResult(null, new[] { $"A package named {name} already exists; choose another slug, or publish a new version of it." }));
+            }
+
+            return new(name, null);
+        }
+
+        if (request.Target != null)
+        {
+            if (!WorkflowPackageRef.TryParse($"{request.Target}@latest", out _) || !WorkflowPackageNaming.IsAccountPackage(request.Target))
+            {
+                return new(null, new WorkflowPackagePublishResult(null, new[] { "Target must be one of this account's packages." }));
+            }
+
+            if (!await _ownership.CanAccessAsync(request.Target, appUserId, cancellationToken))
+            {
+                return new(null, new WorkflowPackagePublishResult(null, new[] { "Target package is not owned by this account." }, Forbidden: true));
+            }
+
+            return new(request.Target, null);
+        }
+
+        return new(WorkflowPackageNaming.ForAccount(appUserId), null);
     }
 }

@@ -22,6 +22,7 @@ public class ConsultGenerationJobStarterTests
     private readonly IAccountRateLimiter _rateLimiter = Substitute.For<IAccountRateLimiter>();
     private readonly DurableTaskClient _client = Substitute.For<DurableTaskClient>("test");
     private readonly DurableEntityClient _entities = Substitute.For<DurableEntityClient>("test");
+    private readonly FakeOwnership _ownership = new();
 
     // #290: a terse but genuine referral. These fixtures used to say
     // "draft", which is not a referral and which the content floor
@@ -42,7 +43,8 @@ public class ConsultGenerationJobStarterTests
             _packageStore,
             _pinResolver,
             TestCatalog.Instance,
-            _rateLimiter);
+            _rateLimiter,
+            _ownership);
     }
 
     /// <summary>
@@ -82,6 +84,31 @@ public class ConsultGenerationJobStarterTests
 
         Assert.Equal(ConsultGenerationJobStartError.MalformedPackageRef, outcome.Error);
         Assert.Null(outcome.JobId);
+    }
+
+    [Fact]
+    public async Task ARecordedSluggedPackage_IsNotForeign_AndAForeignSluggedOneIs()
+    {
+        // #447: the starter asks the record, not the name.
+        WithTypedPackage();
+        _ownership.Records.Add(("11112222333344445555666677778888", "acct-111122223333-breast"));
+
+        var own = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(Referral, "acct-111122223333-breast@latest"),
+            "11112222333344445555666677778888",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+        Assert.NotEqual(ConsultGenerationJobStartError.ForeignPackageRef, own.Error);
+        Assert.NotEqual(ConsultGenerationJobStartError.MalformedPackageRef, own.Error);
+
+        var foreign = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(Referral, "acct-111122223333-breast@latest"),
+            "99999999999999999999999999999999",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+        Assert.Equal(ConsultGenerationJobStartError.ForeignPackageRef, foreign.Error);
     }
 
     [Fact]

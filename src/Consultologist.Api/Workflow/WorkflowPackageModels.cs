@@ -107,7 +107,13 @@ public sealed record WorkflowPackageContentResponse(
 public sealed record WorkflowPackagePublishRequest(
     string? Source = null,
     WorkflowPackageManifest? Manifest = null,
-    Dictionary<string, string>? Files = null);
+    Dictionary<string, string>? Files = null,
+    // #447: where it goes. Target names one of the account's packages for a
+    // new version; NewPackageSlug names a package the account does not have
+    // yet (acct-<root>-<slug>); both null is every older client — the
+    // account's first, derived name. Both set is refused.
+    string? Target = null,
+    string? NewPackageSlug = null);
 
 public sealed record WorkflowPackagePublishResponse(
     string Name,
