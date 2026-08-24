@@ -113,6 +113,17 @@ public class SpecVersionMirrorTests
     }
 
     [Fact]
+    public void TheClientsPathRule_IsTheServers()
+    {
+        // #448: a folder path of slugs, at most three under the account root.
+        Assert.Equal(WorkflowPackageNaming.MaxPathSegments, Consultologist.Web.Services.Workflow.WorkflowPackageNames.MaxPathSegments);
+        foreach (var path in new[] { "breast", "oncology/breast", "a/b/c", "a/b/c/d", "oncology//breast", "/breast", "breast/", "Oncology/breast", "" })
+        {
+            Assert.Equal(WorkflowPackageNaming.IsValidPath(path), Consultologist.Web.Services.Workflow.WorkflowPackageNames.IsValidPath(path));
+        }
+    }
+
+    [Fact]
     public void TheClientsTagLimits_AreTheServers()
     {
         // #453: the pane's per-tag maxlength and its count ceiling.

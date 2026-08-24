@@ -19,20 +19,21 @@ public class PickerTitleTests : ClientRenderTestContext
             },
             null));
 
-    private static string LabelOf(IRenderedComponent<WorkflowPackagePicker> picker, string value) =>
-        picker.FindAll("option").Single(option => option.GetAttribute("value") == value).TextContent.Trim();
 
     [Fact]
     public void ATitledVersion_ReadsAsItsTitleWithTheVersionBeside()
     {
         WithRegistry();
         var picker = Render<WorkflowPackagePicker>(parameters => parameters.Add(p => p.WritesPin, false).Add(p => p.Selected, "general@v2026.09.1"));
+        PickerTree.Open(picker);
 
-        Assert.Equal("Breast oncology consults — v2026.09.1", LabelOf(picker, "general@v2026.09.1"));
-        Assert.Equal("v2026.08.1", LabelOf(picker, "general@v2026.08.1"));
-        Assert.Equal("latest — follows updates", LabelOf(picker, "general@latest"));
+        Assert.Equal("Breast oncology consults — v2026.09.1", PickerTree.LabelOf(picker, "general@v2026.09.1"));
+        Assert.Equal("v2026.08.1", PickerTree.LabelOf(picker, "general@v2026.08.1"));
+        Assert.Equal("latest — follows updates", PickerTree.LabelOf(picker, "general@latest"));
         // Unsupported wins over titled: the version cannot be chosen whatever it is called.
-        Assert.Equal("v2026.01.1 — unsupported (spec 2)", LabelOf(picker, "general@v2026.01.1"));
-        Assert.Equal("general", picker.Find("optgroup").GetAttribute("label"));
+        Assert.Equal("v2026.01.1 — unsupported (spec 2)", PickerTree.LabelOf(picker, "general@v2026.01.1"));
+        // #448: the leaf is the package, under the Provided root; the trigger keeps the ref.
+        Assert.Equal(new[] { "Breast oncology consults (general)" }, PickerTree.Packages(picker));
+        Assert.Equal("general@v2026.09.1", PickerTree.Shown(picker));
     }
 }
