@@ -873,7 +873,17 @@ again.* It is the one change #405 calls deeper than this one, because it is
 not a branch but a change to *when the shape of a job is known*. v9 widens
 where items come from and leaves start-time knowability intact, which is
 exactly what keeps `TotalBlockCount` a stored scalar. Its trigger has not
-fired.
+fired. The explicit-node shape is now mapped on #451 (2026-08-24), so
+whoever the trigger finds does not start from nothing: `Initialize` is
+*deferred* to a boundary after the classifying nodes settle, so the scalar
+is still stamped once and never goes backwards — what moves is when; the
+rail shows the classifiers alone until then, and a job that fails before
+the boundary gets a named row, as #434's does; the operand is a new kind
+spelled `node:<id>` (unparseable today, so it cannot collide) resolved
+against nodes whose output declares a value set; those values live on the
+node's output in the manifest with one new catalog contract, because the
+catalog matches schemas exactly. A v10, with its own record; the editor
+offers none of it until a package needs it.
 
 **A job record for an empty fire set (#337)** — not a format candidate,
 and now scheduled as ordinary work (2026-08-21): the empty-fire-set class
