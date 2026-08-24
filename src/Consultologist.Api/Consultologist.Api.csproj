@@ -14,6 +14,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- #450: the format is its own assembly; Scriban arrives through it. -->
+    <ProjectReference Include="..\Consultologist.PackageFormat\Consultologist.PackageFormat.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Azure.Data.Tables" />
     <PackageReference Include="Azure.Storage.Blobs" />
     <PackageReference Include="Azure.Identity" Aliases="AzureIdentity" />
@@ -34,7 +39,6 @@
     <PackageReference Include="PDFsharp-MigraDoc" />
     <PackageReference Include="DocumentFormat.OpenXml" />
     <PackageReference Include="PdfPig" />
-    <PackageReference Include="Scriban" />
     <PackageReference Include="YamlDotNet" />
   </ItemGroup>
 

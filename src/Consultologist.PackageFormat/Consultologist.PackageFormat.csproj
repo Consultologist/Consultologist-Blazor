@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- #450: the workflow package format as a library of its own — the
+       manifest records and their strict read, the validator and its
+       sentences, the wire value and its canonical forms, the condition
+       grammar and its evaluation, fans, the data resolver, rendering, and
+       the publication stamp. Nothing that defines the engine: no Azure, no
+       Functions, no storage, no catalog — the catalog reaches the stamp
+       through IOutputContractResolver. Scriban is here because the
+       validator's publish-time probe parses and renders every prompt; the
+       version it asserts against is the loaded assembly's, which in the
+       one process that hosts both is the engine's. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Consultologist.PackageFormat</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Scriban" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The Api's catalog calls CanonicalizeSchema and the tests reach the
+         probe and the accepted-set sentence. -->
+    <InternalsVisibleTo Include="Consultologist.Api" />
+    <InternalsVisibleTo Include="Consultologist.Api.Tests" />
+  </ItemGroup>
+
+</Project>
