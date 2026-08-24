@@ -83,13 +83,16 @@ public class WorkflowPackageAccessTests
     }
 
     [Fact]
-    public async Task TheDerivedName_IsOwnedWithNoRecord_UntilTheFallbackRetires()
+    public async Task TheDerivedName_IsNobodys_WithoutARecord()
     {
-        // Every account's first package predates records. The startup
-        // backfill writes them; this clause covers the gap and is the
-        // follow-up's to remove.
+        // #462: the fallback that owned an account's first package by its
+        // name retired once every existing package was recorded. The name
+        // says nothing now; only the record does.
         var ownership = new FakeOwnership();
 
+        Assert.False(await ownership.CanAccessAsync("acct-0123456789ab", OwnerId, CancellationToken.None));
+
+        ownership.Records.Add((OwnerId, "acct-0123456789ab"));
         Assert.True(await ownership.CanAccessAsync("acct-0123456789ab", OwnerId, CancellationToken.None));
         Assert.False(await ownership.CanAccessAsync("acct-0123456789ab", OtherId, CancellationToken.None));
     }
@@ -144,41 +147,5 @@ public class AccountPackageListingNamesTests
         // #448 widens the grammar; when it does, this is the assertion that
         // must change first, not the one that lets packages vanish.
         Assert.Empty(AccountPackageListing.NamesIn(new[] { "acct-0123456789ab/oncology/v2026.09.1/manifest.json" }));
-    }
-}
-
-public class PackageOwnershipBackfillTests
-{
-    private const string OwnerId = "0123456789abcdef0123456789abcdef";
-    private const string OtherId = "99999999999999999999999999999999";
-
-    [Fact]
-    public void Plan_MapsBareAndSluggedNamesToTheirAccount_ByRoot()
-    {
-        var plan = PackageOwnershipBackfill.Plan(
-            new[] { "acct-0123456789ab", "acct-0123456789ab-breast-oncology", "acct-999999999999", "general", "acct-0123456789ab" },
-            new[] { OwnerId, OtherId });
-
-        Assert.Equal(
-            new[]
-            {
-                (OwnerId, "acct-0123456789ab"),
-                (OwnerId, "acct-0123456789ab-breast-oncology"),
-                (OtherId, "acct-999999999999")
-            },
-            plan.Records);
-        Assert.Empty(plan.Orphans);
-        Assert.Equal(1, plan.RepoOwned);
-    }
-
-    [Fact]
-    public void Plan_NamesAnOrphan_RatherThanGuessingAnOwner()
-    {
-        var plan = PackageOwnershipBackfill.Plan(
-            new[] { "acct-abcdefabcdef", "acct-0123456789ab-" },
-            new[] { OwnerId });
-
-        Assert.Empty(plan.Records);
-        Assert.Equal(new[] { "acct-0123456789ab-", "acct-abcdefabcdef" }, plan.Orphans);
     }
 }

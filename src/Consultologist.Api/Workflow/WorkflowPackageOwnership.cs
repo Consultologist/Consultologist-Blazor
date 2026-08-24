@@ -28,9 +28,8 @@ public interface IWorkflowPackageOwnership
 /// <summary>
 /// The acct-* access rule, in one place for its six enforcement points:
 /// repo-owned names are open to everyone; an account package is readable by
-/// the account that owns it — by record, or, until the startup backfill has
-/// been proven and this clause retired (follow-up to #447), by the derived
-/// name every account's first package carries.
+/// the account that owns it, by record. #462 retired the derived-name
+/// fallback #447 had kept until every existing package was recorded.
 /// </summary>
 public static class WorkflowPackageAccess
 {
@@ -45,14 +44,7 @@ public static class WorkflowPackageAccess
             return true;
         }
 
-        if (await ownership.OwnsAsync(appUserId, name, cancellationToken))
-        {
-            return true;
-        }
-
-        // The derived-name fallback: the first package's name is the account's
-        // by construction. Kept until the backfill has written every record.
-        return WorkflowPackageNaming.CanAccess(name, appUserId);
+        return await ownership.OwnsAsync(appUserId, name, cancellationToken);
     }
 }
 

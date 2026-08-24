@@ -70,17 +70,6 @@ public class WorkflowPackageNamingTests
     }
 
     [Theory]
-    [InlineData("general", true)]
-    [InlineData("breast-oncology", true)]
-    [InlineData("acct-0123456789ab", true)]
-    [InlineData("acct-999999999999", false)]
-    [InlineData("acct-0123456789abcd", false)]
-    public void CanAccess_Matrix(string name, bool expected)
-    {
-        Assert.Equal(expected, WorkflowPackageNaming.CanAccess(name, OwnerId));
-    }
-
-    [Theory]
     [InlineData("acct-0123456789ab", true)]
     [InlineData("general", false)]
     [InlineData("account-x", false)]
@@ -111,7 +100,10 @@ public class ForeignPinFallbackTests
     {
         var settings = new FakeSettingsStore();
         await settings.SaveAsync(OwnerId, WorkflowPackagePinResolver.PackagePinSettingKey, "acct-0123456789ab@v2026.07.1", "text/plain", CancellationToken.None);
-        var resolver = new WorkflowPackagePinResolver(settings, new FakeOwnership(), NullLogger<WorkflowPackagePinResolver>.Instance);
+        // #462: owned by record, as every package is now.
+        var ownership = new FakeOwnership();
+        ownership.Records.Add((OwnerId, "acct-0123456789ab"));
+        var resolver = new WorkflowPackagePinResolver(settings, ownership, NullLogger<WorkflowPackagePinResolver>.Instance);
 
         var resolved = await resolver.ResolvePinAsync(OwnerId, CancellationToken.None);
 
@@ -524,7 +516,9 @@ public class WorkflowPackagePublisherTests
         // The source is the account's own package: no name is crossed.
         var writer = new FakeRegistryWriter();
         await writer.CreateManifestAsync(AccountName, "v2026.07.1", "{}", CancellationToken.None);
-        var (publisher, _, _) = CreatePublisher(writer: writer, sourceRef: $"{AccountName}@v2026.07.1");
+        var ownership = new FakeOwnership();
+        ownership.Records.Add((OwnerId, AccountName));
+        var (publisher, _, _) = CreatePublisher(writer: writer, sourceRef: $"{AccountName}@v2026.07.1", ownership: ownership);
         var manifest = Titled();
 
         var result = await publisher.PublishAsync(
