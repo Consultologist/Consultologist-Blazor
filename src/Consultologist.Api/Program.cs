@@ -95,7 +95,6 @@ builder.Services.AddSingleton<PublicChain>();
 builder.Services.AddScoped<WorkflowPackages>();
 builder.Services.AddHttpClient();
 builder.Services.AddHostedService<AgentAttestationService>();
-builder.Services.AddHostedService<PackageOwnershipBackfill>();
 builder.Services.AddTransient<ConsultGenerationJobEntity>();
 builder.Services.AddSingleton<ILinkedInLinkStateStore, LinkedInLinkStateStore>();
 builder.Services.AddSingleton<ILinkedInTokenClient, LinkedInTokenClient>();
