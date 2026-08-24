@@ -36,4 +36,22 @@ public class PickerTitleTests : ClientRenderTestContext
         Assert.Equal(new[] { "Breast oncology consults (general)" }, PickerTree.Packages(picker));
         Assert.Equal("general@v2026.09.1", PickerTree.Shown(picker));
     }
+
+    [Fact]
+    public void LatestUnderMine_IsNamedForYourOwnPublish()
+    {
+        // #406: a public package's latest follows a reviewed release; your
+        // own package's latest follows your Publish button. Same node, told
+        // apart by the root it sits under.
+        WithRegistry();
+        WorkflowService.GetMyPackagesAsync().Returns(new[]
+        {
+            new PublicPackageView("acct-1234567890ab/oncology/breast", "v2026.09.1", new List<string> { "v2026.09.1" }, new Dictionary<string, int> { ["v2026.09.1"] = 9 })
+        });
+        var picker = Render<WorkflowPackagePicker>(parameters => parameters.Add(p => p.WritesPin, false).Add(p => p.Selected, "general@v2026.09.1"));
+        PickerTree.Open(picker);
+
+        Assert.Equal("latest — your newest publish", PickerTree.LabelOf(picker, "acct-1234567890ab/oncology/breast@latest"));
+        Assert.Equal("latest — follows updates", PickerTree.LabelOf(picker, "general@latest"));
+    }
 }
