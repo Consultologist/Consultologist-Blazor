@@ -269,13 +269,52 @@ public sealed record WorkflowPromptTemplate(
     string? PreludeText);
 
 /// <summary>
-/// A package reference of the form "name@vYYYY.MM.N" or "name@latest".
+/// A package reference of the form "name@vYYYY.MM.N" or "name@latest". Since
+/// #448 a name may be a path — "oncology/breast" — of up to MaxSegments
+/// segments, each the flat name grammar; a flat name is a one-segment path,
+/// so every ref ever published still parses. The path is the identity: it
+/// is the registry address ({name}/{version}/…), the recorded ref, and the
+/// lineage hop.
 /// </summary>
 public sealed record WorkflowPackageRef(string Name, string Version)
 {
     public const string LatestVersion = "latest";
+    public const int MaxSegments = 4;
+    public const string ManifestFileName = "manifest.json";
 
-    private static readonly Regex NamePattern = new("^[a-z0-9][a-z0-9-]*$", RegexOptions.Compiled);
+    private static readonly Regex NamePattern = new("^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$", RegexOptions.Compiled);
+
+    public static bool IsValidName(string? name) =>
+        !string.IsNullOrEmpty(name) && NamePattern.IsMatch(name) && name.Count(c => c == '/') < MaxSegments;
+
+    /// <summary>
+    /// Reads {name}/{version}/manifest.json from the right: the leaf, then a
+    /// CalVer directory, then the name — which a nested name makes deeper.
+    /// Unambiguous because a name segment can never be a CalVer (no dots).
+    /// The one filter every registry listing uses (#448); anything else
+    /// ({name}/latest.json, a prompt, a stamp) is not a manifest path.
+    /// </summary>
+    public static bool TryParseManifestPath(string blobPath, out string name, out string version)
+    {
+        name = string.Empty;
+        version = string.Empty;
+        var parts = blobPath.Split('/');
+
+        if (parts.Length < 3 || parts[^1] != ManifestFileName || !CalVerVersion.TryParse(parts[^2], out _))
+        {
+            return false;
+        }
+
+        var candidate = string.Join('/', parts[..^2]);
+        if (!IsValidName(candidate))
+        {
+            return false;
+        }
+
+        name = candidate;
+        version = parts[^2];
+        return true;
+    }
 
     public bool IsLatest => string.Equals(Version, LatestVersion, StringComparison.Ordinal);
 
@@ -289,7 +328,7 @@ public sealed record WorkflowPackageRef(string Name, string Version)
         }
 
         var parts = value.Trim().Split('@');
-        if (parts.Length != 2 || !NamePattern.IsMatch(parts[0]))
+        if (parts.Length != 2 || !IsValidName(parts[0]))
         {
             return false;
         }

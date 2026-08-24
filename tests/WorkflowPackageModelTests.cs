@@ -52,6 +52,10 @@ public class WorkflowPackageRefTests
     [Theory]
     [InlineData("general@v2026.07.1", "general", "v2026.07.1")]
     [InlineData("breast-oncology@latest", "breast-oncology", "latest")]
+    // #448: a name may be a path of up to four segments.
+    [InlineData("oncology/breast@v2026.08.1", "oncology/breast", "v2026.08.1")]
+    [InlineData("acct-0123456789ab/oncology/breast@latest", "acct-0123456789ab/oncology/breast", "latest")]
+    [InlineData("a/b/c/d@v2026.08.1", "a/b/c/d", "v2026.08.1")]
     public void TryParse_AcceptsWellFormedRefs(string input, string name, string version)
     {
         Assert.True(WorkflowPackageRef.TryParse(input, out var packageRef));
@@ -70,9 +74,42 @@ public class WorkflowPackageRefTests
     [InlineData("a@b@c")]
     [InlineData(null)]
     [InlineData("")]
+    // #448: a path is segments of the name grammar — no empty segment, no
+    // leading or trailing slash, at most four segments.
+    [InlineData("a//b@v2026.07.1")]
+    [InlineData("/a@v2026.07.1")]
+    [InlineData("a/@v2026.07.1")]
+    [InlineData("a/B@v2026.07.1")]
+    [InlineData("a/b/c/d/e@v2026.07.1")]
     public void TryParse_RejectsMalformedRefs(string? input)
     {
         Assert.False(WorkflowPackageRef.TryParse(input, out _));
+    }
+
+    [Theory]
+    [InlineData("general/v2026.07.1/manifest.json", "general", "v2026.07.1")]
+    [InlineData("oncology/breast/v2026.08.1/manifest.json", "oncology/breast", "v2026.08.1")]
+    [InlineData("acct-0123456789ab/oncology/breast/v2026.08.1/manifest.json", "acct-0123456789ab/oncology/breast", "v2026.08.1")]
+    public void TryParseManifestPath_ReadsTheNameFromTheRight(string path, string name, string version)
+    {
+        // #448: the one filter every listing uses. A CalVer never matches a
+        // name segment, so the split is unambiguous however deep the name.
+        Assert.True(WorkflowPackageRef.TryParseManifestPath(path, out var parsedName, out var parsedVersion));
+        Assert.Equal(name, parsedName);
+        Assert.Equal(version, parsedVersion);
+    }
+
+    [Theory]
+    [InlineData("general/latest.json")]
+    [InlineData("general/v2026.07.1/prompts/x.md")]
+    [InlineData("general/v2026.07.1/publish.json")]
+    [InlineData("v2026.07.1/manifest.json")]
+    [InlineData("general/notaversion/manifest.json")]
+    [InlineData("a/b/c/d/e/v2026.07.1/manifest.json")]
+    [InlineData("General/v2026.07.1/manifest.json")]
+    public void TryParseManifestPath_RefusesEverythingElse(string path)
+    {
+        Assert.False(WorkflowPackageRef.TryParseManifestPath(path, out _, out _));
     }
 }
 

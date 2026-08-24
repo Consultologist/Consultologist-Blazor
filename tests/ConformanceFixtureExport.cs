@@ -128,6 +128,13 @@ public class ConformanceFixtureExport
             "Three tags in authored order; case is kept as written.",
             v9Tagged, V6Fixtures.Files(v9Tagged)));
 
+        // #448: a name is a path; a nested derivedFrom is a well-formed ref on
+        // every version. Recorded at 9 beside the other v9 cases.
+        var v9Nested = v9 with { DerivedFrom = "oncology/breast@v2026.08.1" };
+        cases.Add(new Case("v9-nested-derived-from", 9,
+            "A derivedFrom naming a nested package (oncology/breast). Package names are paths of up to four segments; a flat name is a one-segment path.",
+            v9Nested, V6Fixtures.Files(v9Nested)));
+
         Invalid("invalid-tags-omitted-at-v9", 9,
             "A v9 manifest without tags. Every v9 manifest states its tags; an empty array is how it says none.",
             v9 with { Tags = null });
