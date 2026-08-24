@@ -137,15 +137,16 @@
                     else
                     {
                         <span class="editor-bar__new-package">
+                            @* #448: a slug or a folder path — the path is the identity. *@
                             <input class="node-field__input"
-                                   maxlength="@WorkflowPackageNames.MaxSlugLength"
+                                   maxlength="@WorkflowPackageNames.MaxPathLength"
                                    value="@newPackageSlug"
-                                   placeholder="new-package-slug"
+                                   placeholder="folder/name"
                                    disabled="@isPublishing"
                                    @oninput="args => newPackageSlug = args.Value?.ToString() ?? string.Empty"
-                                   aria-label="New package slug" />
+                                   aria-label="New package path" />
                             <FluentButton Appearance="Appearance.Accent"
-                                          Disabled="@(PendingCount == 0 || isPublishing || !WorkflowPackageNames.IsValidSlug(newPackageSlug.Trim()))"
+                                          Disabled="@(PendingCount == 0 || isPublishing || !WorkflowPackageNames.IsValidPath(newPackageSlug.Trim()))"
                                           @onclick="() => PublishAsync(null, newPackageSlug.Trim())">
                                 @if (isPublishing)
                                 {

@@ -81,7 +81,7 @@ public class PublishTargetsTests : ClientRenderTestContext
         MakePending(page);
 
         Click(page, "Publish as a new package");
-        var slug = page.Find("input[aria-label='New package slug']");
+        var slug = page.Find("input[aria-label='New package path']");
 
         slug.Input("Breast Oncology");
         Assert.True(page.FindAll(".editor-bar__actions fluent-button").First(b => b.TextContent.Trim() == "Publish as new package").HasAttribute("disabled"));
@@ -136,9 +136,55 @@ public class PublishTargetsTests : ClientRenderTestContext
         });
 
         var picker = Render<WorkflowPackagePicker>(parameters => parameters.Add(p => p.WritesPin, false).Add(p => p.Selected, $"{Mine}@latest"));
+        PickerTree.Open(picker);
 
+        // #448: both are leaves under the Mine root — flat names, no folders.
         Assert.Equal(
-            new[] { "Mine — acct-1234567890ab", "Mine — Breast oncology consults (acct-1234567890ab-breast-oncology)" },
-            picker.FindAll("optgroup").Select(g => g.GetAttribute("label")!).ToList());
+            new[] { "acct-1234567890ab", "Breast oncology consults (acct-1234567890ab-breast-oncology)" },
+            PickerTree.Packages(picker));
+        Assert.Empty(PickerTree.Folders(picker));
+    }
+
+    [Fact]
+    public void ANestedPackage_IsFiledUnderItsFolders_WithTheAccountRootHidden()
+    {
+        // #448: acct-<root>/oncology/breast draws as Mine ▸ oncology ▸ breast.
+        WorkflowService.GetMyPackagesAsync().Returns(new[]
+        {
+            new PublicPackageView(Mine, "v2026.07.1", new List<string> { "v2026.07.1" }, new Dictionary<string, int> { ["v2026.07.1"] = 7 }),
+            new PublicPackageView($"{Mine}/oncology/breast", "v2026.09.1", new List<string> { "v2026.09.1" }, new Dictionary<string, int> { ["v2026.09.1"] = 9 })
+        });
+        WorkflowService.GetPublicChainAsync().Returns(new PublicChainView(
+            new[] { new PublicPackageView("oncology/lung", "v2026.09.1", new List<string> { "v2026.09.1" }, new Dictionary<string, int> { ["v2026.09.1"] = 9 }) },
+            null));
+
+        var picker = Render<WorkflowPackagePicker>(parameters => parameters.Add(p => p.WritesPin, false).Add(p => p.Selected, $"{Mine}/oncology/breast@latest"));
+        PickerTree.Open(picker);
+
+        Assert.Equal(new[] { "Provided", "Mine" }, PickerTree.Nodes(picker).Where(n => n.Id.StartsWith("root:", StringComparison.Ordinal)).Select(n => n.Label));
+        Assert.Equal(new[] { "oncology", "oncology" }, PickerTree.Folders(picker));
+        Assert.Equal(new[] { "lung", "acct-1234567890ab", "breast" }, PickerTree.Packages(picker));
+        Assert.Contains($"{Mine}/oncology/breast@v2026.09.1", PickerTree.Refs(picker));
+        Assert.Equal($"{Mine}/oncology/breast@latest", PickerTree.Shown(picker));
+    }
+
+    [Fact]
+    public void PublishAsANewPackage_TakesAFolderPath()
+    {
+        WithMine(Mine);
+        WithPublishAccepted("acct-1234567890ab/oncology/breast@v2026.07.1");
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
+        var page = Render<Templates>();
+        MakePending(page);
+
+        Click(page, "Publish as a new package");
+        var path = page.Find("input[aria-label='New package path']");
+        path.Input("oncology//breast");
+        Assert.True(page.FindAll(".editor-bar__actions fluent-button").First(b => b.TextContent.Trim() == "Publish as new package").HasAttribute("disabled"));
+        path.Input("oncology/breast");
+        Click(page, "Publish as new package");
+
+        Assert.Equal("oncology/breast", sent!.NewPackageSlug);
+        Assert.Contains("Published acct-1234567890ab/oncology/breast@v2026.07.1 as a new package", page.Markup, StringComparison.Ordinal);
     }
 }
