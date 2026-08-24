@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
 
 public class EmailIntakeProcessorTests

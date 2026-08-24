@@ -52,6 +52,7 @@ using Consultologist.Api.Agents;
 using Consultologist.Api.Workflow;
 using Microsoft.Extensions.Configuration;
 
+using Consultologist.PackageFormat;
 const string DefaultRegistry = "https://consultologistpublic.blob.core.windows.net";
 const string PackagesContainer = "workflow-packages";
 

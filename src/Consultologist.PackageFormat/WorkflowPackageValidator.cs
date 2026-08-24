@@ -5,9 +5,8 @@ using System.Text.Json.Nodes;
 using Scriban;
 using Scriban.Runtime;
 
-using Consultologist.Api.Models;
 
-namespace Consultologist.Api.Workflow;
+namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// Validates specVersion-5, -6 and -7 packages: a manifest declares the rule set

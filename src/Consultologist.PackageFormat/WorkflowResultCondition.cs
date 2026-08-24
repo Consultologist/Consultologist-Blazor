@@ -1,7 +1,6 @@
 using System.Globalization;
-using Consultologist.Api.Models;
 
-namespace Consultologist.Api.Workflow;
+namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// A parsed deliverable condition (package-format-v8-design.md § 5, v9 § 6):

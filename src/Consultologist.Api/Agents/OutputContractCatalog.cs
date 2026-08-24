@@ -5,6 +5,7 @@ using Azure;
 using Azure.Storage.Blobs;
 using Consultologist.Api.Workflow;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Agents;
 
 /// <summary>

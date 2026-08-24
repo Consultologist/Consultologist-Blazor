@@ -1,8 +1,9 @@
 using System.Reflection;
 using System.Text.Json;
-using ApiValue = Consultologist.Api.Models.ConsultInputValue;
+using ApiValue = Consultologist.PackageFormat.ConsultInputValue;
 using WebValue = Consultologist.Web.Services.AI.ConsultInputValue;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Web.Tests;
 
 /// <summary>

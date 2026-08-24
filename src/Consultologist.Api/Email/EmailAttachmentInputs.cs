@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Consultologist.Api.Jobs;
 using Consultologist.Api.Workflow;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Email;
 
 /// <summary>

@@ -4,6 +4,7 @@ using Consultologist.Web.Services.Accounts;
 using Consultologist.Web.Services.AI;
 using NSubstitute;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Web.Tests;
 
 /// <summary>

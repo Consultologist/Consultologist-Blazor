@@ -1,5 +1,6 @@
 using Consultologist.Api.Workflow;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
 
 // The generator's structural pins run on the test fixtures; the general

@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Consultologist.Api.Agents;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Workflow;
 
 /// <summary>

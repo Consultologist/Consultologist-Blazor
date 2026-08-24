@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Consultologist.Api.Agents;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
 
 public class OutputContractCatalogTests
@@ -141,7 +142,7 @@ public class CatalogRegistryIdentityTests
         var catalog = OutputContractCatalog.Load(RepoAgents());
 
         Assert.StartsWith("output-contracts@v", catalog.ResolvedRef);
-        Assert.True(Consultologist.Api.Workflow.CalVerVersion.TryParse(
+        Assert.True(Consultologist.PackageFormat.CalVerVersion.TryParse(
             catalog.ResolvedRef["output-contracts@".Length..], out _));
     }
 

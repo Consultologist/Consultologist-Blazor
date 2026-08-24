@@ -1,4 +1,4 @@
-namespace Consultologist.Api.Workflow;
+namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// The bounds on a package's title, description (v9 § 4, #432) and tags

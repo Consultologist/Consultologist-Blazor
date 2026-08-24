@@ -4,6 +4,7 @@ using Consultologist.Api.Workflow;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
 
 /// <summary>

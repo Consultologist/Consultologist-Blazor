@@ -5,6 +5,7 @@ using Consultologist.Api.Workflow;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Jobs;
 
 /// <summary>

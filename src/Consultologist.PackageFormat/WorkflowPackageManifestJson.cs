@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Consultologist.Api.Workflow;
+namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// How a manifest is read, in one place because four sites read one — the store

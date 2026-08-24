@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Consultologist.Api.Workflow;
+namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// Resolves a specVersion-5 manifest's data table against the package files:

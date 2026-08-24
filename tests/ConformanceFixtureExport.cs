@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Consultologist.Api.Workflow;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
 
 /// <summary>

@@ -1,7 +1,6 @@
 using System.Globalization;
-using Consultologist.Api.Models;
 
-namespace Consultologist.Api.Workflow;
+namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// A fan over a caller-supplied array (package-format-v9-design.md § 5,

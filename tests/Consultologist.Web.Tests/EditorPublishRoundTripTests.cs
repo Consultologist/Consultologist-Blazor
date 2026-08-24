@@ -6,8 +6,9 @@ using NSubstitute;
 // Both assemblies define package records; the client's are what the editor
 // sends, the server's are what validates them.
 using ClientWorkflow = Consultologist.Web.Services.Workflow;
-using ServerWorkflow = Consultologist.Api.Workflow;
+using ServerWorkflow = Consultologist.PackageFormat;
 
+using Consultologist.PackageFormat;
 namespace Consultologist.Web.Tests;
 
 /// <summary>

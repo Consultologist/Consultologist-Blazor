@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Consultologist.Api.Workflow;
+namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// Derives a Mermaid flowchart from a manifest's nodes. Bindings are the edges plus

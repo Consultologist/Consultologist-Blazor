@@ -1,4 +1,4 @@
-namespace Consultologist.Api.Workflow;
+namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// Reachability over the DAG's node→node edges. There are exactly two kinds: a
