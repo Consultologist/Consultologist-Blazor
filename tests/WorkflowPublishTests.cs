@@ -562,16 +562,35 @@ public class WorkflowPackagePublisherTests
             CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
-        Assert.Equal("acct-0123456789ab-breast-oncology", result.Response!.Name);
+        // #448: the root, then the path.
+        Assert.Equal("acct-0123456789ab/breast-oncology", result.Response!.Name);
         Assert.Equal("v2026.07.1", result.Response.Version);
-        var stored = writer.ReadManifest("acct-0123456789ab-breast-oncology", "v2026.07.1");
+        var stored = writer.ReadManifest("acct-0123456789ab/breast-oncology", "v2026.07.1");
         Assert.Equal(SourceRef, stored.DerivedFrom);
         // A fork across names: the parent's words about the parent are cleared.
         Assert.Null(stored.Title);
         Assert.Empty(stored.Tags!);
-        Assert.Contains((OwnerId, "acct-0123456789ab-breast-oncology"), ownership.Records);
+        Assert.Contains((OwnerId, "acct-0123456789ab/breast-oncology"), ownership.Records);
         var pin = await settings.GetAsync(OwnerId, WorkflowPackagePinResolver.PackagePinSettingKey, CancellationToken.None);
-        Assert.Equal("acct-0123456789ab-breast-oncology@v2026.07.1", pin!.Value);
+        Assert.Equal("acct-0123456789ab/breast-oncology@v2026.07.1", pin!.Value);
+    }
+
+    [Fact]
+    public async Task Publish_AsANewPackage_InAFolder_MintsTheNestedName()
+    {
+        // #448: the path is the identity — the registry address, the pin,
+        // the recorded ref.
+        var ownership = new FakeOwnership();
+        var (publisher, writer, settings) = CreatePublisher(ownership: ownership);
+
+        var result = await publisher.PublishAsync(OwnerId, Request() with { NewPackageSlug = "oncology/breast" }, CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        Assert.Equal("acct-0123456789ab/oncology/breast@v2026.07.1", result.Response!.Ref);
+        Assert.True(writer.Blobs.ContainsKey("acct-0123456789ab/oncology/breast/v2026.07.1/manifest.json"));
+        Assert.Equal("v2026.07.1", writer.LatestPointers["acct-0123456789ab/oncology/breast"]);
+        Assert.Contains((OwnerId, "acct-0123456789ab/oncology/breast"), ownership.Records);
+        Assert.Equal("acct-0123456789ab/oncology/breast@v2026.07.1", (await settings.GetAsync(OwnerId, WorkflowPackagePinResolver.PackagePinSettingKey, CancellationToken.None))!.Value);
     }
 
     [Fact]
@@ -642,14 +661,14 @@ public class WorkflowPackagePublisherTests
     public async Task Publish_AsANewPackage_WhoseNameExists_IsRefused()
     {
         var writer = new FakeRegistryWriter();
-        await writer.CreateManifestAsync("acct-0123456789ab-breast-oncology", "v2026.07.1", "{}", CancellationToken.None);
-        await writer.SetLatestPointerAsync("acct-0123456789ab-breast-oncology", "v2026.07.1", CancellationToken.None);
+        await writer.CreateManifestAsync("acct-0123456789ab/breast-oncology", "v2026.07.1", "{}", CancellationToken.None);
+        await writer.SetLatestPointerAsync("acct-0123456789ab/breast-oncology", "v2026.07.1", CancellationToken.None);
         var (publisher, _, _) = CreatePublisher(writer: writer);
 
         var result = await publisher.PublishAsync(OwnerId, Request() with { NewPackageSlug = "breast-oncology" }, CancellationToken.None);
 
         Assert.False(result.Succeeded);
-        Assert.Contains("A package named acct-0123456789ab-breast-oncology already exists; choose another slug, or publish a new version of it.", result.Errors);
+        Assert.Contains("A package named acct-0123456789ab/breast-oncology already exists; choose another slug, or publish a new version of it.", result.Errors);
     }
 
     [Fact]
@@ -1053,6 +1072,17 @@ public class ContainerRoutingTests
             configuration,
             NSubstitute.Substitute.For<Azure.Core.TokenCredential>(),
             NullLogger<WorkflowPackageBlobContainerFactory>.Instance);
+    }
+
+    [Theory]
+    [InlineData("oncology/breast", false)]
+    [InlineData("acct-0123456789ab/oncology/breast", true)]
+    [InlineData("acct-0123456789ab-breast", true)]
+    public void ANestedName_RoutesByItsFirstSegment(string name, bool isPrivate)
+    {
+        // #448: the account root is the first segment, so the prefix rule
+        // that routes to the private drive holds for every depth.
+        Assert.Equal(isPrivate, WorkflowPackageNaming.IsAccountPackage(name));
     }
 
     [Fact]

@@ -100,6 +100,14 @@ public class PackageFormatSchemaTests
         Assert.Equal("^(data|input):.+$", schema["properties"]!["nodes"]!["items"]!["properties"]!["forEach"]!["pattern"]!.GetValue<string>());
         Assert.Equal("^data:.+$", PackageFormatSchema.Build(8)["properties"]!["nodes"]!["items"]!["properties"]!["forEach"]!["pattern"]!.GetValue<string>());
 
+        // #448: derivedFrom admits a nested name of up to four segments, on every version.
+        var derivedFrom = new System.Text.RegularExpressions.Regex(schema["properties"]!["derivedFrom"]!["pattern"]!.GetValue<string>());
+        Assert.Matches(derivedFrom, "oncology/breast@v2026.08.1");
+        Assert.Matches(derivedFrom, "acct-0123456789ab/oncology/breast@v2026.08.1");
+        Assert.DoesNotMatch(derivedFrom, "a/b/c/d/e@v2026.08.1");
+        Assert.DoesNotMatch(derivedFrom, "oncology//breast@v2026.08.1");
+        Assert.Equal(derivedFrom.ToString(), PackageFormatSchema.Build(5)["properties"]!["derivedFrom"]!["pattern"]!.GetValue<string>());
+
         // #453: tags — required at 9, an array of single-line labels, absent before.
         var tags = schema["properties"]!["tags"]!;
         Assert.Equal("array", tags["type"]!.GetValue<string>());

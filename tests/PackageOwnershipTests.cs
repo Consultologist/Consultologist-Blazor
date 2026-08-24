@@ -33,15 +33,37 @@ public class PackageNamingWithSlugsTests
     }
 
     [Fact]
-    public void ForAccountWithASlug_IsTheRootPlusTheSlug()
+    public void ForAccountWithAPath_IsTheRootThenThePath()
     {
-        Assert.Equal("acct-0123456789ab-breast-oncology", WorkflowPackageNaming.ForAccount(OwnerId, "breast-oncology"));
+        // #448: the root is the drive; folders follow. A slug is a one-segment path.
+        Assert.Equal("acct-0123456789ab/breast-oncology", WorkflowPackageNaming.ForAccount(OwnerId, "breast-oncology"));
+        Assert.Equal("acct-0123456789ab/oncology/breast", WorkflowPackageNaming.ForAccount(OwnerId, "oncology/breast"));
         Assert.Throws<ArgumentException>(() => WorkflowPackageNaming.ForAccount(OwnerId, "Breast"));
+        Assert.Throws<ArgumentException>(() => WorkflowPackageNaming.ForAccount(OwnerId, "a/b/c/d"));
+    }
+
+    [Theory]
+    [InlineData("breast", true)]
+    [InlineData("oncology/breast", true)]
+    [InlineData("a/b/c", true)]
+    [InlineData("a/b/c/d", false)]
+    [InlineData("oncology//breast", false)]
+    [InlineData("/breast", false)]
+    [InlineData("breast/", false)]
+    [InlineData("Oncology/breast", false)]
+    [InlineData("", false)]
+    public void APath_IsOneToThreeSlugs(string path, bool valid)
+    {
+        Assert.Equal(valid, WorkflowPackageNaming.IsValidPath(path));
     }
 
     [Theory]
     [InlineData("acct-0123456789ab", "0123456789ab")]
     [InlineData("acct-0123456789ab-breast-oncology", "0123456789ab")]
+    [InlineData("acct-0123456789ab/breast", "0123456789ab")]
+    [InlineData("acct-0123456789ab/oncology/breast", "0123456789ab")]
+    [InlineData("acct-0123456789ab/", null)]
+    [InlineData("acct-0123456789ab/a/b/c/d", null)]
     [InlineData("acct-0123456789abcd", null)]
     [InlineData("acct-0123456789ab-", null)]
     [InlineData("acct-0123456789AB", null)]
@@ -142,10 +164,25 @@ public class AccountPackageListingNamesTests
     }
 
     [Fact]
-    public void NamesIn_DropsANestedPath_LoudlyHere_RatherThanSilentlyInAPicker()
+    public void NamesIn_ReadsANestedPath_AsItself()
     {
-        // #448 widens the grammar; when it does, this is the assertion that
-        // must change first, not the one that lets packages vanish.
-        Assert.Empty(AccountPackageListing.NamesIn(new[] { "acct-0123456789ab/oncology/v2026.09.1/manifest.json" }));
+        // #447 planted the inverse of this as a tripwire; #448 turned it.
+        Assert.Equal(
+            new[] { "acct-0123456789ab", "acct-0123456789ab/oncology/breast" },
+            AccountPackageListing.NamesIn(new[]
+            {
+                "acct-0123456789ab/oncology/breast/v2026.09.1/manifest.json",
+                "acct-0123456789ab/oncology/breast/latest.json",
+                "acct-0123456789ab/v2026.08.1/manifest.json"
+            }));
+    }
+
+    [Fact]
+    public void ANestedName_IsAnOwnerRowKey_WithoutTheSlash()
+    {
+        // #448: a table key may not hold '/'; '|' may, and no name holds it.
+        Assert.Equal("acct-0123456789ab|oncology|breast", PackageOwnerEntity.KeyFor("acct-0123456789ab/oncology/breast"));
+        Assert.Equal("acct-0123456789ab/oncology/breast", PackageOwnerEntity.NameOf("acct-0123456789ab|oncology|breast"));
+        Assert.Equal("acct-0123456789ab", PackageOwnerEntity.KeyFor("acct-0123456789ab"));
     }
 }

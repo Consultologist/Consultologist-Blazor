@@ -514,11 +514,11 @@ public sealed class WorkflowPackagePublisher
 
         if (request.NewPackageSlug != null)
         {
-            if (!WorkflowPackageNaming.IsValidSlug(request.NewPackageSlug))
+            if (!WorkflowPackageNaming.IsValidPath(request.NewPackageSlug))
             {
                 return new(null, new WorkflowPackagePublishResult(null, new[]
                 {
-                    $"NewPackageSlug must be lowercase letters, digits and hyphens, start with a letter or digit, not end with a hyphen, and be at most {WorkflowPackageNaming.MaxSlugLength} characters."
+                    $"NewPackageSlug must be a slug or a folder path of slugs (oncology/breast): lowercase letters, digits and hyphens per segment, each starting with a letter or digit, not ending with a hyphen, at most {WorkflowPackageNaming.MaxSlugLength} characters, at most {WorkflowPackageNaming.MaxPathSegments} segments."
                 }));
             }
 

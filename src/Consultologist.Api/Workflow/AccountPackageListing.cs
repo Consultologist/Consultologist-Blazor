@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Consultologist.PackageFormat;
 
 namespace Consultologist.Api.Workflow;
 
@@ -21,11 +22,8 @@ public static class AccountPackageListing
         IReadOnlyDictionary<string, IReadOnlyList<string>>? tags = null)
     {
         var versions = PublicRegistryReader.SortVersions(blobNames
-            .Select(blobName => blobName.Split('/'))
-            .Where(parts => parts.Length == 3
-                && string.Equals(parts[0], name, StringComparison.Ordinal)
-                && parts[2] == "manifest.json")
-            .Select(parts => parts[1]));
+            .Select(blobName => WorkflowPackageRef.TryParseManifestPath(blobName, out var owner, out var version) && string.Equals(owner, name, StringComparison.Ordinal) ? version : null)
+            .Where(version => version != null)!);
 
         string? latest = null;
 
@@ -69,15 +67,14 @@ public static class AccountPackageListing
 
     /// <summary>
     /// The distinct package names a blob listing holds a manifest for —
-    /// {name}/{version}/manifest.json and nothing else — in ordinal order.
-    /// #447: the one place the listing's three-part filter lives, so a nested
-    /// path (#448) fails a test here rather than vanishing from a picker.
+    /// {name}/{version}/manifest.json, the name read from the right so a
+    /// nested one (#448) is itself — in ordinal order.
     /// </summary>
     public static IReadOnlyList<string> NamesIn(IEnumerable<string> blobNames) =>
         blobNames
-            .Select(blobName => blobName.Split('/'))
-            .Where(parts => parts.Length == 3 && parts[2] == "manifest.json")
-            .Select(parts => parts[0])
+            .Select(blobName => WorkflowPackageRef.TryParseManifestPath(blobName, out var name, out _) ? name : null)
+            .Where(name => name != null)
+            .Select(name => name!)
             .Distinct(StringComparer.Ordinal)
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToList();

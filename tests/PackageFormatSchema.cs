@@ -37,7 +37,8 @@ internal static class PackageFormatSchema
     /// it outside the regex (`month is &lt; 1 or &gt; 12`), so copying the C# pattern
     /// alone would accept v2026.13.1.
     /// </summary>
-    private const string ConcreteRef = @"^[a-z0-9][a-z0-9-]*@v\d{4}\.(0[1-9]|1[0-2])\.[1-9]\d*$";
+    // #448: a name is a path of up to four segments; a flat name is one.
+    private const string ConcreteRef = @"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*){0,3}@v\d{4}\.(0[1-9]|1[0-2])\.[1-9]\d*$";
 
     private const string BindingSource = "^(input|item|data|node):.+$";
 

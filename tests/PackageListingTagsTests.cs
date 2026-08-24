@@ -42,6 +42,39 @@ public class PackageListingTagsTests
     }
 
     [Fact]
+    public void Build_AndAssemble_ReadANestedNameAsItself()
+    {
+        // #448: a nested package lists with its own versions; a flat one
+        // beside it is untouched, and neither swallows the other.
+        var blobs = new[]
+        {
+            "oncology/breast/v2026.08.1/manifest.json",
+            "oncology/breast/v2026.08.2/manifest.json",
+            "oncology/breast/latest.json",
+            "oncology/v2026.08.1/manifest.json"
+        };
+
+        var nested = AccountPackageListing.Build("oncology/breast", blobs, """{ "version": "v2026.08.2" }""");
+        Assert.Equal(new[] { "v2026.08.1", "v2026.08.2" }, nested.Versions);
+        Assert.Equal("v2026.08.2", nested.Latest);
+        Assert.Equal(new[] { "v2026.08.1" }, AccountPackageListing.Build("oncology", blobs, null).Versions);
+
+        var chain = PublicRegistryReader.Assemble(
+            blobs, Array.Empty<string>(), Array.Empty<string>(),
+            new Dictionary<string, string> { ["workflow-packages/oncology/breast/latest.json"] = """{ "version": "v2026.08.2" }""" },
+            DateTimeOffset.UtcNow,
+            new Dictionary<string, int> { ["oncology/breast/v2026.08.2"] = 9 },
+            new Dictionary<string, string> { ["oncology/breast/v2026.08.2"] = "Breast" },
+            new Dictionary<string, IReadOnlyList<string>> { ["oncology/breast/v2026.08.2"] = new[] { "oncology" } });
+        Assert.Equal(new[] { "oncology", "oncology/breast" }, chain.Packages.Select(p => p.Name));
+        var breast = chain.Packages.Single(p => p.Name == "oncology/breast");
+        Assert.Equal("v2026.08.2", breast.Latest);
+        Assert.Equal(9, breast.SpecVersions!["v2026.08.2"]);
+        Assert.Equal("Breast", breast.Titles!["v2026.08.2"]);
+        Assert.Equal(new[] { "oncology" }, breast.Tags!["v2026.08.2"]);
+    }
+
+    [Fact]
     public void Build_CarriesTags()
     {
         var summary = AccountPackageListing.Build(
