@@ -61,7 +61,7 @@ public abstract class ClientRenderTestContext : BunitContext
         // have no try/catch around these, so a throwing substitute fails the
         // render outright. Null is a value both handle.
         WorkflowService.GetPublicChainAsync().Returns((PublicChainView?)null);
-        WorkflowService.GetMyPackagesAsync().Returns((PublicPackageView?)null);
+        WorkflowService.GetMyPackagesAsync().Returns((IReadOnlyList<PublicPackageView>?)null);
     }
 
     /// <summary>

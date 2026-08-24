@@ -154,10 +154,15 @@
             }
         }
 
-        var mine = await WorkflowService.GetMyPackagesAsync();
-        if (mine is { Versions.Count: > 0 } && !string.IsNullOrWhiteSpace(mine.Name))
+        // #447: one group per package the account owns, named by the latest
+        // version's title when it has one and by the ref otherwise — the
+        // stated fallback everywhere a title is shown.
+        foreach (var mine in await WorkflowService.GetMyPackagesAsync() ?? Array.Empty<PublicPackageView>())
         {
-            built.Add(BuildGroup($"My fork ({mine.Name})", mine));
+            if (mine is { Versions.Count: > 0 } && !string.IsNullOrWhiteSpace(mine.Name))
+            {
+                built.Add(BuildGroup($"Mine — {MineLabel(mine)}", mine));
+            }
         }
 
         // A pin outside the listings (pruned version, listing outage) still
@@ -226,6 +231,13 @@
 
     private void ToggleTag(string tag) =>
         activeTag = string.Equals(tag, activeTag, StringComparison.OrdinalIgnoreCase) ? null : tag;
+
+    private static string MineLabel(PublicPackageView package)
+    {
+        var newest = package.Latest ?? package.Versions!.Last();
+        var title = package.Titles?.GetValueOrDefault(newest);
+        return string.IsNullOrWhiteSpace(title) ? package.Name! : $"{title} ({package.Name})";
+    }
 
     private static PickerGroup BuildGroup(string label, PublicPackageView package)
     {

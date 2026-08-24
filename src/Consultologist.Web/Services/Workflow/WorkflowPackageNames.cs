@@ -25,4 +25,18 @@ public static class WorkflowPackageNames
     /// </summary>
     public static bool IsAccountPackage(string? nameOrRef) =>
         nameOrRef != null && nameOrRef.StartsWith(AccountPrefix, StringComparison.Ordinal);
+
+    /// <summary>#447: mirrors WorkflowPackageNaming.MaxSlugLength; pinned in SpecVersionMirrorTests.</summary>
+    public const int MaxSlugLength = 40;
+
+    /// <summary>
+    /// #447: the server's slug rule, mirrored so the desk refuses what the
+    /// publish would: the name grammar, at most MaxSlugLength, no trailing
+    /// hyphen.
+    /// </summary>
+    public static bool IsValidSlug(string? slug) =>
+        !string.IsNullOrEmpty(slug)
+        && slug.Length <= MaxSlugLength
+        && !slug.EndsWith('-')
+        && System.Text.RegularExpressions.Regex.IsMatch(slug, "^[a-z0-9][a-z0-9-]*$");
 }

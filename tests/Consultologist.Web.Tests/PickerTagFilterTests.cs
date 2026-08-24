@@ -31,11 +31,14 @@ public class PickerTagFilterTests : ClientRenderTestContext
 
         if (withFork)
         {
-            WorkflowService.GetMyPackagesAsync().Returns(new PublicPackageView("acct-1234567890ab", "v2026.09.2",
-                new List<string> { "v2026.09.1", "v2026.09.2" },
-                new Dictionary<string, int> { ["v2026.09.1"] = 9, ["v2026.09.2"] = 9 },
-                null,
-                new Dictionary<string, List<string>> { ["v2026.09.1"] = new() { "oncology" }, ["v2026.09.2"] = new() { "oncology", "general" } }));
+            WorkflowService.GetMyPackagesAsync().Returns(new[]
+            {
+                new PublicPackageView("acct-1234567890ab", "v2026.09.2",
+                    new List<string> { "v2026.09.1", "v2026.09.2" },
+                    new Dictionary<string, int> { ["v2026.09.1"] = 9, ["v2026.09.2"] = 9 },
+                    null,
+                    new Dictionary<string, List<string>> { ["v2026.09.1"] = new() { "oncology" }, ["v2026.09.2"] = new() { "oncology", "general" } })
+            });
         }
     }
 
@@ -73,7 +76,7 @@ public class PickerTagFilterTests : ClientRenderTestContext
         // Only the fork carries oncology; general stays for the selection's
         // sake (its @latest goes — no general version carries the tag);
         // cardiology is gone.
-        Assert.Equal(new[] { "general", "My fork (acct-1234567890ab)" }, Groups(picker));
+        Assert.Equal(new[] { "general", "Mine — acct-1234567890ab" }, Groups(picker));
         Assert.Equal(
             new[] { "general@v2026.08.1", "acct-1234567890ab@latest", "acct-1234567890ab@v2026.09.2", "acct-1234567890ab@v2026.09.1" },
             Options(picker));

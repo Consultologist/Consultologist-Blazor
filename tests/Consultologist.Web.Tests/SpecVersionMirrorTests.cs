@@ -102,6 +102,17 @@ public class SpecVersionMirrorTests
     }
 
     [Fact]
+    public void TheClientsSlugRule_IsTheServers()
+    {
+        // #447: the desk refuses what the publish would, in the same terms.
+        Assert.Equal(WorkflowPackageNaming.MaxSlugLength, Consultologist.Web.Services.Workflow.WorkflowPackageNames.MaxSlugLength);
+        foreach (var slug in new[] { "breast-oncology", "a", "Breast", "breast-", "-b", "", "b c", new string('a', 40), new string('a', 41) })
+        {
+            Assert.Equal(WorkflowPackageNaming.IsValidSlug(slug), Consultologist.Web.Services.Workflow.WorkflowPackageNames.IsValidSlug(slug));
+        }
+    }
+
+    [Fact]
     public void TheClientsTagLimits_AreTheServers()
     {
         // #453: the pane's per-tag maxlength and its count ceiling.
