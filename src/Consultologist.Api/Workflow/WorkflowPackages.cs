@@ -564,6 +564,14 @@ public sealed class WorkflowPackages
             return await CreateJsonResponseAsync(req, HttpStatusCode.NotFound,
                 new { error = ex.Message }, cancellationToken);
         }
+        catch (InvalidOperationException ex)
+        {
+            // #463: a cycle or an unparseable derivedFrom is a defect in
+            // published content — said as such, not as a server fault.
+            _logger.LogError(ex, "Workflow package lineage could not be walked. Ref={Ref}", packageRef);
+            return await CreateJsonResponseAsync(req, HttpStatusCode.UnprocessableEntity,
+                new { error = ex.Message }, cancellationToken);
+        }
 
         // The acct-* rule on every hop — unreachable by construction (publish
         // stamping validates sources), enforced anyway.
