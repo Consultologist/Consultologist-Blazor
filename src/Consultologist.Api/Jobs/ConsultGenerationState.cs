@@ -52,6 +52,9 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         var state = State;
         state.Status = ConsultGenerationJobStatuses.Failed;
         state.StartFailure = input.Reason;
+        // The record's own storage shape is the current one, as a job that
+        // ran stamps at its first document; nothing here will stamp it later.
+        state.SchemaVersion = 7;
         state.CompletedAtUtc = DateTimeOffset.UtcNow;
         state.History.Add(new JobHistoryEvent("failure", "No document applies", input.Reason, DateTimeOffset.UtcNow));
         State = state;

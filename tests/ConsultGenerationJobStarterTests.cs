@@ -309,14 +309,15 @@ public class ConsultGenerationJobStarterTests
     private ConsultGenerationJobStartFailure? _recordedStartFailure;
 
     private async Task<(ConsultGenerationJobStartOutcome Outcome, ConsultGenerationJobInitialize? Initialize, ConsultGenerationOrchestrationInput? Input)>
-        StartFannedAsync(WorkflowPackageManifest manifest, ConsultInputValue? priorNotes, string fannedId = "prior_notes")
+        StartFannedAsync(WorkflowPackageManifest manifest, ConsultInputValue? priorNotes, string fannedId = "prior_notes",
+            IReadOnlyList<WorkflowResolvedResult>? results = null)
     {
         _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
             .Returns(new WorkflowPackageRef("general", "latest"));
         _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
             .Returns(ExecutableV7Package(
                 manifest,
-                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Consultation note") }));
+                results ?? new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Consultation note") }));
 
         ConsultGenerationJobInitialize? initialize = null;
         await _entities.SignalEntityAsync(
@@ -431,9 +432,43 @@ public class ConsultGenerationJobStarterTests
         Assert.Empty(recorded.Initialize.Items);
         var notProduced = Assert.Single(recorded.Initialize.SkippedDocuments!);
         Assert.Equal(("consult", "Consultation note"), (notProduced.ResultId, notProduced.Label));
-        Assert.Equal("'Prior notes' has no entries, and every document this package produces is written from them", notProduced.Reason);
+        Assert.Equal("is written from 'Prior notes', which has no entries", notProduced.Reason);
         Assert.Equal(9, recorded.Initialize.PackageSpecVersion);
         Assert.Equal(ConsultGenerationProvenance.StructuredInputsHashVersion, recorded.Initialize.EffectiveInputHashVersion);
+    }
+
+    [Fact]
+    public async Task AnEmptyFan_ListsEveryDeclaredDeliverable_EachWithItsOwnReason()
+    {
+        // Found in verification of #430 run 3: the fire set narrows the
+        // package's results before the fan is checked, and the record listed
+        // only the firing ones. Every declared deliverable belongs on it, in
+        // declaration order — the condition-skipped with the condition's
+        // reason, the rest with the fan's.
+        var manifest = V9Fixtures.Fanned();
+        manifest = manifest with
+        {
+            Inputs = manifest.Inputs!.Select(i => i.Id == "prior_notes" ? i with { Required = false } : i).ToList()
+        };
+        var results = new List<WorkflowResolvedResult>
+        {
+            new("consult", "assemble-note", "Consultation note"),
+            new("long_stay", "assemble-note", "Long-stay summary", new WorkflowResultCondition("length_of_stay", "7", false, Ordering: ">")),
+            new("digest", "assemble-note", "Prior-notes digest")
+        };
+
+        var (outcome, _, _) = await StartFannedAsync(manifest, priorNotes: null, results: results);
+
+        Assert.Equal(ConsultGenerationJobStartError.NoApplicableDeliverable, outcome.Error);
+        var recorded = Assert.IsType<ConsultGenerationJobStartFailure>(_recordedStartFailure);
+        Assert.Equal(
+            new[]
+            {
+                ("consult", "is written from 'Prior notes', which has no entries"),
+                ("long_stay", "needs length_of_stay to be > 7; it is not supplied"),
+                ("digest", "is written from 'Prior notes', which has no entries")
+            },
+            recorded.Initialize.SkippedDocuments!.Select(d => (d.ResultId, d.Reason)));
     }
 
     [Fact]
