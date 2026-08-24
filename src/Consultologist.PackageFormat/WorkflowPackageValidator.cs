@@ -1469,7 +1469,7 @@ public static class WorkflowPackageValidator
     }
 
     /// <summary>Sorted-key serialization with title/description stripped recursively.</summary>
-    internal static string CanonicalizeSchema(JsonNode? node)
+    public static string CanonicalizeSchema(JsonNode? node)
     {
         if (node is JsonObject obj)
         {
