@@ -452,3 +452,15 @@
 	gap: 0.5rem;
 	align-items: center;
 }
+
+/* #447: naming a new package, inline in the publish bar. */
+.editor-bar__new-package {
+	display: inline-flex;
+	gap: 0.4rem;
+	align-items: center;
+}
+
+.editor-bar__new-package input {
+	width: 14rem;
+	font-family: var(--consultologist-font-mono, monospace);
+}

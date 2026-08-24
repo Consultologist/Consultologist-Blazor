@@ -35,9 +35,12 @@ public class EditingIsNotPinningTests : ClientRenderTestContext
             },
             null));
 
-        WorkflowService.GetMyPackagesAsync().Returns(new PublicPackageView(
-            MyFork, "v2026.07.1", new List<string> { "v2026.07.1" },
-            new Dictionary<string, int> { ["v2026.07.1"] = 7 }));
+        WorkflowService.GetMyPackagesAsync().Returns(new[]
+        {
+            new PublicPackageView(
+                MyFork, "v2026.07.1", new List<string> { "v2026.07.1" },
+                new Dictionary<string, int> { ["v2026.07.1"] = 7 })
+        });
     }
 
     private static void Choose(IRenderedComponent<Templates> page, string packageRef) =>

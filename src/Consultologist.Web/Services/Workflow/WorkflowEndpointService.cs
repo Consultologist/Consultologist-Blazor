@@ -14,7 +14,8 @@ public interface IWorkflowEndpointService
     Task<WorkflowPackageContentResponse> GetCurrentPackageContentAsync(string? packageRef = null);
     Task<WorkflowPublishOutcome> PublishPackageAsync(WorkflowPackagePublishRequest request);
     Task<PublicChainView?> GetPublicChainAsync();
-    Task<PublicPackageView?> GetMyPackagesAsync();
+    /// <summary>#447: every package the account owns — a set, since an account holds many.</summary>
+    Task<IReadOnlyList<PublicPackageView>?> GetMyPackagesAsync();
     Task<Dictionary<string, PublicCatalogEntry>?> GetCatalogAsync(string version);
     Task<IReadOnlyList<string>?> GetLineageAsync(string packageRef);
     Task<string?> GetCurrentDiagramAsync(string? packageRef = null);
@@ -156,7 +157,15 @@ public record WorkflowPackageContentResponse(
 public record WorkflowPackagePublishRequest(
     string Source,
     JsonElement Manifest,
-    Dictionary<string, string> Files);
+    Dictionary<string, string> Files,
+    // #447: where it goes. Target = a new version of one of my packages;
+    // NewPackageSlug = a package I do not have yet; both null = my first,
+    // derived package (every older client). Mirrors the Api's record.
+    string? Target = null,
+    string? NewPackageSlug = null);
+
+/// <summary>#447: mirrors the Api's AccountPackagesResponse.</summary>
+public record AccountPackagesView(List<PublicPackageView>? Packages);
 
 public record WorkflowPackagePublishResponse(
     string Name,
@@ -317,9 +326,9 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
         }
     }
 
-    public async Task<PublicPackageView?> GetMyPackagesAsync()
+    public async Task<IReadOnlyList<PublicPackageView>?> GetMyPackagesAsync()
     {
-        var mineUrl = _configuration["AzureFunction:WorkflowPackageMineUrl"];
+        var mineUrl = _configuration["AzureFunction:WorkflowPackageMinePackagesUrl"];
 
         if (string.IsNullOrWhiteSpace(mineUrl))
         {
@@ -339,7 +348,8 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
                 return null;
             }
 
-            return await response.Content.ReadFromJsonAsync<PublicPackageView>();
+            var view = await response.Content.ReadFromJsonAsync<AccountPackagesView>();
+            return view?.Packages;
         }
         catch (AccessTokenNotAvailableException)
         {

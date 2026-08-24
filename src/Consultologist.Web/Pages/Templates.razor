@@ -89,19 +89,77 @@
                             Upgrade to specVersion @RunnableSpecVersion
                         </FluentButton>
                     }
-                    <FluentButton Appearance="Appearance.Accent"
-                                  Disabled="@(PendingCount == 0 || isPublishing)"
-                                  @onclick="PublishAsync">
-                        @if (isPublishing)
-                        {
-                            <FluentProgressRing style="width: 16px; height: 16px;" />
-                            <span>Publishing&hellip;</span>
-                        }
-                        else
-                        {
-                            <span>Publish@(PendingSummary())</span>
-                        }
-                    </FluentButton>
+                    @* #447: two publishes, said explicitly. A package of my own
+                       takes a new version; anything can become a new package of
+                       my own, named by a slug; a package that is not mine can
+                       only become a new one. An account with no package yet
+                       publishes its first without naming it — the derived name. *@
+                    @if (EditingOwnPackage)
+                    {
+                        <FluentButton Appearance="Appearance.Accent"
+                                      Disabled="@(PendingCount == 0 || isPublishing)"
+                                      @onclick="() => PublishAsync(content.Name, null)">
+                            @if (isPublishing)
+                            {
+                                <FluentProgressRing style="width: 16px; height: 16px;" />
+                                <span>Publishing&hellip;</span>
+                            }
+                            else
+                            {
+                                <span>Publish new version@(PendingSummary())</span>
+                            }
+                        </FluentButton>
+                    }
+                    @if (HasNoPackagesYet)
+                    {
+                        <FluentButton Appearance="Appearance.Accent"
+                                      Disabled="@(PendingCount == 0 || isPublishing)"
+                                      @onclick="() => PublishAsync(null, null)">
+                            @if (isPublishing)
+                            {
+                                <FluentProgressRing style="width: 16px; height: 16px;" />
+                                <span>Publishing&hellip;</span>
+                            }
+                            else
+                            {
+                                <span>Publish as your package@(PendingSummary())</span>
+                            }
+                        </FluentButton>
+                    }
+                    else if (!newPackageOpen)
+                    {
+                        <FluentButton Appearance="@(EditingOwnPackage ? Appearance.Outline : Appearance.Accent)"
+                                      Disabled="@(PendingCount == 0 || isPublishing)"
+                                      @onclick="() => newPackageOpen = true">
+                            Publish as a new package&hellip;
+                        </FluentButton>
+                    }
+                    else
+                    {
+                        <span class="editor-bar__new-package">
+                            <input class="node-field__input"
+                                   maxlength="@WorkflowPackageNames.MaxSlugLength"
+                                   value="@newPackageSlug"
+                                   placeholder="new-package-slug"
+                                   disabled="@isPublishing"
+                                   @oninput="args => newPackageSlug = args.Value?.ToString() ?? string.Empty"
+                                   aria-label="New package slug" />
+                            <FluentButton Appearance="Appearance.Accent"
+                                          Disabled="@(PendingCount == 0 || isPublishing || !WorkflowPackageNames.IsValidSlug(newPackageSlug.Trim()))"
+                                          @onclick="() => PublishAsync(null, newPackageSlug.Trim())">
+                                @if (isPublishing)
+                                {
+                                    <FluentProgressRing style="width: 16px; height: 16px;" />
+                                    <span>Publishing&hellip;</span>
+                                }
+                                else
+                                {
+                                    <span>Publish as new package</span>
+                                }
+                            </FluentButton>
+                            <FluentButton Appearance="Appearance.Outline" Disabled="@isPublishing" @onclick="() => newPackageOpen = false">Cancel</FluentButton>
+                        </span>
+                    }
                     <FluentButton Appearance="Appearance.Outline"
                                   Disabled="@(PendingCount == 0 || isPublishing)"
                                   @onclick="DiscardAsync">
@@ -125,8 +183,8 @@
                 <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">
                     <strong>You are editing <code>@content.Ref</code>, which is not your package.</strong>
                     <ul>
-                        <li>Publishing creates a new version of <strong>your own</strong> package from this content — not a new version of <code>@content.Name</code>.</li>
-                        <li>Any customisation your package already carries is not in this content, and will not be in what you publish.</li>
+                        <li>Publishing creates a <strong>new package of your own</strong> from this content — not a new version of <code>@content.Name</code>.</li>
+                        <li>Any customisation your packages already carry is not in this content, and will not be in what you publish.</li>
                         @if (WorkflowManifestReader.ReadTitle(content.Manifest) != null
                             || WorkflowManifestReader.ReadDescription(content.Manifest) != null
                             || WorkflowManifestReader.ReadTags(content.Manifest) is { Count: > 0 })
@@ -1431,7 +1489,25 @@
     /// started or restarted, but it makes Publish mean something other than
     /// "save my work" (#411).
     /// </summary>
+    // #447 considered asking the account's listed set instead of the prefix,
+    // and found it dead: a foreign account package cannot be loaded here (the
+    // server refuses it), so for any content this editor can hold, "has the
+    // prefix" and "is mine" coincide — a mutant using the prefix alone passed
+    // every test. The set (mine) decides only whether the account has any
+    // package yet.
     private bool EditingOwnPackage => WorkflowPackageNames.IsAccountPackage(content?.Name);
+
+    /// <summary>
+    /// #447: an account with no package yet publishes its first without naming
+    /// it — the derived name, as every publish did before. The same when the
+    /// listing is unknown: the server holds the rules, and the legacy publish
+    /// is the one it always accepted.
+    /// </summary>
+    private bool HasNoPackagesYet => mine is null or { Count: 0 } && !EditingOwnPackage;
+
+    private IReadOnlyList<PublicPackageView>? mine;
+    private bool newPackageOpen;
+    private string newPackageSlug = string.Empty;
 
     /// <summary>
     /// The ref this editor is holding. Since #411 it is NOT the consult pin:
@@ -4465,6 +4541,9 @@
         try
         {
             pinnedRef = await ReadPinAsync();
+            mine = await WorkflowService.GetMyPackagesAsync();
+            newPackageOpen = false;
+            newPackageSlug = string.Empty;
 
             try
             {
@@ -5024,7 +5103,12 @@
         return JsonSerializer.Serialize(new { fields, items }, new JsonSerializerOptions { WriteIndented = true });
     }
 
-    private async Task PublishAsync()
+    /// <summary>
+    /// #447: target names one of my packages for a new version; newPackageSlug
+    /// names a package I do not have; both null is my first package. The
+    /// server applies the same rules and the fork-clears-metadata rule.
+    /// </summary>
+    private async Task PublishAsync(string? target, string? newPackageSlug)
     {
         if (content == null || PendingCount == 0 || isPublishing)
         {
@@ -5201,7 +5285,7 @@
 
             var composed = ComposeManifest();
             var outcome = await WorkflowService.PublishPackageAsync(
-                new WorkflowPackagePublishRequest(content.Ref, composed, files));
+                new WorkflowPackagePublishRequest(content.Ref, composed, files, target, newPackageSlug));
 
             if (!outcome.Succeeded)
             {
@@ -5216,17 +5300,22 @@
             // whole story when the source was not their own package (#411).
             var sourceRef = content.Ref;
             var sourceWasForeign = !EditingOwnPackage;
+            var asNewPackage = newPackageSlug != null || sourceWasForeign;
+            // The published version is the pin now (the server flipped it);
+            // the editor follows it rather than reloading the source.
+            editingRef = null;
+            await ForgetRememberedPackageAsync();
             // Warnings arrive with a *successful* publish and the version is
             // immutable, so this is the only moment they can be read. Held
             // across LoadAsync, which resets the rest of the page state.
             var warnings = outcome.Response.Warnings ?? new List<string>();
             // #432: the title the publish carried — none on a fork, which the
             // server clears; quoted so the success names what was just named.
-            var publishedTitle = sourceWasForeign ? null : WorkflowManifestReader.ReadTitle(composed);
+            var publishedTitle = asNewPackage ? null : WorkflowManifestReader.ReadTitle(composed);
             var named = string.IsNullOrEmpty(publishedTitle) ? string.Empty : $" (\"{publishedTitle}\")";
             await LoadAsync();
-            publishSuccess = (sourceWasForeign
-                ? $"Published {publishedRef}{named} from {sourceRef} and switched your consults to it."
+            publishSuccess = (asNewPackage
+                ? $"Published {publishedRef}{named} as a new package from {sourceRef} and switched your consults to it."
                 : $"Published {publishedRef}{named} and switched your consults to it.");
             publishWarnings = warnings;
         }
