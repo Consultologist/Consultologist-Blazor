@@ -70,6 +70,30 @@ public class PickerSelectionDisplayTests : ClientRenderTestContext
     }
 
     [Fact]
+    public async Task AFolderOrAPackageNode_IsNotAChoice()
+    {
+        // #448: only a version carries a ref. Opening a folder or a package
+        // selects nothing and tells the parent nothing — found by a mutant
+        // that let every node through.
+        WithRegistry();
+        var chosen = new List<string>();
+        var picker = Render<WorkflowPackagePicker>(parameters => parameters
+            .Add(p => p.WritesPin, false)
+            .Add(p => p.Selected, "general@v2026.08.1")
+            .Add(p => p.OnSelected, (string value) => chosen.Add(value)));
+        PickerTree.Open(picker);
+
+        await picker.FindAll("fluent-tree-item").Single(item => item.GetAttribute("id") == "package:general")
+            .TriggerEventAsync("onselectedchange", new Microsoft.FluentUI.AspNetCore.Components.TreeChangeEventArgs { AffectedId = "package:general", Selected = true });
+        await picker.FindAll("fluent-tree-item").Single(item => item.GetAttribute("id") == "root:Provided")
+            .TriggerEventAsync("onselectedchange", new Microsoft.FluentUI.AspNetCore.Components.TreeChangeEventArgs { AffectedId = "root:Provided", Selected = true });
+
+        Assert.Empty(chosen);
+        Assert.Equal("general@v2026.08.1", PickerTree.Shown(picker));
+        Assert.NotEmpty(picker.FindAll(".package-picker__panel"));
+    }
+
+    [Fact]
     public async Task ExactlyOneOption_IsEverMarkedSelected()
     {
         // Two would let the browser choose, which is how this went unnoticed.
