@@ -652,17 +652,32 @@ public class ConsultGenerationNodeEntityTests
         entity.MarkNodeCompleted(new ConsultGenerationNodeUpdate(
             "extract-patient-concepts", "Extracting clinical concepts",
             new[] { new ClinicalConcept("Term", "disorder", "1", true, true, "patient") },
-            "hash-in", "hash-out", 1, 5));
+            "hash-in", "hash-out", 1, 5, ConsultGenerationProvenance.NodeHashVersion));
 
         var node = state().NodeOutputs!["extract-patient-concepts"];
         Assert.Equal(6, state().SchemaVersion);
         Assert.Equal(ConsultGenerationNodeStatuses.Completed, node.Status);
         Assert.Equal("hash-in", node.InputHash);
         Assert.Equal("hash-out", node.OutputHash);
+        // #375: the pair's definition rides with the hashes, onto the wire.
+        Assert.Equal(ConsultGenerationProvenance.NodeHashVersion, node.HashVersion);
+        Assert.Equal(ConsultGenerationProvenance.NodeHashVersion, state().ToResponse().NodeOutputs!["extract-patient-concepts"].HashVersion);
         Assert.Single(node.Concepts!);
         Assert.Equal(1, state().CompletedStageCount);
         Assert.Equal(5, state().TotalStageCount);
         Assert.Contains(state().History, h => h is { Kind: "success", Label: "Extracting clinical concepts" });
+    }
+
+    [Fact]
+    public void ASignalFromBeforeTheLadder_LeavesTheVersionUnstamped()
+    {
+        // #375: the trailing field defaults; an in-flight job started before
+        // the ladder completes its nodes with hashes and no number, which the
+        // published contract says how to read.
+        var (entity, state) = CreateEntity();
+        entity.MarkNodeCompleted(new ConsultGenerationNodeUpdate("extract", "Extract", null, "i", "o", 1, 1));
+        Assert.Null(state().NodeOutputs!["extract"].HashVersion);
+        Assert.Null(state().ToResponse().NodeOutputs!["extract"].HashVersion);
     }
 
     [Fact]
@@ -672,7 +687,7 @@ public class ConsultGenerationNodeEntityTests
 
         entity.MarkNodeItemCompleted(new ConsultGenerationNodeItemUpdate(
             "standard-section-draft", "Drafting section", "hpi", "History of Present Illness",
-            null, "hash-in", "hash-out", 1, 3));
+            null, "hash-in", "hash-out", 1, 3, ConsultGenerationProvenance.NodeHashVersion));
 
         var s = state();
         Assert.Equal(6, s.SchemaVersion);
@@ -682,6 +697,7 @@ public class ConsultGenerationNodeEntityTests
         Assert.Equal(ConsultGenerationNodeStatuses.Completed, output.Status);
         Assert.Equal("hash-in", output.InputHash);
         Assert.Equal("hash-out", output.OutputHash);
+        Assert.Equal(ConsultGenerationProvenance.NodeHashVersion, output.HashVersion);
 
         var progress = s.ItemProgress["hpi"];
         Assert.Equal("standard-section-draft", progress.Step);

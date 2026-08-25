@@ -18,6 +18,7 @@ public class ProvenanceMirrorTests
     [Theory]
     [InlineData(typeof(ApiModels.ConsultInputOrigin), typeof(WebAI.ConsultInputOrigin))]
     [InlineData(typeof(ApiModels.InputFilePayload), typeof(WebAI.InputFilePayload))]
+    [InlineData(typeof(ApiModels.ConsultGenerationNodeStatusResponse), typeof(WebAI.ConsultGenerationNodeStatus))]
     public void TheMirroredRecords_ExposeTheSameProperties(Type api, Type web)
     {
         static IEnumerable<string> Shape(Type type) =>

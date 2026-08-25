@@ -64,11 +64,13 @@ public class ProvenanceVersionSetTests
     }
 
     [Fact]
-    public void ThePerNodeHash_IsPublishedAsUnversioned()
+    public void ThePerNodeLadder_IsThePublishedOne_AndTheEngineStampsItsNewest()
     {
-        // #375: a stated fact, not an omission. When the ladder gets its first
-        // number, this test and the document move together.
-        Assert.Empty(Ladder("nodeHashVersions"));
+        // #375: five definitions, dated to the commits that changed the
+        // rendered-prompt bytes; the engine stamps the newest. A renderer
+        // change moves NodeHashVersion and the index together, or fails here.
+        Assert.Equal(Enumerable.Range(1, ConsultGenerationProvenance.NodeHashVersion), Ladder("nodeHashVersions"));
+        Assert.Equal(Ladder("nodeHashVersions").Max(), ConsultGenerationProvenance.NodeHashVersion);
     }
 
     [Fact]
