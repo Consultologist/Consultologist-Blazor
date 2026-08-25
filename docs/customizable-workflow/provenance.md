@@ -42,8 +42,12 @@ sorting is the design decision that keeps the record honest over time:
   (nodes, rosters, origins, skipped deliverables, title, tags), kept so the
   job replays and reads the same way forever. Durable replay determinism is
   the reason these are stored rather than re-derived.
-- **derived projections** — the deliverable hashes, recomputed from the record
-  on every read and never stored. Anyone holding the record recomputes them.
+- **derived projections, stored at completion** — the deliverable hashes,
+  computed from the text once when the job completes and kept (#368; records
+  from before derive them on read, and serve the same values). Anyone holding
+  the record recomputes them while the text is present; after the retention
+  policy deletes it (`textDroppedAtUtc`) they attest what was produced and
+  can no longer be checked against it.
 
 `agentVersions` was the one copy the record ever stored; #105 retired it in
 favour of `catalogRef` for exactly the reason above.
