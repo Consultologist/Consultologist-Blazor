@@ -94,6 +94,13 @@ each has, or needs, its own work:
 > notice when the endpoint cannot say. The property set is pinned by test.
 > Since #384 the app also reports every account's pin against the loaded
 > catalog at startup and at `GET /api/Operator/PinHealth` (registry-operations.md).
+> Since #400 it attests the provenance registry version too, and since #398
+> (2026-08-25) **every job record names both**: `packageFormatRef`
+> (`package-format@v…`, the rules its package was read by) and `provenanceRef`
+> (`provenance@v…`, the contract the record conforms to), stamped write-once
+> at start from the build's own attestation — never a run-time lookup, never a
+> pin the engine might not run. History resolves a record's numbers through
+> its own refs, and through the attestation only for records from before.
 
 The Foundry agent (system prompt, parameters, tool wiring) is edited in a portal and is
 therefore mutable state. Rule: **track the agent config in git; at startup or job start,
