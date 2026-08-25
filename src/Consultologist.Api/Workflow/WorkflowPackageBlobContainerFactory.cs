@@ -67,6 +67,11 @@ public sealed class WorkflowPackageBlobContainerFactory
     /// <summary>The private container — the registry writer's target (acct-* only).</summary>
     public BlobContainerClient GetContainer() => _privateContainer;
 
+    /// <summary>The public container when configured (#452: the sweep lists it whole).</summary>
+    public BlobContainerClient? GetPublicContainer() => _publicContainer;
+
+    public bool HasPublicContainer => _publicContainer != null;
+
     /// <summary>
     /// The container a package name resolves from: acct-* forks from the private
     /// container, repo-owned names from the public one (when configured).
