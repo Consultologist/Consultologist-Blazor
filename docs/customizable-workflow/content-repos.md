@@ -22,6 +22,12 @@ the local baseline — no silent drift), and the catalog pin
 | `consultologist-workflows` | Workflow package sources (`packages/general/`, `packages/example-two-documents/`) | CalVer `vYYYY.MM.N` per package | `workflow-packages` blob container (`{name}/{version}/…` + `latest.json` pointers) |
 | `consultologist-agents` | Agent manifests (today: `agents/test-json.yaml`) | Tags matching Foundry integer versions (`test-json/48`) | **Both** the Foundry agent version (via the agents REST API) and the manifest mirror in blob (`agents/{name}/{version}/agent.yaml`) |
 
+A catalog change is gated twice: the agents repo's CI refuses a pull request
+whose catalog would strand a published public package
+(`scripts/check-catalog-strands-packages.cs`), and the operator sweeps both
+registries against a published candidate before bumping the pin
+(`GET /api/Operator/CatalogStrands`, #452).
+
 Both content repos validate against the engine before publishing; the workflows
 repo checks the app out at the commit the deployed engine reports
 (`GET /api/Public/Engine`, #449), so "passed engine validation" is a statement
