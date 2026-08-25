@@ -20,6 +20,7 @@ the local baseline — no silent drift), and the catalog pin
 | Repo | Contents | Versioning / tags | Publishes |
 |---|---|---|---|
 | `consultologist-workflows` | Workflow package sources (`packages/general/`, `packages/example-two-documents/`) | CalVer `vYYYY.MM.N` per package | `workflow-packages` blob container (`{name}/{version}/…` + `latest.json` pointers) |
+| `consultologist-provenance` | The provenance record contract and the hash definitions (`provenance-record.md`, `hash-definitions.md`, `provenance-versions.json`) | CalVer `vYYYY.MM.N` in the index; merging publishes | `provenance` container; vendored by the engine as a submodule and pinned by test (#400) |
 | `consultologist-agents` | Agent manifests (today: `agents/test-json.yaml`) | Tags matching Foundry integer versions (`test-json/48`) | **Both** the Foundry agent version (via the agents REST API) and the manifest mirror in blob (`agents/{name}/{version}/agent.yaml`) |
 
 A catalog change is gated twice: the agents repo's CI refuses a pull request

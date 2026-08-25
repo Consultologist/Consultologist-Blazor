@@ -30,8 +30,11 @@ yet; these notes are the input to a future milestone plan.
   (verified against the code)
 - [workflow-packages.md](workflow-packages.md) — the versioned "workflow package"
   concept, registry, pinning, specialty bundles, and the milestone sequencing
-- [provenance.md](provenance.md) — the per-consult provenance record: fields, sources,
-  attestation checks, and reproducibility limits
+- [provenance.md](provenance.md) — the provenance design record: why the record is
+  shaped as it is, attestation, reproducibility limits, and the legs declared but not
+  yet recorded. The normative contract moved out (#400) to
+  [consultologist-provenance](https://github.com/Consultologist/consultologist-provenance),
+  vendored as `external/consultologist-provenance`.
 - [dag-improvements.md](dag-improvements.md) — prioritized improvements for when the
   DAG-as-data milestone is built (structured-output edges, eval-gated publishing,
   human-in-the-loop nodes, memoization, per-step provenance, safety rails)

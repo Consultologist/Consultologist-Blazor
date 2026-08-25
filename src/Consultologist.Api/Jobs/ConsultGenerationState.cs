@@ -526,6 +526,13 @@ public sealed class ConsultGenerationJobState
     /// </summary>
     public int SchemaVersion { get; set; } = 2;
 
+    /// <summary>
+    /// Every value SchemaVersion has ever been stamped with — the published
+    /// fact in provenance-versions.json (#400), pinned against this list by
+    /// test. A new storage shape is added here and there in the same change.
+    /// </summary>
+    public static readonly IReadOnlyList<int> StorageVersions = new[] { 2, 6, 7 };
+
     /// <summary>#373: the specVersion of the package this job ran.</summary>
     public int? PackageSpecVersion { get; set; }
 

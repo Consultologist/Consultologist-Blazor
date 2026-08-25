@@ -42,12 +42,13 @@ public class EngineAttestationTests
     public void Describe_StatesTheBuildAndWhatItRuns()
     {
         var now = new DateTimeOffset(2026, 8, 24, 12, 0, 0, TimeSpan.Zero);
-        var response = EngineAttestation.Describe($"1.0.0+{Sha}", "output-contracts@v2026.07.2", "v2026.08.6", now);
+        var response = EngineAttestation.Describe($"1.0.0+{Sha}", "output-contracts@v2026.07.2", "v2026.08.6", "v2026.08.1", now);
 
         Assert.Equal(Sha, response.Commit);
         Assert.Equal("1.0.0", response.Version);
         Assert.Equal("output-contracts@v2026.07.2", response.OutputContracts);
         Assert.Equal("v2026.08.6", response.PackageFormat);
+        Assert.Equal("v2026.08.1", response.Provenance);
         // By identity, not value: the two sets are equal today, so a swapped
         // pair would read the same until the day they differ.
         Assert.Same(WorkflowPackageValidator.AcceptedSpecVersions, response.AcceptedSpecVersions);
@@ -62,12 +63,12 @@ public class EngineAttestationTests
     [Fact]
     public void Describe_AnUnstampedBuild_SaysSoWithoutAnyCommit()
     {
-        var response = EngineAttestation.Describe("1.0.0", "output-contracts@v2026.07.2", null, DateTimeOffset.UnixEpoch);
+        var response = EngineAttestation.Describe("1.0.0", "output-contracts@v2026.07.2", null, null, DateTimeOffset.UnixEpoch);
         Assert.Null(response.Commit);
         Assert.Equal("1.0.0", response.Version);
         Assert.Null(response.PackageFormat);
 
-        Assert.Equal("unknown", EngineAttestation.Describe(null, "output-contracts@v2026.07.2", null, DateTimeOffset.UnixEpoch).Version);
+        Assert.Equal("unknown", EngineAttestation.Describe(null, "output-contracts@v2026.07.2", null, null, DateTimeOffset.UnixEpoch).Version);
     }
 
     [Fact]
@@ -78,6 +79,14 @@ public class EngineAttestationTests
         var vendored = (string)JsonNode.Parse(File.ReadAllText(VendoredSpecVersionsPath()))!["version"]!;
         Assert.Matches(@"^v\d{4}\.\d{2}\.\d+$", vendored);
         Assert.Equal(vendored, EngineAttestation.PackageFormatVersionIn(AppContext.BaseDirectory));
+    }
+
+    [Fact]
+    public void TheCopiedProvenanceIndex_IsTheVendoredOne()
+    {
+        var vendored = (string)JsonNode.Parse(File.ReadAllText(Path.Combine(RepoRoot(), "external", "consultologist-provenance", "provenance-versions.json")))!["version"]!;
+        Assert.Matches(@"^v\d{4}\.\d{2}\.\d+$", vendored);
+        Assert.Equal(vendored, EngineAttestation.ProvenanceVersionIn(AppContext.BaseDirectory));
     }
 
     [Fact]
@@ -104,7 +113,7 @@ public class EngineAttestationTests
         // added here, in the open, before it can reach the wire.
         var properties = typeof(EngineAttestationResponse).GetProperties().Select(p => p.Name).Order(StringComparer.Ordinal);
         Assert.Equal(
-            new[] { "AcceptedSpecVersions", "Commit", "GeneratedAtUtc", "OutputContracts", "PackageFormat", "Scriban", "SupportedSpecVersions", "Version" },
+            new[] { "AcceptedSpecVersions", "Commit", "GeneratedAtUtc", "OutputContracts", "PackageFormat", "Provenance", "Scriban", "SupportedSpecVersions", "Version" },
             properties);
     }
 
