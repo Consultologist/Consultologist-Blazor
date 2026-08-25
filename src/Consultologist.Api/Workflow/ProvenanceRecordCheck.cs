@@ -20,11 +20,22 @@ public static class ProvenanceRecordCheck
         IReadOnlyDictionary<string, ConsultInputValue>? inputs = null,
         string? draft = null)
     {
+        // #368: after the retention policy deleted the text nothing can be
+        // recomputed; every hash is attested, not checkable.
+        if (record.TextDroppedAtUtc is { } droppedAt)
+        {
+            var note = $"text deleted on {droppedAt:yyyy-MM-dd} under the retention policy — attested, not checkable";
+            var dropped = new List<HashCheck> { new("workflowOutputHash", record.WorkflowOutputHashVersion, record.WorkflowOutputHash, null, null, note) };
+            dropped.AddRange((record.AssembledDocuments ?? Array.Empty<ConsultGenerationResultDocumentResponse>())
+                .Select(d => new HashCheck($"assembledDocuments[{d.ResultId}].documentHash", null, d.DocumentHash, null, null, note)));
+            return dropped;
+        }
+
         var checks = new List<HashCheck> { OutputHash(record) };
 
-        foreach (var document in record.AssembledDocuments ?? Array.Empty<ConsultGenerationResultDocumentResponse>())
+        foreach (var document in (record.AssembledDocuments ?? Array.Empty<ConsultGenerationResultDocumentResponse>()).Where(d => d.Text != null))
         {
-            var recomputed = ConsultGenerationProvenance.Sha256Hex(document.Text);
+            var recomputed = ConsultGenerationProvenance.Sha256Hex(document.Text!);
             checks.Add(new HashCheck($"assembledDocuments[{document.ResultId}].documentHash", null, document.DocumentHash, recomputed,
                 document.DocumentHash == null ? null : string.Equals(document.DocumentHash, recomputed, StringComparison.Ordinal),
                 document.DocumentHash == null ? "the record carries no documentHash for this document" : null));
@@ -51,9 +62,9 @@ public static class ProvenanceRecordCheck
         string? recomputed;
         switch (record.WorkflowOutputHashVersion)
         {
-            case 3 when record.AssembledDocuments is { Count: > 0 } documents:
+            case 3 when record.AssembledDocuments is { Count: > 0 } documents && documents.All(d => d.Text != null):
                 recomputed = ConsultGenerationProvenance.ComputeResultSetHash(
-                    documents.ToDictionary(d => d.ResultId, d => d.Text, StringComparer.Ordinal));
+                    documents.ToDictionary(d => d.ResultId, d => d.Text!, StringComparer.Ordinal));
                 break;
             case 2 when record.AssembledDocument != null:
                 recomputed = ConsultGenerationProvenance.ComputeAssembledDocumentHash(record.AssembledDocument);

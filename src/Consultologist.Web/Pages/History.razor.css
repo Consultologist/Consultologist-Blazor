@@ -340,3 +340,17 @@
     color: var(--error, #a4262c);
     font-weight: 600;
 }
+
+/* #368: the text is deleted, the record stays — a named state, not an empty panel. */
+.hash-check--unavailable {
+    color: var(--neutral-foreground-hint, #605e5c);
+    font-style: italic;
+}
+
+.job-source-badge--retention {
+    opacity: 0.85;
+}
+
+.provenance-text-deleted {
+    font-style: italic;
+}

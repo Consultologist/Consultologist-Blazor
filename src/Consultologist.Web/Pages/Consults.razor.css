@@ -471,3 +471,11 @@
 .setup-context__title {
 	font-weight: 600;
 }
+
+/* #368: the produced text was deleted under the retention policy. */
+.note-deleted-state {
+    padding: 1rem;
+    border: 1px dashed var(--neutral-stroke-rest, #c8c6c4);
+    border-radius: 4px;
+    color: var(--neutral-foreground-hint, #605e5c);
+}

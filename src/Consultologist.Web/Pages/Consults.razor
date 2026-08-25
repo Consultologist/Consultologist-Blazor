@@ -446,10 +446,17 @@
                                     </div>
                                 </div>
 
-                                @if (assembledDocuments.Count == 1)
+                                @if (textDroppedAtUtc is { } deletedAt)
+                                {
+                                    @* #368: a named state — the record is kept, the text is not. *@
+                                    <div class="note-deleted-state">
+                                        <p>The produced text was deleted on @deletedAt.ToLocalTime().ToString("MMM d, yyyy") under the retention policy. The record — its hashes, nodes, package, catalog and terminology — is kept, and is in History.</p>
+                                    </div>
+                                }
+                                else if (assembledDocuments.Count == 1)
                                 {
                                     <article class="note-preview generated-note generated-note--assembled">
-                                        @((MarkupString)MarkdownPreview.Render(assembledDocuments[0].Text))
+                                        @((MarkupString)MarkdownPreview.Render(assembledDocuments[0].Text ?? string.Empty))
                                     </article>
                                 }
                                 else
@@ -464,7 +471,7 @@
                                                        Label="@document.Label"
                                                        @key="document.ResultId">
                                                 <article class="note-preview generated-note generated-note--assembled">
-                                                    @((MarkupString)MarkdownPreview.Render(document.Text))
+                                                    @((MarkupString)MarkdownPreview.Render(document.Text ?? string.Empty))
                                                 </article>
                                             </FluentTab>
                                         }
@@ -771,6 +778,8 @@
   private string? copyFeedback;
   private int copyFeedbackToken;
   private IReadOnlyList<ConsultGenerationResultDocumentResponse> assembledDocuments = Array.Empty<ConsultGenerationResultDocumentResponse>();
+  // #368: set when the record says its text was deleted under the retention policy.
+  private DateTimeOffset? textDroppedAtUtc;
 
   // #315: declared deliverables this job's inputs excluded.
   private IReadOnlyList<ConsultSkippedDocumentResponse> skippedDocuments = Array.Empty<ConsultSkippedDocumentResponse>();
@@ -1580,6 +1589,7 @@
     // on it.
     runEventSeen = true;
     generatedBlocks = response.GeneratedBlocks;
+    textDroppedAtUtc = response.TextDroppedAtUtc;
 
     // The deliverables, present on Completed payloads only and kept once seen.
     // v7 sends the set; v6 sends one string, which becomes a one-entry set so

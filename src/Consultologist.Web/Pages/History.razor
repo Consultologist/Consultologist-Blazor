@@ -73,6 +73,10 @@
                                         {
                                             <span class="job-source-badge" title="Submitted by email">email</span>
                                         }
+                                        @if (job.TextDroppedAtUtc != null)
+                                        {
+                                            <span class="job-source-badge job-source-badge--retention" title="The produced text was deleted under the retention policy; the record is kept">text deleted</span>
+                                        }
                                     </div>
                                     <div class="job-history-item__meta">
                                         <span class="muted-text">@FormatDate(job.CreatedAtUtc)</span>
@@ -260,7 +264,7 @@
                                                     <FluentButton Appearance="Appearance.Outline" OnClick="@(() => VerifyHashes(detail))" title="Recompute this record's deliverable hashes from its texts">Verify</FluentButton>
                                                     @if (_hashChecks.TryGetValue(detail.JobId, out var verified))
                                                     {
-                                                        <span class="muted-text">@(verified.All(c => c.Matches) ? $"{verified.Count} hash(es) recomputed — all match" : $"{verified.Count(c => !c.Matches)} of {verified.Count} recomputed hash(es) do not match")</span>
+                                                        <span class="muted-text">@(verified.All(c => c.NotCheckable) ? "The produced text was deleted under the retention policy; the hashes attest what was produced and cannot be checked against it" : verified.All(c => c.Matches) ? $"{verified.Count} hash(es) recomputed — all match" : $"{verified.Count(c => !c.Matches)} of {verified.Count} recomputed hash(es) do not match")</span>
                                                         <span class="muted-text">Input and per-node hashes need what the record does not carry — the inputs and the rendered prompts; scripts/verify-job-hashes.cs checks the input hash given the inputs.</span>
                                                     }
                                                 </div>
@@ -278,6 +282,12 @@
                                                    their exact sequence. *@
                                                 @* #398: the contract this record conforms to, as it recorded
                                                    it — the version to read every number below by. *@
+                                                @* #368: a named state, not an empty panel. *@
+                                                @if (detail.TextDroppedAtUtc is { } textDroppedAt)
+                                                {
+                                                    <dt>Text deleted</dt>
+                                                    <dd class="provenance-text-deleted">@FormatDate(textDroppedAt) — the produced text was deleted under the retention policy; the record is kept</dd>
+                                                }
                                                 <dt>Contract</dt>
                                                 <dd class="provenance-contract">
                                                     @if (detail.ProvenanceRef is { } provenanceRef && ProvenanceDocument(detail, "provenance-record.md") is { } contractHref)
@@ -924,8 +934,8 @@
             ? builder =>
             {
                 builder.OpenElement(0, "span");
-                builder.AddAttribute(1, "class", check.Matches ? "hash-check hash-check--match" : "hash-check hash-check--mismatch");
-                builder.AddContent(2, check.Matches ? "recomputed — matches" : "recomputed — does not match");
+                builder.AddAttribute(1, "class", check.NotCheckable ? "hash-check hash-check--unavailable" : check.Matches ? "hash-check hash-check--match" : "hash-check hash-check--mismatch");
+                builder.AddContent(2, check.NotCheckable ? (check.Note ?? "not checkable") : check.Matches ? "recomputed — matches" : "recomputed — does not match");
                 builder.CloseElement();
             }
             : null;
