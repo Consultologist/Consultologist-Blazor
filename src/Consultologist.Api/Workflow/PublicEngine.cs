@@ -16,9 +16,11 @@ public sealed class PublicEngine
 {
     private readonly EngineAttestationResponse _attestation;
 
-    public PublicEngine(OutputContractCatalog catalog)
+    public PublicEngine(EngineAttestationResponse attestation)
     {
-        _attestation = EngineAttestation.Current(catalog);
+        // One instance for the process (Program.cs): what this serves is what
+        // the starter stamps on every record (#398).
+        _attestation = attestation;
     }
 
     [Function("PublicEngine")]

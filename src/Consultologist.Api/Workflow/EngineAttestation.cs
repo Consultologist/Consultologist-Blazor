@@ -101,6 +101,13 @@ public static class EngineAttestation
             : null;
     }
 
+    /// <summary>A registry ref for a vendored version — `package-format@v…` — or null when the build carries none (#398).</summary>
+    public static string? RefOf(string registry, string? version) =>
+        string.IsNullOrWhiteSpace(version) ? null : $"{registry}@{version}";
+
+    public const string PackageFormatRegistry = "package-format";
+    public const string ProvenanceRegistry = "provenance";
+
     public static EngineAttestationResponse Current(OutputContractCatalog catalog) =>
         Describe(
             typeof(EngineAttestation).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
