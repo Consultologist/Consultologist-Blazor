@@ -301,7 +301,7 @@
                                                 @if (AgentContracts(detail).Any())
                                                 {
                                                     <dt>Agents</dt>
-                                                    <dd>
+                                                    <dd class="provenance-agents">
                                                         @string.Join(" · ", AgentContracts(detail).Select(contract => AgentLine(contract, detail)))
                                                     </dd>
                                                 }
@@ -805,10 +805,19 @@
             ? doc
             : null;
 
-    private IEnumerable<string> AgentContracts(ConsultGenerationJobResponse detail)
+    // #458: the contracts this job's nodes bound, in declaration order — not
+    // the catalog version's whole map, which the catalog chip already names.
+    // A node without a schema renders through the text contract (the run
+    // rail's rule at ContractLabel). Legacy records (≤ 2026-07-17) carry no
+    // nodes on the wire and keep showing their stored map.
+    private static IEnumerable<string> AgentContracts(ConsultGenerationJobResponse detail)
     {
-        var contracts = JobCatalog(detail)?.Keys ?? detail.AgentVersions?.Keys as IEnumerable<string>;
-        return (contracts ?? Enumerable.Empty<string>()).OrderBy(c => c, StringComparer.Ordinal);
+        if (detail.Nodes is { Count: > 0 } nodes)
+        {
+            return nodes.Select(node => node.OutputContract ?? "text").Distinct(StringComparer.Ordinal);
+        }
+
+        return (detail.AgentVersions?.Keys ?? Enumerable.Empty<string>()).OrderBy(c => c, StringComparer.Ordinal);
     }
 
     // Resolution order: the job's own catalog document (historically exact) →
