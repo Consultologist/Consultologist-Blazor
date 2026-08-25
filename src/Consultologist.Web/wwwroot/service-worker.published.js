@@ -5,6 +5,15 @@ self.importScripts('./service-worker-assets.js');
 self.addEventListener('install', event => event.waitUntil(onInstall(event)));
 self.addEventListener('activate', event => event.waitUntil(onActivate(event)));
 self.addEventListener('fetch', event => event.respondWith(onFetch(event)));
+// #412: a new build installs into a *waiting* worker that only takes over
+// once every tab is closed. The page asks for the hand-over when the user
+// clicks Reload (js/app-update.js) — never on its own, a consult may be
+// mid-run. This is the only departure from the stock Blazor worker.
+self.addEventListener('message', event => {
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
+});
 
 const cacheNamePrefix = 'offline-cache-';
 const cacheName = `${cacheNamePrefix}${self.assetsManifest.version}`;
