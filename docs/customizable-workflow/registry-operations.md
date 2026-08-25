@@ -11,8 +11,9 @@ specVersion-2 package with prompts).
 > layout families, CalVer, immutability, `latest.json`, anonymous read
 > including listing — is published as `registry-layout.md` in
 > [consultologist-provenance](https://github.com/Consultologist/consultologist-provenance)
-> (#401). This file is the operator's runbook: which account, which
-> commands, which roles.
+> (#401). This page is what an author or a verifier needs to read the
+> public registries; the operator's recipes — the private account, roles,
+> repair — live in the operations repository (private, by design; #397).
 
 **Ownership split (Milestone 6, #92)** — two storage accounts, one home per
 artifact:
@@ -29,21 +30,20 @@ artifact:
   and `agent-definitions` registries, #93/#94, the `package-format` registry,
   #376, and the `provenance` registry, #400 — the record contract a verifier
   reads and the hash definitions they recompute with.)
-- **Private**: `consultologistjobqueue` (the account backing Durable
-  Functions), container `workflow-packages` — the one and only home of
-  `acct-*` forks, written exclusively by the app's registry writer and
-  readable only by their owning account.
+- **Private**: the account registry, container `workflow-packages` on the
+  app's private storage account — the one and only home of `acct-*`
+  packages, written exclusively by the app's registry writer and readable
+  only by their owning account. It is never publicly readable.
 
 The engine's store routes by name (`WorkflowPackageNaming.IsAccountPackage`):
 repo-owned refs resolve from the public container, `acct-*` from the private
 one. When `WorkflowPackages__PublicBlobServiceUri` is unset (local dev),
 everything routes private, as before the split.
 
-Since #10, `consultologistjobqueue` is **RBAC-only** — shared-key access is
-disabled, so every path (the app's identity, `az` with `--auth-mode login`,
-tooling) authenticates through Entra ID data-plane roles. Account keys no
-longer work there. (`consultologistpublic` keeps shared-key until #16 moves
-publishing to CI OIDC.)
+Both accounts are **RBAC-only** — shared-key access is disabled (#10 on the
+private account, #16 on the public one once publishing moved to CI OIDC), so
+every path — the app's identity, CI, `az` with `--auth-mode login` —
+authenticates through Entra ID data-plane roles. Account keys work nowhere.
 
 - **Layout** (one package shown; identical in both containers):
 
@@ -77,57 +77,35 @@ blobs; published versions are immutable by convention. **Versions ≤ v2026.07.5
 pre-v5 archives** — immutable historical artifacts the current engine will not
 execute (the v5-only rebase, #77).
 
-## Via `az` CLI
+## Reading the public registry
 
-The examples browse the **public** account (`general` lives there); swap in
-`consultologistjobqueue` for `acct-*` packages. `--auth-mode login` uses your
-Entra identity (requires a Storage Blob Data role on the account); omitting
-it makes az fall back to account keys with a warning.
+No credential is needed for any public registry: fetch or list by URL.
 
 ```bash
-# List everything in the registry
-az storage blob list --account-name consultologistpublic --auth-mode login \
-  --container-name workflow-packages --query "[].name" -o tsv
+# List everything in a registry (container-level anonymous listing)
+curl -s "https://consultologistpublic.blob.core.windows.net/workflow-packages?restype=container&comp=list"
 
-# Read any single file straight to the terminal
-az storage blob download --account-name consultologistpublic --auth-mode login \
-  --container-name workflow-packages \
-  --name general/v2026.07.3/prompts/extract-patient-concepts.md --file /dev/stdout
+# Read any single file
+curl -s https://consultologistpublic.blob.core.windows.net/workflow-packages/general/v2026.07.3/prompts/extract-patient-concepts.md
 
 # Check where 'latest' points
-az storage blob download --account-name consultologistpublic --auth-mode login \
-  --container-name workflow-packages --name general/latest.json --file /dev/stdout
+curl -s https://consultologistpublic.blob.core.windows.net/workflow-packages/general/latest.json
 ```
 
-## Via the Azure portal
-
-portal.azure.com → search **consultologistjobqueue** → left menu **Containers** (under
-"Data storage") → **workflow-packages** → browse into `general/` and the version
-folders. Clicking a blob offers an **Edit** tab that renders markdown/JSON inline —
-convenient for reading a prompt.
-
-> **Caution**: the portal will happily let you edit and save a blob in place, but
-> published versions are immutable **by convention only**. Never edit a published
-> version — changes go through a new CalVer version via
-> `scripts/publish-workflow-package.sh` (which refuses to overwrite existing versions).
-> The [content-repos design](content-repos.md) eventually makes this enforcement rather
-> than convention: CI becomes the only writer and humans get read-only access.
-
-## Via Azure Storage Explorer
-
-The desktop app (or the portal's "Storage browser" blade) shows the same content with
-tree navigation, and makes bulk-downloading a whole version folder trivial — useful for
-diffing two published versions locally.
+`az storage blob …` against `consultologistpublic` works too (`--auth-mode
+login` with a Storage Blob Data Reader role). Published versions are
+immutable by refusal (registry-layout.md § 4): a published version is never
+edited in place; changes are a new CalVer version.
 
 ## Publishing (for completeness)
 
 Publishing is not a browse operation: author changes in the repo's `packages/` sources,
-bump the manifest's CalVer version, and run
-publishing from the [consultologist-workflows](https://github.com/Consultologist/consultologist-workflows)
+bump the manifest's CalVer version, and publish from the
+[consultologist-workflows](https://github.com/Consultologist/consultologist-workflows)
 repo: tag `{name}-vYYYY.MM.N` and CI publishes via OIDC (#16). Human registry
-writes are retired.
-The script uploads the version folder, updates the `latest` pointer, and refuses to
-republish an existing version.
+writes are retired. That repo's `scripts/publish-workflow-package.sh` uploads
+the version folder (the manifest last), updates the `latest` pointer, and
+refuses to republish an existing version.
 
 **What the content repo's CI does and does not check.** Its `validate.yml` is
 *structural* — manifest parse, name and CalVer shape, and that every referenced
@@ -155,7 +133,7 @@ diagram with the version folder when present.
 The catalog is a versioned artifact in the public account, container
 `output-contracts`: `vYYYY.MM.N/output-contracts.json` + `vYYYY.MM.N/schemas/…`,
 with the usual mutable `latest.json` pointer and refuse-overwrite immutability
-(`scripts/publish-output-contracts.sh`). The engine loads the pinned version at
+(the agents repo's `scripts/publish-output-contracts.sh`). The engine loads the pinned version at
 startup (`OutputContracts__Pin`, default `@latest`) — **the registry is the
 runtime source**; changing the catalog is publish + restart, no redeploy. Every
 job record stamps the resolved concrete ref (`catalogRef`), and startup
@@ -185,7 +163,8 @@ manifest tracks whatever the submodule points at, and the two legitimately
 differ (measured 2026-08-05: `test-json.yaml` declared 48, the catalog pinned
 47). The property belongs in the agents repo, where the publish script reads
 the version out of the manifest it is publishing so the two align by
-construction. Tracked there.
+construction. Tracked there as
+[consultologist-agents#6](https://github.com/Consultologist/consultologist-agents/issues/6).
 
 Versions are refuse-overwrite immutable.
 
@@ -197,14 +176,11 @@ server assigns name, version, and `derivedFrom` (the fork's concrete source ref)
 the manifest is uploaded last under a conditional create, so a version is
 invisible until it commits and can never be overwritten. `acct-*` names are
 usable only by their owning account (enforced in the pin resolver and at job
-start); account versions are never deleted. First fork in the registry:
-`acct-7bca2dcc1ed4/v2026.07.1` (derived from `general/v2026.07.6`).
+start); account versions are never deleted. The first fork was published on
+2026-07-16, derived from `general/v2026.07.6`.
 
-Publishing requires Storage Blob Data **Contributor** (reads need only Reader) —
-granted to the identity the app *actually authenticates as*: the
-**user-assigned** managed identity selected by the `AZURE_CLIENT_ID` app
-setting, not the Function App's system-assigned identity (the first production
-publish 403'd on exactly this distinction).
+Publishing is the app's registry writer acting as the app's own identity; no
+person holds a write role on the account registry.
 
 Since #134 the pin (`consult.workflowPackage`) is user-settable: the package
 selector on the **Consults** page writes it through the generic account-settings
@@ -229,72 +205,19 @@ The publisher writes the row before its first upload; nothing else writes
 one. `GET /api/WorkflowPackages/MinePackages` lists the set (`Mine` still
 serves the first package to older clients). #462 retired the derived-name
 fallback and the startup backfill once every existing package was recorded.
-To check the two agree — the registry's names against the table's rows —
-read-only, with identity auth:
+The operations repository carries the recipe that checks the two agree.
 
-```
-az storage blob list --account-name consultologistjobqueue --container-name workflow-packages \
-  --auth-mode login --query "[].name" -o tsv | awk -F/ 'NF==3 && $3=="manifest.json" {print $1}' | sort -u
-az storage entity query --account-name consultologistjobqueue --table-name PackageOwners \
-  --auth-mode login --query "items[].[PartitionKey, RowKey]" -o tsv
-```
+## Operator checks (#384, #452)
 
-Every name from the first must appear once in the second under the account
-whose id starts with the name's 12 hex. A name with no row is unreachable by
-anyone; the remedy is one `az storage entity insert` under the right account.
-
-## Pin health (#384)
-
-Every account's pinned package is resolved through the store with the loaded
-catalog — both registries, with the app's own identity — **at startup** and
-**on demand**. Nothing is changed by running it.
-
-- Startup: the Log stream shows `[PinHealth] N accounts on M pins against
-  output-contracts@v…, K need attention`, and one warning per pin that does:
-  `Pinned package <ref> is Stranded: <the store's sentence> (<n> accounts)`.
-- On demand, as an operator (`Operators__AppUserIds`):
-
-  ```
-  curl -s -H "Authorization: Bearer $TOKEN" \
-    https://<function-host>/api/Operator/PinHealth
-  ```
-
-  The response groups accounts by the ref their pin resolved to: `Healthy`
-  (a consult would start), `Stranded` (the store refused the content — the
-  sentence names the schema id and the catalog version that moved, or the
-  spec version this engine no longer runs), or `Unreadable` (the registry
-  could not be read; the failure's type only). AppUserIds are listed only on
-  entries that need a remedy. `(unresolved)` collects accounts whose own pin
-  could not be resolved at all.
-- The remedy is never an edit to a published version: re-pin the account
-  (`consult.workflowPackage`) to a version the catalog carries, or publish a
-  new version from the editor, or fix the catalog pin. The check below is
-  the one to run *before* bumping the catalog pin so this report stays empty.
-
-### Before a catalog pin bump (#452)
-
-Load a candidate catalog that is already published and resolve **every
-published package version in both registries** against it — the app's
-identity is the only principal that can read every account's registry:
-
-```
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://<function-host>/api/Operator/CatalogStrands?candidate=output-contracts@v2026.07.2"
-```
-
-`candidate` is required and must be a concrete `output-contracts@vYYYY.MM.N`
-(400 otherwise; 422 when that version is not in the registry). The response
-lists only versions that need attention — `Stranded` with the store's own
-sentence per schema, or `Unreadable` — each with `PinnedBy`, the number of
-accounts whose pin resolves to it today (an `@latest` pin counts against the
-version its pointer names). `Counts` says how many versions were listed,
-checked, stamped, and skipped as unsupported spec or declaring no schema, and
-whether the public registry was read. A stranded version with `PinnedBy > 0`
-is a consult that would refuse to start the moment the pin moves: do not bump.
-
-The same premises guard the **public** half at publish time, on the agents
-repo's pull request, through `scripts/check-catalog-strands-packages.cs` —
-both call `WorkflowPackageStore.ResolveContracts`, so they cannot drift.
+Every account's pin is resolved against the loaded catalog at startup
+(`[PinHealth] …` in the log stream) and on demand at `GET /api/Operator/PinHealth`;
+before a catalog pin bump, `GET /api/Operator/CatalogStrands?candidate=…`
+resolves every published version in both registries against the candidate.
+Both are operator surfaces (`Operators__AppUserIds`, CONFIGURATION.md); the
+recipes and how to read them are in the operations repository. The public
+half of the pre-bump check runs on the agents repo's pull request through
+`scripts/check-catalog-strands-packages.cs`; both call
+`WorkflowPackageStore.ResolveContracts`, so they cannot drift.
 
 ## Verifying a record (#402)
 
