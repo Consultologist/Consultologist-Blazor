@@ -886,11 +886,22 @@ public class ConsultGenerationNodeEntityTests
         Assert.Equal("package-format@v2026.08.6", state().ToResponse().PackageFormatRef);
         Assert.Equal("provenance@v2026.08.4", state().ToResponse().ProvenanceRef);
 
+        // #403: the terminology pair, the same idiom.
+        var (t, ts) = CreateEntity();
+        t.Initialize(new ConsultGenerationJobInitialize("job-3", "user-1", items,
+            Terminology: new TerminologySnapshot("SNOMEDCT 20251130 import.", "2025-11-30", "2025-12-21T22:39:16.944Z"), TerminologyServerRef: "snomed-snowstorm-mcp@abc")).GetAwaiter().GetResult();
+        t.Initialize(new ConsultGenerationJobInitialize("job-3", "user-1", items,
+            Terminology: new TerminologySnapshot("later", "2026-05-31", null), TerminologyServerRef: "snomed-snowstorm-mcp@def")).GetAwaiter().GetResult();
+        Assert.Equal("2025-11-30", ts().Terminology!.Version);
+        Assert.Equal("snomed-snowstorm-mcp@abc", ts().ToResponse().TerminologyServerRef);
+
         // An Initialize from before the refs (an in-flight job) leaves them null.
         var (older, olderState) = CreateEntity();
         older.Initialize(new ConsultGenerationJobInitialize("job-2", "user-1", items)).GetAwaiter().GetResult();
         Assert.Null(olderState().PackageFormatRef);
         Assert.Null(olderState().ProvenanceRef);
+        Assert.Null(olderState().Terminology);
+        Assert.Null(olderState().TerminologyServerRef);
     }
 
     [Fact]

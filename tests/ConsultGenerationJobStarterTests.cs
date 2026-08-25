@@ -46,7 +46,54 @@ public class ConsultGenerationJobStarterTests
             _rateLimiter,
             _ownership,
             // #398: the build's attestation — the vendored indexes the test output carries.
-            EngineAttestation.Current(TestCatalog.Instance));
+            EngineAttestation.Current(TestCatalog.Instance),
+            // #403: what the terminology server says, or nothing.
+            _terminology);
+    }
+
+    private readonly FakeTerminologySource _terminology = new();
+
+    private sealed class FakeTerminologySource : ITerminologyAttestationSource
+    {
+        public TerminologyAttestation? Next { get; set; }
+        public ValueTask<TerminologyAttestation?> GetAsync(CancellationToken cancellationToken) => ValueTask.FromResult(Next);
+    }
+
+    [Fact]
+    public async Task TheJob_RecordsTheTerminologyTheServerReported_OrNothing()
+    {
+        // #403: the edition and the server's build, as the attestation source
+        // says at start; a source that says nothing stamps nothing.
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V8Fixtures.Minimal(),
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        _terminology.Next = new TerminologyAttestation(
+            new TerminologySnapshot("SNOMEDCT 20251130 import.", "2025-11-30", "2025-12-21T22:39:16.944Z"),
+            "snomed-snowstorm-mcp@0fff939d4a5c3a6e7b8c9d0e1f2a3b4c5d6e7f80", DateTimeOffset.UtcNow);
+        var outcome = await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(Referral), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+        Assert.Null(outcome.Error);
+        Assert.Equal("2025-11-30", orchestrationInput!.Terminology!.Version);
+        Assert.Equal("SNOMEDCT 20251130 import.", orchestrationInput.Terminology.Edition);
+        Assert.Equal("snomed-snowstorm-mcp@0fff939d4a5c3a6e7b8c9d0e1f2a3b4c5d6e7f80", orchestrationInput.TerminologyServerRef);
+
+        _terminology.Next = null;
+        orchestrationInput = null;
+        await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(Referral), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+        Assert.Null(orchestrationInput!.Terminology);
+        Assert.Null(orchestrationInput.TerminologyServerRef);
     }
 
     [Fact]

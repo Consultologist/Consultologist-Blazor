@@ -4,6 +4,7 @@ using Consultologist.Api.Models;
 using NSubstitute;
 
 using Consultologist.PackageFormat;
+using Consultologist.Api.Workflow;
 namespace Consultologist.Api.Tests;
 
 /// <summary>
@@ -36,7 +37,9 @@ public class ConsultGenerationStartFailureRecordTests
             PackageTitle: "Breast oncology consults",
             PackageTags: new[] { "oncology" },
             PackageFormatRef: "package-format@v2026.08.6",
-            ProvenanceRef: "provenance@v2026.08.4"),
+            ProvenanceRef: "provenance@v2026.08.4",
+            Terminology: new TerminologySnapshot("SNOMEDCT 20251130 import.", "2025-11-30", "2025-12-21T22:39:16.944Z"),
+            TerminologyServerRef: "snomed-snowstorm-mcp@0fff939d4a5c3a6e7b8c9d0e1f2a3b4c5d6e7f80"),
         Reason);
 
     [Fact]
@@ -88,6 +91,9 @@ public class ConsultGenerationStartFailureRecordTests
         // #398: a born-Failed record names its rules too.
         Assert.Equal("package-format@v2026.08.6", response.PackageFormatRef);
         Assert.Equal("provenance@v2026.08.4", response.ProvenanceRef);
+        // #403: and its terminology.
+        Assert.Equal("2025-11-30", response.Terminology!.Version);
+        Assert.Equal("snomed-snowstorm-mcp@0fff939d4a5c3a6e7b8c9d0e1f2a3b4c5d6e7f80", response.TerminologyServerRef);
         Assert.Equal(ConsultGenerationJobSources.Email, response.Source);
         Assert.Equal("Patient letter", Assert.Single(response.SkippedDocuments!).Label);
         Assert.Null(response.Nodes);
