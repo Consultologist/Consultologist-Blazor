@@ -1,3 +1,4 @@
+using Consultologist.Web.Services.Workflow;
 using Bunit;
 using Consultologist.Web.Pages;
 using Consultologist.Web.Services.Accounts;
@@ -26,7 +27,10 @@ public class HistoryDetailTests : ClientRenderTestContext
         int? schemaVersion = null,
         string? workflowPackage = null,
         string? packageTitle = null,
-        IReadOnlyList<string>? packageTags = null)
+        IReadOnlyList<string>? packageTags = null,
+        IReadOnlyList<ConsultGenerationNodeDescriptor>? nodes = null,
+        string? catalogRef = null,
+        IReadOnlyDictionary<string, string>? agentVersions = null)
     {
         // Terminal status only: a non-terminal row would start the page's real
         // 5-second polling loop.
@@ -60,7 +64,74 @@ public class HistoryDetailTests : ClientRenderTestContext
             PackageSpecVersion: packageSpecVersion,
             WorkflowPackage: workflowPackage,
             PackageTitle: packageTitle,
-            PackageTags: packageTags));
+            PackageTags: packageTags,
+            Nodes: nodes,
+            AgentVersions: agentVersions,
+            CatalogRef: catalogRef));
+    }
+
+    private const string CatalogVersion = "v2026.07.2";
+
+    private void WithCatalog() =>
+        WorkflowService.GetCatalogAsync(CatalogVersion).Returns(new Dictionary<string, PublicCatalogEntry>
+        {
+            ["concept-list"] = new("concept-extraction", "1"),
+            ["text"] = new("test-json", "47")
+        });
+
+    private static string AgentsRow(IRenderedComponent<History> page) => page.Find(".provenance-agents").TextContent.Trim();
+
+    private static bool HasAgentsRow(IRenderedComponent<History> page) =>
+        page.Find(".provenance-list").QuerySelectorAll("dt").Any(term => term.TextContent.Trim() == "Agents");
+
+    [Fact]
+    public void APackageWithoutSchemas_NamesOnlyTheTextAgent()
+    {
+        // #458: the row names what the job's nodes bound, not the catalog's
+        // whole map — one text line for two schema-less nodes, no concept-list.
+        WithCatalog();
+        WithJob(3, catalogRef: $"output-contracts@{CatalogVersion}", nodes: new[]
+        {
+            new ConsultGenerationNodeDescriptor("digest", "Digest"),
+            new ConsultGenerationNodeDescriptor("letter", "Letter")
+        });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Equal("text → test-json v47", AgentsRow(page));
+    }
+
+    [Fact]
+    public void ContractsAppearInNodeDeclarationOrder_OnceEach()
+    {
+        WithCatalog();
+        WithJob(3, catalogRef: $"output-contracts@{CatalogVersion}", nodes: new[]
+        {
+            new ConsultGenerationNodeDescriptor("write", "Write"),
+            new ConsultGenerationNodeDescriptor("extract", "Extract", OutputContract: "concept-list"),
+            new ConsultGenerationNodeDescriptor("summarise", "Summarise")
+        });
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+        Assert.Equal("text → test-json v47 · concept-list → concept-extraction v1", AgentsRow(page));
+
+        WithJob(3, catalogRef: $"output-contracts@{CatalogVersion}", nodes: new[]
+        {
+            new ConsultGenerationNodeDescriptor("extract", "Extract", OutputContract: "concept-list"),
+            new ConsultGenerationNodeDescriptor("write", "Write")
+        });
+        var reversed = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+        Assert.Equal("concept-list → concept-extraction v1 · text → test-json v47", AgentsRow(reversed));
+    }
+
+    [Fact]
+    public void ALegacyRecord_StillShowsItsStoredMap_AndAJobWithNeitherShowsNoRow()
+    {
+        WithJob(3, agentVersions: new Dictionary<string, string> { ["text"] = "47", ["concept-list"] = "1" });
+        var legacy = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+        Assert.Equal("concept-list → v1 · text → v47", AgentsRow(legacy));
+
+        WithJob(3, nodes: Array.Empty<ConsultGenerationNodeDescriptor>());
+        Assert.False(HasAgentsRow(Render<History>(parameters => parameters.Add(p => p.JobId, JobId))));
     }
 
     [Fact]
