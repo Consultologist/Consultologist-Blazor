@@ -38,7 +38,9 @@ jobs:
         shell: bash
         run: |
           pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-          dotnet build --configuration Release --output ./output
+          # #449: the deployed engine reports this commit from GET /api/Public/Engine,
+          # and content CI checks it out to validate against what actually runs.
+          dotnet build --configuration Release --output ./output -p:SourceRevisionId=${{ github.sha }} -p:ContinuousIntegrationBuild=true
           popd
 
       - name: Login to Azure

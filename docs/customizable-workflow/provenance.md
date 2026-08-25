@@ -24,7 +24,7 @@ contain hyphens; derive a string key from the object when needed).
 | `backend_fingerprint` | Serving-stack fingerprint per run, if the API exposes one | Response metadata |
 | `agent_version` | **Historical** (records ≤ 2026-07-17): contract → Foundry agent version map (`agentVersions`). Purified by #105 — later records store `catalogRef` only, and the catalog version document holds contract → {agentName, agentVersion}. The record stores refs, not copies: refs (`workflowPackage`, `catalogRef`) / operational snapshots (nodes, items — Durable replay determinism) / derived projections (`workflowOutputHash`) are the record's three living species | The job's `catalogRef` → catalog registry |
 | `snomed_version` | Terminology edition + version + import date | MCP `get_terminology_info` (returns exactly this) |
-| `mcp_version` | Release (git tag) of the Apache-2.0 `snomed-snowstorm-mcp` repo | Git tag; deployed app should attest its build (e.g. info endpoint returning the commit) |
+| `mcp_version` | Release (git tag) of the Apache-2.0 `snomed-snowstorm-mcp` repo | Git tag; the deployed app attests its own build at `GET /api/Public/Engine` (#449) — the MCP release is still not recorded (#403) |
 | `workflow_package` | `name@version` of the pinned workflow package (CalVer `vYYYY.MM.N`, e.g. `general@v2026.07.1`) | Package registry |
 | `packageTitle` | Since #432: the pinned manifest's title as it was when the job ran — a display convenience shown beside the ref, never a substitute for it. Absent on an untitled package and on every job before it | Stamped at job start from the resolved manifest |
 | `startFailure` | Since #434: set only on a job created already **Failed** because no deliverable applied to its inputs (v8 § 5 *The empty case*; v9 § 5 *The empty fan*) — the refusal sentence, composed of authored package content only. Nothing ran: `runtimeFailureError` is null, there are no blocks, `totalBlockCount` is a stated zero, and `skippedDocuments` lists every deliverable with what it wanted. Absent on every job that started | Written at job start, in the same entity write that creates the record |
@@ -52,6 +52,16 @@ contain hyphens; derive a string key from the object when needed).
 > `project_connection_id`, #94). A job record's `agentVersions` + `catalogRef`
 > therefore resolve through publicly readable, immutable registry versions that are
 > attested equal to git at every startup.
+
+> **The engine attests its build (#449, 2026-08-24)**: `GET /api/Public/Engine`
+> (anonymous, open-CORS, deployment facts only) returns the commit the Functions
+> build was stamped with (`-p:SourceRevisionId` in the deploy workflow; `null` on
+> an unstamped local build), the catalog `ResolvedRef`, the vendored
+> package-format registry version, `AcceptedSpecVersions`,
+> `SupportedSpecVersions` and the Scriban version. The content repos' CI checks
+> the app out at that commit for engine validation — "passed engine validation"
+> means the deployed engine, with `main` as the stated fallback and a visible
+> notice when the endpoint cannot say. The property set is pinned by test.
 
 The Foundry agent (system prompt, parameters, tool wiring) is edited in a portal and is
 therefore mutable state. Rule: **track the agent config in git; at startup or job start,

@@ -22,6 +22,11 @@ the local baseline — no silent drift), and the catalog pin
 | `consultologist-workflows` | Workflow package sources (`packages/general/`, `packages/example-two-documents/`) | CalVer `vYYYY.MM.N` per package | `workflow-packages` blob container (`{name}/{version}/…` + `latest.json` pointers) |
 | `consultologist-agents` | Agent manifests (today: `agents/test-json.yaml`) | Tags matching Foundry integer versions (`test-json/48`) | **Both** the Foundry agent version (via the agents REST API) and the manifest mirror in blob (`agents/{name}/{version}/agent.yaml`) |
 
+Both content repos validate against the engine before publishing; the workflows
+repo checks the app out at the commit the deployed engine reports
+(`GET /api/Public/Engine`, #449), so "passed engine validation" is a statement
+about what will run, not about `main`.
+
 Two repos rather than one content repo: clean per-artifact tagging (CalVer vs Foundry
 integers), separate future access control (clinicians author workflows, not agents), and
 consistency with the per-artifact repo pattern (`snomed-snowstorm-mcp`).

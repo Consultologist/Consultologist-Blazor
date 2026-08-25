@@ -92,6 +92,7 @@ builder.Services.AddSingleton<IWorkflowPackageOwnership, WorkflowPackageOwnershi
 builder.Services.AddSingleton<IWorkflowPackagePinResolver, WorkflowPackagePinResolver>();
 builder.Services.AddSingleton<PublicRegistryReader>();
 builder.Services.AddSingleton<PublicChain>();
+builder.Services.AddSingleton<PublicEngine>();
 builder.Services.AddScoped<WorkflowPackages>();
 builder.Services.AddHttpClient();
 builder.Services.AddHostedService<AgentAttestationService>();
