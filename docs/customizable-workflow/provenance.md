@@ -134,6 +134,12 @@ rule and its history:
 > bytes have changed at least twice (#357, #358) with nothing to move, and the
 > published contract states the ladder as empty rather than pretending.
 
+Since #402 a holder can check a record: History's *Verify* recomputes the
+deliverable hashes in the browser and `scripts/verify-job-hashes.cs` runs the
+engine's own functions over a record and the holder's inputs
+(registry-operations.md, *Verifying a record*); History's definition numbers
+link to the published document at the version `Public/Engine` attests.
+
 **Prompts are not part of the input hash.** Since specVersion 2
 ([package-format-v2.md](package-format-v2.md)) the prompts are package content, covered
 by the `workflowPackage` provenance field. Two jobs with the same hash but different
