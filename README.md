@@ -109,6 +109,8 @@ or derivative works. That is the engine. The content registries are licensed
 separately (#399): the package format and the provenance contract under
 **CC BY-NC-ND 4.0**, the workflow packages and the agent definitions under
 **CC BY-NC-SA 4.0** — each registry's README states the scope, and every
-published version carries its `LICENSE`. Inside the app the terms of use grant
-more than the public licences do: a user may use a package commercially there
-and holds the copyright in the fork they author.
+published version carries its `LICENSE`. Consultologist clients hold a licence
+that goes beyond the public ones: every client may use that content
+commercially — inside the app, and in their own environment outside it — and
+holds the copyright in what they author; that permission is part of the client
+agreement, and anyone who needs more than the public licences grant can ask.
