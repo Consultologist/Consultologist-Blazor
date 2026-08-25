@@ -380,6 +380,7 @@
                                                                 <span class="node-row__hashes hash-text">
                                                                     <span title="@group.NodeLevel?.InputHash">in @HashPrefix(group.NodeLevel?.InputHash)</span>
                                                                     <span title="@group.NodeLevel?.OutputHash">out @HashPrefix(group.NodeLevel?.OutputHash)</span>
+                                                                    @NodeHashRef(group.NodeLevel)
                                                                 </span>
                                                             </div>
                                                         }
@@ -403,6 +404,7 @@
                                                                         <span class="node-row__hashes hash-text">
                                                                             <span title="@entry.InputHash">in @HashPrefix(entry.InputHash)</span>
                                                                             <span title="@entry.OutputHash">out @HashPrefix(entry.OutputHash)</span>
+                                                                            @NodeHashRef(entry)
                                                                             @if (entry.OutputHash != null && group.ConvergedOutputs.Contains(entry.OutputHash))
                                                                             {
                                                                                 <span class="muted-text" title="Another item in this node produced the byte-identical output">= same output</span>
@@ -837,6 +839,24 @@
         {
             builder.AddContent(0, text);
         }
+    };
+
+    // #375: the per-node pair's definition number beside its hashes — a link
+    // to the published ladder when the engine's attestation is known; a
+    // record from before the ladder says so rather than showing a number.
+    private RenderFragment? NodeHashRef(ConsultGenerationNodeStatus? node) => node switch
+    {
+        null => null,
+        { HashVersion: { } version } => VersionRef(version, "hash-definitions.md", "per-node definition"),
+        { InputHash: not null } => builder =>
+        {
+            builder.OpenElement(0, "span");
+            builder.AddAttribute(1, "class", "muted-text node-row__unversioned");
+            builder.AddAttribute(2, "title", "Recorded before the per-node hashes had a definition number; by date it is one of definitions 1–5 (hash-definitions.md § 4)");
+            builder.AddContent(3, "v—");
+            builder.CloseElement();
+        },
+        _ => null
     };
 
     private RenderFragment? HashCheckMark(string name, ConsultGenerationJobResponse detail) =>
