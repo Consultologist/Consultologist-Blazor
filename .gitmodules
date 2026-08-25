@@ -4,3 +4,6 @@
 [submodule "external/consultologist-package-format"]
 	path = external/consultologist-package-format
 	url = https://github.com/Consultologist/consultologist-package-format
+[submodule "external/consultologist-provenance"]
+	path = external/consultologist-provenance
+	url = https://github.com/Consultologist/consultologist-provenance
