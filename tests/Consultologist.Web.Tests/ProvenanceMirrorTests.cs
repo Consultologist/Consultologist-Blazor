@@ -87,6 +87,26 @@ public class ProvenanceMirrorTests
     }
 
     [Fact]
+    public void ADeletedText_ReachesTheClientAsNull_WithTheDate()
+    {
+        // #368: after the retention policy, text is null — never an empty
+        // string a reader could mistake for content — and the date says why.
+        var dropped = new DateTimeOffset(2026, 9, 1, 3, 0, 0, TimeSpan.Zero);
+        var response = new ApiModels.ConsultGenerationJobResponse(
+            "job-1", "user-1", "Completed", 1, 1, 0,
+            new Dictionary<string, string>(), new Dictionary<string, string>(), true,
+            AssembledDocuments: new[] { new ApiModels.ConsultGenerationResultDocumentResponse("note", "Consultation note", null, "abcd") },
+            TextDroppedAtUtc: dropped);
+
+        var mirrored = JsonSerializer.Deserialize<WebAI.ConsultGenerationJobResponse>(
+            JsonSerializer.Serialize(response, Web), Web)!;
+
+        Assert.Null(mirrored.AssembledDocuments![0].Text);
+        Assert.Equal("abcd", mirrored.AssembledDocuments[0].DocumentHash);
+        Assert.Equal(dropped, mirrored.TextDroppedAtUtc);
+    }
+
+    [Fact]
     public void ThePackageTitle_ReachesTheClient()
     {
         // #432: the job response's trailing title, through the wire into the
