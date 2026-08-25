@@ -2,6 +2,9 @@
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
 @using Consultologist.Web.Services.AI
 @using Consultologist.Web.Services.Workflow
+@using Consultologist.Web.Services.Provenance
+@using Microsoft.Extensions.Configuration
+@inject IConfiguration Configuration
 @inject IAccountEndpointService AccountService
 @inject IAIEndpointService AIService
 @inject IWorkflowEndpointService WorkflowService
@@ -207,8 +210,17 @@
                                             {
                                                 <span class="provenance-chip" title="Package format (specVersion) this job's manifest was written against">
                                                     @* Parenthesised: Razor reads a bare v@name as an email
-                                                       address and emits it verbatim. *@
-                                                    format v@(packageFormat)
+                                                       address and emits it verbatim. #402: the number links
+                                                       to the document that defines it, at the format registry
+                                                       version the deployed engine attests. *@
+                                                    @if (FormatLink(packageFormat) is { } formatHref)
+                                                    {
+                                                        <a class="provenance-ref" href="@formatHref" target="_blank" rel="noopener">format v@(packageFormat)</a>
+                                                    }
+                                                    else
+                                                    {
+                                                        <text>format v@(packageFormat)</text>
+                                                    }
                                                 </span>
                                             }
                                             @if (detail.Source == "email")
@@ -221,6 +233,22 @@
 
                                         <details class="job-detail-section">
                                             <summary class="muted-text">Provenance</summary>
+                                            @* #402: recompute the deliverable hashes from the texts this
+                                               record carries, here in the browser. The input hash needs
+                                               the inputs and the per-node hashes need the rendered prompts;
+                                               a record carries neither, so those are the script's
+                                               (scripts/verify-job-hashes.cs), not this button's. *@
+                                            @if (detail.WorkflowOutputHash != null)
+                                            {
+                                                <div class="provenance-verify">
+                                                    <FluentButton Appearance="Appearance.Outline" OnClick="@(() => VerifyHashes(detail))" title="Recompute this record's deliverable hashes from its texts">Verify</FluentButton>
+                                                    @if (_hashChecks.TryGetValue(detail.JobId, out var verified))
+                                                    {
+                                                        <span class="muted-text">@(verified.All(c => c.Matches) ? $"{verified.Count} hash(es) recomputed — all match" : $"{verified.Count(c => !c.Matches)} of {verified.Count} recomputed hash(es) do not match")</span>
+                                                        <span class="muted-text">Input and per-node hashes need what the record does not carry — the inputs and the rendered prompts; scripts/verify-job-hashes.cs checks the input hash given the inputs.</span>
+                                                    }
+                                                </div>
+                                            }
                                             <dl class="provenance-list">
                                                 @* #373: this record's own storage shape — which fields
                                                    below a reader should trust. It belongs here with the
@@ -233,8 +261,13 @@
                                                    rows are per-input and per-deliverable, and a test pins
                                                    their exact sequence. *@
                                                 <dt>Record storage version</dt>
-                                                <dd>v@(detail.SchemaVersion?.ToString() ?? "—")</dd>
-                                                <dt>Input hash (v@(detail.EffectiveInputHashVersion?.ToString() ?? "—"))</dt>
+                                                <dd>@VersionRef(detail.SchemaVersion, "provenance-record.md", "storage version")</dd>
+                                                @* #402: the definition numbers link to the published
+                                                   document that defines them, at the provenance registry
+                                                   version the deployed engine attests — a number a reader
+                                                   can resolve, not a bare integer. Plain text when the
+                                                   attestation is unavailable: nothing is invented. *@
+                                                <dt>Input hash (@VersionRef(detail.EffectiveInputHashVersion, "hash-definitions.md", "effective-input definition"))</dt>
                                                 <dd class="hash-text">@(detail.EffectiveInputHash ?? "—")</dd>
                                                 @* #238: beside the hash, never inside it. Only slots
                                                    the server read from a document appear — an absent
@@ -264,8 +297,8 @@
                                                 }
                                                 @if (detail.WorkflowOutputHash != null)
                                                 {
-                                                    <dt>Output hash (v@(detail.WorkflowOutputHashVersion?.ToString() ?? "—"))</dt>
-                                                    <dd class="hash-text">@detail.WorkflowOutputHash</dd>
+                                                    <dt>Output hash (@VersionRef(detail.WorkflowOutputHashVersion, "hash-definitions.md", "workflow-output definition"))</dt>
+                                                    <dd class="hash-text">@detail.WorkflowOutputHash @HashCheckMark("workflowOutputHash", detail)</dd>
                                                 }
                                                 @* v7: the per-deliverable digests the v3 output hash
                                                    above is computed over — the aggregate and its
@@ -273,7 +306,7 @@
                                                 @foreach (var document in detail.AssembledDocuments ?? Array.Empty<ConsultGenerationResultDocumentResponse>())
                                                 {
                                                     <dt class="provenance-list__nested">@document.Label</dt>
-                                                    <dd class="hash-text">@(document.DocumentHash ?? "—")</dd>
+                                                    <dd class="hash-text">@(document.DocumentHash ?? "—") @HashCheckMark(document.ResultId, detail)</dd>
                                                 }
                                                 @* #315: a deliverable the package
                                                    declared and this job's inputs
@@ -458,6 +491,7 @@
         await ApplyDeepLinkAsync();
         EnsurePollingStarted();
         await LoadAgentNamesAsync();
+        _engine = await WorkflowService.GetEngineAsync();
     }
 
     /// <summary>
@@ -771,6 +805,53 @@
     private readonly Dictionary<string, Dictionary<string, PublicCatalogEntry>?> _catalogCache = new(StringComparer.Ordinal);
 
     private const string CatalogRefPrefix = "output-contracts@";
+
+    // #402: what the deployed engine attests, loaded once with the page; null
+    // when unavailable, and then the numbers stay plain text.
+    private EngineView? _engine;
+    private readonly Dictionary<string, IReadOnlyList<HashCheck>> _hashChecks = new(StringComparer.Ordinal);
+
+    private string? RegistryBase => Configuration["AzureFunction:PublicRegistryBaseUrl"]?.TrimEnd('/');
+
+    private string? ProvenanceDocument(string document) =>
+        _engine?.Provenance is { } version && RegistryBase is { } root ? $"{root}/provenance/{version}/{document}" : null;
+
+    private string? FormatLink(int specVersion) =>
+        _engine?.PackageFormat is { } version && RegistryBase is { } root ? $"{root}/package-format/{version}/package-format-v{specVersion}.md" : null;
+
+    private RenderFragment VersionRef(int? number, string document, string what) => builder =>
+    {
+        var text = $"v{number?.ToString() ?? "—"}";
+        if (number is { } n && ProvenanceDocument(document) is { } href)
+        {
+            builder.OpenElement(0, "a");
+            builder.AddAttribute(1, "class", "provenance-ref");
+            builder.AddAttribute(2, "href", href);
+            builder.AddAttribute(3, "target", "_blank");
+            builder.AddAttribute(4, "rel", "noopener");
+            builder.AddAttribute(5, "title", $"{what} {n} in {document}, provenance@{_engine!.Provenance}");
+            builder.AddContent(6, text);
+            builder.CloseElement();
+        }
+        else
+        {
+            builder.AddContent(0, text);
+        }
+    };
+
+    private RenderFragment? HashCheckMark(string name, ConsultGenerationJobResponse detail) =>
+        _hashChecks.TryGetValue(detail.JobId, out var checks) && checks.FirstOrDefault(c => c.Name == name) is { } check
+            ? builder =>
+            {
+                builder.OpenElement(0, "span");
+                builder.AddAttribute(1, "class", check.Matches ? "hash-check hash-check--match" : "hash-check hash-check--mismatch");
+                builder.AddContent(2, check.Matches ? "recomputed — matches" : "recomputed — does not match");
+                builder.CloseElement();
+            }
+            : null;
+
+    private void VerifyHashes(ConsultGenerationJobResponse detail) =>
+        _hashChecks[detail.JobId] = ProvenanceHashes.Check(detail);
 
     private async Task EnsureCatalogLoadedAsync(string? catalogRef)
     {
