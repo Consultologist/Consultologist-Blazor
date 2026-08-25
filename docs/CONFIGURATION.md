@@ -434,6 +434,23 @@ via `appsettings.Development.json`), not by environment variables:
   and `ConsultGenerationUrl` were removed with their legacy endpoints in milestone 3.)
 - `AzureFunction:TimeoutSeconds` — HTTP client timeout for AI calls (default 240 when
   absent; shipped value 300).
+- `Build:Commit` — **not an operator setting.** The SWA workflow writes the
+  deploying commit here (`jq`, before Oryx publishes), so the value ships
+  inside the cached build it describes. The footer shows its short form on
+  every page and Profile the full sha beside the engine's; a build without it
+  reads "local". (#412)
+
+### How a new build reaches an open tab (#412)
+
+The published service worker is cache-first (installability and fast second
+loads), so a deploy installs into a *waiting* worker and a tab that is open
+keeps the old build. `wwwroot/js/app-update.js` registers the worker and
+notices the waiting one — on load, on `updatefound`, when the tab regains
+focus, and hourly — and `UpdateBanner` (in `MainLayout`) shows "A new version
+of Consultologist is ready" with a Reload button. The reload is only ever the
+user's click: it posts `SKIP_WAITING` to the waiting worker and reloads on
+`controllerchange`. Nothing reloads on its own — a consult may be running.
+`/service-worker.js` is served `cache-control: no-cache`.
 
 ## Static Web App staging environments (#156)
 
