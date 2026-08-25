@@ -513,7 +513,10 @@ public record ConsultGenerationJobResponse(
     string? StartFailure = null,
     // #453: mirrors the Api's ConsultGenerationJobResponse.PackageTags — the
     // pinned manifest's tags as they were when the job ran.
-    IReadOnlyList<string>? PackageTags = null);
+    IReadOnlyList<string>? PackageTags = null,
+    // #398: package-format@v… and provenance@v… as the job recorded them; null before.
+    string? PackageFormatRef = null,
+    string? ProvenanceRef = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultSkippedDocument.</summary>
 public record ConsultSkippedDocumentResponse(string ResultId, string Label, string Reason);

@@ -124,6 +124,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly IWorkflowPackageStore _packageStore;
     private readonly IWorkflowPackagePinResolver _pinResolver;
     private readonly OutputContractCatalog _catalog;
+    private readonly EngineAttestationResponse _engine;
     private readonly IAccountRateLimiter _rateLimiter;
     private readonly IWorkflowPackageOwnership _ownership;
 
@@ -133,12 +134,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IWorkflowPackagePinResolver pinResolver,
         OutputContractCatalog catalog,
         IAccountRateLimiter rateLimiter,
-        IWorkflowPackageOwnership ownership)
+        IWorkflowPackageOwnership ownership,
+        EngineAttestationResponse engine)
     {
         _logger = logger;
         _packageStore = packageStore;
         _pinResolver = pinResolver;
         _catalog = catalog;
+        _engine = engine;
         _rateLimiter = rateLimiter;
         _ownership = ownership;
     }
@@ -683,7 +686,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 ReplyToAddress: origin.ReplyToAddress,
                 Results: resultDescriptors,
                 Inputs: inputs.Effective,
-                InputDocumentOrigins: inputOrigins),
+                InputDocumentOrigins: inputOrigins,
+                // #398: the rules this job's package is read by, and the contract
+                // its record conforms to — the versions this build was built
+                // against, as Public/Engine attests them.
+                PackageFormatRef: EngineAttestation.RefOf(EngineAttestation.PackageFormatRegistry, _engine.PackageFormat),
+                ProvenanceRef: EngineAttestation.RefOf(EngineAttestation.ProvenanceRegistry, _engine.Provenance)),
             new StartOrchestrationOptions { InstanceId = jobId },
             cancellationToken);
 
@@ -771,7 +779,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     PackageSpecVersion: specVersion,
                     InputDocumentOrigins: inputOrigins,
                     PackageTitle: package.Manifest.Title,
-                    PackageTags: package.Manifest.Tags),
+                    PackageTags: package.Manifest.Tags,
+                    PackageFormatRef: EngineAttestation.RefOf(EngineAttestation.PackageFormatRegistry, _engine.PackageFormat),
+                    ProvenanceRef: EngineAttestation.RefOf(EngineAttestation.ProvenanceRegistry, _engine.Provenance)),
                 detail));
 
         return new ConsultGenerationJobStartOutcome(
