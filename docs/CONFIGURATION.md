@@ -190,6 +190,8 @@ settings are retired — delete them from the Function App.
 | Variable | Accepted values | Default | Required |
 |---|---|---|---|
 | `AgentAttestation__Enforce` | `true` (case-insensitive) = drift fails host startup; any other value = drift logs an error only. Since #16 the production baseline is the registry's published definition (CI-only channel); the submodule-pinned copy (`external/consultologist-agents/agents`, bundled into the build output) is the baseline only in local dev | warn-only | no |
+| `Terminology__InfoUrl` | The terminology server's attestation endpoint (`https://mcp.snomed.consultologist.ai/api/Public/Terminology`, #403). Read once per cache window; the edition and the server build it reports are stamped on every job record. Unset: nothing is recorded | unset (nothing recorded) | no |
+| `Terminology__CacheMinutes` | How long one answer serves; an outage keeps the last answer | 60 | no |
 | `Operators__AppUserIds` | Comma/space-separated AppUserIds allowed to call operator surfaces (`GET /api/Operator/PinHealth`, #384). Not a role: an ordinary account, listed here. Matched exactly | nobody | no |
 | `AgentAttestation__ManifestDirectory` | Directory holding the attested agent YAMLs and `output-contracts.json` (replaces the former `AgentAttestation__ManifestPath`) | `agents/` under the app base directory (populated at build from the `external/consultologist-agents` submodule) | no |
 
