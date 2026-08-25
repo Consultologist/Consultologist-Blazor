@@ -34,7 +34,10 @@ public sealed record NodeRunResult(
     string RawOutput,
     IReadOnlyList<ClinicalConcept>? Concepts,
     string InputHash,
-    string OutputHash);
+    string OutputHash,
+    // #375: the definition the pair was computed under. Appended last, defaulted:
+    // a recorded activity result from before replays with null.
+    int? HashVersion = null);
 
 /// <summary>
 /// The generic DAG prompt node: renders the node's prompt with orchestrator-resolved
@@ -125,7 +128,7 @@ public sealed class RunPromptNodeActivity
             Console.Error.WriteLine(
                 $"[PromptNode] NodeId={input.NodeId}; ConceptCount={concepts?.Count.ToString() ?? "-"}; InputHash={inputHash}; OutputHash={outputHash}; ElapsedMs={stopwatch.ElapsedMilliseconds}");
 
-            return new NodeRunResult(rawOutput, concepts, inputHash, outputHash);
+            return new NodeRunResult(rawOutput, concepts, inputHash, outputHash, ConsultGenerationProvenance.NodeHashVersion);
         }
         catch (Exception ex)
         {

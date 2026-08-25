@@ -237,10 +237,23 @@ public static class ConsultGenerationProvenance
         => Sha256Hex(JsonSerializer.Serialize(sourceOutputHashes, CanonicalJsonOptions));
 
     /// <summary>
+    /// The per-node pair's definition number (#375; hash-definitions.md § 4):
+    /// one number per node instance, stamped as nodeOutputs[].hashVersion, naming
+    /// what BOTH its hashes are over. The output hash (raw agent text) and the
+    /// aggregator's input hash have never changed; the ladder moves when the
+    /// rendered prompt's bytes do — 1 (2026-07-14, strings as supplied),
+    /// 2 (2026-08-10, typed inputs), 3 (#357, ISO dates), 4 (#358, absent
+    /// optionals render nothing), 5 (#425, structure materialises — current).
+    /// A change to PromptTemplateRenderer's bytes moves this and the registry
+    /// together; ProvenanceVersionSetTests holds them equal.
+    /// </summary>
+    public const int NodeHashVersion = 5;
+
+    /// <summary>
     /// Lowercase-hex SHA-256 of the UTF-8 text — the per-node provenance hash: a node's
     /// InputHash covers the exact rendered prompt the agent receives (template +
     /// prelude + variables), its OutputHash the raw assistant text, so two runs can be
-    /// compared node by node (dag-improvements #6).
+    /// compared node by node (dag-improvements #6) — under the same NodeHashVersion.
     /// </summary>
     public static string Sha256Hex(string text)
     {

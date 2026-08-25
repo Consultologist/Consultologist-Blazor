@@ -390,7 +390,8 @@ public sealed class ConsultGenerationOrchestrator
                         rendered,
                         null,
                         ConsultGenerationProvenance.ComputeAggregateInputHash(sourceHashes),
-                        ConsultGenerationProvenance.Sha256Hex(rendered));
+                        ConsultGenerationProvenance.Sha256Hex(rendered),
+                        ConsultGenerationProvenance.NodeHashVersion);
                     outputs[aggregator.Id] = aggregateResult;
                     completedNodeCount++;
                     progressed = true;
@@ -401,7 +402,7 @@ public sealed class ConsultGenerationOrchestrator
                         new ConsultGenerationNodeUpdate(
                             aggregator.Id, aggregator.Label, null,
                             aggregateResult.InputHash, aggregateResult.OutputHash,
-                            completedNodeCount, totalNodeCount));
+                            completedNodeCount, totalNodeCount, aggregateResult.HashVersion));
 
                     if (v7)
                     {
@@ -459,7 +460,7 @@ public sealed class ConsultGenerationOrchestrator
                     nameof(ConsultGenerationJobEntity.MarkNodeCompleted),
                     new ConsultGenerationNodeUpdate(
                         node.Id, node.Label, result.Concepts, result.InputHash, result.OutputHash,
-                        completedNodeCount, totalNodeCount));
+                        completedNodeCount, totalNodeCount, result.HashVersion));
 
                 // A scalar source of a result aggregator is one block per owning
                 // deliverable (v6: the single empty-prefix entry; v5: no entries).
@@ -516,7 +517,7 @@ public sealed class ConsultGenerationOrchestrator
                     new ConsultGenerationNodeItemUpdate(
                         node.Id, node.Label, itemId, ItemName(node, itemId),
                         result.Concepts, result.InputHash, result.OutputHash,
-                        completedChainCount, chain.Count));
+                        completedChainCount, chain.Count, result.HashVersion));
 
                 if (!v6 && nodeId == resultNodeId)
                 {
