@@ -228,7 +228,9 @@ public sealed record ConsultGenerationNodeStatusResponse(
     string? InputHash = null,
     string? OutputHash = null,
     DateTimeOffset? CompletedAtUtc = null,
-    string? Error = null);
+    string? Error = null,
+    // #375: the definition the pair was computed under; absent before the ladder.
+    int? HashVersion = null);
 
 /// <summary>#390: the body of a reschedule — a job id in the route, a time here.</summary>
 public sealed record RescheduleConsultRequest(DateTimeOffset? ScheduledAtUtc);

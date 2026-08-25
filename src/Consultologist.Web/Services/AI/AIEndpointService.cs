@@ -555,7 +555,9 @@ public record ConsultGenerationNodeStatus(
     string? InputHash,
     string? OutputHash,
     DateTimeOffset? CompletedAtUtc,
-    string? Error);
+    string? Error,
+    // #375: the definition the pair was computed under; null before the ladder.
+    int? HashVersion = null);
 
 public record ConsultGenerationJobHistoryEvent(string Kind, string Label, string? Detail, DateTimeOffset OccurredAt);
 

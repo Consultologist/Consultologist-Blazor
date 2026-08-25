@@ -228,6 +228,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         output.Concepts = input.Concepts?.ToList();
         output.InputHash = input.InputHash;
         output.OutputHash = input.OutputHash;
+        output.HashVersion = input.HashVersion;
         output.CompletedAtUtc = DateTimeOffset.UtcNow;
 
         var progress = state.GetOrAddItemProgress(input.ItemId, input.ItemName);
@@ -247,6 +248,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         node.Concepts = input.Concepts?.ToList();
         node.InputHash = input.InputHash;
         node.OutputHash = input.OutputHash;
+        node.HashVersion = input.HashVersion;
         node.CompletedAtUtc = DateTimeOffset.UtcNow;
 
         state.CompletedStageCount = input.CompletedNodeCount;
@@ -463,7 +465,10 @@ public sealed record ConsultGenerationNodeUpdate(
     string? InputHash,
     string? OutputHash,
     int CompletedNodeCount,
-    int TotalNodeCount);
+    int TotalNodeCount,
+    // #375: the pair's definition. Appended last for the reason Initialize's
+    // trailing fields give: the engine calls this positionally.
+    int? HashVersion = null);
 
 public sealed record ConsultGenerationNodeFailure(
     string NodeId,
@@ -505,7 +510,9 @@ public sealed record ConsultGenerationNodeItemUpdate(
     string? InputHash,
     string? OutputHash,
     int CompletedChainCount,
-    int TotalChainCount);
+    int TotalChainCount,
+    // #375: appended last, same reason.
+    int? HashVersion = null);
 
 public sealed class ConsultGenerationJobState
 {
@@ -778,7 +785,8 @@ public sealed class ConsultGenerationJobState
                     pair.Value.InputHash,
                     pair.Value.OutputHash,
                     pair.Value.CompletedAtUtc,
-                    pair.Value.Error)),
+                    pair.Value.Error,
+                    pair.Value.HashVersion)),
             AgentVersions: AgentVersions,
             EffectiveInputHashVersion: EffectiveInputHashVersion,
             CatalogRef: CatalogRef,
@@ -860,6 +868,9 @@ public sealed class ConsultNodeOutputState
     public List<ClinicalConcept>? Concepts { get; set; }
     public string? InputHash { get; set; }
     public string? OutputHash { get; set; }
+    // #375: the definition both hashes were computed under; null on records
+    // from before the ladder (hash-definitions.md § 4 says what that means).
+    public int? HashVersion { get; set; }
     public DateTimeOffset? CompletedAtUtc { get; set; }
     public string? Error { get; set; }
 }
