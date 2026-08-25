@@ -19,7 +19,9 @@ artifact:
   `https://consultologistpublic.blob.core.windows.net/workflow-packages/general/v2026.07.6/manifest.json`
   with no token. The clinical account never enables public blob access —
   isolation by construction. (This account also hosts the `output-contracts`
-  and `agent-definitions` registries, #93/#94.)
+  and `agent-definitions` registries, #93/#94, the `package-format` registry,
+  #376, and the `provenance` registry, #400 — the record contract a verifier
+  reads and the hash definitions they recompute with.)
 - **Private**: `consultologistjobqueue` (the account backing Durable
   Functions), container `workflow-packages` — the one and only home of
   `acct-*` forks, written exclusively by the app's registry writer and

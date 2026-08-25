@@ -1,39 +1,69 @@
-# Per-Consult Provenance Record
+# Per-Consult Provenance — the design record
 
-> **Status (2026-07-09)**: milestone 1 records the first three fields on every job —
-> `WorkflowPackage`, `EffectiveInputHash` (SHA-256 over canonical draft+sections JSON,
-> computed server-side at job start), and `AgentVersion` — snapshotted into the
-> orchestration input and exposed on the job response (`SchemaVersion` 2). The remaining
-> fields land with later milestones.
+> **The normative contract moved out (#400, 2026-08-25).** What a job record
+> carries, what each field means, and how every hash on it is computed now
+> live in their own versioned registry,
+> [consultologist-provenance](https://github.com/Consultologist/consultologist-provenance),
+> published as `provenance@vYYYY.MM.N` beside the artifacts a record cites and
+> vendored here as `external/consultologist-provenance`. The engine's own
+> numbers are held against that document by `tests/ProvenanceVersionSetTests.cs`,
+> which also recomputes the document's worked examples through
+> `ConsultGenerationProvenance`; `GET /api/Public/Engine` attests the version
+> the deployed build conforms to. What stays below is the design record — why
+> the record is shaped as it is, what it guarantees and what it does not,
+> and the legs it was designed to carry and does not yet.
 
-Every consult generation records the versioned artifacts that produced it. Conceptually:
+Every consult generation records the versioned artifacts that produced it. The
+chain the record was designed around:
 
 ```
 model_weights_version - agent_version - SNOMED_version - mcp_version - DAG_workflow_version - input_hash
 ```
 
-Store it as a **structured JSON object on the job** (version labels will eventually
-contain hyphens; derive a string key from the object when needed).
+Of those, the record today carries the workflow package (`workflowPackage`, a
+concrete ref), the agents (`catalogRef`, resolving contract → agent through an
+immutable catalog version; per-node `outputContract` on the record's nodes),
+and the input (`effectiveInputHash` with its definition number). The others are
+below, under *Declared, not recorded*.
 
-## Fields and their sources
+## Three kinds of field
 
-| Field | Content | Source of truth |
+The published contract sorts every field into one of three species, and the
+sorting is the design decision that keeps the record honest over time:
+
+- **refs** — the record stores a reference into a public, immutable registry,
+  never a copy. Always concrete (`name@vYYYY.MM.N`), never `@latest`: a record
+  pointing at a moving target would not be a record.
+- **operational snapshots** — what the engine had in hand when the job ran
+  (nodes, rosters, origins, skipped deliverables, title, tags), kept so the
+  job replays and reads the same way forever. Durable replay determinism is
+  the reason these are stored rather than re-derived.
+- **derived projections** — the deliverable hashes, recomputed from the record
+  on every read and never stored. Anyone holding the record recomputes them.
+
+`agentVersions` was the one copy the record ever stored; #105 retired it in
+favour of `catalogRef` for exactly the reason above.
+
+## Two ladders that are not one
+
+`schemaVersion` is the record's own storage shape (2, 6 or 7, stamped by the
+code path that produced the record); `packageSpecVersion` is the format the
+package was written against. They collide at 7 by coincidence, which is why
+#373 renamed what History shows and the contract states them apart.
+
+## Declared, not recorded
+
+The chain names legs the record does not yet carry. They are design intent, and
+each has, or needs, its own work:
+
+| Leg | What it would record | Where it stands |
 |---|---|---|
-| `model_weights_version` | Exact checkpoint identity of the model (DeepSeek V4 Pro at a pinned revision, e.g. HF repo + revision hash), not just the family name | Published weights registry |
-| `model_parameters` | Sampling params and the reasoning toggle (see below) | Git-tracked agent config / per-step package params |
-| `backend_fingerprint` | Serving-stack fingerprint per run, if the API exposes one | Response metadata |
-| `agent_version` | **Historical** (records ≤ 2026-07-17): contract → Foundry agent version map (`agentVersions`). Purified by #105 — later records store `catalogRef` only, and the catalog version document holds contract → {agentName, agentVersion}. The record stores refs, not copies: refs (`workflowPackage`, `catalogRef`) / operational snapshots (nodes, items — Durable replay determinism) / derived projections (`workflowOutputHash`) are the record's three living species History renders the row per job from the contracts its **nodes bound** (`nodes[].outputContract`, `text` where none), resolved through `catalogRef` — never a contract the job did not bind (#458). | The job's `catalogRef` → catalog registry |
-| `snomed_version` | Terminology edition + version + import date | MCP `get_terminology_info` (returns exactly this) |
-| `mcp_version` | Release (git tag) of the Apache-2.0 `snomed-snowstorm-mcp` repo | Git tag; the deployed app attests its own build at `GET /api/Public/Engine` (#449) — the MCP release is still not recorded (#403) |
-| `workflow_package` | `name@version` of the pinned workflow package (CalVer `vYYYY.MM.N`, e.g. `general@v2026.07.1`) | Package registry |
-| `packageTitle` | Since #432: the pinned manifest's title as it was when the job ran — a display convenience shown beside the ref, never a substitute for it. Absent on an untitled package and on every job before it | Stamped at job start from the resolved manifest |
-| `startFailure` | Since #434: set only on a job created already **Failed** because no deliverable applied to its inputs (v8 § 5 *The empty case*; v9 § 5 *The empty fan*) — the refusal sentence, composed of authored package content only. Nothing ran: `runtimeFailureError` is null, there are no blocks, `totalBlockCount` is a stated zero, and `skippedDocuments` lists every deliverable with what it wanted. Absent on every job that started | Written at job start, in the same entity write that creates the record |
-| `packageTags` | Since #453: the pinned manifest's `tags` as they were when the job ran — authored labels, the safety class of the title, shown on the record for finding it. Absent before v9 and on every job before it; an empty list for a v9 package that declared none | Stamped at job start from the resolved manifest |
-| `catalogRef` | `output-contracts@vYYYY.MM.N` — the concrete catalog version the job ran under, resolving every `agentVersions` entry to its contract→agent mapping (#93). Distinct from the catalog the *package* was **published** under, which its `publish.json` records (#433): the two may differ, and comparing them is how a contract redefined between publish and run is detected after the fact — the record #377 said by-ref could not produce | Public catalog registry (immutable versions); attested equal to git at startup |
-| `input_hash` | Hash of the **effective** input | Computed at job start |
-| `workflowOutputHash` (v1) | The deliverable hash of a **completed v5** job: SHA-256 of the canonical JSON `{sectionId: sha256(sectionText)}`, ordinal-sorted keys — a Merkle-style root over `generatedSections`. **Derived at response time, never stored**: anyone holding the record recomputes it, and two runs produced the byte-identical note iff their hashes match (#88) | Derived from the record itself |
-| `workflowOutputHash` (v2) | The deliverable hash of a **completed v6** job: SHA-256 of the assembled document's UTF-8 bytes — the deliverable is one document, so its digest is the whole story (#116; package-format-v6.md). Aggregator node outputs additionally record like any node's: input hash = canonical JSON array of source output hashes in aggregation order, output hash = the rendered digest; the rendering bytes are normative, so both reproduce from the record | Derived from the record itself |
-| `inference_stack` (optional) | Inference engine + version, for bit-exact re-run attempts | Deployment config |
+| `model_weights_version` | Exact checkpoint identity of the model (HF repo + revision hash), not the family name | Not recorded. The agent definition names the model; the checkpoint behind a hosted deployment is not exposed to the engine. |
+| `model_parameters` | Sampling params and the reasoning toggle (below) | Not recorded on the job; they are the agent definition's, covered by `catalogRef` → agent version → the attested manifest. |
+| `backend_fingerprint` | Serving-stack fingerprint per run, if the API exposes one | Not recorded; the API does not expose one. |
+| `snomed_version` | Terminology edition + version + import date | Not recorded — #403. |
+| `mcp_version` | Release (git tag) of the Apache-2.0 `snomed-snowstorm-mcp` repo | Not recorded — #403. The engine attests its own build (#449); the MCP deployment's is still future work. |
+| `inference_stack` | Inference engine + version, for bit-exact re-run attempts | Not recorded. |
 
 ## Attestation: git as source of truth for mutable deployments
 
@@ -77,47 +107,36 @@ from the app package to a registry written **only by CI** from a dedicated agent
 (GitHub→Azure OIDC; humans read-only). The CI-only-write restriction is the
 precondition — a registry humans can write would make the attestation tautological.
 
-## The effective-input hash
+## The effective-input hash — why it is versioned the way it is
+
+The definitions themselves (1–5) and their worked examples are in the
+published contract's `hash-definitions.md`. What this record keeps is the
+rule and its history:
 
 > **Versioned 2026-07-15 (Milestone 5)**: jobs record `effectiveInputHashVersion`.
 > Definitions are added beside their predecessors, never replaced, and **never
-> compared as equals** across versions:
+> compared as equals** across versions. The ladder has moved with the format —
+> 2 (specVersion 5/6: the draft only), 3 (v7: the supplied inputs as an
+> ordinal-sorted `{id: text}` map), 4 (v8: typed scalars), 5 (v9: structured
+> values, UTF-8 written as-is) — each time because the bytes that describe an
+> input changed, and a hash that silently changed its bytes under one number
+> would be worthless.
 >
-> - **1** (null/absent, pre-v5 jobs) — draft + sections, as described below;
->   historical.
-> - **2** (specVersion 5/6) — **the draft only**, because sections are package
->   data covered by the `workflowPackage` ref and the account standards override
->   is retired.
-> - **3** (specVersion 7) — the supplied inputs as an ordinal-sorted `{id: text}`
->   map, absent optionals omitted (package-format-v7-design.md § 6).
-> - **4** (specVersion 8) — the same map as **typed scalars**: a boolean hashes
->   as `true`, not `"true"` (package-format-v8-design.md § 6).
-> - **5** (specVersion 9) — the same map as **structured values**: field ids
->   ordinal-sorted at every level, array elements in the caller's order, a
->   number as the digits sent, and UTF-8 written as-is where 2–4 escape it
->   (package-format-v9-design.md § 8). Definition 4 refuses structure, so a
->   misrouted gate fails rather than stamping 4.
+> **v5-only rebase (#77, 2026-07-15)**: definition 1 (draft + sections) is
+> historical — the engine computes only 2 upward, and job records referencing
+> pre-v5 packages are no longer re-runnable (pre-release test data; the
+> reproducibility promise starts at specVersion 5). Explicit revocation under
+> the pre-release-churn doctrine.
 >
-> The per-node chain below extends to **per-(node, item)** entries
-> (`nodeId:itemId` keys) — every forEach instance records its own input/output
-> hashes.
->
-> **v5-only rebase (#77, 2026-07-15)**: the v1 definition is historical — the
-> engine computes only v2, and job records referencing pre-v5 packages are no
-> longer re-runnable (pre-release test data; the reproducibility promise starts at
-> specVersion 5). Explicit revocation under the pre-release-churn doctrine.
-
-The input is not just the consult draft. The request reaching the orchestrator is
-draft + section list + standards, and account-level overrides change the standards.
-Hash the **fully resolved content** (draft + resolved sections/standards after
-overrides). Cleanest rule: overrides produce an ephemeral package-content hash recorded
-alongside the pinned package version — otherwise two different runs can claim the same
-input. *(v1 semantics — see the versioning note above.)*
+> The per-node chain extends to **per-(node, item)** entries (`nodeId:itemId`
+> keys) — every forEach instance records its own input/output hashes. Those
+> per-node hashes carry **no definition number** (#375): the rendered-prompt
+> bytes have changed at least twice (#357, #358) with nothing to move, and the
+> published contract states the ladder as empty rather than pretending.
 
 **Prompts are not part of the input hash.** Since specVersion 2
 ([package-format-v2.md](package-format-v2.md)) the prompts are package content, covered
-by the `workflowPackage` provenance field; the effective-input hash continues to cover
-only draft + resolved sections/standards. Two jobs with the same hash but different
+by the `workflowPackage` provenance field. Two jobs with the same hash but different
 package versions ran the same clinical input through different prompts — which is
 exactly what the two fields, read together, are designed to express.
 
@@ -172,7 +191,7 @@ semantics living in C#. Two harnesses running the same DAG + prompts but parsing
 formatting differently produce different outputs. Until the workflow package format
 specifies these contracts (per-step output schemas, or a published versioned "workflow
 spec" the DAG version implies), the app version is silently part of the provenance.
-This lands in milestone 4 of workflow-packages.md.
+This landed with the output-contract catalog (#93) and the per-node output contracts (package-format-v4.md): the inter-step contracts are package content now, and the published provenance contract says how a record names them.
 
 Once that is done, the published artifact set — open weights (DeepSeek), workflow
 package, SNOMED edition, MCP server code (Apache 2.0) — is sufficient to re-run the
