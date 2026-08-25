@@ -7,8 +7,8 @@ namespace Consultologist.Api.Workflow;
 
 /// <summary>
 /// What the deployed engine is, stated by the engine (#449): the commit it was
-/// built from, the output-contract catalog it resolved, the format registry
-/// version it was built against, the spec versions it accepts and runs, and
+/// built from, the output-contract catalog it resolved, the format and
+/// provenance registry versions it was built against, the spec versions it accepts and runs, and
 /// the Scriban the renderer uses. Deployment facts only — nothing here is a
 /// secret or names a person — which is what lets Public/Engine be anonymous.
 /// The property set is pinned by test: a new field lands through that test or
@@ -19,6 +19,7 @@ public sealed record EngineAttestationResponse(
     string Version,
     string OutputContracts,
     string? PackageFormat,
+    string? Provenance,
     IReadOnlyList<int> AcceptedSpecVersions,
     IReadOnlyList<int> SupportedSpecVersions,
     string Scriban,
@@ -29,10 +30,13 @@ public static class EngineAttestation
     /// <summary>Where the csproj lands the vendored registry index (relative to the app base).</summary>
     public const string PackageFormatIndexPath = "package-format/spec-versions.json";
 
+    /// <summary>Where the csproj lands the vendored provenance index (#400).</summary>
+    public const string ProvenanceIndexPath = "provenance/provenance-versions.json";
+
     private const int FullCommitLength = 40;
 
     /// <summary>The rule, separated from reflection and the file system so it can be tested on strings.</summary>
-    public static EngineAttestationResponse Describe(string? informationalVersion, string catalogRef, string? packageFormat, DateTimeOffset now)
+    public static EngineAttestationResponse Describe(string? informationalVersion, string catalogRef, string? packageFormat, string? provenance, DateTimeOffset now)
     {
         var raw = string.IsNullOrWhiteSpace(informationalVersion) ? "unknown" : informationalVersion;
         var separator = raw.IndexOf('+');
@@ -42,6 +46,7 @@ public static class EngineAttestation
             separator < 0 ? raw : raw[..separator],
             catalogRef,
             packageFormat,
+            provenance,
             WorkflowPackageValidator.AcceptedSpecVersions,
             WorkflowPackageStore.SupportedSpecVersions,
             WorkflowPackageValidator.EngineScribanVersion.ToString(),
@@ -78,9 +83,13 @@ public static class EngineAttestation
     }
 
     /// <summary>The registry version in the copied index, or null when the file is not there.</summary>
-    internal static string? PackageFormatVersionIn(string baseDirectory)
+    internal static string? PackageFormatVersionIn(string baseDirectory) => VersionIn(baseDirectory, PackageFormatIndexPath);
+
+    internal static string? ProvenanceVersionIn(string baseDirectory) => VersionIn(baseDirectory, ProvenanceIndexPath);
+
+    private static string? VersionIn(string baseDirectory, string indexPath)
     {
-        var path = Path.Combine(baseDirectory, PackageFormatIndexPath);
+        var path = Path.Combine(baseDirectory, indexPath);
         if (!File.Exists(path))
         {
             return null;
@@ -97,5 +106,6 @@ public static class EngineAttestation
             typeof(EngineAttestation).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
             catalog.ResolvedRef,
             PackageFormatVersionIn(AppContext.BaseDirectory),
+            ProvenanceVersionIn(AppContext.BaseDirectory),
             DateTimeOffset.UtcNow);
 }
