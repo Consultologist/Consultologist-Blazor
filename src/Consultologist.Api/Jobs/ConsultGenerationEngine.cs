@@ -85,7 +85,9 @@ public sealed class ConsultGenerationOrchestrator
                 InputDocumentOrigins: input.InputDocumentOrigins,
                 // #398: by name, for the same reason.
                 PackageFormatRef: input.PackageFormatRef,
-                ProvenanceRef: input.ProvenanceRef));
+                ProvenanceRef: input.ProvenanceRef,
+                Terminology: input.Terminology,
+                TerminologyServerRef: input.TerminologyServerRef));
 
         // #157: a scheduled job sleeps here — visible as Scheduled (entity state
         // above) — then proceeds identically. CurrentUtcDateTime keeps the guard

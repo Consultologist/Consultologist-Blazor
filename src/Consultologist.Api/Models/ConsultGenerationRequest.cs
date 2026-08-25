@@ -1,6 +1,8 @@
 using System.Text.Json.Serialization;
 
 using Consultologist.PackageFormat;
+using Consultologist.Api.Workflow;
+
 namespace Consultologist.Api.Models;
 
 public record ConsultGenerationRequest(
@@ -149,7 +151,11 @@ public record ConsultGenerationJobResponse(
     // #398: the rules the package was read by (package-format@v…) and the
     // contract this record conforms to (provenance@v…); null before 2026-08-25.
     string? PackageFormatRef = null,
-    string? ProvenanceRef = null);
+    string? ProvenanceRef = null,
+    // #403: the terminology edition the run was answered against, and the
+    // server that served it; null before 2026-08-25 or when unreadable at start.
+    TerminologySnapshot? Terminology = null,
+    string? TerminologyServerRef = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and

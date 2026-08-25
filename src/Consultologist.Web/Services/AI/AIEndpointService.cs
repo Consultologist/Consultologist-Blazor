@@ -516,7 +516,13 @@ public record ConsultGenerationJobResponse(
     IReadOnlyList<string>? PackageTags = null,
     // #398: package-format@v… and provenance@v… as the job recorded them; null before.
     string? PackageFormatRef = null,
-    string? ProvenanceRef = null);
+    string? ProvenanceRef = null,
+    // #403: mirrors the Api's Terminology / TerminologyServerRef.
+    TerminologySnapshot? Terminology = null,
+    string? TerminologyServerRef = null);
+
+/// <summary>Mirrors Consultologist.Api.Workflow.TerminologySnapshot (#403).</summary>
+public record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultSkippedDocument.</summary>
 public record ConsultSkippedDocumentResponse(string ResultId, string Label, string Reason);
