@@ -50,6 +50,9 @@
          agent selection, attested per entry (output-contract-catalog.md). -->
     <None Include="..\..\external\consultologist-agents\agents\output-contracts.json" Link="agents\output-contracts.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\external\consultologist-agents\agents\schemas\*.json" Link="agents\schemas\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- #449: the format registry version this engine was built against, so the
+         deployed app can attest it beside its commit (GET /api/Public/Engine). -->
+    <None Include="..\..\external\consultologist-package-format\spec-versions.json" Link="package-format\spec-versions.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
