@@ -92,7 +92,9 @@ curl -s https://consultologistpublic.blob.core.windows.net/workflow-packages/gen
 curl -s https://consultologistpublic.blob.core.windows.net/workflow-packages/general/latest.json
 ```
 
-`az storage blob …` against `consultologistpublic` works too (`--auth-mode
+Every published version carries its `LICENSE` beside its index from the
+first publish after 2026-08-25 (#399); the registry's README states the
+terms and their scope. `az storage blob …` against `consultologistpublic` works too (`--auth-mode
 login` with a Storage Blob Data Reader role). Published versions are
 immutable by refusal (registry-layout.md § 4): a published version is never
 edited in place; changes are a new CalVer version.
