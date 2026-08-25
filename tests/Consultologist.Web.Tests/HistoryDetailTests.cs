@@ -32,7 +32,8 @@ public class HistoryDetailTests : ClientRenderTestContext
         IReadOnlyList<ConsultGenerationNodeDescriptor>? nodes = null,
         string? catalogRef = null,
         IReadOnlyDictionary<string, string>? agentVersions = null,
-        string workflowOutputHash = "bbbb")
+        string workflowOutputHash = "bbbb",
+        IReadOnlyDictionary<string, ConsultGenerationNodeStatus>? nodeOutputs = null)
     {
         // Terminal status only: a non-terminal row would start the page's real
         // 5-second polling loop.
@@ -68,6 +69,7 @@ public class HistoryDetailTests : ClientRenderTestContext
             PackageTitle: packageTitle,
             PackageTags: packageTags,
             Nodes: nodes,
+            NodeOutputs: nodeOutputs,
             AgentVersions: agentVersions,
             CatalogRef: catalogRef));
     }
@@ -142,6 +144,29 @@ public class HistoryDetailTests : ClientRenderTestContext
         Assert.Equal(new[] { "recomputed — does not match", "recomputed — matches", "recomputed — matches" },
             tampered.FindAll(".hash-check").Select(m => m.TextContent.Trim()));
         Assert.Contains("1 of 3 recomputed hash(es) do not match", tampered.Find(".provenance-verify").TextContent);
+    }
+
+    [Fact]
+    public void TheRail_NamesEachNodesHashDefinition_OrSaysItPredatesTheLadder()
+    {
+        // #375: a stamped node links its number to the published ladder; a
+        // node recorded before the ladder says so instead of showing one.
+        WithEngine();
+        WithJob(3, nodes: new[] { new ConsultGenerationNodeDescriptor("digest", "Digest"), new ConsultGenerationNodeDescriptor("letter", "Letter") },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["digest"] = new("digest", "Digest", "Completed", "in-1", "out-1", DateTimeOffset.UtcNow, null, HashVersion: 5),
+                ["letter"] = new("letter", "Letter", "Completed", "in-2", "out-2", DateTimeOffset.UtcNow, null)
+            });
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var stamped = page.Find(".node-row__hashes a.provenance-ref");
+        Assert.Equal("v5", stamped.TextContent.Trim());
+        Assert.Equal($"{Registry}/provenance/v2026.08.2/hash-definitions.md", stamped.GetAttribute("href"));
+        Assert.Contains("per-node definition 5", stamped.GetAttribute("title"));
+        var unstamped = page.Find(".node-row__unversioned");
+        Assert.Equal("v—", unstamped.TextContent.Trim());
+        Assert.Contains("before the per-node hashes had a definition number", unstamped.GetAttribute("title"));
     }
 
     private static string AgentsRow(IRenderedComponent<History> page) => page.Find(".provenance-agents").TextContent.Trim();

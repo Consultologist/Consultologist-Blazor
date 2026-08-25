@@ -129,10 +129,12 @@ rule and its history:
 > the pre-release-churn doctrine.
 >
 > The per-node chain extends to **per-(node, item)** entries (`nodeId:itemId`
-> keys) — every forEach instance records its own input/output hashes. Those
-> per-node hashes carry **no definition number** (#375): the rendered-prompt
-> bytes have changed at least twice (#357, #358) with nothing to move, and the
-> published contract states the ladder as empty rather than pretending.
+> keys) — every forEach instance records its own input/output hashes. Since
+> #375 (2026-08-25) each pair carries `hashVersion`, one number defining both
+> hashes: the ladder has five dated definitions, one per change to the
+> rendered-prompt bytes (`ConsultGenerationProvenance.NodeHashVersion` is the
+> newest, held equal to the published index by test), and records from before
+> carry none — the contract says how to place them by date.
 
 Since #402 a holder can check a record: History's *Verify* recomputes the
 deliverable hashes in the browser and `scripts/verify-job-hashes.cs` runs the
@@ -174,7 +176,9 @@ DeepSeek V4 Pro supports disabling reasoning via parameters. Implications:
   package on the same draft diverged at exactly one point — the first node's
   OutputHash — with the difference propagating precisely along DAG edges. The
   first node's InputHash is the deterministic cross-run anchor (byte-identical
-  through eight generations of engine and format as of the editor's verification);
+  through eight generations of engine and format as of the editor's verification
+  on 2026-07-16 — under per-node definition 1; the ladder since names each
+  change to those bytes);
   downstream InputHashes embed upstream model outputs and are only stable when
   those converge.
 - **Statistical reproducibility across harnesses**: same record ⇒ same configuration ⇒
