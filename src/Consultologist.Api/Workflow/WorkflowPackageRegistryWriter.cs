@@ -39,8 +39,10 @@ public interface IWorkflowPackageRegistryWriter
 
 public sealed class WorkflowPackageRegistryWriter : IWorkflowPackageRegistryWriter
 {
-    // Read case-insensitively; write camelCase to match the repo publish script's
-    // {"version": "..."} pointer shape.
+    // Read case-insensitively; write camelCase — the same one-member object the
+    // repo publish scripts write ({"version": "..."}). The bytes differ in
+    // whitespace, which registry-layout.md § 6 (consultologist-provenance)
+    // states is insignificant; every reader here is case- and space-tolerant.
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,

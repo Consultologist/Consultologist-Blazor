@@ -7,6 +7,13 @@ specVersion-2 package with prompts).
 
 ## Where the registry lives
 
+> The contract a reader relies on — one container per registry, the two
+> layout families, CalVer, immutability, `latest.json`, anonymous read
+> including listing — is published as `registry-layout.md` in
+> [consultologist-provenance](https://github.com/Consultologist/consultologist-provenance)
+> (#401). This file is the operator's runbook: which account, which
+> commands, which roles.
+
 **Ownership split (Milestone 6, #92)** — two storage accounts, one home per
 artifact:
 
@@ -72,21 +79,23 @@ execute (the v5-only rebase, #77).
 
 ## Via `az` CLI
 
-`--auth-mode login` uses your Entra identity (requires a Storage Blob Data role on the
-account); omitting it makes az fall back to account keys with a warning.
+The examples browse the **public** account (`general` lives there); swap in
+`consultologistjobqueue` for `acct-*` packages. `--auth-mode login` uses your
+Entra identity (requires a Storage Blob Data role on the account); omitting
+it makes az fall back to account keys with a warning.
 
 ```bash
 # List everything in the registry
-az storage blob list --account-name consultologistjobqueue --auth-mode login \
+az storage blob list --account-name consultologistpublic --auth-mode login \
   --container-name workflow-packages --query "[].name" -o tsv
 
 # Read any single file straight to the terminal
-az storage blob download --account-name consultologistjobqueue --auth-mode login \
+az storage blob download --account-name consultologistpublic --auth-mode login \
   --container-name workflow-packages \
   --name general/v2026.07.3/prompts/extract-patient-concepts.md --file /dev/stdout
 
 # Check where 'latest' points
-az storage blob download --account-name consultologistjobqueue --auth-mode login \
+az storage blob download --account-name consultologistpublic --auth-mode login \
   --container-name workflow-packages --name general/latest.json --file /dev/stdout
 ```
 
