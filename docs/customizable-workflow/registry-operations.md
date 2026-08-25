@@ -257,8 +257,33 @@ catalog — both registries, with the app's own identity — **at startup** and
   could not be resolved at all.
 - The remedy is never an edit to a published version: re-pin the account
   (`consult.workflowPackage`) to a version the catalog carries, or publish a
-  new version from the editor, or fix the catalog pin. #452 is the check to
-  run *before* bumping the catalog pin so this report stays empty.
+  new version from the editor, or fix the catalog pin. The check below is
+  the one to run *before* bumping the catalog pin so this report stays empty.
+
+### Before a catalog pin bump (#452)
+
+Load a candidate catalog that is already published and resolve **every
+published package version in both registries** against it — the app's
+identity is the only principal that can read every account's registry:
+
+```
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://<function-host>/api/Operator/CatalogStrands?candidate=output-contracts@v2026.07.2"
+```
+
+`candidate` is required and must be a concrete `output-contracts@vYYYY.MM.N`
+(400 otherwise; 422 when that version is not in the registry). The response
+lists only versions that need attention — `Stranded` with the store's own
+sentence per schema, or `Unreadable` — each with `PinnedBy`, the number of
+accounts whose pin resolves to it today (an `@latest` pin counts against the
+version its pointer names). `Counts` says how many versions were listed,
+checked, stamped, and skipped as unsupported spec or declaring no schema, and
+whether the public registry was read. A stranded version with `PinnedBy > 0`
+is a consult that would refuse to start the moment the pin moves: do not bump.
+
+The same premises guard the **public** half at publish time, on the agents
+repo's pull request, through `scripts/check-catalog-strands-packages.cs` —
+both call `WorkflowPackageStore.ResolveContracts`, so they cannot drift.
 
 ## Lineage (#89)
 

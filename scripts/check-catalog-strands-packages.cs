@@ -14,6 +14,12 @@
 // <candidate-catalog-dir> is the agents repo's agents/ directory — the catalog
 // as it would be published, read before anything is uploaded.
 //
+// This is the PUBLIC half, and the moment before publish (the agents repo's
+// CI runs it on the pull request). The operator's check before a PIN bump —
+// both registries, against a candidate that is already published — is
+// GET /api/Operator/CatalogStrands (#452); both call the store's
+// WorkflowPackageStore.ResolveContracts, so the premises cannot drift.
+//
 // WHY THIS EXISTS. A published package version is immutable; whether it still
 // LOADS is not. A package carries a COPY of each schema, and
 // WorkflowPackageStore re-matches that copy against the live catalog on every
@@ -183,52 +189,49 @@ foreach (var package in chain.Packages.OrderBy(p => p.Name, StringComparer.Ordin
 
         foreach (var (schemaId, path) in schemas)
         {
-            if (stamp != null)
+            // A stamp with no entry for a declared schema is stranded under
+            // every catalog — a registry defect, not a question this catalog
+            // can answer.
+            if (stamp != null && !stamp.Contracts.ContainsKey(schemaId))
             {
-                // Stamped: the match was made at publish. The question is
-                // only whether the contract it resolved to still exists.
-                if (!stamp.Contracts.TryGetValue(schemaId, out var stampedId))
-                {
-                    // Stranded under every catalog — a registry defect, not
-                    // a question this catalog can answer.
-                    Console.Error.WriteLine($"error: {reference} {WorkflowPackageStamp.FileName} has no contract for schema '{schemaId}'.");
-                    return 2;
-                }
-
-                if (candidate.Entries.ContainsKey(stampedId))
-                {
-                    Console.Out.WriteLine($"  {reference} schema '{schemaId}' -> {stampedId} (stamped under {stamp.CatalogRef})");
-                    continue;
-                }
-
-                Console.Error.WriteLine("error: " + WorkflowPackageContentException.StampedContractUnknown(
-                    reference, schemaId, stampedId, stamp.CatalogRef, candidate.ResolvedRef).Message);
-                stranded.Add($"{reference} ({schemaId})");
-                continue;
-            }
-
-            JsonNode? schema;
-            try
-            {
-                schema = JsonNode.Parse(await DownloadAsync($"{package.Name}/{version}/{path}"));
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"error: {reference} schema '{schemaId}' could not be read: {ex.Message}");
+                Console.Error.WriteLine($"error: {reference} {WorkflowPackageStamp.FileName} has no contract for schema '{schemaId}'.");
                 return 2;
             }
 
-            if (candidate.TryResolveContract(schema, out var contractId))
+            var files = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (stamp == null)
             {
-                Console.Out.WriteLine($"  {reference} schema '{schemaId}' -> {contractId}");
-                continue;
+                try
+                {
+                    files[path] = await DownloadAsync($"{package.Name}/{version}/{path}");
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"error: {reference} schema '{schemaId}' could not be read: {ex.Message}");
+                    return 2;
+                }
             }
 
-            // The sentence the store would throw at pin resolve, said here
-            // instead — where the catalog can still be changed.
-            Console.Error.WriteLine(
-                $"error: {reference} schema '{schemaId}' would no longer match any contract in {candidate.ResolvedRef}.");
-            stranded.Add($"{reference} ({schemaId})");
+            // #452: the store's own premises — stamped, the contract id must
+            // survive; unstamped, the copy must still canonically match — and
+            // its own sentence, said here where the catalog can still change.
+            try
+            {
+                var resolved = WorkflowPackageStore.ResolveContracts(
+                    reference,
+                    manifest with { Schemas = new Dictionary<string, string> { [schemaId] = path } },
+                    files,
+                    stamp,
+                    candidate);
+                Console.Out.WriteLine(stamp != null
+                    ? $"  {reference} schema '{schemaId}' -> {resolved[schemaId]} (stamped under {stamp.CatalogRef})"
+                    : $"  {reference} schema '{schemaId}' -> {resolved[schemaId]}");
+            }
+            catch (WorkflowPackageContentException ex)
+            {
+                Console.Error.WriteLine("error: " + ex.Message);
+                stranded.Add($"{reference} ({schemaId})");
+            }
         }
     }
 }
