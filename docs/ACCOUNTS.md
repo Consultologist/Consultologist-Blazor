@@ -97,6 +97,15 @@ az storage entity merge \
 The same command with `Status=Disabled` turns an account off. Existing rows
 created before #191 keep their `Active` status — no migration.
 
+## Operators (#384)
+
+There is no admin role. An **operator** is an ordinary account whose AppUserId
+is listed in `Operators__AppUserIds` (see CONFIGURATION.md); the list is empty
+by default, so no surface is reachable until it is set. Operator surfaces are
+read-only reports — today `GET /api/Operator/PinHealth` — and are gated like
+every other function (bearer token, `CanUseApp`) plus the list. Everything
+that changes an account is still done with `az`.
+
 ## Account Settings
 
 Authenticated user preferences are stored server-side in Azure Table Storage so they follow the app account across browsers and devices.

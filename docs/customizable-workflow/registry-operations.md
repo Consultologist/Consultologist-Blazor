@@ -232,6 +232,34 @@ Every name from the first must appear once in the second under the account
 whose id starts with the name's 12 hex. A name with no row is unreachable by
 anyone; the remedy is one `az storage entity insert` under the right account.
 
+## Pin health (#384)
+
+Every account's pinned package is resolved through the store with the loaded
+catalog — both registries, with the app's own identity — **at startup** and
+**on demand**. Nothing is changed by running it.
+
+- Startup: the Log stream shows `[PinHealth] N accounts on M pins against
+  output-contracts@v…, K need attention`, and one warning per pin that does:
+  `Pinned package <ref> is Stranded: <the store's sentence> (<n> accounts)`.
+- On demand, as an operator (`Operators__AppUserIds`):
+
+  ```
+  curl -s -H "Authorization: Bearer $TOKEN" \
+    https://<function-host>/api/Operator/PinHealth
+  ```
+
+  The response groups accounts by the ref their pin resolved to: `Healthy`
+  (a consult would start), `Stranded` (the store refused the content — the
+  sentence names the schema id and the catalog version that moved, or the
+  spec version this engine no longer runs), or `Unreadable` (the registry
+  could not be read; the failure's type only). AppUserIds are listed only on
+  entries that need a remedy. `(unresolved)` collects accounts whose own pin
+  could not be resolved at all.
+- The remedy is never an edit to a published version: re-pin the account
+  (`consult.workflowPackage`) to a version the catalog carries, or publish a
+  new version from the editor, or fix the catalog pin. #452 is the check to
+  run *before* bumping the catalog pin so this report stays empty.
+
 ## Lineage (#89)
 
 `GET /api/WorkflowPackages/Lineage?ref=name@vYYYY.MM.N` (authorized; owner-only

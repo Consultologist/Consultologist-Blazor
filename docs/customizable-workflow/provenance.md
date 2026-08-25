@@ -62,6 +62,8 @@ contain hyphens; derive a string key from the object when needed).
 > the app out at that commit for engine validation — "passed engine validation"
 > means the deployed engine, with `main` as the stated fallback and a visible
 > notice when the endpoint cannot say. The property set is pinned by test.
+> Since #384 the app also reports every account's pin against the loaded
+> catalog at startup and at `GET /api/Operator/PinHealth` (registry-operations.md).
 
 The Foundry agent (system prompt, parameters, tool wiring) is edited in a portal and is
 therefore mutable state. Rule: **track the agent config in git; at startup or job start,
