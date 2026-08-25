@@ -1,3 +1,4 @@
+using Consultologist.Web.Services.Provenance;
 using Consultologist.Web.Services.Workflow;
 using Bunit;
 using Consultologist.Web.Pages;
@@ -30,7 +31,8 @@ public class HistoryDetailTests : ClientRenderTestContext
         IReadOnlyList<string>? packageTags = null,
         IReadOnlyList<ConsultGenerationNodeDescriptor>? nodes = null,
         string? catalogRef = null,
-        IReadOnlyDictionary<string, string>? agentVersions = null)
+        IReadOnlyDictionary<string, string>? agentVersions = null,
+        string workflowOutputHash = "bbbb")
     {
         // Terminal status only: a non-terminal row would start the page's real
         // 5-second polling loop.
@@ -55,7 +57,7 @@ public class HistoryDetailTests : ClientRenderTestContext
             Success: true,
             EffectiveInputHash: "aaaa",
             EffectiveInputHashVersion: outputHashVersion,
-            WorkflowOutputHash: "bbbb",
+            WorkflowOutputHash: workflowOutputHash,
             WorkflowOutputHashVersion: outputHashVersion,
             AssembledDocuments: documents,
             InputOrigins: inputOrigins,
@@ -78,6 +80,69 @@ public class HistoryDetailTests : ClientRenderTestContext
             ["concept-list"] = new("concept-extraction", "1"),
             ["text"] = new("test-json", "47")
         });
+
+    private void WithEngine() =>
+        WorkflowService.GetEngineAsync().Returns(new EngineView("9c1ca4ac9373f1dc01e1fec68772304ef7d23ca6", "v2026.08.6", "v2026.08.2"));
+
+    private const string Registry = "https://consultologistpublic.blob.core.windows.net";
+
+    [Fact]
+    public void TheDefinitionNumbers_LinkToThePublishedDocument_AtTheEngineAttestedVersion()
+    {
+        // #402: a number a reader can resolve — the exact contract the
+        // deployed engine names — not a bare integer.
+        WithEngine();
+        WithJob(3, new[] { new ConsultGenerationResultDocumentResponse("note", "Consultation note", "Note.", "hash-note") }, packageSpecVersion: 9, schemaVersion: 7, workflowPackage: "general@v2026.08.1");
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var refs = page.FindAll(".provenance-list a.provenance-ref").Select(a => (a.TextContent.Trim(), a.GetAttribute("href"))).ToList();
+        Assert.Contains(("v7", $"{Registry}/provenance/v2026.08.2/provenance-record.md"), refs);
+        Assert.Equal(2, refs.Count(r => r.Item2 == $"{Registry}/provenance/v2026.08.2/hash-definitions.md" && r.Item1 == "v3"));
+        // #373's chip, finished: the format number resolves too.
+        Assert.Equal($"{Registry}/package-format/v2026.08.6/package-format-v9.md", page.Find(".provenance-chip a.provenance-ref").GetAttribute("href"));
+        Assert.Contains("Output hash (v3)", page.Find(".provenance-list").TextContent);
+    }
+
+    [Fact]
+    public void WithoutTheAttestation_TheNumbersStayPlainText()
+    {
+        WithJob(3, new[] { new ConsultGenerationResultDocumentResponse("note", "Consultation note", "Note.", "hash-note") }, packageSpecVersion: 9);
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Empty(page.FindAll("a.provenance-ref"));
+        Assert.Contains("Input hash (v3)", page.Find(".provenance-list").TextContent);
+        Assert.Contains(page.FindAll(".provenance-chip"), chip => chip.TextContent.Contains("format v9", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Verify_RecomputesTheDeliverableHashesFromTheRecord()
+    {
+        var note = ProvenanceHashes.Sha256Hex("Consultation note");
+        var letter = ProvenanceHashes.Sha256Hex("Patient letter");
+        var documents = new[]
+        {
+            new ConsultGenerationResultDocumentResponse("note", "Consultation note", "Consultation note", note),
+            new ConsultGenerationResultDocumentResponse("letter", "Patient letter", "Patient letter", letter)
+        };
+        WithJob(3, documents, workflowOutputHash: ProvenanceHashes.MerkleHash(new Dictionary<string, string> { ["note"] = "Consultation note", ["letter"] = "Patient letter" }));
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+        Assert.Empty(page.FindAll(".hash-check"));
+
+        page.Find(".provenance-verify fluent-button").Click();
+
+        var marks = page.FindAll(".hash-check").Select(m => m.TextContent.Trim()).ToList();
+        Assert.Equal(3, marks.Count);
+        Assert.All(marks, m => Assert.Equal("recomputed — matches", m));
+        Assert.Contains("3 hash(es) recomputed — all match", page.Find(".provenance-verify").TextContent);
+
+        // A record whose output hash does not come from its texts says so, by hash.
+        WithJob(3, documents, workflowOutputHash: "not-what-the-texts-give");
+        var tampered = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+        tampered.Find(".provenance-verify fluent-button").Click();
+        Assert.Equal(new[] { "recomputed — does not match", "recomputed — matches", "recomputed — matches" },
+            tampered.FindAll(".hash-check").Select(m => m.TextContent.Trim()));
+        Assert.Contains("1 of 3 recomputed hash(es) do not match", tampered.Find(".provenance-verify").TextContent);
+    }
 
     private static string AgentsRow(IRenderedComponent<History> page) => page.Find(".provenance-agents").TextContent.Trim();
 

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Bunit;
 using Bunit.TestDoubles;
 using Consultologist.Web.Services.Accounts;
@@ -61,6 +62,13 @@ public abstract class ClientRenderTestContext : BunitContext
         // have no try/catch around these, so a throwing substitute fails the
         // render outright. Null is a value both handle.
         WorkflowService.GetPublicChainAsync().Returns((PublicChainView?)null);
+        WorkflowService.GetEngineAsync().Returns((EngineView?)null);
+
+        // History resolves a record's version numbers against the public
+        // registry; the base is what production's appsettings carries.
+        Services.AddSingleton<IConfiguration>(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["AzureFunction:PublicRegistryBaseUrl"] = "https://consultologistpublic.blob.core.windows.net" })
+            .Build());
         WorkflowService.GetMyPackagesAsync().Returns((IReadOnlyList<PublicPackageView>?)null);
     }
 

@@ -296,6 +296,35 @@ The same premises guard the **public** half at publish time, on the agents
 repo's pull request, through `scripts/check-catalog-strands-packages.cs` —
 both call `WorkflowPackageStore.ResolveContracts`, so they cannot drift.
 
+## Verifying a record (#402)
+
+A job record's hashes are defined byte for byte in the provenance registry
+(`hash-definitions.md`, `provenance@vYYYY.MM.N`); History links each number
+to that document at the version the deployed engine attests, and the format
+chip to its specification. To check a record:
+
+- **In History**, *Verify* (Provenance section, completed jobs) recomputes
+  the deliverable hashes from the texts the record carries — the output hash
+  by its definition and every document digest — and marks each *recomputed —
+  matches* or *does not match*. It cannot check the input hash (the inputs
+  are not on the record) or the per-node hashes (the rendered prompts are
+  not either).
+- **From a terminal**, with the record and, for the input hash, the inputs:
+
+  ```
+  curl -sS -H "Authorization: Bearer $TOKEN" \
+    https://<function-host>/api/ConsultGenerationJobs/<job-id> > job.json
+  dotnet run -v q --file scripts/verify-job-hashes.cs -- job.json
+  dotnet run -v q --file scripts/verify-job-hashes.cs -- job.json --inputs inputs.json   # effectiveInputHashVersion 3, 4, 5
+  dotnet run -v q --file scripts/verify-job-hashes.cs -- job.json --draft draft.txt      # version 2
+  ```
+
+  It runs the engine's own functions (`ConsultGenerationProvenance`), whose
+  agreement with the published definitions and worked examples is pinned by
+  `tests/ProvenanceVersionSetTests.cs`; a mismatch is therefore about the
+  bytes, never about the recipe. Exit 0 all match, 1 any mismatch, 2 usage.
+  `inputs.json` is the request's own form — `{"id": value, …}`.
+
 ## Lineage (#89)
 
 `GET /api/WorkflowPackages/Lineage?ref=name@vYYYY.MM.N` (authorized; owner-only

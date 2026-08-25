@@ -311,3 +311,32 @@
 .node-group[open] > summary .node-row__chevron {
 	transform: rotate(90deg);
 }
+
+/* #402: a definition number that resolves, and a hash recomputed beside its record. */
+.provenance-ref {
+    color: inherit;
+    text-decoration: underline dotted;
+}
+
+.provenance-verify {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.25rem 0 0.5rem;
+}
+
+.hash-check {
+    margin-left: 0.5rem;
+    font-family: inherit;
+    font-size: 0.85em;
+}
+
+.hash-check--match {
+    color: var(--success, #107c10);
+}
+
+.hash-check--mismatch {
+    color: var(--error, #a4262c);
+    font-weight: 600;
+}

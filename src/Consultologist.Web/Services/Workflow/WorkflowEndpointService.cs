@@ -14,6 +14,8 @@ public interface IWorkflowEndpointService
     Task<WorkflowPackageContentResponse> GetCurrentPackageContentAsync(string? packageRef = null);
     Task<WorkflowPublishOutcome> PublishPackageAsync(WorkflowPackagePublishRequest request);
     Task<PublicChainView?> GetPublicChainAsync();
+    /// <summary>#402: what the deployed engine attests (Public/Engine) — the versions History links a record's numbers to.</summary>
+    Task<EngineView?> GetEngineAsync();
     /// <summary>#447: every package the account owns — a set, since an account holds many.</summary>
     Task<IReadOnlyList<PublicPackageView>?> GetMyPackagesAsync();
     Task<Dictionary<string, PublicCatalogEntry>?> GetCatalogAsync(string version);
@@ -21,6 +23,9 @@ public interface IWorkflowEndpointService
     Task<string?> GetCurrentDiagramAsync(string? packageRef = null);
     Task<string?> GetDiagramForManifestAsync(JsonElement manifest);
 }
+
+/// <summary>The deployed engine's attestation, the three refs History resolves numbers through.</summary>
+public record EngineView(string? Commit, string? PackageFormat, string? Provenance);
 
 /// <summary>One entry of a specific catalog version's document (public registry blob).</summary>
 public record PublicCatalogEntry(string? AgentName, string? AgentVersion);
@@ -322,6 +327,27 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Public chain view unavailable; agent names will not be decorated.");
+            return null;
+        }
+    }
+
+    public async Task<EngineView?> GetEngineAsync()
+    {
+        var engineUrl = _configuration["AzureFunction:PublicEngineUrl"];
+        if (string.IsNullOrWhiteSpace(engineUrl))
+        {
+            return null;
+        }
+
+        try
+        {
+            // Anonymous endpoint — no bearer token; a failure only costs the
+            // links, never the page: a number History cannot resolve stays a number.
+            return await _httpClient.GetFromJsonAsync<EngineView>(engineUrl);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Engine attestation unavailable; provenance numbers will not link.");
             return null;
         }
     }

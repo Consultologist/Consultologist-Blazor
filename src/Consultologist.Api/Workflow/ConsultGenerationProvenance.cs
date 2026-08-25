@@ -8,7 +8,7 @@ using Consultologist.Api.Models;
 using Consultologist.PackageFormat;
 namespace Consultologist.Api.Workflow;
 
-internal static class ConsultGenerationProvenance
+public static class ConsultGenerationProvenance
 {
     // Canonical serialization: fixed property order and naming, no whitespace. The hash
     // must be stable across runtimes so provenance records stay comparable over time.
