@@ -1,7 +1,13 @@
 # Documentation
 
-Design and operations notes for Consultologist. Grouped by topic; `research/` holds
-point-in-time investigations and migration plans.
+Design records and research notes for Consultologist. Grouped by topic;
+`research/` holds point-in-time investigations and migration plans.
+
+Everything in this repository is **public by design** — the engine, its
+design records, and these notes. What is not here is the operator's material
+(the private storage account's recipes, roles, repair), which lives in a
+private operations repository and is named, never linked, where a public page
+would otherwise have carried it (#397).
 
 ## Consult generation & jobs
 
@@ -33,8 +39,9 @@ point-in-time investigations and migration plans.
 ## Customizable workflow (design notes)
 
 - [customizable-workflow/](customizable-workflow/README.md) — versioned workflow
-  packages, specialty bundles, and the per-consult provenance record (design discussion
-  2026-07-09, not yet implemented): [current state](customizable-workflow/current-state.md),
+  packages, specialty bundles, and the per-consult provenance record — the design
+  records behind package formats v2–v9, all shipped; the normative specifications
+  and the record contract are published registries (#376, #400): [current state](customizable-workflow/current-state.md),
   [workflow packages](customizable-workflow/workflow-packages.md),
   [provenance](customizable-workflow/provenance.md),
   [DAG improvements](customizable-workflow/dag-improvements.md),

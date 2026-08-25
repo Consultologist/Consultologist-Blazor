@@ -16,10 +16,9 @@ Foundry agents and streams progress to the browser over server-sent events (SSE)
 │   ├── Consultologist.Web/      Blazor WASM frontend (Pages/, Shared/, Services/, wwwroot/)
 │   └── Consultologist.Api/      Azure Functions backend (deployed separately)
 ├── tests/                       xUnit tests for the API project
-├── packages/                    workflow-package sources (prompts, data, schemas, manifest)
-├── agents/                      attested Azure AI Foundry agent manifests + output-contract catalog
-├── docs/                        design docs and research notes — see docs/README.md
-├── scripts/                     smoke tests, package publishing, dag.mmd regeneration
+├── external/                    vendored content registries (agents, package-format, provenance)
+├── docs/                        design records and research notes — see docs/README.md
+├── scripts/                     smoke tests, validators, the record-hash verifier
 ├── build/                       centralized bin/obj output (gitignored)
 └── .github/workflows/           frontend deploy, API deploy, tests
 ```
