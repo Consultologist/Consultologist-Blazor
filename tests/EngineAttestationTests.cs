@@ -90,6 +90,15 @@ public class EngineAttestationTests
     }
 
     [Fact]
+    public void RefOf_ComposesARegistryRef_OrNothing()
+    {
+        // #398: a build without the index stamps nothing, never "package-format@".
+        Assert.Equal("package-format@v2026.08.6", EngineAttestation.RefOf(EngineAttestation.PackageFormatRegistry, "v2026.08.6"));
+        Assert.Null(EngineAttestation.RefOf(EngineAttestation.ProvenanceRegistry, null));
+        Assert.Null(EngineAttestation.RefOf(EngineAttestation.ProvenanceRegistry, " "));
+    }
+
+    [Fact]
     public void PackageFormatVersionIn_IsNullWhereTheIndexIsNot()
     {
         Assert.Null(EngineAttestation.PackageFormatVersionIn(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))));

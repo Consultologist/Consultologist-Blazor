@@ -33,7 +33,9 @@ public class HistoryDetailTests : ClientRenderTestContext
         string? catalogRef = null,
         IReadOnlyDictionary<string, string>? agentVersions = null,
         string workflowOutputHash = "bbbb",
-        IReadOnlyDictionary<string, ConsultGenerationNodeStatus>? nodeOutputs = null)
+        IReadOnlyDictionary<string, ConsultGenerationNodeStatus>? nodeOutputs = null,
+        string? packageFormatRef = null,
+        string? provenanceRef = null)
     {
         // Terminal status only: a non-terminal row would start the page's real
         // 5-second polling loop.
@@ -70,6 +72,8 @@ public class HistoryDetailTests : ClientRenderTestContext
             PackageTags: packageTags,
             Nodes: nodes,
             NodeOutputs: nodeOutputs,
+            PackageFormatRef: packageFormatRef,
+            ProvenanceRef: provenanceRef,
             AgentVersions: agentVersions,
             CatalogRef: catalogRef));
     }
@@ -84,7 +88,7 @@ public class HistoryDetailTests : ClientRenderTestContext
         });
 
     private void WithEngine() =>
-        WorkflowService.GetEngineAsync().Returns(new EngineView("9c1ca4ac9373f1dc01e1fec68772304ef7d23ca6", "v2026.08.6", "v2026.08.2"));
+        WorkflowService.GetEngineAsync().Returns(new EngineView("9c1ca4ac9373f1dc01e1fec68772304ef7d23ca6", "v2026.08.6", "v2026.08.3"));
 
     private const string Registry = "https://consultologistpublic.blob.core.windows.net";
 
@@ -98,11 +102,37 @@ public class HistoryDetailTests : ClientRenderTestContext
         var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
 
         var refs = page.FindAll(".provenance-list a.provenance-ref").Select(a => (a.TextContent.Trim(), a.GetAttribute("href"))).ToList();
-        Assert.Contains(("v7", $"{Registry}/provenance/v2026.08.2/provenance-record.md"), refs);
-        Assert.Equal(2, refs.Count(r => r.Item2 == $"{Registry}/provenance/v2026.08.2/hash-definitions.md" && r.Item1 == "v3"));
+        Assert.Contains(("v7", $"{Registry}/provenance/v2026.08.3/provenance-record.md"), refs);
+        Assert.Equal(2, refs.Count(r => r.Item2 == $"{Registry}/provenance/v2026.08.3/hash-definitions.md" && r.Item1 == "v3"));
         // #373's chip, finished: the format number resolves too.
         Assert.Equal($"{Registry}/package-format/v2026.08.6/package-format-v9.md", page.Find(".provenance-chip a.provenance-ref").GetAttribute("href"));
         Assert.Contains("Output hash (v3)", page.Find(".provenance-list").TextContent);
+    }
+
+    [Fact]
+    public void TheRecordsOwnRefs_WinOverTheEnginesAttestation()
+    {
+        // #398: a record from an older build names older documents; the
+        // engine attests newer ones. The record's are what its numbers mean.
+        WithEngine();
+        WithJob(3, new[] { new ConsultGenerationResultDocumentResponse("note", "Consultation note", "Note.", "hash-note") },
+            packageSpecVersion: 9, schemaVersion: 7, packageFormatRef: "package-format@v2026.08.5", provenanceRef: "provenance@v2026.08.2");
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var refs = page.FindAll(".provenance-list a.provenance-ref").Select(a => a.GetAttribute("href")!).ToList();
+        Assert.All(refs, href => Assert.Contains("/provenance/v2026.08.2/", href));
+        Assert.Contains("recorded on the job", page.Find(".provenance-list a.provenance-ref[title]").GetAttribute("title"));
+        Assert.Equal($"{Registry}/package-format/v2026.08.5/package-format-v9.md", page.Find(".provenance-chip a.provenance-ref").GetAttribute("href"));
+        var contract = page.Find(".provenance-contract a");
+        Assert.Equal("provenance@v2026.08.2", contract.TextContent.Trim());
+        Assert.Equal($"{Registry}/provenance/v2026.08.2/provenance-record.md", contract.GetAttribute("href"));
+
+        // A record from before its own refs falls back to the attestation, and says so.
+        WithJob(3, new[] { new ConsultGenerationResultDocumentResponse("note", "Consultation note", "Note.", "hash-note") }, packageSpecVersion: 9, schemaVersion: 7);
+        var older = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+        Assert.All(older.FindAll(".provenance-list a.provenance-ref").Select(a => a.GetAttribute("href")!), href => Assert.Contains("/provenance/v2026.08.3/", href));
+        Assert.Contains("predates its own", older.Find(".provenance-list a.provenance-ref[title]").GetAttribute("title"));
+        Assert.Equal("—", older.Find(".provenance-contract").TextContent.Trim());
     }
 
     [Fact]
@@ -162,7 +192,7 @@ public class HistoryDetailTests : ClientRenderTestContext
 
         var stamped = page.Find(".node-row__hashes a.provenance-ref");
         Assert.Equal("v5", stamped.TextContent.Trim());
-        Assert.Equal($"{Registry}/provenance/v2026.08.2/hash-definitions.md", stamped.GetAttribute("href"));
+        Assert.Equal($"{Registry}/provenance/v2026.08.3/hash-definitions.md", stamped.GetAttribute("href"));
         Assert.Contains("per-node definition 5", stamped.GetAttribute("title"));
         var unstamped = page.Find(".node-row__unversioned");
         Assert.Equal("v—", unstamped.TextContent.Trim());

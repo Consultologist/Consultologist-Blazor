@@ -52,6 +52,23 @@ public class ProvenanceMirrorTests
     }
 
     [Fact]
+    public void TheRegistryRefs_ReachTheClient()
+    {
+        // #398: the two trailing refs, through the wire into the mirror.
+        var response = new ApiModels.ConsultGenerationJobResponse(
+            "job-1", "user-1", "Completed", 1, 1, 0,
+            new Dictionary<string, string>(), new Dictionary<string, string>(), true,
+            PackageFormatRef: "package-format@v2026.08.6",
+            ProvenanceRef: "provenance@v2026.08.4");
+
+        var mirrored = JsonSerializer.Deserialize<WebAI.ConsultGenerationJobResponse>(
+            JsonSerializer.Serialize(response, Web), Web)!;
+
+        Assert.Equal("package-format@v2026.08.6", mirrored.PackageFormatRef);
+        Assert.Equal("provenance@v2026.08.4", mirrored.ProvenanceRef);
+    }
+
+    [Fact]
     public void ThePackageTitle_ReachesTheClient()
     {
         // #432: the job response's trailing title, through the wire into the

@@ -79,7 +79,7 @@ public class DurablePayloadReplayTests
     {
         // A v8 job as Durable stored it: the typed request (a boolean as
         // true, not "true") beside the string resolver map, the declared
-        // types, hash definition 4. Nineteen positional slots; a twentieth
+        // types, hash definition 4. Nineteen positional slots; anything more
         // belongs at the end or nowhere.
         const string stored = """
             {"Request":{"ConsultDraft":null,"WorkflowPackage":null,"ScheduledAtUtc":null,"Inputs":{"consult_draft":"Referral text.","billable":true},"InputFiles":null},"AppUserId":"user-1","WorkflowPackage":"general@v2026.08.1","EffectiveInputHash":"0000000000000000000000000000000000000000000000000000000000000000","ItemSteps":[{"Id":"hpi","Label":"History"}],"Nodes":null,"ResultNodeId":null,"Items":[{"id":"hpi","name":"History"}],"DataScalars":null,"EffectiveInputHashVersion":4,"InputTypes":{"billable":"boolean"},"SkippedDocuments":null,"CatalogRef":"output-contracts@v2026.07.1","Collections":null,"Source":"app","ReplyToAddress":null,"Results":[{"Id":"consult","NodeId":"assemble-note","Label":"Consultation note"}],"Inputs":{"consult_draft":"Referral text.","billable":"true"},"InputOrigins":null}
@@ -87,10 +87,11 @@ public class DurablePayloadReplayTests
 
         var input = JsonSerializer.Deserialize<ConsultGenerationOrchestrationInput>(stored, Durable)!;
 
-        // #428 appended the twentieth slot. The bytes a v8 job was started
-        // with are the read side, untouched; what they re-serialise to is
-        // those bytes plus exactly one trailing null — nothing moved.
-        Assert.Equal(stored[..^1] + ",\"InputDocumentOrigins\":null}", JsonSerializer.Serialize(input, Durable));
+        // #428 appended the twentieth slot; #398 the twenty-first and -second.
+        // The bytes a v8 job was started with are the read side, untouched;
+        // what they re-serialise to is those bytes plus exactly the trailing
+        // nulls — nothing moved.
+        Assert.Equal(stored[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null}", JsonSerializer.Serialize(input, Durable));
         Assert.Equal(ConsultInputValue.OfBoolean(true), input.Request.Inputs!["billable"]);
         Assert.Equal("true", input.Inputs!["billable"]);
         Assert.Equal(4, input.EffectiveInputHashVersion);
@@ -126,7 +127,9 @@ public class DurablePayloadReplayTests
 
         var input = JsonSerializer.Deserialize<ConsultGenerationOrchestrationInput>(stored, Durable)!;
 
-        Assert.Equal(stored, JsonSerializer.Serialize(input, Durable));
+        // #398 appended two slots after this payload was frozen: the bytes read
+        // as they were, and re-serialise with exactly two trailing nulls.
+        Assert.Equal(stored[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null}", JsonSerializer.Serialize(input, Durable));
         var origins = Assert.Contains("prior_notes", input.InputDocumentOrigins!);
         Assert.Equal(2, origins.Count);
         Assert.Equal("pdfpig/0.1.15", origins[1].Extractor);
