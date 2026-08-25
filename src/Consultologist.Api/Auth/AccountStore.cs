@@ -32,7 +32,16 @@ public interface IAccountStore
 
     /// <summary>#195: remove a linked identity from the caller's own account.</summary>
     Task UnlinkIdentityAsync(string appUserId, string provider, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #384: every account, id and status only. A partition scan of AppUsers —
+    /// fine at current account counts, as the email sender gate's is; the
+    /// noted follow-up if that changes is the same index table.
+    /// </summary>
+    Task<IReadOnlyList<AccountSummary>> ListAsync(CancellationToken cancellationToken);
 }
+
+public sealed record AccountSummary(string AppUserId, string Status);
 
 public sealed class AccountStore : IAccountStore
 {
@@ -50,6 +59,22 @@ public sealed class AccountStore : IAccountStore
         _appUsers = StorageTables.CreateClient(configuration, credential, AppUsersTableName, "AccountStorage");
         _identityLinks = StorageTables.CreateClient(configuration, credential, IdentityLinksTableName, "AccountStorage");
         _userIdentityLinks = StorageTables.CreateClient(configuration, credential, UserIdentityLinksTableName, "AccountStorage");
+    }
+
+    public async Task<IReadOnlyList<AccountSummary>> ListAsync(CancellationToken cancellationToken)
+    {
+        await EnsureTablesAsync(cancellationToken);
+
+        var accounts = new List<AccountSummary>();
+        await foreach (var entity in _appUsers.QueryAsync<AppUserEntity>(
+                           user => user.PartitionKey == "app-user",
+                           select: new[] { "RowKey", "Status" },
+                           cancellationToken: cancellationToken))
+        {
+            accounts.Add(new AccountSummary(entity.RowKey, entity.Status));
+        }
+
+        return accounts;
     }
 
     public async Task<AppAccount> ResolveOrCreateAsync(AuthenticatedUser user, CancellationToken cancellationToken)
