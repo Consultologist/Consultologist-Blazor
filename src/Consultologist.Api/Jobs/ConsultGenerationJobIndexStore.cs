@@ -16,6 +16,12 @@ public interface IConsultGenerationJobIndexStore
         int limit,
         string? continuationToken,
         CancellationToken cancellationToken);
+
+    /// <summary>#368: every terminal job of the account completed before the cutoff whose text is still present.</summary>
+    Task<IReadOnlyList<ConsultGenerationJobIndexEntry>> ListDueForTextDropAsync(
+        string appUserId,
+        DateTimeOffset completedBefore,
+        CancellationToken cancellationToken);
 }
 
 internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJobIndexStore
@@ -67,6 +73,29 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
         return (jobs, nextToken);
     }
 
+    public async Task<IReadOnlyList<ConsultGenerationJobIndexEntry>> ListDueForTextDropAsync(
+        string appUserId,
+        DateTimeOffset completedBefore,
+        CancellationToken cancellationToken)
+    {
+        await EnsureTableAsync(cancellationToken);
+
+        // A partition scan filtered in memory: Table Storage cannot test a
+        // column for absence, and an account's job count is small.
+        var due = new List<ConsultGenerationJobIndexEntry>();
+        var filter = TableClient.CreateQueryFilter($"PartitionKey eq {appUserId} and CompletedAtUtc lt {completedBefore}");
+        await foreach (var entity in _index.QueryAsync<ConsultGenerationJobIndexEntity>(filter, cancellationToken: cancellationToken))
+        {
+            var entry = ToEntry(entity);
+            if (TextRetentionSweep.IsDue(entry, completedBefore))
+            {
+                due.Add(entry);
+            }
+        }
+
+        return due;
+    }
+
     private async Task EnsureTableAsync(CancellationToken cancellationToken)
     {
         if (_tableEnsured)
@@ -108,7 +137,8 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
             FailedBlockCount = entry.FailedBlockCount,
             Source = entry.Source,
             ScheduledAtUtc = entry.ScheduledAtUtc,
-            FailedAtStart = entry.FailedAtStart
+            FailedAtStart = entry.FailedAtStart,
+            TextDroppedAtUtc = entry.TextDroppedAtUtc
         };
     }
 
@@ -126,7 +156,8 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
             entity.FailedBlockCount,
             entity.Source,
             entity.ScheduledAtUtc,
-            entity.FailedAtStart);
+            entity.FailedAtStart,
+            entity.TextDroppedAtUtc);
     }
 
     private static string FormatRowKey(DateTimeOffset createdAtUtc, string jobId)
@@ -178,7 +209,10 @@ public sealed record ConsultGenerationJobIndexEntry(
     DateTimeOffset? ScheduledAtUtc = null,
     // #434: created already Failed because no deliverable applied. Additive
     // column; rows written before it read false.
-    bool FailedAtStart = false);
+    bool FailedAtStart = false,
+    // #368: when the retention sweep deleted the text. Additive column; null
+    // before it, which is what the sweep selects on.
+    DateTimeOffset? TextDroppedAtUtc = null);
 
 internal sealed class ConsultGenerationJobIndexEntity : ITableEntity
 {
@@ -197,4 +231,5 @@ internal sealed class ConsultGenerationJobIndexEntity : ITableEntity
     public string? Source { get; set; }
     public DateTimeOffset? ScheduledAtUtc { get; set; }
     public bool FailedAtStart { get; set; }
+    public DateTimeOffset? TextDroppedAtUtc { get; set; }
 }

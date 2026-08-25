@@ -519,7 +519,9 @@ public record ConsultGenerationJobResponse(
     string? ProvenanceRef = null,
     // #403: mirrors the Api's Terminology / TerminologyServerRef.
     TerminologySnapshot? Terminology = null,
-    string? TerminologyServerRef = null);
+    string? TerminologyServerRef = null,
+    // #368: when the produced text was deleted under the retention policy.
+    DateTimeOffset? TextDroppedAtUtc = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.TerminologySnapshot (#403).</summary>
 public record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);
@@ -531,7 +533,8 @@ public record ConsultSkippedDocumentResponse(string ResultId, string Label, stri
 public record ConsultGenerationResultDocumentResponse(
     string ResultId,
     string Label,
-    string Text,
+    // #368: null once the retention policy deleted the text; DocumentHash stays.
+    string? Text,
     string? DocumentHash = null);
 
 /// <summary>

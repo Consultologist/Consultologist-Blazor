@@ -248,7 +248,8 @@ public sealed class Account
                     j.FailedBlockCount,
                     j.Source,
                     j.ScheduledAtUtc,
-                    j.FailedAtStart)).ToArray(),
+                    j.FailedAtStart,
+                    j.TextDroppedAtUtc)).ToArray(),
                 nextToken),
             cancellationToken);
 
@@ -497,7 +498,9 @@ public sealed record AccountJobSummaryResponse(
     string? Source = null,
     DateTimeOffset? ScheduledAtUtc = null,
     // #434: see ConsultGenerationJobIndexEntry.FailedAtStart.
-    bool FailedAtStart = false);
+    bool FailedAtStart = false,
+    // #368: when the retention sweep deleted the produced text; null while present.
+    DateTimeOffset? TextDroppedAtUtc = null);
 
 public sealed record AccountJobsResponse(
     IReadOnlyList<AccountJobSummaryResponse> Jobs,
