@@ -3,7 +3,7 @@
 # What a consult was actually built from (#295).
 #
 #   ./scripts/show-job-provenance.sh <job-id> [<job-id> …]
-#   TOKEN=... ./scripts/show-job-provenance.sh 8f27817468ab4700abe42f2f85bdd3f2
+#   TOKEN=... ./scripts/show-job-provenance.sh <job-id>
 #
 # Read-only: one GET per job. It starts nothing, costs nothing, and changes
 # nothing.
