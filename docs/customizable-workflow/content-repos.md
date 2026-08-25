@@ -15,13 +15,20 @@ the local baseline — no silent drift), and the catalog pin
 (`OutputContracts__Pin`) is set explicitly. Goal achieved: the app repo is
 **engine-only** — content cadence fully decouples from app deploys.
 
-## Topology: two repos
+## Topology: two repos, then five
+
+> The layout every registry obeys — paths, CalVer, immutability by refusal,
+> `latest.json` as a pointer, anonymous read including listing — is published
+> as `registry-layout.md` in
+> [consultologist-provenance](https://github.com/Consultologist/consultologist-provenance)
+> (#401). The table below is the map; that document is the contract.
 
 | Repo | Contents | Versioning / tags | Publishes |
 |---|---|---|---|
 | `consultologist-workflows` | Workflow package sources (`packages/general/`, `packages/example-two-documents/`) | CalVer `vYYYY.MM.N` per package | `workflow-packages` blob container (`{name}/{version}/…` + `latest.json` pointers) |
 | `consultologist-provenance` | The provenance record contract and the hash definitions (`provenance-record.md`, `hash-definitions.md`, `provenance-versions.json`) | CalVer `vYYYY.MM.N` in the index; merging publishes | `provenance` container; vendored by the engine as a submodule and pinned by test (#400) |
-| `consultologist-agents` | Agent manifests (today: `agents/test-json.yaml`) | Tags matching Foundry integer versions (`test-json/48`) | **Both** the Foundry agent version (via the agents REST API) and the manifest mirror in blob (`agents/{name}/{version}/agent.yaml`) |
+| `consultologist-agents` | Agent manifests (`agents/*.yaml`) and the output-contract catalog (`agents/output-contracts.json`) | Agent versions are the Foundry integers the platform assigns and the yaml must match (`version: "48"`); the catalog is CalVer `vYYYY.MM.N`; merging publishes | **Both** the Foundry agent version (via the agents REST API) and the redacted mirror in blob (`agent-definitions/{name}/{version}/definition.yaml` + `{name}/latest.json`); the catalog to `output-contracts` (`{version}/output-contracts.json` + schemas, root `latest.json`) |
+| `consultologist-package-format` | The normative package formats, schemas and conformance suite (`spec-versions.json`) | CalVer `vYYYY.MM.N` in the index; merging publishes | `package-format` container; vendored by the engine as a submodule and pinned by test (#376) |
 
 A catalog change is gated twice: the agents repo's CI refuses a pull request
 whose catalog would strand a published public package
@@ -71,7 +78,7 @@ harder-to-change channel than the thing it verifies.
 ## App changes at migration
 
 - `AgentAttestationService` fetches the manifest from the registry
-  (`agents/{name}/{pinned-version}/agent.yaml`) instead of the bundled file; the bundled
+  (`agent-definitions/{name}/{pinned-version}/definition.yaml`) instead of the bundled file; the bundled
   file remains only as a local-dev fallback. Enforce/warn semantics unchanged.
 - The `specVersion` gate, trust policy (registry location, enforce mode), and the engine
   itself stay in the app repo — expectations about *how to interpret* content ride with
@@ -88,7 +95,8 @@ harder-to-change channel than the thing it verifies.
    for `repo:Consultologist@<org-id>/<repo>@<repo-id>:environment:registry` — GitHub
    emits the immutable subject form for these repos, confirmed after the org
    transfer (#268); role assignments as
-   above.
+   above — **Storage Blob Data Contributor scoped to the repo's container(s)**,
+   not the account (re-scoped for the two oldest identities 2026-08-25, #401).
 3. CI workflows: validate (schema, CalVer format, immutability check) → publish on tag
    (workflows) / on merge (agents, plus Foundry publish).
 4. App: attestation registry fetch + remove bundled content; update
