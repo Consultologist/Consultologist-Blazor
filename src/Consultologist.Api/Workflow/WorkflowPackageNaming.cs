@@ -6,7 +6,7 @@ namespace Consultologist.Api.Workflow;
 /// Account-package naming. An account's first package is "acct-" + the first
 /// 12 hex of the AppUserId (a 32-hex GUID string), which fits the package name
 /// rule with no hashing; its further packages (#447) are that root plus an
-/// author-chosen slug — acct-7bca2dcc1ed4-breast-oncology — so every package
+/// author-chosen slug — acct-1234567890ab-breast-oncology — so every package
 /// of an account shares the root, which is what routes it to the private
 /// registry and what #448 later lets become a path. Ownership is a RECORD
 /// (WorkflowPackageOwnership), asked through WorkflowPackageAccess — the name

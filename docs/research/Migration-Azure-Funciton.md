@@ -258,7 +258,7 @@ PRINCIPAL_ID=$(az functionapp identity show \
 az role assignment create \
   --assignee $PRINCIPAL_ID \
   --role "a97b65f3-24c7-4388-baec-2e87135dc908" \
-  --scope "/subscriptions/a11ce24e-a0c7-4d6f-9674-2264a87483d0/resourceGroups/consultologist_group/providers/Microsoft.CognitiveServices/accounts/<azure-ai-resource-name>"
+  --scope "/subscriptions/<subscription-id>/resourceGroups/consultologist_group/providers/Microsoft.CognitiveServices/accounts/<azure-ai-resource-name>"
 ```
 
 **Note:** Role "a97b65f3-24c7-4388-baec-2e87135dc908" is "Cognitive Services User"

@@ -161,11 +161,11 @@ Contributor grant belongs on that principal — the first production publish
 - **Fork publish**: two files edited in the Templates editor
   (`prompts/section-instructions.md`: an appended "Prompt has changed."
   instruction; `data/standards/medications.md`: replaced with "just state the
-  title"). Published as `acct-7bca2dcc1ed4@v2026.07.1`; registry byte-diff
+  title"). Published as `acct-1234567890ab@v2026.07.1`; registry byte-diff
   against `general@v2026.07.6` shows exactly those two files differing, 19/21
   byte-identical; manifest stamped `name`/`version`/`derivedFrom:
   general@v2026.07.6`; pin flipped to the concrete ref.
-- **Fork run** (job `e550fe66…`): `workflowPackage: acct-7bca2dcc1ed4@v2026.07.1`,
+- **Fork run** (job `e550fe66…`): `workflowPackage: acct-1234567890ab@v2026.07.1`,
   9/9 sections, all nine sections end with "Prompt has changed.", the
   Medications section is exactly the collapsed standard — both edits expressed
   precisely where the DAG binds them. First-node InputHash `6158bcc1…` (eighth

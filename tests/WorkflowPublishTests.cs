@@ -368,7 +368,7 @@ public class WorkflowPackagePublisherTests
     [Fact]
     public async Task Publish_DoesNotWarnWhenAValueIsAdded()
     {
-        // Measured against acct-7bca2dcc1ed4@v2026.08.3: adding note_type left
+        // Measured against acct-1234567890ab@v2026.08.3: adding note_type left
         // the standards untouched, and the rule as first written would have
         // warned. A warning that fires on ordinary authoring is ignored.
         var parentManifest = V5Fixtures.Manifest();
@@ -386,7 +386,7 @@ public class WorkflowPackagePublisherTests
     [Fact]
     public async Task Publish_DoesNotWarnWhenAnEmptyValueIsFilledIn()
     {
-        // acct-7bca2dcc1ed4@v2026.08.4: note_type went from "" to real text.
+        // acct-1234567890ab@v2026.08.4: note_type went from "" to real text.
         // A blank prior is not a label being changed.
         var (parentManifest, parentFiles) = WithValue(string.Empty);
         var (childManifest, childFiles) = WithValue("oncology");
@@ -1316,17 +1316,17 @@ public class AccountPackageListingTests
     public void Build_ParsesVersionsAndLatestPointer()
     {
         var summary = AccountPackageListing.Build(
-            "acct-7bca2dcc1ed4",
+            "acct-1234567890ab",
             new[]
             {
-                "acct-7bca2dcc1ed4/v2026.07.1/manifest.json",
-                "acct-7bca2dcc1ed4/v2026.07.1/prompts/section.md",
-                "acct-7bca2dcc1ed4/v2026.07.2/manifest.json",
-                "acct-7bca2dcc1ed4/latest.json"
+                "acct-1234567890ab/v2026.07.1/manifest.json",
+                "acct-1234567890ab/v2026.07.1/prompts/section.md",
+                "acct-1234567890ab/v2026.07.2/manifest.json",
+                "acct-1234567890ab/latest.json"
             },
             """{"version":"v2026.07.2"}""");
 
-        Assert.Equal("acct-7bca2dcc1ed4", summary.Name);
+        Assert.Equal("acct-1234567890ab", summary.Name);
         Assert.Equal("v2026.07.2", summary.Latest);
         Assert.Equal(new[] { "v2026.07.1", "v2026.07.2" }, summary.Versions);
     }
@@ -1334,7 +1334,7 @@ public class AccountPackageListingTests
     [Fact]
     public void Build_NoBlobs_IsAnEmptySummary()
     {
-        var summary = AccountPackageListing.Build("acct-7bca2dcc1ed4", Array.Empty<string>(), null);
+        var summary = AccountPackageListing.Build("acct-1234567890ab", Array.Empty<string>(), null);
 
         Assert.Null(summary.Latest);
         Assert.Empty(summary.Versions);
@@ -1344,8 +1344,8 @@ public class AccountPackageListingTests
     public void Build_MalformedPointer_DegradesToNoLatest()
     {
         var summary = AccountPackageListing.Build(
-            "acct-7bca2dcc1ed4",
-            new[] { "acct-7bca2dcc1ed4/v2026.07.1/manifest.json" },
+            "acct-1234567890ab",
+            new[] { "acct-1234567890ab/v2026.07.1/manifest.json" },
             "{not json");
 
         Assert.Null(summary.Latest);
@@ -1356,12 +1356,12 @@ public class AccountPackageListingTests
     public void Build_IgnoresForeignAndNonManifestBlobs()
     {
         var summary = AccountPackageListing.Build(
-            "acct-7bca2dcc1ed4",
+            "acct-1234567890ab",
             new[]
             {
                 "acct-000000000000/v2026.07.9/manifest.json",
-                "acct-7bca2dcc1ed4/v2026.07.1/data/standards/index.json",
-                "acct-7bca2dcc1ed4/v2026.07.1/manifest.json"
+                "acct-1234567890ab/v2026.07.1/data/standards/index.json",
+                "acct-1234567890ab/v2026.07.1/manifest.json"
             },
             null);
 
@@ -1375,8 +1375,8 @@ public class AccountPackageListingSpecTests
     public void Build_CarriesSpecVersions()
     {
         var summary = AccountPackageListing.Build(
-            "acct-7bca2dcc1ed4",
-            new[] { "acct-7bca2dcc1ed4/v2026.07.1/manifest.json" },
+            "acct-1234567890ab",
+            new[] { "acct-1234567890ab/v2026.07.1/manifest.json" },
             null,
             new Dictionary<string, int> { ["v2026.07.1"] = 5 });
 

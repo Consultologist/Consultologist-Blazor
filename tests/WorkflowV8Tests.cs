@@ -308,7 +308,7 @@ public class WorkflowV8ValidationTests
     [Fact]
     public void DeliverablesConditionedOnAnEnum_AreReachable()
     {
-        // The live shape: acct-7bca2dcc1ed4@v2026.08.13 gates both deliverables
+        // The live shape: acct-1234567890ab@v2026.08.13 gates both deliverables
         // on encounter_kind, which an emailed .txt can answer. Verified this
         // session by an emailed consult that reached the fire-set evaluation.
         var manifest = V8Fixtures.Conditional();

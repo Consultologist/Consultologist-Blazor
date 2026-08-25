@@ -82,19 +82,9 @@ gate is `GET /api/Account/Me`, which returns the caller's own profile
 (including `Status`) for any authenticated account so the client can show an
 "awaiting activation" banner instead of a broken app.
 
-Activation runbook (operator's az login holds Storage Table Data Contributor
-on `consultologistjobqueue`; find the `RowKey` via the banner user's report
-or an entity query on `AppUsers`):
-
-```bash
-az storage entity merge \
-  --auth-mode login \
-  --account-name consultologistjobqueue \
-  --table-name AppUsers \
-  --entity PartitionKey=app-user RowKey=<AppUserId> Status=Active
-```
-
-The same command with `Status=Disabled` turns an account off. Existing rows
+Activation is an operator's table write on the account store (`Status`
+becomes `Active`; `Disabled` turns an account off); the recipe lives in the
+operations repository (private, #397). Existing rows
 created before #191 keep their `Active` status — no migration.
 
 ## Operators (#384)
@@ -104,7 +94,8 @@ is listed in `Operators__AppUserIds` (see CONFIGURATION.md); the list is empty
 by default, so no surface is reachable until it is set. Operator surfaces are
 read-only reports — today `GET /api/Operator/PinHealth` — and are gated like
 every other function (bearer token, `CanUseApp`) plus the list. Everything
-that changes an account is still done with `az`.
+that changes an account is still done with `az`, by an operator, from the
+operations repository's recipes.
 
 ## Account Settings
 

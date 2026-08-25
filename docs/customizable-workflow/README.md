@@ -1,8 +1,10 @@
 # Customizable Workflow — Design Notes
 
-Design discussion from 2026-07-09 on turning the consult-generation workflow and section
-template system into versioned, code-independent artifacts. Nothing here is implemented
-yet; these notes are the input to a future milestone plan.
+Design records, begun 2026-07-09, on turning the consult-generation workflow and
+section template system into versioned, code-independent artifacts. Since then
+formats v2–v9 have shipped, the normative specifications live in their own
+registry (#376) and the record contract in another (#400); what stays here is
+why each was chosen. Public by design, like the rest of this repository.
 
 ## The goal
 

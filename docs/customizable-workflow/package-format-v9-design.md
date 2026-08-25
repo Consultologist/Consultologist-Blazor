@@ -65,7 +65,7 @@ not find a bar here that reads as cleared.
 
 **Neither did a trigger fire for the title and description** (#371, step 1
 of its sequencing). They are in v9 by product decision: the naming pain is
-felt daily — every surface shows `acct-7bca2dcc1ed4@v2026.08.13` — and #416
+felt daily — every surface shows `acct-1234567890ab@v2026.08.13` — and #416
 turned this from a quiet addition into a version-gated one, because an
 unknown manifest field is now refused. The manifest, the schema and the
 conformance suite are being revised anyway; shipping the two fields
@@ -282,7 +282,7 @@ fill it, which is exactly what § 7 describes.
 manifest fields:
 
 ```yaml
-name: acct-7bca2dcc1ed4
+name: acct-1234567890ab
 version: v2026.09.1
 specVersion: 9
 title: Breast oncology consults
