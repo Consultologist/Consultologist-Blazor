@@ -92,6 +92,9 @@ builder.Services.AddSingleton<IWorkflowPackageOwnership, WorkflowPackageOwnershi
 builder.Services.AddSingleton<IWorkflowPackagePinResolver, WorkflowPackagePinResolver>();
 builder.Services.AddSingleton<PublicRegistryReader>();
 builder.Services.AddSingleton<PublicChain>();
+// #449/#398: the build's attestation, computed once — served at Public/Engine
+// and stamped on every record's packageFormatRef/provenanceRef.
+builder.Services.AddSingleton(sp => EngineAttestation.Current(sp.GetRequiredService<OutputContractCatalog>()));
 builder.Services.AddSingleton<PublicEngine>();
 builder.Services.AddScoped<WorkflowPackages>();
 builder.Services.AddHttpClient();

@@ -213,7 +213,7 @@
                                                        address and emits it verbatim. #402: the number links
                                                        to the document that defines it, at the format registry
                                                        version the deployed engine attests. *@
-                                                    @if (FormatLink(packageFormat) is { } formatHref)
+                                                    @if (FormatLink(detail, packageFormat) is { } formatHref)
                                                     {
                                                         <a class="provenance-ref" href="@formatHref" target="_blank" rel="noopener">format v@(packageFormat)</a>
                                                     }
@@ -260,14 +260,27 @@
                                                    Top-level dt, not provenance-list__nested — the nested
                                                    rows are per-input and per-deliverable, and a test pins
                                                    their exact sequence. *@
+                                                @* #398: the contract this record conforms to, as it recorded
+                                                   it — the version to read every number below by. *@
+                                                <dt>Contract</dt>
+                                                <dd class="provenance-contract">
+                                                    @if (detail.ProvenanceRef is { } provenanceRef && ProvenanceDocument(detail, "provenance-record.md") is { } contractHref)
+                                                    {
+                                                        <a class="provenance-ref" href="@contractHref" target="_blank" rel="noopener" title="The provenance contract this record conforms to, recorded on the job">@provenanceRef</a>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span title="Recorded before the job named its contract; the numbers below resolve through the deployed engine's">—</span>
+                                                    }
+                                                </dd>
                                                 <dt>Record storage version</dt>
-                                                <dd>@VersionRef(detail.SchemaVersion, "provenance-record.md", "storage version")</dd>
+                                                <dd>@VersionRef(detail, detail.SchemaVersion, "provenance-record.md", "storage version")</dd>
                                                 @* #402: the definition numbers link to the published
                                                    document that defines them, at the provenance registry
                                                    version the deployed engine attests — a number a reader
                                                    can resolve, not a bare integer. Plain text when the
                                                    attestation is unavailable: nothing is invented. *@
-                                                <dt>Input hash (@VersionRef(detail.EffectiveInputHashVersion, "hash-definitions.md", "effective-input definition"))</dt>
+                                                <dt>Input hash (@VersionRef(detail, detail.EffectiveInputHashVersion, "hash-definitions.md", "effective-input definition"))</dt>
                                                 <dd class="hash-text">@(detail.EffectiveInputHash ?? "—")</dd>
                                                 @* #238: beside the hash, never inside it. Only slots
                                                    the server read from a document appear — an absent
@@ -297,7 +310,7 @@
                                                 }
                                                 @if (detail.WorkflowOutputHash != null)
                                                 {
-                                                    <dt>Output hash (@VersionRef(detail.WorkflowOutputHashVersion, "hash-definitions.md", "workflow-output definition"))</dt>
+                                                    <dt>Output hash (@VersionRef(detail, detail.WorkflowOutputHashVersion, "hash-definitions.md", "workflow-output definition"))</dt>
                                                     <dd class="hash-text">@detail.WorkflowOutputHash @HashCheckMark("workflowOutputHash", detail)</dd>
                                                 }
                                                 @* v7: the per-deliverable digests the v3 output hash
@@ -380,7 +393,7 @@
                                                                 <span class="node-row__hashes hash-text">
                                                                     <span title="@group.NodeLevel?.InputHash">in @HashPrefix(group.NodeLevel?.InputHash)</span>
                                                                     <span title="@group.NodeLevel?.OutputHash">out @HashPrefix(group.NodeLevel?.OutputHash)</span>
-                                                                    @NodeHashRef(group.NodeLevel)
+                                                                    @NodeHashRef(detail, group.NodeLevel)
                                                                 </span>
                                                             </div>
                                                         }
@@ -404,7 +417,7 @@
                                                                         <span class="node-row__hashes hash-text">
                                                                             <span title="@entry.InputHash">in @HashPrefix(entry.InputHash)</span>
                                                                             <span title="@entry.OutputHash">out @HashPrefix(entry.OutputHash)</span>
-                                                                            @NodeHashRef(entry)
+                                                                            @NodeHashRef(detail, entry)
                                                                             @if (entry.OutputHash != null && group.ConvergedOutputs.Contains(entry.OutputHash))
                                                                             {
                                                                                 <span class="muted-text" title="Another item in this node produced the byte-identical output">= same output</span>
@@ -815,23 +828,40 @@
 
     private string? RegistryBase => Configuration["AzureFunction:PublicRegistryBaseUrl"]?.TrimEnd('/');
 
-    private string? ProvenanceDocument(string document) =>
-        _engine?.Provenance is { } version && RegistryBase is { } root ? $"{root}/provenance/{version}/{document}" : null;
+    private const string PackageFormatRefPrefix = "package-format@";
+    private const string ProvenanceRefPrefix = "provenance@";
 
-    private string? FormatLink(int specVersion) =>
-        _engine?.PackageFormat is { } version && RegistryBase is { } root ? $"{root}/package-format/{version}/package-format-v{specVersion}.md" : null;
+    // #398: the record's own refs first — what the job recorded it ran under —
+    // and the deployed engine's attestation only for a record from before.
+    private static string? VersionOf(string? reference, string prefix) =>
+        reference != null && reference.StartsWith(prefix, StringComparison.Ordinal) ? reference[prefix.Length..] : null;
 
-    private RenderFragment VersionRef(int? number, string document, string what) => builder =>
+    private (string? Version, bool Recorded) FormatVersionFor(ConsultGenerationJobResponse detail) =>
+        VersionOf(detail.PackageFormatRef, PackageFormatRefPrefix) is { } recorded ? (recorded, true) : (_engine?.PackageFormat, false);
+
+    private (string? Version, bool Recorded) ProvenanceVersionFor(ConsultGenerationJobResponse detail) =>
+        VersionOf(detail.ProvenanceRef, ProvenanceRefPrefix) is { } recorded ? (recorded, true) : (_engine?.Provenance, false);
+
+    private string? ProvenanceDocument(ConsultGenerationJobResponse detail, string document) =>
+        ProvenanceVersionFor(detail).Version is { } version && RegistryBase is { } root ? $"{root}/provenance/{version}/{document}" : null;
+
+    private string? FormatLink(ConsultGenerationJobResponse detail, int specVersion) =>
+        FormatVersionFor(detail).Version is { } version && RegistryBase is { } root ? $"{root}/package-format/{version}/package-format-v{specVersion}.md" : null;
+
+    private static string Witness(bool recorded) => recorded ? "recorded on the job" : "the deployed engine's — this record predates its own";
+
+    private RenderFragment VersionRef(ConsultGenerationJobResponse detail, int? number, string document, string what) => builder =>
     {
         var text = $"v{number?.ToString() ?? "—"}";
-        if (number is { } n && ProvenanceDocument(document) is { } href)
+        var (version, recorded) = ProvenanceVersionFor(detail);
+        if (number is { } n && ProvenanceDocument(detail, document) is { } href)
         {
             builder.OpenElement(0, "a");
             builder.AddAttribute(1, "class", "provenance-ref");
             builder.AddAttribute(2, "href", href);
             builder.AddAttribute(3, "target", "_blank");
             builder.AddAttribute(4, "rel", "noopener");
-            builder.AddAttribute(5, "title", $"{what} {n} in {document}, provenance@{_engine!.Provenance}");
+            builder.AddAttribute(5, "title", $"{what} {n} in {document}, provenance@{version} ({Witness(recorded)})");
             builder.AddContent(6, text);
             builder.CloseElement();
         }
@@ -844,10 +874,10 @@
     // #375: the per-node pair's definition number beside its hashes — a link
     // to the published ladder when the engine's attestation is known; a
     // record from before the ladder says so rather than showing a number.
-    private RenderFragment? NodeHashRef(ConsultGenerationNodeStatus? node) => node switch
+    private RenderFragment? NodeHashRef(ConsultGenerationJobResponse detail, ConsultGenerationNodeStatus? node) => node switch
     {
         null => null,
-        { HashVersion: { } version } => VersionRef(version, "hash-definitions.md", "per-node definition"),
+        { HashVersion: { } version } => VersionRef(detail, version, "hash-definitions.md", "per-node definition"),
         { InputHash: not null } => builder =>
         {
             builder.OpenElement(0, "span");

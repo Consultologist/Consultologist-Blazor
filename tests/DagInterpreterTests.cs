@@ -867,6 +867,33 @@ public class ConsultGenerationNodeEntityTests
     }
 
     [Fact]
+    public void Initialize_RecordsTheRegistryRefsWriteOnce_AndSurfacesThem()
+    {
+        // #398: the same write-once idiom as CatalogRef, for the two refs that
+        // say which documents to read the record by.
+        var (entity, state) = CreateEntity();
+        var items = new[] { Item("hpi", "History of Present Illness") };
+
+        entity.Initialize(new ConsultGenerationJobInitialize(
+            "job-1", "user-1", items,
+            PackageFormatRef: "package-format@v2026.08.6", ProvenanceRef: "provenance@v2026.08.4")).GetAwaiter().GetResult();
+        entity.Initialize(new ConsultGenerationJobInitialize(
+            "job-1", "user-1", items,
+            PackageFormatRef: "package-format@v2026.09.1", ProvenanceRef: "provenance@v2026.09.1")).GetAwaiter().GetResult();
+
+        Assert.Equal("package-format@v2026.08.6", state().PackageFormatRef);
+        Assert.Equal("provenance@v2026.08.4", state().ProvenanceRef);
+        Assert.Equal("package-format@v2026.08.6", state().ToResponse().PackageFormatRef);
+        Assert.Equal("provenance@v2026.08.4", state().ToResponse().ProvenanceRef);
+
+        // An Initialize from before the refs (an in-flight job) leaves them null.
+        var (older, olderState) = CreateEntity();
+        older.Initialize(new ConsultGenerationJobInitialize("job-2", "user-1", items)).GetAwaiter().GetResult();
+        Assert.Null(olderState().PackageFormatRef);
+        Assert.Null(olderState().ProvenanceRef);
+    }
+
+    [Fact]
     public void AgentVersions_LegacyRecords_StillDeserializeAndSurfaceTheirStoredMap()
     {
         // Records <= 2026-07-17 stored the contract -> agent-version map; since

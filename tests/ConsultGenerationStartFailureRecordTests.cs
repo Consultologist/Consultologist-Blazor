@@ -34,7 +34,9 @@ public class ConsultGenerationStartFailureRecordTests
             SkippedDocuments: new[] { new ConsultSkippedDocument("patient_letter", "Patient letter", "wanted billable = true; it was not supplied") },
             PackageSpecVersion: 8,
             PackageTitle: "Breast oncology consults",
-            PackageTags: new[] { "oncology" }),
+            PackageTags: new[] { "oncology" },
+            PackageFormatRef: "package-format@v2026.08.6",
+            ProvenanceRef: "provenance@v2026.08.4"),
         Reason);
 
     [Fact]
@@ -83,6 +85,9 @@ public class ConsultGenerationStartFailureRecordTests
         Assert.Equal(8, response.PackageSpecVersion);
         Assert.Equal("Breast oncology consults", response.PackageTitle);
         Assert.Equal(new[] { "oncology" }, response.PackageTags);
+        // #398: a born-Failed record names its rules too.
+        Assert.Equal("package-format@v2026.08.6", response.PackageFormatRef);
+        Assert.Equal("provenance@v2026.08.4", response.ProvenanceRef);
         Assert.Equal(ConsultGenerationJobSources.Email, response.Source);
         Assert.Equal("Patient letter", Assert.Single(response.SkippedDocuments!).Label);
         Assert.Null(response.Nodes);

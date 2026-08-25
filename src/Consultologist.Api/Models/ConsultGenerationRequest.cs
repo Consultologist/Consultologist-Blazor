@@ -145,7 +145,11 @@ public record ConsultGenerationJobResponse(
     // #453: the package's tags as they were at the pinned version — stamped,
     // since History cannot read the manifest. Null before v9 and on every
     // job before it; empty for a v9 package that declared none.
-    IReadOnlyList<string>? PackageTags = null);
+    IReadOnlyList<string>? PackageTags = null,
+    // #398: the rules the package was read by (package-format@v…) and the
+    // contract this record conforms to (provenance@v…); null before 2026-08-25.
+    string? PackageFormatRef = null,
+    string? ProvenanceRef = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and

@@ -97,6 +97,8 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.Collections ??= input.Collections?.ToList();
         State.EffectiveInputHashVersion ??= input.EffectiveInputHashVersion;
         State.CatalogRef ??= input.CatalogRef;
+        State.PackageFormatRef ??= input.PackageFormatRef;
+        State.ProvenanceRef ??= input.ProvenanceRef;
         State.Source ??= input.Source;
         State.ScheduledAtUtc ??= input.ScheduledAtUtc;
         State.PackageSpecVersion ??= input.PackageSpecVersion;
@@ -417,7 +419,13 @@ public sealed record ConsultGenerationOrchestrationInput(
     // in flight (a scheduled job sleeps up to seven days); new jobs write
     // only this one. Appended last: this is the payload a sleeping instance
     // re-reads.
-    IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? InputDocumentOrigins = null);
+    IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? InputDocumentOrigins = null,
+    // #398: the format registry version the package is read by, and the
+    // provenance contract version the record conforms to — package-format@v…
+    // and provenance@v…, from the build's attestation. Appended last: this
+    // is the payload a sleeping instance re-reads.
+    string? PackageFormatRef = null,
+    string? ProvenanceRef = null);
 
 public sealed record ConsultGenerationJobInitialize(
     string JobId,
@@ -456,7 +464,10 @@ public sealed record ConsultGenerationJobInitialize(
     // #453: and its tags, as the pinned manifest carried them — authored
     // labels, the safety class of the title; null before v9, an empty list
     // for a v9 package that declared none. Appended last, same reason.
-    IReadOnlyList<string>? PackageTags = null);
+    IReadOnlyList<string>? PackageTags = null,
+    // #398: see ConsultGenerationOrchestrationInput. Appended last, same reason.
+    string? PackageFormatRef = null,
+    string? ProvenanceRef = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -596,6 +607,13 @@ public sealed class ConsultGenerationJobState
     // (output-contracts@vYYYY.MM.N) — the registry artifact resolving every
     // agentVersions entry (#93; docs/customizable-workflow/provenance.md).
     public string? CatalogRef { get; set; }
+
+    // #398: the format registry version whose documents define the rules this
+    // job's package was interpreted under (package-format@vYYYY.MM.N), and the
+    // provenance contract version this record conforms to (provenance@v…) —
+    // the build's own, write-once like CatalogRef; null before 2026-08-25.
+    public string? PackageFormatRef { get; set; }
+    public string? ProvenanceRef { get; set; }
     public List<ConsultItemStepDescriptor>? ItemSteps { get; set; }
     public List<ConsultNodeDescriptor>? Nodes { get; set; }
 
@@ -790,6 +808,8 @@ public sealed class ConsultGenerationJobState
             AgentVersions: AgentVersions,
             EffectiveInputHashVersion: EffectiveInputHashVersion,
             CatalogRef: CatalogRef,
+            PackageFormatRef: PackageFormatRef,
+            ProvenanceRef: ProvenanceRef,
             PackageSpecVersion: PackageSpecVersion,
             PackageTitle: PackageTitle,
             StartFailure: StartFailure,

@@ -44,7 +44,44 @@ public class ConsultGenerationJobStarterTests
             _pinResolver,
             TestCatalog.Instance,
             _rateLimiter,
-            _ownership);
+            _ownership,
+            // #398: the build's attestation — the vendored indexes the test output carries.
+            EngineAttestation.Current(TestCatalog.Instance));
+    }
+
+    [Fact]
+    public async Task TheJob_RecordsTheFormatAndProvenanceVersions_TheBuildWasBuiltAgainst()
+    {
+        // #398: package-format@<vendored> and provenance@<vendored>, from the
+        // same attestation Public/Engine serves — never from a registry
+        // lookup at run time, and never from a pin the engine might not run.
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V8Fixtures.Minimal(),
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var outcome = await CreateStarter().StartAsync(
+            _client, new ConsultGenerationRequest(Referral), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+
+        Assert.Null(outcome.Error);
+        var expectedFormat = EngineAttestation.PackageFormatVersionIn(AppContext.BaseDirectory);
+        var expectedProvenance = EngineAttestation.ProvenanceVersionIn(AppContext.BaseDirectory);
+        Assert.NotNull(expectedFormat);
+        Assert.NotNull(expectedProvenance);
+        Assert.Equal($"package-format@{expectedFormat}", orchestrationInput!.PackageFormatRef);
+        Assert.Equal($"provenance@{expectedProvenance}", orchestrationInput.ProvenanceRef);
+        Assert.NotEqual(orchestrationInput.CatalogRef, orchestrationInput.PackageFormatRef);
     }
 
     /// <summary>
