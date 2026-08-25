@@ -3,6 +3,12 @@
 		{
 			"route": "/api/*",
 			"allowedRoles": ["authenticated"]
+		},
+		{
+			"route": "/service-worker.js",
+			"headers": {
+				"cache-control": "no-cache"
+			}
 		}
 	],
 	"navigationFallback": {

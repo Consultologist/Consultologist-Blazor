@@ -1,0 +1,42 @@
+@using Consultologist.Web.Services.AppUpdate
+@inject IAppUpdateService AppUpdate
+@implements IDisposable
+
+@* #412: a new build used to reach an open tab only once every tab was closed.
+   This bar names the held state and leaves the reload to the user — a consult
+   that is running must not have its page swapped out from under it. *@
+@if (AppUpdate.UpdateReady)
+{
+    <div class="update-banner">
+        <FluentMessageBar Intent="MessageIntent.Info" AllowDismiss="false" Title="A new version of Consultologist is ready">
+            Reload to use it. A consult that is running keeps running on the server and is in History when you return.
+            <FluentButton Appearance="Appearance.Accent" Class="update-banner__reload" @onclick="ReloadAsync">
+                Reload
+            </FluentButton>
+        </FluentMessageBar>
+    </div>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        AppUpdate.UpdateReadyChanged += OnUpdateReadyChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await AppUpdate.StartAsync();
+        }
+    }
+
+    private void OnUpdateReadyChanged() => InvokeAsync(StateHasChanged);
+
+    private Task ReloadAsync() => AppUpdate.ReloadAsync();
+
+    public void Dispose()
+    {
+        AppUpdate.UpdateReadyChanged -= OnUpdateReadyChanged;
+    }
+}

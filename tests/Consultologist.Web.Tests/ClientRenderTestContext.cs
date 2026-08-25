@@ -3,6 +3,7 @@ using Bunit;
 using Bunit.TestDoubles;
 using Consultologist.Web.Services.Accounts;
 using Consultologist.Web.Services.AI;
+using Consultologist.Web.Services.AppUpdate;
 using Consultologist.Web.Services.Diagnostics;
 using Consultologist.Web.Services.Documents;
 using Consultologist.Web.Services.Workflow;
@@ -26,6 +27,9 @@ public abstract class ClientRenderTestContext : BunitContext
     protected IAccountEndpointService AccountService { get; } = Substitute.For<IAccountEndpointService>();
 
     protected IDocumentEndpointService DocumentService { get; } = Substitute.For<IDocumentEndpointService>();
+
+    // #412: the layout's UpdateBanner asks this whether a newer build waits.
+    protected IAppUpdateService AppUpdate { get; } = Substitute.For<IAppUpdateService>();
 
     protected ConsultJobSession JobSession { get; } = new();
 
@@ -51,6 +55,7 @@ public abstract class ClientRenderTestContext : BunitContext
         Services.AddSingleton(WorkflowService);
         Services.AddSingleton(AccountService);
         Services.AddSingleton(DocumentService);
+        Services.AddSingleton(AppUpdate);
         Services.AddSingleton(Substitute.For<ISseDiagnosticsService>());
         Services.AddSingleton(JobSession);
 

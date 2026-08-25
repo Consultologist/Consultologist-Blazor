@@ -1,7 +1,10 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using Consultologist.Web.Services.AppUpdate
 @inject IAccountEndpointService AccountService
+@inject IWorkflowEndpointService WorkflowService
+@inject IConfiguration Configuration
 @inject NavigationManager Navigation
 @attribute [Authorize]
 
@@ -56,6 +59,30 @@
                     <FluentMessageBar Intent="MessageIntent.Info">
                         Protected API requests use this account identity for server-side authorization and job ownership.
                     </FluentMessageBar>
+                </div>
+            </section>
+
+            <section class="content-card">
+                <div class="form-stack">
+                    <h2 class="panel-title">
+                        Build
+                    </h2>
+
+                    <p class="panel-description">
+                        The client this tab is running and the engine it talks to, as git commits.
+                        A new client build is announced at the top of the page when it is ready; the
+                        engine's commit is what its provenance records cite.
+                    </p>
+
+                    <div class="state-panel">
+                        <span class="muted-text">Client</span>
+                        <strong class="build-client">@BuildLabel.Describe(Configuration)</strong>
+                    </div>
+
+                    <div class="state-panel">
+                        <span class="muted-text">Engine</span>
+                        <strong class="build-engine">@(engineCommit ?? "Unavailable")</strong>
+                    </div>
                 </div>
             </section>
 
@@ -250,6 +277,7 @@
     private string? LinkedInErrorReason { get; set; }
 
     private AccountMeResponse? account;
+    private string? engineCommit;
     private string? accountErrorMessage;
     private string? linkedInMessage;
     private MessageIntent linkedInMessageIntent = MessageIntent.Info;
@@ -287,6 +315,10 @@
         }
 
         await LoadAccountAsync();
+
+        // #412: anonymous attestation; null when unreachable, shown as such.
+        var engine = await WorkflowService.GetEngineAsync();
+        engineCommit = string.IsNullOrWhiteSpace(engine?.Commit) ? null : engine.Commit;
     }
 
     private void CaptureLinkedInResultFromQuery()

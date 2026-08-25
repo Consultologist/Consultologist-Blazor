@@ -1,0 +1,7 @@
+.update-banner {
+    margin-bottom: 1rem;
+}
+
+.update-banner ::deep .update-banner__reload {
+    margin-left: 12px;
+}

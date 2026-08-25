@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Consultologist.Web;
 using Consultologist.Web.Services.Accounts;
 using Consultologist.Web.Services.AI;
+using Consultologist.Web.Services.AppUpdate;
 using Consultologist.Web.Services.Diagnostics;
 using Consultologist.Web.Services.Documents;
 using Consultologist.Web.Services.Workflow;
@@ -35,6 +36,8 @@ builder.Services.AddHttpClient<ISseDiagnosticsService, SseDiagnosticsService>();
 builder.Services.AddHttpClient<IWorkflowEndpointService, WorkflowEndpointService>();
 builder.Services.AddHttpClient<IDocumentEndpointService, DocumentEndpointService>();
 builder.Services.AddScoped<Consultologist.Web.Services.AI.ConsultJobSession>();
+// #412: one watcher per tab; UpdateBanner in MainLayout starts it.
+builder.Services.AddScoped<IAppUpdateService, AppUpdateService>();
 builder.Services.AddScoped<Consultologist.Web.Services.Workflow.WorkflowEditorSession>();
 
 await builder.Build().RunAsync();
