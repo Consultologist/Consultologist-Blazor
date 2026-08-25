@@ -1,12 +1,22 @@
+@using Consultologist.Web.Services.AppUpdate
+@inject IConfiguration Configuration
+
 <FluentFooter Class="app-footer">
     <FluentStack Class="app-footer__inner"
                  Orientation="Orientation.Horizontal"
                  HorizontalAlignment="HorizontalAlignment.SpaceBetween"
                  VerticalAlignment="VerticalAlignment.Center"
                  Wrap="true">
-        <FluentLabel Style="font-size: 12px; color: var(--consultologist-text-muted);">
-            &copy; 2026 Consultologist
-        </FluentLabel>
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="16" VerticalAlignment="VerticalAlignment.Center" Wrap="true">
+            <FluentLabel Style="font-size: 12px; color: var(--consultologist-text-muted);">
+                &copy; 2026 Consultologist
+            </FluentLabel>
+            @* #412: which build this tab is running — the first question of any
+               "it looks different for me" report. *@
+            <FluentLabel Class="build-label" Style="font-size: 12px; color: var(--consultologist-text-muted);" Title="@BuildLabel.Describe(Configuration)">
+                Build @BuildLabel.Short(Configuration)
+            </FluentLabel>
+        </FluentStack>
         <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="20" VerticalAlignment="VerticalAlignment.Center" Wrap="true">
             <FluentAnchor Href="mailto:hello@consultologist.ai" Appearance="Appearance.Lightweight" Style="font-size: 12px;">
                 Contact

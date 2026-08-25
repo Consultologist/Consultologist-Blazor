@@ -39,6 +39,16 @@ jobs:
           submodules: true
           lfs: false
 
+      # #412: the client shows which build it is. Oryx publishes from the
+      # checked-out tree, so the commit is written into appsettings.json here,
+      # before the deploy step; the stamped file is then part of the cached
+      # build and can never be stale relative to the code beside it.
+      - name: Stamp the client build
+        run: |
+          jq --arg commit "$GITHUB_SHA" '.Build = {Commit: $commit}' \
+            src/Consultologist.Web/wwwroot/appsettings.json > appsettings.stamped.json
+          mv appsettings.stamped.json src/Consultologist.Web/wwwroot/appsettings.json
+
       - name: Install OIDC Client from Core Package
         run: npm install @actions/core@1.6.0 @actions/http-client
 
