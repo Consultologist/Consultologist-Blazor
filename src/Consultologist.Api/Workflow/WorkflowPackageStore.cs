@@ -208,7 +208,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     /// activity's lookup cannot fail later. A stamp entry for a schema the
     /// manifest does not declare is inert: the manifest is the declaration.
     /// </summary>
-    internal static Dictionary<string, string> ResolveContracts(
+    public static Dictionary<string, string> ResolveContracts(
         string packageRef,
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, string> files,
