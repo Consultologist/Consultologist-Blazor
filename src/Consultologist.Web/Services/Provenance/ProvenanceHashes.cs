@@ -6,7 +6,11 @@ using Consultologist.Web.Services.AI;
 namespace Consultologist.Web.Services.Provenance;
 
 /// <summary>One hash on a record, recomputed in the browser from the record's own texts.</summary>
-public sealed record HashCheck(string Name, string? Recorded, string Recomputed, bool Matches);
+public sealed record HashCheck(string Name, string? Recorded, string? Recomputed, bool Matches, string? Note = null)
+{
+    /// <summary>#368: a hash whose text the retention policy deleted — attested, not checkable.</summary>
+    public bool NotCheckable => Recomputed == null;
+}
 
 /// <summary>
 /// #402: the workflow-output definitions (hash-definitions.md § 3, § 5) as
@@ -36,12 +40,30 @@ public static class ProvenanceHashes
     {
         var checks = new List<HashCheck>();
 
+        // #368: once the text is deleted nothing can be recomputed; every hash
+        // is reported as not checkable, never as a mismatch.
+        if (detail.TextDroppedAtUtc is { } droppedAt)
+        {
+            var note = $"text deleted on {droppedAt:yyyy-MM-dd} — not checkable";
+            if (detail.WorkflowOutputHash != null)
+            {
+                checks.Add(new HashCheck("workflowOutputHash", detail.WorkflowOutputHash, null, false, note));
+            }
+
+            foreach (var document in detail.AssembledDocuments ?? Array.Empty<ConsultGenerationResultDocumentResponse>())
+            {
+                checks.Add(new HashCheck(document.ResultId, document.DocumentHash, null, false, note));
+            }
+
+            return checks;
+        }
+
         if (detail.WorkflowOutputHash != null)
         {
             string? recomputed = detail.WorkflowOutputHashVersion switch
             {
-                3 when detail.AssembledDocuments is { Count: > 0 } documents =>
-                    MerkleHash(documents.ToDictionary(d => d.ResultId, d => d.Text, StringComparer.Ordinal)),
+                3 when detail.AssembledDocuments is { Count: > 0 } documents && documents.All(d => d.Text != null) =>
+                    MerkleHash(documents.ToDictionary(d => d.ResultId, d => d.Text!, StringComparer.Ordinal)),
                 2 when detail.AssembledDocument != null => Sha256Hex(detail.AssembledDocument),
                 1 => MerkleHash(detail.GeneratedBlocks),
                 _ => null
@@ -54,9 +76,9 @@ public static class ProvenanceHashes
             }
         }
 
-        foreach (var document in detail.AssembledDocuments ?? Array.Empty<ConsultGenerationResultDocumentResponse>())
+        foreach (var document in (detail.AssembledDocuments ?? Array.Empty<ConsultGenerationResultDocumentResponse>()).Where(d => d.Text != null))
         {
-            var recomputed = Sha256Hex(document.Text);
+            var recomputed = Sha256Hex(document.Text!);
             checks.Add(new HashCheck(document.ResultId, document.DocumentHash, recomputed,
                 string.Equals(document.DocumentHash, recomputed, StringComparison.Ordinal)));
         }

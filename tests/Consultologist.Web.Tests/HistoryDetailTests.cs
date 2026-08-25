@@ -37,7 +37,8 @@ public class HistoryDetailTests : ClientRenderTestContext
         string? packageFormatRef = null,
         string? provenanceRef = null,
         TerminologySnapshot? terminology = null,
-        string? terminologyServerRef = null)
+        string? terminologyServerRef = null,
+        DateTimeOffset? textDroppedAtUtc = null)
     {
         // Terminal status only: a non-terminal row would start the page's real
         // 5-second polling loop.
@@ -46,7 +47,7 @@ public class HistoryDetailTests : ClientRenderTestContext
             {
                 new AccountJobSummaryResponse(
                     JobId, "Completed", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
-                    TotalBlockCount: 9, CompletedBlockCount: 9, FailedBlockCount: 0)
+                    TotalBlockCount: 9, CompletedBlockCount: 9, FailedBlockCount: 0, TextDroppedAtUtc: textDroppedAtUtc)
             },
             null));
 
@@ -78,6 +79,7 @@ public class HistoryDetailTests : ClientRenderTestContext
             ProvenanceRef: provenanceRef,
             Terminology: terminology,
             TerminologyServerRef: terminologyServerRef,
+            TextDroppedAtUtc: textDroppedAtUtc,
             AgentVersions: agentVersions,
             CatalogRef: catalogRef));
     }
@@ -161,6 +163,28 @@ public class HistoryDetailTests : ClientRenderTestContext
 
         WithJob(3);
         Assert.DoesNotContain(Render<History>(parameters => parameters.Add(p => p.JobId, JobId)).FindAll(".provenance-chip"), c => c.TextContent.Contains("SNOMED CT", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ADeletedText_IsANamedState_AndVerifySaysNotCheckable()
+    {
+        // #368: the row says so, the panel says when, and Verify never calls a
+        // deleted text a mismatch.
+        var dropped = new DateTimeOffset(2026, 9, 1, 3, 0, 0, TimeSpan.Zero);
+        WithJob(3, new[] { new ConsultGenerationResultDocumentResponse("note", "Consultation note", null, "abcd") },
+            workflowOutputHash: "c8f7", textDroppedAtUtc: dropped);
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Contains(page.FindAll(".job-source-badge"), b => b.TextContent.Trim() == "text deleted");
+        Assert.Contains("Text deleted", page.Find(".provenance-list").TextContent);
+        Assert.Contains("retention policy", page.Find(".provenance-text-deleted").TextContent);
+
+        page.Find(".provenance-verify fluent-button").Click();
+        var marks = page.FindAll(".hash-check").Select(m => m.TextContent.Trim()).ToList();
+        Assert.Equal(2, marks.Count);
+        Assert.All(marks, m => Assert.Contains("text deleted on 2026-09-01 — not checkable", m));
+        Assert.DoesNotContain(marks, m => m.Contains("does not match"));
+        Assert.Contains("cannot be checked against it", page.Find(".provenance-verify").TextContent);
     }
 
     [Fact]

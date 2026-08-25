@@ -45,7 +45,12 @@ Implementation decisions (settled 2026-07-25):
   draft rests in Durable orchestration state up to the 7-day horizon
   before processing — the same storage account, encryption posture, and
   access controls as running and completed jobs; scheduling extends
-  duration, not exposure surface.
+  duration, not exposure surface. Since #368 (2026-08-25)
+the produced text of every terminal job — the record's documents and
+sections, the orchestration history's prompts and outputs, the streamed
+snapshots — is deleted `TextRetention__Days` after completion (7) by a
+daily sweep; the record's hashes, nodes, refs and labels stay forever, and
+the record says when the text went (`textDroppedAtUtc`).
 
 ## 2. Email intake (#158) — IMPLEMENTED 2026-07-25
 

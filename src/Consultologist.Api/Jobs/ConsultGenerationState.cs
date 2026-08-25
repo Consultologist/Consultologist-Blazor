@@ -315,6 +315,45 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
     }
 
+    /// <summary>
+    /// #368: the retention sweep deletes the produced text — the assembled
+    /// documents, the sections, the extracted concepts — and keeps everything
+    /// else. Terminal jobs only; idempotent; the hashes were stored at
+    /// completion (or are stamped now, for a record from before) so nothing
+    /// about what was produced is lost, only the production itself.
+    /// </summary>
+    public async Task DropText(ConsultGenerationTextDrop input)
+    {
+        var state = EnsureState();
+        if (!IsTerminal(state.Status) || state.TextDroppedAtUtc != null)
+        {
+            return;
+        }
+
+        state.StampOutputHashes();
+        state.AssembledDocument = null;
+        foreach (var document in state.AssembledDocuments ?? new List<ConsultGenerationResultDocumentState>())
+        {
+            document.Text = null;
+        }
+
+        foreach (var block in state.Blocks.Values)
+        {
+            block.GeneratedText = null;
+        }
+
+        foreach (var node in state.NodeOutputs?.Values ?? Enumerable.Empty<ConsultNodeOutputState>())
+        {
+            node.Concepts = null;
+        }
+
+        state.TextDroppedAtUtc = input.DroppedAtUtc;
+        state.History.Add(new JobHistoryEvent("retention", "Produced text deleted (retention policy)", null, input.DroppedAtUtc));
+        State = state;
+
+        await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+    }
+
     /// <summary>The states nothing may move a job out of.</summary>
     internal static bool IsTerminal(string status) =>
         status is ConsultGenerationJobStatuses.Completed
@@ -345,6 +384,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         if (input.Status == ConsultGenerationJobStatuses.Completed)
         {
             state.History.Add(new JobHistoryEvent("success", "Done", null, DateTimeOffset.UtcNow));
+            state.StampOutputHashes();
         }
         else if (input.Status == ConsultGenerationJobStatuses.Failed)
         {
@@ -499,6 +539,9 @@ public sealed record ConsultGenerationNodeFailure(
 
 public sealed record ConsultGenerationJobFinalize(string Status, string? Error = null);
 
+/// <summary>#368: the retention sweep's one signal — when the text is deleted.</summary>
+public sealed record ConsultGenerationTextDrop(DateTimeOffset DroppedAtUtc);
+
 /// <summary>
 /// #434: everything Initialize would have been given, plus the sentence that
 /// says why nothing will run — authored package content (deliverable labels
@@ -646,6 +689,17 @@ public sealed class ConsultGenerationJobState
     // Never set on the same record as AssembledDocument.
     public List<ConsultGenerationResultDocumentState>? AssembledDocuments { get; set; }
 
+    // #368: the deliverable hash, stored once at completion rather than
+    // derived on every read, so it outlives the text it was computed over.
+    // Null on records completed before 2026-08-25, which ToResponse derives.
+    public string? WorkflowOutputHash { get; set; }
+    public int? WorkflowOutputHashVersion { get; set; }
+
+    // #368: when the produced text was deleted under the retention policy.
+    // After it: no AssembledDocument(s) text, no GeneratedText, no Concepts;
+    // every hash, node, ref and label stays. Null while the text is present.
+    public DateTimeOffset? TextDroppedAtUtc { get; set; }
+
     // #315: the deliverables this job's inputs excluded. Recorded, so a
     // reader is never left inferring a missing document from a shorter list.
     public List<ConsultSkippedDocument>? SkippedDocuments { get; set; }
@@ -693,7 +747,8 @@ public sealed class ConsultGenerationJobState
             Blocks.Values.Count(b => b.Status == ConsultGenerationBlockStatuses.Failed),
             Source,
             ScheduledAtUtc,
-            FailedAtStart: StartFailure != null);
+            FailedAtStart: StartFailure != null,
+            TextDroppedAtUtc: TextDroppedAtUtc);
     }
 
     public ConsultNodeOutputState GetOrAddNodeOutput(string nodeId, string label)
@@ -758,10 +813,54 @@ public sealed class ConsultGenerationJobState
             StringComparer.Ordinal);
     }
 
+    /// <summary>
+    /// #368: compute the deliverable hashes from the text once and keep them.
+    /// Write-once; a no-op when already stamped or when there is no text to
+    /// hash. The same three-way dispatch ToResponse derived by until now.
+    /// </summary>
+    public void StampOutputHashes()
+    {
+        if (Status != ConsultGenerationJobStatuses.Completed || TextDroppedAtUtc != null)
+        {
+            return;
+        }
+
+        foreach (var document in AssembledDocuments ?? new List<ConsultGenerationResultDocumentState>())
+        {
+            document.DocumentHash ??= document.Text == null ? null : ConsultGenerationProvenance.Sha256Hex(document.Text);
+        }
+
+        if (WorkflowOutputHash != null)
+        {
+            return;
+        }
+
+        if (AssembledDocuments is { Count: > 0 } && AssembledDocuments.All(d => d.Text != null))
+        {
+            WorkflowOutputHash = ConsultGenerationProvenance.ComputeResultSetHash(
+                AssembledDocuments.ToDictionary(d => d.ResultId, d => d.Text!, StringComparer.Ordinal));
+            WorkflowOutputHashVersion = ConsultGenerationProvenance.ResultSetHashVersion;
+        }
+        else if (AssembledDocument != null)
+        {
+            WorkflowOutputHash = ConsultGenerationProvenance.ComputeAssembledDocumentHash(AssembledDocument);
+            WorkflowOutputHashVersion = ConsultGenerationProvenance.AssembledDocumentHashVersion;
+        }
+        else if (AssembledDocuments is not { Count: > 0 })
+        {
+            WorkflowOutputHash = ConsultGenerationProvenance.ComputeWorkflowOutputHash(
+                Blocks.Values.Where(b => b.Status == ConsultGenerationBlockStatuses.Completed)
+                    .ToDictionary(b => b.Id, b => b.GeneratedText ?? string.Empty));
+            WorkflowOutputHashVersion = ConsultGenerationProvenance.WorkflowOutputHashVersion;
+        }
+    }
+
     public ConsultGenerationJobResponse ToResponse()
     {
+        // #368: once the text is deleted the sections are gone too — an empty
+        // map, not empty strings, so no reader mistakes absence for content.
         var completedSections = Blocks.Values
-            .Where(block => block.Status == ConsultGenerationBlockStatuses.Completed)
+            .Where(block => block.Status == ConsultGenerationBlockStatuses.Completed && (TextDroppedAtUtc == null || block.GeneratedText != null))
             .ToDictionary(block => block.Id, block => block.GeneratedText ?? string.Empty);
 
         var failedSections = Blocks.Values
@@ -832,25 +931,28 @@ public sealed class ConsultGenerationJobState
             PackageTitle: PackageTitle,
             StartFailure: StartFailure,
             PackageTags: PackageTags,
-            // Derived, never stored: the deliverable hash of a partial job is
-            // undefined, so only completed jobs carry it (provenance.md). The
-            // three-way dispatch: v7 document set → v3, v6 single document →
-            // v2, v5 sections → v1 (package-format-v7.md).
+            // #368: stored at completion since 2026-08-25 (StampOutputHashes);
+            // a record from before derives on read as it always did, by the
+            // same three-way dispatch: v7 document set → v3, v6 single
+            // document → v2, v5 sections → v1. The deliverable hash of a
+            // partial job is undefined, so only completed jobs carry it.
             WorkflowOutputHash: Status != ConsultGenerationJobStatuses.Completed
                 ? null
-                : AssembledDocuments is { Count: > 0 }
-                    ? ConsultGenerationProvenance.ComputeResultSetHash(
-                        AssembledDocuments.ToDictionary(d => d.ResultId, d => d.Text, StringComparer.Ordinal))
-                    : AssembledDocument != null
-                        ? ConsultGenerationProvenance.ComputeAssembledDocumentHash(AssembledDocument)
-                        : ConsultGenerationProvenance.ComputeWorkflowOutputHash(completedSections),
+                : WorkflowOutputHash
+                    ?? (AssembledDocuments is { Count: > 0 }
+                        ? ConsultGenerationProvenance.ComputeResultSetHash(
+                            AssembledDocuments.ToDictionary(d => d.ResultId, d => d.Text ?? string.Empty, StringComparer.Ordinal))
+                        : AssembledDocument != null
+                            ? ConsultGenerationProvenance.ComputeAssembledDocumentHash(AssembledDocument)
+                            : ConsultGenerationProvenance.ComputeWorkflowOutputHash(completedSections)),
             WorkflowOutputHashVersion: Status != ConsultGenerationJobStatuses.Completed
                 ? null
-                : AssembledDocuments is { Count: > 0 }
-                    ? ConsultGenerationProvenance.ResultSetHashVersion
-                    : AssembledDocument != null
-                        ? ConsultGenerationProvenance.AssembledDocumentHashVersion
-                        : ConsultGenerationProvenance.WorkflowOutputHashVersion,
+                : WorkflowOutputHashVersion
+                    ?? (AssembledDocuments is { Count: > 0 }
+                        ? ConsultGenerationProvenance.ResultSetHashVersion
+                        : AssembledDocument != null
+                            ? ConsultGenerationProvenance.AssembledDocumentHashVersion
+                            : ConsultGenerationProvenance.WorkflowOutputHashVersion),
             AssembledDocument: Status == ConsultGenerationJobStatuses.Completed ? AssembledDocument : null,
             AssembledDocuments: Status == ConsultGenerationJobStatuses.Completed && AssembledDocuments is { Count: > 0 }
                 ? AssembledDocuments
@@ -858,9 +960,10 @@ public sealed class ConsultGenerationJobState
                         d.ResultId,
                         d.Label,
                         d.Text,
-                        ConsultGenerationProvenance.Sha256Hex(d.Text)))
+                        d.DocumentHash ?? (d.Text == null ? null : ConsultGenerationProvenance.Sha256Hex(d.Text))))
                     .ToList()
-                : null);
+                : null,
+            TextDroppedAtUtc: TextDroppedAtUtc);
     }
 }
 
@@ -880,8 +983,11 @@ public sealed class ConsultGenerationResultDocumentState
 {
     public string ResultId { get; set; } = string.Empty;
     public string Label { get; set; } = string.Empty;
-    public string Text { get; set; } = string.Empty;
+    // #368: null once the retention policy deleted it; DocumentHash stays.
+    public string? Text { get; set; } = string.Empty;
     public int Ordinal { get; set; }
+    // #368: stored at completion; null on records from before (derived then).
+    public string? DocumentHash { get; set; }
 }
 
 /// <summary>One forEach item's chain progress — the section-prose-step source.</summary>

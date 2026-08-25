@@ -155,7 +155,9 @@ public record ConsultGenerationJobResponse(
     // #403: the terminology edition the run was answered against, and the
     // server that served it; null before 2026-08-25 or when unreadable at start.
     TerminologySnapshot? Terminology = null,
-    string? TerminologyServerRef = null);
+    string? TerminologyServerRef = null,
+    // #368: when the produced text was deleted under the retention policy; null while present.
+    DateTimeOffset? TextDroppedAtUtc = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
@@ -165,7 +167,8 @@ public record ConsultGenerationJobResponse(
 public sealed record ConsultGenerationResultDocumentResponse(
     string ResultId,
     string Label,
-    string Text,
+    // #368: null once the retention policy deleted the text; DocumentHash stays.
+    string? Text,
     string? DocumentHash = null);
 
 /// <summary>

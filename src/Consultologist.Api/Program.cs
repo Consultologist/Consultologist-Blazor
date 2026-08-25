@@ -102,6 +102,9 @@ builder.Services.AddScoped<WorkflowPackages>();
 builder.Services.AddHttpClient();
 builder.Services.AddHostedService<AgentAttestationService>();
 builder.Services.AddSingleton<PinHealthReporter>();
+// #368: the retention sweep — the text is deleted N days after completion.
+builder.Services.AddSingleton<IJobTextPurger, JobTextPurger>();
+builder.Services.AddSingleton<TextRetentionSweep>();
 builder.Services.AddSingleton<IWorkflowPackageRegistryReader, WorkflowPackageRegistryReader>();
 builder.Services.AddSingleton<CatalogStrandSweeper>();
 builder.Services.AddSingleton<OperatorCatalogStrands>();

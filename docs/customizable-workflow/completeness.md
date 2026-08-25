@@ -26,7 +26,7 @@ Unavoidable, and never "inside" a feature stage:
 
 - Privacy compliance — PHIPA/PIPEDA (deployment is Canada East), HIPAA if crossing the
   border.
-- Security attestations institutions demand (e.g. SOC 2), retention and audit policy.
+- Security attestations institutions demand (e.g. SOC 2), retention policy for produced text (done, #368: 7 days, provenance kept) and audit policy.
 - A genuine classification question: stage 3's claim verification and stage 4's coding
   suggestions edge toward clinical decision support, which regulators treat differently
   than transcription (SaMD territory).

@@ -46,7 +46,9 @@ public sealed record AccountJobSummaryResponse(
     string? Source = null,
     DateTimeOffset? ScheduledAtUtc = null,
     // #434: mirrors the Api's AccountJobSummaryResponse.FailedAtStart.
-    bool FailedAtStart = false);
+    bool FailedAtStart = false,
+    // #368: mirrors the Api's AccountJobSummaryResponse.TextDroppedAtUtc.
+    DateTimeOffset? TextDroppedAtUtc = null);
 
 public sealed record AccountJobsResponse(
     IReadOnlyList<AccountJobSummaryResponse> Jobs,

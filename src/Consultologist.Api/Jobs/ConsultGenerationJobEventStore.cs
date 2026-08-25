@@ -22,6 +22,9 @@ public interface IConsultGenerationJobEventStore
         string appUserId,
         long sequence,
         CancellationToken cancellationToken);
+
+    /// <summary>#368: every row of the job's partition — the streamed snapshots carry the produced text.</summary>
+    Task<int> DeleteJobAsync(string jobId, CancellationToken cancellationToken);
 }
 
 internal sealed class TableConsultGenerationJobEventStore : IConsultGenerationJobEventStore
@@ -44,6 +47,33 @@ internal sealed class TableConsultGenerationJobEventStore : IConsultGenerationJo
         _logger = logger;
         _events = StorageTables.CreateClient(
             configuration, credential, EventsTableName, "ConsultGenerationJobEventStorage", "AccountStorage");
+    }
+
+    public async Task<int> DeleteJobAsync(string jobId, CancellationToken cancellationToken)
+    {
+        await EnsureTableAsync(cancellationToken);
+
+        var deleted = 0;
+        var filter = TableClient.CreateQueryFilter($"PartitionKey eq {jobId}");
+        var batch = new List<TableTransactionAction>();
+        await foreach (var entity in _events.QueryAsync<TableEntity>(filter, select: new[] { "PartitionKey", "RowKey" }, cancellationToken: cancellationToken))
+        {
+            batch.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, ETag.All));
+            if (batch.Count == 100)
+            {
+                await _events.SubmitTransactionAsync(batch, cancellationToken);
+                deleted += batch.Count;
+                batch.Clear();
+            }
+        }
+
+        if (batch.Count > 0)
+        {
+            await _events.SubmitTransactionAsync(batch, cancellationToken);
+            deleted += batch.Count;
+        }
+
+        return deleted;
     }
 
     public async Task<IReadOnlyList<ConsultGenerationJobStoredEvent>> AppendAsync(
