@@ -125,6 +125,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly IWorkflowPackagePinResolver _pinResolver;
     private readonly OutputContractCatalog _catalog;
     private readonly EngineAttestationResponse _engine;
+    private readonly ITerminologyAttestationSource _terminology;
     private readonly IAccountRateLimiter _rateLimiter;
     private readonly IWorkflowPackageOwnership _ownership;
 
@@ -135,13 +136,15 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         OutputContractCatalog catalog,
         IAccountRateLimiter rateLimiter,
         IWorkflowPackageOwnership ownership,
-        EngineAttestationResponse engine)
+        EngineAttestationResponse engine,
+        ITerminologyAttestationSource terminology)
     {
         _logger = logger;
         _packageStore = packageStore;
         _pinResolver = pinResolver;
         _catalog = catalog;
         _engine = engine;
+        _terminology = terminology;
         _rateLimiter = rateLimiter;
         _ownership = ownership;
     }
@@ -665,6 +668,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // #453: and its tags.
                 PackageTags: package.Manifest.Tags));
 
+        var terminology = await _terminology.GetAsync(cancellationToken);
         var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(
             nameof(ConsultGenerationOrchestrator),
             new ConsultGenerationOrchestrationInput(
@@ -691,7 +695,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // its record conforms to — the versions this build was built
                 // against, as Public/Engine attests them.
                 PackageFormatRef: EngineAttestation.RefOf(EngineAttestation.PackageFormatRegistry, _engine.PackageFormat),
-                ProvenanceRef: EngineAttestation.RefOf(EngineAttestation.ProvenanceRegistry, _engine.Provenance)),
+                ProvenanceRef: EngineAttestation.RefOf(EngineAttestation.ProvenanceRegistry, _engine.Provenance),
+                // #403: the edition the terminology server had loaded, and its build.
+                Terminology: terminology?.Terminology,
+                TerminologyServerRef: terminology?.ServerRef),
             new StartOrchestrationOptions { InstanceId = jobId },
             cancellationToken);
 
@@ -761,6 +768,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var specVersion = package.Manifest.SpecVersion;
         var (effectiveInputHash, effectiveInputHashVersion) = EffectiveInputHashOf(specVersion, request, inputs);
 
+        var terminology = await _terminology.GetAsync(CancellationToken.None);
         await client.Entities.SignalEntityAsync(
             entityId,
             nameof(ConsultGenerationJobEntity.RecordStartFailure),
@@ -781,7 +789,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     PackageTitle: package.Manifest.Title,
                     PackageTags: package.Manifest.Tags,
                     PackageFormatRef: EngineAttestation.RefOf(EngineAttestation.PackageFormatRegistry, _engine.PackageFormat),
-                    ProvenanceRef: EngineAttestation.RefOf(EngineAttestation.ProvenanceRegistry, _engine.Provenance)),
+                    ProvenanceRef: EngineAttestation.RefOf(EngineAttestation.ProvenanceRegistry, _engine.Provenance),
+                    Terminology: terminology?.Terminology,
+                    TerminologyServerRef: terminology?.ServerRef),
                 detail));
 
         return new ConsultGenerationJobStartOutcome(

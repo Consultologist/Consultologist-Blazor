@@ -19,6 +19,7 @@ public class ProvenanceMirrorTests
     [InlineData(typeof(ApiModels.ConsultInputOrigin), typeof(WebAI.ConsultInputOrigin))]
     [InlineData(typeof(ApiModels.InputFilePayload), typeof(WebAI.InputFilePayload))]
     [InlineData(typeof(ApiModels.ConsultGenerationNodeStatusResponse), typeof(WebAI.ConsultGenerationNodeStatus))]
+    [InlineData(typeof(Consultologist.Api.Workflow.TerminologySnapshot), typeof(WebAI.TerminologySnapshot))]
     public void TheMirroredRecords_ExposeTheSameProperties(Type api, Type web)
     {
         static IEnumerable<string> Shape(Type type) =>
@@ -66,6 +67,23 @@ public class ProvenanceMirrorTests
 
         Assert.Equal("package-format@v2026.08.6", mirrored.PackageFormatRef);
         Assert.Equal("provenance@v2026.08.4", mirrored.ProvenanceRef);
+    }
+
+    [Fact]
+    public void TheTerminology_ReachesTheClient()
+    {
+        // #403: the snapshot and the server ref, through the wire.
+        var response = new ApiModels.ConsultGenerationJobResponse(
+            "job-1", "user-1", "Completed", 1, 1, 0,
+            new Dictionary<string, string>(), new Dictionary<string, string>(), true,
+            Terminology: new Consultologist.Api.Workflow.TerminologySnapshot("SNOMEDCT 20251130 import.", "2025-11-30", "2025-12-21T22:39:16.944Z"),
+            TerminologyServerRef: "snomed-snowstorm-mcp@0fff939d4a5c3a6e7b8c9d0e1f2a3b4c5d6e7f80");
+
+        var mirrored = JsonSerializer.Deserialize<WebAI.ConsultGenerationJobResponse>(
+            JsonSerializer.Serialize(response, Web), Web)!;
+
+        Assert.Equal("2025-11-30", mirrored.Terminology!.Version);
+        Assert.Equal("snomed-snowstorm-mcp@0fff939d4a5c3a6e7b8c9d0e1f2a3b4c5d6e7f80", mirrored.TerminologyServerRef);
     }
 
     [Fact]

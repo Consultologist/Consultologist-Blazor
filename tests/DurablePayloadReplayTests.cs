@@ -87,11 +87,12 @@ public class DurablePayloadReplayTests
 
         var input = JsonSerializer.Deserialize<ConsultGenerationOrchestrationInput>(stored, Durable)!;
 
-        // #428 appended the twentieth slot; #398 the twenty-first and -second.
+        // #428 appended the twentieth slot; #398 the twenty-first and -second;
+        // #403 the twenty-third and -fourth.
         // The bytes a v8 job was started with are the read side, untouched;
         // what they re-serialise to is those bytes plus exactly the trailing
         // nulls — nothing moved.
-        Assert.Equal(stored[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(stored[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null}", JsonSerializer.Serialize(input, Durable));
         Assert.Equal(ConsultInputValue.OfBoolean(true), input.Request.Inputs!["billable"]);
         Assert.Equal("true", input.Inputs!["billable"]);
         Assert.Equal(4, input.EffectiveInputHashVersion);
@@ -129,7 +130,7 @@ public class DurablePayloadReplayTests
 
         // #398 appended two slots after this payload was frozen: the bytes read
         // as they were, and re-serialise with exactly two trailing nulls.
-        Assert.Equal(stored[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(stored[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null}", JsonSerializer.Serialize(input, Durable));
         var origins = Assert.Contains("prior_notes", input.InputDocumentOrigins!);
         Assert.Equal(2, origins.Count);
         Assert.Equal("pdfpig/0.1.15", origins[1].Extractor);

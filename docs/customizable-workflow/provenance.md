@@ -14,7 +14,11 @@
 > and the legs it was designed to carry and does not yet.
 
 Every consult generation records the versioned artifacts that produced it. The
-chain the record was designed around:
+chain the record was designed around — since #403 (2026-08-25) the record
+carries `terminology` (the edition the server had loaded) and
+`terminologyServerRef` (the server's build, a commit rather than the git tag
+the chain first imagined), both read from `GET /api/Public/Terminology` on
+the MCP function app (`Terminology__InfoUrl`) and stamped write-once at start:
 
 ```
 model_weights_version - agent_version - SNOMED_version - mcp_version - DAG_workflow_version - input_hash
@@ -61,8 +65,6 @@ each has, or needs, its own work:
 | `model_weights_version` | Exact checkpoint identity of the model (HF repo + revision hash), not the family name | Not recorded. The agent definition names the model; the checkpoint behind a hosted deployment is not exposed to the engine. |
 | `model_parameters` | Sampling params and the reasoning toggle (below) | Not recorded on the job; they are the agent definition's, covered by `catalogRef` → agent version → the attested manifest. |
 | `backend_fingerprint` | Serving-stack fingerprint per run, if the API exposes one | Not recorded; the API does not expose one. |
-| `snomed_version` | Terminology edition + version + import date | Not recorded — #403. |
-| `mcp_version` | Release (git tag) of the Apache-2.0 `snomed-snowstorm-mcp` repo | Not recorded — #403. The engine attests its own build (#449); the MCP deployment's is still future work. |
 | `inference_stack` | Inference engine + version, for bit-exact re-run attempts | Not recorded. |
 
 ## Attestation: git as source of truth for mutable deployments
@@ -71,8 +73,9 @@ each has, or needs, its own work:
 > the Api) loads the bundled `agents/{name}.yaml` at startup, fetches the deployed agent
 > version from the Foundry API with the app's managed identity, and compares model,
 > instructions, reasoning effort, tool choice, and tools. Drift logs as an error;
-> `AgentAttestation__Enforce=true` fails the host instead. The MCP-deployment
-> attestation remains future work.
+> `AgentAttestation__Enforce=true` fails the host instead. The MCP deployment
+> attests its own build since #403 (`Public/Terminology`, stamped by its
+> deploy workflow), and every record names it.
 
 > **Registry legs added 2026-07-16 (Milestone 6)**: attestation now welds **three**
 > stores per startup — git ↔ Foundry (above), git ↔ the public catalog registry

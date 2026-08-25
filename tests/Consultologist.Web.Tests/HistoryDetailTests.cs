@@ -35,7 +35,9 @@ public class HistoryDetailTests : ClientRenderTestContext
         string workflowOutputHash = "bbbb",
         IReadOnlyDictionary<string, ConsultGenerationNodeStatus>? nodeOutputs = null,
         string? packageFormatRef = null,
-        string? provenanceRef = null)
+        string? provenanceRef = null,
+        TerminologySnapshot? terminology = null,
+        string? terminologyServerRef = null)
     {
         // Terminal status only: a non-terminal row would start the page's real
         // 5-second polling loop.
@@ -74,6 +76,8 @@ public class HistoryDetailTests : ClientRenderTestContext
             NodeOutputs: nodeOutputs,
             PackageFormatRef: packageFormatRef,
             ProvenanceRef: provenanceRef,
+            Terminology: terminology,
+            TerminologyServerRef: terminologyServerRef,
             AgentVersions: agentVersions,
             CatalogRef: catalogRef));
     }
@@ -133,6 +137,30 @@ public class HistoryDetailTests : ClientRenderTestContext
         Assert.All(older.FindAll(".provenance-list a.provenance-ref").Select(a => a.GetAttribute("href")!), href => Assert.Contains("/provenance/v2026.08.3/", href));
         Assert.Contains("predates its own", older.Find(".provenance-list a.provenance-ref[title]").GetAttribute("title"));
         Assert.Equal("—", older.Find(".provenance-contract").TextContent.Trim());
+    }
+
+    [Fact]
+    public void TheTerminologyChip_NamesTheEdition_AndLinksTheServersCommit()
+    {
+        // #403: the edition the concepts were answered against, and the build
+        // that served it; a record that knows neither shows no chip.
+        WithJob(3, terminology: new TerminologySnapshot("SNOMEDCT 20251130 import.", "2025-11-30", "2025-12-21T22:39:16.944Z"),
+            terminologyServerRef: "snomed-snowstorm-mcp@0fff939d4a5c3a6e7b8c9d0e1f2a3b4c5d6e7f80");
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var chip = page.FindAll(".provenance-chip").Single(c => c.TextContent.Contains("SNOMED CT", StringComparison.Ordinal));
+        Assert.Equal("SNOMED CT 2025-11-30", chip.TextContent.Trim());
+        Assert.Contains("SNOMEDCT 20251130 import.", chip.GetAttribute("title"));
+        Assert.Contains("snomed-snowstorm-mcp@0fff939d", chip.GetAttribute("title"));
+        Assert.Equal("https://github.com/Tauheed-Elahee/snomed-snowstorm-mcp/commit/0fff939d4a5c3a6e7b8c9d0e1f2a3b4c5d6e7f80", chip.QuerySelector("a")!.GetAttribute("href"));
+
+        // A hand-deployed server has a version, not a page.
+        WithJob(3, terminology: new TerminologySnapshot("e", "2025-11-30", null), terminologyServerRef: "snomed-snowstorm-mcp@1.0.0");
+        var unstamped = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+        Assert.Null(unstamped.FindAll(".provenance-chip").Single(c => c.TextContent.Contains("SNOMED CT", StringComparison.Ordinal)).QuerySelector("a"));
+
+        WithJob(3);
+        Assert.DoesNotContain(Render<History>(parameters => parameters.Add(p => p.JobId, JobId)).FindAll(".provenance-chip"), c => c.TextContent.Contains("SNOMED CT", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -99,6 +99,8 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.CatalogRef ??= input.CatalogRef;
         State.PackageFormatRef ??= input.PackageFormatRef;
         State.ProvenanceRef ??= input.ProvenanceRef;
+        State.Terminology ??= input.Terminology;
+        State.TerminologyServerRef ??= input.TerminologyServerRef;
         State.Source ??= input.Source;
         State.ScheduledAtUtc ??= input.ScheduledAtUtc;
         State.PackageSpecVersion ??= input.PackageSpecVersion;
@@ -425,7 +427,11 @@ public sealed record ConsultGenerationOrchestrationInput(
     // and provenance@v…, from the build's attestation. Appended last: this
     // is the payload a sleeping instance re-reads.
     string? PackageFormatRef = null,
-    string? ProvenanceRef = null);
+    string? ProvenanceRef = null,
+    // #403: the terminology edition the server had loaded when the job
+    // started, and the server's build. Appended last, same reason.
+    TerminologySnapshot? Terminology = null,
+    string? TerminologyServerRef = null);
 
 public sealed record ConsultGenerationJobInitialize(
     string JobId,
@@ -467,7 +473,10 @@ public sealed record ConsultGenerationJobInitialize(
     IReadOnlyList<string>? PackageTags = null,
     // #398: see ConsultGenerationOrchestrationInput. Appended last, same reason.
     string? PackageFormatRef = null,
-    string? ProvenanceRef = null);
+    string? ProvenanceRef = null,
+    // #403: see ConsultGenerationOrchestrationInput. Appended last, same reason.
+    TerminologySnapshot? Terminology = null,
+    string? TerminologyServerRef = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -614,6 +623,13 @@ public sealed class ConsultGenerationJobState
     // the build's own, write-once like CatalogRef; null before 2026-08-25.
     public string? PackageFormatRef { get; set; }
     public string? ProvenanceRef { get; set; }
+
+    // #403: the SNOMED CT edition the terminology server had loaded when the
+    // job started (what every concept's flags were answered against) and the
+    // server's build (snomed-snowstorm-mcp@<commit>); write-once; null when
+    // the server could not be read at start and on records from before.
+    public TerminologySnapshot? Terminology { get; set; }
+    public string? TerminologyServerRef { get; set; }
     public List<ConsultItemStepDescriptor>? ItemSteps { get; set; }
     public List<ConsultNodeDescriptor>? Nodes { get; set; }
 
@@ -810,6 +826,8 @@ public sealed class ConsultGenerationJobState
             CatalogRef: CatalogRef,
             PackageFormatRef: PackageFormatRef,
             ProvenanceRef: ProvenanceRef,
+            Terminology: Terminology,
+            TerminologyServerRef: TerminologyServerRef,
             PackageSpecVersion: PackageSpecVersion,
             PackageTitle: PackageTitle,
             StartFailure: StartFailure,

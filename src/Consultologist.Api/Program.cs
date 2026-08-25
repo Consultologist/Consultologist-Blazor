@@ -96,6 +96,8 @@ builder.Services.AddSingleton<PublicChain>();
 // and stamped on every record's packageFormatRef/provenanceRef.
 builder.Services.AddSingleton(sp => EngineAttestation.Current(sp.GetRequiredService<OutputContractCatalog>()));
 builder.Services.AddSingleton<PublicEngine>();
+// #403: what the terminology server says about itself, read once per cache window.
+builder.Services.AddSingleton<ITerminologyAttestationSource, TerminologyAttestationClient>();
 builder.Services.AddScoped<WorkflowPackages>();
 builder.Services.AddHttpClient();
 builder.Services.AddHostedService<AgentAttestationService>();

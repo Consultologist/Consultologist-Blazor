@@ -223,6 +223,22 @@
                                                     }
                                                 </span>
                                             }
+                                            @* #403: the SNOMED CT edition the run was answered against,
+                                               and the server build that served it. No chip when the record
+                                               knows nothing — a job from before this predates the leg. *@
+                                            @if (detail.Terminology is { Version: { Length: > 0 } terminologyVersion } terminology)
+                                            {
+                                                <span class="provenance-chip" title="@TerminologyTitle(terminology, detail.TerminologyServerRef)">
+                                                    @if (TerminologyServerLink(detail.TerminologyServerRef) is { } serverHref)
+                                                    {
+                                                        <a class="provenance-ref" href="@serverHref" target="_blank" rel="noopener">SNOMED CT @terminologyVersion</a>
+                                                    }
+                                                    else
+                                                    {
+                                                        <text>SNOMED CT @terminologyVersion</text>
+                                                    }
+                                                </span>
+                                            }
                                             @if (detail.Source == "email")
                                             {
                                                 <span class="provenance-chip" title="This job was submitted by email intake">
@@ -847,6 +863,20 @@
 
     private string? FormatLink(ConsultGenerationJobResponse detail, int specVersion) =>
         FormatVersionFor(detail).Version is { } version && RegistryBase is { } root ? $"{root}/package-format/{version}/package-format-v{specVersion}.md" : null;
+
+    private const string TerminologyServerPrefix = "snomed-snowstorm-mcp@";
+
+    private static string TerminologyTitle(TerminologySnapshot terminology, string? serverRef) =>
+        $"Terminology edition the concepts were answered against: {terminology.Edition ?? "—"} (imported {terminology.ImportDate ?? "—"})"
+        + (serverRef != null ? $" · served by {serverRef}" : string.Empty);
+
+    // A stamped build links to its commit; a server deployed by hand reports a
+    // version, which has no page to open.
+    private static string? TerminologyServerLink(string? serverRef) =>
+        serverRef != null && serverRef.StartsWith(TerminologyServerPrefix, StringComparison.Ordinal)
+            && serverRef[TerminologyServerPrefix.Length..] is { Length: 40 } commit && commit.All(Uri.IsHexDigit)
+            ? $"https://github.com/Tauheed-Elahee/snomed-snowstorm-mcp/commit/{commit}"
+            : null;
 
     private static string Witness(bool recorded) => recorded ? "recorded on the job" : "the deployed engine's — this record predates its own";
 

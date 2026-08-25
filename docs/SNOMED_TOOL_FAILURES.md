@@ -66,7 +66,9 @@ Snowstorm URL, source not located at the time).
 - Azure Functions app `consultologist-snomed-mcp-flex`, resource group `snomed-rg`
   (Flex Consumption; replaced the deleted `consultologist-snomed-mcp`). Targets
   `net10.0`, isolated worker, `Microsoft.Azure.Functions.Worker.Extensions.Mcp`.
-- Still serves `mcp.snomed.consultologist.ai`.
+- Still serves `mcp.snomed.consultologist.ai`. Since #403 it also serves
+  `GET /api/Public/Terminology` (anonymous: the loaded edition and the server's
+  build), which the engine reads (`Terminology__InfoUrl`) to stamp every record.
 - Revised toolset: `SearchConcepts` (now with optional semantic-tag filter),
   `ValidateConcept`, `GetConcept`, `GetParents`, `GetAncestors`, `GetChildren`,
   `GetTerminologyInfo`, `EclQuery`; `GetBySemanticTag` was dropped.
