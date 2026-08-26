@@ -354,3 +354,19 @@
 .provenance-text-deleted {
     font-style: italic;
 }
+
+/* #486: the completion email's outcome. */
+.job-source-badge--delivery-sent {
+    opacity: 0.85;
+}
+
+.job-source-badge--delivery-address-not-set,
+.job-source-badge--delivery-failed,
+.job-source-badge--delivery-not-configured {
+    background: var(--warning-fill, #fff4ce);
+    color: var(--warning-foreground, #7a5c00);
+}
+
+.provenance-delivery {
+    font-style: italic;
+}

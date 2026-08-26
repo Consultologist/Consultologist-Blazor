@@ -9,6 +9,15 @@ public interface IAccountEndpointService
     Task DisconnectLinkedInAsync();
     Task SetDeliveryPasswordAsync(string password);
     Task ClearDeliveryPasswordAsync();
+
+    /// <summary>#486: send a confirmation code to the address. Throws with the server's named reason.</summary>
+    Task StartDeliveryAddressAsync(string address);
+
+    /// <summary>#486: confirm the pending address with the code. Throws with the server's named reason.</summary>
+    Task ConfirmDeliveryAddressAsync(string code);
+
+    /// <summary>#486: remove the confirmed and any pending address.</summary>
+    Task ClearDeliveryAddressAsync();
     Task<AccountSettingResponse?> GetSettingAsync(string key);
     Task SaveSettingAsync(string key, string value, string contentType);
     Task DeleteSettingAsync(string key);

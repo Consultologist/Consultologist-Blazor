@@ -202,6 +202,92 @@
                 </div>
             </section>
 
+            <section class="content-card delivery-address-card">
+                <div class="form-stack">
+                    <h2 class="panel-title">
+                        Delivery address
+                    </h2>
+
+                    <p class="panel-description">
+                        Every consult you submit is emailed here when it completes — and only here.
+                        The address is confirmed with a code before anything is sent to it; the
+                        email carries no clinical content unless a delivery password is set below.
+                    </p>
+
+                    @if (addressMessage != null)
+                    {
+                        <FluentMessageBar Intent="@addressMessageIntent">@addressMessage</FluentMessageBar>
+                    }
+
+                    <div class="state-panel">
+                        <span class="muted-text">Delivery address</span>
+                        <strong class="delivery-address-state">
+                            @if (account.DeliveryAddress != null)
+                            {
+                                <text>Verified: @account.DeliveryAddress</text>
+                            }
+                            else if (account.DeliveryAddressPending != null)
+                            {
+                                <text>Code sent to @account.DeliveryAddressPending — enter it below</text>
+                            }
+                            else
+                            {
+                                <text>Not set — consults are not emailed</text>
+                            }
+                        </strong>
+                        @if (account.DeliveryAddress != null && account.DeliveryAddressPending != null)
+                        {
+                            <span class="muted-text">A code is out to @account.DeliveryAddressPending; confirming it replaces the verified address.</span>
+                        }
+                    </div>
+
+                    @if (account.DeliveryAddressPending != null)
+                    {
+                        <div class="action-row">
+                            <FluentTextField @bind-Value="deliveryCodeInput"
+                                             Placeholder="6-digit code"
+                                             Disabled="@addressRequestInProgress"
+                                             aria-label="Confirmation code" />
+                            <FluentButton Appearance="Appearance.Accent"
+                                          Class="confirm-address-button"
+                                          Disabled="@(addressRequestInProgress || (deliveryCodeInput?.Trim().Length ?? 0) != 6)"
+                                          @onclick="ConfirmDeliveryAddressAsync">
+                                Confirm
+                            </FluentButton>
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Class="resend-code-button"
+                                          Disabled="@addressRequestInProgress"
+                                          @onclick="ResendDeliveryCodeAsync">
+                                Send a new code
+                            </FluentButton>
+                        </div>
+                    }
+
+                    <div class="action-row">
+                        <FluentTextField @bind-Value="deliveryAddressInput"
+                                         TextFieldType="TextFieldType.Email"
+                                         Placeholder="you@clinic.example"
+                                         Disabled="@addressRequestInProgress"
+                                         aria-label="Delivery address" />
+                        <FluentButton Appearance="Appearance.Accent"
+                                      Class="send-code-button"
+                                      Disabled="@(addressRequestInProgress || string.IsNullOrWhiteSpace(deliveryAddressInput))"
+                                      @onclick="StartDeliveryAddressAsync">
+                            @(account.DeliveryAddress == null ? "Send code" : "Change address")
+                        </FluentButton>
+                        @if (account.DeliveryAddress != null || account.DeliveryAddressPending != null)
+                        {
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Class="remove-address-button"
+                                          Disabled="@addressRequestInProgress"
+                                          @onclick="ClearDeliveryAddressAsync">
+                                Remove
+                            </FluentButton>
+                        }
+                    </div>
+                </div>
+            </section>
+
             <section class="content-card">
                 <div class="form-stack">
                     <h2 class="panel-title">
@@ -209,8 +295,8 @@
                     </h2>
 
                     <p class="panel-description">
-                        With a delivery password set, completion emails attach the consult as a
-                        password-protected PDF. Without one, emails carry only a sign-in link.
+                        With a delivery password set, the email to your delivery address attaches the
+                        consult as a password-protected PDF. Without one, it carries only a sign-in link.
                         The password is write-only — it is never shown again, and History always
                         keeps the document if it is forgotten.
                     </p>
@@ -452,6 +538,96 @@
         finally
         {
             scheduleRequestInProgress = false;
+        }
+    }
+
+    // #486: the verified delivery address. Send → Confirm; nothing is ever
+    // sent to an address that did not answer its code.
+    private string? deliveryAddressInput;
+    private string? deliveryCodeInput;
+    private bool addressRequestInProgress;
+    private string? addressMessage;
+    private MessageIntent addressMessageIntent = MessageIntent.Info;
+
+    private async Task StartDeliveryAddressAsync()
+    {
+        if (string.IsNullOrWhiteSpace(deliveryAddressInput))
+        {
+            return;
+        }
+
+        await RunDeliveryAddressRequestAsync(async () =>
+        {
+            await AccountService.StartDeliveryAddressAsync(deliveryAddressInput.Trim());
+            deliveryAddressInput = null;
+            deliveryCodeInput = null;
+            return "A confirmation code has been sent. Enter it below within 15 minutes.";
+        });
+    }
+
+    private async Task ResendDeliveryCodeAsync()
+    {
+        if (account?.DeliveryAddressPending is not { } pending)
+        {
+            return;
+        }
+
+        await RunDeliveryAddressRequestAsync(async () =>
+        {
+            await AccountService.StartDeliveryAddressAsync(pending);
+            deliveryCodeInput = null;
+            return "A new code has been sent. Enter it below within 15 minutes.";
+        });
+    }
+
+    private async Task ConfirmDeliveryAddressAsync()
+    {
+        if (string.IsNullOrWhiteSpace(deliveryCodeInput))
+        {
+            return;
+        }
+
+        await RunDeliveryAddressRequestAsync(async () =>
+        {
+            await AccountService.ConfirmDeliveryAddressAsync(deliveryCodeInput.Trim());
+            deliveryCodeInput = null;
+            return "Delivery address verified. Completed consults will be emailed there.";
+        });
+    }
+
+    private async Task ClearDeliveryAddressAsync()
+    {
+        await RunDeliveryAddressRequestAsync(async () =>
+        {
+            await AccountService.ClearDeliveryAddressAsync();
+            deliveryCodeInput = null;
+            return "Delivery address removed. Consults will not be emailed until one is verified.";
+        });
+    }
+
+    private async Task RunDeliveryAddressRequestAsync(Func<Task<string>> action)
+    {
+        addressRequestInProgress = true;
+        addressMessage = null;
+
+        try
+        {
+            addressMessage = await action();
+            addressMessageIntent = MessageIntent.Success;
+            await LoadAccountAsync();
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            addressMessage = ex.Message;
+            addressMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            addressRequestInProgress = false;
         }
     }
 

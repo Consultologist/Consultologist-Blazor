@@ -341,6 +341,16 @@
                             <FluentMessageBar Intent="MessageIntent.Success">@scheduleConfirmation</FluentMessageBar>
                         }
 
+                        @* #486: told before submit, not after — a consult with no delivery
+                           address is not emailed, and this is the moment to say so. *@
+                        @if (accountDeliveryAddressKnown && accountDeliveryAddress == null)
+                        {
+                            <FluentMessageBar Intent="MessageIntent.Info" AllowDismiss="false" Class="delivery-address-notice">
+                                This consult will not be emailed — no delivery address is verified.
+                                <a href="/profile">Set one on your profile</a> to receive completed consults by email.
+                            </FluentMessageBar>
+                        }
+
                         <div class="action-row">
                             <FluentSwitch @bind-Value="RunOvernight"
                                           Label="Run overnight"
@@ -445,6 +455,12 @@
                                         </FluentButton>
                                     </div>
                                 </div>
+
+                                @* #486: what happened to the completion email. *@
+                                @if (DeliveryState.Describe(deliveryOutcome, deliveryDocumentAttached) is { } deliveryText)
+                                {
+                                    <p class="delivery-line delivery-line--@(deliveryOutcome)">@deliveryText</p>
+                                }
 
                                 @if (textDroppedAtUtc is { } deletedAt)
                                 {
@@ -780,6 +796,9 @@
   private IReadOnlyList<ConsultGenerationResultDocumentResponse> assembledDocuments = Array.Empty<ConsultGenerationResultDocumentResponse>();
   // #368: set when the record says its text was deleted under the retention policy.
   private DateTimeOffset? textDroppedAtUtc;
+  // #486
+  private string? deliveryOutcome;
+  private bool? deliveryDocumentAttached;
 
   // #315: declared deliverables this job's inputs excluded.
   private IReadOnlyList<ConsultSkippedDocumentResponse> skippedDocuments = Array.Empty<ConsultSkippedDocumentResponse>();
@@ -838,6 +857,10 @@
   private bool runOvernight;
   private string scheduledAtLocal = string.Empty;
   private string? accountScheduleTime;
+  // #486: the verified delivery address, or null — told before submit, and in
+  // the schedule confirmation, rather than promising an email that will not come.
+  private string? accountDeliveryAddress;
+  private bool accountDeliveryAddressKnown;
 
   /// <summary>
   /// #390: turning the switch on seeds the time from the account default, so
@@ -1021,12 +1044,22 @@
   /// fallback in place rather than reporting anything: nobody came to this page
   /// to be told about a preference.
   /// </summary>
+  /// <summary>#486: the promise matches the account — an email only where one will go.</summary>
+  internal static string ScheduleConfirmationFor(DateTimeOffset scheduledAtUtc, string? deliveryAddress) =>
+    $"Consult scheduled for {scheduledAtUtc.ToLocalTime():MMM d, h:mm tt} — it will appear in History"
+    + (deliveryAddress == null
+      ? ", and it will not be emailed: no delivery address is verified on your profile."
+      : $", and you'll receive an email at {deliveryAddress} when it's ready.");
+
   private async Task LoadScheduleDefaultAsync()
   {
     try
     {
       var setting = await AccountService.GetSettingAsync(ScheduleDefault.SettingKey);
       accountScheduleTime = ScheduleDefault.Parse(setting?.Value);
+      var me = await AccountService.GetCurrentAccountAsync();
+      accountDeliveryAddress = me.DeliveryAddress;
+      accountDeliveryAddressKnown = true;
     }
     catch (AccessTokenNotAvailableException exception)
     {
@@ -1134,8 +1167,7 @@
           ?? ScheduleDefault.NextOccurrenceUtc(accountScheduleTime, DateTime.Now);
         var job = await AIService.StartConsultGenerationJobAsync(
           SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles());
-        scheduleConfirmation =
-          $"Consult scheduled for {scheduledAtUtc.ToLocalTime():MMM d, h:mm tt} — it will appear in History, and you'll receive an email when it's ready.";
+        scheduleConfirmation = ScheduleConfirmationFor(scheduledAtUtc, accountDeliveryAddress);
         runOvernight = false;
         scheduledAtLocal = string.Empty;
         ClearInputs();
@@ -1590,6 +1622,8 @@
     runEventSeen = true;
     generatedBlocks = response.GeneratedBlocks;
     textDroppedAtUtc = response.TextDroppedAtUtc;
+    deliveryOutcome = response.DeliveryOutcome;
+    deliveryDocumentAttached = response.DeliveryDocumentAttached;
 
     // The deliverables, present on Completed payloads only and kept once seen.
     // v7 sends the set; v6 sends one string, which becomes a one-entry set so

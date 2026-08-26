@@ -7,9 +7,16 @@ public sealed record AccountMeResponse(
     string Status,
     AccountIdentity CurrentIdentity,
     IReadOnlyList<AccountIdentity> LinkedIdentities,
-    bool DocumentPasswordSet = false);
+    bool DocumentPasswordSet = false,
+    // #486: the confirmed delivery address, and the one a code is out to.
+    string? DeliveryAddress = null,
+    string? DeliveryAddressPending = null);
 
 public sealed record SaveDeliveryPasswordRequest(string Password);
+
+public sealed record SaveDeliveryAddressRequest(string Address);
+
+public sealed record ConfirmDeliveryAddressRequest(string Code);
 
 public sealed record AccountIdentity(
     string Provider,
@@ -48,7 +55,10 @@ public sealed record AccountJobSummaryResponse(
     // #434: mirrors the Api's AccountJobSummaryResponse.FailedAtStart.
     bool FailedAtStart = false,
     // #368: mirrors the Api's AccountJobSummaryResponse.TextDroppedAtUtc.
-    DateTimeOffset? TextDroppedAtUtc = null);
+    DateTimeOffset? TextDroppedAtUtc = null,
+    // #486: mirrors the Api's DeliveryOutcome / DeliveredAtUtc.
+    string? DeliveryOutcome = null,
+    DateTimeOffset? DeliveredAtUtc = null);
 
 public sealed record AccountJobsResponse(
     IReadOnlyList<AccountJobSummaryResponse> Jobs,

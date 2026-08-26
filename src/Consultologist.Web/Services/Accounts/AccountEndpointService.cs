@@ -129,6 +129,70 @@ public sealed class AccountEndpointService : IAccountEndpointService
         }
     }
 
+    public async Task StartDeliveryAddressAsync(string address)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, GetAccountBaseUrl() + "/DeliveryAddress")
+        {
+            Content = JsonContent.Create(new SaveDeliveryAddressRequest(address))
+        };
+        await AddAuthorizationAsync(request);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            _logger.LogError("Delivery address start failed with status {StatusCode}", response.StatusCode);
+            throw new HttpRequestException(DeliveryAddressError(ExtractError(error), response.StatusCode));
+        }
+    }
+
+    public async Task ConfirmDeliveryAddressAsync(string code)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, GetAccountBaseUrl() + "/DeliveryAddress/Confirm")
+        {
+            Content = JsonContent.Create(new ConfirmDeliveryAddressRequest(code))
+        };
+        await AddAuthorizationAsync(request);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            _logger.LogError("Delivery address confirm failed with status {StatusCode}", response.StatusCode);
+            throw new HttpRequestException(DeliveryAddressError(ExtractError(error), response.StatusCode));
+        }
+    }
+
+    public async Task ClearDeliveryAddressAsync()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, GetAccountBaseUrl() + "/DeliveryAddress");
+        await AddAuthorizationAsync(request);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogError("Delivery address clear failed with status {StatusCode}", response.StatusCode);
+            throw new HttpRequestException($"Delivery address clear failed: {response.StatusCode}");
+        }
+    }
+
+    /// <summary>#486: the server's named reasons, in the user's words.</summary>
+    internal static string DeliveryAddressError(string? error, System.Net.HttpStatusCode status) => error switch
+    {
+        "wrong" => "That code is not right. Check the email and try again.",
+        "expired" => "That code has expired. Send a new one.",
+        "too-many-attempts" => "Too many attempts. Send a new code.",
+        "none" => "No code is pending. Send one first.",
+        "code-recently-sent" => "A code was sent a moment ago. Check your email, or wait a minute to send another.",
+        "code-not-sent" => "The code could not be sent. Try again in a moment.",
+        "delivery-not-configured" => "Email delivery is not configured on this deployment.",
+        null => $"The request failed: {status}",
+        _ => error
+    };
+
     private static string? ExtractError(string body)
     {
         try
