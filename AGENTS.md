@@ -109,6 +109,13 @@ last hour. Pass an offset at least as wide as the window (`--offset P3D`).
 `0b51e6cf-8720-48f6-9c84-6ed68c4e9914` instead produced a whole session of
 false "no telemetry" conclusions.
 
+**The component holds no clinical text since #245 (2026-08-26)**, and the
+traces from before were purged. A query that expects to read a prompt or a
+response out of `Host.Function.Console` is looking in the wrong place — the
+Durable orchestration history has them for seven days; telemetry has their
+lengths and SHA-256s. `Diagnostics__LogPromptText=true` is the dev/test-only
+switch and must never be set on `canada-east-ai-function`.
+
 Sanity-check any new query against a time range known to have data **before**
 trusting an empty result. An absence is evidence only once the read path is
 proven — the recurring wrong turn of Milestone 16, three times over.

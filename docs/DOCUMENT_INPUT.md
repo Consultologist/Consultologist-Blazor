@@ -758,6 +758,7 @@ job start, and email intake.
 > | disabled XML resolver | **nothing to do** — the SDK prohibits DTD processing in three places, so an external entity never resolves |
 > | malformed corpus | **done** in #241 — every case above has a test asserting a named outcome |
 > | never logged | **done** in #241 — audited and pinned |
+> | never logged — the prompt path | **done** in #245 — the prompt-node console lines carry length and SHA-256, never the rendered prompt or the response; the #241 audit covered the parser paths only |
 > | memory bound | **done** in #241 — a concurrency gate; see below for what that does and does not bound |
 > | per-account rate limiting | **done** in #266 — a fixed hourly window per account; see below |
 >

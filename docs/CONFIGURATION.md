@@ -298,6 +298,10 @@ answer.
 | how often an account has submitted | `AccountRateLimits` |
 | **which documents a consult actually read** | `/history/{jobId}` in the app, or `scripts/show-job-provenance.sh <job-id>` from a terminal |
 
+Application Insights answers none of these. It is a diagnostic surface —
+sampled for requests, non-authoritative, on its own retention — and since
+#245 it holds no clinical text: see "Telemetry and logging" below.
+
 **Provenance is not in any table.** `InputOrigins` lives on the job's durable
 entity and is served by `GET /api/ConsultGenerationJobs/{jobId}`; History
 renders it as the Provenance panel and the script prints the same thing.
@@ -394,6 +398,43 @@ string remains only as the local-dev (Azurite) fallback.
 | `FUNCTIONS_WORKER_RUNTIME` | Must be `dotnet-isolated`. |
 | `WEBSITE_INSTANCE_ID` | Provided by Azure; the code only reads it to detect "running in Azure". Never set manually. |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Telemetry destination. |
+
+## Telemetry and logging (#245)
+
+What reaches Application Insights (component `canada-east-ai-function` in
+`consultologist_group`, appId `e3f91af5-af22-43b6-a9d8-6cc0aa0cfde7`,
+workspace-based on the subscription's canadaeast default workspace):
+
+- every structured `ILogger` record, twice — through the Application
+  Insights channel, and again as a `Host.Function.Console` trace because
+  `Program.cs` adds a console logger and the host forwards the worker's
+  stdout/stderr line by line;
+- the thirteen explicit `Console.Error.WriteLine` sites: startup
+  diagnostics, agent and terminology attestation, pin health, the
+  retention sweep, and the two prompt-node lines.
+
+**No clinical text, by design.** Every record carries ids, counts,
+lengths, hashes and exception *type names*. The prompt-node lines
+(`[AgentPrompt]`, `[AgentResponse]`) carry the node id, the length and the
+SHA-256 of the text — the same digests the job record stores as
+`InputHash`/`OutputHash` — so a run can be tied to its record without
+either text. Traces are excluded from sampling in `host.json`, so what is
+written is kept; that is why nothing written may be content.
+
+Until 2026-08-26 those two lines carried the full prompt and response, one
+trace per line of text (#245). The traces and exceptions from before that
+deploy were purged through the component's purge API, and the `AppTraces`
+and `AppExceptions` tables were set to the workspace's 30-day retention
+(they had inherited 90).
+
+| Setting | Notes |
+|---|---|
+| `Diagnostics__LogPromptText` | **Never on production.** `true` appends the full prompt and response to the two lines — for a dev/test deployment fed fictional inputs only. Read once at start; every start writes `[Diagnostics] Prompt text logging ON/OFF` to the console. Any value other than the word `true` is off. Read via `Environment.GetEnvironmentVariable`, so the exact `__` name. |
+
+The Durable orchestration history holds every rendered prompt and raw
+response for a job until the retention sweep deletes it (#368) — under the
+storage account's identity-only posture. That, not telemetry, is where a
+run's text is for the seven days it exists.
 
 ### Flex Consumption scale settings (not app settings)
 
