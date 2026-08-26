@@ -35,10 +35,11 @@ Implementation decisions (settled 2026-07-25):
   History shows the amber Scheduled badge plus "runs {local time}".
 - **Completion signal**: History always, plus part 2's reply machinery
   reused — the completion-email gate is simply "reply address present":
-  email intake sets the sender, the HTTP endpoint sets the **account
-  email** exactly when the job is scheduled, immediate app jobs stay
-  silent. Requires the `EmailIntake__*` settings (skipped with a warning
-  otherwise).
+  email intake sets the sender; the HTTP endpoint sets the account's
+  **verified delivery address** for every app job, immediate or scheduled
+  (§4, #486 — until 2026-08-26 it set the unverified token-claim email,
+  and only for scheduled jobs). Requires the `EmailIntake__*` settings
+  (skipped with a warning otherwise).
 - **Not in v1**: cancellation of a Scheduled job (deferred — a wrong
   schedule costs one harmless run; follow-up issue filed).
 - **Retention statement** (the deliberate consideration): a scheduled
@@ -287,3 +288,36 @@ carries one encrypted PDF per deliverable:
   in the mailbox (interception, compromise, mis-forwarding). It is not
   end-to-end secrecy from the server, which produced the plaintext and
   holds the password to encrypt — the same boundary the app has today.
+
+## 4. A verified delivery address, and every job delivered (#486) — IMPLEMENTED 2026-08-26
+
+The 2026-08-14 direction on #368 — *deliver the note, do not store it* —
+now has its delivery half; the 7-day sweep (§1) stays the floor. Decisions
+(user, 2026-08-25):
+
+- **One address, confirmed by code.** `delivery.address` is set only by
+  `POST Account/DeliveryAddress` (a six-digit CSPRNG code goes to the
+  address; `delivery.addressPending` holds the address, the code's salted
+  SHA-256, expiry and attempts) followed by `POST …/Confirm` within 15
+  minutes and five attempts. Nothing is ever sent to an address that did
+  not answer its code. The generic settings routes refuse both keys.
+  `AppUsers.Email` — a token claim, unverified, not unique — is never an
+  address any more, for scheduled jobs either: an account without a
+  verified address gets no email, and is told so before it submits.
+- **Every app job is delivered** to that address — immediate and scheduled
+  alike — by the same reply the email door sends: fixed subject,
+  boilerplate plus the History link, the document only ever as the
+  encrypted attachment (§3). **A link-only reply counts as delivered**
+  when no delivery password is set; the record says whether the document
+  was attached. Email-door jobs still reply to the matched sender.
+- **Delivery is recorded on the job**: `deliveryOutcome` (`sent`,
+  `failed`, `address-not-set`, `not-configured`), `deliveredAtUtc`,
+  `deliveryDocumentAttached`, and a `delivery` History line — never the
+  address, which is the account's. History badges every row
+  `delivered` / `not delivered` and dates it in the provenance panel;
+  Consults carries the same line on a completed run. A record from before
+  says nothing.
+- **The sweep clock is unchanged**: completion + `TextRetention__Days`,
+  for every job. "N days after confirmed delivery" was considered and not
+  taken — delivery happens at completion, so the two clocks differ by
+  seconds, and the period itself is #368's policy.

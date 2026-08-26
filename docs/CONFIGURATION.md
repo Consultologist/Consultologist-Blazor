@@ -166,6 +166,12 @@ Posture, in brief:
   that message with a warning (at-most-once by design for PHI jobs).
 - **Replies carry no PHI**: fixed subjects, boilerplate + deep link only;
   the inbound subject is never echoed.
+- **The mailbox also sends delivery-address confirmation codes (#486)**:
+  `POST Account/DeliveryAddress` answers 503 `delivery-not-configured`
+  while `EmailIntake__MailboxAddress` is unset. The reply itself is sent to
+  the account's verified `delivery.address` for every app-submitted job
+  (`docs/ASYNC_DELIVERY.md` §4); the two address keys are reserved and
+  refused by the generic settings routes.
 
 ## Azure AI Foundry agent (`Agents/AgentSectionGenerator.cs`)
 
