@@ -153,26 +153,23 @@ public class ScheduledRunTests
             new Consultologist.Api.Auth.AccountIdentity("entra-external-id", "iss", "sub", default, default),
             Array.Empty<Consultologist.Api.Auth.AccountIdentity>());
 
+    // #486: the verified delivery address is the only address; the token-claim
+    // email CreateAccount carries is never consulted.
     [Fact]
-    public void ReplyAddressFor_ScheduledJob_UsesAccountEmail()
+    public void ReplyAddressFor_AVerifiedAddress_IsTheAddress_ForAnyJob()
     {
-        var request = new ConsultGenerationRequest("draft", ScheduledAtUtc: DateTimeOffset.UtcNow.AddHours(8));
-
-        Assert.Equal("doc@example.com", ConsultGenerationJobs.ReplyAddressFor(request, CreateAccount("doc@example.com")));
+        Assert.Equal("verified@clinic.example", ConsultGenerationJobs.ReplyAddressFor("verified@clinic.example"));
     }
 
-    [Fact]
-    public void ReplyAddressFor_ImmediateJob_IsNull()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ReplyAddressFor_NoVerifiedAddress_IsNull_EvenWithAClaimEmail(string? deliveryAddress)
     {
-        Assert.Null(ConsultGenerationJobs.ReplyAddressFor(new ConsultGenerationRequest("draft"), CreateAccount("doc@example.com")));
-    }
+        _ = CreateAccount("doc@example.com");
 
-    [Fact]
-    public void ReplyAddressFor_ScheduledJobWithoutAccountEmail_IsNull()
-    {
-        var request = new ConsultGenerationRequest("draft", ScheduledAtUtc: DateTimeOffset.UtcNow.AddHours(8));
-
-        Assert.Null(ConsultGenerationJobs.ReplyAddressFor(request, CreateAccount(null)));
+        Assert.Null(ConsultGenerationJobs.ReplyAddressFor(deliveryAddress));
     }
 
     [Fact]

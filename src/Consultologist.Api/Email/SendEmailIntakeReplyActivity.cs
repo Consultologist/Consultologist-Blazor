@@ -23,11 +23,18 @@ public sealed record EmailIntakeReplyInput(
     // optional — a job already in flight replies exactly as it did.
     IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null);
 
+/// <summary>
+/// #486: what the reply leg did, for the job record. Null on replay of a run
+/// from before the activity returned anything — treated as unknown.
+/// </summary>
+public sealed record EmailIntakeReplyOutcome(bool Sent, bool DocumentAttached, string? Reason = null);
+
 /// <summary>One deliverable bound for the reply: authored identity plus its text.</summary>
 public sealed record EmailIntakeReplyDocument(string ResultId, string Label, string Text);
 
 /// <summary>
-/// The completion reply (#158/#157): a fresh no-PHI message — never a Graph
+/// The completion reply (#158/#157/#486 — every job with an address: the
+/// email door's sender, or the account's verified delivery address): a fresh no-PHI message — never a Graph
 /// /reply, which would quote the PHI-bearing original — whose body is
 /// boilerplate plus the History deep link. #159: when the account has set a
 /// delivery password and the job produced documents, each is attached as an
@@ -58,11 +65,11 @@ public sealed class SendEmailIntakeReplyActivity
     }
 
     [Function(Name)]
-    public Task RunAsync([ActivityTrigger] EmailIntakeReplyInput input, FunctionContext context)
+    public Task<EmailIntakeReplyOutcome> RunAsync([ActivityTrigger] EmailIntakeReplyInput input, FunctionContext context)
         => SendAsync(input, context.CancellationToken);
 
     /// <summary>The activity body, minus the trigger plumbing — the tests' entry point.</summary>
-    internal async Task SendAsync(EmailIntakeReplyInput input, CancellationToken cancellationToken)
+    internal async Task<EmailIntakeReplyOutcome> SendAsync(EmailIntakeReplyInput input, CancellationToken cancellationToken)
     {
         var mailbox = _configuration["EmailIntake:MailboxAddress"];
         var appBaseUrl = _configuration["EmailIntake:AppBaseUrl"];
@@ -72,7 +79,7 @@ public sealed class SendEmailIntakeReplyActivity
             _logger.LogWarning(
                 "Email intake reply skipped: EmailIntake settings incomplete. JobId={JobId}",
                 input.JobId);
-            return;
+            return new EmailIntakeReplyOutcome(false, false, DeliveryOutcomes.NotConfigured);
         }
 
         var outcome = await TryCreateAttachmentsAsync(input, cancellationToken);
@@ -92,6 +99,8 @@ public sealed class SendEmailIntakeReplyActivity
             input.FinalStatus,
             outcome.Attachments.Count,
             outcome.OmittedForSize);
+
+        return new EmailIntakeReplyOutcome(true, outcome.Attachments.Count > 0);
     }
 
     /// <summary>
