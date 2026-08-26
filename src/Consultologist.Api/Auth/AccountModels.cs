@@ -24,6 +24,21 @@ public static class AccountSettingKeys
     /// reveals anything about it.
     /// </summary>
     public const string DeliveryPassword = "delivery.documentPassword";
+
+    /// <summary>
+    /// #486: the confirmed delivery address — the only address app-submitted
+    /// jobs are ever sent to. Written by Account/DeliveryAddress/Confirm alone;
+    /// the generic settings routes refuse it so nothing can plant an address
+    /// nobody confirmed.
+    /// </summary>
+    public const string DeliveryAddress = "delivery.address";
+
+    /// <summary>
+    /// #486: the address a confirmation code was sent to, with the code's hash,
+    /// expiry and attempts (JSON, <see cref="PendingDeliveryAddress"/>). Same
+    /// refusal on the generic routes.
+    /// </summary>
+    public const string DeliveryAddressPending = "delivery.addressPending";
 }
 
 public static class IdentityProviders
@@ -120,7 +135,10 @@ public sealed record AccountMeResponse(
     AccountIdentity CurrentIdentity,
     IReadOnlyList<AccountIdentity> LinkedIdentities,
     // #159: the only readable signal about the write-only delivery password.
-    bool DocumentPasswordSet = false);
+    bool DocumentPasswordSet = false,
+    // #486: the confirmed delivery address, and the one a code is out to.
+    string? DeliveryAddress = null,
+    string? DeliveryAddressPending = null);
 
 public sealed class AccountSettingEntity : ITableEntity
 {
