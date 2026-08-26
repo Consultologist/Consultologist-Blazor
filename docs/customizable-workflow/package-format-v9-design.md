@@ -703,7 +703,11 @@ opaque-manifest round-trip.
 
 **Still out of scope for the format**: nested structure; `and`/`or` and
 arithmetic; conditions over node output (#336); archives (#372's Fork 2);
-cross-package composition; per-deliverable delivery routing. A job record
+cross-package composition; per-deliverable delivery routing.
+
+> **Taken at v10 (2026-08-26).** Nested structure, `and`/`or` and
+> arithmetic, and conditions over node output are v10's three roads — see
+> `package-format-v10-design.md`. This list stays as v9 wrote it. A job record
 for an empty fire set (#337) is scheduled but is not format work — it needs
 no version and changes no manifest.
 
@@ -856,19 +860,19 @@ edits — so the pending-change registry and the draft slices are untouched.
 
 Kept unpromised, so a later reader sees what was weighed.
 
-**Nested structure** — an object holding an object, or an array of arrays.
+*(Taken at v10, 2026-08-26 — `package-format-v10-design.md`.)* **Nested structure** — an object holding an object, or an array of arrays.
 Refused by § 4's one-level bound. Every motivating case in #340 is flat: a
 problem list, a medication list, a patient record. Nesting would make
 canonicalisation recursive, the intake form a tree, and a path
 arbitrary-length, which is an expression parser wearing a schema's clothes.
 Additive later; not needed now.
 
-**`and` / `or` and arithmetic in conditions** — #338 predicted the request
+*(Taken at v10, 2026-08-26 — `package-format-v10-design.md`.)* **`and` / `or` and arithmetic in conditions** — #338 predicted the request
 and the answer is unchanged from v8's: an evaluator is a thing with an order
 of operations, and a manifest is content an operator cannot review line by
 line. A deliberate later step with its own bump, never a quiet loosening.
 
-**Conditions that read node output (#336)** — *considered and deferred,
+*(Taken at v10, 2026-08-26 — `package-format-v10-design.md`.)* **Conditions that read node output (#336)** — *considered and deferred,
 again.* It is the one change #405 calls deeper than this one, because it is
 not a branch but a change to *when the shape of a job is known*. v9 widens
 where items come from and leaves start-time knowability intact, which is

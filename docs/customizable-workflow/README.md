@@ -2,9 +2,9 @@
 
 Design records, begun 2026-07-09, on turning the consult-generation workflow and
 section template system into versioned, code-independent artifacts. Since then
-formats v2–v9 have shipped, the normative specifications live in their own
-registry (#376) and the record contract in another (#400); what stays here is
-why each was chosen. Public by design, like the rest of this repository.
+formats v2–v9 have shipped and v10 is designed (2026-08-26), the normative
+specifications live in their own registry (#376) and the record contract in
+another (#400); what stays here is why each was chosen. Public by design, like the rest of this repository.
 
 ## The goal
 
@@ -63,6 +63,11 @@ why each was chosen. Public by design, like the rest of this repository.
 - [package-format-v4.md](package-format-v4.md) — normative specVersion-4 format:
   the node DAG (implicit edges, one map node), schema file refs welded to attested
   agents, per-node failure policy, the v4.0 closures
+- [package-format-v10-design.md](package-format-v10-design.md) — design record
+  (2026-08-26, Milestone 21): the classifying node and the boundary at which
+  the fire set is decided, a condition evaluator with `and`/`or`/`not` and
+  arithmetic, unbounded nesting and hash definition 6; the ladder of PRs;
+  the three v9 § 13 roads taken deliberately, trigger unfired
 - [package-format-v5-design.md](package-format-v5-design.md) — converged design
   (2026-07-15): fork-everything with derivedFrom lineage, data/
   collections replacing the standards straddle, one node kind with forEach,
