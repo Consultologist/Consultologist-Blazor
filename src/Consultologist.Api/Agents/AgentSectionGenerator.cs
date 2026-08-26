@@ -26,7 +26,8 @@ public sealed class AgentSectionGenerator
         _credential = credential;
 
         Console.Error.WriteLine($"[Api.StartupDiagnostics] AgentSectionGenerator constructed. Utc={DateTimeOffset.UtcNow:O}");
-        _logger.LogInformation("AgentSectionGenerator constructed.");
+        Console.Error.WriteLine(PromptDiagnostics.StartupLine());
+        _logger.LogInformation("AgentSectionGenerator constructed. LogPromptText={LogPromptText}", PromptDiagnostics.LogPromptText);
     }
 
     /// <summary>
@@ -88,7 +89,8 @@ public sealed class AgentSectionGenerator
         var projectClient = new AIProjectClient(endpointUri, _credential, projectClientOptions);
 
         ResponseResult sdkResponse;
-        Console.Error.WriteLine($"[AgentPrompt] Stage={stage}; PromptLength={userMessage.Length}; Prompt={userMessage}");
+        // #245: length and digest, never the prompt — see PromptDiagnostics.
+        Console.Error.WriteLine(PromptDiagnostics.Describe("AgentPrompt", stage, userMessage));
 
         try
         {
@@ -136,7 +138,7 @@ public sealed class AgentSectionGenerator
             throw new InvalidOperationException("No assistant response found");
         }
 
-        Console.Error.WriteLine($"[AgentResponse] Stage={stage}; ResponseLength={assistantText.Length}; Response={assistantText}");
+        Console.Error.WriteLine(PromptDiagnostics.Describe("AgentResponse", stage, assistantText));
         return assistantText;
     }
 
