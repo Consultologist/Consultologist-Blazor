@@ -1,3 +1,4 @@
+@using Consultologist.Web.Services.Accounts
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
 @using Consultologist.Web.Services.AI
@@ -76,6 +77,12 @@
                                         @if (job.TextDroppedAtUtc != null)
                                         {
                                             <span class="job-source-badge job-source-badge--retention" title="The produced text was deleted under the retention policy; the record is kept">text deleted</span>
+                                        }
+                                        @* #486: whether the completion email went — a job that was never
+                                           emailed says so here, not nothing. *@
+                                        @if (DeliveryState.Badge(job.DeliveryOutcome) is { } deliveryBadge)
+                                        {
+                                            <span class="job-source-badge job-source-badge--delivery job-source-badge--delivery-@(job.DeliveryOutcome)" title="@DeliveryState.Describe(job.DeliveryOutcome, null)">@deliveryBadge</span>
                                         }
                                     </div>
                                     <div class="job-history-item__meta">
@@ -282,6 +289,12 @@
                                                    their exact sequence. *@
                                                 @* #398: the contract this record conforms to, as it recorded
                                                    it — the version to read every number below by. *@
+                                                @* #486: the completion email, as the record has it. *@
+                                                @if (DeliveryState.Describe(detail.DeliveryOutcome, detail.DeliveryDocumentAttached) is { } deliveryText)
+                                                {
+                                                    <dt>Delivered</dt>
+                                                    <dd class="provenance-delivery">@(detail.DeliveredAtUtc is { } deliveredAt ? FormatDate(deliveredAt) + " — " : "")@deliveryText</dd>
+                                                }
                                                 @* #368: a named state, not an empty panel. *@
                                                 @if (detail.TextDroppedAtUtc is { } textDroppedAt)
                                                 {

@@ -120,8 +120,21 @@ The current setting keys are:
 
 ```text
 consult.workflowPackage
+consult.scheduleTime
 delivery.documentPassword   (write-only — see below)
+delivery.address            (reserved — set only by confirmation, see below)
+delivery.addressPending     (reserved — the code out to an address)
 ```
+
+`delivery.address` (#486) is the account's **verified delivery address**:
+the only address app-submitted consults are ever emailed to. It is written
+only by `POST /api/Account/DeliveryAddress` (sends a six-digit code to the
+address) followed by `POST /api/Account/DeliveryAddress/Confirm` (15
+minutes, five attempts); `DELETE /api/Account/DeliveryAddress` removes it.
+The generic settings routes refuse both keys in both directions, so nothing
+can plant an address nobody confirmed. `Account/Me` reports `deliveryAddress`
+and `deliveryAddressPending`. The address is a delivery target, never an
+identity — see "Do Not Do".
 
 `delivery.documentPassword` (#159) is a **secret**: it never travels the
 generic settings routes (they refuse the key in both directions). It is
@@ -226,5 +239,8 @@ everything else takes `CanUseApp`.
   it proves control of the account, nothing more.
 - Do not use mutable profile fields, display names, or email alone as
   permanent account keys (links key on provider + issuer + `sub`).
+- Do not send anything to `AppUsers.Email` (a token claim — unverified, not
+  unique) and do not treat the verified delivery address as an identity:
+  it is where consults go, not who the account is (#486).
 - Do not accept a LinkedIn identity as a bearer credential — only
   `entra-external-id` identities sign in.

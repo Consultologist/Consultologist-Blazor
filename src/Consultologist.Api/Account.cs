@@ -1,9 +1,12 @@
 using System.Net;
 using System.Text.Json;
 using Consultologist.Api.Auth;
+using Consultologist.Api.Email;
 using Consultologist.Api.Jobs;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Consultologist.Api;
 
@@ -21,15 +24,27 @@ public sealed class Account
     private readonly IAccountAuthorizer _authorizer;
     private readonly IAccountSettingsStore _settingsStore;
     private readonly IConsultGenerationJobIndexStore _jobIndexStore;
+    private readonly IGraphMailClient _mail;
+    private readonly IConfiguration _configuration;
+    private readonly TimeProvider _time;
+    private readonly ILogger<Account> _logger;
 
     public Account(
         IAccountAuthorizer authorizer,
         IAccountSettingsStore settingsStore,
-        IConsultGenerationJobIndexStore jobIndexStore)
+        IConsultGenerationJobIndexStore jobIndexStore,
+        IGraphMailClient mail,
+        IConfiguration configuration,
+        TimeProvider time,
+        ILogger<Account> logger)
     {
         _authorizer = authorizer;
         _settingsStore = settingsStore;
         _jobIndexStore = jobIndexStore;
+        _mail = mail;
+        _configuration = configuration;
+        _time = time;
+        _logger = logger;
     }
 
     [Function("AccountMe")]
@@ -58,6 +73,12 @@ public sealed class Account
             account.AppUserId,
             AccountSettingKeys.DeliveryPassword,
             cancellationToken);
+        var deliveryAddress = await _settingsStore.GetAsync(
+            account.AppUserId,
+            AccountSettingKeys.DeliveryAddress,
+            cancellationToken);
+        var pending = DeliveryAddress.Deserialize(
+            (await _settingsStore.GetAsync(account.AppUserId, AccountSettingKeys.DeliveryAddressPending, cancellationToken))?.Value);
 
         var response = req.CreateResponse(HttpStatusCode.OK);
         FunctionCors.Apply(req, response);
@@ -69,7 +90,11 @@ public sealed class Account
                 account.Status,
                 account.CurrentIdentity,
                 account.LinkedIdentities,
-                DocumentPasswordSet: deliveryPassword != null),
+                DocumentPasswordSet: deliveryPassword != null,
+                DeliveryAddress: deliveryAddress?.Value,
+                // An expired code is not "pending" — the profile would tell
+                // the user to enter a code that can no longer work.
+                DeliveryAddressPending: pending != null && _time.GetUtcNow() < pending.ExpiresAtUtc ? pending.Address : null),
             cancellationToken);
 
         return response;
@@ -161,12 +186,214 @@ public sealed class Account
         return response;
     }
 
+    // #486: the verified delivery address. Set → a code goes to the address;
+    // Confirm → the address becomes the account's; Delete → gone. The confirmed
+    // address is the only one app-submitted jobs are ever sent to.
+    [Function("AccountDeliveryAddressStart")]
+    public async Task<HttpResponseData> StartDeliveryAddressAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", "options", Route = "Account/DeliveryAddress")] HttpRequestData req)
+    {
+        var cancellationToken = req.FunctionContext.CancellationToken;
+
+        if (string.Equals(req.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        {
+            var optionsResponse = req.CreateResponse(HttpStatusCode.OK);
+            FunctionCors.Apply(req, optionsResponse);
+            return optionsResponse;
+        }
+
+        var account = await _authorizer.AuthorizeAsync(req, cancellationToken);
+
+        if (account == null)
+        {
+            return AccountAuthorizer.CreateUnauthorizedResponse(req);
+        }
+
+        if (!AccountAuthorizer.CanUseApp(account))
+        {
+            return AccountAuthorizer.CreateForbiddenResponse(req);
+        }
+
+        var mailbox = _configuration["EmailIntake:MailboxAddress"];
+
+        if (string.IsNullOrWhiteSpace(mailbox))
+        {
+            return await CreateErrorResponseAsync(req, "delivery-not-configured", cancellationToken, HttpStatusCode.ServiceUnavailable);
+        }
+
+        SaveDeliveryAddressRequest? request;
+
+        try
+        {
+            request = await ReadJsonAsync<SaveDeliveryAddressRequest>(req, cancellationToken);
+        }
+        catch (JsonException)
+        {
+            return await CreateErrorResponseAsync(req, "Malformed JSON request body.", cancellationToken);
+        }
+
+        var validationError = DeliveryAddress.Validate(request?.Address);
+
+        if (validationError != null)
+        {
+            return await CreateErrorResponseAsync(req, validationError, cancellationToken);
+        }
+
+        var now = _time.GetUtcNow();
+        var existing = DeliveryAddress.Deserialize(
+            (await _settingsStore.GetAsync(account.AppUserId, AccountSettingKeys.DeliveryAddressPending, cancellationToken))?.Value);
+
+        if (existing != null && now - existing.SentAtUtc < DeliveryAddress.ResendInterval)
+        {
+            return await CreateErrorResponseAsync(req, "code-recently-sent", cancellationToken, HttpStatusCode.TooManyRequests);
+        }
+
+        var code = DeliveryAddress.CreateCode();
+        var pending = DeliveryAddress.CreatePending(account.AppUserId, request!.Address!, code, now);
+
+        // Row first, mail second: a code that was sent but not recorded can
+        // never be confirmed; one recorded but not sent just expires.
+        await _settingsStore.SaveAsync(
+            account.AppUserId,
+            AccountSettingKeys.DeliveryAddressPending,
+            DeliveryAddress.Serialize(pending),
+            "application/json",
+            cancellationToken);
+
+        var (subject, body) = DeliveryAddress.ComposeCodeMessage(code);
+
+        try
+        {
+            await _mail.SendMailAsync(mailbox, pending.Address, subject, body, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Status only — the address is the user's, not the log's.
+            _logger.LogWarning(ex, "Delivery address code could not be sent. AppUserId={AppUserId}", account.AppUserId);
+            await _settingsStore.DeleteAsync(account.AppUserId, AccountSettingKeys.DeliveryAddressPending, cancellationToken);
+            return await CreateErrorResponseAsync(req, "code-not-sent", cancellationToken, HttpStatusCode.BadGateway);
+        }
+
+        var response = req.CreateResponse(HttpStatusCode.Accepted);
+        FunctionCors.Apply(req, response);
+        return response;
+    }
+
+    [Function("AccountDeliveryAddressConfirm")]
+    public async Task<HttpResponseData> ConfirmDeliveryAddressAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", "options", Route = "Account/DeliveryAddress/Confirm")] HttpRequestData req)
+    {
+        var cancellationToken = req.FunctionContext.CancellationToken;
+
+        if (string.Equals(req.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        {
+            var optionsResponse = req.CreateResponse(HttpStatusCode.OK);
+            FunctionCors.Apply(req, optionsResponse);
+            return optionsResponse;
+        }
+
+        var account = await _authorizer.AuthorizeAsync(req, cancellationToken);
+
+        if (account == null)
+        {
+            return AccountAuthorizer.CreateUnauthorizedResponse(req);
+        }
+
+        if (!AccountAuthorizer.CanUseApp(account))
+        {
+            return AccountAuthorizer.CreateForbiddenResponse(req);
+        }
+
+        ConfirmDeliveryAddressRequest? request;
+
+        try
+        {
+            request = await ReadJsonAsync<ConfirmDeliveryAddressRequest>(req, cancellationToken);
+        }
+        catch (JsonException)
+        {
+            return await CreateErrorResponseAsync(req, "Malformed JSON request body.", cancellationToken);
+        }
+
+        var pending = DeliveryAddress.Deserialize(
+            (await _settingsStore.GetAsync(account.AppUserId, AccountSettingKeys.DeliveryAddressPending, cancellationToken))?.Value);
+        var decision = DeliveryAddress.Decide(pending, account.AppUserId, request?.Code, _time.GetUtcNow());
+
+        switch (decision.Outcome)
+        {
+            case ConfirmOutcome.Confirmed:
+                await _settingsStore.SaveAsync(
+                    account.AppUserId,
+                    AccountSettingKeys.DeliveryAddress,
+                    decision.Pending!.Address,
+                    "text/plain",
+                    cancellationToken);
+                await _settingsStore.DeleteAsync(account.AppUserId, AccountSettingKeys.DeliveryAddressPending, cancellationToken);
+                var ok = req.CreateResponse(HttpStatusCode.NoContent);
+                FunctionCors.Apply(req, ok);
+                return ok;
+
+            case ConfirmOutcome.Wrong:
+                await _settingsStore.SaveAsync(
+                    account.AppUserId,
+                    AccountSettingKeys.DeliveryAddressPending,
+                    DeliveryAddress.Serialize(decision.Pending!),
+                    "application/json",
+                    cancellationToken);
+                return await CreateErrorResponseAsync(req, "wrong", cancellationToken);
+
+            case ConfirmOutcome.Expired:
+            case ConfirmOutcome.TooManyAttempts:
+                await _settingsStore.DeleteAsync(account.AppUserId, AccountSettingKeys.DeliveryAddressPending, cancellationToken);
+                return await CreateErrorResponseAsync(
+                    req,
+                    decision.Outcome == ConfirmOutcome.Expired ? "expired" : "too-many-attempts",
+                    cancellationToken);
+
+            default:
+                return await CreateErrorResponseAsync(req, "none", cancellationToken);
+        }
+    }
+
+    [Function("AccountDeliveryAddressDelete")]
+    public async Task<HttpResponseData> DeleteDeliveryAddressAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "Account/DeliveryAddress")] HttpRequestData req)
+    {
+        var cancellationToken = req.FunctionContext.CancellationToken;
+
+        var account = await _authorizer.AuthorizeAsync(req, cancellationToken);
+
+        if (account == null)
+        {
+            return AccountAuthorizer.CreateUnauthorizedResponse(req);
+        }
+
+        if (!AccountAuthorizer.CanUseApp(account))
+        {
+            return AccountAuthorizer.CreateForbiddenResponse(req);
+        }
+
+        await _settingsStore.DeleteAsync(account.AppUserId, AccountSettingKeys.DeliveryAddress, cancellationToken);
+        await _settingsStore.DeleteAsync(account.AppUserId, AccountSettingKeys.DeliveryAddressPending, cancellationToken);
+
+        var response = req.CreateResponse(HttpStatusCode.NoContent);
+        FunctionCors.Apply(req, response);
+        return response;
+    }
+
+    private static async Task<T?> ReadJsonAsync<T>(HttpRequestData req, CancellationToken cancellationToken) where T : class
+    {
+        var body = await new StreamReader(req.Body).ReadToEndAsync(cancellationToken);
+        return string.IsNullOrWhiteSpace(body) ? null : JsonSerializer.Deserialize<T>(body, JsonOptions);
+    }
+
     private async Task<HttpResponseData> CreateErrorResponseAsync(
         HttpRequestData req,
         string error,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        HttpStatusCode statusCode = HttpStatusCode.BadRequest)
     {
-        var response = req.CreateResponse(HttpStatusCode.BadRequest);
+        var response = req.CreateResponse(statusCode);
         FunctionCors.Apply(req, response);
         await response.WriteAsJsonAsync(new { error }, cancellationToken);
         return response;
@@ -197,8 +424,13 @@ public sealed class Account
         return null;
     }
 
+    // #486 widened this from the one secret to every key the generic routes
+    // must not touch: the address is not secret, but a route that could write
+    // it would be a way to plant an address nobody confirmed.
     internal static bool IsSecretSettingKey(string key) =>
-        string.Equals(key, AccountSettingKeys.DeliveryPassword, StringComparison.Ordinal);
+        string.Equals(key, AccountSettingKeys.DeliveryPassword, StringComparison.Ordinal)
+        || string.Equals(key, AccountSettingKeys.DeliveryAddress, StringComparison.Ordinal)
+        || string.Equals(key, AccountSettingKeys.DeliveryAddressPending, StringComparison.Ordinal);
 
     [Function("AccountJobsList")]
     public async Task<HttpResponseData> GetJobsAsync(
@@ -249,7 +481,9 @@ public sealed class Account
                     j.Source,
                     j.ScheduledAtUtc,
                     j.FailedAtStart,
-                    j.TextDroppedAtUtc)).ToArray(),
+                    j.TextDroppedAtUtc,
+                    j.DeliveryOutcome,
+                    j.DeliveredAtUtc)).ToArray(),
                 nextToken),
             cancellationToken);
 
@@ -500,7 +734,10 @@ public sealed record AccountJobSummaryResponse(
     // #434: see ConsultGenerationJobIndexEntry.FailedAtStart.
     bool FailedAtStart = false,
     // #368: when the retention sweep deleted the produced text; null while present.
-    DateTimeOffset? TextDroppedAtUtc = null);
+    DateTimeOffset? TextDroppedAtUtc = null,
+    // #486: the completion email's outcome (DeliveryOutcomes) and time.
+    string? DeliveryOutcome = null,
+    DateTimeOffset? DeliveredAtUtc = null);
 
 public sealed record AccountJobsResponse(
     IReadOnlyList<AccountJobSummaryResponse> Jobs,

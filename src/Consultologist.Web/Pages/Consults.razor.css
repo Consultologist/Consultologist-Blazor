@@ -479,3 +479,16 @@
     border-radius: 4px;
     color: var(--neutral-foreground-hint, #605e5c);
 }
+
+/* #486: what happened to the completion email. */
+.delivery-line {
+    margin: 0 0 0.75rem;
+    font-size: 0.9rem;
+    color: var(--neutral-foreground-hint, #605e5c);
+}
+
+.delivery-line--address-not-set,
+.delivery-line--failed,
+.delivery-line--not-configured {
+    color: var(--warning-foreground, #7a5c00);
+}

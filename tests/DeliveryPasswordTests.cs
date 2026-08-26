@@ -34,7 +34,7 @@ public class DeliveryPasswordTests
     }
 
     [Fact]
-    public void IsSecretSettingKey_MatchesOnlyTheDeliveryPasswordKey()
+    public void IsSecretSettingKey_MatchesTheReservedKeys()
     {
         Assert.True(Account.IsSecretSettingKey(AccountSettingKeys.DeliveryPassword));
         Assert.False(Account.IsSecretSettingKey("consult.workflowPackage"));

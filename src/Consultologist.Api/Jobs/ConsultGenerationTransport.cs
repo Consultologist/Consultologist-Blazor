@@ -75,6 +75,8 @@ public sealed class ConsultGenerationJobs
     // from, so calling it off is told the same way its completion would be.
     private readonly Email.IGraphMailClient _mail;
     private readonly IConfiguration _configuration;
+    // #486: the verified delivery address lives in the account's settings.
+    private readonly IAccountSettingsStore _settingsStore;
 
     public ConsultGenerationJobs(
         ILogger<ConsultGenerationJobs> logger,
@@ -82,7 +84,8 @@ public sealed class ConsultGenerationJobs
         IConsultGenerationJobEventStore eventStore,
         IConsultGenerationJobStarter jobStarter,
         Email.IGraphMailClient mail,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IAccountSettingsStore settingsStore)
     {
         _logger = logger;
         _authorizer = authorizer;
@@ -90,6 +93,14 @@ public sealed class ConsultGenerationJobs
         _jobStarter = jobStarter;
         _mail = mail;
         _configuration = configuration;
+        _settingsStore = settingsStore;
+    }
+
+    /// <summary>#486: the confirmed address, or null — never the token claim.</summary>
+    private async Task<string?> GetDeliveryAddressAsync(string appUserId, CancellationToken cancellationToken)
+    {
+        var setting = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.DeliveryAddress, cancellationToken);
+        return string.IsNullOrWhiteSpace(setting?.Value) ? null : setting.Value;
     }
 
     [Function("StartConsultGenerationJob")]
@@ -205,7 +216,9 @@ public sealed class ConsultGenerationJobs
                 client,
                 request,
                 account.AppUserId,
-                new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App, ReplyAddressFor(request, account)),
+                new ConsultGenerationJobOrigin(
+                    ConsultGenerationJobSources.App,
+                    ReplyAddressFor(await GetDeliveryAddressAsync(account.AppUserId, cancellationToken))),
                 cancellationToken);
 
             if (outcome.Error != null)
@@ -428,9 +441,11 @@ public sealed class ConsultGenerationJobs
 
         var origin = new ConsultGenerationJobOrigin(
             // Keep where it came from — a rescheduled email consult is still an
-            // email consult — and the reply address a scheduled job always has.
+            // email consult — and the account's verified delivery address (#486);
+            // an email consult rescheduled from the app is delivered to the
+            // account, never re-sent to the original sender.
             original.Request.ScheduledAtUtc != null && response.Source != null ? response.Source : ConsultGenerationJobSources.App,
-            account.Email);
+            ReplyAddressFor(await GetDeliveryAddressAsync(account.AppUserId, cancellationToken)));
 
         var outcome = await _jobStarter.StartAsync(
             client,
@@ -1095,13 +1110,12 @@ public sealed class ConsultGenerationJobs
         return null;
     }
 
-    // #157: scheduled jobs finish while the user is away, so they get the
-    // completion email at the account address; immediate app jobs stay silent
-    // (the live view is right there).
-    internal static string? ReplyAddressFor(ConsultGenerationRequest request, AppAccount account) =>
-        request.ScheduledAtUtc != null && !string.IsNullOrWhiteSpace(account.Email)
-            ? account.Email
-            : null;
+    // #486: every app job — immediate or scheduled — is delivered to the
+    // account's verified delivery address, and to nothing else. The token-claim
+    // email (#157's choice for scheduled jobs) is unverified and not unique,
+    // so it is no longer an address. No address → no email, and the job says so.
+    internal static string? ReplyAddressFor(string? deliveryAddress) =>
+        string.IsNullOrWhiteSpace(deliveryAddress) ? null : deliveryAddress;
 
     private static async Task<ConsultGenerationJobResponse?> GetJobResponseAsync(
         DurableTaskClient client,

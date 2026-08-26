@@ -44,6 +44,8 @@ public class SendEmailIntakeReplyAttachmentTests
                 : new AccountSetting(AccountSettingKeys.DeliveryPassword, password, "text/plain", DateTimeOffset.UtcNow));
     }
 
+    private EmailIntakeReplyOutcome? _lastOutcome;
+
     private async Task<(IReadOnlyList<GraphMailAttachment>? Attachments, string Body)> SendAsync(
         EmailIntakeReplyInput input)
     {
@@ -56,9 +58,36 @@ public class SendEmailIntakeReplyAttachmentTests
             Arg.Any<CancellationToken>(),
             Arg.Do<IReadOnlyList<GraphMailAttachment>?>(value => attachments = value));
 
-        await CreateActivity().SendAsync(input, CancellationToken.None);
+        _lastOutcome = await CreateActivity().SendAsync(input, CancellationToken.None);
 
         return (attachments, body);
+    }
+
+    // #486: the outcome the orchestrator records on the job.
+    [Fact]
+    public async Task TheOutcome_SaysSentAndWhetherADocumentWasAttached()
+    {
+        WithDeliveryPassword("correct horse battery staple");
+        await SendAsync(Input(assembledDocument: "## Note\n\nBody."));
+        Assert.Equal(new EmailIntakeReplyOutcome(true, true), _lastOutcome);
+
+        WithDeliveryPassword(null);
+        await SendAsync(Input(assembledDocument: "## Note\n\nBody."));
+        Assert.Equal(new EmailIntakeReplyOutcome(true, false), _lastOutcome);
+    }
+
+    [Fact]
+    public async Task TheOutcome_NamesAnUnconfiguredMailbox()
+    {
+        var activity = new SendEmailIntakeReplyActivity(
+            _mail, _settings,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<SendEmailIntakeReplyActivity>.Instance);
+
+        var outcome = await activity.SendAsync(Input(), CancellationToken.None);
+
+        Assert.Equal(new EmailIntakeReplyOutcome(false, false, DeliveryOutcomes.NotConfigured), outcome);
+        await _mail.DidNotReceiveWithAnyArgs().SendMailAsync(default!, default!, default!, default!, default);
     }
 
     private static EmailIntakeReplyInput Input(

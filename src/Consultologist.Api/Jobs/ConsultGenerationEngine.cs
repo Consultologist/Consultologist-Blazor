@@ -671,11 +671,13 @@ public sealed class ConsultGenerationOrchestrator
     }
 
     /// <summary>
-    /// #158/#157: jobs with a reply address announce their terminal status by
-    /// email — the starter's caller decides who gets one by setting the address
-    /// (email intake: the sender; scheduled app jobs: the account email;
-    /// immediate app jobs: none). The gate reads only orchestration input
+    /// #158/#157/#486: jobs with a reply address announce their terminal status
+    /// by email — the starter's caller decides who gets one by setting the
+    /// address (email intake: the sender; app jobs: the account's verified
+    /// delivery address, or none). The gate reads only orchestration input
     /// (deterministic on replay); a reply failure never fails a finalized job.
+    /// #486: whatever happened is recorded on the entity — sent, failed, or
+    /// never attempted and why — so the job can say it.
     /// </summary>
     private static async Task SendEmailIntakeReplyAsync(
         TaskOrchestrationContext context,
@@ -685,14 +687,38 @@ public sealed class ConsultGenerationOrchestrator
         string? assembledDocument,
         IReadOnlyList<Email.EmailIntakeReplyDocument>? documents = null)
     {
+        var delivery = await TrySendReplyAsync(context, input, finalStatus, logger, assembledDocument, documents);
+
+        try
+        {
+            await context.Entities.CallEntityAsync(
+                new EntityInstanceId(nameof(ConsultGenerationJobEntity), context.InstanceId),
+                nameof(ConsultGenerationJobEntity.RecordDelivery),
+                delivery with { RecordedAtUtc = context.CurrentUtcDateTime });
+        }
+        catch (Exception recordEx)
+        {
+            logger.LogWarning(recordEx, "Delivery could not be recorded. JobId={JobId}", context.InstanceId);
+        }
+    }
+
+    /// <summary>The reply leg, reduced to what the record needs to say.</summary>
+    internal static async Task<ConsultGenerationDeliveryRecord> TrySendReplyAsync(
+        TaskOrchestrationContext context,
+        ConsultGenerationOrchestrationInput input,
+        string finalStatus,
+        ILogger logger,
+        string? assembledDocument,
+        IReadOnlyList<Email.EmailIntakeReplyDocument>? documents)
+    {
         if (string.IsNullOrWhiteSpace(input.ReplyToAddress))
         {
-            return;
+            return new ConsultGenerationDeliveryRecord(DeliveryOutcomes.AddressNotSet, default);
         }
 
         try
         {
-            await context.CallActivityAsync(
+            var outcome = await context.CallActivityAsync<Email.EmailIntakeReplyOutcome?>(
                 Email.SendEmailIntakeReplyActivity.Name,
                 new Email.EmailIntakeReplyInput(
                     context.InstanceId,
@@ -703,6 +729,8 @@ public sealed class ConsultGenerationOrchestrator
                     documents,
                     input.SkippedDocuments),
                 new TaskOptions(new TaskRetryOptions(new RetryPolicy(3, TimeSpan.FromSeconds(10), 2.0))));
+
+            return DeliveryRecordFor(outcome);
         }
         catch (Exception replyEx)
         {
@@ -710,8 +738,21 @@ public sealed class ConsultGenerationOrchestrator
                 replyEx,
                 "Email intake reply activity failed. JobId={JobId}",
                 context.InstanceId);
+            return new ConsultGenerationDeliveryRecord(DeliveryOutcomes.Failed, default);
         }
     }
+
+    /// <summary>
+    /// A null outcome is a replay of a run whose activity returned nothing
+    /// (before #486): it sent, and whether a document rode along is unknown.
+    /// </summary>
+    internal static ConsultGenerationDeliveryRecord DeliveryRecordFor(Email.EmailIntakeReplyOutcome? outcome) =>
+        outcome switch
+        {
+            null => new ConsultGenerationDeliveryRecord(DeliveryOutcomes.Sent, default),
+            { Sent: true } => new ConsultGenerationDeliveryRecord(DeliveryOutcomes.Sent, default, outcome.DocumentAttached),
+            _ => new ConsultGenerationDeliveryRecord(outcome.Reason ?? DeliveryOutcomes.Failed, default)
+        };
 
     private static async Task FailNodeAsync(
         TaskOrchestrationContext context,
