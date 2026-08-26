@@ -65,4 +65,19 @@ public class ConceptOutputContractTests
     // The former AgentManifestSchema_MatchesEngineContract pin moved to
     // OutputContractCatalogTests.Load_RealCatalog_ConceptListSchemaMatchesAgentManifest:
     // the schema's source of truth is the catalog file, not an engine constant.
+
+    // #245: the model's raw output is clinical text; a malformed list must not
+    // quote it in the exception that reaches the log, the job and Durable history.
+    [Fact]
+    public void MalformedJson_NamesThePosition_NeverTheText()
+    {
+        const string sentinel = "SENTINEL-CLINICAL-CONTENT-0f1e2d";
+        var json = "{\"concepts\": [ {\"term\": \"" + sentinel + "\" ] }";
+
+        var ex = Assert.Throws<ConceptOutputContractException>(() => ConceptOutputContract.Deserialize(json, "test"));
+
+        Assert.DoesNotContain(sentinel, ex.Message, StringComparison.Ordinal);
+        Assert.Contains("line ", ex.Message);
+        Assert.Contains("byte ", ex.Message);
+    }
 }

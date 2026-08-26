@@ -247,14 +247,15 @@ public sealed class ConsultGenerationJobs
         }
         catch (Exception ex)
         {
+            // #245: the request body is in scope here; the type name says what
+            // failed without risking a fragment of it in the log or the reply.
             _logger.LogError(
                 ex,
-                "Error starting consult generation job. ExceptionType={ExceptionType}, Message={Message}, ElapsedMs={ElapsedMs}",
+                "Error starting consult generation job. ExceptionType={ExceptionType}, ElapsedMs={ElapsedMs}",
                 ex.GetType().FullName,
-                ex.Message,
                 stopwatch.ElapsedMilliseconds);
 
-            return await CreateJsonResponseAsync(req, HttpStatusCode.InternalServerError, new { error = $"Internal error: {ex.Message}" }, cancellationToken);
+            return await CreateJsonResponseAsync(req, HttpStatusCode.InternalServerError, new { error = $"Internal error: {ex.GetType().Name}" }, cancellationToken);
         }
     }
 

@@ -34,8 +34,12 @@ public static class ConceptOutputContract
         }
         catch (JsonException ex)
         {
+            // #245: position only. JsonException.Message quotes the offending
+            // token, and this json is model output — clinical text — that would
+            // otherwise reach the log, the job's failure text and Durable history.
             throw new ConceptOutputContractException(
-                $"Agent output is not valid concept-list JSON at {ex.Path ?? "(unknown path)"}: {ex.Message}", ex);
+                $"Agent output is not valid concept-list JSON at {ex.Path ?? "(unknown path)"}"
+                + $" (line {ex.LineNumber?.ToString() ?? "?"}, byte {ex.BytePositionInLine?.ToString() ?? "?"}).", ex);
         }
 
         if (output?.Concepts == null)
