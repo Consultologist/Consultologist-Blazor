@@ -481,7 +481,9 @@ public sealed class Account
                     j.Source,
                     j.ScheduledAtUtc,
                     j.FailedAtStart,
-                    j.TextDroppedAtUtc)).ToArray(),
+                    j.TextDroppedAtUtc,
+                    j.DeliveryOutcome,
+                    j.DeliveredAtUtc)).ToArray(),
                 nextToken),
             cancellationToken);
 
@@ -732,7 +734,10 @@ public sealed record AccountJobSummaryResponse(
     // #434: see ConsultGenerationJobIndexEntry.FailedAtStart.
     bool FailedAtStart = false,
     // #368: when the retention sweep deleted the produced text; null while present.
-    DateTimeOffset? TextDroppedAtUtc = null);
+    DateTimeOffset? TextDroppedAtUtc = null,
+    // #486: the completion email's outcome (DeliveryOutcomes) and time.
+    string? DeliveryOutcome = null,
+    DateTimeOffset? DeliveredAtUtc = null);
 
 public sealed record AccountJobsResponse(
     IReadOnlyList<AccountJobSummaryResponse> Jobs,

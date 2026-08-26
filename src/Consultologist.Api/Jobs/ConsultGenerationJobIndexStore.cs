@@ -138,7 +138,9 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
             Source = entry.Source,
             ScheduledAtUtc = entry.ScheduledAtUtc,
             FailedAtStart = entry.FailedAtStart,
-            TextDroppedAtUtc = entry.TextDroppedAtUtc
+            TextDroppedAtUtc = entry.TextDroppedAtUtc,
+            DeliveryOutcome = entry.DeliveryOutcome,
+            DeliveredAtUtc = entry.DeliveredAtUtc
         };
     }
 
@@ -157,7 +159,9 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
             entity.Source,
             entity.ScheduledAtUtc,
             entity.FailedAtStart,
-            entity.TextDroppedAtUtc);
+            entity.TextDroppedAtUtc,
+            entity.DeliveryOutcome,
+            entity.DeliveredAtUtc);
     }
 
     private static string FormatRowKey(DateTimeOffset createdAtUtc, string jobId)
@@ -212,7 +216,10 @@ public sealed record ConsultGenerationJobIndexEntry(
     bool FailedAtStart = false,
     // #368: when the retention sweep deleted the text. Additive column; null
     // before it, which is what the sweep selects on.
-    DateTimeOffset? TextDroppedAtUtc = null);
+    DateTimeOffset? TextDroppedAtUtc = null,
+    // #486: the completion email's outcome and time. Additive columns.
+    string? DeliveryOutcome = null,
+    DateTimeOffset? DeliveredAtUtc = null);
 
 internal sealed class ConsultGenerationJobIndexEntity : ITableEntity
 {
@@ -232,4 +239,6 @@ internal sealed class ConsultGenerationJobIndexEntity : ITableEntity
     public DateTimeOffset? ScheduledAtUtc { get; set; }
     public bool FailedAtStart { get; set; }
     public DateTimeOffset? TextDroppedAtUtc { get; set; }
+    public string? DeliveryOutcome { get; set; }
+    public DateTimeOffset? DeliveredAtUtc { get; set; }
 }

@@ -157,7 +157,13 @@ public record ConsultGenerationJobResponse(
     TerminologySnapshot? Terminology = null,
     string? TerminologyServerRef = null,
     // #368: when the produced text was deleted under the retention policy; null while present.
-    DateTimeOffset? TextDroppedAtUtc = null);
+    DateTimeOffset? TextDroppedAtUtc = null,
+    // #486: what happened to the completion email (DeliveryOutcomes), when it
+    // was sent, and whether the document was attached; null before 2026-08-26
+    // or while the job runs.
+    string? DeliveryOutcome = null,
+    DateTimeOffset? DeliveredAtUtc = null,
+    bool? DeliveryDocumentAttached = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and

@@ -354,6 +354,40 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
     }
 
+    /// <summary>
+    /// #486: delivery, recorded once on a terminal job. A record that says
+    /// nothing is a pre-#486 record; one that says "address-not-set" is a job
+    /// the user can see was never emailed.
+    /// </summary>
+    public async Task RecordDelivery(ConsultGenerationDeliveryRecord input)
+    {
+        var state = EnsureState();
+        if (!IsTerminal(state.Status) || state.DeliveryOutcome != null)
+        {
+            return;
+        }
+
+        state.DeliveryOutcome = input.Outcome;
+        state.DeliveryDocumentAttached = input.DocumentAttached;
+        state.DeliveredAtUtc = input.Outcome == DeliveryOutcomes.Sent ? input.RecordedAtUtc : null;
+        state.History.Add(new JobHistoryEvent(
+            "delivery",
+            input.Outcome switch
+            {
+                DeliveryOutcomes.Sent => input.DocumentAttached == true
+                    ? "Emailed to the delivery address (document attached)"
+                    : "Emailed to the delivery address (link only)",
+                DeliveryOutcomes.AddressNotSet => "Not emailed — no delivery address on the account",
+                DeliveryOutcomes.NotConfigured => "Not emailed — delivery not configured",
+                _ => "Email failed"
+            },
+            null,
+            input.RecordedAtUtc));
+        State = state;
+
+        await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+    }
+
     /// <summary>The states nothing may move a job out of.</summary>
     internal static bool IsTerminal(string status) =>
         status is ConsultGenerationJobStatuses.Completed
@@ -543,6 +577,28 @@ public sealed record ConsultGenerationJobFinalize(string Status, string? Error =
 public sealed record ConsultGenerationTextDrop(DateTimeOffset DroppedAtUtc);
 
 /// <summary>
+/// #486: what happened to the completion email, written once when the job
+/// ends. The address itself is never on the record — it is the account's.
+/// </summary>
+public static class DeliveryOutcomes
+{
+    /// <summary>The email went out (with or without the document attached — see DocumentAttached).</summary>
+    public const string Sent = "sent";
+    /// <summary>The reply activity failed after its retries.</summary>
+    public const string Failed = "failed";
+    /// <summary>An app job on an account with no verified delivery address.</summary>
+    public const string AddressNotSet = "address-not-set";
+    /// <summary>The mailbox or app URL is not configured on this deployment.</summary>
+    public const string NotConfigured = "not-configured";
+}
+
+/// <summary>#486: the orchestrator's one delivery signal.</summary>
+public sealed record ConsultGenerationDeliveryRecord(
+    string Outcome,
+    DateTimeOffset RecordedAtUtc,
+    bool? DocumentAttached = null);
+
+/// <summary>
 /// #434: everything Initialize would have been given, plus the sentence that
 /// says why nothing will run — authored package content (deliverable labels
 /// and what each condition wanted), never a supplied value.
@@ -700,6 +756,12 @@ public sealed class ConsultGenerationJobState
     // every hash, node, ref and label stays. Null while the text is present.
     public DateTimeOffset? TextDroppedAtUtc { get; set; }
 
+    // #486: what happened to the completion email (DeliveryOutcomes); null
+    // on records from before, or while the job is still running.
+    public string? DeliveryOutcome { get; set; }
+    public DateTimeOffset? DeliveredAtUtc { get; set; }
+    public bool? DeliveryDocumentAttached { get; set; }
+
     // #315: the deliverables this job's inputs excluded. Recorded, so a
     // reader is never left inferring a missing document from a shorter list.
     public List<ConsultSkippedDocument>? SkippedDocuments { get; set; }
@@ -748,7 +810,9 @@ public sealed class ConsultGenerationJobState
             Source,
             ScheduledAtUtc,
             FailedAtStart: StartFailure != null,
-            TextDroppedAtUtc: TextDroppedAtUtc);
+            TextDroppedAtUtc: TextDroppedAtUtc,
+            DeliveryOutcome: DeliveryOutcome,
+            DeliveredAtUtc: DeliveredAtUtc);
     }
 
     public ConsultNodeOutputState GetOrAddNodeOutput(string nodeId, string label)
@@ -963,7 +1027,10 @@ public sealed class ConsultGenerationJobState
                         d.DocumentHash ?? (d.Text == null ? null : ConsultGenerationProvenance.Sha256Hex(d.Text))))
                     .ToList()
                 : null,
-            TextDroppedAtUtc: TextDroppedAtUtc);
+            TextDroppedAtUtc: TextDroppedAtUtc,
+            DeliveryOutcome: DeliveryOutcome,
+            DeliveredAtUtc: DeliveredAtUtc,
+            DeliveryDocumentAttached: DeliveryDocumentAttached);
     }
 }
 
