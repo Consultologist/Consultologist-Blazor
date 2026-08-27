@@ -70,9 +70,11 @@ public record WorkflowPackageInputResponse(
     // renders a control from. Null on v5-v7 packages.
     string? Type = null,
     IReadOnlyList<string>? Values = null,
-    // v9 (#424): an array's element type and an object's fields. Null before 9.
-    // Mirrors the server's record, which is what the response deserialises into.
-    string? Items = null,
+    // v9 (#424): an array's element and an object's fields. Null before 9.
+    // v10 (#497): the element is a resolved spec carrying its own fields and
+    // values at every depth. Mirrors the server's record, which is what the
+    // response deserialises into.
+    WorkflowPackageElementResponse? Items = null,
     IReadOnlyList<WorkflowPackageFieldResponse>? Fields = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.WorkflowPackageFieldResponse.</summary>
@@ -81,6 +83,15 @@ public record WorkflowPackageFieldResponse(
     string Label,
     bool Required,
     string? Type = null,
+    IReadOnlyList<string>? Values = null,
+    WorkflowPackageElementResponse? Items = null,
+    IReadOnlyList<WorkflowPackageFieldResponse>? Fields = null);
+
+/// <summary>Mirrors Consultologist.Api.Workflow.WorkflowPackageElementResponse (v10, #497).</summary>
+public record WorkflowPackageElementResponse(
+    string Type,
+    WorkflowPackageElementResponse? Items = null,
+    IReadOnlyList<WorkflowPackageFieldResponse>? Fields = null,
     IReadOnlyList<string>? Values = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.WorkflowInputTypes.</summary>

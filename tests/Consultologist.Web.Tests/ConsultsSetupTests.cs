@@ -698,19 +698,17 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     {
         new WorkflowPackageInputResponse("consult_draft", "Consult draft", true),
         new WorkflowPackageInputResponse("prior_notes", "Prior notes", required, WorkflowInputTypes.Array,
-            items == WorkflowInputTypes.Enum ? new[] { "clinic", "ward" } : null,
-            Items: items)
+            Items: new WorkflowPackageElementResponse(items, Values: items == WorkflowInputTypes.Enum ? new[] { "clinic", "ward" } : null))
     };
 
     private static WorkflowPackageInputResponse[] WithLabs() => new[]
     {
         new WorkflowPackageInputResponse("consult_draft", "Consult draft", true),
-        new WorkflowPackageInputResponse("labs", "Labs", false, WorkflowInputTypes.Array, Items: WorkflowInputTypes.Object,
-            Fields: new[]
+        new WorkflowPackageInputResponse("labs", "Labs", false, WorkflowInputTypes.Array, Items: new WorkflowPackageElementResponse(WorkflowInputTypes.Object, Fields: new[]
             {
                 new WorkflowPackageFieldResponse("name", "Test", true),
                 new WorkflowPackageFieldResponse("value", "Value", true, WorkflowInputTypes.Number)
-            })
+            }))
     };
 
     private IReadOnlyDictionary<string, ConsultInputValue>? sentInputs;
@@ -990,8 +988,8 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         var inputs = new[]
         {
             new WorkflowPackageInputResponse("consult_draft", "Consult draft", true),
-            new WorkflowPackageInputResponse("prior_notes", "Prior notes", false, WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text),
-            new WorkflowPackageInputResponse("visits", "Visits", false, WorkflowInputTypes.Array, Items: WorkflowInputTypes.Date)
+            new WorkflowPackageInputResponse("prior_notes", "Prior notes", false, WorkflowInputTypes.Array, Items: new WorkflowPackageElementResponse(WorkflowInputTypes.Text)),
+            new WorkflowPackageInputResponse("visits", "Visits", false, WorkflowInputTypes.Array, Items: new WorkflowPackageElementResponse(WorkflowInputTypes.Date))
         };
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: inputs, specVersion: 9);
 

@@ -52,18 +52,38 @@ public sealed record WorkflowPackageInputResponse(
     // sends null and the form draws the textarea it always did.
     string? Type = null,
     IReadOnlyList<string>? Values = null,
-    // v9 (#424): the element type of an array and the fields of an object,
-    // so the form can draw a repeating row or a field group (#429). Null on
-    // every package before 9.
-    string? Items = null,
+    // v9 (#424): the element of an array and the fields of an object, so the
+    // form can draw a repeating row or a field group (#429). Null on every
+    // package before 9. v10 (#497): the element is a spec, not a type name,
+    // and it carries its own fields and values at every depth — a v9 array
+    // of objects sends its fields on the element as well as here.
+    WorkflowPackageElementResponse? Items = null,
     IReadOnlyList<WorkflowPackageFieldResponse>? Fields = null);
 
-/// <summary>One declared field of an object input, as the setup form renders it (v9 § 4).</summary>
+/// <summary>
+/// One declared field of an object, as the setup form renders it (v9 § 4).
+/// v10 (#497): a field may itself be structure — trailing Items and Fields,
+/// null on every field that is a scalar.
+/// </summary>
 public sealed record WorkflowPackageFieldResponse(
     string Id,
     string Label,
     bool Required,
     string? Type = null,
+    IReadOnlyList<string>? Values = null,
+    WorkflowPackageElementResponse? Items = null,
+    IReadOnlyList<WorkflowPackageFieldResponse>? Fields = null);
+
+/// <summary>
+/// v10 (#497): what one element of an array is — the resolved shape of
+/// WorkflowDeclarationNode.ElementOf, so the form never sees the manifest's
+/// bare-vs-spec split. Type is resolved (text when the manifest left it
+/// out); Items and Fields are the next level down; Values are an enum's.
+/// </summary>
+public sealed record WorkflowPackageElementResponse(
+    string Type,
+    WorkflowPackageElementResponse? Items = null,
+    IReadOnlyList<WorkflowPackageFieldResponse>? Fields = null,
     IReadOnlyList<string>? Values = null);
 
 /// <summary>

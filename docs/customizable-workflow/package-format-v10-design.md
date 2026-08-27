@@ -384,6 +384,26 @@ required input whose structure is deeper than one level is unreachable by
 email; publishing such a package **warns**, as v9 warns for a required
 `number` or `object`.
 
+> **Amendment, 2026-08-27 (#497).** Two things the implementation fixed:
+>
+> - **The package response carries the element, not a type name.** `items`
+>   on the current-package response is an element object at every depth —
+>   `{ type, items, fields, values }` as `WorkflowDeclarationNode.ElementOf`
+>   resolves it, so the form never sees the manifest's bare-vs-spec split:
+>   a v9 array of objects sends its fields on the element (and, as before,
+>   beside it), an array of enums its values, a v10 spec its depth. A field
+>   may carry `items` and `fields` of its own. The v7/v9 response bytes
+>   change (`"items":"text"` becomes `"items":{"type":"text"}`); the client
+>   mirror moved with them.
+> - **The form is one node, recursed.** A node is a scalar slot, an object
+>   of nodes, or an array of rows that are nodes; the v9 rules hold at every
+>   level and a sentence about a problem spells the path down to it —
+>   *Family history row 2: Contact: Phone is required.*, *Grid row 1 row 2
+>   must be a plain decimal number…*. A slot adopts a previous package's
+>   answers only when the whole shape matches. The email door needed no
+>   change: its numbered stems already take a top-level array of text only,
+>   and the deeper-than-one-level warning landed with #493.
+
 ### Paths and fans
 
 A condition path reaches any depth (§ 6). `forEach: input:<path>` may fan

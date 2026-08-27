@@ -378,6 +378,41 @@ public class WorkflowV10ValueTests
         Consultologist.Api.Jobs.ConsultGenerationJobStarter.CanonicalFormComplaint(input, value);
 
     [Fact]
+    public void ThePackageResponse_CarriesTheElementToAnyDepth()
+    {
+        // v10 step (f) (#497): the intake form reads the element as the
+        // declaration node resolves it — a bare v9 items with the array's own
+        // fields becomes an element that carries them; a spec carries its own.
+        var manifest = V10Fixtures.WithInput(FamilyHistory()) with
+        {
+            Inputs = new List<WorkflowInputSpec>(V10Fixtures.WithInput(FamilyHistory()).Inputs!) { Grid() }
+        };
+        var files = V6Fixtures.Files(manifest);
+        var errors = new List<string>();
+        var data = WorkflowDataResolver.Resolve(manifest, files, errors);
+        Assert.Empty(errors);
+        var response = WorkflowPackages.Describe(new WorkflowPackage(manifest, Nodes: manifest.Nodes, Data: data, Results: new List<WorkflowResolvedResult>()));
+
+        var family = response.Inputs!.Single(i => i.Id == "family_history");
+        Assert.Equal(WorkflowInputTypes.Object, family.Items!.Type);
+        Assert.Equal(new[] { "relative", "conditions", "contact" }, family.Items.Fields!.Select(f => f.Id));
+        Assert.Equal(new[] { "relative", "conditions", "contact" }, family.Fields!.Select(f => f.Id));
+        var conditions = family.Items.Fields[1];
+        Assert.Equal(WorkflowInputTypes.Text, conditions.Items!.Type);
+        var preferred = family.Items.Fields[2].Fields![1];
+        Assert.Equal(new[] { "phone", "email" }, preferred.Values);
+
+        var grid = response.Inputs.Single(i => i.Id == "grid");
+        Assert.Equal(WorkflowInputTypes.Array, grid.Items!.Type);
+        Assert.Equal(WorkflowInputTypes.Number, grid.Items.Items!.Type);
+        Assert.Null(grid.Items.Fields);
+
+        // The bytes: the element is an object even for the flat v9 form.
+        var json = JsonSerializer.Serialize(grid, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Contains("\"items\":{\"type\":\"array\",\"items\":{\"type\":\"number\"", json);
+    }
+
+    [Fact]
     public void ANestedValue_ThatMatchesItsDeclaration_HasNoComplaint()
     {
         var value = Arr(Obj(("relative", "mother"), ("conditions", Arr("asthma", "migraine")),

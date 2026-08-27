@@ -116,17 +116,29 @@ public sealed class WorkflowPackages
                     // v7 package's response is byte-identical to before.
                     input.Type,
                     input.Values,
-                    // The element type name only: a v10 element spec's depth
-                    // reaches the intake form in step (f) of the v10 ladder.
-                    input.Items?.Type,
-                    input.Fields?
-                        .Select(field => new WorkflowPackageFieldResponse(field.Id, field.Label, field.Required, field.Type, field.Values))
-                        .ToList()))
+                    // v10 (#497): the element and the fields as the
+                    // declaration node resolves them, to any depth.
+                    ElementResponse(WorkflowDeclarationNode.Of(input).Items),
+                    FieldResponses(input.Fields)))
                 .ToList(),
             package.Results?
                 .Select(result => new WorkflowPackageResultResponse(result.Id, result.Label))
                 .ToList(),
             package.Manifest.Title);
+
+    private static WorkflowPackageElementResponse? ElementResponse(WorkflowDeclarationNode? element) =>
+        element is null
+            ? null
+            : new WorkflowPackageElementResponse(element.Type, ElementResponse(element.Items), FieldResponses(element.Fields), element.Values);
+
+    private static IReadOnlyList<WorkflowPackageFieldResponse>? FieldResponses(IReadOnlyList<WorkflowFieldSpec>? fields) =>
+        fields?.Select(field => new WorkflowPackageFieldResponse(
+            field.Id, field.Label, field.Required, field.Type, field.Values,
+            ElementResponse(WorkflowDeclarationNode.Of(field).Items), FieldResponses(field.Fields))).ToList();
+
+    private static IReadOnlyList<WorkflowPackageFieldResponse>? FieldResponses(IReadOnlyList<WorkflowDeclarationNode>? fields) =>
+        fields?.Select(field => new WorkflowPackageFieldResponse(
+            field.Id, field.Label, field.Required, field.Type, field.Values, ElementResponse(field.Items), FieldResponses(field.Fields))).ToList();
 
     [Function("WorkflowPackageMine")]
     public async Task<HttpResponseData> GetMineAsync(
