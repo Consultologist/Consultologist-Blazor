@@ -109,9 +109,14 @@ public static class WorkflowVariableDeclarations
             return null;
         }
 
-        var element = array.Items?.Type == WorkflowInputTypes.Object
-            ? new WorkflowInputSpec(id, array.Label, Type: WorkflowInputTypes.Object, Fields: array.Fields)
-            : new WorkflowInputSpec(id, array.Label, Type: array.Items?.Type, Values: array.Values);
+        // v10 (#493): an element spec carries the element's own shape; a bare
+        // items (v9) takes the array's fields and values as the element's.
+        var items = array.Items!;
+        var element = items.IsBare
+            ? items.Type == WorkflowInputTypes.Object
+                ? new WorkflowInputSpec(id, array.Label, Type: WorkflowInputTypes.Object, Fields: array.Fields)
+                : new WorkflowInputSpec(id, array.Label, Type: items.Type, Values: array.Values)
+            : new WorkflowInputSpec(id, array.Label, Type: items.Type, Values: items.Values, Items: items.Items, Fields: items.Fields);
 
         elements[forEach] = element;
         return element;

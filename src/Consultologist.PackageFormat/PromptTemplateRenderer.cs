@@ -193,25 +193,33 @@ public static class PromptTemplateRenderer
             return carrier;
         }
 
-        return parsed.Kind switch
-        {
-            ConsultInputKind.Array => new ScriptArray(parsed.Elements!.Select(element =>
-                element.IsObject
-                    ? ObjectToScript(element, declaration?.Fields)
-                    : Scalar(element, declaration?.Items?.Type))),
-            ConsultInputKind.Object => ObjectToScript(parsed, declaration?.Fields),
-            _ => Scalar(parsed, null) ?? carrier
-        };
+        return parsed.IsStructured
+            ? ToScript(parsed, declaration is null ? null : WorkflowDeclarationNode.Of(declaration))
+            : Scalar(parsed, null) ?? carrier;
     }
 
-    private static ScriptObject ObjectToScript(ConsultInputValue value, IReadOnlyList<WorkflowFieldSpec>? fields)
+    /// <summary>
+    /// v10 (#493): the value as Scriban sees it, at every depth — an array as
+    /// a ScriptArray in the caller's order, an object as a ScriptObject with
+    /// exactly the supplied fields, scalars as their declared type when the
+    /// declaration is in hand. Before v10 a nested value rendered as null,
+    /// silently; now it renders as itself.
+    /// </summary>
+    private static object? ToScript(ConsultInputValue value, WorkflowDeclarationNode? node) => value.Kind switch
+    {
+        ConsultInputKind.Array => new ScriptArray(value.Elements!.Select(element => ToScript(element, node?.Items))),
+        ConsultInputKind.Object => ObjectToScript(value, node?.Fields),
+        _ => Scalar(value, node?.Type)
+    };
+
+    private static ScriptObject ObjectToScript(ConsultInputValue value, IReadOnlyList<WorkflowDeclarationNode>? fields)
     {
         var script = new ScriptObject();
 
         foreach (var entry in value.Fields!)
         {
             var field = fields?.FirstOrDefault(f => string.Equals(f.Id, entry.Id, StringComparison.Ordinal));
-            script[entry.Id] = Scalar(entry.Value, field is null ? null : WorkflowInputTypes.Of(field));
+            script[entry.Id] = ToScript(entry.Value, field);
         }
 
         return script;
