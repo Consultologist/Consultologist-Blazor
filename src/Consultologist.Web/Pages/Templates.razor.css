@@ -363,6 +363,44 @@
 	border-left: 2px solid var(--consultologist-border);
 }
 
+/* v10 (#498): the condition expression builder — groups as nested rows,
+   clauses as one line each, the root with one clause as the v9 row was. */
+.condition-group {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.condition-group--nested {
+	margin-left: 1rem;
+	padding: 0.35rem 0.5rem;
+	border-left: 3px solid var(--consultologist-border, #d0d0d0);
+}
+
+.condition-group__head,
+.condition-group__buttons,
+.condition-clause {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.condition-group__not,
+.condition-clause__not {
+	font-size: 0.8rem;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.2rem;
+}
+
+.declared-row__verbatim {
+	font-size: 0.85rem;
+	padding: 0.15rem 0.4rem;
+	border: 1px solid var(--consultologist-border, #d0d0d0);
+	border-radius: var(--consultologist-radius-sm, 4px);
+}
+
 /* v10 (#498): a fields editor beneath a field — the tree's next level. */
 .declared-row__fields .declared-row__fields {
 	margin-left: 1rem;

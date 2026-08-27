@@ -548,6 +548,46 @@ before anything lands:
 > in the server's four sentences, and a classifier a condition reads cannot
 > be removed.
 
+> **Amendment, 2026-08-27 (#498, PR 3 — the expression builder).** What
+> the builder holds, and what it does not:
+>
+> - **The tree.** A condition is a root group of clauses and groups, each
+>   group joined by *all of* (`and`) or *any of* (`or`) and negatable, each
+>   clause v9's three pickers with a `not` toggle, and — for a number or a
+>   count — one arithmetic term on the left (`operand op operand|number`).
+>   It reads from the format's own parser (a binary chain of one join is one
+>   n-ary group; a mixed chain nests; `not` sits on a clause or a group) and
+>   writes through the format's own writer, so the whitespace rule and the
+>   parenthesisation live once and the text is the canonical spelling —
+>   *explicit grouping* is the builder's nested rows, not extra parentheses
+>   in the text. The Web references `Consultologist.PackageFormat` for it;
+>   `WorkflowResultConditionText` is retired, and what the authoring
+>   surfaces ask of a condition — which input, field, node or value it
+>   reads, and a rename — is answered over the parse, in any clause, at any
+>   depth.
+> - **Verbatim.** A parse failure, a double negation, or arithmetic wider
+>   than one term on the left with a literal on the right is shown as
+>   itself, clearable, never rewritten — the v9 path.
+> - **Held beside the text.** The text does not carry every shape — a group
+>   of one item spells as the item, a group under a parent of the same join
+>   spells flat — so the editor keeps the tree beside the text whenever
+>   reading the text back would show something other than what was built,
+>   and a clause not yet chosen holds the tree as a named pending state
+>   (*1 condition in progress*) until it is. That is one more entry in the
+>   pending-change registry than § 11 foresaw: it affects no manifest and
+>   clears with the rest.
+> - **Labels.** The first clause in document order keeps the labels the v9
+>   editor gave it (*Condition operand for consult_note*); later clauses
+>   are *clause N*; groups are named by their index path (*Condition join
+>   for consult_note 1.0*). Below 10 the root with one clause is the v9
+>   editor exactly, and a loaded expression shows its clauses without the
+>   affordances and is refused with the rung.
+> - **The desk at 10** judges each clause as it judged the one — a node
+>   clause in the server's words, arithmetic and deeper paths left to the
+>   server — and names a parse error in the parser's. The parser gained one
+>   fix on the way: a node id in `node:<id>` may carry a hyphen, as every
+>   node id does.
+
 ## 12. Content & rollout
 
 No package is migrated; a v9 package is a v10 package with one edit.
