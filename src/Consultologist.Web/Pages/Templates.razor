@@ -89,6 +89,14 @@
                             Upgrade to specVersion @RunnableSpecVersion
                         </FluentButton>
                     }
+                    @if (OffersNewestUpgrade)
+                    {
+                        <FluentButton Appearance="Appearance.Outline"
+                                      Disabled="@isPublishing"
+                                      @onclick="() => UpgradeSpecVersionTo(NewestSpecVersion)">
+                            Upgrade to specVersion @NewestSpecVersion
+                        </FluentButton>
+                    }
                     @* #447: two publishes, said explicitly. A package of my own
                        takes a new version; anything can become a new package of
                        my own, named by a slug; a package that is not mine can
@@ -205,6 +213,15 @@
                 <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">@selectionNotice</FluentMessageBar>
             }
 
+            @* #429 (v9 § 10), back for v10 (#492): a format the registry accepts
+               before the engine runs it. A deferred state gets a visible name and
+               an up-front notification — never a silent hold. *@
+            @if (NotYetRunnable)
+            {
+                <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">
+                    specVersion @EffectiveSpecVersion is publishable but not yet runnable: consults pinned to a specVersion @EffectiveSpecVersion package will refuse to start until the engine runs it (#500).
+                </FluentMessageBar>
+            }
             @if (!string.IsNullOrWhiteSpace(publishSuccess))
             {
                 <FluentMessageBar Intent="MessageIntent.Success" AllowDismiss="false">@publishSuccess</FluentMessageBar>
@@ -1454,15 +1471,16 @@
     /// can prove the mirror still matches. Not necessarily runnable: see
     /// RunnableSpecVersion.
     /// </summary>
-    internal const int NewestSpecVersion = 9;
+    internal const int NewestSpecVersion = 10;
 
     /// <summary>
     /// Mirrors WorkflowPackageStore.SupportedSpecVersions' maximum — the
-    /// newest format the engine will RUN. Equal to NewestSpecVersion since
-    /// #430 released v9; while a future format is publishable but not yet
-    /// executable the two part again, and the not-yet-runnable notice, its
-    /// publish-success sentence and the second Upgrade button (#429, retired
-    /// with #430) come back with the gap.
+    /// newest format the engine will RUN. Below NewestSpecVersion while a
+    /// format is publishable but not yet executable (v10 § 10, #492), which
+    /// the editor says up front rather than letting an author publish into
+    /// silence: the not-yet-runnable notice, its publish-success sentence
+    /// and the second Upgrade button (#429's pattern) are back with the gap
+    /// and retire again when the engine runs ten.
     /// </summary>
     internal const int RunnableSpecVersion = 9;
 
@@ -1565,9 +1583,14 @@
         // what hides the buttons once one has been pressed.
         content != null && specVersionBump == null && LoadedSpecVersion < target && target <= NewestSpecVersion;
 
-    // #429 had one button per rung while the ceilings differed; #430 made
-    // them equal and the second button retired with the gap.
+    // #429: one button per rung while the ceilings differ (#492 reopened
+    // the gap: 10 is publishable, 9 is the newest that runs).
     private bool OffersRunnableUpgrade => CanUpgradeTo(RunnableSpecVersion);
+
+    private bool OffersNewestUpgrade => RunnableSpecVersion < NewestSpecVersion && CanUpgradeTo(NewestSpecVersion);
+
+    /// <summary>A staged bump past the runnable ceiling, or a loaded package already past it.</summary>
+    private bool NotYetRunnable => EffectiveSpecVersion > RunnableSpecVersion;
 
     private IReadOnlyList<PendingKind>? pendingKinds;
 
@@ -2136,7 +2159,8 @@
         // at 9, but a draft, a fork or a typed value can still carry one.
         if (EffectiveSpecVersion < 9)
         {
-            var upgrade = $"Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.";
+            // A v9 form wants the rung that runs, not the newest publishable one.
+            var upgrade = $"Use \"Upgrade to specVersion {RunnableSpecVersion}\" and publish.";
 
             errors.AddRange(inputs
                 .Where(WorkflowInputTypes.RequiresV9)
@@ -2524,7 +2548,8 @@
 
         if (EffectiveSpecVersion < 9)
         {
-            var upgrade = $"Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.";
+            // A v9 form wants the rung that runs, not the newest publishable one.
+            var upgrade = $"Use \"Upgrade to specVersion {RunnableSpecVersion}\" and publish.";
 
             if (!string.IsNullOrEmpty(title))
             {
@@ -5314,10 +5339,13 @@
             // server clears; quoted so the success names what was just named.
             var publishedTitle = asNewPackage ? null : WorkflowManifestReader.ReadTitle(composed);
             var named = string.IsNullOrEmpty(publishedTitle) ? string.Empty : $" (\"{publishedTitle}\")";
+            // #429/#492: read before LoadAsync clears the bump.
+            var notYetRunnable = NotYetRunnable;
             await LoadAsync();
             publishSuccess = (asNewPackage
                 ? $"Published {publishedRef}{named} as a new package from {sourceRef} and switched your consults to it."
-                : $"Published {publishedRef}{named} and switched your consults to it.");
+                : $"Published {publishedRef}{named} and switched your consults to it.")
+                + (notYetRunnable ? " It is not yet runnable." : string.Empty);
             publishWarnings = warnings;
         }
         catch (AccessTokenNotAvailableException exception)

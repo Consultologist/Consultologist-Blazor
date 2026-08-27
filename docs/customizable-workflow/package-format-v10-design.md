@@ -274,7 +274,17 @@ written, with the patient's operands replaced by their names.
 The one-level bound is lifted: a field's `type` may be `object` or `array`,
 `items` may be `array`, and `fields` and `items` recurse with the same
 vocabulary at every level. Depth is bounded only by the manifest the author
-wrote. A field declared with structure below 10 is refused naming the
+wrote.
+
+> **Amendment, 2026-08-27 (#492).** `items` is a type name in v9 —
+> `items: text` — and a type name has nowhere to say what an inner array
+> holds. At 10 `items` may also be an **element spec**: `items: { type:
+> array, items: text }`, or `{ type: object, fields: […] }`, or `{ type:
+> enum, values: […] }`, recursively. A spec that is only a type writes the
+> string form, so every v9 manifest round-trips byte for byte; the object
+> form below 10 is refused by name (*`declares items as a shape, which
+> requires specVersion 10`*). When `items` is a spec it carries the
+> element's own `fields` and `values`; the array declares neither. A field declared with structure below 10 is refused naming the
 version: *`Input 'medications' field 'schedule' declares type 'object', which
 requires specVersion 10.`*
 

@@ -13,7 +13,10 @@ stays with the engine.
 ## In the library (namespace `Consultologist.PackageFormat`)
 
 - The manifest and its sections — `WorkflowPackageManifest`, the input,
-  field, node, result, prompt and templating specs, `WorkflowInputTypes`,
+  field, node, result, prompt and templating specs, `WorkflowInputTypes`
+  (with the version-keyed `ScalarsFor`/`ElementTypesFor`, #492),
+  `WorkflowElementSpec` and its converter (v10's `items` as a type name or
+  an element spec), `WorkflowNodeKinds` (`prompt`, `classifier`),
   the data-index records, `WorkflowBindingValue` and its converter,
   `WorkflowPackageRef`, `CalVerVersion` — and the strict read
   (`WorkflowPackageManifestJson`, #416).
