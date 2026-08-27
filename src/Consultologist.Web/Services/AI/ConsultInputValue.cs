@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-// Mirrors Consultologist.Api.Models.ConsultInputValue by hand, because
+// Mirrors Consultologist.PackageFormat.ConsultInputValue by hand, because
 // Consultologist.Web carries no ProjectReference and cannot see the server's
 // type. Kept identical but for the namespace — the client sends this, and a
 // mirror that lags is a client refusing what the API accepts.
@@ -94,10 +94,10 @@ public sealed record ConsultInputValue
     /// <summary>The decimal those digits denote, for comparison.</summary>
     public decimal? NumberValue { get; }
 
-    /// <summary>The object's fields in supplied order, ids unique. Values are scalars or Null.</summary>
+    /// <summary>The object's fields in supplied order, ids unique. Values are scalars, Null or, since v10, structure.</summary>
     public IReadOnlyList<ConsultInputEntry>? Fields { get; }
 
-    /// <summary>The array's elements in supplied order: scalars, one-level objects, or Null.</summary>
+    /// <summary>The array's elements in supplied order: scalars, Null, objects or, since v10, arrays.</summary>
     public IReadOnlyList<ConsultInputValue>? Elements { get; }
 
     public static ConsultInputValue OfText(string text) => new(ConsultInputKind.Text, text: text);
@@ -143,7 +143,11 @@ public sealed record ConsultInputValue
             ? value
             : throw new ArgumentException($"'{spelling}' is not a plain decimal the format carries.", nameof(spelling));
 
-    /// <summary>An object of scalar-or-null fields. Ids must be unique; structure may not nest.</summary>
+    /// <summary>
+    /// An object of fields, ids unique. v10 (#493): a field may hold structure
+    /// — whether it may in a given slot is the declaration's question, asked
+    /// by the starter with the slot named.
+    /// </summary>
     public static ConsultInputValue OfObject(IEnumerable<ConsultInputEntry> fields)
     {
         var list = fields.ToList();
@@ -155,28 +159,14 @@ public sealed record ConsultInputValue
             {
                 throw new ArgumentException($"The object repeats the field '{field.Id}'.", nameof(fields));
             }
-
-            if (field.Value.IsStructured)
-            {
-                throw new ArgumentException($"The field '{field.Id}' holds structure; a field holds a scalar or null.", nameof(fields));
-            }
         }
 
         return new ConsultInputValue(ConsultInputKind.Object, fields: list);
     }
 
-    /// <summary>An array of scalars, one-level objects, or nulls. An array may not hold an array.</summary>
+    /// <summary>An array of values — scalars, nulls, objects or, since v10 (#493), arrays.</summary>
     public static ConsultInputValue OfArray(IEnumerable<ConsultInputValue> elements)
-    {
-        var list = elements.ToList();
-
-        if (list.Any(element => element.IsArray))
-        {
-            throw new ArgumentException("An array may not hold an array.", nameof(elements));
-        }
-
-        return new ConsultInputValue(ConsultInputKind.Array, elements: list);
-    }
+        => new(ConsultInputKind.Array, elements: elements.ToList());
 
     /// <summary>A JSON null inside structure. Never legal at the top of the map.</summary>
     public static ConsultInputValue NullElement => NullInstance;
@@ -344,11 +334,20 @@ public sealed class ConsultInputShapeException : JsonException
 /// </summary>
 public sealed class ConsultInputValueConverter : JsonConverter<ConsultInputValue>
 {
-    private enum Site
+    /// <summary>
+    /// v10 (#493): structure nests to any declared depth, so the wire needs
+    /// a bound of its own before the starter sees the value — a shape error,
+    /// refused never truncated, in the sense of the transport's caps. Eight
+    /// is far past any declaration a form could render.
+    /// </summary>
+    public const int MaxDepth = 8;
+
+    /// <summary>Where the reader is: the top of the map, or a path into structure, with its depth.</summary>
+    private readonly record struct Site(string? Where, int Depth)
     {
-        Top,
-        Element,
-        Field
+        public static readonly Site Top = new(null, 0);
+        public bool IsTop => Where is null;
+        public string Owner => Where ?? "An input value";
     }
 
     /// <summary>
@@ -359,10 +358,12 @@ public sealed class ConsultInputValueConverter : JsonConverter<ConsultInputValue
     public override bool HandleNull => true;
 
     public override ConsultInputValue Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        => ReadValue(ref reader, Site.Top, where: null);
+        => ReadValue(ref reader, Site.Top);
 
-    private static ConsultInputValue ReadValue(ref Utf8JsonReader reader, Site site, string? where)
+    private static ConsultInputValue ReadValue(ref Utf8JsonReader reader, Site site)
     {
+        var where = site.Where;
+
         switch (reader.TokenType)
         {
             case JsonTokenType.String:
@@ -381,28 +382,16 @@ public sealed class ConsultInputValueConverter : JsonConverter<ConsultInputValue
                 // that every downstream check dereferences. Inside structure it
                 // is carried as itself, for the starter to refuse with the slot
                 // named (v9 § 4).
-                return site == Site.Top ? ConsultInputValue.OfText(string.Empty) : ConsultInputValue.NullElement;
+                return site.IsTop ? ConsultInputValue.OfText(string.Empty) : ConsultInputValue.NullElement;
 
             case JsonTokenType.Number:
                 return ReadNumber(ref reader, where);
 
             case JsonTokenType.StartObject:
-                if (site == Site.Field)
-                {
-                    throw Shape($"{where} is an object; a field holds text, a number, a boolean or null, never structure.");
-                }
-
-                return ReadObject(ref reader, where);
+                return ReadObject(ref reader, Deeper(site, "an object"));
 
             case JsonTokenType.StartArray:
-                if (site != Site.Top)
-                {
-                    throw Shape(site == Site.Element
-                        ? $"{where} is an array; an array may hold text, numbers, booleans, nulls and objects, never another array."
-                        : $"{where} is an array; a field holds text, a number, a boolean or null, never structure.");
-                }
-
-                return ReadArray(ref reader);
+                return ReadArray(ref reader, Deeper(site, "an array"));
 
             default:
                 throw Shape($"An input value must be a JSON string, number, boolean, null, object or array; got {reader.TokenType}.");
@@ -419,11 +408,17 @@ public sealed class ConsultInputValueConverter : JsonConverter<ConsultInputValue
             : throw Shape($"{where ?? "An input value"} is not a plain decimal: no exponent form, and within decimal's range and precision.");
     }
 
-    private static ConsultInputValue ReadObject(ref Utf8JsonReader reader, string? where)
+    /// <summary>One level down; past the bound, the shape error names it.</summary>
+    private static Site Deeper(Site site, string what) =>
+        site.Depth >= MaxDepth
+            ? throw Shape($"{site.Owner} is {what} nested deeper than {MaxDepth} levels.")
+            : site with { Depth = site.Depth + 1 };
+
+    private static ConsultInputValue ReadObject(ref Utf8JsonReader reader, Site site)
     {
         var fields = new List<ConsultInputEntry>();
         var ids = new HashSet<string>(StringComparer.Ordinal);
-        var owner = where ?? "An input value";
+        var owner = site.Owner;
 
         while (reader.Read())
         {
@@ -442,15 +437,16 @@ public sealed class ConsultInputValueConverter : JsonConverter<ConsultInputValue
                 throw Shape($"{owner} repeats the field '{id}'.");
             }
 
-            fields.Add(new ConsultInputEntry(id, ReadValue(ref reader, Site.Field, $"{owner}'s field '{id}'")));
+            fields.Add(new ConsultInputEntry(id, ReadValue(ref reader, site with { Where = $"{owner}'s field '{id}'" })));
         }
 
         throw Shape($"{owner} is an object that does not end.");
     }
 
-    private static ConsultInputValue ReadArray(ref Utf8JsonReader reader)
+    private static ConsultInputValue ReadArray(ref Utf8JsonReader reader, Site site)
     {
         var elements = new List<ConsultInputValue>();
+        var owner = site.Owner;
 
         while (reader.Read())
         {
@@ -459,10 +455,10 @@ public sealed class ConsultInputValueConverter : JsonConverter<ConsultInputValue
                 return ConsultInputValue.OfArray(elements);
             }
 
-            elements.Add(ReadValue(ref reader, Site.Element, $"An input value's element {elements.Count}"));
+            elements.Add(ReadValue(ref reader, site with { Where = $"{owner}'s element {elements.Count}" }));
         }
 
-        throw Shape("An input value is an array that does not end.");
+        throw Shape($"{owner} is an array that does not end.");
     }
 
     private static ConsultInputShapeException Shape(string message) => new(message);

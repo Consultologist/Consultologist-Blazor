@@ -46,6 +46,9 @@ public sealed class ConsultGenerationJobs
     // starter, after extraction (#428), where the total is first known.
     internal const int MaxArrayElements = 256;
     internal const int MaxObjectFields = 64;
+    // v10 (#493): structure nests, so one total bounds what the caps above
+    // could otherwise multiply. Refused, never truncated.
+    internal const int MaxStructureNodes = 4096;
     private const string MissingSseAttemptId = "missing";
     private const string InvalidSseAttemptId = "invalid";
     private const string SseExitReasonCompleted = "Completed";
@@ -910,43 +913,72 @@ public sealed class ConsultGenerationJobs
     /// </summary>
     private static string? ValidateInputValue(string id, ConsultInputValue value)
     {
+        var budget = MaxStructureNodes;
+        return ValidateValue($"Input '{id}'", value, top: true, ref budget);
+    }
+
+    /// <summary>
+    /// v10 (#493): the same caps at every level, and one total for the
+    /// structure so depth cannot multiply the worst case — 256 elements of
+    /// 64 fields of 256 elements is not a request, it is an allocation.
+    /// </summary>
+    private static string? ValidateValue(string site, ConsultInputValue value, bool top, ref int budget)
+    {
+        if (--budget < 0)
+        {
+            return $"{site} is part of a structure with more than {MaxStructureNodes} values.";
+        }
+
         switch (value.Kind)
         {
             case ConsultInputKind.Text:
-                if (value.IsBlank)
+                if (value.IsBlank && top)
                 {
-                    return $"Input '{id}' is blank.";
+                    // Blank only at the top: an empty text inside structure is
+                    // the starter's to judge against the declaration.
+                    return $"{site} is blank.";
                 }
 
                 return value.Text!.Length > MaxInputLength
-                    ? $"Input '{id}' exceeds {MaxInputLength / 1024} KB."
+                    ? $"{site} exceeds {MaxInputLength / 1024} KB."
                     : null;
 
             case ConsultInputKind.Null:
                 // The converter never produces this at the top of the map; an
-                // in-process caller could.
-                return $"Input '{id}' is null.";
+                // in-process caller could. Inside structure it is the starter's.
+                return top ? $"{site} is null." : null;
 
             case ConsultInputKind.Object:
-                return ValidateObjectValue(id, value, where: null);
+                if (value.Fields!.Count > MaxObjectFields)
+                {
+                    return $"{site} has more than {MaxObjectFields} fields.";
+                }
+
+                foreach (var field in value.Fields)
+                {
+                    if (string.IsNullOrWhiteSpace(field.Id))
+                    {
+                        return $"{site} has a blank field id.";
+                    }
+
+                    var fieldError = ValidateValue($"{site} field '{field.Id}'", field.Value, top: false, ref budget);
+                    if (fieldError != null)
+                    {
+                        return fieldError;
+                    }
+                }
+
+                return null;
 
             case ConsultInputKind.Array:
                 if (value.Elements!.Count > MaxArrayElements)
                 {
-                    return $"Input '{id}' has more than {MaxArrayElements} elements.";
+                    return $"{site} has more than {MaxArrayElements} elements.";
                 }
 
                 for (var index = 0; index < value.Elements.Count; index++)
                 {
-                    var element = value.Elements[index];
-                    var elementError = element.Kind switch
-                    {
-                        ConsultInputKind.Text when element.Text!.Length > MaxInputLength =>
-                            $"Input '{id}' element {index} exceeds {MaxInputLength / 1024} KB.",
-                        ConsultInputKind.Object => ValidateObjectValue(id, element, where: $"element {index}"),
-                        _ => null
-                    };
-
+                    var elementError = ValidateValue($"{site} element {index}", value.Elements[index], top: false, ref budget);
                     if (elementError != null)
                     {
                         return elementError;
@@ -958,31 +990,6 @@ public sealed class ConsultGenerationJobs
             default:
                 return null;
         }
-    }
-
-    private static string? ValidateObjectValue(string id, ConsultInputValue value, string? where)
-    {
-        var site = where is null ? $"Input '{id}'" : $"Input '{id}' {where}";
-
-        if (value.Fields!.Count > MaxObjectFields)
-        {
-            return $"{site} has more than {MaxObjectFields} fields.";
-        }
-
-        foreach (var field in value.Fields)
-        {
-            if (string.IsNullOrWhiteSpace(field.Id))
-            {
-                return $"{site} has a blank field id.";
-            }
-
-            if (field.Value.Kind == ConsultInputKind.Text && field.Value.Text!.Length > MaxInputLength)
-            {
-                return $"{site} field '{field.Id}' exceeds {MaxInputLength / 1024} KB.";
-            }
-        }
-
-        return null;
     }
 
     internal static string? ValidateRequest(ConsultGenerationRequest? request)
