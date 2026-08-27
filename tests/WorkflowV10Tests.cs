@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Consultologist.PackageFormat;
+using Consultologist.Api.Workflow;
 
 namespace Consultologist.Api.Tests;
 
@@ -343,5 +344,169 @@ public class WorkflowV10StructureTests
         Assert.Equal(WorkflowInputTypes.ElementTypes, WorkflowInputTypes.ElementTypesFor(9));
         Assert.Equal(WorkflowInputTypes.All, WorkflowInputTypes.ScalarsFor(10));
         Assert.Equal(WorkflowInputTypes.All, WorkflowInputTypes.ElementTypesFor(10));
+    }
+}
+
+/// <summary>v10 step (b) (#493): nested values against nested declarations, hash 6, the probe, the renderer.</summary>
+public class WorkflowV10ValueTests
+{
+    private const string Sentinel = "SENTINEL-CLINICAL-CONTENT-0f1e2d";
+
+    private static WorkflowInputSpec FamilyHistory() =>
+        new("family_history", "Family history", Required: true, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Object,
+            Fields: new List<WorkflowFieldSpec>
+            {
+                new("relative", "Relative"),
+                new("conditions", "Conditions", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text),
+                new("contact", "Contact", Required: false, Type: WorkflowInputTypes.Object, Fields: new List<WorkflowFieldSpec>
+                {
+                    new("phone", "Phone"),
+                    new("preferred", "Preferred", Required: false, Type: WorkflowInputTypes.Enum, Values: new List<string> { "phone", "email" })
+                })
+            });
+
+    private static WorkflowInputSpec Grid() =>
+        new("grid", "Grid", Required: false, Type: WorkflowInputTypes.Array,
+            Items: new WorkflowElementSpec(WorkflowInputTypes.Array, Items: WorkflowInputTypes.Number));
+
+    private static ConsultInputValue Obj(params (string Id, ConsultInputValue Value)[] fields) =>
+        ConsultInputValue.OfObject(fields.Select(f => new ConsultInputEntry(f.Id, f.Value)));
+
+    private static ConsultInputValue Arr(params ConsultInputValue[] elements) => ConsultInputValue.OfArray(elements);
+
+    private static string? Complaint(WorkflowInputSpec input, ConsultInputValue value) =>
+        Consultologist.Api.Jobs.ConsultGenerationJobStarter.CanonicalFormComplaint(input, value);
+
+    [Fact]
+    public void ANestedValue_ThatMatchesItsDeclaration_HasNoComplaint()
+    {
+        var value = Arr(Obj(("relative", "mother"), ("conditions", Arr("asthma", "migraine")),
+            ("contact", Obj(("phone", "555"), ("preferred", "email")))));
+
+        Assert.Null(Complaint(FamilyHistory(), value));
+        Assert.Null(Complaint(Grid(), Arr(Arr(ConsultInputValue.OfNumber("1.5"), ConsultInputValue.OfNumber("2")), Arr())));
+    }
+
+    [Fact]
+    public void TheComplaint_SpellsThePath_AndNeverTheValue()
+    {
+        var wrongEnum = Arr(Obj(("relative", "mother"), ("contact", Obj(("phone", "555"), ("preferred", Sentinel)))));
+        var complaint = Complaint(FamilyHistory(), wrongEnum)!;
+        Assert.StartsWith("element 0 field 'contact' field 'preferred' accepts 'phone', 'email'; got '", complaint, StringComparison.Ordinal);
+
+        var notAnArray = Arr(Obj(("relative", "mother"), ("conditions", "asthma")));
+        Assert.Equal("element 0 field 'conditions' is an array and must be sent as a JSON array; got text.", Complaint(FamilyHistory(), notAnArray));
+
+        var textInGrid = Arr(Arr(ConsultInputValue.OfNumber("1"), Sentinel));
+        Assert.Equal("element 0 element 1 is a number and must be sent as a JSON number; got text.", Complaint(Grid(), textInGrid));
+
+        var undeclared = Arr(Obj(("relative", "mother"), ("contact", Obj(("phone", "555"), ("fax", "1")))));
+        Assert.Equal("element 0 field 'contact' has a field 'fax' it does not declare (fields: phone, preferred).", Complaint(FamilyHistory(), undeclared));
+    }
+
+    [Fact]
+    public void TheV9Sentences_AreUnchanged_ForAOneLevelDeclaration()
+    {
+        var patient = V9Fixtures.Structured().Inputs!.Single(i => i.Id == "patient");
+        var medications = V9Fixtures.Structured().Inputs!.Single(i => i.Id == "medications");
+
+        Assert.Equal("has a field 'nickname' it does not declare (fields: family_name, age, sex).",
+            Complaint(patient, Obj(("family_name", "x"), ("age", ConsultInputValue.OfNumber("1")), ("nickname", "y"))));
+        Assert.Equal("is missing required field 'family_name'.", Complaint(patient, Obj(("age", ConsultInputValue.OfNumber("1")))));
+        Assert.Equal("element 1 is missing required field 'name'.", Complaint(medications, Arr(Obj(("name", "a")), Obj(("dose", "b")))));
+        Assert.Equal("element 0 is an object and must be sent as a JSON object; got text.", Complaint(medications, Arr("x")));
+    }
+
+    [Fact]
+    public void DefinitionSix_IsDefinitionFiveRecursed()
+    {
+        var flat = new Dictionary<string, ConsultInputValue>
+        {
+            ["consult_draft"] = "Draft text.",
+            ["patient"] = Obj(("z", ConsultInputValue.OfNumber("1.50")), ("a", "x"))
+        };
+        Assert.Equal(ConsultGenerationProvenance.ComputeStructuredInputsHash(flat), ConsultGenerationProvenance.ComputeNestedInputsHash(flat));
+        Assert.Equal(6, ConsultGenerationProvenance.NestedInputsHashVersion);
+
+        var nested = new Dictionary<string, ConsultInputValue>
+        {
+            ["family_history"] = Arr(Obj(("relative", "mother"), ("contact", Obj(("preferred", "email"), ("phone", "555"))), ("conditions", Arr("b", "a"))))
+        };
+        var bytes = """{"family_history":[{"conditions":["b","a"],"contact":{"phone":"555","preferred":"email"},"relative":"mother"}]}""";
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(bytes), ConsultGenerationProvenance.ComputeNestedInputsHash(nested));
+    }
+
+    [Fact]
+    public void TheHashLadder_IsFiveWay()
+    {
+        var supplied = new Dictionary<string, ConsultInputValue> { ["consult_draft"] = "Draft text." };
+        var resolution = new Consultologist.Api.Jobs.EffectiveInputsResolution(null, supplied, null);
+        var request = new Consultologist.Api.Models.ConsultGenerationRequest("Draft text.");
+
+        var (hash10, version10) = Consultologist.Api.Jobs.ConsultGenerationJobStarter.EffectiveInputHashOf(10, request, resolution);
+        var (hash9, version9) = Consultologist.Api.Jobs.ConsultGenerationJobStarter.EffectiveInputHashOf(9, request, resolution);
+
+        Assert.Equal(6, version10);
+        Assert.Equal(5, version9);
+        Assert.Equal(hash9, hash10);
+    }
+
+    [Fact]
+    public void TheProbe_Recurses_TwoElementsAtEveryLevel()
+    {
+        var probe = (Scriban.Runtime.ScriptArray)WorkflowPackageValidator.ProbeValue(FamilyHistory());
+        Assert.Equal(2, probe.Count);
+        var entry = (Scriban.Runtime.ScriptObject)probe[0]!;
+        Assert.Equal("placeholder", entry["relative"]);
+        var conditions = (Scriban.Runtime.ScriptArray)entry["conditions"]!;
+        Assert.Equal(new object[] { "placeholder", "placeholder" }, conditions.ToArray());
+        var contact = (Scriban.Runtime.ScriptObject)entry["contact"]!;
+        Assert.Equal("placeholder", contact["phone"]);
+
+        var grid = (Scriban.Runtime.ScriptArray)WorkflowPackageValidator.ProbeValue(Grid());
+        var inner = (Scriban.Runtime.ScriptArray)grid[1]!;
+        Assert.Equal(2, inner.Count);
+        Assert.IsType<decimal>(inner[0]);
+    }
+
+    [Fact]
+    public void ANestedValue_RendersAsItself()
+    {
+        var manifest = V10Fixtures.WithInput(FamilyHistory());
+        var declarations = new Dictionary<string, WorkflowInputSpec> { ["family_history"] = FamilyHistory() };
+        var value = Arr(Obj(("relative", "mother"), ("conditions", Arr("asthma", "migraine")), ("contact", Obj(("phone", "555")))));
+
+        var rendered = PromptTemplateRenderer.Render(
+            new WorkflowPromptTemplate("t", "{{ for r in family_history }}{{ r.relative }}: {{ r.conditions | array.join \", \" }} ({{ r.contact.phone }}){{ end }}", new[] { "family_history" }, null),
+            new Dictionary<string, string> { ["family_history"] = value.AsJson() },
+            new Dictionary<string, string> { ["family_history"] = WorkflowInputTypes.Array },
+            declarations);
+
+        Assert.Equal("mother: asthma, migraine (555)", rendered);
+        _ = manifest;
+    }
+
+    [Fact]
+    public void ARequiredArrayDeeperThanOneLevel_WarnsAboutTheEmailDoor()
+    {
+        var result = V10Fixtures.Validate(V10Fixtures.WithInput(FamilyHistory()));
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+        Assert.Contains(result.Warnings, w => w.StartsWith("Input 'family_history' is a required array with structure deeper than one level.", StringComparison.Ordinal));
+
+        var flat = V10Fixtures.Validate(V10Fixtures.WithInput(V9Fixtures.Structured().Inputs!.Single(i => i.Id == "medications") with { Required = true }));
+        Assert.DoesNotContain(flat.Warnings, w => w.Contains("deeper than one level"));
+    }
+
+    [Fact]
+    public void TheDoor_BoundsNestedStructure_AtEveryLevel()
+    {
+        var deepText = Arr(Obj(("a", Arr(new string('x', Consultologist.Api.Jobs.ConsultGenerationJobs.MaxInputLength + 1)))));
+        Assert.Equal("Input 'v' element 0 field 'a' element 0 exceeds 256 KB.",
+            Consultologist.Api.Jobs.ConsultGenerationJobs.ValidateRequest(new Consultologist.Api.Models.ConsultGenerationRequest(null, Inputs: new Dictionary<string, ConsultInputValue> { ["v"] = deepText })));
+
+        var wide = Arr(Enumerable.Range(0, 64).Select(_ => Arr(Enumerable.Range(0, 64).Select(_ => (ConsultInputValue)"x").ToArray())).ToArray());
+        // 1 array + 63 × (1 + 64) = 4,096 values before the 64th inner array, which is the one over.
+        Assert.Equal("Input 'v' element 63 is part of a structure with more than 4096 values.",
+            Consultologist.Api.Jobs.ConsultGenerationJobs.ValidateRequest(new Consultologist.Api.Models.ConsultGenerationRequest(null, Inputs: new Dictionary<string, ConsultInputValue> { ["v"] = wide })));
     }
 }

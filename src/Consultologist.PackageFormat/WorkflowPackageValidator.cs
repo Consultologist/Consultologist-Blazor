@@ -1706,34 +1706,30 @@ public static class WorkflowPackageValidator
     /// <b>two</b> element probes. Two rather than one, so a template that
     /// assumes a singleton fails the probe rather than the job.
     /// </summary>
-    internal static object ProbeValue(WorkflowInputSpec input)
+    internal static object ProbeValue(WorkflowInputSpec input) => Probe(WorkflowDeclarationNode.Of(input));
+
+    /// <summary>v10 (#493): the probe recurses — two elements per array at every level, a field as its structure.</summary>
+    private static object Probe(WorkflowDeclarationNode node) => node.Type switch
     {
-        var type = WorkflowInputTypes.Of(input);
+        WorkflowInputTypes.Object => ObjectProbe(node.Fields),
+        WorkflowInputTypes.Array => new ScriptArray { ElementProbe(node), ElementProbe(node) },
+        _ => ScalarProbe(node.Type)
+    };
 
-        return type switch
-        {
-            WorkflowInputTypes.Object => ObjectProbe(input.Fields),
-            WorkflowInputTypes.Array => new ScriptArray { ElementProbe(input), ElementProbe(input) },
-            _ => ScalarProbe(type)
-        };
-    }
+    private static object ElementProbe(WorkflowDeclarationNode array) =>
+        array.Items is null ? "placeholder" : Probe(array.Items);
 
-    private static object ElementProbe(WorkflowInputSpec input) =>
-        input.Items?.Type == WorkflowInputTypes.Object
-            ? ObjectProbe(input.Fields)
-            : ScalarProbe(WorkflowInputTypes.ElementTypeOf(input));
-
-    private static ScriptObject ObjectProbe(IEnumerable<WorkflowFieldSpec>? fields)
+    private static ScriptObject ObjectProbe(IEnumerable<WorkflowDeclarationNode>? fields)
     {
         var probe = new ScriptObject();
 
         // Runs before the declaration is validated, so a malformed field list
         // probes as what it can rather than throwing.
-        foreach (var field in fields ?? Array.Empty<WorkflowFieldSpec>())
+        foreach (var field in fields ?? Array.Empty<WorkflowDeclarationNode>())
         {
             if (!string.IsNullOrEmpty(field.Id) && !probe.ContainsKey(field.Id))
             {
-                probe.Add(field.Id, ScalarProbe(WorkflowInputTypes.Of(field)));
+                probe.Add(field.Id, Probe(field));
             }
         }
 
@@ -1850,6 +1846,21 @@ public static class WorkflowPackageValidator
             warnings.Add(
                 $"Input '{input.Id}' is a required {WorkflowInputTypes.Of(input)}. Email can only supply text, so this package "
                 + "cannot be started from the email door.");
+        }
+
+        // v10 (package-format-v10-design.md § 7): the door names the top array
+        // only, so a required array with structure below its elements is as
+        // unreachable as a number.
+        if (manifest.SpecVersion >= 10)
+        {
+            foreach (var input in inputs.Where(input =>
+                input.Required && WorkflowInputTypes.Of(input) == WorkflowInputTypes.Array
+                    && WorkflowDeclarationNode.Of(input).IsDeeperThanOneLevel))
+            {
+                warnings.Add(
+                    $"Input '{input.Id}' is a required array with structure deeper than one level. Email can only supply text "
+                    + "or a list of documents, so this package cannot be started from the email door.");
+            }
         }
 
         var results = manifest.Results ?? new List<WorkflowResultSpec>();

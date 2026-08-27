@@ -876,29 +876,53 @@ public class ConsultInputValueWireTests
     }
 
     [Theory]
-    [InlineData("""{"v":{"a":{"b":1}}}""", "field 'a'")]
-    [InlineData("""{"v":{"a":[1]}}""", "field 'a'")]
-    [InlineData("""{"v":[[1]]}""", "element 0")]
-    [InlineData("""{"v":[{"a":{"b":1}}]}""", "field 'a'")]
-    public void StructurePastOneLevel_IsAShapeError(string json, string where)
+    [InlineData("""{"v":{"a":{"b":1}}}""")]
+    [InlineData("""{"v":{"a":[1]}}""")]
+    [InlineData("""{"v":[[1]]}""")]
+    [InlineData("""{"v":[{"a":{"b":1}}]}""")]
+    public void StructureNests_OnTheWire(string json)
     {
-        // The format bounds depth at one (v9 § 4), so no declaration could ever
-        // admit this — which is what makes it a shape error rather than a
-        // declaration disagreement.
-        var exception = Assert.Throws<ConsultInputShapeException>(() => Read(json));
+        // v10 (#493): the format admits depth, so the wire does; whether a
+        // declaration admits it in a given slot is the starter's 422. Before
+        // v10 these four were shape errors.
+        var value = Read(json);
 
-        Assert.Contains(where, exception.Message, StringComparison.Ordinal);
+        Assert.True(value.IsStructured);
+        Assert.Equal(json, "{\"v\":" + value.AsJson() + "}");
+    }
+
+    [Fact]
+    public void DepthPastTheBound_IsAShapeError()
+    {
+        var nine = string.Concat(Enumerable.Repeat("[", ConsultInputValueConverter.MaxDepth + 1))
+            + "1" + string.Concat(Enumerable.Repeat("]", ConsultInputValueConverter.MaxDepth + 1));
+        var eight = string.Concat(Enumerable.Repeat("[", ConsultInputValueConverter.MaxDepth))
+            + "1" + string.Concat(Enumerable.Repeat("]", ConsultInputValueConverter.MaxDepth));
+
+        Assert.True(Read("{\"v\":" + eight + "}").IsArray);
+        var exception = Assert.Throws<ConsultInputShapeException>(() => Read("{\"v\":" + nine + "}"));
+        Assert.Contains($"nested deeper than {ConsultInputValueConverter.MaxDepth} levels", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
     public void AShapeError_NamesTheTokenAndPath_NeverTheValue()
     {
-        var exception = Assert.Throws<ConsultInputShapeException>(() => Read("""{"v":[["secret"]]}"""));
+        // A repeated key two levels down: the path into the structure is
+        // spelled, the values are not.
+        var exception = Assert.Throws<ConsultInputShapeException>(() => Read("""{"v":[{"a":"secret","a":"x"}]}"""));
 
         Assert.DoesNotContain("secret", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("element 0 is an array", exception.Message, StringComparison.Ordinal);
+        Assert.Equal("An input value's element 0 repeats the field 'a'.", exception.Message);
         // Set by the serializer before it rethrows our exception unchanged.
         Assert.Equal("$.v", exception.Path);
+    }
+
+    [Fact]
+    public void ANestedShapeError_SpellsThePath()
+    {
+        var exception = Assert.Throws<ConsultInputShapeException>(() => Read("""{"v":{"a":[{"b":1e3}]}}"""));
+
+        Assert.StartsWith("An input value's field 'a''s element 0's field 'b' is not a plain decimal", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1029,7 +1053,7 @@ public class ConsultInputValueWireTests
     [Fact]
     public void AMalformedCarrier_IsRefusedLikeTheWire()
     {
-        Assert.Throws<ConsultInputShapeException>(() => ConsultInputValue.FromJson("[[1]]"));
+        Assert.Throws<ConsultInputShapeException>(() => ConsultInputValue.FromJson("[[1e3]]"));
         Assert.ThrowsAny<JsonException>(() => ConsultInputValue.FromJson("not json"));
     }
 
@@ -1038,16 +1062,18 @@ public class ConsultInputValueWireTests
     {
         // In-process callers (the email door, tests) get the same closure as
         // the wire, so a value that could not have arrived cannot be built.
+        // v10 (#493): nesting arrives, so the factories admit it too.
         Assert.Throws<ArgumentException>(() => ConsultInputValue.OfNumber("1e3"));
-        Assert.Throws<ArgumentException>(() => ConsultInputValue.OfArray(new[] { ConsultInputValue.OfArray(Array.Empty<ConsultInputValue>()) }));
         Assert.Throws<ArgumentException>(() => ConsultInputValue.OfObject(new[]
         {
             new ConsultInputEntry("a", ConsultInputValue.OfText("x")),
             new ConsultInputEntry("a", ConsultInputValue.OfText("y"))
         }));
-        Assert.Throws<ArgumentException>(() => ConsultInputValue.OfObject(new[]
+
+        var nested = ConsultInputValue.OfObject(new[]
         {
-            new ConsultInputEntry("a", ConsultInputValue.OfArray(Array.Empty<ConsultInputValue>()))
-        }));
+            new ConsultInputEntry("a", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfArray(Array.Empty<ConsultInputValue>()) }))
+        });
+        Assert.Equal("""{"a":[[]]}""", nested.AsJson());
     }
 }

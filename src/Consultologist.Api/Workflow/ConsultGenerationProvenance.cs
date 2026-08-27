@@ -102,6 +102,20 @@ public static class ConsultGenerationProvenance
     /// </summary>
     public const int StructuredInputsHashVersion = 5;
 
+    /// <summary>
+    /// The effective-input hash, definition version 6 (v10 jobs, #493):
+    /// definition 5 recursed (package-format-v10-design.md § 8). The writer
+    /// below never assumed one level, so the bytes are definition 5's — a
+    /// v10 map with no nesting hashes identically under 5 and 6, which is the
+    /// record's stated control. The number moves because the set of values a
+    /// v10 map may carry is wider, and a reader of the record must know
+    /// which rules produced the digest.
+    /// </summary>
+    public const int NestedInputsHashVersion = 6;
+
+    public static string ComputeNestedInputsHash(IReadOnlyDictionary<string, ConsultInputValue> suppliedInputs)
+        => ComputeStructuredInputsHash(suppliedInputs);
+
     private static readonly JsonWriterOptions CanonicalWriterOptions = new()
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,

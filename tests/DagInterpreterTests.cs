@@ -580,14 +580,16 @@ public class StartRequestValidationTests
     {
         // The door's 400 for a shape the converter refused, as a caller reads
         // it: what was wrong and where — and nothing the caller sent.
+        // v10 (#493): depth is no longer a shape error; a repeated key at
+        // depth still is, and the path into it is spelled.
         var exception = Assert.Throws<ConsultInputShapeException>(() =>
             JsonSerializer.Deserialize<ConsultGenerationRequest>(
-                """{"inputs":{"consult_draft":[["secret"]]}}""",
+                """{"inputs":{"consult_draft":[{"a":"secret","a":"x"}]}}""",
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true }));
 
         var message = ConsultGenerationJobs.MalformedInputMessage(exception);
 
-        Assert.Contains("element 0 is an array", message, StringComparison.Ordinal);
+        Assert.Contains("element 0 repeats the field 'a'", message, StringComparison.Ordinal);
         Assert.Contains("consult_draft", message, StringComparison.Ordinal);
         Assert.Contains(" At $.", message, StringComparison.Ordinal);
         Assert.DoesNotContain("secret", message, StringComparison.Ordinal);

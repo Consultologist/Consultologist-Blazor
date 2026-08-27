@@ -611,7 +611,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // workflowPackage ref; agent identities are covered by catalogRef — the
         // record stores refs, not copies (#105).
         // See docs/customizable-workflow/provenance.md.
-        // Four definitions, and genuinely four functions. v9 hashes the
+        // Five definitions. v10 hashes the map recursed (definition 6, the
+        // same bytes as 5 for a map with no nesting — v10 § 8). v9 hashes the
         // STRUCTURED map — field ids sorted, arrays in the caller's order,
         // UTF-8 as-is (package-format-v9-design.md § 8). v8 hashes the typed
         // map, so a boolean hashes as `true` and not as `"true"` (v8 § 6). v7
@@ -716,13 +717,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// package of this specVersion. One function, because the job that is born
     /// Failed (#434) records the same hash the job that runs would have.
     /// </summary>
-    private static (string Hash, int Version) EffectiveInputHashOf(
+    internal static (string Hash, int Version) EffectiveInputHashOf(
         int specVersion,
         ConsultGenerationRequest request,
         EffectiveInputsResolution inputs)
     {
         var hash = specVersion switch
         {
+            >= 10 => ConsultGenerationProvenance.ComputeNestedInputsHash(inputs.Supplied!),
             >= 9 => ConsultGenerationProvenance.ComputeStructuredInputsHash(inputs.Supplied!),
             >= 8 => ConsultGenerationProvenance.ComputeTypedInputsHash(inputs.Supplied!),
             >= 7 => ConsultGenerationProvenance.ComputeDeclaredInputsHash(
@@ -732,6 +734,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         var version = specVersion switch
         {
+            >= 10 => ConsultGenerationProvenance.NestedInputsHashVersion,
             >= 9 => ConsultGenerationProvenance.StructuredInputsHashVersion,
             >= 8 => ConsultGenerationProvenance.TypedInputsHashVersion,
             >= 7 => ConsultGenerationProvenance.DeclaredInputsHashVersion,
@@ -965,17 +968,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     }
 
     /// <summary>"a text", "an enum", "an array of object" — for a sentence about a declaration.</summary>
-    private static string DescribeDeclaredType(WorkflowInputSpec spec)
-    {
-        var type = WorkflowInputTypes.Of(spec);
-
-        return type switch
-        {
-            WorkflowInputTypes.Array => $"an array of {WorkflowInputTypes.ElementTypeOf(spec)}",
-            WorkflowInputTypes.Enum or WorkflowInputTypes.Object => $"an {type}",
-            _ => $"a {type}"
-        };
-    }
+    private static string DescribeDeclaredType(WorkflowInputSpec spec) => WorkflowDeclarationNode.Of(spec).Describe();
 
     /// <summary>
     /// Line endings to LF, trailing whitespace off the end — applied to every
@@ -1170,17 +1163,23 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// refuses structure. Messages name kinds, ids and indices, never a
     /// structured value.
     /// </summary>
-    private static string? CanonicalFormComplaint(WorkflowInputSpec input, ConsultInputValue value)
-    {
-        var type = WorkflowInputTypes.Of(input);
+    internal static string? CanonicalFormComplaint(WorkflowInputSpec input, ConsultInputValue value)
+        => ValueComplaint(WorkflowDeclarationNode.Of(input), value, where: string.Empty);
 
-        return type switch
+    /// <summary>
+    /// v10 (#493): the one rule at every level. A declaration node is an
+    /// input, a field or an array's element; the sentence completes "Input
+    /// '&lt;id&gt;' " with the path spelled — "element 1 field 'contact' field
+    /// 'phone' is a text and …" — and a one-level declaration reads exactly
+    /// as it did at v9.
+    /// </summary>
+    private static string? ValueComplaint(WorkflowDeclarationNode node, ConsultInputValue value, string where) =>
+        node.Type switch
         {
-            WorkflowInputTypes.Object => ObjectComplaint(input.Fields ?? new List<WorkflowFieldSpec>(), value, where: string.Empty),
-            WorkflowInputTypes.Array => ArrayComplaint(input, value),
-            _ => ScalarComplaint(type, input.Values, value)
+            WorkflowInputTypes.Object => ObjectComplaint(node, value, where),
+            WorkflowInputTypes.Array => ArrayComplaint(node, value, where),
+            _ => ScalarComplaint(node.Type, node.Values, value) is { } scalar ? $"{where}{scalar}" : null
         };
-    }
 
     /// <summary>
     /// The scalar rule, for an input, a field or an array element alike. Shape
@@ -1189,7 +1188,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// with the declaration. Then the canonical form: a date's spelling, an
     /// enum's membership.
     /// </summary>
-    private static string? ScalarComplaint(string type, List<string>? values, ConsultInputValue value)
+    private static string? ScalarComplaint(string type, IReadOnlyList<string>? values, ConsultInputValue value)
     {
         if (type == WorkflowInputTypes.Number)
         {
@@ -1235,13 +1234,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// <paramref name="where"/> is empty for an object input and "element N "
     /// for an element of an array of objects.
     /// </summary>
-    private static string? ObjectComplaint(IReadOnlyList<WorkflowFieldSpec> fields, ConsultInputValue value, string where)
+    private static string? ObjectComplaint(WorkflowDeclarationNode node, ConsultInputValue value, string where)
     {
         if (!value.IsObject)
         {
             return $"{where}is an object and must be sent as a JSON object; got {value.Described}.";
         }
 
+        var fields = node.Fields ?? Array.Empty<WorkflowDeclarationNode>();
         var declared = fields.ToDictionary(field => field.Id, StringComparer.Ordinal);
         var supplied = new HashSet<string>(StringComparer.Ordinal);
 
@@ -1259,10 +1259,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 return $"{where}field '{entry.Id}' is null; omit an optional field instead.";
             }
 
-            var complaint = ScalarComplaint(WorkflowInputTypes.Of(field), field.Values, entry.Value);
+            var complaint = ValueComplaint(field, entry.Value, where: $"{where}field '{entry.Id}' ");
             if (complaint != null)
             {
-                return $"{where}field '{entry.Id}' {complaint}";
+                return complaint;
             }
         }
 
@@ -1278,33 +1278,30 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// null element; each element canonical for the items — a scalar rule, or
     /// the object rule for an array of objects.
     /// </summary>
-    private static string? ArrayComplaint(WorkflowInputSpec input, ConsultInputValue value)
+    private static string? ArrayComplaint(WorkflowDeclarationNode node, ConsultInputValue value, string where)
     {
         if (!value.IsArray)
         {
-            return $"is an array and must be sent as a JSON array; got {value.Described}.";
+            return $"{where}is an array and must be sent as a JSON array; got {value.Described}.";
         }
 
-        if (input.Required && value.Elements!.Count == 0)
+        if (node.Required && value.Elements!.Count == 0)
         {
-            return "is required and has no entries.";
+            return $"{where}is required and has no entries.";
         }
+
+        // The element's declaration: a bare items keeps the v9 reading; an
+        // element spec (v10) carries its own shape. Text when undeclared.
+        var element = node.Items ?? new WorkflowDeclarationNode(WorkflowInputTypes.Text, node.Label, true, null, null, null);
 
         for (var index = 0; index < value.Elements!.Count; index++)
         {
-            var element = value.Elements[index];
-
-            if (element.IsNull)
+            if (value.Elements[index].IsNull)
             {
-                return $"element {index} is null.";
+                return $"{where}element {index} is null.";
             }
 
-            var complaint = input.Items?.Type == WorkflowInputTypes.Object
-                ? ObjectComplaint(input.Fields ?? new List<WorkflowFieldSpec>(), element, where: $"element {index} ")
-                : ScalarComplaint(WorkflowInputTypes.ElementTypeOf(input), input.Values, element) is { } scalar
-                    ? $"element {index} {scalar}"
-                    : null;
-
+            var complaint = ValueComplaint(element, value.Elements[index], where: $"{where}element {index} ");
             if (complaint != null)
             {
                 return complaint;
