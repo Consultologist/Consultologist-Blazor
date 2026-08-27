@@ -57,23 +57,114 @@ public sealed record WorkflowInputSpec(
     // required for `array`, forbidden otherwise — and the fields of an object,
     // whether the input IS an object or is an array OF objects. Trailing
     // optionals, omitted when null, so a v7/v8 manifest writes the bytes it
-    // always wrote.
-    string? Items = null,
+    // always wrote. v10 (package-format-v10-design.md § 7): `items` may be a
+    // whole element spec rather than a type name — see WorkflowElementSpec,
+    // which still writes the v9 string when it is only a name.
+    WorkflowElementSpec? Items = null,
     List<WorkflowFieldSpec>? Fields = null);
 
 /// <summary>
 /// One field of a declared object (v9 § 4), in an input's vocabulary — id,
-/// label, required, type, values — minus the two members that would let it
-/// nest. Structure is one level deep by construction: a field cannot carry
-/// items or fields, so the bound is the type, not a rule the validator has
-/// to remember.
+/// label, required, type, values — and, since v10 (§ 7), items and fields
+/// of its own, so structure recurses. The one-level bound v9 held by
+/// construction is now the validator's, keyed by version: a field carrying
+/// items or fields on a manifest below 10 is refused by name.
 /// </summary>
 public sealed record WorkflowFieldSpec(
     string Id,
     string Label,
     bool Required = true,
     string? Type = null,
-    List<string>? Values = null);
+    List<string>? Values = null,
+    // v10: trailing optionals, omitted when null — a v9 field writes the
+    // bytes it always wrote.
+    WorkflowElementSpec? Items = null,
+    List<WorkflowFieldSpec>? Fields = null);
+
+/// <summary>
+/// What an array holds (v10 § 7). On the wire either the v9 type name —
+/// <c>items: text</c> — or an element spec, <c>items: { type: array, items:
+/// text }</c>, recursively. A bare spec (a type and nothing else) writes the
+/// string form, so every v9 manifest round-trips byte for byte; the object
+/// form below specVersion 10 is refused by the validator, never by the
+/// reader.
+/// </summary>
+[JsonConverter(typeof(WorkflowElementSpecConverter))]
+public sealed record WorkflowElementSpec(
+    string Type,
+    WorkflowElementSpec? Items = null,
+    List<WorkflowFieldSpec>? Fields = null,
+    List<string>? Values = null)
+{
+    /// <summary>A type name and nothing else — the v9 form.</summary>
+    public bool IsBare => Items is null && Fields is null && Values is null;
+
+    public static implicit operator WorkflowElementSpec?(string? type) => type is null ? null : new(type);
+
+    public override string ToString() => Type;
+}
+
+public sealed class WorkflowElementSpecConverter : JsonConverter<WorkflowElementSpec>
+{
+    // The object form, read without this converter on the outer shape (the
+    // nested `items` still goes through it, which is the recursion).
+    private sealed record Shape(string? Type, WorkflowElementSpec? Items, List<WorkflowFieldSpec>? Fields, List<string>? Values);
+
+    public override WorkflowElementSpec Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            return new WorkflowElementSpec(reader.GetString()!);
+        }
+
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException("items must be a type name or an element spec object.");
+        }
+
+        var shape = JsonSerializer.Deserialize<Shape>(ref reader, options)
+            ?? throw new JsonException("items must be a type name or an element spec object.");
+
+        if (string.IsNullOrWhiteSpace(shape.Type))
+        {
+            throw new JsonException("An items spec must declare type.");
+        }
+
+        return new WorkflowElementSpec(shape.Type, shape.Items, shape.Fields, shape.Values);
+    }
+
+    public override void Write(Utf8JsonWriter writer, WorkflowElementSpec value, JsonSerializerOptions options)
+    {
+        if (value.IsBare)
+        {
+            writer.WriteStringValue(value.Type);
+            return;
+        }
+
+        writer.WriteStartObject();
+        writer.WriteString("type", value.Type);
+
+        if (value.Items != null)
+        {
+            writer.WritePropertyName("items");
+            Write(writer, value.Items, options);
+        }
+
+        if (value.Fields != null)
+        {
+            writer.WritePropertyName("fields");
+            JsonSerializer.Serialize(writer, value.Fields, options);
+        }
+
+        if (value.Values != null)
+        {
+            writer.WritePropertyName("values");
+            JsonSerializer.Serialize(writer, value.Values, options);
+        }
+
+        writer.WriteEndObject();
+    }
+}
 
 /// <summary>
 /// The declared input types (package-format-v8-design.md § 4). Typed values
@@ -119,12 +210,31 @@ public static class WorkflowInputTypes
     /// <summary>An absent type is text — the default that keeps v7 declarations valid.</summary>
     public static string Of(WorkflowInputSpec input) => input.Type ?? Text;
 
+    /// <summary>The type an array's elements have; text when items is absent.</summary>
+    public static string ElementTypeOf(WorkflowInputSpec input) => input.Items?.Type ?? Text;
+
+    public static string ElementTypeOf(WorkflowFieldSpec field) => field.Items?.Type ?? Text;
+
+    /// <summary>
+    /// v10 (§ 7): the types a field or an element may have, keyed by version
+    /// — the v9 constants Scalars and ElementTypes stay what the v9 sentences
+    /// and the client's mirrors pin; at 10 a field may be anything and an
+    /// element may be an array.
+    /// </summary>
+    public static IReadOnlyList<string> ScalarsFor(int specVersion) => specVersion >= 10 ? All : Scalars;
+
+    public static IReadOnlyList<string> ElementTypesFor(int specVersion) => specVersion >= 10 ? All : ElementTypes;
+
     /// <summary>The same default for a field.</summary>
     public static string Of(WorkflowFieldSpec field) => field.Type ?? Text;
 
     /// <summary>Whether the declaration has fields: an object, or an array of objects.</summary>
     public static bool DeclaresObject(WorkflowInputSpec input) =>
-        Of(input) == Object || (Of(input) == Array && input.Items == Object);
+        Of(input) == Object || (Of(input) == Array && input.Items?.Type == Object);
+
+    /// <summary>v10: whether a field has fields — an object, or an array of objects.</summary>
+    public static bool DeclaresObject(WorkflowFieldSpec field) =>
+        Of(field) == Object || (Of(field) == Array && field.Items?.Type == Object);
 }
 
 /// <summary>
@@ -163,7 +273,28 @@ public sealed record WorkflowNodeSpec(
     Dictionary<string, WorkflowBindingValue>? Bindings = null,
     WorkflowNodeOutputSpec? Output = null,
     string? ForEach = null,
-    List<string>? Aggregate = null);
+    List<string>? Aggregate = null,
+    // v10 (package-format-v10-design.md § 4): a classifying node — kind
+    // "classifier" with the values it may answer. Trailing optionals, omitted
+    // when null; below 10 both are refused by name by the validator.
+    string? Kind = null,
+    List<string>? Values = null);
+
+/// <summary>
+/// The node kinds a manifest may spell (v10 § 4). Absent is a prompt node
+/// — or an aggregator when aggregate is present, which is a property, not
+/// a kind, and may not be spelled as one.
+/// </summary>
+public static class WorkflowNodeKinds
+{
+    public const string Prompt = "prompt";
+    public const string Classifier = "classifier";
+
+    public static readonly IReadOnlyList<string> All = new[] { Prompt, Classifier };
+
+    public static bool IsClassifier(WorkflowNodeSpec node) =>
+        string.Equals(node.Kind, Classifier, StringComparison.Ordinal);
+}
 
 public sealed record WorkflowNodeOutputSpec(
     string Schema,

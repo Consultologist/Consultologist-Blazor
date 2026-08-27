@@ -213,6 +213,19 @@ internal static class PackageFormatSchema
             Object(aggregate, "items")["pattern"] = NodeRef;
         }
 
+        if (specVersion < 10)
+        {
+            // v10 (§ 4): the classifying node. Below 10 neither member exists,
+            // and the published v5–v9 bytes must not move.
+            Remove(properties, "kind");
+            Remove(properties, "values");
+        }
+        else
+        {
+            Object(properties, "kind")["enum"] = new JsonArray(WorkflowNodeKinds.All.Select(kind => JsonValue.Create(kind)).ToArray<JsonNode?>());
+            EnrichValues(Object(properties, "values"));
+        }
+
         Close(item);
     }
 
@@ -250,7 +263,7 @@ internal static class PackageFormatSchema
         }
         else
         {
-            EnrichStructuredInput(item, properties);
+            EnrichStructuredInput(item, properties, specVersion);
         }
 
         // Required defaults to true when absent, so it is not required here.
@@ -264,25 +277,19 @@ internal static class PackageFormatSchema
     /// enum or an array of enums. Structure is one level deep — a field's type
     /// is a scalar, and items may not be array.
     /// </summary>
-    private static void EnrichStructuredInput(JsonObject item, JsonObject properties)
+    private static void EnrichStructuredInput(JsonObject item, JsonObject properties, int specVersion)
     {
-        Object(properties, "type")["enum"] = TypeNames(WorkflowInputTypes.ForSpecVersion(9));
-        Object(properties, "items")["enum"] = TypeNames(WorkflowInputTypes.ElementTypes);
+        Object(properties, "type")["enum"] = TypeNames(WorkflowInputTypes.ForSpecVersion(specVersion));
+        // The exporter cannot see through WorkflowElementSpecConverter (as with
+        // bindings): `items` arrives bare. v9 wrote a string of the element
+        // types; v10 (§ 7) admits an element spec object too.
+        properties["items"] = ItemsSchema(specVersion);
         EnrichValues(Object(properties, "values"));
 
         var fields = Object(properties, "fields");
         fields["minItems"] = 1;
         var field = Object(fields, "items");
-        var fieldProperties = Object(field, "properties");
-        Object(fieldProperties, "id")["pattern"] = DeclaredId;
-        Object(fieldProperties, "label")["minLength"] = 1;
-        Object(fieldProperties, "type")["enum"] = TypeNames(WorkflowInputTypes.Scalars);
-        EnrichValues(Object(fieldProperties, "values"));
-        field["if"] = TypeIs(WorkflowInputTypes.Enum);
-        field["then"] = new JsonObject { ["required"] = Required("values") };
-        field["else"] = new JsonObject { ["not"] = new JsonObject { ["required"] = Required("values") } };
-        field["required"] = Required("id", "label");
-        Close(field);
+        EnrichField(field, specVersion);
 
         var isArray = TypeIs(WorkflowInputTypes.Array);
         var isObject = TypeIs(WorkflowInputTypes.Object);
@@ -335,6 +342,65 @@ internal static class PackageFormatSchema
         values["minItems"] = 2;
         values["uniqueItems"] = true;
         Object(values, "items")["pattern"] = DeclaredId;
+    }
+
+    /// <summary>
+    /// A field's subschema. v9: id, label, required, type (a scalar), values.
+    /// v10 (§ 7): type may be anything, and a field carries items and fields
+    /// of its own — spelled as references back to this subschema and to the
+    /// input's `items`, which is how the recursion is published.
+    /// </summary>
+    private static void EnrichField(JsonObject field, int specVersion)
+    {
+        var fieldProperties = Object(field, "properties");
+        Object(fieldProperties, "id")["pattern"] = DeclaredId;
+        Object(fieldProperties, "label")["minLength"] = 1;
+        Object(fieldProperties, "type")["enum"] = TypeNames(WorkflowInputTypes.ScalarsFor(specVersion));
+        EnrichValues(Object(fieldProperties, "values"));
+
+        if (specVersion < 10)
+        {
+            Remove(fieldProperties, "items");
+            Remove(fieldProperties, "fields");
+        }
+        else
+        {
+            fieldProperties["items"] = ItemsSchema(specVersion);
+            Object(fieldProperties, "fields")["minItems"] = 1;
+        }
+
+        field["if"] = TypeIs(WorkflowInputTypes.Enum);
+        field["then"] = new JsonObject { ["required"] = Required("values") };
+        field["else"] = new JsonObject { ["not"] = new JsonObject { ["required"] = Required("values") } };
+        field["required"] = Required("id", "label");
+        Close(field);
+    }
+
+    /// <summary>What `items` may be: a type name (v9), or at 10 an element spec as well.</summary>
+    private static JsonNode ItemsSchema(int specVersion)
+    {
+        var name = new JsonObject { ["type"] = "string", ["enum"] = TypeNames(WorkflowInputTypes.ElementTypesFor(specVersion)) };
+
+        if (specVersion < 10)
+        {
+            return name;
+        }
+
+        var spec = new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["type"] = new JsonObject { ["type"] = "string", ["enum"] = TypeNames(WorkflowInputTypes.ElementTypesFor(specVersion)) },
+                ["items"] = new JsonObject { ["$ref"] = "#/properties/inputs/items/properties/items" },
+                ["fields"] = new JsonObject { ["type"] = "array", ["minItems"] = 1, ["items"] = new JsonObject { ["$ref"] = "#/properties/inputs/items/properties/fields/items" } },
+                ["values"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId }, ["minItems"] = 2, ["uniqueItems"] = true }
+            },
+            ["required"] = Required("type"),
+            ["additionalProperties"] = false
+        };
+
+        return new JsonObject { ["oneOf"] = new JsonArray(name, spec) };
     }
 
     private static JsonObject TypeIs(string type) => new()

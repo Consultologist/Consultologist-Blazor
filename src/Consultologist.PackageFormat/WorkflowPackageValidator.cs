@@ -747,15 +747,15 @@ public static class WorkflowPackageValidator
                 return;
             }
 
-            if (input.Items == WorkflowInputTypes.Array)
+            if (input.Items.Type == WorkflowInputTypes.Array)
             {
                 errors.Add($"{subject} declares items 'array'; structure is one level deep, so an array may not hold arrays.");
                 return;
             }
 
-            if (!WorkflowInputTypes.ElementTypes.Contains(input.Items, StringComparer.Ordinal))
+            if (!WorkflowInputTypes.ElementTypes.Contains(input.Items.Type, StringComparer.Ordinal))
             {
-                errors.Add($"{subject} declares unknown items type '{input.Items}' (accepted: {string.Join(", ", WorkflowInputTypes.ElementTypes)}).");
+                errors.Add($"{subject} declares unknown items type '{input.Items.Type}' (accepted: {string.Join(", ", WorkflowInputTypes.ElementTypes)}).");
                 return;
             }
         }
@@ -787,7 +787,7 @@ public static class WorkflowPackageValidator
         // values: an enum's, or an array of enums'. Nothing else has a choice
         // to declare.
         var valuesBelong = type == WorkflowInputTypes.Enum
-            || (isArray && input.Items == WorkflowInputTypes.Enum);
+            || (isArray && input.Items?.Type == WorkflowInputTypes.Enum);
 
         if (!valuesBelong)
         {
@@ -1545,9 +1545,9 @@ public static class WorkflowPackageValidator
     }
 
     private static object ElementProbe(WorkflowInputSpec input) =>
-        input.Items == WorkflowInputTypes.Object
+        input.Items?.Type == WorkflowInputTypes.Object
             ? ObjectProbe(input.Fields)
-            : ScalarProbe(input.Items ?? WorkflowInputTypes.Text);
+            : ScalarProbe(WorkflowInputTypes.ElementTypeOf(input));
 
     private static ScriptObject ObjectProbe(IEnumerable<WorkflowFieldSpec>? fields)
     {

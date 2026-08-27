@@ -884,7 +884,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             var spec = declared.GetValueOrDefault(id);
             var several = spec != null
                 && WorkflowInputTypes.Of(spec) == WorkflowInputTypes.Array
-                && (spec.Items ?? WorkflowInputTypes.Text) == WorkflowInputTypes.Text;
+                && WorkflowInputTypes.ElementTypeOf(spec) == WorkflowInputTypes.Text;
 
             if (documents.Count > 1 && !several)
             {
@@ -971,7 +971,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         return type switch
         {
-            WorkflowInputTypes.Array => $"an array of {spec.Items ?? WorkflowInputTypes.Text}",
+            WorkflowInputTypes.Array => $"an array of {WorkflowInputTypes.ElementTypeOf(spec)}",
             WorkflowInputTypes.Enum or WorkflowInputTypes.Object => $"an {type}",
             _ => $"a {type}"
         };
@@ -1299,9 +1299,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 return $"element {index} is null.";
             }
 
-            var complaint = input.Items == WorkflowInputTypes.Object
+            var complaint = input.Items?.Type == WorkflowInputTypes.Object
                 ? ObjectComplaint(input.Fields ?? new List<WorkflowFieldSpec>(), element, where: $"element {index} ")
-                : ScalarComplaint(input.Items ?? WorkflowInputTypes.Text, input.Values, element) is { } scalar
+                : ScalarComplaint(WorkflowInputTypes.ElementTypeOf(input), input.Values, element) is { } scalar
                     ? $"element {index} {scalar}"
                     : null;
 

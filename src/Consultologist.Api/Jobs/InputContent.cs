@@ -69,7 +69,7 @@ internal static class InputContent
     internal static bool IsProse(WorkflowInputSpec declared) =>
         WorkflowInputTypes.Of(declared) == WorkflowInputTypes.Text
         || (WorkflowInputTypes.Of(declared) == WorkflowInputTypes.Array
-            && (declared.Items ?? WorkflowInputTypes.Text) == WorkflowInputTypes.Text);
+            && WorkflowInputTypes.ElementTypeOf(declared) == WorkflowInputTypes.Text);
 
     /// <summary>
     /// The prose in a value: a text's, or the sum over an array's text

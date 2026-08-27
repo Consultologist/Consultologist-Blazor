@@ -116,7 +116,9 @@ public sealed class WorkflowPackages
                     // v7 package's response is byte-identical to before.
                     input.Type,
                     input.Values,
-                    input.Items,
+                    // The element type name only: a v10 element spec's depth
+                    // reaches the intake form in step (f) of the v10 ladder.
+                    input.Items?.Type,
                     input.Fields?
                         .Select(field => new WorkflowPackageFieldResponse(field.Id, field.Label, field.Required, field.Type, field.Values))
                         .ToList()))

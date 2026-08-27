@@ -198,7 +198,7 @@ public static class PromptTemplateRenderer
             ConsultInputKind.Array => new ScriptArray(parsed.Elements!.Select(element =>
                 element.IsObject
                     ? ObjectToScript(element, declaration?.Fields)
-                    : Scalar(element, declaration?.Items))),
+                    : Scalar(element, declaration?.Items?.Type))),
             ConsultInputKind.Object => ObjectToScript(parsed, declaration?.Fields),
             _ => Scalar(parsed, null) ?? carrier
         };
