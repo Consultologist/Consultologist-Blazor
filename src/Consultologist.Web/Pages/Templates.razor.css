@@ -363,6 +363,13 @@
 	border-left: 2px solid var(--consultologist-border);
 }
 
+/* v10 (#498): a fields editor beneath a field — the tree's next level. */
+.declared-row__fields .declared-row__fields {
+	margin-left: 1rem;
+	padding-left: 0.6rem;
+	border-left: 3px solid var(--consultologist-border, #d0d0d0);
+}
+
 .declared-field {
 	display: flex;
 	flex-wrap: wrap;

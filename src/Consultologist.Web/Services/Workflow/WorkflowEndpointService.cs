@@ -131,6 +131,14 @@ public static class WorkflowInputTypes
     public static bool DeclaresValues(WorkflowManifestReader.InputView input) =>
         Of(input) == Enum || (Of(input) == Array && input.Items?.Type == Enum);
 
+    /// <summary>v10 (#498): a field that is an object, or an array of objects — the fields editor recurses beneath it.</summary>
+    public static bool DeclaresObject(WorkflowManifestReader.FieldView field) =>
+        Of(field) == Object || (Of(field) == Array && field.Items?.Type == Object);
+
+    /// <summary>An enum field, or an array-of-enum field — the ones that carry values.</summary>
+    public static bool DeclaresValues(WorkflowManifestReader.FieldView field) =>
+        Of(field) == Enum || (Of(field) == Array && field.Items?.Type == Enum);
+
     /// <summary>The shapes v9 added (#424); below 9 any of them is refused by name.</summary>
     public static bool RequiresV9(WorkflowManifestReader.InputView input) =>
         Of(input) is Number or Object or Array || input.Items != null || input.Fields != null;
