@@ -33,6 +33,10 @@
                     {
                         <span> · aggregator</span>
                     }
+                    @if (node.IsClassifier)
+                    {
+                        <span> · classifier</span>
+                    }
                     @if (NodeModified?.Invoke(node.Id) == true)
                     {
                         <span class="binding-row__pending" title="Pending change"> ●</span>
@@ -56,7 +60,35 @@
                            @onchange="args => EmitNodeChangeAsync(node, label: args.Value?.ToString() ?? string.Empty)"
                            aria-label="Node label" />
                 </label>
-                @if (node.Aggregate == null)
+                @if (node.IsClassifier)
+                {
+                    @* v10 (#498): the values a classifier may answer — the enum
+                       input's chips. No forEach and no output: a classification is
+                       one answer under the classification contract, implied by
+                       the kind. Fewer than two is refused at the desk, not here. *@
+                    <label class="node-field node-field--wide">
+                        <span>values</span>
+                        <span class="node-values" data-values-for="@node.Id">
+                            @foreach (var value in node.Values ?? Array.Empty<string>())
+                            {
+                                var declaredValue = value;
+                                <span class="input-field__chip" data-node-value="@declaredValue">
+                                    @declaredValue
+                                    <button type="button" class="aggregate-row__button" title="Remove value"
+                                            @onclick="() => EmitValuesAsync(node, (node.Values ?? Array.Empty<string>()).Where(v => v != declaredValue).ToList())">×</button>
+                                </span>
+                            }
+                            <input class="node-field__input" placeholder="in_scope"
+                                   @onchange="args => AddValueAsync(node, args.Value?.ToString())"
+                                   aria-label="@($"Add a value to node {node.Id}")" />
+                        </span>
+                    </label>
+                    @if (valuesError is { } valuesProblem)
+                    {
+                        <span class="editor-warning">@valuesProblem</span>
+                    }
+                }
+                @if (node.Aggregate == null && !node.IsClassifier)
                 {
                     @if (AllowPromptChange)
                     {
@@ -269,7 +301,7 @@
     public sealed record VariableAdd(string NodeId, string Variable, string From, string? As);
 
     /// <summary>The node's full effective field tuple after one field changed (#117/#170).</summary>
-    public sealed record NodeChange(string NodeId, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string? Prompt = null);
+    public sealed record NodeChange(string NodeId, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string? Prompt = null, IReadOnlyList<string>? Values = null);
 
     /// <summary>An aggregator's full effective ordered source list after one change (#117).</summary>
     public sealed record AggregateChange(string NodeId, List<string> Sources);
@@ -335,6 +367,32 @@
     // compares it against the manifest original (self-removing edits, like
     // binding rows). Selecting a value equal to the current one still emits —
     // harmlessly resolving to "no change" host-side.
+    private string? valuesError;
+
+    /// <summary>v10 (#498): a classifier's next value — snake_case, not yet declared.</summary>
+    private async Task AddValueAsync(WorkflowManifestReader.NodeView node, string? value)
+    {
+        var candidate = (value ?? string.Empty).Trim();
+
+        if (!System.Text.RegularExpressions.Regex.IsMatch(candidate, "^[a-z][a-z0-9_]*$"))
+        {
+            valuesError = $"Value '{candidate}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
+            return;
+        }
+
+        if (node.Values?.Contains(candidate, StringComparer.Ordinal) == true)
+        {
+            valuesError = $"Classifier '{node.Id}' already declares '{candidate}'.";
+            return;
+        }
+
+        valuesError = null;
+        await EmitValuesAsync(node, (node.Values ?? Array.Empty<string>()).Append(candidate).ToList());
+    }
+
+    private Task EmitValuesAsync(WorkflowManifestReader.NodeView node, List<string> values) =>
+        OnNodeChanged.InvokeAsync(new NodeChange(node.Id, node.Label, node.ForEach, node.OutputSchema, node.FailIfEmpty, node.Prompt, values));
+
     private async Task EmitNodeChangeAsync(
         WorkflowManifestReader.NodeView node,
         string? label = null,

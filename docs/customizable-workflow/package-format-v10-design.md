@@ -533,6 +533,21 @@ before anything lands:
 >   condition: a condition reads a top-level field by path, and deeper
 >   paths are the builder's (PR 3).
 
+> **Amendment, 2026-08-27 (#498, PR 2 — the classifier kind and the
+> `node:` operand).** The Web now references `Consultologist.PackageFormat`
+> (Scriban is its only dependency; about 185 KB more over the wire,
+> compressed), so the editor reads the node kinds and — in PR 3 — the
+> condition grammar from the format itself; its mirrors of the wire value
+> stay for now. A classifier is a prompt node with the values it may
+> answer, declared on its card with the enum input's chips, and neither
+> forEach nor output; it is born with no values and the desk refuses fewer
+> than two, a binding to anything but an input or a classifier, and — below
+> 10 — the kind itself, by name with the newest rung. The operand picker
+> offers `node:<id>` per classifier at 10 with the node's values as the
+> literal and `==`/`!=` only; the desk judges one clause over a classifier
+> in the server's four sentences, and a classifier a condition reads cannot
+> be removed.
+
 ## 12. Content & rollout
 
 No package is migrated; a v9 package is a v10 package with one edit.
