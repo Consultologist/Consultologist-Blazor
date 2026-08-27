@@ -627,6 +627,9 @@ public class WorkflowV10ConditionTests
         Assert.False(Holds("billable and length_of_stay > 1", Inputs(("length_of_stay", ConsultInputValue.OfNumber("5")))));
         // or: one held side is enough even beside an absent one.
         Assert.True(Holds("billable or length_of_stay > 1", Inputs(("length_of_stay", ConsultInputValue.OfNumber("5")))));
+        // or: an absent side beside a not-held side is not held — absence never rescues a clause.
+        Assert.False(Holds("billable or length_of_stay > 9", Inputs(("length_of_stay", ConsultInputValue.OfNumber("5")))));
+        Assert.False(Holds("length_of_stay > 9 or billable", Inputs(("length_of_stay", ConsultInputValue.OfNumber("5")))));
         // and: absent beside not-held is not held; not over that holds.
         Assert.True(Holds("not (billable and length_of_stay > 9)", Inputs(("length_of_stay", ConsultInputValue.OfNumber("5")))));
     }
