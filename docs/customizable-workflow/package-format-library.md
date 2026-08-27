@@ -20,6 +20,10 @@ stays with the engine.
   the data-index records, `WorkflowBindingValue` and its converter,
   `WorkflowPackageRef`, `CalVerVersion` — and the strict read
   (`WorkflowPackageManifestJson`, #416).
+- `WorkflowResultConditions` (#494): the expression grammar — the tree
+  types (`WorkflowConditionExpression`, its clause/not/and/or, the terms),
+  the tokenizer with the whitespace rule, the v9 clause parser as the leaf,
+  the three-valued evaluator and `Explain`.
 - `WorkflowPackageValidator`: every sentence the conformance suite pins,
   `AcceptedSpecVersions`, `CanonicalizeSchema`, and the publish-time probe.
 - The wire value (`ConsultInputValue` and its kinds, canonical forms and

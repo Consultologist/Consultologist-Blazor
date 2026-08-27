@@ -510,3 +510,279 @@ public class WorkflowV10ValueTests
             Consultologist.Api.Jobs.ConsultGenerationJobs.ValidateRequest(new Consultologist.Api.Models.ConsultGenerationRequest(null, Inputs: new Dictionary<string, ConsultInputValue> { ["v"] = wide })));
     }
 }
+
+/// <summary>v10 step (c) (#494): the expression grammar, its evaluator, its sentences, and the gate below 10.</summary>
+public class WorkflowV10ConditionTests
+{
+    private static Dictionary<string, ConsultInputValue> Inputs(params (string Id, ConsultInputValue Value)[] pairs) =>
+        pairs.ToDictionary(p => p.Id, p => p.Value, StringComparer.Ordinal);
+
+    private static WorkflowConditionExpression Parse(string when)
+    {
+        Assert.True(WorkflowResultConditions.TryParseExpression(when, out var expression, out var error), error);
+        return expression!;
+    }
+
+    private static bool Holds(string when, Dictionary<string, ConsultInputValue> inputs, IReadOnlyDictionary<string, string>? classifications = null) =>
+        WorkflowResultConditions.Holds(Parse(when), inputs, classifications);
+
+    private static ConsultInputValue Obj(params (string Id, ConsultInputValue Value)[] fields) =>
+        ConsultInputValue.OfObject(fields.Select(f => new ConsultInputEntry(f.Id, f.Value)));
+
+    // --- parsing
+
+    [Theory]
+    [InlineData("length_of_stay > 7 and billable", "length_of_stay > 7 and billable")]
+    [InlineData("a or b and c", "a or b and c")]
+    [InlineData("(a or b) and c", "(a or b) and c")]
+    [InlineData("not a and b", "not a and b")]
+    [InlineData("not (a and b)", "not (a and b)")]
+    [InlineData("length_of_stay - 2 > 5", "length_of_stay - 2 > 5")]
+    [InlineData("length_of_stay * 2 + 1 >= 7", "length_of_stay * 2 + 1 >= 7")]
+    [InlineData("(length_of_stay + 1) * 2 >= 7", "(length_of_stay + 1) * 2 >= 7")]
+    [InlineData("seen_on + 30 >= 2026-01-01", "seen_on + 30 >= 2026-01-01")]
+    [InlineData("node:scope == in_scope", "node:scope == in_scope")]
+    [InlineData("patient.contact.phone == x", "patient.contact.phone == x")]
+    [InlineData("count(patient.notes) > 1", "count(patient.notes) > 1")]
+    public void TheParserReadsEveryForm_AndWritesItBack(string when, string text)
+    {
+        Assert.Equal(text, Parse(when).Text);
+    }
+
+    [Fact]
+    public void Precedence_IsAsStated()
+    {
+        // and binds tighter than or; not tighter than and; * before +.
+        Assert.IsType<WorkflowOrExpression>(Parse("a or b and c"));
+        Assert.IsType<WorkflowAndExpression>(((WorkflowOrExpression)Parse("a or b and c")).Right);
+        Assert.IsType<WorkflowAndExpression>(Parse("not a and b"));
+        Assert.IsType<WorkflowNotExpression>(((WorkflowAndExpression)Parse("not a and b")).Left);
+
+        var clause = Parse("x + 2 * 3 > 1").SingleClause!;
+        var left = (WorkflowBinaryTerm)clause.Left!;
+        Assert.Equal('+', left.Op);
+        Assert.Equal('*', ((WorkflowBinaryTerm)left.Right).Op);
+    }
+
+    [Theory]
+    [InlineData("count(prior_notes) > -1", "-1")]
+    [InlineData("seen_on > 2026-1-1", "2026-1-1")]
+    public void TheWhitespaceRule_KeepsAnUnspacedMinusInTheLiteral(string when, string literal)
+    {
+        // The v9 corpus pins the sentences about these; they stay one clause.
+        var clause = Parse(when).SingleClause;
+        Assert.NotNull(clause);
+        Assert.False(clause!.IsArithmetic);
+        Assert.Equal(literal, clause.Literal);
+    }
+
+    [Fact]
+    public void AV9Text_ParsesToTheV9Record()
+    {
+        var clause = Parse("patient.age >= 65").SingleClause!;
+        Assert.Equal(("patient", "65", false, "age", false, ">=", 1, false, false),
+            (clause.InputId, clause.Literal, clause.Negated, clause.Field, clause.IsCount, clause.Ordering, clause.PathDepth, clause.IsArithmetic, clause.IsNodeValue));
+        Assert.Equal("patient.age", clause.Operand);
+        // And a v9 text with no v10 token never enters the new parser: a bare
+        // word on the right is a literal, as it always was.
+        Assert.Equal("follow_up", Parse("encounter_kind == follow_up").SingleClause!.Literal);
+        Assert.Equal("follow_up", Parse("encounter_kind == follow_up and billable").Leaves.First().Literal);
+    }
+
+    [Theory]
+    [InlineData("a and", "ends where a clause was expected.")]
+    [InlineData("(a or b", "is missing a ')'.")]
+    [InlineData("a > ", "compares against nothing; write a value after the operator.")]
+    [InlineData("a b", "'a b' is not an input id. Write 'when: <input>' or 'when: <input> == <value>'.")]
+    [InlineData("a + > 1", "has '>' where a value was expected.")]
+    [InlineData("""a == "x and b""", "literal '\"x' has a stray quote.")]
+    public void ASyntaxError_IsNamed(string when, string expected)
+    {
+        Assert.False(WorkflowResultConditions.TryParseExpression(when, out _, out var error));
+        Assert.Equal(expected, error);
+    }
+
+    // --- evaluation
+
+    [Theory]
+    [InlineData("length_of_stay > 7 and billable", 10, true, true)]
+    [InlineData("length_of_stay > 7 and billable", 10, false, false)]
+    [InlineData("length_of_stay > 7 or billable", 3, true, true)]
+    [InlineData("length_of_stay > 7 or billable", 3, false, false)]
+    [InlineData("not billable", 3, false, true)]
+    [InlineData("not (length_of_stay > 7 and billable)", 10, true, false)]
+    public void AndOrNot_Combine(string when, int stay, bool billable, bool expected)
+    {
+        Assert.Equal(expected, Holds(when, Inputs(("length_of_stay", ConsultInputValue.OfNumber(stay.ToString())), ("billable", ConsultInputValue.OfBoolean(billable)))));
+    }
+
+    [Fact]
+    public void Absence_IsNeverHeld_AndStaysAbsentUnderNot()
+    {
+        var none = Inputs();
+        Assert.False(Holds("billable", none));
+        Assert.False(Holds("not billable", none));
+        Assert.False(Holds("billable != true", none));
+        Assert.False(Holds("not (billable != true)", none));
+        Assert.False(Holds("billable and length_of_stay > 1", Inputs(("length_of_stay", ConsultInputValue.OfNumber("5")))));
+        // or: one held side is enough even beside an absent one.
+        Assert.True(Holds("billable or length_of_stay > 1", Inputs(("length_of_stay", ConsultInputValue.OfNumber("5")))));
+        // and: absent beside not-held is not held; not over that holds.
+        Assert.True(Holds("not (billable and length_of_stay > 9)", Inputs(("length_of_stay", ConsultInputValue.OfNumber("5")))));
+    }
+
+    [Theory]
+    [InlineData("length_of_stay - 2 > 5", "8", true)]
+    [InlineData("length_of_stay - 2 > 5", "7", false)]
+    [InlineData("length_of_stay * 2 + 1 >= 7", "3", true)]
+    [InlineData("(length_of_stay + 1) * 2 >= 7", "2.5", true)]
+    [InlineData("length_of_stay / 2 > 3", "6.5", true)]
+    [InlineData("- length_of_stay < 0", "1", true)]
+    [InlineData("length_of_stay > count(prior_notes) + 1", "3", true)]
+    public void Arithmetic_Computes(string when, string stay, bool expected)
+    {
+        Assert.Equal(expected, Holds(when, Inputs(("length_of_stay", ConsultInputValue.OfNumber(stay)), ("prior_notes", ConsultInputValue.OfArray(new[] { (ConsultInputValue)"a" })))));
+    }
+
+    [Fact]
+    public void ADate_PlusOrMinusDays()
+    {
+        var seen = Inputs(("seen_on", "2026-01-10"));
+        Assert.True(Holds("seen_on + 30 >= 2026-02-01", seen));
+        Assert.False(Holds("seen_on - 30 >= 2026-01-01", seen));
+        Assert.True(Holds("seen_on - 9 == 2026-01-01", seen));
+    }
+
+    [Fact]
+    public void DivisionByZero_AnswersNothing()
+    {
+        // Absent, not false: `not` over it must not become a held clause.
+        var inputs = Inputs(("length_of_stay", ConsultInputValue.OfNumber("5")), ("zero", ConsultInputValue.OfNumber("0")));
+        Assert.False(Holds("length_of_stay / zero > 1", inputs));
+        Assert.False(Holds("not (length_of_stay / zero > 1)", inputs));
+    }
+
+    [Fact]
+    public void APath_ReadsThroughNestedStructure_AndCountsANestedArray()
+    {
+        var patient = Obj(("contact", Obj(("phone", "555"), ("preferred", "email"))), ("notes", ConsultInputValue.OfArray(new[] { (ConsultInputValue)"a", "b" })));
+        var inputs = Inputs(("patient", patient));
+
+        Assert.True(Holds("patient.contact.preferred == email", inputs));
+        Assert.False(Holds("patient.contact.preferred != email", inputs));
+        Assert.True(Holds("count(patient.notes) == 2", inputs));
+        Assert.True(Holds("count(patient.missing) == 0", inputs)); // a path that stops short counts zero
+        Assert.False(Holds("patient.contact.fax == x", inputs));   // absent
+    }
+
+    [Fact]
+    public void AClassifiersValue_IsReadFromTheClassifications()
+    {
+        var decided = new Dictionary<string, string> { ["scope"] = "out_of_scope" };
+        Assert.True(Holds("node:scope == out_of_scope", Inputs(), decided));
+        Assert.False(Holds("node:scope == in_scope", Inputs(), decided));
+        Assert.True(Holds("node:scope != in_scope", Inputs(), decided));
+        // Absent until the boundary: never held, even negated.
+        Assert.False(Holds("node:scope == in_scope", Inputs(), null));
+        Assert.False(Holds("node:scope != in_scope", Inputs(), null));
+        Assert.False(Holds("not (node:scope == in_scope)", Inputs(), null));
+    }
+
+    // --- Explain
+
+    [Fact]
+    public void OneClause_ReadsExactlyAsV9()
+    {
+        var inputs = Inputs(("billable", ConsultInputValue.OfBoolean(false)), ("patient", Obj(("age", ConsultInputValue.OfNumber("40")))));
+        Assert.Equal("needs billable to be 'true'; it is 'false'", WorkflowResultConditions.Explain(Parse("billable == true"), inputs));
+        Assert.Equal("needs patient.age to be >= 65; it is not", WorkflowResultConditions.Explain(Parse("patient.age >= 65"), inputs));
+    }
+
+    [Fact]
+    public void ACompoundSentence_NamesEachClause_AndNeverThePatientsValue()
+    {
+        var inputs = Inputs(("length_of_stay", ConsultInputValue.OfNumber("3")), ("prior_notes", ConsultInputValue.OfArray(new[] { (ConsultInputValue)"a", "b" })));
+        var sentence = WorkflowResultConditions.Explain(Parse("length_of_stay > 7 and count(prior_notes) > 0"), inputs);
+
+        Assert.Equal("needs (length_of_stay to be > 7 and count(prior_notes) to be > 0); length_of_stay is not, count(prior_notes) is 2", sentence);
+        Assert.DoesNotContain("3", sentence.Replace("count(prior_notes) is 2", string.Empty));
+    }
+
+    [Fact]
+    public void AClassifiersValue_IsPrinted_ItIsDeclared()
+    {
+        var decided = new Dictionary<string, string> { ["scope"] = "out_of_scope" };
+        Assert.Equal("needs node:scope to be 'in_scope'; it is 'out_of_scope'", WorkflowResultConditions.Explain(Parse("node:scope == in_scope"), Inputs(), decided));
+        Assert.Equal("needs node:scope to be 'in_scope'; it is not decided", WorkflowResultConditions.Explain(Parse("node:scope == in_scope"), Inputs(), null));
+    }
+
+    [Fact]
+    public void AnArithmeticClause_PrintsTheTermsByName_NeverAValue()
+    {
+        var sentence = WorkflowResultConditions.Explain(Parse("length_of_stay - 2 > 5"), Inputs(("length_of_stay", ConsultInputValue.OfNumber("4"))));
+        Assert.Equal("needs length_of_stay - 2 to be > 5; it is not", sentence);
+        Assert.Equal("needs length_of_stay - 2 to be > 5; it is not supplied", WorkflowResultConditions.Explain(Parse("length_of_stay - 2 > 5"), Inputs()));
+    }
+
+    // --- validation
+
+    private static WorkflowPackageManifest At10(string when) => V9Fixtures.Conditional(when) with { SpecVersion = 10 };
+
+    private static (WorkflowPackageManifest Manifest, IReadOnlyDictionary<string, string> Files) WithClassifierAt10(string when)
+    {
+        var (manifest, files) = V10Fixtures.WithClassifier(from: At10(when));
+        return (manifest, files);
+    }
+
+    private static IEnumerable<string> ErrorsAt10(string when) => V10Fixtures.Validate(WithClassifierAt10(when)).Errors;
+
+    [Theory]
+    [InlineData("length_of_stay > 7 and billable")]
+    [InlineData("(encounter_kind == follow_up or billable) and not length_of_stay > 30")]
+    [InlineData("length_of_stay - 2 > 5")]
+    [InlineData("seen_on + 30 >= 2026-01-01")]
+    [InlineData("count(prior_notes) * 2 > length_of_stay")]
+    [InlineData("node:scope == in_scope")]
+    [InlineData("node:scope != out_of_scope and billable")]
+    [InlineData("patient.age >= 65")]
+    public void TheGrammarAccepts_At10(string when)
+    {
+        Assert.Empty(ErrorsAt10(when));
+    }
+
+    [Theory]
+    [InlineData("node:nope == x", "reads 'node:nope', which is not a classifier (classifiers: scope).")]
+    [InlineData("node:scope", "'node:scope' tests a classifier for truth; compare it to one of its values instead.")]
+    [InlineData("node:scope > in_scope", "compares 'node:scope' with >; a classifier's value is compared with == or != only.")]
+    [InlineData("node:scope == elsewhere", "compares 'node:scope' to 'elsewhere', which it does not declare (values: in_scope, out_of_scope).")]
+    [InlineData("node:scope + 1 > 0", "uses 'node:scope' in arithmetic; a classifier's value is a symbol, not a number.")]
+    [InlineData("encounter_kind + 1 > 0", "uses 'encounter_kind' in arithmetic, which is an enum; arithmetic applies to a number, a count or a date.")]
+    [InlineData("length_of_stay + 1", "'length_of_stay + 1' is arithmetic with no comparison; write length_of_stay + 1 > 0.")]
+    [InlineData("length_of_stay / 0 > 1", "divides by zero in 'length_of_stay / 0'.")]
+    [InlineData("seen_on * 2 > 2026-01-01", "computes 'seen_on * 2', which is a date * a number; a date admits only ± whole days, and everything else is numbers.")]
+    [InlineData("seen_on + 1 > 7", "compares a date 'seen_on + 1' with a number '7'; both sides of a comparison must be numbers, or both dates.")]
+    [InlineData("length_of_stay + abc > 1", "reads undeclared input 'abc'")]
+    [InlineData("length_of_stay + 1e3 > 1", "uses '1e3' in arithmetic, which is neither a plain decimal nor a date written YYYY-MM-DD.")]
+    [InlineData("patient.age.years > 1", "reads field 'years' of 'patient.age', which is a number, not an object.")]
+    [InlineData("patient.contact.phone == x", "reads field 'contact' of 'patient', which it does not declare (fields: family_name, age, sex).")]
+    [InlineData("length_of_stay > 7 and urgency == high", "reads undeclared input 'urgency'")]
+    [InlineData("billable and encounter_kind", "'encounter_kind' tests an enum for truth; compare it to one of its values instead.")]
+    public void TheGrammarRejects_At10(string when, string expected)
+    {
+        var errors = ErrorsAt10(when).ToList();
+        Assert.Contains(errors, e => e.Contains(expected));
+        Assert.Single(errors);
+    }
+
+    [Theory]
+    [InlineData("length_of_stay > 7 and billable", "condition uses 'and', which requires specVersion 10.")]
+    [InlineData("billable or length_of_stay > 7", "condition uses 'or', which requires specVersion 10.")]
+    [InlineData("not billable", "condition uses 'not', which requires specVersion 10.")]
+    [InlineData("length_of_stay - 2 > 5", "condition uses arithmetic, which requires specVersion 10.")]
+    [InlineData("node:scope == in_scope", "condition reads 'node:scope', which requires specVersion 10.")]
+    [InlineData("patient.age.x >= 1", "condition reads a path of 3 segments, which requires specVersion 10.")]
+    public void BelowTen_EveryFormIsRefusedByName(string when, string expected)
+    {
+        Assert.Contains(V9Fixtures.Validate(V9Fixtures.Conditional(when)).Errors, e => e.Contains(expected));
+    }
+}
