@@ -163,7 +163,16 @@ public record ConsultGenerationJobResponse(
     // or while the job runs.
     string? DeliveryOutcome = null,
     DateTimeOffset? DeliveredAtUtc = null,
-    bool? DeliveryDocumentAttached = null);
+    bool? DeliveryDocumentAttached = null,
+    // v10 (#496): the boundary. Deciding true with DecidedAtUtc null is "not
+    // yet decided" — the count is not known; DecidedAtUtc is when the fire set
+    // was decided (start, for every job without a classifier); Classifications
+    // what the classifiers answered; DecisionFailureKind why a job ended in
+    // the deciding stage ("could-not-decide" | "nothing-applied").
+    bool? Deciding = null,
+    DateTimeOffset? DecidedAtUtc = null,
+    IReadOnlyDictionary<string, string>? Classifications = null,
+    string? DecisionFailureKind = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
@@ -252,7 +261,9 @@ public sealed record ConsultGenerationNodeStatusResponse(
     DateTimeOffset? CompletedAtUtc = null,
     string? Error = null,
     // #375: the definition the pair was computed under; absent before the ladder.
-    int? HashVersion = null);
+    int? HashVersion = null,
+    // v10 (#496): a classifier's answer, a declared value.
+    string? Classification = null);
 
 /// <summary>#390: the body of a reschedule — a job id in the route, a time here.</summary>
 public sealed record RescheduleConsultRequest(DateTimeOffset? ScheduledAtUtc);
