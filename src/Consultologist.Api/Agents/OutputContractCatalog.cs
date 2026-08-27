@@ -20,6 +20,13 @@ public static class OutputContracts
 
     /// <summary>The concept-list shape ClinicalConcept consumption is keyed to.</summary>
     public const string ConceptList = "concept-list";
+
+    /// <summary>
+    /// v10 (#495): a classifying node's one answer from its declared values —
+    /// an object with a single required string `value`. Implied by the
+    /// node's kind, never declared by schema id.
+    /// </summary>
+    public const string Classification = "classification";
 }
 
 /// <summary>One catalog entry: the attested agent pinned for an output shape.</summary>

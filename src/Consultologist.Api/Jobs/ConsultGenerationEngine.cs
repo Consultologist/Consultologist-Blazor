@@ -189,7 +189,8 @@ public sealed class ConsultGenerationOrchestrator
                     input.WorkflowPackage,
                     node.OutputContract,
                     node.ConceptSource,
-                    variableTypes),
+                    variableTypes,
+                    node.Values),
                 AgentActivityRetryOptions)] = (node.Id, item?["id"]);
         }
 
@@ -1022,6 +1023,13 @@ internal static class ConsultNodeVariableResolver
         if (target.OutputContract is null)
         {
             return result.RawOutput;
+        }
+
+        // v10 (#495): a classifier's value renders as its text (§ 4).
+        if (string.Equals(target.OutputContract, OutputContracts.Classification, StringComparison.Ordinal))
+        {
+            return result.Classification
+                ?? throw new InvalidOperationException($"Node '{nodeId}' binding '{variable}' targets classifier '{targetId}', which recorded no value.");
         }
 
         return Render(binding.As ?? WorkflowConceptRenderers.ConceptBullets, result.Concepts
