@@ -895,7 +895,9 @@
   private IReadOnlyDictionary<string, string>? classifications;
   private string? decisionFailureKind;
   private string? startFailureDetail;
-  private bool NotYetDecided => deciding && decidedAtUtc == null && decisionFailureKind == null && runTerminalStatus == null;
+  // A Completed job was decided and a Failed one says how it failed; a
+  // Running, Scheduled or Cancelled job may genuinely never have decided.
+  private bool NotYetDecided => deciding && decidedAtUtc == null && decisionFailureKind == null && runTerminalStatus is not ("Completed" or "Failed");
   private bool HasClassifiers => RailNodes?.Any(node => node.IsClassifier) == true;
   private HashSet<string> completedNodeItems = new();
 
@@ -1792,7 +1794,8 @@
       && stage.EndsWith("-failed", StringComparison.Ordinal);
   }
 
-  private bool IsRunPhase => !editingDraft && (isAiRequestLoading || totalBlockCount > 0);
+  // v10 (#496): a deciding job has no count yet and is still a run.
+  private bool IsRunPhase => !editingDraft && (isAiRequestLoading || totalBlockCount > 0 || deciding);
 
   // The frozen v5/v6 slot, synthesized when a package declares nothing: one
   // required input labelled as the page always labelled it.
