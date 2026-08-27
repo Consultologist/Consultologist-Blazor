@@ -6,7 +6,7 @@ namespace Consultologist.Web.Tests;
 /// <summary>
 /// #402: the browser's recompute and the engine's are two implementations of
 /// one published document. The digests here are copied from
-/// hash-definitions.md (provenance@v2026.08.2) — the same rows
+/// hash-definitions.md (provenance@v2026.08.7; the rows are unchanged since v2026.08.2) — the same rows
 /// tests/ProvenanceVersionSetTests.cs runs through the engine — so both sides
 /// answer to the document, not to each other. (The Web tests do not read the
 /// submodule; the copy is deliberate and the comment says where it came from.)

@@ -49,9 +49,13 @@ public class ProvenanceVersionSetTests
     public void TheEffectiveInputLadder_IsThePublishedOne()
     {
         // 1 is historical and 2 has no named constant (ComputeDraftOnlyHash);
-        // 3, 4 and 5 are the engine's constants.
+        // 3, 4, 5 and 6 are the engine's constants (6 since v10, #499).
         Assert.Equal(
-            new[] { 1, 2, ConsultGenerationProvenance.DeclaredInputsHashVersion, ConsultGenerationProvenance.TypedInputsHashVersion, ConsultGenerationProvenance.StructuredInputsHashVersion },
+            new[]
+            {
+                1, 2, ConsultGenerationProvenance.DeclaredInputsHashVersion, ConsultGenerationProvenance.TypedInputsHashVersion,
+                ConsultGenerationProvenance.StructuredInputsHashVersion, ConsultGenerationProvenance.NestedInputsHashVersion
+            },
             Ladder("effectiveInputHashVersions"));
     }
 
@@ -122,6 +126,54 @@ public class ProvenanceVersionSetTests
                 ["notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("x"), ConsultInputValue.OfText("y") }),
                 ["accent"] = ConsultInputValue.OfText("café")
             }));
+
+    [Fact]
+    public void Definition6_DefinitionFiveRecursed_AndTheControl()
+    {
+        // provenance@v2026.08.7 (#499): a nested object and a nested array
+        // inside an array element, sorted at every level, order kept.
+        Assert.Equal("b6a313365b611c7ec0be83d67237876ae56d4fe5fac3b77e758985551f59037d",
+            ConsultGenerationProvenance.ComputeNestedInputsHash(new Dictionary<string, ConsultInputValue>
+            {
+                ["family_history"] = ConsultInputValue.OfArray(new[]
+                {
+                    ConsultInputValue.OfObject(new[]
+                    {
+                        new ConsultInputEntry("relative", ConsultInputValue.OfText("mother")),
+                        new ConsultInputEntry("contact", ConsultInputValue.OfObject(new[]
+                        {
+                            new ConsultInputEntry("preferred", ConsultInputValue.OfText("email")),
+                            new ConsultInputEntry("phone", ConsultInputValue.OfText("555"))
+                        })),
+                        new ConsultInputEntry("conditions", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("b"), ConsultInputValue.OfText("a") }))
+                    })
+                })
+            }));
+
+        // The control the document states: definition 5's own example, under 6, is the same bytes.
+        var flat = new Dictionary<string, ConsultInputValue>
+        {
+            ["patient"] = ConsultInputValue.OfObject(new[]
+            {
+                new ConsultInputEntry("name", ConsultInputValue.OfText("Ada")),
+                new ConsultInputEntry("age", ConsultInputValue.OfNumber("36"))
+            }),
+            ["notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("x"), ConsultInputValue.OfText("y") }),
+            ["accent"] = ConsultInputValue.OfText("café")
+        };
+        Assert.Equal("52593837462725201bb86daf11e60f1aee9374ec207aaf234457c4713835032b", ConsultGenerationProvenance.ComputeNestedInputsHash(flat));
+        Assert.Equal(ConsultGenerationProvenance.ComputeStructuredInputsHash(flat), ConsultGenerationProvenance.ComputeNestedInputsHash(flat));
+    }
+
+    [Fact]
+    public void AClassifiersOutputHash_IsOverTheNormalisedValue()
+    {
+        // hash-definitions.md § 4 (v2026.08.7): the output side of a classifier
+        // is the declared value the reply resolved to, and the number does not move.
+        Assert.Equal("9464a24113872b892e176555598c34aa1a900ae21b2a7dadc4916b40a423d0cf", ConsultGenerationProvenance.Sha256Hex("in_scope"));
+        Assert.Equal("in_scope", Consultologist.Api.Workflow.ClassificationOutputContract.Normalize("""{"value": " In_Scope "}""", new[] { "in_scope", "out_of_scope" }, "scope"));
+        Assert.Equal(5, ConsultGenerationProvenance.NodeHashVersion);
+    }
 
     [Fact]
     public void OutputDefinitions_1_2_3_AndTheAggregateInput()
