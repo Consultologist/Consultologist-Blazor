@@ -27,6 +27,31 @@ public static class ConditionText
     public static bool ReadsField(string? when, string inputId, string fieldId) =>
         Operands(when).Any(operand => !operand.IsNodeValue && operand.InputId == inputId && operand.Segments.Count > 0 && operand.Segments[0] == fieldId);
 
+    /// <summary>Reads the field at a path below the input (any depth), or anything beneath it.</summary>
+    public static bool ReadsPath(string? when, string inputId, IReadOnlyList<string> segments) =>
+        Operands(when).Any(operand => !operand.IsNodeValue && operand.InputId == inputId && StartsWith(operand.Segments, segments));
+
+    /// <summary>Compares the field at a path below the input to the literal, in any clause.</summary>
+    public static bool TestsPath(string? when, string inputId, IReadOnlyList<string> segments, string value) =>
+        Parse(when)?.Leaves.Any(leaf => !leaf.IsArithmetic && !leaf.IsNodeValue && leaf.InputId == inputId
+            && leaf.Segments.SequenceEqual(segments, StringComparer.Ordinal) && leaf.Literal == value) ?? false;
+
+    /// <summary>The condition with the field at a path renamed wherever it, or anything beneath it, is read.</summary>
+    public static string RenamePath(string when, string inputId, IReadOnlyList<string> segments, string newLast) =>
+        Map(when, clause => clause.InputId == inputId && !clause.IsNodeValue && StartsWith(clause.Segments, segments)
+            ? Renamed(clause, segments.Count - 1, newLast)
+            : clause);
+
+    private static WorkflowResultCondition Renamed(WorkflowResultCondition clause, int index, string newSegment)
+    {
+        var path = clause.Segments.ToList();
+        path[index] = newSegment;
+        return clause with { Field = path[0], Path = clause.Path is null && path.Count == 1 ? null : path };
+    }
+
+    private static bool StartsWith(IReadOnlyList<string> segments, IReadOnlyList<string> prefix) =>
+        prefix.Count > 0 && segments.Count >= prefix.Count && prefix.SequenceEqual(segments.Take(prefix.Count), StringComparer.Ordinal);
+
     public static bool ReadsNode(string? when, string nodeId) =>
         Operands(when).Any(operand => operand.IsNodeValue && operand.NodeId == nodeId);
 

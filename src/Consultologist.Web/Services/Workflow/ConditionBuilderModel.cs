@@ -159,6 +159,19 @@ public static class ConditionBuilderModel
     public static bool IsComplete(ConditionGroup root) => Clauses(root).All(clause => !clause.IsEmpty);
 
     /// <summary>
+    /// The tree's shape, spelled — two trees that read the same way describe
+    /// the same. The text alone does not carry every shape (a group of one,
+    /// or a group under a parent of the same join), which is why the editor
+    /// keeps the tree beside the text when they differ.
+    /// </summary>
+    public static string Describe(ConditionNode node) => node switch
+    {
+        ConditionClause clause => $"{(clause.Not ? "!" : "")}[{clause.Operand}|{clause.Operator}|{clause.Literal}|{clause.Arithmetic?.Op}{clause.Arithmetic?.Right}]",
+        ConditionGroup group => $"{(group.Not ? "!" : "")}{group.Join}({string.Join(",", group.Items.Select(Describe))})",
+        _ => string.Empty
+    };
+
+    /// <summary>
     /// The condition's text, through the format's writer; null when a clause
     /// is not yet chosen, or when a clause's own text does not parse (a
     /// literal with a space). A root holding one empty clause is the null

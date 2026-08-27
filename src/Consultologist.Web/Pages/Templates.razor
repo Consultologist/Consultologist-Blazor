@@ -896,84 +896,10 @@
                                         }
                                         else
                                         {
-                                            var operandKey = WorkflowResultConditionText.OperandOf(deliverable.When);
-                                            var operand = ConditionOperands.FirstOrDefault(candidate => candidate.Key == operandKey);
-                                            <select class="node-field__input"
-                                                    value="@(operandKey ?? string.Empty)"
-                                                    @onchange="args => SetResultConditionAsync(deliverable, args.Value?.ToString())"
-                                                    aria-label="@($"Condition operand for {deliverable.Id}")">
-                                                <option value="">always produced</option>
-                                                @if (operandKey != null && operand is null)
-                                                {
-                                                    @* A loaded condition naming something not offered
-                                                       here — shown as itself, never rewritten. *@
-                                                    <option value="@operandKey">when @operandKey</option>
-                                                }
-                                                @foreach (var candidate in ConditionOperands)
-                                                {
-                                                    <option value="@candidate.Key">when @candidate.Key</option>
-                                                }
-                                            </select>
-
-                                            @if (operand is { } tested)
-                                            {
-                                                @if (tested.Type == WorkflowInputTypes.Array)
-                                                {
-                                                    <span class="muted-text declared-row__literal">has entries</span>
-                                                }
-                                                else
-                                                {
-                                                    <select class="node-field__input"
-                                                            value="@(WorkflowResultConditionText.OperatorOf(deliverable.When) ?? "==")"
-                                                            @onchange="args => SetConditionOperatorAsync(deliverable, tested.Key, args.Value?.ToString())"
-                                                            aria-label="@($"Condition operator for {deliverable.Id}")">
-                                                        @foreach (var symbol in OperatorsFor(tested.Type))
-                                                        {
-                                                            <option value="@symbol">@OperatorWord(symbol)</option>
-                                                        }
-                                                    </select>
-                                                    @if (tested.Type == WorkflowInputTypes.Boolean)
-                                                    {
-                                                        <select class="node-field__input declared-row__literal"
-                                                                value="@(WorkflowResultConditionText.LiteralOf(deliverable.When) ?? string.Empty)"
-                                                                @onchange="args => SetResultConditionAsync(deliverable, tested.Key, null, args.Value?.ToString())"
-                                                                aria-label="@($"Condition value for {deliverable.Id}")">
-                                                            <option value="true">true</option>
-                                                            <option value="false">false</option>
-                                                        </select>
-                                                    }
-                                                    else if (tested.Type is WorkflowInputTypes.Enum or NodeValueType)
-                                                    {
-                                                        <select class="node-field__input declared-row__literal"
-                                                                value="@(WorkflowResultConditionText.LiteralOf(deliverable.When) ?? string.Empty)"
-                                                                @onchange="args => SetResultConditionAsync(deliverable, tested.Key, null, args.Value?.ToString())"
-                                                                aria-label="@($"Condition value for {deliverable.Id}")">
-                                                            @foreach (var option in tested.Values ?? Array.Empty<string>())
-                                                            {
-                                                                <option value="@option">@option</option>
-                                                            }
-                                                        </select>
-                                                    }
-                                                    else if (tested.Type == WorkflowInputTypes.Date)
-                                                    {
-                                                        <input type="date"
-                                                               class="node-field__input declared-row__literal"
-                                                               value="@(WorkflowResultConditionText.LiteralOf(deliverable.When) ?? string.Empty)"
-                                                               @onchange="args => SetResultConditionAsync(deliverable, tested.Key, null, args.Value?.ToString())"
-                                                               aria-label="@($"Condition value for {deliverable.Id}")" />
-                                                    }
-                                                    else
-                                                    {
-                                                        @* A number as spelled, or a count as a whole number. *@
-                                                        <input type="text"
-                                                               inputmode="@(tested.Type == CountType ? "numeric" : "decimal")"
-                                                               class="node-field__input declared-row__literal"
-                                                               value="@(WorkflowResultConditionText.LiteralOf(deliverable.When) ?? string.Empty)"
-                                                               @onchange="args => SetResultConditionAsync(deliverable, tested.Key, null, args.Value?.ToString())"
-                                                               aria-label="@($"Condition value for {deliverable.Id}")" />
-                                                    }
-                                                }
-                                            }
+                                            @* v10 (#498): the expression builder — one clause is
+                                               the v9 editor exactly; at 10 clauses join, group and
+                                               negate, and a number may carry one arithmetic term. *@
+                                            @ConditionEditor(deliverable)
                                         }
                                     </li>
                                 }
@@ -1322,6 +1248,241 @@
 </AuthorizeView>
 
 @code {
+  // ----- v10 (#498): the condition expression builder ----------------------
+
+  /// <summary>Where a condition fragment draws: the document, its tree, and the index path to the node.</summary>
+  private sealed record ConditionScope(WorkflowManifestReader.ResultView Result, ConditionGroup Root, IReadOnlyList<int> Path);
+
+  /// <summary>
+  /// A document's condition: the tree, or — for an expression the tree cannot
+  /// hold — the text as itself, clearable and never rewritten (the v9 path).
+  /// </summary>
+  private RenderFragment<WorkflowManifestReader.ResultView> ConditionEditor => deliverable =>
+    @<text>
+      @{
+        var state = ConditionState(deliverable);
+      }
+      @if (state.Verbatim is { } verbatim)
+      {
+        <code class="declared-row__verbatim" aria-label="@($"Condition for {deliverable.Id}")">@verbatim</code>
+        <button type="button" class="aggregate-row__button" aria-label="@($"Clear condition for {deliverable.Id}")"
+                @onclick="() => ClearConditionAsync(deliverable)">clear</button>
+      }
+      else
+      {
+        @ConditionGroupView(new ConditionScope(deliverable, state.Root, Array.Empty<int>()))
+      }
+    </text>;
+
+  /// <summary>
+  /// One group: its clauses and groups as rows, joined by and/or, negatable;
+  /// at 10 a clause or a group may be added and a nested group removed. The
+  /// root with one clause is the v9 editor exactly — no group controls.
+  /// </summary>
+  private RenderFragment<ConditionScope> ConditionGroupView => scope =>
+    @<text>
+      @{
+        var group = (ConditionGroup)ConditionBuilderModel.At(scope.Root, scope.Path)!;
+        var documentId = scope.Result.Id;
+        var suffix = scope.Path.Count == 0 ? string.Empty : " " + string.Join(".", scope.Path);
+        var v10 = EffectiveSpecVersion >= 10;
+        var single = scope.Path.Count == 0 && group.Items.Count == 1 && group.Items[0] is ConditionClause;
+      }
+      <div class="@(scope.Path.Count == 0 ? "condition-group" : "condition-group condition-group--nested")" data-condition-path="@string.Join(".", scope.Path)">
+        @if (v10 && !single)
+        {
+          <span class="condition-group__head">
+            <label class="condition-group__not">
+              <input type="checkbox" checked="@group.Not"
+                     @onchange="args => SetGroupNegatedAsync(scope.Result, scope.Path, args.Value is true)"
+                     aria-label="@($"Negate condition group for {documentId}{suffix}")" /> not
+            </label>
+            @if (group.Items.Count > 1)
+            {
+              <select class="node-field__input condition-group__join" value="@group.Join"
+                      @onchange="args => SetGroupJoinAsync(scope.Result, scope.Path, args.Value?.ToString())"
+                      aria-label="@($"Condition join for {documentId}{suffix}")">
+                <option value="and">all of</option>
+                <option value="or">any of</option>
+              </select>
+            }
+          </span>
+        }
+        @for (var i = 0; i < group.Items.Count; i++)
+        {
+          var path = scope.Path.Append(i).ToList();
+          @if (group.Items[i] is ConditionGroup)
+          {
+            @ConditionGroupView(scope with { Path = path })
+          }
+          else
+          {
+            @ConditionClauseView(scope with { Path = path })
+          }
+        }
+        @if (v10)
+        {
+          <span class="condition-group__buttons">
+            <button type="button" class="input-field__add" aria-label="@($"Add condition clause to {documentId}{suffix}")"
+                    @onclick="() => AddClauseAsync(scope.Result, scope.Path)">+ clause</button>
+            <button type="button" class="input-field__add" aria-label="@($"Add condition group to {documentId}{suffix}")"
+                    @onclick="() => AddGroupAsync(scope.Result, scope.Path)">+ group</button>
+            @if (scope.Path.Count > 0)
+            {
+              <button type="button" class="aggregate-row__button" aria-label="@($"Remove condition group for {documentId}{suffix}")"
+                      @onclick="() => RemoveConditionNodeAsync(scope.Result, scope.Path)">remove group</button>
+            }
+          </span>
+        }
+      </div>
+    </text>;
+
+  /// <summary>
+  /// One clause: v9's three pickers — the literal follows the operand's
+  /// type — and, at 10, a not toggle, an arithmetic term row for a number
+  /// or a count, and removal. The first clause in document order keeps the
+  /// labels the v9 editor gave it; later ones are "clause N".
+  /// </summary>
+  private RenderFragment<ConditionScope> ConditionClauseView => scope =>
+    @<text>
+      @{
+        var clause = (ConditionClause)ConditionBuilderModel.At(scope.Root, scope.Path)!;
+        var documentId = scope.Result.Id;
+        var ordinal = ClauseOrdinal(scope.Root, scope.Path);
+        var suffix = ordinal == 1 ? string.Empty : $" clause {ordinal}";
+        var v10 = EffectiveSpecVersion >= 10;
+        var single = scope.Path.Count == 1 && scope.Root.Items.Count == 1;
+        var operand = ConditionOperands.FirstOrDefault(candidate => candidate.Key == clause.Operand);
+        var arithmeticOperands = ConditionOperands.Where(candidate => candidate.Type is WorkflowInputTypes.Number or CountType).ToList();
+      }
+      <span class="condition-clause" data-condition-path="@string.Join(".", scope.Path)">
+        @if (v10)
+        {
+          <label class="condition-clause__not">
+            <input type="checkbox" checked="@clause.Not"
+                   @onchange="args => SetClauseNegatedAsync(scope.Result, scope.Path, args.Value is true)"
+                   aria-label="@($"Negate condition for {documentId}{suffix}")" /> not
+          </label>
+        }
+        <select class="node-field__input"
+                value="@clause.Operand"
+                @onchange="args => SetClauseOperandAsync(scope.Result, scope.Path, args.Value?.ToString())"
+                aria-label="@($"Condition operand for {documentId}{suffix}")">
+          @* The sole clause's empty choice is the null condition; a clause
+             beside others has no meaning until chosen — never a default. *@
+          <option value="">@(single ? "always produced" : "choose…")</option>
+          @if (!clause.IsEmpty && operand is null)
+          {
+            @* A loaded condition naming something not offered
+               here — shown as itself, never rewritten. *@
+            <option value="@clause.Operand">when @clause.Operand</option>
+          }
+          @foreach (var candidate in ConditionOperands)
+          {
+            <option value="@candidate.Key">when @candidate.Key</option>
+          }
+        </select>
+
+        @if (operand is { } tested)
+        {
+          @if (v10 && tested.Type is WorkflowInputTypes.Number or CountType)
+          {
+            <select class="node-field__input condition-clause__arithmetic"
+                    value="@(clause.Arithmetic?.Op.ToString() ?? string.Empty)"
+                    @onchange="args => SetClauseArithmeticAsync(scope.Result, scope.Path, args.Value?.ToString())"
+                    aria-label="@($"Condition arithmetic for {documentId}{suffix}")">
+              <option value="">as is</option>
+              <option value="+">plus</option>
+              <option value="-">minus</option>
+              <option value="*">times</option>
+              <option value="/">divided by</option>
+            </select>
+            @if (clause.Arithmetic is { } arithmetic)
+            {
+              <select class="node-field__input"
+                      value="@(arithmetic.RightIsLiteral ? string.Empty : arithmetic.Right)"
+                      @onchange="args => SetClauseArithmeticRightAsync(scope.Result, scope.Path, args.Value?.ToString(), literal: null)"
+                      aria-label="@($"Condition arithmetic operand for {documentId}{suffix}")">
+                <option value="">a number…</option>
+                @foreach (var candidate in arithmeticOperands)
+                {
+                  <option value="@candidate.Key">@candidate.Key</option>
+                }
+              </select>
+              @if (arithmetic.RightIsLiteral)
+              {
+                <input type="text" inputmode="decimal" class="node-field__input declared-row__literal"
+                       value="@arithmetic.Right"
+                       @onchange="args => SetClauseArithmeticRightAsync(scope.Result, scope.Path, null, literal: args.Value?.ToString())"
+                       aria-label="@($"Condition arithmetic value for {documentId}{suffix}")" />
+              }
+            }
+          }
+          @if (tested.Type == WorkflowInputTypes.Array)
+          {
+            <span class="muted-text declared-row__literal">has entries</span>
+          }
+          else
+          {
+            <select class="node-field__input"
+                    value="@(clause.Operator ?? "==")"
+                    @onchange="args => SetClauseOperatorAsync(scope.Result, scope.Path, args.Value?.ToString())"
+                    aria-label="@($"Condition operator for {documentId}{suffix}")">
+              @foreach (var symbol in OperatorsFor(tested.Type))
+              {
+                <option value="@symbol">@OperatorWord(symbol)</option>
+              }
+            </select>
+            @if (tested.Type == WorkflowInputTypes.Boolean)
+            {
+              <select class="node-field__input declared-row__literal"
+                      value="@clause.Literal"
+                      @onchange="args => SetClauseLiteralAsync(scope.Result, scope.Path, args.Value?.ToString())"
+                      aria-label="@($"Condition value for {documentId}{suffix}")">
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+            }
+            else if (tested.Type is WorkflowInputTypes.Enum or NodeValueType)
+            {
+              <select class="node-field__input declared-row__literal"
+                      value="@clause.Literal"
+                      @onchange="args => SetClauseLiteralAsync(scope.Result, scope.Path, args.Value?.ToString())"
+                      aria-label="@($"Condition value for {documentId}{suffix}")">
+                @foreach (var option in tested.Values ?? Array.Empty<string>())
+                {
+                  <option value="@option">@option</option>
+                }
+              </select>
+            }
+            else if (tested.Type == WorkflowInputTypes.Date)
+            {
+              <input type="date"
+                     class="node-field__input declared-row__literal"
+                     value="@clause.Literal"
+                     @onchange="args => SetClauseLiteralAsync(scope.Result, scope.Path, args.Value?.ToString())"
+                     aria-label="@($"Condition value for {documentId}{suffix}")" />
+            }
+            else
+            {
+              @* A number as spelled, or a count as a whole number. *@
+              <input type="text"
+                     inputmode="@(tested.Type == CountType ? "numeric" : "decimal")"
+                     class="node-field__input declared-row__literal"
+                     value="@clause.Literal"
+                     @onchange="args => SetClauseLiteralAsync(scope.Result, scope.Path, args.Value?.ToString())"
+                     aria-label="@($"Condition value for {documentId}{suffix}")" />
+            }
+          }
+        }
+        @if (v10 && !single)
+        {
+          <button type="button" class="aggregate-row__button" aria-label="@($"Remove condition clause for {documentId}{suffix}")"
+                  @onclick="() => RemoveConditionNodeAsync(scope.Result, scope.Path)">×</button>
+        }
+      </span>
+    </text>;
+
   /// <summary>
   /// v9: an object's fields — each with its own id, label, requiredness and
   /// type. v10 (#498): a field may be an object or an array, and then this
@@ -1707,6 +1868,10 @@
                 () => $"{bindingEdits.Count} rebound", () => bindingEdits.Count > 0),
             new("nodeEdits", () => nodeEdits.Count, nodeEdits.Clear,
                 () => $"{nodeEdits.Count} {Plural(nodeEdits.Count, "node")}", () => nodeEdits.Count > 0),
+            // v10 (#498): a condition with a clause not yet chosen — held, never
+            // written, and named until it is.
+            new("conditionDrafts", () => conditionDrafts.Count, conditionDrafts.Clear,
+                () => $"{conditionDrafts.Count} {Plural(conditionDrafts.Count, "condition")} in progress", () => false),
             new("addedNodes", () => addedNodes.Count, addedNodes.Clear,
                 () => $"+{addedNodes.Count} {Plural(addedNodes.Count, "node")}", () => addedNodes.Count > 0),
             new("removedNodeIds", () => removedNodeIds.Count, removedNodeIds.Clear,
@@ -2238,7 +2403,7 @@
 
             var conditional = EffectiveResults
                 .Where(result => !string.IsNullOrWhiteSpace(result.When)
-                    && !WorkflowResultConditionText.IsV9Form(result.When))
+                    && !IsV9Form(result.When))
                 .Select(result => $"'{result.Id}'")
                 .ToList();
 
@@ -2262,7 +2427,7 @@
                 .Select(input => $"Input '{input.Id}' declares a type that requires specVersion 9. {upgrade}"));
 
             errors.AddRange(EffectiveResults
-                .Where(result => WorkflowResultConditionText.IsV9Form(result.When) && !WorkflowResultConditionText.IsV10Form(result.When))
+                .Where(result => IsV9Form(result.When) && !IsV10Form(result.When))
                 .Select(result => $"Document '{result.Id}' declares a condition form that requires specVersion 9. {upgrade}"));
 
             errors.AddRange(EffectiveNodes
@@ -2368,61 +2533,80 @@
 
         // The condition's twin of the binding check above: whatever path left
         // it inconsistent, it is caught at the desk rather than after minting
-        // a version.
-        foreach (var conditioned in results.Where(result => !string.IsNullOrWhiteSpace(result.When)))
+        // a version. v10 (#498): the expression is read by the format's own
+        // parser; each clause is judged as the v9 desk judged the one — a
+        // node clause in the server's words, arithmetic and deeper paths
+        // left to the server — and below 10 a v10 form names the rung.
+        foreach (var conditioned in results)
         {
-            // v10 (#498): one clause over a classifier's answer is the desk's
-            // to judge in the server's words; below 10 it is refused with the
-            // rest of the v10 forms.
-            if (EffectiveSpecVersion >= 10 && NodeClauseComplaint(conditioned) is { } nodeComplaint)
+            var prefix = $"Result '{conditioned.Id}' condition";
+
+            if (conditionDrafts.TryGetValue(conditioned.Id, out var draft) && IsUnwritable(draft))
             {
-                if (nodeComplaint.Length > 0)
+                errors.Add(ConditionBuilderModel.IsComplete(draft)
+                    ? $"Document '{conditioned.Id}' condition has a clause the format cannot read; finish it or remove it."
+                    : $"Document '{conditioned.Id}' condition has a clause with no operand chosen.");
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(conditioned.When))
+            {
+                continue;
+            }
+
+            if (!PF.WorkflowResultConditions.TryParseExpression(conditioned.When, out var expression, out var parseError) || expression is null)
+            {
+                errors.Add($"{prefix} {parseError}");
+                continue;
+            }
+
+            if (EffectiveSpecVersion < 10 && expression.FirstV10Form != null)
+            {
+                errors.Add($"Document '{conditioned.Id}' declares a condition expression that requires specVersion 10. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.");
+                continue;
+            }
+
+            foreach (var clause in expression.Leaves)
+            {
+                if (clause.IsNodeValue)
                 {
-                    errors.Add(nodeComplaint);
+                    if (NodeClauseComplaint(conditioned.Id, clause) is { Length: > 0 } nodeComplaint)
+                    {
+                        errors.Add(nodeComplaint);
+                    }
+
+                    continue;
                 }
 
-                continue;
-            }
-
-            // v10 (#494): an expression is the server's to judge — the desk
-            // names the version it needs below 10 and otherwise steps aside.
-            if (WorkflowResultConditionText.IsV10Form(conditioned.When))
-            {
-                if (EffectiveSpecVersion < 10)
+                if (clause.IsArithmetic || clause.PathDepth >= 2)
                 {
-                    errors.Add($"Document '{conditioned.Id}' declares a condition expression that requires specVersion 10. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.");
+                    continue;
                 }
 
-                continue;
-            }
+                var tested = inputs.FirstOrDefault(input => input.Id == clause.InputId);
 
-            var testedId = WorkflowResultConditionText.InputOf(conditioned.When);
-            var tested = inputs.FirstOrDefault(input => input.Id == testedId);
-
-            if (tested == null)
-            {
-                errors.Add($"Result '{conditioned.Id}' condition reads undeclared input '{testedId}'.");
-                continue;
-            }
-
-            var literal = WorkflowResultConditionText.LiteralOf(conditioned.When);
-
-            if (EffectiveSpecVersion < 9)
-            {
-                if (WorkflowInputTypes.Of(tested) == WorkflowInputTypes.Enum
-                    && literal != null
-                    && tested.Values?.Contains(literal, StringComparer.Ordinal) != true)
+                if (tested == null)
                 {
-                    errors.Add(
-                        $"Result '{conditioned.Id}' condition compares '{tested.Id}' to '{literal}', which it does not declare.");
+                    errors.Add($"{prefix} reads undeclared input '{clause.InputId}'.");
+                    continue;
                 }
 
-                continue;
-            }
+                if (EffectiveSpecVersion < 9)
+                {
+                    if (WorkflowInputTypes.Of(tested) == WorkflowInputTypes.Enum
+                        && clause.Literal != null
+                        && tested.Values?.Contains(clause.Literal, StringComparer.Ordinal) != true)
+                    {
+                        errors.Add($"{prefix} compares '{tested.Id}' to '{clause.Literal}', which it does not declare.");
+                    }
 
-            if (V9ConditionComplaint(conditioned, tested) is { } complaint)
-            {
-                errors.Add(complaint);
+                    continue;
+                }
+
+                if (V9ConditionComplaint(conditioned.Id, clause, tested) is { } complaint)
+                {
+                    errors.Add(complaint);
+                }
             }
         }
 
@@ -2433,11 +2617,13 @@
 
         // v10 (#498): a classifier a condition reads cannot be removed —
         // the condition's lock, said at the desk rather than on the card.
-        errors.AddRange(results
-            .Where(result => WorkflowResultConditionText.OperandOf(result.When) is { } key
-                && key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)
-                && removedNodeIds.Contains(key[NodeKeyPrefix.Length..]))
-            .Select(result => $"Document '{result.Id}' tests '{WorkflowResultConditionText.OperandOf(result.When)}', which is removed; change that document's condition or restore the node."));
+        foreach (var result in results)
+        {
+            foreach (var removed in removedNodeIds.Where(id => ConditionText.ReadsNode(result.When, id)).Order(StringComparer.Ordinal))
+            {
+                errors.Add($"Document '{result.Id}' tests 'node:{removed}', which is removed; change that document's condition or restore the node.");
+            }
+        }
 
         errors.AddRange(results
             .Where(result => string.IsNullOrWhiteSpace(result.Label))
@@ -2468,19 +2654,19 @@
     /// Null when the condition is sound.
     /// </summary>
     private static string? V9ConditionComplaint(
-        WorkflowManifestReader.ResultView result,
+        string resultId,
+        PF.WorkflowResultCondition clause,
         WorkflowManifestReader.InputView tested)
     {
-        var prefix = $"Result '{result.Id}' condition";
-        var when = result.When;
-        var operand = WorkflowResultConditionText.OperandOf(when) ?? tested.Id;
-        var op = WorkflowResultConditionText.OperatorOf(when);
-        var literal = WorkflowResultConditionText.LiteralOf(when);
+        var prefix = $"Result '{resultId}' condition";
+        var operand = clause.Operand;
+        var op = clause.Operator;
+        var literal = clause.Literal;
         var inputType = WorkflowInputTypes.Of(tested);
         string type;
         IReadOnlyList<string>? values;
 
-        if (WorkflowResultConditionText.IsCount(when))
+        if (clause.IsCount)
         {
             if (inputType != WorkflowInputTypes.Array)
             {
@@ -2490,8 +2676,9 @@
             type = CountType;
             values = null;
         }
-        else if (WorkflowResultConditionText.FieldOf(when) is { } fieldId)
+        else if (clause.Segments.Count > 0)
         {
+            var fieldId = clause.Segments[0];
             if (inputType != WorkflowInputTypes.Object)
             {
                 return $"{prefix} reads field '{fieldId}' of '{tested.Id}', which is a {inputType}, not an object.";
@@ -2539,7 +2726,7 @@
             return $"{prefix} compares '{operand}', which is an {type}; compare one of its fields, or its count, instead.";
         }
 
-        if (WorkflowResultConditionText.IsOrdered(when) && type is not (WorkflowInputTypes.Number or WorkflowInputTypes.Date or CountType))
+        if (clause.IsOrdered && type is not (WorkflowInputTypes.Number or WorkflowInputTypes.Date or CountType))
         {
             return $"{prefix} compares '{operand}' with {op}, which is a {type}; ordering operators apply to a number or a date.";
         }
@@ -2562,21 +2749,12 @@
 
     /// <summary>
     /// v10 (#498): the desk's check of one clause reading node:&lt;id&gt; — the
-    /// server's sentences (WorkflowPackageValidator). Null when the condition
-    /// is not a single node clause; empty when it is and is sound.
+    /// server's sentences (WorkflowPackageValidator). Empty when sound.
     /// </summary>
-    private string? NodeClauseComplaint(WorkflowManifestReader.ResultView result)
+    private string? NodeClauseComplaint(string resultId, PF.WorkflowResultCondition clause)
     {
-        var when = result.When ?? string.Empty;
-        var operand = WorkflowResultConditionText.OperandOf(when);
-        if (operand is null || !operand.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)
-            || !PF.WorkflowResultConditions.TryParseExpression(when, out var expression, out _)
-            || expression.SingleClause is not { } clause)
-        {
-            return null;
-        }
-
-        var prefix = $"Result '{result.Id}' condition";
+        var operand = clause.Operand;
+        var prefix = $"Result '{resultId}' condition";
         var classifiers = EffectiveNodes.Where(node => node.IsClassifier).ToDictionary(node => node.Id, StringComparer.Ordinal);
         if (clause.NodeId is null || !classifiers.TryGetValue(clause.NodeId, out var classifier))
         {
@@ -2878,7 +3056,7 @@
     private IReadOnlyList<string> ResultsConditionedOn(string inputId) =>
         EffectiveResults
             .Where(result => !string.IsNullOrWhiteSpace(result.When)
-                && WorkflowResultConditionText.ReadsInput(result.When!, inputId))
+                && ConditionText.ReadsInput(result.When!, inputId))
             .Select(result => result.Label)
             .ToList();
 
@@ -2964,7 +3142,7 @@
         // rename has to reach both. Only touched when a condition actually
         // reads the old id — MutableResults() would otherwise mark the
         // documents pending for a rename that has nothing to do with them.
-        if (!EffectiveResults.Any(result => WorkflowResultConditionText.ReadsInput(result.When, oldId)))
+        if (!EffectiveResults.Any(result => ConditionText.ReadsInput(result.When, oldId)))
         {
             return;
         }
@@ -2973,7 +3151,7 @@
 
         for (var index = 0; index < results.Count; index++)
         {
-            if (!WorkflowResultConditionText.ReadsInput(results[index].When, oldId))
+            if (!ConditionText.ReadsInput(results[index].When, oldId))
             {
                 continue;
             }
@@ -2982,7 +3160,7 @@
             // compose (a field, a count, an ordering) survives the rename.
             results[index] = results[index] with
             {
-                When = WorkflowResultConditionText.Rename(results[index].When!, newId)
+                When = ConditionText.RenameInput(results[index].When!, oldId, newId)
             };
         }
     }
@@ -3078,8 +3256,7 @@
     /// </summary>
     private IReadOnlyList<string> ResultsComparedTo(string inputId, string value) =>
         EffectiveResults
-            .Where(result => WorkflowResultConditionText.ReadsInput(result.When, inputId)
-                && WorkflowResultConditionText.LiteralOf(result.When) == value)
+            .Where(result => ConditionText.TestsValue(result.When, inputId, null, value))
             .Select(result => result.Label)
             .ToList();
 
@@ -3113,6 +3290,10 @@
 
     /// <summary>v10 (#498): a field's owner is a path — the input, or a field below it ("patient.contact").</summary>
     private static string InputIdOf(string owner) => owner.Split('.')[0];
+
+    /// <summary>The segments below the input down to a field: owner "patient.contact", field "phone" → contact, phone.</summary>
+    private static IReadOnlyList<string> PathSegments(string owner, string fieldId) =>
+        owner.Split('.').Skip(1).Append(fieldId).ToList();
 
     /// <summary>The field's path below its input, as the sentences spell it: "contact.phone".</summary>
     private static string FieldPathOf(string owner, string fieldId)
@@ -3258,10 +3439,7 @@
         }
 
         UpdateField(owner, field.Id, existing => existing with { Id = id });
-        if (!owner.Contains('.'))
-        {
-            CascadeFieldRename(owner, field.Id, id);
-        }
+        CascadeFieldRename(owner, field.Id, id);
         declaredError = null;
         await CommitDeclarationAsync();
     }
@@ -3272,11 +3450,11 @@
     /// field — MutableResults() would otherwise mark the documents pending for
     /// a rename that has nothing to do with them.
     /// </summary>
-    private void CascadeFieldRename(string inputId, string oldField, string newField)
+    private void CascadeFieldRename(string owner, string oldField, string newField)
     {
-        if (!EffectiveResults.Any(result =>
-            WorkflowResultConditionText.ReadsInput(result.When, inputId)
-            && WorkflowResultConditionText.FieldOf(result.When) == oldField))
+        var inputId = InputIdOf(owner);
+        var segments = PathSegments(owner, oldField);
+        if (!EffectiveResults.Any(result => ConditionText.ReadsPath(result.When, inputId, segments)))
         {
             return;
         }
@@ -3289,7 +3467,7 @@
             {
                 results[index] = results[index] with
                 {
-                    When = WorkflowResultConditionText.RenameField(when, inputId, oldField, newField)
+                    When = ConditionText.RenamePath(when, inputId, segments, newField)
                 };
             }
         }
@@ -3381,11 +3559,8 @@
 
     private async Task RemoveFieldValueAsync(string owner, WorkflowManifestReader.FieldView field, string value)
     {
-        // A condition reads a top-level field by path; deeper is the builder's (step (g) PR 3).
-        var dependents = owner.Contains('.') ? new List<string>() : EffectiveResults
-            .Where(result => WorkflowResultConditionText.ReadsInput(result.When, owner)
-                && WorkflowResultConditionText.FieldOf(result.When) == field.Id
-                && WorkflowResultConditionText.LiteralOf(result.When) == value)
+        var dependents = EffectiveResults
+            .Where(result => ConditionText.TestsPath(result.When, InputIdOf(owner), PathSegments(owner, field.Id), value))
             .Select(result => result.Label)
             .ToList();
 
@@ -3410,9 +3585,8 @@
     /// </summary>
     private string? FieldLock(string owner, WorkflowManifestReader.FieldView field)
     {
-        var dependents = owner.Contains('.') ? new List<string>() : EffectiveResults
-            .Where(result => WorkflowResultConditionText.ReadsInput(result.When, owner)
-                && WorkflowResultConditionText.FieldOf(result.When) == field.Id)
+        var dependents = EffectiveResults
+            .Where(result => ConditionText.ReadsPath(result.When, InputIdOf(owner), PathSegments(owner, field.Id)))
             .Select(result => result.Label)
             .ToList();
 
@@ -3579,81 +3753,230 @@
         _ => symbol
     };
 
+    // ----- v10 (#498): the condition expression builder's state -----------
+
     /// <summary>
-    /// The deliverable's condition, composed from the three controls. An empty
-    /// operand clears it — an unconditional deliverable always fires.
+    /// A tree not yet writable — a clause with no operand chosen, or one the
+    /// format cannot read — held per document until it is. The one place the
+    /// tree is component state: a complete tree is its text on the document.
     /// </summary>
-    private async Task SetResultConditionAsync(
-        WorkflowManifestReader.ResultView result,
-        string? operandKey,
-        string? op = null,
-        string? literal = null)
+    private readonly Dictionary<string, ConditionGroup> conditionDrafts = new(StringComparer.Ordinal);
+
+    private (ConditionGroup Root, string? Verbatim) ConditionState(WorkflowManifestReader.ResultView result)
     {
+        if (conditionDrafts.TryGetValue(result.Id, out var draft))
+        {
+            return (draft, null);
+        }
+
+        return ConditionBuilderModel.TryFromText(result.When, out var root, out var verbatim) ? (root, null) : (root, verbatim);
+    }
+
+    /// <summary>1-based position of the clause at the path among every clause in document order.</summary>
+    private static int ClauseOrdinal(ConditionGroup root, IReadOnlyList<int> path)
+    {
+        var ordinal = 0;
+        return Find(root, Array.Empty<int>()) ? ordinal : 0;
+
+        bool Find(ConditionGroup group, IReadOnlyList<int> at)
+        {
+            for (var index = 0; index < group.Items.Count; index++)
+            {
+                var here = at.Append(index).ToList();
+                switch (group.Items[index])
+                {
+                    case ConditionClause:
+                        ordinal++;
+                        if (here.SequenceEqual(path))
+                        {
+                            return true;
+                        }
+
+                        break;
+                    case ConditionGroup nested:
+                        if (Find(nested, here))
+                        {
+                            return true;
+                        }
+
+                        break;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Every edit lands here: the tree is rewritten, and written to the
+    /// document when whole — through the format's writer — or held as a
+    /// draft when a clause is not yet chosen or cannot be read.
+    /// </summary>
+    private async Task EditConditionAsync(WorkflowManifestReader.ResultView result, Func<ConditionGroup, ConditionGroup> edit)
+    {
+        var root = edit(ConditionState(result).Root);
+        var isNull = root.Items.Count == 1 && root.Items[0] is ConditionClause { IsEmpty: true } && !root.Not;
+        var text = ConditionBuilderModel.ToText(root);
+
+        if (!isNull && (!ConditionBuilderModel.IsComplete(root) || text is null))
+        {
+            conditionDrafts[result.Id] = root;
+            await CommitDeclarationAsync();
+            return;
+        }
+
+        // The text does not carry every shape — a group of one item spells
+        // as the item, a group under a parent of the same join spells flat —
+        // so the tree stays beside the text whenever reading the text back
+        // would show the author something other than what they built.
+        if (!ConditionBuilderModel.TryFromText(text, out var reread, out _) || ConditionBuilderModel.Describe(reread) != ConditionBuilderModel.Describe(root))
+        {
+            conditionDrafts[result.Id] = root;
+        }
+        else
+        {
+            conditionDrafts.Remove(result.Id);
+        }
+
         var results = MutableResults();
         var index = results.FindIndex(existing => existing.Id == result.Id);
-
-        if (index < 0)
+        if (index >= 0)
         {
-            return;
+            results[index] = results[index] with { When = text };
         }
-
-        if (string.IsNullOrWhiteSpace(operandKey))
-        {
-            results[index] = results[index] with { When = null };
-            await CommitDeclarationAsync();
-            return;
-        }
-
-        var key = operandKey!.Trim();
-        var operand = ConditionOperands.FirstOrDefault(candidate => candidate.Key == key);
-
-        if (operand is null)
-        {
-            // A loaded condition naming something not offered: left as written.
-            return;
-        }
-
-        if (operand.Type == WorkflowInputTypes.Array)
-        {
-            results[index] = results[index] with { When = WorkflowResultConditionText.Compose(key, null, null) };
-            await CommitDeclarationAsync();
-            return;
-        }
-
-        var current = results[index].When;
-        var symbol = op ?? WorkflowResultConditionText.OperatorOf(current);
-        if (symbol is null || !OperatorsFor(operand.Type).Contains(symbol))
-        {
-            symbol = "==";
-        }
-
-        // A literal the new operand cannot take is dropped rather than carried:
-        // switching from one enum to another must not leave the old value, and
-        // a number's spelling does not become a date by changing the operand.
-        var value = literal ?? WorkflowResultConditionText.LiteralOf(current) ?? string.Empty;
-        value = operand.Type switch
-        {
-            WorkflowInputTypes.Enum or NodeValueType => operand.Values?.Contains(value, StringComparer.Ordinal) == true ? value : operand.Values?.FirstOrDefault() ?? string.Empty,
-            WorkflowInputTypes.Boolean => value is "true" or "false" ? value : "true",
-            WorkflowInputTypes.Number => Consultologist.Web.Services.AI.ConsultInputValue.TryParseNumber(value, out _) ? value : string.Empty,
-            WorkflowInputTypes.Date => DateOnly.TryParseExact(value, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _) ? value : string.Empty,
-            CountType => int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out _) ? value : string.Empty,
-            _ => value
-        };
-
-        results[index] = results[index] with
-        {
-            When = WorkflowResultConditionText.Compose(key, symbol, value)
-        };
 
         await CommitDeclarationAsync();
     }
 
-    // Razor cannot parse a nested string literal inside an attribute lambda,
-    // which is the only reason this is a method rather than inline.
-    private Task SetConditionOperatorAsync(
-        WorkflowManifestReader.ResultView result, string operandKey, string? symbol) =>
-        SetResultConditionAsync(result, operandKey, op: symbol);
+    /// <summary>A draft the format cannot write: a clause not yet chosen, or one it cannot read.</summary>
+    private static bool IsUnwritable(ConditionGroup draft) =>
+        !ConditionBuilderModel.IsComplete(draft) || ConditionBuilderModel.ToText(draft) is null;
+
+    private Task ClearConditionAsync(WorkflowManifestReader.ResultView result) =>
+        EditConditionAsync(result, _ => ConditionGroup.Fresh);
+
+    private Task EditClauseAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, Func<ConditionClause, ConditionClause> edit) =>
+        EditConditionAsync(result, root => ConditionBuilderModel.At(root, path) is ConditionClause clause
+            ? ConditionBuilderModel.Replace(root, path, edit(clause))
+            : root);
+
+    private Task EditGroupAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, Func<ConditionGroup, ConditionGroup> edit) =>
+        EditConditionAsync(result, root => ConditionBuilderModel.At(root, path) is ConditionGroup group
+            ? ConditionBuilderModel.Replace(root, path, edit(group))
+            : root);
+
+    /// <summary>
+    /// The clause's operand. An empty choice empties the clause — the null
+    /// condition when it is the only one. A loaded operand not offered here
+    /// is left as written. The operator is kept when the new type takes it,
+    /// the literal coerced or dropped, arithmetic dropped unless the operand
+    /// is a number or a count.
+    /// </summary>
+    private Task SetClauseOperandAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, string? operandKey)
+    {
+        var key = operandKey?.Trim() ?? string.Empty;
+        if (key.Length == 0)
+        {
+            return EditClauseAsync(result, path, clause => ConditionClause.Empty with { Not = clause.Not });
+        }
+
+        var operand = ConditionOperands.FirstOrDefault(candidate => candidate.Key == key);
+        if (operand is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        return EditClauseAsync(result, path, clause =>
+        {
+            if (operand.Type == WorkflowInputTypes.Array)
+            {
+                return clause with { Operand = key, Operator = null, Literal = string.Empty, Arithmetic = null };
+            }
+
+            var symbol = clause.Operator is { } current && OperatorsFor(operand.Type).Contains(current) ? current : "==";
+            var arithmetic = operand.Type is WorkflowInputTypes.Number or CountType ? clause.Arithmetic : null;
+            return clause with { Operand = key, Operator = symbol, Literal = CoerceLiteral(operand, clause.Literal), Arithmetic = arithmetic };
+        });
+    }
+
+    private Task SetClauseOperatorAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, string? symbol) =>
+        EditClauseAsync(result, path, clause => clause with { Operator = string.IsNullOrEmpty(symbol) ? "==" : symbol });
+
+    private Task SetClauseLiteralAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, string? literal) =>
+        EditClauseAsync(result, path, clause =>
+        {
+            var operand = ConditionOperands.FirstOrDefault(candidate => candidate.Key == clause.Operand);
+            return clause with { Literal = operand is null ? literal ?? string.Empty : CoerceLiteral(operand, literal ?? string.Empty) };
+        });
+
+    private Task SetClauseNegatedAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, bool negated) =>
+        EditClauseAsync(result, path, clause => clause with { Not = negated });
+
+    /// <summary>The arithmetic term: none, or an operator with a right side not yet chosen (explicit initialisation).</summary>
+    private Task SetClauseArithmeticAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, string? op) =>
+        EditClauseAsync(result, path, clause => clause with
+        {
+            Arithmetic = string.IsNullOrEmpty(op)
+                ? null
+                : clause.Arithmetic is { } existing ? existing with { Op = op[0] } : new ConditionArithmetic(op[0], string.Empty, RightIsLiteral: true)
+        });
+
+    private Task SetClauseArithmeticRightAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, string? operandKey, string? literal) =>
+        EditClauseAsync(result, path, clause => clause.Arithmetic is not { } arithmetic
+            ? clause
+            : clause with
+            {
+                Arithmetic = literal is not null
+                    ? arithmetic with { Right = Consultologist.Web.Services.AI.ConsultInputValue.TryParseNumber(literal.Trim(), out _) ? literal.Trim() : string.Empty, RightIsLiteral = true }
+                    : string.IsNullOrEmpty(operandKey)
+                        ? arithmetic with { Right = string.Empty, RightIsLiteral = true }
+                        : arithmetic with { Right = operandKey, RightIsLiteral = false }
+            });
+
+    private Task SetGroupJoinAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, string? join) =>
+        EditGroupAsync(result, path, group => group with { Join = join == ConditionGroup.Or ? ConditionGroup.Or : ConditionGroup.And });
+
+    private Task SetGroupNegatedAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, bool negated) =>
+        EditGroupAsync(result, path, group => group with { Not = negated });
+
+    /// <summary>A new clause or group starts empty — chosen by the author, never defaulted.</summary>
+    private Task AddClauseAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path) =>
+        EditConditionAsync(result, root => ConditionBuilderModel.Append(root, path, ConditionClause.Empty));
+
+    private Task AddGroupAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path) =>
+        EditConditionAsync(result, root => ConditionBuilderModel.Append(root, path, ConditionGroup.Fresh));
+
+    /// <summary>Removes a clause or a nested group; a group emptied by it goes too, and the last clause of all clears the condition.</summary>
+    private Task RemoveConditionNodeAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path) =>
+        EditConditionAsync(result, root =>
+        {
+            var removed = ConditionBuilderModel.Replace(root, path, null);
+            return removed.Items.Count == 0 ? ConditionGroup.Fresh : removed;
+        });
+
+    /// <summary>
+    /// A literal the operand cannot take is dropped rather than carried:
+    /// switching from one enum to another must not leave the old value, and
+    /// a number's spelling does not become a date by changing the operand.
+    /// </summary>
+    private static string CoerceLiteral(ConditionOperand operand, string value) => operand.Type switch
+    {
+        WorkflowInputTypes.Enum or NodeValueType => operand.Values?.Contains(value, StringComparer.Ordinal) == true ? value : operand.Values?.FirstOrDefault() ?? string.Empty,
+        WorkflowInputTypes.Boolean => value is "true" or "false" ? value : "true",
+        WorkflowInputTypes.Number => Consultologist.Web.Services.AI.ConsultInputValue.TryParseNumber(value, out _) ? value : string.Empty,
+        WorkflowInputTypes.Date => DateOnly.TryParseExact(value, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _) ? value : string.Empty,
+        CountType => int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out _) ? value : string.Empty,
+        _ => value
+    };
+
+    /// <summary>A v9 form: a path, a count or an ordering in one clause; false for a v10 expression.</summary>
+    private static bool IsV9Form(string? when) =>
+        ConditionText.Parse(when)?.SingleClause is { } clause && (clause.PathDepth > 0 || clause.IsCount || clause.IsOrdered);
+
+    /// <summary>A v10 form, or a text the parser refuses — either way not one v9 clause.</summary>
+    private static bool IsV10Form(string? when) =>
+        !string.IsNullOrWhiteSpace(when) && (ConditionText.Parse(when) is not { } expression || expression.FirstV10Form != null);
+
 
 
     private async Task RelabelInputAsync(WorkflowManifestReader.InputView input, string? value)
