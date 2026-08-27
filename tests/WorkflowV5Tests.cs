@@ -275,7 +275,7 @@ public class WorkflowV5ValidationTests
 
         Assert.Contains(
             V5Fixtures.Validate(manifest).Errors,
-            e => e.Contains("accepts specVersion 5, 6, 7, 8 or 9"));
+            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9 or 10"));
     }
 
     [Theory]
