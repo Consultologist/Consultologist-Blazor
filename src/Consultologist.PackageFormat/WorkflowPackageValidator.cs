@@ -27,7 +27,7 @@ public static class WorkflowPackageValidator
     /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
     /// are checked against the published spec-versions.json there too.
     /// </summary>
-    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9 };
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10 };
 
     /// <summary>
     /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
@@ -363,6 +363,12 @@ public static class WorkflowPackageValidator
             .Select(n => n.Id)
             .ToHashSet(StringComparer.Ordinal);
 
+        // v10 (§ 4): the classifiers, for what may read them and what may not.
+        var classifierIds = nodes
+            .Where(WorkflowNodeKinds.IsClassifier)
+            .Select(n => n.Id)
+            .ToHashSet(StringComparer.Ordinal);
+
         void CheckBinding(WorkflowNodeSpec node, string variable, WorkflowBindingValue binding)
         {
             if (!WorkflowNodeBindingSources.TryParse(binding.From, out var source, out var parseError))
@@ -424,6 +430,15 @@ public static class WorkflowPackageValidator
                     if (!nodesById.TryGetValue(target.NodeId, out var targetNode))
                     {
                         errors.Add($"Node '{node.Id}' binds '{variable}' to unknown node '{target.NodeId}'.");
+                        return;
+                    }
+
+                    // v10 (§ 4): a classifier runs before anything is produced, so
+                    // it may read inputs and other classifiers, never a prompt
+                    // node or an aggregator — or the boundary is unreachable.
+                    if (WorkflowNodeKinds.IsClassifier(node) && !classifierIds.Contains(target.NodeId))
+                    {
+                        errors.Add($"Classifier '{node.Id}' binds '{variable}' to 'node:{target.NodeId}', which is not a classifier; a classifier may read inputs and classifiers only.");
                         return;
                     }
 
@@ -497,7 +512,37 @@ public static class WorkflowPackageValidator
                     continue;
                 }
 
+                // v10 (§ 4): a classification is a symbol, not a document.
+                if (classifierIds.Contains(sourceId))
+                {
+                    errors.Add($"Aggregator node '{node.Id}' aggregates classifier '{sourceId}'; a classifier's value is bindable, never aggregated.");
+                }
             }
+        }
+
+        // v10 (§ 4): the classifying node — a prompt node whose answer is one
+        // of its declared values. What it may not carry, it is told by name.
+        void CheckClassifier(WorkflowNodeSpec node)
+        {
+            var subject = $"Classifier '{node.Id}'";
+
+            if (node.Output != null)
+            {
+                errors.Add($"{subject} declares output; a classifier's output is the classification contract, implied by its kind.");
+            }
+
+            if (node.ForEach != null)
+            {
+                errors.Add($"{subject} declares forEach; a classification is one answer, so a classifier is never fanned.");
+            }
+
+            if (node.Values is not { Count: > 0 })
+            {
+                errors.Add($"{subject} declares no values; a classifier must declare the values it may answer.");
+                return;
+            }
+
+            ValidateEnumValues(subject, node.Values, errors, noun: "value");
         }
 
         foreach (var node in nodes)
@@ -505,6 +550,42 @@ public static class WorkflowPackageValidator
             if (string.IsNullOrWhiteSpace(node.Label))
             {
                 errors.Add($"Node '{node.Id}' has no label.");
+            }
+
+            // v10 (§ 4): kind and values arrive at 10 — below it each is refused
+            // by name, the posture every gated member has had since v8.
+            if (manifest.SpecVersion < 10)
+            {
+                var gated = false;
+
+                if (node.Kind != null)
+                {
+                    errors.Add($"Node '{node.Id}' declares kind, which requires specVersion 10.");
+                    gated = true;
+                }
+
+                if (node.Values != null)
+                {
+                    errors.Add($"Node '{node.Id}' declares values, which requires specVersion 10.");
+                    gated = true;
+                }
+
+                if (gated)
+                {
+                    continue;
+                }
+            }
+            else if (node.Kind != null && !WorkflowNodeKinds.All.Contains(node.Kind, StringComparer.Ordinal))
+            {
+                errors.Add(node.Kind == "aggregator"
+                    ? $"Node '{node.Id}' declares kind 'aggregator'; an aggregator is declared by aggregate, not by kind."
+                    : $"Node '{node.Id}' declares unknown kind '{node.Kind}' (accepted: {string.Join(", ", WorkflowNodeKinds.All)}).");
+                continue;
+            }
+            else if (node.Values != null && !WorkflowNodeKinds.IsClassifier(node))
+            {
+                errors.Add($"Node '{node.Id}' declares values but is not a classifier; only kind 'classifier' answers from a value set.");
+                continue;
             }
 
             if (node.Aggregate != null)
@@ -515,8 +596,19 @@ public static class WorkflowPackageValidator
                     continue;
                 }
 
+                if (node.Kind != null)
+                {
+                    errors.Add($"Node '{node.Id}' declares both kind and aggregate; an aggregator is declared by aggregate alone.");
+                    continue;
+                }
+
                 CheckAggregator(node);
                 continue;
+            }
+
+            if (WorkflowNodeKinds.IsClassifier(node))
+            {
+                CheckClassifier(node);
             }
 
             if (node.ForEach != null && !TryResolveForEachSource(manifest, node, data, inputsById, out var forEachError, out _, out _))
@@ -734,41 +826,88 @@ public static class WorkflowPackageValidator
         }
 
         var subject = $"Input '{input.Id}'";
+
+        if (manifest.SpecVersion < 10 && input.Items is { IsBare: false })
+        {
+            // v10's element spec on a v9 manifest: the object form of items is
+            // refused by name, never read as an unknown element type.
+            errors.Add($"{subject} declares items as a shape, which requires specVersion 10.");
+            return;
+        }
+
+        ValidateShape(manifest.SpecVersion, subject, type, input.Items, input.Fields, input.Values, errors);
+    }
+
+    /// <summary>
+    /// The shape rules shared by an input, a field (v10 § 7) and an element
+    /// spec: items required for an array and forbidden otherwise, fields
+    /// required for an object or an array of objects and forbidden otherwise,
+    /// values for an enum or an array of enums and nothing else — recursing
+    /// into the element spec and the fields at 10. Below 10 an array may not
+    /// hold arrays and a field holds a scalar, refused in v9's own words.
+    /// </summary>
+    private static void ValidateShape(
+        int specVersion,
+        string subject,
+        string type,
+        WorkflowElementSpec? items,
+        List<WorkflowFieldSpec>? fields,
+        List<string>? values,
+        List<string> errors)
+    {
         var isArray = type == WorkflowInputTypes.Array;
+        var elementTypes = WorkflowInputTypes.ElementTypesFor(specVersion);
 
         // items: required for an array, one of the element types, forbidden
-        // otherwise. Structure is one level deep, so an array of arrays is
-        // refused by name rather than as an unknown element type.
+        // otherwise. Below 10 structure is one level deep, so an array of
+        // arrays is refused by name rather than as an unknown element type.
         if (isArray)
         {
-            if (input.Items is null)
+            if (items is null)
             {
                 errors.Add($"{subject} is type 'array' and must declare items.");
                 return;
             }
 
-            if (input.Items == WorkflowInputTypes.Array)
+            if (specVersion < 10 && items.Type == WorkflowInputTypes.Array)
             {
                 errors.Add($"{subject} declares items 'array'; structure is one level deep, so an array may not hold arrays.");
                 return;
             }
 
-            if (!WorkflowInputTypes.ElementTypes.Contains(input.Items, StringComparer.Ordinal))
+            if (!elementTypes.Contains(items.Type, StringComparer.Ordinal))
             {
-                errors.Add($"{subject} declares unknown items type '{input.Items}' (accepted: {string.Join(", ", WorkflowInputTypes.ElementTypes)}).");
+                errors.Add($"{subject} declares unknown items type '{items.Type}' (accepted: {string.Join(", ", elementTypes)}).");
+                return;
+            }
+
+            // v10: an element spec carries the element's own shape; a bare
+            // items keeps the v9 reading, where the element's fields and values
+            // are the array's.
+            if (!items.IsBare)
+            {
+                if (fields != null || values != null)
+                {
+                    errors.Add($"{subject} declares items as a shape and also fields or values; an element spec carries its own.");
+                    return;
+                }
+
+                ValidateShape(specVersion, $"{subject} items", items.Type, items.Items, items.Fields, items.Values, errors);
                 return;
             }
         }
-        else if (input.Items != null)
+        else if (items != null)
         {
             errors.Add($"{subject} is type '{type}' and may not declare items.");
         }
 
         // fields: required when the declaration is an object or an array of
         // objects, forbidden otherwise.
-        if (WorkflowInputTypes.DeclaresObject(input))
+        var declaresObject = type == WorkflowInputTypes.Object || (isArray && items?.Type == WorkflowInputTypes.Object);
+
+        if (declaresObject)
         {
-            if (input.Fields is not { Count: > 0 })
+            if (fields is not { Count: > 0 })
             {
                 errors.Add(isArray
                     ? $"{subject} is an array of objects and must declare fields."
@@ -776,10 +915,10 @@ public static class WorkflowPackageValidator
             }
             else
             {
-                ValidateFields(input, errors);
+                ValidateFields(specVersion, subject, fields, errors);
             }
         }
-        else if (input.Fields != null)
+        else if (fields != null)
         {
             errors.Add($"{subject} is type '{type}' and may not declare fields.");
         }
@@ -787,11 +926,11 @@ public static class WorkflowPackageValidator
         // values: an enum's, or an array of enums'. Nothing else has a choice
         // to declare.
         var valuesBelong = type == WorkflowInputTypes.Enum
-            || (isArray && input.Items == WorkflowInputTypes.Enum);
+            || (isArray && items?.Type == WorkflowInputTypes.Enum);
 
         if (!valuesBelong)
         {
-            if (input.Values != null)
+            if (values != null)
             {
                 errors.Add($"{subject} is type '{type}' and may not declare values.");
             }
@@ -799,7 +938,7 @@ public static class WorkflowPackageValidator
             return;
         }
 
-        ValidateEnumValues(subject, input.Values, errors);
+        ValidateEnumValues(subject, values, errors);
     }
 
     /// <summary>
@@ -808,7 +947,7 @@ public static class WorkflowPackageValidator
     /// declared-id rule, so they are safe wherever result ids are — authored
     /// package content, never patient data.
     /// </summary>
-    private static void ValidateEnumValues(string subject, List<string>? values, List<string> errors)
+    private static void ValidateEnumValues(string subject, List<string>? values, List<string> errors, string noun = "enum value")
     {
         if (values is not { Count: > 0 })
         {
@@ -818,7 +957,9 @@ public static class WorkflowPackageValidator
 
         if (values.Count < 2)
         {
-            errors.Add($"{subject} declares one enum value; an enum with one value is a constant, not a choice.");
+            errors.Add(noun == "enum value"
+                ? $"{subject} declares one enum value; an enum with one value is a constant, not a choice."
+                : $"{subject} declares one {noun}; a classifier with one value is a constant, not a choice.");
         }
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -827,28 +968,29 @@ public static class WorkflowPackageValidator
         {
             if (!WorkflowDeclaredIds.IsValid(value))
             {
-                errors.Add($"{subject} enum value '{value}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).");
+                errors.Add($"{subject} {noun} '{value}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).");
                 continue;
             }
 
             if (!seen.Add(value))
             {
-                errors.Add($"{subject} declares duplicate enum value '{value}'.");
+                errors.Add($"{subject} declares duplicate {noun} '{value}'.");
             }
         }
     }
 
     /// <summary>
     /// An object's fields (v9 § 4): ids snake_case and unique, a label each, a
-    /// scalar type — structure is one level deep — and values for an enum
-    /// field on the usual terms.
+    /// type and values on the usual terms. v9 held a field to a scalar; v10
+    /// (§ 7) lets a field carry items and fields of its own and recurses,
+    /// while a v9 manifest is refused in v9's words and told the version.
     /// </summary>
-    private static void ValidateFields(WorkflowInputSpec input, List<string> errors)
+    private static void ValidateFields(int specVersion, string subject, List<WorkflowFieldSpec> fields, List<string> errors)
     {
-        var subject = $"Input '{input.Id}'";
         var seen = new HashSet<string>(StringComparer.Ordinal);
+        var scalars = WorkflowInputTypes.ScalarsFor(specVersion);
 
-        foreach (var field in input.Fields!)
+        foreach (var field in fields)
         {
             if (!WorkflowDeclaredIds.IsValid(field.Id))
             {
@@ -870,29 +1012,53 @@ public static class WorkflowPackageValidator
 
             var type = WorkflowInputTypes.Of(field);
 
-            if (type is WorkflowInputTypes.Object or WorkflowInputTypes.Array)
+            if (specVersion < 10)
             {
-                errors.Add($"{fieldSubject} is type '{type}'; structure is one level deep, so a field holds a scalar.");
-                continue;
-            }
-
-            if (!WorkflowInputTypes.Scalars.Contains(type, StringComparer.Ordinal))
-            {
-                errors.Add($"{fieldSubject} declares unknown type '{type}' (accepted: {string.Join(", ", WorkflowInputTypes.Scalars)}).");
-                continue;
-            }
-
-            if (type != WorkflowInputTypes.Enum)
-            {
-                if (field.Values != null)
+                // The v9 sentence, kept verbatim: the published conformance
+                // suite pins it on a v9 manifest. The new members are what
+                // name the version.
+                if (type is WorkflowInputTypes.Object or WorkflowInputTypes.Array)
                 {
-                    errors.Add($"{fieldSubject} is type '{type}' and may not declare values.");
+                    errors.Add($"{fieldSubject} is type '{type}'; structure is one level deep, so a field holds a scalar.");
+                    continue;
                 }
 
+                if (field.Items != null)
+                {
+                    errors.Add($"{fieldSubject} declares items, which requires specVersion 10.");
+                    continue;
+                }
+
+                if (field.Fields != null)
+                {
+                    errors.Add($"{fieldSubject} declares fields, which requires specVersion 10.");
+                    continue;
+                }
+            }
+
+            if (!scalars.Contains(type, StringComparer.Ordinal))
+            {
+                errors.Add($"{fieldSubject} declares unknown type '{type}' (accepted: {string.Join(", ", scalars)}).");
                 continue;
             }
 
-            ValidateEnumValues(fieldSubject, field.Values, errors);
+            if (specVersion < 10)
+            {
+                if (type != WorkflowInputTypes.Enum)
+                {
+                    if (field.Values != null)
+                    {
+                        errors.Add($"{fieldSubject} is type '{type}' and may not declare values.");
+                    }
+
+                    continue;
+                }
+
+                ValidateEnumValues(fieldSubject, field.Values, errors);
+                continue;
+            }
+
+            ValidateShape(specVersion, fieldSubject, type, field.Items, field.Fields, field.Values, errors);
         }
     }
 
@@ -1265,6 +1431,14 @@ public static class WorkflowPackageValidator
 
         foreach (var node in nodes)
         {
+            // v10 (§ 4): a classifier feeds the boundary, not a document — its
+            // value is what the fire set reads, so it is consumed by the job
+            // whether or not a prompt binds it.
+            if (WorkflowNodeKinds.IsClassifier(node))
+            {
+                continue;
+            }
+
             if (!reachableFromAny.Contains(node.Id))
             {
                 errors.Add(roots.Count == 1
@@ -1545,9 +1719,9 @@ public static class WorkflowPackageValidator
     }
 
     private static object ElementProbe(WorkflowInputSpec input) =>
-        input.Items == WorkflowInputTypes.Object
+        input.Items?.Type == WorkflowInputTypes.Object
             ? ObjectProbe(input.Fields)
-            : ScalarProbe(input.Items ?? WorkflowInputTypes.Text);
+            : ScalarProbe(WorkflowInputTypes.ElementTypeOf(input));
 
     private static ScriptObject ObjectProbe(IEnumerable<WorkflowFieldSpec>? fields)
     {

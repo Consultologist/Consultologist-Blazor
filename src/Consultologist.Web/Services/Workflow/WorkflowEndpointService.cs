@@ -123,6 +123,15 @@ public static class WorkflowInputTypes
     /// <summary>The shapes v9 added (#424); below 9 any of them is refused by name.</summary>
     public static bool RequiresV9(WorkflowManifestReader.InputView input) =>
         Of(input) is Number or Object or Array || input.Items != null || input.Fields != null;
+
+    /// <summary>
+    /// The shapes v10 added (#492): an element spec for items, a field that
+    /// is itself structured or carries items or fields. Below 10 each is
+    /// refused by name.
+    /// </summary>
+    public static bool RequiresV10(WorkflowManifestReader.InputView input) =>
+        input.ItemsIsSpec
+        || (input.Fields?.Any(field => field.HasStructure || Of(field) is Object or Array) ?? false);
 }
 
 /// <summary>One declared deliverable — blocks and result tabs group by these.</summary>

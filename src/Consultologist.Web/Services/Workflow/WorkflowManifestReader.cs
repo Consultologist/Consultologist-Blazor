@@ -36,7 +36,10 @@ public static class WorkflowManifestReader
         string Label,
         bool Required,
         string? Type = null,
-        IReadOnlyList<string>? Values = null);
+        IReadOnlyList<string>? Values = null,
+        // v10 (#492): the field carries items or fields of its own — a shape
+        // the editor does not author yet (step (g)); it rides opaque.
+        bool HasStructure = false);
 
     /// <summary>
     /// One declared input slot. v8 types it: <c>Type</c> null means text, which
@@ -54,7 +57,9 @@ public static class WorkflowManifestReader
         string? Type = null,
         IReadOnlyList<string>? Values = null,
         string? Items = null,
-        IReadOnlyList<FieldView>? Fields = null);
+        IReadOnlyList<FieldView>? Fields = null,
+        // v10 (#492): items was an element spec object, not a type name.
+        bool ItemsIsSpec = false);
 
     /// <summary>
     /// One declared deliverable: authored id and label over an aggregator node.
@@ -298,11 +303,35 @@ public static class WorkflowManifestReader
                 required,
                 ReadString(input, "type"),
                 ReadStringArray(input, "values"),
-                ReadString(input, "items"),
-                ReadFields(input)));
+                ReadItems(input, out var itemsIsSpec),
+                ReadFields(input),
+                itemsIsSpec));
         }
 
         return inputs;
+    }
+
+    /// <summary>
+    /// v10 (#492): `items` may be an element spec object rather than a type
+    /// name. The editor reads the element's type either way and remembers
+    /// which form it saw; the shape itself rides opaque until step (g).
+    /// </summary>
+    private static string? ReadItems(JsonElement input, out bool isSpec)
+    {
+        isSpec = false;
+
+        if (!TryGetProperty(input, "items", out var items))
+        {
+            return null;
+        }
+
+        if (items.ValueKind == JsonValueKind.Object)
+        {
+            isSpec = true;
+            return ReadString(items, "type");
+        }
+
+        return items.ValueKind == JsonValueKind.String ? items.GetString() : null;
     }
 
     /// <summary>An object input's declared fields (v9); null when the property is absent.</summary>
@@ -326,7 +355,9 @@ public static class WorkflowManifestReader
                 ReadString(field, "label") ?? id,
                 required,
                 ReadString(field, "type"),
-                ReadStringArray(field, "values")));
+                ReadStringArray(field, "values"),
+                // v10 (#492): a field may carry structure; noted, not authored yet.
+                TryGetProperty(field, "items", out _) || TryGetProperty(field, "fields", out _)));
         }
 
         return fields;

@@ -268,7 +268,7 @@ public static class EmailAttachmentInputs
     /// <summary>An array of text is the one slot that takes several documents (v9 § 7).</summary>
     private static bool TakesSeveral(WorkflowInputSpec spec) =>
         WorkflowInputTypes.Of(spec) == WorkflowInputTypes.Array
-        && (spec.Items ?? WorkflowInputTypes.Text) == WorkflowInputTypes.Text;
+        && WorkflowInputTypes.ElementTypeOf(spec) == WorkflowInputTypes.Text;
 
     private static string BothPlainAndNumbered(string slot) =>
         $"Input '{slot}' was supplied both as '{slot}' and as numbered files. Number every file for it, or send one.";

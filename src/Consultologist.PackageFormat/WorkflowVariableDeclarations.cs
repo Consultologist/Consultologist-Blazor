@@ -104,14 +104,14 @@ public static class WorkflowVariableDeclarations
         var array = (manifest.Inputs ?? new List<WorkflowInputSpec>())
             .FirstOrDefault(input => input.Id == id && WorkflowInputTypes.Of(input) == WorkflowInputTypes.Array);
 
-        if (array is null || array.Items is null or WorkflowInputTypes.Text)
+        if (array is null || WorkflowInputTypes.ElementTypeOf(array) == WorkflowInputTypes.Text)
         {
             return null;
         }
 
-        var element = array.Items == WorkflowInputTypes.Object
+        var element = array.Items?.Type == WorkflowInputTypes.Object
             ? new WorkflowInputSpec(id, array.Label, Type: WorkflowInputTypes.Object, Fields: array.Fields)
-            : new WorkflowInputSpec(id, array.Label, Type: array.Items, Values: array.Values);
+            : new WorkflowInputSpec(id, array.Label, Type: array.Items?.Type, Values: array.Values);
 
         elements[forEach] = element;
         return element;
