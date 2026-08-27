@@ -375,6 +375,18 @@
 	border-radius: var(--consultologist-radius-sm, 4px);
 }
 
+/* v10 (#497): a group inside a row or a member — the tree's next level. */
+.input-field__group--nested {
+	margin-top: 0.25rem;
+	border-left: 3px solid var(--consultologist-border, #d0d0d0);
+	background: color-mix(in srgb, var(--consultologist-surface, #fff) 96%, #000 4%);
+}
+
+.input-field__group--nested .input-field__add {
+	font-size: 0.75rem;
+	padding: 0.15rem 0.5rem;
+}
+
 .input-field__member {
 	display: flex;
 	flex-direction: column;

@@ -142,19 +142,7 @@
                                        absent; a touched one answers every required
                                        field before the run opens. *@
                                     <div class="input-field__group" @onclick:stopPropagation="true">
-                                        @foreach (var slot in field.Fields)
-                                        {
-                                            <label class="input-field__member" @key="slot">
-                                                <span>
-                                                    @slot.Label
-                                                    @if (!slot.Required)
-                                                    {
-                                                        <span class="muted-text input-field__optional">(optional)</span>
-                                                    }
-                                                </span>
-                                                @ScalarControl(slot)
-                                            </label>
-                                        }
+                                        @StructureControl(field.Root)
                                     </div>
                                 }
                                 else if (field.Type == WorkflowInputTypes.Array)
@@ -172,26 +160,7 @@
                                             <div class="input-field__row" @key="row">
                                                 <span class="muted-text input-field__row-number">@(index + 1).</span>
                                                 <div class="input-field__row-body">
-                                                    @if (row.Scalar is { } scalar)
-                                                    {
-                                                        @ScalarControl(scalar)
-                                                    }
-                                                    else
-                                                    {
-                                                        @foreach (var slot in row.Fields!)
-                                                        {
-                                                            <label class="input-field__member" @key="slot">
-                                                                <span>
-                                                                    @slot.Label
-                                                                    @if (!slot.Required)
-                                                                    {
-                                                                        <span class="muted-text input-field__optional">(optional)</span>
-                                                                    }
-                                                                </span>
-                                                                @ScalarControl(slot)
-                                                            </label>
-                                                        }
-                                                    }
+                                                    @StructureControl(row)
                                                 </div>
                                                 <span class="input-field__row-buttons">
                                                     <button type="button" class="aggregate-row__button" title="Move up"
@@ -825,6 +794,89 @@
                         Placeholder="@slot.Placeholder"
                         Rows="@slot.Rows" />
       }
+    </text>;
+
+  /// <summary>
+  /// v10 (#497): the tree below a slot. A scalar is its control; an object's
+  /// fields each carry a label and, beneath it, this fragment again; an
+  /// array's rows are numbered, movable and removable and each holds this
+  /// fragment again, with the array's own "+ Add entry". A fragment, as
+  /// ScalarControl is, so every level's handlers run in this page's render
+  /// context. The input's own markup draws the outermost group (and the
+  /// document picker); a nested group draws its own border.
+  /// </summary>
+  private RenderFragment<ConsultInputNode> StructureControl => node =>
+    @<text>
+      @if (node.IsScalar)
+      {
+        @ScalarControl(node.Scalar)
+      }
+      else if (node.IsObject)
+      {
+        @foreach (var member in node.Fields)
+        {
+          <label class="input-field__member" @key="member">
+            <span>
+              @member.Label
+              @if (!member.Required)
+              {
+                <span class="muted-text input-field__optional">(optional)</span>
+              }
+            </span>
+            @* An object member draws its group here; an array draws its own. *@
+            @if (member.IsObject)
+            {
+              <div class="input-field__group input-field__group--nested" @onclick:stopPropagation="true">
+                @StructureControl(member)
+              </div>
+            }
+            else
+            {
+              @StructureControl(member)
+            }
+          </label>
+        }
+      }
+      else if (node.Depth > 0)
+      {
+        @* A nested array draws its own bordered group; the input's markup
+           draws the outermost one. *@
+        <div class="input-field__group input-field__group--nested" @onclick:stopPropagation="true">
+          @ArrayRows(node)
+          <button type="button" class="input-field__add"
+                  @onclick="() => node.AddRow()">+ Add entry</button>
+        </div>
+      }
+      else
+      {
+        @ArrayRows(node)
+      }
+    </text>;
+
+  private RenderFragment<ConsultInputNode> ArrayRows => node =>
+    @<text>
+        @for (var i = 0; i < node.Rows.Count; i++)
+        {
+          var index = i;
+          var row = node.Rows[index];
+          var array = node;
+          <div class="input-field__row" @key="row">
+            <span class="muted-text input-field__row-number">@(index + 1).</span>
+            <div class="input-field__row-body">
+              @StructureControl(row)
+            </div>
+            <span class="input-field__row-buttons">
+              <button type="button" class="aggregate-row__button" title="Move up"
+                      disabled="@(index == 0)"
+                      @onclick="() => array.MoveRow(index, -1)">↑</button>
+              <button type="button" class="aggregate-row__button" title="Move down"
+                      disabled="@(index == array.Rows.Count - 1)"
+                      @onclick="() => array.MoveRow(index, +1)">↓</button>
+              <button type="button" class="aggregate-row__button" title="Remove entry"
+                      @onclick="() => array.RemoveRow(index)">×</button>
+            </span>
+          </div>
+        }
     </text>;
 
   private static readonly int MaxSseReconnectAttempts = 1;
@@ -2508,41 +2560,244 @@
     }
   }
 
-  /// <summary>One row of an array: a scalar, or — for an array of objects — one slot per declared field.</summary>
-  private sealed class ConsultInputElement
+  /// <summary>
+  /// v10 (#497): one node of the intake tree — a scalar slot, an object of
+  /// nodes, or an array of rows that are nodes — so a row can hold a group
+  /// and a group a row set, to any depth the package declares. The v9 rules
+  /// hold at every level: a value starts empty and is never defaulted; an
+  /// untouched optional structure is absent; a touched one answers every
+  /// required field; no rows is absent and an empty row names itself. A
+  /// sentence about a problem spells the path down to it.
+  /// </summary>
+  private sealed class ConsultInputNode
   {
-    public ConsultInputElement(ScalarSlot scalar) => Scalar = scalar;
+    private readonly IReadOnlyList<WorkflowPackageFieldResponse> fieldSpecs;
 
-    public ConsultInputElement(IReadOnlyList<ScalarSlot> fields) => Fields = fields;
-
-    public ScalarSlot? Scalar { get; }
-    public IReadOnlyList<ScalarSlot>? Fields { get; }
-
-    public bool IsEmpty => Scalar != null ? !Scalar.IsTouched : Fields!.All(slot => !slot.IsTouched);
-
-    public ConsultInputValue? Supplied => Scalar != null
-      ? Scalar.Supplied
-      : ConsultInputField.ObjectValue(Fields!, requireTouched: false);
-
-    /// <summary>A sentence about this row, with its subject ("Prior notes row 2") supplied by the caller.</summary>
-    public string? Problem(string subject)
+    public ConsultInputNode(
+      string id, string label, bool required, string? type, IReadOnlyList<string>? values,
+      WorkflowPackageElementResponse? element, IReadOnlyList<WorkflowPackageFieldResponse>? fields,
+      int depth, int rows = 3, string? placeholder = null)
     {
-      if (IsEmpty)
+      Id = id;
+      Label = label;
+      Required = required;
+      Type = type ?? WorkflowInputTypes.Text;
+      Values = values ?? element?.Values ?? Array.Empty<string>();
+      Element = element;
+      Depth = depth;
+      // An array of objects declares its fields on the element (v10) and, for
+      // a v9 package, beside it as well; either way the element's win.
+      fieldSpecs = (IsArray ? element?.Fields ?? fields : fields) ?? Array.Empty<WorkflowPackageFieldResponse>();
+      Scalar = new ScalarSlot(id, label, required, Type, Values, rows, placeholder);
+      Fields = IsObject ? fieldSpecs.Select(Child).ToList() : Array.Empty<ConsultInputNode>();
+    }
+
+    public string Id { get; }
+    public string Label { get; }
+    public bool Required { get; }
+    public string Type { get; }
+    public IReadOnlyList<string> Values { get; }
+
+    /// <summary>What one row of an array is; null means text (the v9 default).</summary>
+    public WorkflowPackageElementResponse? Element { get; }
+
+    /// <summary>How far below the input this node sits — the markup indents by it.</summary>
+    public int Depth { get; }
+
+    public bool IsObject => Type == WorkflowInputTypes.Object;
+    public bool IsArray => Type == WorkflowInputTypes.Array;
+    public bool IsScalar => !IsObject && !IsArray;
+
+    /// <summary>The scalar control's slot; meaningful only when IsScalar.</summary>
+    public ScalarSlot Scalar { get; }
+
+    /// <summary>An object's fields, one node each, in declaration order.</summary>
+    public IReadOnlyList<ConsultInputNode> Fields { get; }
+
+    /// <summary>An array's rows, in the order the clinician put them.</summary>
+    public List<ConsultInputNode> Rows { get; } = new();
+
+    public bool IsTouched => IsScalar ? Scalar.IsTouched : IsObject ? Fields.Any(member => member.IsTouched) : Rows.Count > 0;
+
+    public bool IsEmpty => !IsTouched;
+
+    /// <summary>
+    /// What this node sends, or null when nothing was chosen. An object that
+    /// must be touched first (an optional member group) is absent until it is;
+    /// a row's object is already touched by being a row.
+    /// </summary>
+    public ConsultInputValue? Supplied(bool requireTouched = true)
+    {
+      if (IsScalar)
       {
-        return $"{subject} is empty; fill it in or remove it.";
+        return Scalar.Supplied;
       }
 
-      if (Scalar != null)
+      if (IsObject)
+      {
+        if (requireTouched && !IsTouched)
+        {
+          return null;
+        }
+
+        if (Fields.Any(member => member.Problem(member.Label) != null || (member.Required && !member.IsFilled)))
+        {
+          return null;
+        }
+
+        return ConsultInputValue.OfObject(
+          Fields.Where(member => member.IsFilled).Select(member => new ConsultInputEntry(member.Id, member.Supplied()!)));
+      }
+
+      // No rows is absent; a row that is empty or wrong holds the whole slot.
+      return Rows.Count == 0 || Rows.Any(row => row.IsEmpty || row.Supplied(requireTouched: false) is null)
+        ? null
+        : ConsultInputValue.OfArray(Rows.Select(row => row.Supplied(requireTouched: false)!));
+    }
+
+    public bool IsFilled => Supplied() is not null;
+
+    /// <summary>
+    /// A sentence about a value that is present and wrong, with its subject
+    /// ("Prior notes", "Family history row 2: Contact") supplied by the
+    /// caller; null when nothing is wrong. An untouched node is not wrong.
+    /// </summary>
+    public string? Problem(string subject)
+    {
+      if (IsScalar)
       {
         return Scalar.Problem is { } problem ? $"{subject} {problem}" : null;
       }
 
-      return ConsultInputField.FieldsProblem(Fields!, subject + ":");
+      if (IsObject)
+      {
+        return IsTouched ? FieldsProblem($"{subject}:") : null;
+      }
+
+      for (var index = 0; index < Rows.Count; index++)
+      {
+        var row = Rows[index];
+        var rowSubject = $"{subject} row {index + 1}";
+        if (row.IsEmpty)
+        {
+          return $"{rowSubject} is empty; fill it in or remove it.";
+        }
+
+        if ((row.IsObject ? row.FieldsProblem($"{rowSubject}:") : row.Problem(rowSubject)) is { } problem)
+        {
+          return problem;
+        }
+      }
+
+      return null;
     }
 
-    public string EffectiveText => Scalar != null
+    private string? FieldsProblem(string subject)
+    {
+      foreach (var member in Fields)
+      {
+        if (member.Problem($"{subject} {member.Label}") is { } problem)
+        {
+          return problem;
+        }
+      }
+
+      foreach (var member in Fields)
+      {
+        if (member.Required && !member.IsFilled)
+        {
+          return $"{subject} {member.Label} is required.";
+        }
+      }
+
+      return null;
+    }
+
+    /// <summary>The text that ran, for display surfaces that show inputs.</summary>
+    public string EffectiveText => IsScalar
       ? Scalar.EffectiveText
-      : ConsultInputField.FieldsText(Fields!);
+      : IsObject
+        ? string.Join("\n", Fields.Where(member => member.IsFilled).Select(member => $"{member.Label}: {member.EffectiveText}"))
+        : string.Join(Element?.Type == WorkflowInputTypes.Object ? "\n\n" : "\n", Rows.Where(row => !row.IsEmpty).Select(row => row.EffectiveText));
+
+    public ConsultInputNode AddRow()
+    {
+      var row = new ConsultInputNode(Id, Label, true, Element?.Type, Element?.Values, Element?.Items, Element?.Fields, Depth + 1);
+      Rows.Add(row);
+      return row;
+    }
+
+    public void RemoveRow(int index) => Rows.RemoveAt(index);
+
+    public void MoveRow(int index, int delta) =>
+      (Rows[index], Rows[index + delta]) = (Rows[index + delta], Rows[index]);
+
+    public void Clear()
+    {
+      Scalar.Clear();
+      foreach (var member in Fields)
+      {
+        member.Clear();
+      }
+
+      Rows.Clear();
+    }
+
+    /// <summary>The declared shape, spelled — two nodes with the same shape can adopt each other's answers.</summary>
+    public string Shape => IsScalar
+      ? $"{Type}[{string.Join(",", Values)}]"
+      : IsObject
+        ? $"object({string.Join(";", Fields.Select(member => $"{member.Id}={member.Shape}"))})"
+        : $"array<{new ConsultInputNode(Id, Label, true, Element?.Type, Element?.Values, Element?.Items, Element?.Fields, Depth + 1).Shape}>";
+
+    public void CopyFrom(ConsultInputNode other)
+    {
+      Scalar.CopyFrom(other.Scalar);
+      for (var index = 0; index < Fields.Count; index++)
+      {
+        Fields[index].CopyFrom(other.Fields[index]);
+      }
+
+      Rows.AddRange(other.Rows);
+    }
+
+    /// <summary>Re-attach from a typed memento (#429): a scalar, an object's fields, an array's rows — recursively (#497).</summary>
+    public void Restore(ConsultInputValue value)
+    {
+      if (IsScalar)
+      {
+        if (value.IsBoolean)
+        {
+          Scalar.Flag = value.Flag;
+        }
+        else if (value.HasCanonical)
+        {
+          Scalar.Value = value.Canonical;
+        }
+      }
+      else if (IsObject)
+      {
+        if (!value.IsObject)
+        {
+          return;
+        }
+
+        foreach (var entry in value.Fields!)
+        {
+          Fields.FirstOrDefault(member => member.Id == entry.Id)?.Restore(entry.Value);
+        }
+      }
+      else if (value.IsArray)
+      {
+        foreach (var element in value.Elements!)
+        {
+          AddRow().Restore(element);
+        }
+      }
+    }
+
+    private ConsultInputNode Child(WorkflowPackageFieldResponse spec) =>
+      new(spec.Id, spec.Label, spec.Required, spec.Type, spec.Values, spec.Items, spec.Fields, Depth + 1);
   }
 
   /// <summary>
@@ -2562,14 +2817,13 @@
     string PreviewText);
 
   /// <summary>
-  /// One editable setup field. v9 (#429): a scalar, an object of scalar
-  /// fields, or an array of rows; and, for a text or an array-of-text slot,
-  /// the documents that fill it instead.
+  /// One editable setup field. v9 (#429): a scalar, an object of fields, or
+  /// an array of rows — v10 (#497) to any depth, held as a tree of nodes;
+  /// and, for a text or an array-of-text slot, the documents that fill it
+  /// instead.
   /// </summary>
   private sealed class ConsultInputField
   {
-    private readonly IReadOnlyList<WorkflowPackageFieldResponse> fieldSpecs;
-
     public ConsultInputField(WorkflowPackageInputResponse input, int textRows)
     {
       Id = input.Id;
@@ -2577,36 +2831,32 @@
       Required = input.Required;
       Type = WorkflowInputTypes.Of(input);
       Items = input.Items?.Type ?? WorkflowInputTypes.Text;
-      Values = input.Values ?? input.Items?.Values ?? Array.Empty<string>();
-      fieldSpecs = input.Fields ?? input.Items?.Fields ?? Array.Empty<WorkflowPackageFieldResponse>();
 
       var placeholder = Id == "consult_draft"
         ? "Enter referral details, clinical context, and the consult question..."
         : null;
-      Scalar = new ScalarSlot(Id, Label, Required, Type, Values, textRows, placeholder);
-      Fields = Type == WorkflowInputTypes.Object ? FieldSlots() : Array.Empty<ScalarSlot>();
+      Root = new ConsultInputNode(Id, Label, Required, Type, input.Values, input.Items, input.Fields, depth: 0, textRows, placeholder);
     }
 
     public string Id { get; }
     public string Label { get; }
     public bool Required { get; }
 
-    // v8: what control this slot renders and, for an enum, its choices.
-    // v9: an array's element type, an object's (or array-of-object's) fields.
+    // v8: what control this slot renders. v9: an array's element type name
+    // — the document rule reads it; the tree below holds the rest.
     public string Type { get; }
     public string Items { get; }
-    public IReadOnlyList<string> Values { get; }
+
+    /// <summary>The input's tree: this slot's scalar, or its fields, or its rows.</summary>
+    public ConsultInputNode Root { get; }
 
     /// <summary>The scalar answer, for a scalar slot. Value and Flag forward here.</summary>
-    public ScalarSlot Scalar { get; }
+    public ScalarSlot Scalar => Root.Scalar;
     public string Value { get => Scalar.Value; set => Scalar.Value = value; }
     public bool? Flag { get => Scalar.Flag; set => Scalar.Flag = value; }
 
-    /// <summary>An object's fields, one slot each, in declaration order.</summary>
-    public IReadOnlyList<ScalarSlot> Fields { get; }
-
     /// <summary>An array's rows, in the order the clinician put them.</summary>
-    public List<ConsultInputElement> Rows { get; } = new();
+    public List<ConsultInputNode> Rows => Root.Rows;
 
     /// <summary>The documents filling this slot, in the order chosen (#428: that order is the record's).</summary>
     public List<AttachedDocument> Documents { get; } = new();
@@ -2628,18 +2878,8 @@
     public bool TakesSeveralDocuments => Type == WorkflowInputTypes.Array && Items == WorkflowInputTypes.Text;
     public bool TakesOneDocument => Type == WorkflowInputTypes.Text;
 
-    /// <summary>What this slot sends, or null when nothing was chosen.</summary>
-    public ConsultInputValue? Supplied => Type switch
-    {
-      // An untouched optional object is absent; a touched one must answer
-      // every required field. Absent optional fields are omitted, never null.
-      WorkflowInputTypes.Object => ObjectValue(Fields, requireTouched: true),
-      // No rows is absent; a row that is empty or wrong holds the whole slot.
-      WorkflowInputTypes.Array => Rows.Count == 0 || Rows.Any(row => row.IsEmpty || row.Supplied is null)
-        ? null
-        : ConsultInputValue.OfArray(Rows.Select(row => row.Supplied!)),
-      _ => Scalar.Supplied
-    };
+    /// <summary>What this slot sends, or null when nothing was chosen (the tree's rules, from the root).</summary>
+    public ConsultInputValue? Supplied => Root.Supplied();
 
     /// <summary>
     /// What this slot contributes, whichever way it was filled — the one
@@ -2662,23 +2902,7 @@
           return null;
         }
 
-        switch (Type)
-        {
-          case WorkflowInputTypes.Object:
-            return Fields.Any(slot => slot.IsTouched) ? FieldsProblem(Fields, $"{Label}:") : null;
-          case WorkflowInputTypes.Array:
-            for (var index = 0; index < Rows.Count; index++)
-            {
-              if (Rows[index].Problem($"{Label} row {index + 1}") is { } problem)
-              {
-                return problem;
-              }
-            }
-
-            return null;
-          default:
-            return Scalar.Problem is { } scalarProblem ? $"{Label} {scalarProblem}" : null;
-        }
+        return Root.Problem(Label);
       }
     }
 
@@ -2692,42 +2916,21 @@
           return string.Join("\n\n", Documents.Select(document => document.PreviewText));
         }
 
-        return Type switch
-        {
-          WorkflowInputTypes.Object => FieldsText(Fields),
-          WorkflowInputTypes.Array => string.Join(
-            Items == WorkflowInputTypes.Object ? "\n\n" : "\n",
-            Rows.Where(row => !row.IsEmpty).Select(row => row.EffectiveText)),
-          _ => Scalar.EffectiveText
-        };
+        return Root.EffectiveText;
       }
     }
 
     public string Placeholder => Scalar.Placeholder;
 
-    public ConsultInputElement AddRow()
-    {
-      var row = Items == WorkflowInputTypes.Object
-        ? new ConsultInputElement(FieldSlots())
-        : new ConsultInputElement(new ScalarSlot(Id, Label, true, Items, Values, rows: 3));
-      Rows.Add(row);
-      return row;
-    }
+    public ConsultInputNode AddRow() => Root.AddRow();
 
-    public void RemoveRow(int index) => Rows.RemoveAt(index);
+    public void RemoveRow(int index) => Root.RemoveRow(index);
 
-    public void MoveRow(int index, int delta) =>
-      (Rows[index], Rows[index + delta]) = (Rows[index + delta], Rows[index]);
+    public void MoveRow(int index, int delta) => Root.MoveRow(index, delta);
 
     public void Clear()
     {
-      Scalar.Clear();
-      foreach (var slot in Fields)
-      {
-        slot.Clear();
-      }
-
-      Rows.Clear();
+      Root.Clear();
       Documents.Clear();
       FileError = null;
     }
@@ -2739,19 +2942,12 @@
     /// </summary>
     public void AdoptFrom(ConsultInputField previous)
     {
-      if (previous.Type != Type || previous.Items != Items
-        || !previous.Fields.Select(slot => slot.Id).SequenceEqual(Fields.Select(slot => slot.Id)))
+      if (previous.Root.Shape != Root.Shape)
       {
         return;
       }
 
-      Scalar.CopyFrom(previous.Scalar);
-      for (var index = 0; index < Fields.Count; index++)
-      {
-        Fields[index].CopyFrom(previous.Fields[index]);
-      }
-
-      Rows.AddRange(previous.Rows);
+      Root.CopyFrom(previous.Root);
       Documents.AddRange(previous.Documents);
     }
 
@@ -2762,63 +2958,11 @@
         : ConsultInputValue.OfText(Documents[0].PreviewText)
       : Supplied!;
 
-    /// <summary>Re-attach from a typed memento (#429): a scalar, an object's fields, an array's rows.</summary>
+    /// <summary>Re-attach from a typed memento (#429): the tree restores itself from the root.</summary>
     public void Restore(ConsultInputValue value)
     {
       Clear();
-
-      switch (Type)
-      {
-        case WorkflowInputTypes.Object when value.IsObject:
-          RestoreFields(Fields, value);
-          break;
-        case WorkflowInputTypes.Array when value.IsArray:
-          foreach (var element in value.Elements!)
-          {
-            var row = AddRow();
-            if (row.Scalar != null)
-            {
-              RestoreScalar(row.Scalar, element);
-            }
-            else
-            {
-              RestoreFields(row.Fields!, element);
-            }
-          }
-
-          break;
-        default:
-          RestoreScalar(Scalar, value);
-          break;
-      }
-    }
-
-    private static void RestoreScalar(ScalarSlot slot, ConsultInputValue value)
-    {
-      if (value.IsBoolean)
-      {
-        slot.Flag = value.Flag;
-      }
-      else if (value.HasCanonical)
-      {
-        slot.Value = value.Canonical;
-      }
-    }
-
-    private static void RestoreFields(IReadOnlyList<ScalarSlot> slots, ConsultInputValue value)
-    {
-      if (!value.IsObject)
-      {
-        return;
-      }
-
-      foreach (var entry in value.Fields!)
-      {
-        if (slots.FirstOrDefault(slot => slot.Id == entry.Id) is { } slot)
-        {
-          RestoreScalar(slot, entry.Value);
-        }
-      }
+      Root.Restore(value);
     }
 
     /// <summary>Re-attach from a text memento: a scalar is restored as typed and a boolean by its word.</summary>
@@ -2835,49 +2979,6 @@
         Value = text;
       }
     }
-
-    private IReadOnlyList<ScalarSlot> FieldSlots() =>
-      fieldSpecs.Select(spec => new ScalarSlot(spec.Id, spec.Label, spec.Required, spec.Type, spec.Values, rows: 3)).ToList();
-
-    internal static ConsultInputValue? ObjectValue(IReadOnlyList<ScalarSlot> fields, bool requireTouched)
-    {
-      if (requireTouched && !fields.Any(slot => slot.IsTouched))
-      {
-        return null;
-      }
-
-      if (fields.Any(slot => slot.Problem != null || (slot.Required && !slot.IsFilled)))
-      {
-        return null;
-      }
-
-      return ConsultInputValue.OfObject(
-        fields.Where(slot => slot.IsFilled).Select(slot => new ConsultInputEntry(slot.Id, slot.Supplied!)));
-    }
-
-    internal static string? FieldsProblem(IReadOnlyList<ScalarSlot> fields, string subject)
-    {
-      foreach (var slot in fields)
-      {
-        if (slot.Problem is { } problem)
-        {
-          return $"{subject} {slot.Label} {problem}";
-        }
-      }
-
-      foreach (var slot in fields)
-      {
-        if (slot.Required && !slot.IsFilled)
-        {
-          return $"{subject} {slot.Label} is required.";
-        }
-      }
-
-      return null;
-    }
-
-    internal static string FieldsText(IReadOnlyList<ScalarSlot> fields) =>
-      string.Join("\n", fields.Where(slot => slot.IsFilled).Select(slot => $"{slot.Label}: {slot.EffectiveText}"));
   }
 
   private sealed record ConsultGenerationBlockCompletedEvent(
