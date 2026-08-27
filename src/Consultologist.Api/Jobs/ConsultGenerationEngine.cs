@@ -50,9 +50,15 @@ public sealed class ConsultGenerationOrchestrator
         // The work items: v5 jobs carry the one collection's items; v6 jobs carry
         // per-collection sets in Collections and the deliverable's BLOCKS in Items
         // (the result aggregator's expansion, feeding the entity's section model).
+        // v10 (#496): a job whose package has classifiers starts deciding — no
+        // items yet; the boundary supplies them. Every other job carries its
+        // skeleton from the start, as it always did.
+        var deciding = input.Deciding == true;
         var items = input.Items is { Count: > 0 }
             ? input.Items
-            : throw new InvalidOperationException("Consult generation input carries no work items; the job start snapshots them from the workflow package.");
+            : deciding
+                ? Array.Empty<IReadOnlyDictionary<string, string>>()
+                : throw new InvalidOperationException("Consult generation input carries no work items; the job start snapshots them from the workflow package.");
         var collections = input.Collections;
         var v6 = collections is { Count: > 0 };
 
@@ -87,7 +93,9 @@ public sealed class ConsultGenerationOrchestrator
                 PackageFormatRef: input.PackageFormatRef,
                 ProvenanceRef: input.ProvenanceRef,
                 Terminology: input.Terminology,
-                TerminologyServerRef: input.TerminologyServerRef));
+                TerminologyServerRef: input.TerminologyServerRef,
+                // v10 (#496): by name, last.
+                Deciding: input.Deciding));
 
         // #157: a scheduled job sleeps here — visible as Scheduled (entity state
         // above) — then proceeds identically. CurrentUtcDateTime keeps the guard
@@ -166,6 +174,37 @@ public sealed class ConsultGenerationOrchestrator
         // with an empty prefix, reproducing today's block ids byte-for-byte;
         // v5 = empty (blocks are the fan items themselves).
         var deliverables = ConsultDeliverables.Resolve(results, v6 ? resultNodeId : null, nodesById);
+        // v10 (#496): the skipped set the reply names — the starter's, or the boundary's.
+        var skippedForReply = input.SkippedDocuments;
+
+        // v10 (#496): the deciding stage runs the classifier closure — the
+        // classifiers and what they transitively bind — and nothing else.
+        // A classifier binds inputs and classifiers only (the validator's
+        // rule), so bindings are the whole closure.
+        var allNodes = nodes;
+        IReadOnlyList<ConsultNodeDescriptor> ClassifierClosure()
+        {
+            var closure = new HashSet<string>(StringComparer.Ordinal);
+            var frontier = new Queue<string>(allNodes
+                .Where(node => string.Equals(node.OutputContract, OutputContracts.Classification, StringComparison.Ordinal))
+                .Select(node => node.Id));
+
+            while (frontier.Count > 0)
+            {
+                var id = frontier.Dequeue();
+                if (!closure.Add(id))
+                {
+                    continue;
+                }
+
+                foreach (var dependency in ConsultNodeScheduler.NodeDependencies(nodesById[id]))
+                {
+                    frontier.Enqueue(dependency);
+                }
+            }
+
+            return allNodes.Where(node => closure.Contains(node.Id)).ToList();
+        }
 
         void StartInstance(ConsultNodeDescriptor node, IReadOnlyDictionary<string, string>? item)
         {
@@ -434,6 +473,12 @@ public sealed class ConsultGenerationOrchestrator
             }
         }
 
+        // The ready loop, run to quiescence: once for every job, and (v10,
+        // #496) once more for a deciding job — the classifier closure first,
+        // then, after the boundary rebinds the graph, the rest. False when the
+        // job failed inside it and the orchestration must return.
+        async Task<bool> RunToQuiescenceAsync()
+        {
         StartReadyInstances();
 
         while (pendingTasks.Count > 0)
@@ -455,7 +500,7 @@ public sealed class ConsultGenerationOrchestrator
                     await FailNodeAsync(
                         context, entityId, node, nodes, outputs,
                         totalBlockCount, completedBlockCount, failedBlockCount, logger);
-                    return;
+                    return false;
                 }
 
                 outputs[nodeId] = result;
@@ -466,7 +511,7 @@ public sealed class ConsultGenerationOrchestrator
                     nameof(ConsultGenerationJobEntity.MarkNodeCompleted),
                     new ConsultGenerationNodeUpdate(
                         node.Id, node.Label, result.Concepts, result.InputHash, result.OutputHash,
-                        completedNodeCount, totalNodeCount, result.HashVersion));
+                        completedNodeCount, totalNodeCount, result.HashVersion, result.Classification));
 
                 // A scalar source of a result aggregator is one block per owning
                 // deliverable (v6: the single empty-prefix entry; v5: no entries).
@@ -560,6 +605,110 @@ public sealed class ConsultGenerationOrchestrator
             StartReadyInstances();
         }
 
+        return true;
+        }
+
+        if (deciding)
+        {
+            // Stage one: the classifier closure alone. A failure here ends the
+            // job in the deciding stage — born Failed the way #434's record is,
+            // never a FinalizeJob over a skeleton that does not exist.
+            nodes = ClassifierClosure();
+            nodesById = nodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
+            chainNodes = nodes.Where(node => node.ForEach != null).ToList();
+            aggregators = nodes.Where(node => node.Aggregate != null).ToList();
+            totalNodeCount = allNodes.Count;
+
+            try
+            {
+                if (!await RunToQuiescenceAsync())
+                {
+                    return;
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                var failedNodeId = pendingTasks.Values.Select(pending => pending.NodeId).FirstOrDefault() ?? "classifier";
+                var detail = ex is Microsoft.DurableTask.TaskFailedException failed && failed.FailureDetails?.ErrorType?.EndsWith(nameof(ClassificationOutputContractException), StringComparison.Ordinal) == true
+                    ? failed.FailureDetails.ErrorMessage
+                    : $"Classifier '{failedNodeId}' failed ({ex.GetType().Name}).";
+                logger.LogWarning(ex, "Could not decide what to produce. JobId={JobId}", context.InstanceId);
+                await context.Entities.CallEntityAsync(
+                    entityId,
+                    nameof(ConsultGenerationJobEntity.RecordDecisionFailure),
+                    new ConsultGenerationDecisionFailure(
+                        ConsultGenerationDecisionFailureKinds.CouldNotDecide,
+                        detail,
+                        Classifications(),
+                        null));
+                PublishStatus(ConsultGenerationJobStatuses.Failed);
+                return;
+            }
+
+            // The boundary: every condition, once, over the inputs and the
+            // answers; the skeleton and the pruned graph come back with it.
+            var answers = Classifications();
+            var decision = await context.CallActivityAsync<ConsultDecisionResult>(
+                ConsultGenerationActivityNames.DecideDeliverables,
+                new ConsultDecideActivityInput(input.WorkflowPackage!, input.SuppliedInputs, answers),
+                AgentActivityRetryOptions);
+
+            if (decision.Results.Count == 0)
+            {
+                var reason = decision.EmptyFanLabels.Count > 0
+                    ? ConsultGenerationJobStarter.EmptyFanDetail(decision.EmptyFanLabels)
+                    : "No document applies after classification. " + string.Join(" ", decision.Skipped.Select(s => $"'{s.Label}' {s.Reason}."));
+                logger.LogWarning("No deliverable applies after classification. JobId={JobId}, Declared={Declared}", context.InstanceId, decision.Skipped.Count);
+                await context.Entities.CallEntityAsync(
+                    entityId,
+                    nameof(ConsultGenerationJobEntity.RecordDecisionFailure),
+                    new ConsultGenerationDecisionFailure(
+                        ConsultGenerationDecisionFailureKinds.NothingApplied,
+                        reason,
+                        answers,
+                        decision.Skipped));
+                PublishStatus(ConsultGenerationJobStatuses.Failed);
+                return;
+            }
+
+            await context.Entities.CallEntityAsync(
+                entityId,
+                nameof(ConsultGenerationJobEntity.Decide),
+                new ConsultGenerationDecision(
+                    decision.Items,
+                    decision.Nodes,
+                    decision.Results,
+                    decision.Skipped.Count > 0 ? decision.Skipped : null,
+                    decision.CollectionRosters,
+                    decision.ItemSteps,
+                    answers,
+                    context.CurrentUtcDateTime));
+
+            // Stage two: the graph as decided. The classifiers' outputs stay
+            // bindable; nothing recorded is recomputed.
+            nodes = decision.Nodes;
+            nodesById = nodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
+            chainNodes = nodes.Where(node => node.ForEach != null).ToList();
+            aggregators = nodes.Where(node => node.Aggregate != null).ToList();
+            results = decision.Results;
+            items = decision.Items;
+            collections = decision.CollectionSets;
+            v6 = collections is { Count: > 0 };
+            deliverables = ConsultDeliverables.Resolve(results, v6 ? resultNodeId : null, nodesById);
+            totalBlockCount = items.Count;
+            totalNodeCount = nodes.Count;
+            skippedForReply = decision.Skipped.Count > 0 ? decision.Skipped : null;
+        }
+
+        if (!await RunToQuiescenceAsync())
+        {
+            return;
+        }
+
+        IReadOnlyDictionary<string, string> Classifications() => outputs
+            .Where(pair => pair.Value.Classification != null)
+            .ToDictionary(pair => pair.Key, pair => pair.Value.Classification!, StringComparer.Ordinal);
+
         var expectedInstances = nodes.Where(node => node.Aggregate is null).Sum(node => node.ForEach is null
             ? 1
             : FanItems(node).Count(item => !failedItems.Contains(FailedKey(node, item["id"]))));
@@ -635,7 +784,7 @@ public sealed class ConsultGenerationOrchestrator
             ? resultOutput.RawOutput
             : null;
 
-        await SendEmailIntakeReplyAsync(context, input, finalStatus, logger, assembledDocument, replyDocuments);
+        await SendEmailIntakeReplyAsync(context, input with { SkippedDocuments = skippedForReply }, finalStatus, logger, assembledDocument, replyDocuments);
 
         PublishStatus(finalStatus);
         }

@@ -101,7 +101,10 @@ Example Durable Entity state:
 ```text
 ConsultGenerationJobEntity(jobId)
 ├─ Status
-├─ TotalBlockCount
+├─ TotalBlockCount            (stamped once — at Initialize, or at Decide for a
+│                              deciding job; v10 #496)
+├─ Deciding / DecidedAtUtc    (null DecidedAtUtc = not yet decided)
+├─ Classifications            (classifier node → answered value)
 ├─ CompletedBlockCount
 ├─ FailedBlockCount
 └─ Sections

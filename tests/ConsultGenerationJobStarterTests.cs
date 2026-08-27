@@ -2340,6 +2340,114 @@ public class ConsultGenerationJobStarterTests
         Assert.Null(outcome.Error);
         Assert.NotNull(outcome.JobId);
     }
+    // v10 (#496): a package with classifiers starts deciding.
+    private async Task<(ConsultGenerationJobStartOutcome Outcome, ConsultGenerationJobInitialize? Initialize, ConsultGenerationOrchestrationInput? Input)>
+        StartClassifierAsync(string when)
+    {
+        var (manifest, files) = V10Fixtures.WithClassifier();
+        var errors = new List<string>();
+        var data = WorkflowDataResolver.Resolve(manifest, files, errors);
+        Assert.Empty(errors);
+        Assert.True(WorkflowResultConditions.TryParseExpression(when, out var condition, out var error), error);
+
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackage(
+                manifest,
+                Nodes: manifest.Nodes,
+                SchemaContracts: TestOutputContracts.CatalogSchemas,
+                Data: data,
+                Results: new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Consultation note", condition) }));
+
+        ConsultGenerationJobInitialize? initialize = null;
+        await _entities.SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(),
+            nameof(ConsultGenerationJobEntity.Initialize),
+            Arg.Do<object>(payload => initialize = payload as ConsultGenerationJobInitialize));
+        await _entities.SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(),
+            nameof(ConsultGenerationJobEntity.RecordStartFailure),
+            Arg.Do<object>(payload => _recordedStartFailure = payload as ConsultGenerationJobStartFailure));
+
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var supplied = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = Referral,
+            ["seen_on"] = "2026-08-10",
+            ["encounter_kind"] = "follow_up"
+        };
+
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(null, Inputs: supplied),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        return (outcome, initialize, orchestrationInput);
+    }
+
+    [Fact]
+    public async Task AClassifierPackage_StartsDeciding_WithNoSkeletonAndEveryNode()
+    {
+        var (outcome, initialize, input) = await StartClassifierAsync("node:scope == in_scope");
+
+        Assert.Null(outcome.Error);
+        Assert.Null(_recordedStartFailure);
+        Assert.NotNull(initialize);
+        Assert.True(initialize!.Deciding);
+        Assert.Empty(initialize.Items);
+        Assert.Null(initialize.SkippedDocuments);
+        Assert.Null(initialize.ItemSteps);
+        Assert.Contains(initialize.Nodes!, node => node.Id == "scope" && node.OutputContract == Consultologist.Api.Agents.OutputContracts.Classification);
+        Assert.Contains(initialize.Nodes!, node => node.Id == "assemble-note");
+
+        Assert.NotNull(input);
+        Assert.True(input!.Deciding);
+        Assert.Empty(input.Items!);
+        // Every declared deliverable rides — the boundary narrows.
+        Assert.Equal("consult", Assert.Single(input.Results!).Id);
+        // The supplied values ride as their wire JSON and read back as themselves.
+        Assert.Equal("\"follow_up\"", input.SuppliedInputs!["encounter_kind"]);
+        Assert.Equal("follow_up", ConsultInputValue.FromJson(input.SuppliedInputs["encounter_kind"]).Canonical);
+    }
+
+    [Fact]
+    public async Task AClassifierPackage_IsNeverRefusedAtStart_ForAConditionOnlyTheBoundaryCanAnswer()
+    {
+        // At start no classification exists, so this condition is absent —
+        // and the starter must not treat absent as "nothing applies".
+        var (outcome, initialize, _) = await StartClassifierAsync("node:scope == in_scope");
+
+        Assert.Null(outcome.Error);
+        Assert.NotNull(initialize);
+        Assert.Null(_recordedStartFailure);
+    }
+
+    [Fact]
+    public async Task APackageWithoutClassifiers_WritesNoDecidingFlag()
+    {
+        var (outcome, initialize, input) = await StartFannedAsync(V9Fixtures.Fanned(), ConsultInputValue.OfArray(new[]
+        {
+            ConsultInputValue.OfText("Seen in clinic; BP 150/95."),
+            ConsultInputValue.OfText("Follow-up; BP 130/85.")
+        }));
+
+        Assert.Null(outcome.Error);
+        Assert.NotNull(initialize);
+        Assert.Null(initialize!.Deciding);
+        Assert.Null(input!.Deciding);
+        Assert.Null(input.SuppliedInputs);
+    }
+
 }
 
 public class ResolveEffectiveInputsTests
@@ -2740,5 +2848,6 @@ file static class TestCatalog
         return Consultologist.Api.Agents.OutputContractCatalog.Load(
             Path.Combine(dir!.FullName, "external", "consultologist-agents", "agents"));
     }
+
 
 }

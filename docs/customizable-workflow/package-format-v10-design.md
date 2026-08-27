@@ -202,6 +202,31 @@ values on the record, because a declared value is printable (§ 6, *Explain*).
 { scope: out_of_scope }`), the fire set and the skipped set as v8 records
 them, and the boundary time. Provenance § 8.
 
+> **Amendment, 2026-08-27 (#496).** Three things the implementation fixed:
+>
+> - **The decision runs as an activity**, `decide-deliverables`, not in
+>   the orchestrator. Block expansion and the closure need the resolved
+>   package, which an orchestrator cannot hold across replay; the activity
+>   re-resolves the pinned package the way the prompt activity does, and
+>   the same static code path the starter uses at start
+>   (`DecideFireSet` → `ResolveSkeleton`) evaluates every `when` with the
+>   classifier values. The orchestrator replays the activity's recorded
+>   result, so the decision is made once.
+> - **"Not yet decided" is a date, not an absent count.** `totalBlockCount`
+>   stays an integer everywhere (#176's stamp is unchanged); the record
+>   gains `decidedAtUtc`, and `Initialize` carries a trailing `deciding`
+>   flag. A package with no classifiers stamps `decidedAtUtc` at start, so
+>   every v9 record reads as decided at start; a deciding job leaves it
+>   null until `Decide` writes it, and a job born Failed is the stated
+>   zero as before. The wire is the positional-append rule: the v9 payload
+>   bytes gain only `"Deciding":null` and `"SuppliedInputs":null`.
+> - **A stage-one failure is a start failure** with a kind. A write-once
+>   `RecordDecisionFailure` sets `startFailure` (History's existing
+>   *failed at start* path shows it) and `decisionFailureKind`:
+>   `could-not-decide` when a classifier failed, `nothing-applied` when
+>   the fire set at the boundary was empty. Both carry the classifier
+>   values answered so far. No new status constant.
+
 ## 6. Conditions (normative)
 
 ### Grammar

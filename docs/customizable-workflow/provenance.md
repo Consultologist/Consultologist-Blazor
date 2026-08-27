@@ -59,6 +59,18 @@ code path that produced the record); `packageSpecVersion` is the format the
 package was written against. They collide at 7 by coincidence, which is why
 #373 renamed what History shows and the contract states them apart.
 
+## The decision, when the shape is known later
+
+A v10 package with classifiers (design record § 5, #496) decides its fire set
+at a boundary inside the run rather than at start. The record carries that
+decision as three fields the registry text for step (h) must name:
+`decidedAtUtc` (the boundary time; stamped at start for every package without
+classifiers, so older records read as decided at start), `classifications`
+(classifier node → the value it answered, a declared value and so printable),
+and `decisionFailureKind` (`could-not-decide` or `nothing-applied`) alongside
+`startFailure` when the run ended in the deciding stage. The node hash is
+unchanged: the decision is over recorded activity outputs, not a new input.
+
 ## Declared, not recorded
 
 The chain names legs the record does not yet carry. They are design intent, and

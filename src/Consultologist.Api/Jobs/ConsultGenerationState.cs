@@ -37,6 +37,80 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     }
 
     /// <summary>
+    /// v10 (#496, package-format-v10-design.md § 5): the boundary. A job whose
+    /// package has classifiers was initialised deciding — no blocks, the
+    /// count not yet known — and this is the one signal that decides: the
+    /// fire set, the skipped set with each condition's sentence, the pruned
+    /// nodes, the block skeleton, the count. Write-once, first-writer-wins:
+    /// #176's rule with the moment moved, never the rule.
+    /// </summary>
+    public async Task Decide(ConsultGenerationDecision input)
+    {
+        var state = EnsureState();
+
+        if (state.DecidedAtUtc != null || state.StartFailure != null)
+        {
+            return;
+        }
+
+        state.TotalBlockCount = input.Items.Count;
+        foreach (var item in input.Items)
+        {
+            state.GetOrAddBlock(item["id"], item.GetValueOrDefault("name", item["id"]));
+        }
+
+        state.Nodes = input.Nodes?.ToList() ?? state.Nodes;
+        state.ItemSteps = input.ItemSteps?.ToList() ?? state.ItemSteps;
+        state.Collections = input.Collections?.ToList() ?? state.Collections;
+        state.SkippedDocuments = input.SkippedDocuments?.ToList();
+        state.Classifications = input.Classifications?.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        state.DecidedAtUtc = input.DecidedAtUtc;
+        state.History.Add(new JobHistoryEvent(
+            "decided",
+            input.Results is { Count: > 0 }
+                ? $"Decided: {input.Items.Count} sections in {input.Results.Count} documents"
+                : $"Decided: {input.Items.Count} sections",
+            null,
+            input.DecidedAtUtc));
+        State = state;
+
+        await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+    }
+
+    /// <summary>
+    /// v10 (#496): a job that ends in the deciding stage — a classifier that
+    /// failed, or a fire set that came back empty after classification. Born
+    /// Failed the way #434's record is (StartFailure set, FailureError null,
+    /// a stated zero), with the kind saying which, and the classifier values
+    /// on the record because a declared value is printable.
+    /// </summary>
+    public async Task RecordDecisionFailure(ConsultGenerationDecisionFailure input)
+    {
+        var state = EnsureState();
+
+        if (ConsultGenerationJobEntity.IsTerminal(state.Status))
+        {
+            return;
+        }
+
+        state.Status = ConsultGenerationJobStatuses.Failed;
+        state.StartFailure = input.Reason;
+        state.DecisionFailureKind = input.Kind;
+        state.Classifications = input.Classifications?.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        state.SkippedDocuments ??= input.SkippedDocuments?.ToList();
+        state.SchemaVersion = 7;
+        state.CompletedAtUtc = DateTimeOffset.UtcNow;
+        state.History.Add(new JobHistoryEvent(
+            "failure",
+            input.Kind == ConsultGenerationDecisionFailureKinds.NothingApplied ? "No document applies after classification" : "Could not decide what to produce",
+            input.Reason,
+            DateTimeOffset.UtcNow));
+        State = state;
+
+        await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+    }
+
+    /// <summary>
     /// #434: a well-formed, authorized request met a package whose conditions
     /// left nothing to produce. The row exists so the operator has something
     /// to point at; nothing ran and nothing was spent, so it is born terminal
@@ -115,6 +189,18 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             pair => pair.Value.ToList(),
             StringComparer.Ordinal);
         State.SkippedDocuments ??= input.SkippedDocuments?.ToList();
+
+        // v10 (#496): a job that starts deciding has no count yet — the
+        // boundary stamps it. Every other job is decided at start, as it always
+        // was; the date is what a reader tells the two apart by.
+        if (input.Deciding == true)
+        {
+            State.Deciding ??= true;
+        }
+        else
+        {
+            State.DecidedAtUtc ??= State.CreatedAtUtc;
+        }
 
         // #157: a future schedule shows as Scheduled until MarkRunning; entities
         // run exactly once per signal, so the wall clock is safe here.
@@ -254,6 +340,15 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         node.OutputHash = input.OutputHash;
         node.HashVersion = input.HashVersion;
         node.CompletedAtUtc = DateTimeOffset.UtcNow;
+
+        // v10 (#496): a classifier's answer, a declared value — on the node
+        // and in the job's classifications, which the boundary reads.
+        if (input.Classification != null)
+        {
+            node.Classification = input.Classification;
+            state.Classifications ??= new Dictionary<string, string>(StringComparer.Ordinal);
+            state.Classifications[input.NodeId] = input.Classification;
+        }
 
         state.CompletedStageCount = input.CompletedNodeCount;
         state.TotalStageCount = input.TotalNodeCount;
@@ -505,7 +600,13 @@ public sealed record ConsultGenerationOrchestrationInput(
     // #403: the terminology edition the server had loaded when the job
     // started, and the server's build. Appended last, same reason.
     TerminologySnapshot? Terminology = null,
-    string? TerminologyServerRef = null);
+    string? TerminologyServerRef = null,
+    // v10 (#496): the package has classifiers — the fire set is decided at the
+    // boundary, so Items is empty here and the decision activity needs the
+    // supplied values (each as its wire JSON, ConsultInputValue.AsJson) to
+    // evaluate the conditions. Appended last, same reason.
+    bool? Deciding = null,
+    IReadOnlyDictionary<string, string>? SuppliedInputs = null);
 
 public sealed record ConsultGenerationJobInitialize(
     string JobId,
@@ -550,7 +651,12 @@ public sealed record ConsultGenerationJobInitialize(
     string? ProvenanceRef = null,
     // #403: see ConsultGenerationOrchestrationInput. Appended last, same reason.
     TerminologySnapshot? Terminology = null,
-    string? TerminologyServerRef = null);
+    string? TerminologyServerRef = null,
+    // v10 (#496): the package has classifiers, so the fire set — and with it
+    // the count, the blocks, the pruned nodes — is decided at the boundary,
+    // not here. Null on every job before, and on every package without a
+    // classifier: those are decided at start. Appended last, same reason.
+    bool? Deciding = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -562,7 +668,35 @@ public sealed record ConsultGenerationNodeUpdate(
     int TotalNodeCount,
     // #375: the pair's definition. Appended last for the reason Initialize's
     // trailing fields give: the engine calls this positionally.
-    int? HashVersion = null);
+    int? HashVersion = null,
+    // v10 (#496): a classifier's normalised answer. Appended last, same reason.
+    string? Classification = null);
+
+/// <summary>v10 (#496): what the boundary decided — the one Decide signal.</summary>
+public sealed record ConsultGenerationDecision(
+    IReadOnlyList<IReadOnlyDictionary<string, string>> Items,
+    IReadOnlyList<ConsultNodeDescriptor>? Nodes,
+    IReadOnlyList<ConsultResultDescriptor>? Results,
+    IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments,
+    IReadOnlyList<ConsultCollectionRoster>? Collections,
+    IReadOnlyList<ConsultItemStepDescriptor>? ItemSteps,
+    IReadOnlyDictionary<string, string>? Classifications,
+    DateTimeOffset DecidedAtUtc);
+
+public static class ConsultGenerationDecisionFailureKinds
+{
+    /// <summary>A classifier failed, so the fire set could not be decided.</summary>
+    public const string CouldNotDecide = "could-not-decide";
+    /// <summary>The classifiers answered and no deliverable's condition held.</summary>
+    public const string NothingApplied = "nothing-applied";
+}
+
+/// <summary>v10 (#496): a job that ends in the deciding stage.</summary>
+public sealed record ConsultGenerationDecisionFailure(
+    string Kind,
+    string Reason,
+    IReadOnlyDictionary<string, string>? Classifications,
+    IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null);
 
 public sealed record ConsultGenerationNodeFailure(
     string NodeId,
@@ -685,8 +819,21 @@ public sealed class ConsultGenerationJobState
     // #434: set when the job was created already Failed because no deliverable
     // applied to its inputs. Nothing ran: FailureError stays null, there are
     // no blocks, and TotalBlockCount is a stated zero. Null on every job that
-    // started.
+    // started. v10 (#496): also a job that ended in the deciding stage, with
+    // DecisionFailureKind saying which way.
     public string? StartFailure { get; set; }
+
+    // v10 (#496): the boundary. Deciding is stamped at Initialize for a job
+    // whose package has classifiers; DecidedAtUtc when the fire set was
+    // decided — at start for every other job, at the boundary for one that was
+    // deciding. Null DecidedAtUtc with Deciding true = "not yet decided", the
+    // named state a reader shows instead of a zero count.
+    public bool? Deciding { get; set; }
+    public DateTimeOffset? DecidedAtUtc { get; set; }
+    // v10 (#496): what the classifiers answered, by node id — declared values,
+    // printable; the fire set was decided over them.
+    public Dictionary<string, string>? Classifications { get; set; }
+    public string? DecisionFailureKind { get; set; }
     public string? WorkflowPackage { get; set; }
     public string? EffectiveInputHash { get; set; }
 
@@ -812,7 +959,9 @@ public sealed class ConsultGenerationJobState
             FailedAtStart: StartFailure != null,
             TextDroppedAtUtc: TextDroppedAtUtc,
             DeliveryOutcome: DeliveryOutcome,
-            DeliveredAtUtc: DeliveredAtUtc);
+            DeliveredAtUtc: DeliveredAtUtc,
+            Deciding: Deciding == true && DecidedAtUtc == null && StartFailure == null,
+            DecisionFailureKind: DecisionFailureKind);
     }
 
     public ConsultNodeOutputState GetOrAddNodeOutput(string nodeId, string label)
@@ -983,7 +1132,8 @@ public sealed class ConsultGenerationJobState
                     pair.Value.OutputHash,
                     pair.Value.CompletedAtUtc,
                     pair.Value.Error,
-                    pair.Value.HashVersion)),
+                    pair.Value.HashVersion,
+                    pair.Value.Classification)),
             AgentVersions: AgentVersions,
             EffectiveInputHashVersion: EffectiveInputHashVersion,
             CatalogRef: CatalogRef,
@@ -1030,7 +1180,11 @@ public sealed class ConsultGenerationJobState
             TextDroppedAtUtc: TextDroppedAtUtc,
             DeliveryOutcome: DeliveryOutcome,
             DeliveredAtUtc: DeliveredAtUtc,
-            DeliveryDocumentAttached: DeliveryDocumentAttached);
+            DeliveryDocumentAttached: DeliveryDocumentAttached,
+            Deciding: Deciding,
+            DecidedAtUtc: DecidedAtUtc,
+            Classifications: Classifications,
+            DecisionFailureKind: DecisionFailureKind);
     }
 }
 
@@ -1084,6 +1238,8 @@ public sealed class ConsultNodeOutputState
     public int? HashVersion { get; set; }
     public DateTimeOffset? CompletedAtUtc { get; set; }
     public string? Error { get; set; }
+    // v10 (#496): a classifier's answer — a declared value.
+    public string? Classification { get; set; }
 }
 
 public static class ConsultGenerationNodeStatuses
@@ -1111,6 +1267,8 @@ public static class ConsultGenerationJobStatuses
 public static class ConsultGenerationActivityNames
 {
     public const string RunPromptNode = "run-prompt-node";
+    // v10 (#496): the boundary — decide the fire set over the classifier values.
+    public const string DecideDeliverables = "decide-deliverables";
 }
 
 public static class ConsultGenerationItemSteps

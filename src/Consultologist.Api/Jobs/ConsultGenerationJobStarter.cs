@@ -390,38 +390,31 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // v8: the fire set, decided once, here. Conditions read declared inputs
         // only, so this is knowable before anything runs — which is what lets
         // the block skeleton still be built up front and TotalBlockCount stay
-        // the stored scalar #176 made it. v10 (#494): a condition may also read
-        // a classifier (node:<id>); until the boundary lands (step e) no
-        // classification exists here, so such a clause is absent — never held.
+        // the stored scalar #176 made it.
+        //
+        // v10 (#496, package-format-v10-design.md § 5): a package with
+        // classifiers decides at the BOUNDARY instead — the classifier closure
+        // runs first, then DecideActivity evaluates every condition over the
+        // supplied inputs and the answers, and the entity's Decide stamps the
+        // count. Nothing here moves for a package without one: by control
+        // flow, as #355 did it, so every v9 payload byte is untouched.
         //
         // Filtering the PACKAGE rather than teaching the engine about
         // conditions is the whole trick: block expansion, deliverable
         // resolution and the outcome rule all walk the result list and need no
         // change at all.
+        var deciding = package.Nodes.Any(WorkflowNodeKinds.IsClassifier);
         var skipped = new List<ConsultSkippedDocument>();
         // #434: the deliverables as declared, before the fire set narrows
         // package.Results — the born-Failed record lists every one of them.
         var declaredResults = package.Results ?? new List<WorkflowResolvedResult>();
 
-        if (package.Results is { Count: > 0 })
+        if (!deciding && package.Results is { Count: > 0 })
         {
-            var firing = new List<WorkflowResolvedResult>();
+            var fireSet = DecideFireSet(package, inputs.Supplied, classifications: null);
+            skipped = fireSet.Skipped;
 
-            foreach (var result in package.Results)
-            {
-                if (WorkflowResultConditions.Holds(result.Condition, inputs.Supplied))
-                {
-                    firing.Add(result);
-                    continue;
-                }
-
-                skipped.Add(new ConsultSkippedDocument(
-                    result.Id,
-                    result.Label,
-                    WorkflowResultConditions.Explain(result.Condition!, inputs.Supplied)));
-            }
-
-            if (firing.Count == 0)
+            if (fireSet.Firing.Count == 0)
             {
                 // Knowable before any model call, so nothing is spent. #434:
                 // the job is created all the same — born Failed, carrying the
@@ -433,8 +426,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     jobId,
                     package.Ref,
                     skipped.Count);
-                var noneApplyDetail = "No document applies to these inputs. "
-                    + string.Join(" ", skipped.Select(s => $"'{s.Label}' {s.Reason}."));
+                var noneApplyDetail = NoneApplyDetail(skipped);
 
                 // #369: authored throughout. Labels and condition literals
                 // come from the manifest, and WorkflowResultCondition.Explain
@@ -447,145 +439,61 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     client, entityId, jobId, appUserId, request, package, inputs, origin, inputOrigins, skipped, noneApplyDetail);
             }
 
-            package = package with { Results = firing };
-
-            // #355: the fire set decides which NODES run, not only which
-            // deliverables assemble. Filtering Results alone left a node whose
-            // only deliverable was skipped executing anyway — paid for, and the
-            // document it assembled discarded. Worse, a scalar prompt node's
-            // await in the engine is unguarded, so a failure in that dead branch
-            // failed a job whose every firing deliverable was assemblable.
-            //
-            // Pruning the package's nodes here, beside its results, is the
-            // follow-through on filtering the package rather than teaching the
-            // engine about conditions: block expansion, the collection sets, the
-            // item steps and the node descriptors all derive from `package` and
-            // need no change of their own.
-            //
-            // Gated on a skip having happened. With nothing skipped the closure
-            // is the identity — the validator requires every node to reach some
-            // result — so v5-v7 and every all-firing v8 job keeps a
-            // byte-identical durable payload by control flow rather than by an
-            // argument, and a package that slipped past that rule still runs its
-            // orphan node loudly instead of having it silently pruned away.
-            if (skipped.Count > 0)
+            if (fireSet.Package.Nodes!.Count < package.Nodes.Count)
             {
-                var reachable = WorkflowNodeClosure.Reachable(
-                    firing.Select(result => result.NodeId),
-                    WorkflowNodeClosure.Edges(package.Nodes!));
-                var live = package.Nodes!.Where(node => reachable.Contains(node.Id)).ToList();
-
-                if (live.Count < package.Nodes!.Count)
-                {
-                    _logger.LogInformation(
-                        "Pruned nodes outside the fire set. Package={Package}, Firing={Firing}, Skipped={Skipped}, Dropped={Dropped}",
-                        package.Ref,
-                        firing.Count,
-                        skipped.Count,
-                        string.Join(", ", package.Nodes!.Where(node => !reachable.Contains(node.Id)).Select(node => node.Id)));
-                }
-
-                package = package with { Nodes = live };
+                _logger.LogInformation(
+                    "Pruned nodes outside the fire set. Package={Package}, Firing={Firing}, Skipped={Skipped}, Dropped={Dropped}",
+                    package.Ref,
+                    fireSet.Firing.Count,
+                    skipped.Count,
+                    package.Nodes.Count - fireSet.Package.Nodes.Count);
             }
+
+            package = fireSet.Package;
         }
 
         IReadOnlyList<IReadOnlyDictionary<string, string>> items;
         IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? collectionSets = null;
         IReadOnlyList<ConsultCollectionRoster>? collectionRosters = null;
 
-        if (package.Manifest.SpecVersion >= 6)
+        if (deciding)
         {
-            // v9 (#426): a fan over a caller-supplied array. Its items come from
-            // the request — one per element, ids the engine mints — keyed by the
-            // literal forEach string, which is what the orchestrator's
-            // CollectionIdOf already yields for a non-data source and what the
-            // rail matches a roster by. The supplied map is the typed one, so an
-            // array of objects fans its elements as carriers.
-            var inputsById = (package.Manifest.Inputs ?? new List<WorkflowInputSpec>())
-                .ToDictionary(input => input.Id, StringComparer.Ordinal);
-            var inputFans = package.Nodes
-                .Where(node => WorkflowInputFans.IsInputFan(node.ForEach))
-                .Select(node => node.ForEach!)
-                .Distinct(StringComparer.Ordinal)
-                .ToDictionary(
-                    key => key,
-                    key => WorkflowInputFans.Items(
-                        inputsById[WorkflowInputFans.InputIdOf(key)],
-                        inputs.Supplied?.GetValueOrDefault(WorkflowInputFans.InputIdOf(key))),
-                    StringComparer.Ordinal);
+            // The skeleton is the boundary's: no blocks yet, no fans yet, the
+            // count not yet decided. The rail draws the job's nodes from the
+            // snapshot and the data-collection rosters ride so a fan it will
+            // later run is already drawable.
+            items = Array.Empty<IReadOnlyDictionary<string, string>>();
+            var skeleton = ResolveSkeleton(package, inputs.Supplied);
+            collectionSets = skeleton.CollectionSets;
+            collectionRosters = skeleton.CollectionRosters;
+        }
+        else if (package.Manifest.SpecVersion >= 6)
+        {
+            var skeleton = ResolveSkeleton(package, inputs.Supplied);
 
             // An empty fan produces no items, no blocks, no document — v8's
             // empty-fire-set case wearing different clothes, and recorded the
             // same way: at start, by name, before anything is spent (v9 § 5,
             // #434). Every declared deliverable is the one not produced, for
-            // the same reason, so the record lists each of them with it.
-            var emptyFans = inputFans.Where(fan => fan.Value.Count == 0).Select(fan => fan.Key).ToList();
-            if (emptyFans.Count > 0)
+            // the same reason — the fan feeds them all — unless a condition
+            // had already skipped it, in which case its own reason stands.
+            if (skeleton.EmptyFanLabels.Count > 0)
             {
-                var emptyLabels = emptyFans.Select(key => $"'{inputsById[WorkflowInputFans.InputIdOf(key)].Label}'").ToList();
-                var emptyDetail = "No document applies to these inputs. "
-                    + string.Join(" ", emptyLabels.Select(label => $"{label} has no entries, and every document this package produces is written from them."));
-                // Every declared deliverable, in declaration order: the ones the
-                // fire set skipped keep their condition's reason; the ones that
-                // would have fired are not produced because they are written
-                // from the empty fan. Phrased to follow "not produced — it".
-                var fanReason = $"is written from {string.Join(" and ", emptyLabels)}, which has no entries";
-                var conditionSkipped = skipped.ToDictionary(document => document.ResultId, StringComparer.Ordinal);
-                var notProduced = declaredResults
-                    .Select(result => conditionSkipped.TryGetValue(result.Id, out var byCondition)
-                        ? byCondition
-                        : new ConsultSkippedDocument(result.Id, result.Label, fanReason))
-                    .ToList();
-
                 _logger.LogWarning(
-                    "Rejected job start: a fanned input has no entries. JobId={JobId}, Package={Package}, Fans={Fans}",
+                    "Rejected job start: a fanned input has no entries. JobId={JobId}, Package={Package}, Inputs={Inputs}",
                     jobId,
                     package.Ref,
-                    string.Join(", ", emptyFans));
+                    string.Join(", ", skeleton.EmptyFanLabels));
+                var notProduced = NotProducedByEmptyFan(declaredResults, skipped, skeleton.EmptyFanLabels);
+                var emptyFanDetail = EmptyFanDetail(skeleton.EmptyFanLabels);
 
-                // Authored labels and fixed prose: the sender may read it.
                 return await RecordNoApplicableDeliverableAsync(
-                    client, entityId, jobId, appUserId, request, package, inputs, origin, inputOrigins, notProduced, emptyDetail);
+                    client, entityId, jobId, appUserId, request, package, inputs, origin, inputOrigins, notProduced, emptyFanDetail);
             }
 
-            items = WorkflowPackageBlocks.Resolve(package, inputFans)
-                .Select(block => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(StringComparer.Ordinal)
-                {
-                    ["id"] = block.Id,
-                    ["name"] = block.Name
-                })
-                .ToList();
-
-            var dataSets = package.Nodes
-                .Where(node => node.ForEach != null && !WorkflowInputFans.IsInputFan(node.ForEach))
-                .Select(node => node.ForEach![WorkflowNodeBindingSources.DataPrefix.Length..])
-                .Distinct(StringComparer.Ordinal)
-                .ToDictionary(
-                    collectionId => collectionId,
-                    collectionId => (IReadOnlyList<IReadOnlyDictionary<string, string>>)(package.Data?.Collections.GetValueOrDefault(collectionId)
-                            ?? throw new InvalidOperationException($"Package {package.Ref} has no data collection '{collectionId}'."))
-                        .Items
-                        .Select(item => (IReadOnlyDictionary<string, string>)item.Fields)
-                        .ToList(),
-                    StringComparer.Ordinal);
-
-            collectionSets = dataSets
-                .Concat(inputFans)
-                .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
-
-            // #361: the same rosters, slimmed to what a run rail needs. The
-            // orchestrator's copy above carries every field including content —
-            // the whole standards text — and none of that belongs on a status
-            // response the client polls.
-            collectionRosters = collectionSets
-                .Select(entry => new ConsultCollectionRoster(
-                    entry.Key,
-                    entry.Value
-                        .Select(item => new ConsultCollectionItem(
-                            item.GetValueOrDefault("id", string.Empty),
-                            item.GetValueOrDefault("name", item.GetValueOrDefault("id", string.Empty))))
-                        .ToList()))
-                .ToList();
+            items = skeleton.Items;
+            collectionSets = skeleton.CollectionSets;
+            collectionRosters = skeleton.CollectionRosters;
         }
         else
         {
@@ -600,10 +508,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var resolvedPackageRef = package.Ref;
         // The per-section step list is the forEach chain, in manifest order — the
         // display/progress skeleton the section-prose-step events hang off.
-        var sectionSteps = package.Nodes
-            .Where(node => node.ForEach != null)
-            .Select(node => new ConsultItemStepDescriptor(node.Id, node.Label))
-            .ToList();
+        var sectionSteps = deciding
+            ? null
+            : package.Nodes
+                .Where(node => node.ForEach != null)
+                .Select(node => new ConsultItemStepDescriptor(node.Id, node.Label))
+                .ToList();
         var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts)).ToList();
 
         // Provenance: identify the artifacts and input that produce this consult.
@@ -669,7 +579,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // #432: and its title, as the pinned manifest carries it.
                 PackageTitle: package.Manifest.Title,
                 // #453: and its tags.
-                PackageTags: package.Manifest.Tags));
+                PackageTags: package.Manifest.Tags,
+                // v10 (#496): by name, last — a package without a classifier
+                // leaves it null and writes the bytes it always wrote.
+                Deciding: deciding ? true : null));
 
         var terminology = await _terminology.GetAsync(cancellationToken);
         var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(
@@ -701,7 +614,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 ProvenanceRef: EngineAttestation.RefOf(EngineAttestation.ProvenanceRegistry, _engine.Provenance),
                 // #403: the edition the terminology server had loaded, and its build.
                 Terminology: terminology?.Terminology,
-                TerminologyServerRef: terminology?.ServerRef),
+                TerminologyServerRef: terminology?.ServerRef,
+                // v10 (#496): the boundary's inputs, only when there is one.
+                Deciding: deciding ? true : null,
+                SuppliedInputs: deciding ? SuppliedCarrier(inputs.Supplied) : null),
             new StartOrchestrationOptions { InstanceId = jobId },
             cancellationToken);
 
@@ -745,6 +661,166 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         return (hash, version);
     }
+
+    /// <summary>The fire set, decided once: the results that hold, the rest with each condition's sentence, the nodes pruned to the firing closure (#355).</summary>
+    internal sealed record FireSetDecision(WorkflowPackage Package, List<WorkflowResolvedResult> Firing, List<ConsultSkippedDocument> Skipped);
+
+    /// <summary>
+    /// The one code path that decides a fire set — at start (v8) or at the
+    /// boundary (v10 § 5), over the supplied inputs and, at the boundary, the
+    /// classifiers' answers. Pure over its arguments.
+    /// </summary>
+    internal static FireSetDecision DecideFireSet(
+        WorkflowPackage package,
+        IReadOnlyDictionary<string, ConsultInputValue>? supplied,
+        IReadOnlyDictionary<string, string>? classifications)
+    {
+        var firing = new List<WorkflowResolvedResult>();
+        var skipped = new List<ConsultSkippedDocument>();
+
+        foreach (var result in package.Results ?? new List<WorkflowResolvedResult>())
+        {
+            if (WorkflowResultConditions.Holds(result.Condition, supplied, classifications))
+            {
+                firing.Add(result);
+                continue;
+            }
+
+            skipped.Add(new ConsultSkippedDocument(
+                result.Id,
+                result.Label,
+                WorkflowResultConditions.Explain(result.Condition!, supplied, classifications)));
+        }
+
+        if (firing.Count == 0)
+        {
+            return new FireSetDecision(package, firing, skipped);
+        }
+
+        var narrowed = package with { Results = firing };
+
+        // #355: the fire set decides which NODES run, not only which
+        // deliverables assemble. Gated on a skip having happened. With nothing
+        // skipped the closure is the identity — the validator requires every
+        // node to reach some result — so v5-v7 and every all-firing v8 job
+        // keeps a byte-identical durable payload by control flow rather than by
+        // an argument, and a package that slipped past that rule still runs its
+        // orphan node loudly instead of having it silently pruned away. v10: a
+        // classifier reaches no result and is kept — its value was the decision.
+        if (skipped.Count > 0)
+        {
+            var reachable = WorkflowNodeClosure.Reachable(
+                firing.Select(result => result.NodeId),
+                WorkflowNodeClosure.Edges(narrowed.Nodes!));
+            var live = narrowed.Nodes!.Where(node => reachable.Contains(node.Id) || WorkflowNodeKinds.IsClassifier(node)).ToList();
+            narrowed = narrowed with { Nodes = live };
+        }
+
+        return new FireSetDecision(narrowed, firing, skipped);
+    }
+
+    /// <summary>The block skeleton and the fans of a resolved (narrowed, pruned) package over the supplied inputs.</summary>
+    internal sealed record SkeletonResolution(
+        IReadOnlyList<IReadOnlyDictionary<string, string>> Items,
+        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>> CollectionSets,
+        IReadOnlyList<ConsultCollectionRoster> CollectionRosters,
+        IReadOnlyList<string> EmptyFanLabels);
+
+    internal static SkeletonResolution ResolveSkeleton(WorkflowPackage package, IReadOnlyDictionary<string, ConsultInputValue>? supplied)
+    {
+        // v9 (#426): a fan over a caller-supplied array. Its items come from
+        // the request — one per element, ids the engine mints — keyed by the
+        // literal forEach string, which is what the orchestrator's
+        // CollectionIdOf already yields for a non-data source and what the
+        // rail matches a roster by. The supplied map is the typed one, so an
+        // array of objects fans its elements as carriers.
+        var inputsById = (package.Manifest.Inputs ?? new List<WorkflowInputSpec>())
+            .ToDictionary(input => input.Id, StringComparer.Ordinal);
+        var inputFans = package.Nodes
+            .Where(node => WorkflowInputFans.IsInputFan(node.ForEach))
+            .Select(node => node.ForEach!)
+            .Distinct(StringComparer.Ordinal)
+            .ToDictionary(
+                key => key,
+                key => WorkflowInputFans.Items(
+                    inputsById[WorkflowInputFans.InputIdOf(key)],
+                    supplied?.GetValueOrDefault(WorkflowInputFans.InputIdOf(key))),
+                StringComparer.Ordinal);
+
+        var emptyFanLabels = inputFans
+            .Where(fan => fan.Value.Count == 0)
+            .Select(fan => $"'{inputsById[WorkflowInputFans.InputIdOf(fan.Key)].Label}'")
+            .ToList();
+
+        IReadOnlyList<IReadOnlyDictionary<string, string>> items = emptyFanLabels.Count > 0
+            ? Array.Empty<IReadOnlyDictionary<string, string>>()
+            : WorkflowPackageBlocks.Resolve(package, inputFans)
+                .Select(block => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["id"] = block.Id,
+                    ["name"] = block.Name
+                })
+                .ToList();
+
+        var dataSets = package.Nodes
+            .Where(node => node.ForEach != null && !WorkflowInputFans.IsInputFan(node.ForEach))
+            .Select(node => node.ForEach![WorkflowNodeBindingSources.DataPrefix.Length..])
+            .Distinct(StringComparer.Ordinal)
+            .ToDictionary(
+                collectionId => collectionId,
+                collectionId => (IReadOnlyList<IReadOnlyDictionary<string, string>>)(package.Data?.Collections.GetValueOrDefault(collectionId)
+                        ?? throw new InvalidOperationException($"Package {package.Ref} has no data collection '{collectionId}'."))
+                    .Items
+                    .Select(item => (IReadOnlyDictionary<string, string>)item.Fields)
+                    .ToList(),
+                StringComparer.Ordinal);
+
+        var collectionSets = dataSets
+            .Concat(inputFans)
+            .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
+
+        // #361: the same rosters, slimmed to what a run rail needs. The
+        // orchestrator's copy above carries every field including content —
+        // the whole standards text — and none of that belongs on a status
+        // response the client polls.
+        var collectionRosters = collectionSets
+            .Select(entry => new ConsultCollectionRoster(
+                entry.Key,
+                entry.Value
+                    .Select(item => new ConsultCollectionItem(
+                        item.GetValueOrDefault("id", string.Empty),
+                        item.GetValueOrDefault("name", item.GetValueOrDefault("id", string.Empty))))
+                    .ToList()))
+            .ToList();
+
+        return new SkeletonResolution(items, collectionSets, collectionRosters, emptyFanLabels);
+    }
+
+    /// <summary>Every declared deliverable as not produced by an empty fan, keeping a condition's own reason where one skipped it first.</summary>
+    internal static List<ConsultSkippedDocument> NotProducedByEmptyFan(
+        IReadOnlyList<WorkflowResolvedResult> declaredResults,
+        IReadOnlyList<ConsultSkippedDocument> skipped,
+        IReadOnlyList<string> emptyLabels)
+    {
+        var fanReason = $"is written from {string.Join(" and ", emptyLabels)}, which has no entries";
+        var conditionSkipped = skipped.ToDictionary(document => document.ResultId, StringComparer.Ordinal);
+        return declaredResults
+            .Select(result => conditionSkipped.TryGetValue(result.Id, out var byCondition)
+                ? byCondition
+                : new ConsultSkippedDocument(result.Id, result.Label, fanReason))
+            .ToList();
+    }
+
+    internal static string EmptyFanDetail(IReadOnlyList<string> emptyLabels) =>
+        "No document applies to these inputs. "
+        + string.Join(" ", emptyLabels.Select(label => $"{label} has no entries, and every document this package produces is written from them."));
+
+    internal static string NoneApplyDetail(IReadOnlyList<ConsultSkippedDocument> notProduced) =>
+        "No document applies to these inputs. " + string.Join(" ", notProduced.Select(s => $"'{s.Label}' {s.Reason}."));
+
+    /// <summary>v10 (#496): the supplied values as their wire JSON, for the boundary to read back.</summary>
+    internal static IReadOnlyDictionary<string, string>? SuppliedCarrier(IReadOnlyDictionary<string, ConsultInputValue>? supplied) =>
+        supplied?.ToDictionary(pair => pair.Key, pair => pair.Value.AsJson(), StringComparer.Ordinal);
 
     /// <summary>
     /// #434: the one refusal that leaves a row. A well-formed, authorized

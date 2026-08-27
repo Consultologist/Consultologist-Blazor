@@ -140,7 +140,9 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
             FailedAtStart = entry.FailedAtStart,
             TextDroppedAtUtc = entry.TextDroppedAtUtc,
             DeliveryOutcome = entry.DeliveryOutcome,
-            DeliveredAtUtc = entry.DeliveredAtUtc
+            DeliveredAtUtc = entry.DeliveredAtUtc,
+            Deciding = entry.Deciding,
+            DecisionFailureKind = entry.DecisionFailureKind
         };
     }
 
@@ -161,7 +163,9 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
             entity.FailedAtStart,
             entity.TextDroppedAtUtc,
             entity.DeliveryOutcome,
-            entity.DeliveredAtUtc);
+            entity.DeliveredAtUtc,
+            entity.Deciding,
+            entity.DecisionFailureKind);
     }
 
     private static string FormatRowKey(DateTimeOffset createdAtUtc, string jobId)
@@ -219,7 +223,11 @@ public sealed record ConsultGenerationJobIndexEntry(
     DateTimeOffset? TextDroppedAtUtc = null,
     // #486: the completion email's outcome and time. Additive columns.
     string? DeliveryOutcome = null,
-    DateTimeOffset? DeliveredAtUtc = null);
+    DateTimeOffset? DeliveredAtUtc = null,
+    // v10 (#496): still deciding what to produce; and why a job ended in that
+    // stage. Additive columns.
+    bool Deciding = false,
+    string? DecisionFailureKind = null);
 
 internal sealed class ConsultGenerationJobIndexEntity : ITableEntity
 {
@@ -241,4 +249,6 @@ internal sealed class ConsultGenerationJobIndexEntity : ITableEntity
     public DateTimeOffset? TextDroppedAtUtc { get; set; }
     public string? DeliveryOutcome { get; set; }
     public DateTimeOffset? DeliveredAtUtc { get; set; }
+    public bool Deciding { get; set; }
+    public string? DecisionFailureKind { get; set; }
 }

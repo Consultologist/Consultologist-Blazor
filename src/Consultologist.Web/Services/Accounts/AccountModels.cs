@@ -58,7 +58,10 @@ public sealed record AccountJobSummaryResponse(
     DateTimeOffset? TextDroppedAtUtc = null,
     // #486: mirrors the Api's DeliveryOutcome / DeliveredAtUtc.
     string? DeliveryOutcome = null,
-    DateTimeOffset? DeliveredAtUtc = null);
+    DateTimeOffset? DeliveredAtUtc = null,
+    // v10 (#496): mirrors the Api's Deciding / DecisionFailureKind.
+    bool Deciding = false,
+    string? DecisionFailureKind = null);
 
 public sealed record AccountJobsResponse(
     IReadOnlyList<AccountJobSummaryResponse> Jobs,

@@ -133,5 +133,7 @@ builder.Services.AddScoped<ConsultGenerationJobs>();
 // Function class is resolved.
 builder.Services.AddScoped<DocumentExtractions>();
 builder.Services.AddScoped<RunPromptNodeActivity>();
+// v10 (#496): the boundary.
+builder.Services.AddScoped<DecideActivity>();
 
 builder.Build().Run();

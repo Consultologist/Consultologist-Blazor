@@ -492,3 +492,12 @@
 .delivery-line--not-configured {
     color: var(--warning-foreground, #7a5c00);
 }
+
+/* v10 (#496): the deciding stage. */
+.node-group--deciding > summary.node-row .node-row__count {
+    font-style: italic;
+}
+
+.deciding-caption {
+    padding-left: 2.25rem;
+}

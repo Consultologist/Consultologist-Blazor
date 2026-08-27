@@ -483,7 +483,9 @@ public sealed class Account
                     j.FailedAtStart,
                     j.TextDroppedAtUtc,
                     j.DeliveryOutcome,
-                    j.DeliveredAtUtc)).ToArray(),
+                    j.DeliveredAtUtc,
+                    j.Deciding,
+                    j.DecisionFailureKind)).ToArray(),
                 nextToken),
             cancellationToken);
 
@@ -737,7 +739,10 @@ public sealed record AccountJobSummaryResponse(
     DateTimeOffset? TextDroppedAtUtc = null,
     // #486: the completion email's outcome (DeliveryOutcomes) and time.
     string? DeliveryOutcome = null,
-    DateTimeOffset? DeliveredAtUtc = null);
+    DateTimeOffset? DeliveredAtUtc = null,
+    // v10 (#496): still deciding what to produce; and why a job ended in that stage.
+    bool Deciding = false,
+    string? DecisionFailureKind = null);
 
 public sealed record AccountJobsResponse(
     IReadOnlyList<AccountJobSummaryResponse> Jobs,

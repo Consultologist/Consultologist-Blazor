@@ -370,3 +370,8 @@
 .provenance-delivery {
     font-style: italic;
 }
+
+/* v10 (#496): the boundary. */
+.provenance-decided {
+    font-style: italic;
+}

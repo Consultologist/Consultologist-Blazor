@@ -68,7 +68,7 @@
                                             @* #434: created already Failed because no document applied —
                                                named in the list, so a row with 0 / 0 sections is not
                                                mistaken for a run that broke. *@
-                                            @(job.FailedAtStart ? "Failed — nothing applied" : job.Status)
+                                            @(job.Deciding ? "Deciding what to produce" : DecisionState.FailedAtStartBadge(job.FailedAtStart, job.DecisionFailureKind) ?? job.Status)
                                         </span>
                                         @if (job.Source == "email")
                                         {
@@ -91,7 +91,8 @@
                                         {
                                             <span class="muted-text">runs @scheduledAt.ToLocalTime().ToString("MMM d, h:mm tt")</span>
                                         }
-                                        <span class="muted-text">@job.CompletedBlockCount / @job.TotalBlockCount sections</span>
+                                        @* v10 (#496): a deciding job has no count yet — a named state, not 0 / 0. *@
+                                        <span class="muted-text">@(job.Deciding ? "— / — sections, not yet decided" : $"{job.CompletedBlockCount} / {job.TotalBlockCount} sections")</span>
                                         @if (job.FailedBlockCount > 0)
                                         {
                                             <span class="muted-text">@job.FailedBlockCount failed</span>
@@ -289,6 +290,13 @@
                                                    their exact sequence. *@
                                                 @* #398: the contract this record conforms to, as it recorded
                                                    it — the version to read every number below by. *@
+                                                @* v10 (#496): the boundary — when the fire set was decided, and what
+                                                   the classifiers answered (declared values, printable). *@
+                                                @if (detail.Classifications is { Count: > 0 } || (detail.Deciding == true && detail.DecidedAtUtc != null))
+                                                {
+                                                    <dt>Decided</dt>
+                                                    <dd class="provenance-decided">@(detail.DecidedAtUtc is { } decidedAt ? FormatDate(decidedAt) : "at start")@(detail.Classifications is { Count: > 0 } ? " — " + DecisionState.Describe(detail.Classifications) : "")</dd>
+                                                }
                                                 @* #486: the completion email, as the record has it. *@
                                                 @if (DeliveryState.Describe(detail.DeliveryOutcome, detail.DeliveryDocumentAttached) is { } deliveryText)
                                                 {
@@ -402,7 +410,7 @@
                                             var doneBadge = detail.Status switch
                                             {
                                                 "Completed" => ("✓", "Done", "node-status--success"),
-                                                "Failed" when detail.StartFailure != null => ("✗", "Nothing produced", "node-status--failure"),
+                                                "Failed" when detail.StartFailure != null => ("✗", DecisionState.DoneLabel(detail.DecisionFailureKind), "node-status--failure"),
                                                 "Failed" => ("✗", "Failed", "node-status--failure"),
                                                 _ => ("●", detail.Status, "node-status--muted")
                                             };
@@ -590,7 +598,10 @@
             detail.CompletedBlockCount,
             detail.FailedBlockCount,
             detail.Source,
-            detail.ScheduledAtUtc);
+            detail.ScheduledAtUtc,
+            FailedAtStart: detail.StartFailure != null,
+            Deciding: detail.Deciding == true && detail.DecidedAtUtc == null && detail.StartFailure == null,
+            DecisionFailureKind: detail.DecisionFailureKind);
 
     // #202: Cancelled belongs here or the poll loop never stops on a cancelled
     // row, and #367's link keeps offering to "watch live" a run that will not
