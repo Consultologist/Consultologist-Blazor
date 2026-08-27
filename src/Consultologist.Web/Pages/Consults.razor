@@ -2576,9 +2576,9 @@
       Label = input.Label;
       Required = input.Required;
       Type = WorkflowInputTypes.Of(input);
-      Items = input.Items ?? WorkflowInputTypes.Text;
-      Values = input.Values ?? Array.Empty<string>();
-      fieldSpecs = input.Fields ?? Array.Empty<WorkflowPackageFieldResponse>();
+      Items = input.Items?.Type ?? WorkflowInputTypes.Text;
+      Values = input.Values ?? input.Items?.Values ?? Array.Empty<string>();
+      fieldSpecs = input.Fields ?? input.Items?.Fields ?? Array.Empty<WorkflowPackageFieldResponse>();
 
       var placeholder = Id == "consult_draft"
         ? "Enter referral details, clinical context, and the consult question..."
