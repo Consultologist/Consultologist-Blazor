@@ -2167,7 +2167,7 @@
                 .Select(input => $"Input '{input.Id}' declares a type that requires specVersion 9. {upgrade}"));
 
             errors.AddRange(EffectiveResults
-                .Where(result => WorkflowResultConditionText.IsV9Form(result.When))
+                .Where(result => WorkflowResultConditionText.IsV9Form(result.When) && !WorkflowResultConditionText.IsV10Form(result.When))
                 .Select(result => $"Document '{result.Id}' declares a condition form that requires specVersion 9. {upgrade}"));
 
             errors.AddRange(EffectiveNodes
@@ -2249,6 +2249,18 @@
         // a version.
         foreach (var conditioned in results.Where(result => !string.IsNullOrWhiteSpace(result.When)))
         {
+            // v10 (#494): an expression is the server's to judge — the desk
+            // names the version it needs below 10 and otherwise steps aside.
+            if (WorkflowResultConditionText.IsV10Form(conditioned.When))
+            {
+                if (EffectiveSpecVersion < 10)
+                {
+                    errors.Add($"Document '{conditioned.Id}' declares a condition expression that requires specVersion 10. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.");
+                }
+
+                continue;
+            }
+
             var testedId = WorkflowResultConditionText.InputOf(conditioned.When);
             var tested = inputs.FirstOrDefault(input => input.Id == testedId);
 
