@@ -73,6 +73,14 @@ public static class WorkflowDeclaredIds
     private static readonly Regex Pattern = new("^[a-z][a-z0-9_]*$", RegexOptions.Compiled);
 
     public static bool IsValid(string? id) => id != null && Pattern.IsMatch(id);
+
+    // A node id is the editor's item id — lowercase letters, digits, '-' or
+    // '_', starting with a letter or digit (draft-section, assemble-note) —
+    // not the snake_case a declared input, field, value or result id is.
+    private static readonly Regex NodePattern = new("^[a-z0-9][a-z0-9_-]*$", RegexOptions.Compiled);
+
+    /// <summary>v10 (#498): the id after node: in a condition — a node's, which may carry a hyphen.</summary>
+    public static bool IsValidNodeId(string? id) => id != null && NodePattern.IsMatch(id);
 }
 
 public static class WorkflowConceptRenderers

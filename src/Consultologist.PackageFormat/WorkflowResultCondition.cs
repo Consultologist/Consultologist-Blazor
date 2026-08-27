@@ -654,7 +654,10 @@ public static class WorkflowResultConditions
         {
             var nodeId = raw[NodePrefix.Length..];
 
-            if (!WorkflowDeclaredIds.IsValid(nodeId))
+            // A node id may carry a hyphen (draft-section); before #498 the
+            // snake_case rule for declared ids refused it here and the text
+            // fell through to be read as arithmetic.
+            if (!WorkflowDeclaredIds.IsValidNodeId(nodeId))
             {
                 return false;
             }

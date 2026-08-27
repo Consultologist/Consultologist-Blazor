@@ -413,6 +413,22 @@ public class WorkflowV10ValueTests
     }
 
     [Fact]
+    public void AConditionOverAHyphenatedNode_ReadsAsANodeValue_AndTheValidatorNamesIt()
+    {
+        // #498: node ids carry hyphens (draft-section); the operand parser
+        // took the declared-id rule and read the text as arithmetic instead.
+        Assert.True(WorkflowResultConditions.TryParseExpression("node:draft-section == in_scope", out var expression, out var error), error);
+        var clause = Assert.Single(expression!.Leaves);
+        Assert.True(clause.IsNodeValue);
+        Assert.Equal("draft-section", clause.NodeId);
+        Assert.False(clause.IsArithmetic);
+
+        var (manifest, files) = V10Fixtures.WithClassifier(from: V9Fixtures.Conditional("node:draft-section == in_scope") with { SpecVersion = 10 });
+        var errors = WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas).Errors;
+        Assert.Contains(errors, e => e.Contains("reads 'node:draft-section', which is not a classifier"));
+    }
+
+    [Fact]
     public void ANestedValue_ThatMatchesItsDeclaration_HasNoComplaint()
     {
         var value = Arr(Obj(("relative", "mother"), ("conditions", Arr("asthma", "migraine")),
@@ -577,6 +593,7 @@ public class WorkflowV10ConditionTests
     [InlineData("(length_of_stay + 1) * 2 >= 7", "(length_of_stay + 1) * 2 >= 7")]
     [InlineData("seen_on + 30 >= 2026-01-01", "seen_on + 30 >= 2026-01-01")]
     [InlineData("node:scope == in_scope", "node:scope == in_scope")]
+    [InlineData("node:draft-section == in_scope", "node:draft-section == in_scope")]
     [InlineData("patient.contact.phone == x", "patient.contact.phone == x")]
     [InlineData("count(patient.notes) > 1", "count(patient.notes) > 1")]
     public void TheParserReadsEveryForm_AndWritesItBack(string when, string text)
