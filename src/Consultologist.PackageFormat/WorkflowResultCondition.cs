@@ -529,9 +529,21 @@ public static class WorkflowResultConditions
         var ordering = op is EqualsOperator or NotEqualsOperator ? null : op;
         var negated = op == NotEqualsOperator;
 
-        if (left is WorkflowOperandTerm { Operand: var operand } && right is WorkflowLiteralTerm { Literal: var literal })
+        if (left is WorkflowOperandTerm { Operand: var operand })
         {
-            return operand with { Literal = literal, Negated = negated, Ordering = ordering };
+            // v9's reading of the right-hand side: a literal. A bare word there
+            // is an enum value, true/false, a number or a date — never an
+            // input — so `kind == follow_up` means what it always meant. Two
+            // inputs are compared through arithmetic (`a - b > 0`) or a path.
+            if (right is WorkflowLiteralTerm { Literal: var literal })
+            {
+                return operand with { Literal = literal, Negated = negated, Ordering = ordering };
+            }
+
+            if (right is WorkflowOperandTerm { Operand: { PathDepth: 0, IsCount: false, IsNodeValue: false } word })
+            {
+                return operand with { Literal = word.InputId, Negated = negated, Ordering = ordering };
+            }
         }
 
         return Synthetic(left, op, right);
@@ -956,7 +968,9 @@ public static class WorkflowResultConditions
                     '+' => new TermValue(l.Number + r.Number, null, false),
                     '-' => new TermValue(l.Number - r.Number, null, false),
                     '*' => new TermValue(l.Number * r.Number, null, false),
-                    '/' => r.Number == 0 ? TermValue.Undefined : new TermValue(l.Number / r.Number, null, false),
+                    // Division by zero answers nothing — absent, so `not` does
+                    // not turn it into a held clause.
+                    '/' => r.Number == 0 ? TermValue.Missing : new TermValue(l.Number / r.Number, null, false),
                     _ => TermValue.Undefined
                 };
 
