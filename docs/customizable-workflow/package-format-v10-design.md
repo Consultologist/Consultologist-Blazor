@@ -284,7 +284,16 @@ wrote.
 > string form, so every v9 manifest round-trips byte for byte; the object
 > form below 10 is refused by name (*`declares items as a shape, which
 > requires specVersion 10`*). When `items` is a spec it carries the
-> element's own `fields` and `values`; the array declares neither. A field declared with structure below 10 is refused naming the
+> element's own `fields` and `values`; the array declares neither.
+>
+> **Amendment, 2026-08-27 (#493).** The wire admits depth, so it needs a
+> bound the manifest cannot give an *undeclared* value: the converter
+> refuses structure nested deeper than **eight** levels as a shape error
+> (400), and the door applies its per-array and per-object caps at every
+> level plus one total — **4,096 values per input** — so depth cannot
+> multiply the worst case. Refused, never truncated. Whether a declaration
+> admits a value's shape in a given slot stays the starter's 422, with the
+> path spelled: *element 1 field 'contact' field 'phone' is a text and …*. A field declared with structure below 10 is refused naming the
 version: *`Input 'medications' field 'schedule' declares type 'object', which
 requires specVersion 10.`*
 

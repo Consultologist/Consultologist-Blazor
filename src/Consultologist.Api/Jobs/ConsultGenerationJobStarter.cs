@@ -717,7 +717,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// package of this specVersion. One function, because the job that is born
     /// Failed (#434) records the same hash the job that runs would have.
     /// </summary>
-    private static (string Hash, int Version) EffectiveInputHashOf(
+    internal static (string Hash, int Version) EffectiveInputHashOf(
         int specVersion,
         ConsultGenerationRequest request,
         EffectiveInputsResolution inputs)
@@ -1163,7 +1163,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// refuses structure. Messages name kinds, ids and indices, never a
     /// structured value.
     /// </summary>
-    private static string? CanonicalFormComplaint(WorkflowInputSpec input, ConsultInputValue value)
+    internal static string? CanonicalFormComplaint(WorkflowInputSpec input, ConsultInputValue value)
         => ValueComplaint(WorkflowDeclarationNode.Of(input), value, where: string.Empty);
 
     /// <summary>

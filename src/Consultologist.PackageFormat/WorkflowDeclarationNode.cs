@@ -34,9 +34,12 @@ public sealed record WorkflowDeclarationNode(
             return null;
         }
 
+        // An element is never "required" in the slot's sense: a nested empty
+        // array is present and empty (v9 § 4), and only the input slot carries
+        // the required-and-empty refusal.
         return items.IsBare
-            ? new WorkflowDeclarationNode(items.Type, label, true, null, FieldsOf(arrayFields), items.Type == WorkflowInputTypes.Enum ? arrayValues : null)
-            : new WorkflowDeclarationNode(items.Type, label, true, ElementOf(items.Items, items.Fields, items.Values, label), FieldsOf(items.Fields), items.Type == WorkflowInputTypes.Enum ? items.Values : null);
+            ? new WorkflowDeclarationNode(items.Type, label, false, null, FieldsOf(arrayFields), items.Type == WorkflowInputTypes.Enum ? arrayValues : null)
+            : new WorkflowDeclarationNode(items.Type, label, false, ElementOf(items.Items, items.Fields, items.Values, label), FieldsOf(items.Fields), items.Type == WorkflowInputTypes.Enum ? items.Values : null);
     }
 
     private static IReadOnlyList<WorkflowDeclarationNode>? FieldsOf(List<WorkflowFieldSpec>? fields) =>
