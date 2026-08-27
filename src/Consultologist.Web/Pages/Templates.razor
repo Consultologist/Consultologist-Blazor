@@ -1,3 +1,4 @@
+@using PF = Consultologist.PackageFormat
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
 @using System.Text.Json
@@ -941,7 +942,7 @@
                                                             <option value="false">false</option>
                                                         </select>
                                                     }
-                                                    else if (tested.Type == WorkflowInputTypes.Enum)
+                                                    else if (tested.Type is WorkflowInputTypes.Enum or NodeValueType)
                                                     {
                                                         <select class="node-field__input declared-row__literal"
                                                                 value="@(WorkflowResultConditionText.LiteralOf(deliverable.When) ?? string.Empty)"
@@ -2370,6 +2371,19 @@
         // a version.
         foreach (var conditioned in results.Where(result => !string.IsNullOrWhiteSpace(result.When)))
         {
+            // v10 (#498): one clause over a classifier's answer is the desk's
+            // to judge in the server's words; below 10 it is refused with the
+            // rest of the v10 forms.
+            if (EffectiveSpecVersion >= 10 && NodeClauseComplaint(conditioned) is { } nodeComplaint)
+            {
+                if (nodeComplaint.Length > 0)
+                {
+                    errors.Add(nodeComplaint);
+                }
+
+                continue;
+            }
+
             // v10 (#494): an expression is the server's to judge — the desk
             // names the version it needs below 10 and otherwise steps aside.
             if (WorkflowResultConditionText.IsV10Form(conditioned.When))
@@ -2416,6 +2430,14 @@
         {
             errors.Add($"Duplicate result id '{duplicate.Key}'.");
         }
+
+        // v10 (#498): a classifier a condition reads cannot be removed —
+        // the condition's lock, said at the desk rather than on the card.
+        errors.AddRange(results
+            .Where(result => WorkflowResultConditionText.OperandOf(result.When) is { } key
+                && key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)
+                && removedNodeIds.Contains(key[NodeKeyPrefix.Length..]))
+            .Select(result => $"Document '{result.Id}' tests '{WorkflowResultConditionText.OperandOf(result.When)}', which is removed; change that document's condition or restore the node."));
 
         errors.AddRange(results
             .Where(result => string.IsNullOrWhiteSpace(result.Label))
@@ -2538,8 +2560,54 @@
         };
     }
 
+    /// <summary>
+    /// v10 (#498): the desk's check of one clause reading node:&lt;id&gt; — the
+    /// server's sentences (WorkflowPackageValidator). Null when the condition
+    /// is not a single node clause; empty when it is and is sound.
+    /// </summary>
+    private string? NodeClauseComplaint(WorkflowManifestReader.ResultView result)
+    {
+        var when = result.When ?? string.Empty;
+        var operand = WorkflowResultConditionText.OperandOf(when);
+        if (operand is null || !operand.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)
+            || !PF.WorkflowResultConditions.TryParseExpression(when, out var expression, out _)
+            || expression.SingleClause is not { } clause)
+        {
+            return null;
+        }
+
+        var prefix = $"Result '{result.Id}' condition";
+        var classifiers = EffectiveNodes.Where(node => node.IsClassifier).ToDictionary(node => node.Id, StringComparer.Ordinal);
+        if (clause.NodeId is null || !classifiers.TryGetValue(clause.NodeId, out var classifier))
+        {
+            return $"{prefix} reads '{operand}', which is not a classifier (classifiers: {string.Join(", ", classifiers.Keys.Order(StringComparer.Ordinal))}).";
+        }
+
+        if (clause.IsBare)
+        {
+            return $"{prefix} '{operand}' tests a classifier for truth; compare it to one of its values instead.";
+        }
+
+        if (clause.IsOrdered)
+        {
+            return $"{prefix} compares '{operand}' with {clause.Operator}; a classifier's value is compared with == or != only.";
+        }
+
+        if (string.IsNullOrEmpty(clause.Literal))
+        {
+            return $"{prefix} compares against nothing; write a value after the operator.";
+        }
+
+        return classifier.Values?.Contains(clause.Literal, StringComparer.Ordinal) == true
+            ? string.Empty
+            : $"{prefix} compares '{operand}' to '{clause.Literal}', which it does not declare (values: {string.Join(", ", classifier.Values ?? new List<string>())}).";
+    }
+
     /// <summary>The pseudo-type of count(x): a whole number, ordered.</summary>
     private const string CountType = "count";
+
+    /// <summary>v10 (#498): the pseudo-type of node:&lt;id&gt; — a classifier's answer, one of its values, == or != only.</summary>
+    private const string NodeValueType = "node";
 
     // ----- #432: the package's title and description --------------------------
 
@@ -3447,6 +3515,16 @@
             var v9 = EffectiveSpecVersion >= 9;
             var operands = new List<ConditionOperand>();
 
+            // v10 (#498): each classifier, as node:<id>, with its values as
+            // the literal control — the boundary's answer (step (e)) tested
+            // the way an enum is. Offered at 10 only.
+            if (EffectiveSpecVersion >= 10)
+            {
+                operands.AddRange(EffectiveNodes
+                    .Where(node => node.IsClassifier)
+                    .Select(node => new ConditionOperand($"{NodeKeyPrefix}{node.Id}", NodeValueType, node.Values)));
+            }
+
             foreach (var input in EffectiveInputs)
             {
                 var type = WorkflowInputTypes.Of(input);
@@ -3555,7 +3633,7 @@
         var value = literal ?? WorkflowResultConditionText.LiteralOf(current) ?? string.Empty;
         value = operand.Type switch
         {
-            WorkflowInputTypes.Enum => operand.Values?.Contains(value, StringComparer.Ordinal) == true ? value : operand.Values?.FirstOrDefault() ?? string.Empty,
+            WorkflowInputTypes.Enum or NodeValueType => operand.Values?.Contains(value, StringComparer.Ordinal) == true ? value : operand.Values?.FirstOrDefault() ?? string.Empty,
             WorkflowInputTypes.Boolean => value is "true" or "false" ? value : "true",
             WorkflowInputTypes.Number => Consultologist.Web.Services.AI.ConsultInputValue.TryParseNumber(value, out _) ? value : string.Empty,
             WorkflowInputTypes.Date => DateOnly.TryParseExact(value, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _) ? value : string.Empty,
