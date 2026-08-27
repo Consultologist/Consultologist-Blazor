@@ -1099,7 +1099,9 @@
                                 <p class="muted-text">
                                     @(newNodeKind == "aggregator"
                                         ? "A deterministic aggregator: collects other nodes' outputs in order, no prompt."
-                                        : "Creates the node and its prompt together (they are one-to-one). The prompt's text is written under Prompts; variables and bindings follow on the node's card.")
+                                        : newNodeKind == ClassifierKind
+                                            ? "A classifier: a prompt that answers one of the values it declares, which a document's condition may test as node:<id>. Its values are declared on the node's card."
+                                            : "Creates the node and its prompt together (they are one-to-one). The prompt's text is written under Prompts; variables and bindings follow on the node's card.")
                                 </p>
                             </div>
                         </div>
@@ -1115,6 +1117,11 @@
                                     @if (EffectiveSpecVersion >= 6)
                                     {
                                         <option value="aggregator">aggregator</option>
+                                    }
+                                    @if (EffectiveSpecVersion >= 10)
+                                    {
+                                        @* v10 (#498): offered at 10 only — absence, the editor's gating pattern. *@
+                                        <option value="@ClassifierKind">classifier</option>
                                     }
                                 </select>
                             </label>
@@ -1141,6 +1148,8 @@
                                         </select>
                                     </label>
                                 }
+                                @if (newNodeKind != ClassifierKind)
+                                {
                                 <label class="input-field">
                                     <span>for each</span>
                                     <select class="binding-row__select" @bind="newNodeForEach" aria-label="New node forEach">
@@ -1161,6 +1170,7 @@
                                         }
                                     </select>
                                 </label>
+                                }
                             }
                         </div>
                         <div class="action-row">
@@ -2079,7 +2089,17 @@
         // A node born onto an existing prompt (#170) instead of minting its
         // own; null = fresh prompt named after the node.
         public string? PromptRef { get; set; }
+
+        // v10 (#498): a classifier and the values it may answer. Explicit
+        // initialisation: born with none, and the desk refuses fewer than two.
+        public string? Kind { get; set; }
+        public List<string>? Values { get; set; }
+
+        public bool IsClassifier => Kind == ClassifierKind;
     }
+
+    /// <summary>The one node kind a manifest spells (v10): prompt is the default and aggregator a property.</summary>
+    private const string ClassifierKind = "classifier";
 
     // Standalone pending prompts (#170): publishable only once some node
     // points at them (the orphan rule).
@@ -2130,7 +2150,9 @@
         HasOutput: added.OutputSchema != null,
         Aggregate: added.Aggregate,
         OutputSchema: added.OutputSchema,
-        FailIfEmpty: added.FailIfEmpty);
+        FailIfEmpty: added.FailIfEmpty,
+        Kind: added.Kind,
+        Values: added.Values);
 
     // Pending v7 declarations, each the whole list when dirty (the
     // aggregate-source idiom) and null when unchanged.
@@ -2250,6 +2272,12 @@
         {
             if (EffectiveSpecVersion < 10)
             {
+                // v10 (#498): a classifier wants the newest rung, as nested structure does.
+                errors.AddRange(EffectiveNodes
+                    .Where(node => node.IsClassifier)
+                    .Select(node => $"Node '{node.Id}' is a classifier, which requires specVersion 10. "
+                        + $"Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish."));
+
                 // v10 (#498): structure below one level wants the newest rung.
                 errors.AddRange(inputs
                     .Where(WorkflowInputTypes.RequiresV10)
@@ -2274,6 +2302,29 @@
                 .Select(input => $"Input '{input.Id}' is an array of arrays and must declare what the inner entries are."));
 
             errors.AddRange(FieldTreeErrors(inputs));
+
+            // v10 (#498): a classifier declares at least two values (explicit
+            // initialisation: it is born with none) and reads inputs and
+            // classifiers only — the server's rules, said here first.
+            foreach (var classifier in EffectiveNodes.Where(node => node.IsClassifier))
+            {
+                var count = classifier.Values?.Count ?? 0;
+                if (count < 2)
+                {
+                    errors.Add($"Node '{classifier.Id}' declares {count} value{(count == 1 ? string.Empty : "s")}; a classifier must declare at least two values it may answer.");
+                }
+
+                foreach (var binding in RowsFor(classifier))
+                {
+                    var source = binding.From;
+                    var readsClassifier = source.StartsWith("node:", StringComparison.Ordinal)
+                        && EffectiveNodes.Any(node => node.IsClassifier && $"node:{node.Id}" == source);
+                    if (source.Length > 0 && !source.StartsWith("input:", StringComparison.Ordinal) && !readsClassifier)
+                    {
+                        errors.Add($"Classifier '{classifier.Id}' binds '{binding.Variable}' to '{source}'; a classifier may read inputs and classifiers only.");
+                    }
+                }
+            }
         }
 
         foreach (var duplicate in inputs.GroupBy(input => input.Id).Where(group => group.Count() > 1))
@@ -3717,7 +3768,8 @@
                         OutputSchema = edit.OutputSchema,
                         FailIfEmpty = edit.FailIfEmpty,
                         HasOutput = edit.OutputSchema != null,
-                        Prompt = edit.Prompt ?? n.Prompt
+                        Prompt = edit.Prompt ?? n.Prompt,
+                        Values = edit.Values ?? n.Values
                     };
                 }
 
@@ -3913,6 +3965,7 @@
     private async Task AddNodeAsync()
     {
         var aggregator = newNodeKind == "aggregator";
+        var classifier = newNodeKind == ClassifierKind;
         var promptRef = aggregator || newNodePrompt.Length == 0 ? null : newNodePrompt;
 
         // With an existing prompt chosen, the node defaults to the prompt's
@@ -3959,10 +4012,12 @@
         {
             Id = id,
             Label = label,
-            ForEach = aggregator || newNodeForEach.Length == 0 ? null : newNodeForEach,
-            OutputSchema = aggregator || newNodeOutput.Length == 0 ? null : newNodeOutput,
+            ForEach = aggregator || classifier || newNodeForEach.Length == 0 ? null : newNodeForEach,
+            OutputSchema = aggregator || classifier || newNodeOutput.Length == 0 ? null : newNodeOutput,
             Aggregate = aggregator ? new List<string>() : null,
-            PromptRef = promptRef
+            PromptRef = promptRef,
+            Kind = classifier ? ClassifierKind : null,
+            Values = classifier ? new List<string>() : null
         });
         newNodeId = newNodeLabel = null;
         newNodeForEach = string.Empty;
@@ -4039,6 +4094,10 @@
             addedNode.ForEach = change.ForEach;
             addedNode.OutputSchema = change.OutputSchema;
             addedNode.FailIfEmpty = change.FailIfEmpty;
+            if (addedNode.IsClassifier && change.Values != null)
+            {
+                addedNode.Values = change.Values.ToList();
+            }
 
             if (addedNode.Aggregate == null && change.Prompt != null)
             {
@@ -4060,7 +4119,8 @@
             && change.ForEach == original.ForEach
             && change.OutputSchema == original.OutputSchema
             && change.FailIfEmpty == original.FailIfEmpty
-            && (change.Prompt == null || change.Prompt == original.Prompt))
+            && (change.Prompt == null || change.Prompt == original.Prompt)
+            && (change.Values == null || change.Values.SequenceEqual(original.Values ?? Array.Empty<string>(), StringComparer.Ordinal)))
         {
             nodeEdits.Remove(change.NodeId);
         }
@@ -4838,9 +4898,9 @@
 
     private sealed record DraftBinding(string NodeId, string Variable, string From, string? As);
 
-    private sealed record DraftNodeEdit(string NodeId, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string? Prompt = null);
+    private sealed record DraftNodeEdit(string NodeId, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string? Prompt = null, List<string>? Values = null);
 
-    private sealed record DraftAddedNode(string Id, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string PromptText, List<string>? Aggregate = null, string? PromptRef = null);
+    private sealed record DraftAddedNode(string Id, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string PromptText, List<string>? Aggregate = null, string? PromptRef = null, string? Kind = null, List<string>? Values = null);
 
     private sealed record DraftAddedPrompt(string Id, string Text);
 
@@ -5105,7 +5165,9 @@
                     FailIfEmpty = draftAddedNode.FailIfEmpty,
                     PromptText = draftAddedNode.PromptText,
                     Aggregate = draftAddedNode.Aggregate,
-                    PromptRef = promptRef
+                    PromptRef = promptRef,
+                    Kind = draftAddedNode.Kind,
+                    Values = draftAddedNode.Kind == ClassifierKind ? draftAddedNode.Values ?? new List<string>() : null
                 });
             }
         }
@@ -5203,13 +5265,14 @@
                     && draftNodeEdit.ForEach == original.ForEach
                     && draftNodeEdit.OutputSchema == original.OutputSchema
                     && draftNodeEdit.FailIfEmpty == original.FailIfEmpty
-                    && (draftNodeEdit.Prompt == null || draftNodeEdit.Prompt == original.Prompt)))
+                    && (draftNodeEdit.Prompt == null || draftNodeEdit.Prompt == original.Prompt)
+                    && (draftNodeEdit.Values == null || draftNodeEdit.Values.SequenceEqual(original.Values ?? Array.Empty<string>(), StringComparer.Ordinal))))
             {
                 continue;
             }
 
             nodeEdits[draftNodeEdit.NodeId] = new WorkflowNodeSummary.NodeChange(
-                draftNodeEdit.NodeId, draftNodeEdit.Label, draftNodeEdit.ForEach, draftNodeEdit.OutputSchema, draftNodeEdit.FailIfEmpty, draftNodeEdit.Prompt);
+                draftNodeEdit.NodeId, draftNodeEdit.Label, draftNodeEdit.ForEach, draftNodeEdit.OutputSchema, draftNodeEdit.FailIfEmpty, draftNodeEdit.Prompt, draftNodeEdit.Values);
         }
 
         foreach (var draftBinding in bindings ?? new List<DraftBinding>())
@@ -5267,8 +5330,8 @@
             variableAdds.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             variableRemovals.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             addedCollections.ToList(),
-            nodeEdits.Values.Select(edit => new DraftNodeEdit(edit.NodeId, edit.Label, edit.ForEach, edit.OutputSchema, edit.FailIfEmpty, edit.Prompt)).ToList(),
-            addedNodes.Select(a => new DraftAddedNode(a.Id, a.Label, a.ForEach, a.OutputSchema, a.FailIfEmpty, a.PromptText, a.Aggregate, a.PromptRef)).ToList(),
+            nodeEdits.Values.Select(edit => new DraftNodeEdit(edit.NodeId, edit.Label, edit.ForEach, edit.OutputSchema, edit.FailIfEmpty, edit.Prompt, edit.Values?.ToList())).ToList(),
+            addedNodes.Select(a => new DraftAddedNode(a.Id, a.Label, a.ForEach, a.OutputSchema, a.FailIfEmpty, a.PromptText, a.Aggregate, a.PromptRef, a.Kind, a.Values)).ToList(),
             removedNodeIds.ToList(),
             aggregateEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             resultEdit,
@@ -5923,6 +5986,14 @@
                 newNodeObject["output"] = newOutputObject;
             }
 
+            // v10 (#498): a classifier spells its kind and the values it may answer.
+            if (addedNode.IsClassifier)
+            {
+                newNodeObject["kind"] = ClassifierKind;
+                newNodeObject["values"] = new System.Text.Json.Nodes.JsonArray(
+                    (addedNode.Values ?? new List<string>()).Select(v => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(v)).ToArray());
+            }
+
             nodesArray.Add(newNodeObject);
         }
 
@@ -6106,6 +6177,13 @@
                 }
 
                 nodeObject[nodeObject.ContainsKey("Output") ? "Output" : "output"] = outputObject;
+            }
+
+            // v10 (#498): a classifier's values, edited on its card.
+            if (pair.Value.Values != null)
+            {
+                nodeObject[nodeObject.ContainsKey("Values") ? "Values" : "values"] = new System.Text.Json.Nodes.JsonArray(
+                    pair.Value.Values.Select(v => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(v)).ToArray());
             }
         }
 
