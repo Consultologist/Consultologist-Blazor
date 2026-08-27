@@ -600,7 +600,13 @@ public sealed record ConsultGenerationOrchestrationInput(
     // #403: the terminology edition the server had loaded when the job
     // started, and the server's build. Appended last, same reason.
     TerminologySnapshot? Terminology = null,
-    string? TerminologyServerRef = null);
+    string? TerminologyServerRef = null,
+    // v10 (#496): the package has classifiers — the fire set is decided at the
+    // boundary, so Items is empty here and the decision activity needs the
+    // supplied values (each as its wire JSON, ConsultInputValue.AsJson) to
+    // evaluate the conditions. Appended last, same reason.
+    bool? Deciding = null,
+    IReadOnlyDictionary<string, string>? SuppliedInputs = null);
 
 public sealed record ConsultGenerationJobInitialize(
     string JobId,
@@ -1261,6 +1267,8 @@ public static class ConsultGenerationJobStatuses
 public static class ConsultGenerationActivityNames
 {
     public const string RunPromptNode = "run-prompt-node";
+    // v10 (#496): the boundary — decide the fire set over the classifier values.
+    public const string DecideDeliverables = "decide-deliverables";
 }
 
 public static class ConsultGenerationItemSteps
