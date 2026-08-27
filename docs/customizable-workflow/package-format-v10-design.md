@@ -507,6 +507,32 @@ before anything lands:
 - Two ceilings until the gate flips; the pending-change registry's kinds do
   not change.
 
+> **Amendment, 2026-08-27 (#498, PR 1 — the fields editor).** Three things
+> the implementation fixed:
+>
+> - **The editor holds an array's element the v9 way.** An element that is
+>   an object or an enum keeps its fields or values on the input beside a
+>   bare `items`; only an element that is itself an array carries its own,
+>   as a spec, and a field carries its own `items` and `fields`. A manifest
+>   that spells an object or enum element as a spec reads to the same view
+>   and is written back in the bare form — the same declaration to the
+>   validator's `ElementOf`, and the reason every v9 package composes the
+>   bytes it composed. Before this, any pending input edit rebuilt the inputs
+>   list flat and a relabel of one input silently stripped every other's
+>   depth; the draft had the same hole. Both are pinned now.
+> - **The path is the sentence's subject.** The desk's v9 rules hold at
+>   every level and spell the field's path below its input: *Input
+>   'family_history' field 'contact.phone' is an object and must declare at
+>   least one field.* An array of arrays must say what its inner entries
+>   are — a scalar; deeper than that is authored by hand.
+> - **Below 10 the shapes are absent, not disabled**, the editor's gating
+>   pattern: `object` and `array` are not offered for a field, nor `array`
+>   for an element, and a loaded one (a draft, a fork) is refused by name
+>   with the newest rung — *declares structure deeper than one level, which
+>   requires specVersion 10*. A rename below the top level cascades into no
+>   condition: a condition reads a top-level field by path, and deeper
+>   paths are the builder's (PR 3).
+
 ## 12. Content & rollout
 
 No package is migrated; a v9 package is a v10 package with one edit.

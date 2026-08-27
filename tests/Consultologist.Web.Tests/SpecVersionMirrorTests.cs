@@ -81,6 +81,17 @@ public class SpecVersionMirrorTests
     }
 
     [Fact]
+    public void TheClientsVersionKeyedTypeLists_AreTheServers()
+    {
+        // v10 (#498): the fields editor offers what the version admits.
+        foreach (var version in new[] { 9, 10 })
+        {
+            Assert.Equal(WorkflowInputTypes.ScalarsFor(version), Consultologist.Web.Services.Workflow.WorkflowInputTypes.ScalarsFor(version));
+            Assert.Equal(WorkflowInputTypes.ElementTypesFor(version), Consultologist.Web.Services.Workflow.WorkflowInputTypes.ElementTypesFor(version));
+        }
+    }
+
+    [Fact]
     public void TheClientsScalars_AreTheServers()
     {
         Assert.Equal(

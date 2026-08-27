@@ -125,11 +125,19 @@ public static class WorkflowInputTypes
 
     /// <summary>An object, or an array of objects — the declarations that carry fields.</summary>
     public static bool DeclaresObject(WorkflowManifestReader.InputView input) =>
-        Of(input) == Object || (Of(input) == Array && input.Items == Object);
+        Of(input) == Object || (Of(input) == Array && input.Items?.Type == Object);
 
     /// <summary>An enum, or an array of enums — the declarations that carry values.</summary>
     public static bool DeclaresValues(WorkflowManifestReader.InputView input) =>
-        Of(input) == Enum || (Of(input) == Array && input.Items == Enum);
+        Of(input) == Enum || (Of(input) == Array && input.Items?.Type == Enum);
+
+    /// <summary>v10 (#498): a field that is an object, or an array of objects — the fields editor recurses beneath it.</summary>
+    public static bool DeclaresObject(WorkflowManifestReader.FieldView field) =>
+        Of(field) == Object || (Of(field) == Array && field.Items?.Type == Object);
+
+    /// <summary>An enum field, or an array-of-enum field — the ones that carry values.</summary>
+    public static bool DeclaresValues(WorkflowManifestReader.FieldView field) =>
+        Of(field) == Enum || (Of(field) == Array && field.Items?.Type == Enum);
 
     /// <summary>The shapes v9 added (#424); below 9 any of them is refused by name.</summary>
     public static bool RequiresV9(WorkflowManifestReader.InputView input) =>
@@ -141,8 +149,18 @@ public static class WorkflowInputTypes
     /// refused by name.
     /// </summary>
     public static bool RequiresV10(WorkflowManifestReader.InputView input) =>
-        input.ItemsIsSpec
-        || (input.Fields?.Any(field => field.HasStructure || Of(field) is Object or Array) ?? false);
+        (input.Items is { } element && (element.Type == Array || !element.IsBare))
+        || (input.Fields?.Any(HasStructure) ?? false);
+
+    /// <summary>A field that is structure, or carries some: the server's "deeper than one level".</summary>
+    public static bool HasStructure(WorkflowManifestReader.FieldView field) =>
+        Of(field) is Object or Array || field.Items != null || field.Fields != null;
+
+    /// <summary>The types a field may be, keyed by version (v10 lifts the one-level bound). Mirrors the server's; pinned.</summary>
+    public static IReadOnlyList<string> ScalarsFor(int specVersion) => specVersion >= 10 ? All : Scalars;
+
+    /// <summary>What an array may hold, keyed by version. Mirrors the server's; pinned.</summary>
+    public static IReadOnlyList<string> ElementTypesFor(int specVersion) => specVersion >= 10 ? All : ElementTypes;
 }
 
 /// <summary>One declared deliverable — blocks and result tabs group by these.</summary>

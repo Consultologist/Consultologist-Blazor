@@ -52,9 +52,9 @@ public class ManifestReaderTests
             ] }
             """));
 
-        Assert.Equal("text", inputs[0].Items);
+        Assert.Equal("text", inputs[0].Items!.Type);
         Assert.Null(inputs[0].Fields);
-        Assert.Equal("object", inputs[1].Items);
+        Assert.Equal("object", inputs[1].Items!.Type);
         Assert.Equal(
             new[] { ("name", "Test", true, (string?)null), ("value", "Value", false, "number"), ("unit", "Unit", true, "enum") },
             inputs[1].Fields!.Select(f => (f.Id, f.Label, f.Required, f.Type)).ToArray());
@@ -69,9 +69,63 @@ public class ManifestReaderTests
                             "Fields": [ { "Id": "name", "Label": "Test", "Required": false } ] } ] }
             """)));
 
-        Assert.Equal("object", input.Items);
+        Assert.Equal("object", input.Items!.Type);
         var field = Assert.Single(input.Fields!);
         Assert.Equal(("name", "Test", false), (field.Id, field.Label, field.Required));
+    }
+
+    [Fact]
+    public void ReadInputs_ReadsASpecFormElement_ToAnyDepth()
+    {
+        // v10 (#498): an element that is an array keeps its own structure; a
+        // field carries items and fields of its own.
+        var inputs = WorkflowManifestReader.ReadInputs(Parse("""
+            { "inputs": [
+                { "id": "grid", "label": "Grid", "type": "array",
+                  "items": { "type": "array", "items": { "type": "enum", "values": ["x", "y"] } } },
+                { "id": "family_history", "label": "Family history", "type": "array", "items": "object",
+                  "fields": [
+                    { "id": "relative", "label": "Relative" },
+                    { "id": "conditions", "label": "Conditions", "required": false, "type": "array", "items": "text" },
+                    { "id": "contact", "label": "Contact", "required": false, "type": "object",
+                      "fields": [ { "id": "phone", "label": "Phone" } ] }
+                  ] }
+            ] }
+            """));
+
+        var grid = inputs[0].Items!;
+        Assert.Equal("array", grid.Type);
+        Assert.Equal("enum", grid.Items!.Type);
+        Assert.Equal(new[] { "x", "y" }, grid.Items.Values);
+        Assert.False(grid.IsBare);
+
+        var fields = inputs[1].Fields!;
+        Assert.Equal("text", fields[1].Items!.Type);
+        Assert.True(fields[1].Items!.IsBare);
+        Assert.Equal("phone", Assert.Single(fields[2].Fields!).Id);
+        Assert.Null(fields[0].Items);
+        Assert.Null(fields[0].Fields);
+    }
+
+    [Fact]
+    public void ReadInputs_HoistsASpecFormObjectOrEnumElement_ToTheV9Form()
+    {
+        // One place holds an array-of-object's fields: the input, as v9 wrote
+        // them. A spec that says the same thing reads to the same view.
+        var inputs = WorkflowManifestReader.ReadInputs(Parse("""
+            { "inputs": [
+                { "id": "labs", "label": "Labs", "type": "array",
+                  "items": { "type": "object", "fields": [ { "id": "name", "label": "Test" } ] } },
+                { "id": "sites", "label": "Sites", "type": "array",
+                  "items": { "type": "enum", "values": ["clinic", "ward"] } }
+            ] }
+            """));
+
+        Assert.True(inputs[0].Items!.IsBare);
+        Assert.Equal("object", inputs[0].Items!.Type);
+        Assert.Equal("name", Assert.Single(inputs[0].Fields!).Id);
+        Assert.True(inputs[1].Items!.IsBare);
+        Assert.Equal(new[] { "clinic", "ward" }, inputs[1].Values);
     }
 
     [Fact]
