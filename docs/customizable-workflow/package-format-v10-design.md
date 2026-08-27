@@ -227,6 +227,20 @@ author never relies on it.
 operator words. The v9 conformance cases are the regression corpus for the
 parser (§ 14, step c).
 
+> **Amendment, 2026-08-27 (#494).** Two rules the implementation fixed:
+> **(1) the whitespace rule** — the arithmetic operators `+ - * /` are
+> tokens only with whitespace on both sides, so `-1` and `2026-1-1` are one
+> token, a literal, and the v9 sentences about them (*not a whole number*,
+> *not a date written YYYY-MM-DD*) are produced by the v9 rules byte for
+> byte; `seen_on - 7` is subtraction. **(2) the compound sentence** as
+> implemented: *needs (length_of_stay to be > 7 and count(prior_notes) to
+> be > 0); length_of_stay is not, count(prior_notes) is 2* — what each
+> clause wanted, then what each found, under the same no-PHI rule per
+> clause; an arithmetic clause prints its terms by name (*needs
+> length_of_stay - 2 to be > 5; it is not*). A `node:` clause evaluates
+> against the classifications the boundary supplies (step e); until then it
+> is absent — never held, even negated — and its sentence says *not decided*.
+
 ### Types
 
 - Arithmetic is defined over `number` and `count()`; a `date` admits

@@ -175,19 +175,37 @@ public static class WorkflowDagDiagram
             // Unparseable conditions cannot reach a published package — the
             // validator parses the same grammar — but the diagram is generated
             // for drafts too, so the raw text is drawn rather than dropped.
-            if (!WorkflowResultConditions.TryParse(when, out var condition, out _) || condition is null)
+            if (!WorkflowResultConditions.TryParseExpression(when, out var expression, out _) || expression is null)
             {
                 sb.Append($"    {boxId} -.->|\"when {when}\"| {boxId}\n");
                 continue;
             }
 
-            // v9: the operand's suffix says which form — ".age >= 65", "count > 1".
-            var suffix = condition.IsCount ? "count " : condition.Field is null ? string.Empty : $".{condition.Field} ";
-            var test = condition.Literal is null
-                ? $"when {suffix}true"
-                : $"when {suffix}{condition.Operator} {condition.Literal}";
+            // v10 (#494): an expression draws one edge per input it reads, the
+            // whole expression as the label on the first; a v9 clause draws
+            // exactly what it did.
+            var first = true;
+            foreach (var condition in expression.Leaves.Concat(expression.Leaves.SelectMany(l => (l.Left?.Operands ?? Enumerable.Empty<WorkflowResultCondition>()).Concat(l.Right?.Operands ?? Enumerable.Empty<WorkflowResultCondition>()))).DistinctBy(c => c.IsNodeValue ? "node:" + c.NodeId : c.InputId))
+            {
+                var source = condition.IsNodeValue ? Sanitize($"node:{condition.NodeId}") : Sanitize($"input:{condition.InputId}");
+                string test;
 
-            sb.Append($"    {Sanitize($"input:{condition.InputId}")} -.->|\"{test}\"| {boxId}\n");
+                if (expression.SingleClause is { } single && !single.IsArithmetic)
+                {
+                    // v9: the operand's suffix says which form — ".age >= 65", "count > 1".
+                    var suffix = single.IsCount ? "count " : single.Field is null ? string.Empty : $".{single.Field} ";
+                    test = single.Literal is null
+                        ? $"when {suffix}true"
+                        : $"when {suffix}{single.Operator} {single.Literal}";
+                }
+                else
+                {
+                    test = first ? $"when {expression.Text}" : "when …";
+                }
+
+                sb.Append($"    {source} -.->|\"{test}\"| {boxId}\n");
+                first = false;
+            }
         }
     }
 
@@ -269,10 +287,13 @@ public static class WorkflowDagDiagram
         foreach (var result in manifest.Results ?? new List<WorkflowResultSpec>())
         {
             if (result.When != null
-                && WorkflowResultConditions.TryParse(result.When, out var condition, out _)
-                && condition != null)
+                && WorkflowResultConditions.TryParseExpression(result.When, out var expression, out _)
+                && expression != null)
             {
-                Add($"input:{condition.InputId}");
+                foreach (var leaf in expression.Leaves.Where(leaf => !leaf.IsNodeValue))
+                {
+                    Add($"input:{leaf.InputId}");
+                }
             }
         }
 

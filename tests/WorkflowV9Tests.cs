@@ -830,7 +830,6 @@ public class WorkflowV9ConditionEvaluationTests
     }
 
     [Theory]
-    [InlineData("patient.age.x >= 1")]
     [InlineData("count(prior_notes")]
     [InlineData("count(Prior Notes) > 1")]
     [InlineData("patient..age == 1")]

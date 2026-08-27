@@ -15,8 +15,9 @@ public sealed record WorkflowResolvedResult(
     string NodeId,
     string Label,
     // Parsed at load so the engine evaluates a structure rather than
-    // re-parsing a string. Null = always produced.
-    WorkflowResultCondition? Condition = null);
+    // re-parsing a string. Null = always produced. v10 (#494): an expression
+    // tree; a v9 condition is its one leaf.
+    WorkflowConditionExpression? Condition = null);
 
 public sealed record WorkflowPackage(
     WorkflowPackageManifest Manifest,

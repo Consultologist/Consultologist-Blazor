@@ -2,7 +2,7 @@ namespace Consultologist.Web.Services.Workflow;
 
 /// <summary>
 /// The editor's read-only view of a condition string. The engine owns the
-/// grammar (Consultologist.Api.Workflow.WorkflowResultConditions); this only
+/// grammar (Consultologist.PackageFormat.WorkflowResultConditions); this only
 /// needs to answer the questions the authoring surfaces ask, so it reads the
 /// text rather than mirroring the parser — a second parser would be a second
 /// thing to keep in step.
@@ -137,6 +137,42 @@ public static class WorkflowResultConditionText
     /// <summary>A path, a count or an ordering: the forms v9 added (#427).</summary>
     public static bool IsV9Form(string? when) =>
         FieldOf(when) != null || IsCount(when) || IsOrdered(when);
+
+    /// <summary>
+    /// v10 (#494): an expression — the words and/or/not, parentheses past
+    /// count(), spaced arithmetic, a classifier's value, a path past one
+    /// field. The editor authors none of it yet (step g): a loaded one is
+    /// shown as itself, refused below 10 by name, and left to the server's
+    /// validator at 10.
+    /// </summary>
+    public static bool IsV10Form(string? when)
+    {
+        var text = when?.Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            return false;
+        }
+
+        var tokens = text.Replace("(", " ( ").Replace(")", " ) ").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var countOpen = false;
+
+        for (var i = 0; i < tokens.Length; i++)
+        {
+            var token = tokens[i];
+
+            if (token is "and" or "or" or "not" or "+" or "-" or "*" or "/" || token.StartsWith("node:", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (token == "count") { countOpen = true; continue; }
+            if (token == "(") { if (countOpen) continue; return true; }
+            if (token == ")") { if (countOpen) { countOpen = false; continue; } return true; }
+        }
+
+        var operand = OperandOf(when);
+        return operand is not null && operand.Count(c => c == '.') >= 2;
+    }
 
     /// <summary>The same condition with one field renamed, where it reads that field; otherwise unchanged.</summary>
     public static string RenameField(string when, string inputId, string oldField, string newField)

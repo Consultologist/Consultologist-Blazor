@@ -390,7 +390,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // v8: the fire set, decided once, here. Conditions read declared inputs
         // only, so this is knowable before anything runs — which is what lets
         // the block skeleton still be built up front and TotalBlockCount stay
-        // the stored scalar #176 made it.
+        // the stored scalar #176 made it. v10 (#494): a condition may also read
+        // a classifier (node:<id>); until the boundary lands (step e) no
+        // classification exists here, so such a clause is absent — never held.
         //
         // Filtering the PACKAGE rather than teaching the engine about
         // conditions is the whole trick: block expansion, deliverable

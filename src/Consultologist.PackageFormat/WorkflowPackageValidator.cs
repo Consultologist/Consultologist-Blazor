@@ -1122,9 +1122,11 @@ public static class WorkflowPackageValidator
             }
         }
 
+        var classifiers = nodesById.Values.Where(WorkflowNodeKinds.IsClassifier).ToDictionary(n => n.Id, StringComparer.Ordinal);
+
         foreach (var result in results)
         {
-            ValidateResultCondition(manifest, result, declaredInputs, errors);
+            ValidateResultCondition(manifest, result, declaredInputs, classifiers, errors);
         }
     }
 
@@ -1143,6 +1145,7 @@ public static class WorkflowPackageValidator
         WorkflowPackageManifest manifest,
         WorkflowResultSpec result,
         IReadOnlyDictionary<string, WorkflowInputSpec> declaredInputs,
+        IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
         List<string> errors)
     {
         if (result.When is null)
@@ -1156,25 +1159,355 @@ public static class WorkflowPackageValidator
             return;
         }
 
-        if (!WorkflowResultConditions.TryParse(result.When, out var condition, out var syntaxError))
+        if (!WorkflowResultConditions.TryParseExpression(result.When, out var expression, out var syntaxError))
         {
             errors.Add($"Result '{result.Id}' condition {syntaxError}");
             return;
         }
 
-        if (!declaredInputs.TryGetValue(condition!.InputId, out var input))
+        // v10 (#494, § 6): every form past one clause is refused below 10 by
+        // name, in the shape every version gate has had — the first one found.
+        if (manifest.SpecVersion < 10 && expression!.FirstV10Form is { } form)
         {
-            errors.Add($"Result '{result.Id}' condition reads undeclared input '{condition.InputId}' (declared: {string.Join(", ", declaredInputs.Keys.Order(StringComparer.Ordinal))}).");
+            errors.Add(form.StartsWith('\'') && !form.StartsWith("'node:", StringComparison.Ordinal)
+                ? $"Result '{result.Id}' condition uses {form}, which requires specVersion 10."
+                : form == "arithmetic"
+                    ? $"Result '{result.Id}' condition uses arithmetic, which requires specVersion 10."
+                    : $"Result '{result.Id}' condition reads {form}, which requires specVersion 10.");
             return;
         }
 
-        if (manifest.SpecVersion < 9)
+        // One error per result: the first clause that is wrong, so the v9
+        // corpus's single-sentence pins hold and an author fixes one thing.
+        foreach (var condition in expression!.Leaves)
         {
-            ValidateV8Condition(result, condition, input, errors);
+            var before = errors.Count;
+
+            if (manifest.SpecVersion >= 10)
+            {
+                ValidateV10Clause(result, condition, declaredInputs, classifiers, errors);
+            }
+            else
+            {
+                if (!declaredInputs.TryGetValue(condition.InputId, out var input))
+                {
+                    errors.Add($"Result '{result.Id}' condition reads undeclared input '{condition.InputId}' (declared: {string.Join(", ", declaredInputs.Keys.Order(StringComparer.Ordinal))}).");
+                    return;
+                }
+
+                if (manifest.SpecVersion < 9)
+                {
+                    ValidateV8Condition(result, condition, input, errors);
+                }
+                else
+                {
+                    ValidateV9Condition(result, condition, input, errors);
+                }
+            }
+
+            if (errors.Count > before)
+            {
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// v10 § 6: every operand — a path of any length, count() of a path, a
+    /// classifier's value — is resolved to a declaration node, and the
+    /// operator, the literal and any arithmetic are held to it. The v9
+    /// sentences are produced for the v9 forms; the new forms have their own.
+    /// </summary>
+    private static void ValidateV10Clause(
+        WorkflowResultSpec result,
+        WorkflowResultCondition condition,
+        IReadOnlyDictionary<string, WorkflowInputSpec> declaredInputs,
+        IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
+        List<string> errors)
+    {
+        var prefix = $"Result '{result.Id}' condition";
+
+        if (condition.IsArithmetic)
+        {
+            ValidateArithmeticClause(prefix, condition, declaredInputs, classifiers, errors);
             return;
         }
 
-        ValidateV9Condition(result, condition, input, errors);
+        if (condition.IsNodeValue)
+        {
+            if (!classifiers.TryGetValue(condition.NodeId!, out var classifier))
+            {
+                errors.Add($"{prefix} reads 'node:{condition.NodeId}', which is not a classifier (classifiers: {string.Join(", ", classifiers.Keys.Order(StringComparer.Ordinal))}).");
+                return;
+            }
+
+            if (condition.IsBare)
+            {
+                errors.Add($"{prefix} '{condition.Operand}' tests a classifier for truth; compare it to one of its values instead.");
+                return;
+            }
+
+            if (condition.IsOrdered)
+            {
+                errors.Add($"{prefix} compares '{condition.Operand}' with {condition.Ordering}; a classifier's value is compared with == or != only.");
+                return;
+            }
+
+            if (classifier.Values?.Contains(condition.Literal!, StringComparer.Ordinal) != true)
+            {
+                errors.Add($"{prefix} compares '{condition.Operand}' to '{condition.Literal}', which it does not declare (values: {string.Join(", ", classifier.Values ?? new List<string>())}).");
+            }
+
+            return;
+        }
+
+        if (!declaredInputs.TryGetValue(condition.InputId, out var input))
+        {
+            errors.Add($"{prefix} reads undeclared input '{condition.InputId}' (declared: {string.Join(", ", declaredInputs.Keys.Order(StringComparer.Ordinal))}).");
+            return;
+        }
+
+        if (condition.PathDepth <= 1 && !condition.IsCount || (condition.IsCount && condition.PathDepth == 0))
+        {
+            // The v9 forms, in v9's words.
+            ValidateV9Condition(result, condition, input, errors);
+            return;
+        }
+
+        // A path past one segment, or count() of a path.
+        if (!TryResolvePath(prefix, condition, input, errors, out var node))
+        {
+            return;
+        }
+
+        if (condition.IsCount)
+        {
+            if (!node!.IsArray)
+            {
+                errors.Add($"{prefix} counts '{condition.PathText}', which is {node.Describe()}; only an array has a count.");
+                return;
+            }
+
+            if (condition.IsBare)
+            {
+                errors.Add($"{prefix} '{condition.Operand}' needs a comparison; write {condition.Operand} > 0.");
+                return;
+            }
+
+            if (!int.TryParse(condition.Literal, NumberStyles.None, CultureInfo.InvariantCulture, out _))
+            {
+                errors.Add($"{prefix} compares '{condition.Operand}' to '{condition.Literal}', which is not a whole number.");
+            }
+
+            return;
+        }
+
+        ValidateTypedComparison(prefix, condition, node!.Type, node.Values, errors);
+    }
+
+    /// <summary>The v9 operand rules over a resolved type: bare, text, structure, ordering, literal.</summary>
+    private static void ValidateTypedComparison(string prefix, WorkflowResultCondition condition, string operandType, IReadOnlyList<string>? values, List<string> errors)
+    {
+        if (condition.IsBare)
+        {
+            if (operandType is WorkflowInputTypes.Boolean or WorkflowInputTypes.Array)
+            {
+                return;
+            }
+
+            errors.Add(operandType == WorkflowInputTypes.Enum
+                ? $"{prefix} '{condition.Operand}' tests an enum for truth; compare it to one of its values instead."
+                : $"{prefix} '{condition.Operand}' tests a {operandType} for truth; only a boolean or an array can be tested bare.");
+            return;
+        }
+
+        if (operandType == WorkflowInputTypes.Text)
+        {
+            errors.Add($"{prefix} reads '{condition.Operand}', which is a text: a text input cannot be tested.");
+            return;
+        }
+
+        if (operandType is WorkflowInputTypes.Object or WorkflowInputTypes.Array)
+        {
+            errors.Add($"{prefix} compares '{condition.Operand}', which is an {operandType}; compare one of its fields, or its count, instead.");
+            return;
+        }
+
+        if (condition.IsOrdered && operandType is not (WorkflowInputTypes.Number or WorkflowInputTypes.Date))
+        {
+            errors.Add($"{prefix} compares '{condition.Operand}' with {condition.Ordering}, which is a {operandType}; ordering operators apply to a number or a date.");
+            return;
+        }
+
+        switch (operandType)
+        {
+            case WorkflowInputTypes.Boolean when condition.Literal is not ("true" or "false"):
+                errors.Add($"{prefix} compares boolean '{condition.Operand}' to '{condition.Literal}'; use true or false.");
+                break;
+
+            case WorkflowInputTypes.Enum when values?.Contains(condition.Literal!, StringComparer.Ordinal) != true:
+                errors.Add($"{prefix} compares '{condition.Operand}' to '{condition.Literal}', which it does not declare (values: {string.Join(", ", values ?? Array.Empty<string>())}).");
+                break;
+
+            case WorkflowInputTypes.Number when !ConsultInputValue.TryParseNumber(condition.Literal!, out _):
+                errors.Add($"{prefix} compares '{condition.Operand}' to '{condition.Literal}', which is not a plain decimal.");
+                break;
+
+            case WorkflowInputTypes.Date when !DateOnly.TryParseExact(condition.Literal, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _):
+                errors.Add($"{prefix} compares '{condition.Operand}' to '{condition.Literal}', which is not a date written YYYY-MM-DD.");
+                break;
+        }
+    }
+
+    /// <summary>A dotted path folded through the declaration nodes; the sentence names the segment that does not resolve.</summary>
+    private static bool TryResolvePath(string prefix, WorkflowResultCondition condition, WorkflowInputSpec input, List<string> errors, out WorkflowDeclarationNode? node)
+    {
+        node = WorkflowDeclarationNode.Of(input);
+        var walked = condition.InputId;
+
+        foreach (var segment in condition.Segments)
+        {
+            if (!node.IsObject)
+            {
+                errors.Add($"{prefix} reads field '{segment}' of '{walked}', which is {node.Describe().Replace("an ", string.Empty).Replace("a ", string.Empty) switch { var t => "a " + t }}, not an object.");
+                node = null;
+                return false;
+            }
+
+            var field = node.Fields?.FirstOrDefault(f => string.Equals(f.Id, segment, StringComparison.Ordinal));
+
+            if (field is null)
+            {
+                errors.Add($"{prefix} reads field '{segment}' of '{walked}', which it does not declare (fields: {string.Join(", ", (node.Fields ?? Array.Empty<WorkflowDeclarationNode>()).Select(f => f.Id))}).");
+                node = null;
+                return false;
+            }
+
+            node = field;
+            walked = $"{walked}.{segment}";
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// v10 § 6, arithmetic: over numbers and counts, a date ± whole days;
+    /// nothing else. Both sides must resolve to the same kind, and a literal
+    /// divisor of zero is named here rather than at every start.
+    /// </summary>
+    private static void ValidateArithmeticClause(
+        string prefix,
+        WorkflowResultCondition condition,
+        IReadOnlyDictionary<string, WorkflowInputSpec> declaredInputs,
+        IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
+        List<string> errors)
+    {
+        if (condition.Right is null)
+        {
+            errors.Add($"{prefix} '{condition.Left!.Text}' is arithmetic with no comparison; write {condition.Left.Text} > 0.");
+            return;
+        }
+
+        var left = TermKind(prefix, condition.Left!, declaredInputs, errors);
+        if (left is null) return;
+        var right = TermKind(prefix, condition.Right, declaredInputs, errors);
+        if (right is null) return;
+
+        if (left != right)
+        {
+            errors.Add($"{prefix} compares {left} '{condition.Left!.Text}' with {right} '{condition.Right.Text}'; both sides of a comparison must be numbers, or both dates.");
+        }
+    }
+
+    /// <summary>"a number" or "a date" for a term, or null after an error.</summary>
+    private static string? TermKind(string prefix, WorkflowConditionTerm term, IReadOnlyDictionary<string, WorkflowInputSpec> declaredInputs, List<string> errors)
+    {
+        switch (term)
+        {
+            case WorkflowLiteralTerm literal:
+                if (ConsultInputValue.TryParseNumber(literal.Literal, out _)) return "a number";
+                if (DateOnly.TryParseExact(literal.Literal, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)) return "a date";
+                errors.Add($"{prefix} uses '{literal.Literal}' in arithmetic, which is neither a plain decimal nor a date written YYYY-MM-DD.");
+                return null;
+
+            case WorkflowNegateTerm negate:
+                var inner = TermKind(prefix, negate.Inner, declaredInputs, errors);
+                if (inner == "a date")
+                {
+                    errors.Add($"{prefix} negates '{negate.Inner.Text}', which is a date; only a number can be negated.");
+                    return null;
+                }
+                return inner;
+
+            case WorkflowOperandTerm operand:
+                if (operand.Operand.IsNodeValue)
+                {
+                    errors.Add($"{prefix} uses 'node:{operand.Operand.NodeId}' in arithmetic; a classifier's value is a symbol, not a number.");
+                    return null;
+                }
+
+                if (operand.Operand.IsCount)
+                {
+                    if (!declaredInputs.TryGetValue(operand.Operand.InputId, out var counted))
+                    {
+                        errors.Add($"{prefix} reads undeclared input '{operand.Operand.InputId}' (declared: {string.Join(", ", declaredInputs.Keys.Order(StringComparer.Ordinal))}).");
+                        return null;
+                    }
+
+                    if (!TryResolvePath(prefix, operand.Operand, counted, errors, out var countedNode)) return null;
+
+                    if (!countedNode!.IsArray)
+                    {
+                        errors.Add($"{prefix} counts '{operand.Operand.PathText}', which is {countedNode.Describe()}; only an array has a count.");
+                        return null;
+                    }
+
+                    return "a number";
+                }
+
+                if (!declaredInputs.TryGetValue(operand.Operand.InputId, out var input))
+                {
+                    errors.Add($"{prefix} reads undeclared input '{operand.Operand.InputId}' (declared: {string.Join(", ", declaredInputs.Keys.Order(StringComparer.Ordinal))}).");
+                    return null;
+                }
+
+                if (!TryResolvePath(prefix, operand.Operand, input, errors, out var node)) return null;
+
+                switch (node!.Type)
+                {
+                    case WorkflowInputTypes.Number: return "a number";
+                    case WorkflowInputTypes.Date: return "a date";
+                    default:
+                        errors.Add($"{prefix} uses '{operand.Operand.Operand}' in arithmetic, which is {node.Describe()}; arithmetic applies to a number, a count or a date.");
+                        return null;
+                }
+
+            case WorkflowBinaryTerm binary:
+                var l = TermKind(prefix, binary.Left, declaredInputs, errors);
+                if (l is null) return null;
+                var r = TermKind(prefix, binary.Right, declaredInputs, errors);
+                if (r is null) return null;
+
+                if (binary.Op == '/' && binary.Right is WorkflowLiteralTerm { Literal: var divisor }
+                    && ConsultInputValue.TryParseNumber(divisor, out var d) && d.NumberValue == 0)
+                {
+                    errors.Add($"{prefix} divides by zero in '{binary.Text}'.");
+                    return null;
+                }
+
+                if (l == "a number" && r == "a number") return "a number";
+
+                if (l == "a date" && r == "a number" && binary.Op is '+' or '-')
+                {
+                    return "a date";
+                }
+
+                errors.Add($"{prefix} computes '{binary.Text}', which is {l} {binary.Op} {r}; a date admits only ± whole days, and everything else is numbers.");
+                return null;
+
+            default:
+                return null;
+        }
     }
 
     /// <summary>The v8 rules, verbatim: the conformance suite and the editor quote these sentences.</summary>
@@ -1884,9 +2217,12 @@ public static class WorkflowPackageValidator
         // deliverable is genuinely reachable, and a malformed one is an error
         // being reported elsewhere, which must not also be read as unreachable.
         var everyResultNeedsABoolean = results.All(result =>
-            WorkflowResultConditions.TryParse(result.When, out var condition, out _)
-            && inputsById.TryGetValue(condition!.InputId, out var input)
-            && WorkflowInputTypes.Of(input) == WorkflowInputTypes.Boolean);
+            WorkflowResultConditions.TryParseExpression(result.When, out var expression, out _)
+            && expression!.Leaves.Any()
+            && expression.Leaves.All(condition =>
+                !condition.IsNodeValue
+                && inputsById.TryGetValue(condition.InputId, out var input)
+                && WorkflowInputTypes.Of(input) == WorkflowInputTypes.Boolean));
 
         if (everyResultNeedsABoolean)
         {

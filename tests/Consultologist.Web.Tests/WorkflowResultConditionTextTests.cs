@@ -137,4 +137,25 @@ public class WorkflowResultConditionTextTests
 
         Assert.Equal(composed, WorkflowResultConditionText.Rename(when, "renamed"));
     }
+
+    // #494: an expression the editor does not author yet, recognised so the
+    // desk names its version and otherwise steps aside.
+    [Theory]
+    [InlineData("length_of_stay > 7 and billable", true)]
+    [InlineData("billable or length_of_stay > 7", true)]
+    [InlineData("not billable", true)]
+    [InlineData("(billable)", true)]
+    [InlineData("length_of_stay - 2 > 5", true)]
+    [InlineData("node:scope == in_scope", true)]
+    [InlineData("patient.contact.phone == x", true)]
+    [InlineData("count(prior_notes) > -1", false)]
+    [InlineData("seen_on > 2026-1-1", false)]
+    [InlineData("patient.age >= 65", false)]
+    [InlineData("count(prior_notes) > 1", false)]
+    [InlineData("billable", false)]
+    [InlineData(null, false)]
+    public void IsV10Form_ReadsTheExpressionForms(string? when, bool expected)
+    {
+        Assert.Equal(expected, WorkflowResultConditionText.IsV10Form(when));
+    }
 }
