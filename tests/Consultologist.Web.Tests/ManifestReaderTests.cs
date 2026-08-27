@@ -129,6 +129,27 @@ public class ManifestReaderTests
     }
 
     [Fact]
+    public void ReadNodes_ReadsAClassifiersKindAndValues()
+    {
+        // v10 (#498): a classifier is a node of kind "classifier" with the
+        // values it may answer; every other node reads null for both.
+        var nodes = WorkflowManifestReader.ReadNodes(Parse("""
+            { "nodes": [
+                { "id": "scope", "label": "Scope", "prompt": "classify", "kind": "classifier", "values": ["in_scope", "out_of_scope"],
+                  "bindings": { "referral": "input:consult_draft" } },
+                { "id": "draft-section", "label": "Draft", "prompt": "draft-section", "bindings": {} }
+            ] }
+            """));
+
+        Assert.True(nodes[0].IsClassifier);
+        Assert.Equal("classifier", nodes[0].Kind);
+        Assert.Equal(new[] { "in_scope", "out_of_scope" }, nodes[0].Values);
+        Assert.False(nodes[1].IsClassifier);
+        Assert.Null(nodes[1].Kind);
+        Assert.Null(nodes[1].Values);
+    }
+
+    [Fact]
     public void ReadInputs_LeavesItemsAndFieldsNullWhenAbsent()
     {
         var input = Assert.Single(WorkflowManifestReader.ReadInputs(

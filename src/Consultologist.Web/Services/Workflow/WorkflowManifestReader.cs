@@ -25,7 +25,13 @@ public static class WorkflowManifestReader
         bool HasOutput,
         IReadOnlyList<string>? Aggregate = null,
         string? OutputSchema = null,
-        string? FailIfEmpty = null);
+        string? FailIfEmpty = null,
+        // v10 (#498): a classifying node — kind "classifier" and the values it
+        // may answer. Null on every node before 10.
+        string? Kind = null, IReadOnlyList<string>? Values = null)
+    {
+        public bool IsClassifier => Kind == Consultologist.PackageFormat.WorkflowNodeKinds.Classifier;
+    }
 
     /// <summary>
     /// One declared field of an object (v9 § 4). v10 (#498): a field may
@@ -162,7 +168,9 @@ public static class WorkflowManifestReader
                 hasOutput,
                 aggregate,
                 hasOutput ? ReadString(output, "schema") : null,
-                hasOutput ? ReadString(output, "failIfEmpty") : null));
+                hasOutput ? ReadString(output, "failIfEmpty") : null,
+                ReadString(node, "kind"),
+                ReadStringArray(node, "values")));
         }
 
         return nodes;
