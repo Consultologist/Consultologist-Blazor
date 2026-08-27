@@ -746,16 +746,16 @@
                                         @* Explicit initialisation: an array says what its
                                            entries are, or the desk refuses the publish. *@
                                         <select class="node-field__input declared-row__items"
-                                                value="@(slot.Items ?? string.Empty)"
+                                                value="@(slot.Items?.Type ?? string.Empty)"
                                                 @onchange="args => SetInputItemsAsync(slot, args.Value?.ToString())"
                                                 aria-label="@($"Items for input {slot.Id}")">
                                             @if (slot.Items is null)
                                             {
                                                 <option value="">entries of…</option>
                                             }
-                                            else if (!WorkflowInputTypes.ElementTypes.Contains(slot.Items))
+                                            else if (!WorkflowInputTypes.ElementTypes.Contains(slot.Items.Type))
                                             {
-                                                <option value="@slot.Items">@slot.Items</option>
+                                                <option value="@slot.Items.Type">@slot.Items.Type</option>
                                             }
                                             @foreach (var element in WorkflowInputTypes.ElementTypes)
                                             {
@@ -2829,7 +2829,7 @@
             // array of objects, values to an enum or an array of enums. Kept
             // across a retype that still wants them, cleared otherwise.
             var keepsItems = type == WorkflowInputTypes.Array;
-            var elementType = keepsItems ? inputs[index].Items : null;
+            var elementType = keepsItems ? inputs[index].Items?.Type : null;
             var keepsFields = type == WorkflowInputTypes.Object || elementType == WorkflowInputTypes.Object;
             var keepsValues = type == WorkflowInputTypes.Enum || elementType == WorkflowInputTypes.Enum;
 
@@ -2960,7 +2960,7 @@
         // kept across a change that still wants them, cleared otherwise.
         UpdateInput(input.Id, existing => existing with
         {
-            Items = items,
+            Items = items is null ? null : new WorkflowManifestReader.ElementView(items),
             Fields = items == WorkflowInputTypes.Object ? existing.Fields ?? new List<WorkflowManifestReader.FieldView>() : null,
             Values = items == WorkflowInputTypes.Enum ? existing.Values ?? new List<string>() : null
         });
@@ -4957,7 +4957,7 @@
             inputsEdit = draftInputs
                 .Select(input => new WorkflowManifestReader.InputView(
                     input.Id, input.Label, input.Required, input.Type, input.Values,
-                    input.Items,
+                    input.Items is null ? null : new WorkflowManifestReader.ElementView(input.Items),
                     input.Fields?.Select(f => new WorkflowManifestReader.FieldView(f.Id, f.Label, f.Required, f.Type, f.Values)).ToList()))
                 .ToList();
         }
@@ -5054,7 +5054,7 @@
             addedPrompts.Select(p => new DraftAddedPrompt(p.Id, p.Text)).ToList(),
             inputsEdit?.Select(i => new DraftInput(
                 i.Id, i.Label, i.Required, i.Type, i.Values?.ToList(),
-                i.Items,
+                i.Items?.Type,
                 i.Fields?.Select(f => new DraftField(f.Id, f.Label, f.Required, f.Type, f.Values?.ToList())).ToList())).ToList(),
             resultsEdit?.Select(r => new DraftResult(r.Id, r.Node, r.Label, r.When)).ToList(),
             new Dictionary<string, string>(addedScalars, StringComparer.Ordinal),
@@ -5683,7 +5683,7 @@
                         // every v7 and v8 package composes the bytes it did.
                         if (input.Items != null)
                         {
-                            node["items"] = input.Items;
+                            node["items"] = input.Items.Type;
                         }
 
                         if (input.Fields is { Count: > 0 })
