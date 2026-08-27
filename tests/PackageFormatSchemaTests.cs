@@ -59,6 +59,41 @@ public class PackageFormatSchemaTests
     }
 
     [Fact]
+    public void TheV10Schema_CarriesTheDeclarationRules_AheadOfItsPublication()
+    {
+        // #492: specVersion 10 is accepted before it is run, so no published
+        // schema exists yet; the shape is pinned here as v9's was, and the v9
+        // render is seen to be untouched by the members v10 added.
+        var schema = PackageFormatSchema.Build(10);
+        var input = schema["properties"]!["inputs"]!["items"]!;
+        var field = input["properties"]!["fields"]!["items"]!;
+        var node = schema["properties"]!["nodes"]!["items"]!["properties"]!;
+
+        // items: a type name, or an element spec — recursively.
+        var items = input["properties"]!["items"]!["oneOf"]!.AsArray();
+        Assert.Equal(2, items.Count);
+        Assert.Equal(WorkflowInputTypes.All, items[0]!["enum"]!.AsArray().Select(n => n!.GetValue<string>()));
+        Assert.Equal("#/properties/inputs/items/properties/items", items[1]!["properties"]!["items"]!["$ref"]!.GetValue<string>());
+        Assert.Equal("#/properties/inputs/items/properties/fields/items", items[1]!["properties"]!["fields"]!["items"]!["$ref"]!.GetValue<string>());
+
+        // A field may be anything and carries items and fields of its own.
+        Assert.Equal(WorkflowInputTypes.All, field["properties"]!["type"]!["enum"]!.AsArray().Select(n => n!.GetValue<string>()));
+        Assert.True(field["properties"]!.AsObject().ContainsKey("items"));
+        Assert.True(field["properties"]!.AsObject().ContainsKey("fields"));
+
+        // A node's kind and values.
+        Assert.Equal(new[] { "prompt", "classifier" }, node["kind"]!["enum"]!.AsArray().Select(n => n!.GetValue<string>()));
+        Assert.Equal(2, node["values"]!["minItems"]!.GetValue<int>());
+
+        // And none of it below 10.
+        var v9Input = PackageFormatSchema.Build(9)["properties"]!["inputs"]!["items"]!;
+        Assert.Equal("string", v9Input["properties"]!["items"]!["type"]!.GetValue<string>());
+        Assert.False(v9Input["properties"]!["fields"]!["items"]!["properties"]!.AsObject().ContainsKey("items"));
+        Assert.False(PackageFormatSchema.Build(9)["properties"]!["nodes"]!["items"]!["properties"]!.AsObject().ContainsKey("kind"));
+        Assert.Equal("Consultologist workflow package manifest, specVersion 10", schema["title"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void TheV9Schema_CarriesTheDeclarationRules_AheadOfItsPublication()
     {
         // #424: specVersion 9 is accepted before it is run, so there is no

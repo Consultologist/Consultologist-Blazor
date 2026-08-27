@@ -1431,6 +1431,14 @@ public static class WorkflowPackageValidator
 
         foreach (var node in nodes)
         {
+            // v10 (§ 4): a classifier feeds the boundary, not a document — its
+            // value is what the fire set reads, so it is consumed by the job
+            // whether or not a prompt binds it.
+            if (WorkflowNodeKinds.IsClassifier(node))
+            {
+                continue;
+            }
+
             if (!reachableFromAny.Contains(node.Id))
             {
                 errors.Add(roots.Count == 1
