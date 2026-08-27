@@ -197,6 +197,23 @@ public class EmailAttachmentInputsTests
     }
 
     [Fact]
+    public void ANumberedStemForAnArrayOfArrays_IsRefusedTheSameWay()
+    {
+        // v10 (#497): the door names the top-level array of text only; a
+        // spec-form element that is itself an array is not one.
+        var slots = new[]
+        {
+            new WorkflowInputSpec("consult_draft", "Consult draft"),
+            new WorkflowInputSpec("grid", "Grid", Required: false,
+                Type: WorkflowInputTypes.Array, Items: new WorkflowElementSpec(WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text))
+        };
+
+        var result = Resolve(slots, "Referral body.", File("grid-1.txt", "1, 2."));
+
+        Assert.Contains("'grid' takes one document and cannot be numbered", result.RejectReason);
+    }
+
+    [Fact]
     public void ANumberedStemForAnArrayOfSomethingElse_IsRefused()
     {
         var slots = new[]
