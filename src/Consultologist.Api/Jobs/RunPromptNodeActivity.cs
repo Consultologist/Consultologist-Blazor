@@ -23,7 +23,10 @@ public sealed record ConsultPromptNodeActivityInput(
     // v8: variable name -> declared input type, for the variables bound to a
     // typed input. Trailing optional; a v5-v7 job replays with null and the
     // renderer behaves exactly as it did.
-    Dictionary<string, string>? VariableTypes = null);
+    Dictionary<string, string>? VariableTypes = null,
+    // v10 (#495): a classifier's declared values, appended to the prompt and
+    // the set the answer must come from. Trailing optional.
+    IReadOnlyList<string>? Values = null);
 
 /// <summary>
 /// One node run. Deserialized concepts ride the recorded activity result so Durable
@@ -37,7 +40,11 @@ public sealed record NodeRunResult(
     string OutputHash,
     // #375: the definition the pair was computed under. Appended last, defaulted:
     // a recorded activity result from before replays with null.
-    int? HashVersion = null);
+    int? HashVersion = null,
+    // v10 (#495): a classifier's normalised answer — one of its declared
+    // values. RawOutput keeps the JSON as the agent sent it; OutputHash is the
+    // SHA-256 of this value (v10 § 8). Appended last, defaulted.
+    string? Classification = null);
 
 /// <summary>
 /// The generic DAG prompt node: renders the node's prompt with orchestrator-resolved
@@ -102,16 +109,32 @@ public sealed class RunPromptNodeActivity
                 input.Variables,
                 input.VariableTypes,
                 WorkflowVariableDeclarations.For(package.Manifest));
-            var inputHash = ConsultGenerationProvenance.Sha256Hex(rendered);
+            // v10 (#495): a classifier's prompt ends with the values it may
+            // answer, in one deterministic form; the message sent is what is
+            // hashed. The values reach here on the activity input.
+            var isClassifier = string.Equals(input.OutputContract, OutputContracts.Classification, StringComparison.Ordinal);
+            var values = input.Values ?? Array.Empty<string>();
+
+            if (isClassifier && values.Count == 0)
+            {
+                throw new InvalidOperationException($"Classifier '{input.NodeId}' reached the activity with no values.");
+            }
+
+            var sent = isClassifier ? rendered + ClassificationOutputContract.Trailer(values) : rendered;
+            var inputHash = ConsultGenerationProvenance.Sha256Hex(sent);
 
             var entry = _catalog.GetEntry(input.OutputContract ?? OutputContracts.Text);
             var rawOutput = await _agent.SendPromptAsync(
                 input.NodeId,
-                rendered,
+                sent,
                 entry.AgentName,
                 entry.AgentVersion,
                 cancellationToken);
-            var outputHash = ConsultGenerationProvenance.Sha256Hex(rawOutput);
+
+            var classification = isClassifier
+                ? ClassificationOutputContract.Normalize(rawOutput, values, input.NodeId)
+                : null;
+            var outputHash = ConsultGenerationProvenance.Sha256Hex(classification ?? rawOutput);
 
             var concepts = string.Equals(input.OutputContract, OutputContracts.ConceptList, StringComparison.Ordinal)
                 ? ConceptOutputContract.Deserialize(rawOutput, input.ConceptSource ?? input.NodeId)
@@ -128,7 +151,7 @@ public sealed class RunPromptNodeActivity
             Console.Error.WriteLine(
                 $"[PromptNode] NodeId={input.NodeId}; ConceptCount={concepts?.Count.ToString() ?? "-"}; InputHash={inputHash}; OutputHash={outputHash}; ElapsedMs={stopwatch.ElapsedMilliseconds}");
 
-            return new NodeRunResult(rawOutput, concepts, inputHash, outputHash, ConsultGenerationProvenance.NodeHashVersion);
+            return new NodeRunResult(rawOutput, concepts, inputHash, outputHash, ConsultGenerationProvenance.NodeHashVersion, classification);
         }
         catch (Exception ex)
         {

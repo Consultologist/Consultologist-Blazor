@@ -210,7 +210,10 @@ public sealed record ConsultNodeDescriptor(
     string? FailIfEmpty = null,
     string? ForEach = null,
     string? ConceptSource = null,
-    IReadOnlyList<string>? Aggregate = null);
+    IReadOnlyList<string>? Aggregate = null,
+    // v10 (#495): a classifier's declared values. Trailing optional, so the
+    // snapshot a sleeping job re-reads binds as it did.
+    IReadOnlyList<string>? Values = null);
 
 public sealed record ConsultNodeBindingDescriptor(string From, string? As = null);
 

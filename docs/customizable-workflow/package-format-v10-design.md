@@ -140,6 +140,14 @@ answer, trims it, lower-cases it, and requires it to be one of the node's
 it is model output over the referral. The agent behind the contract is
 selected as every contract's is, by schema.
 
+> **Amendment, 2026-08-27 (#495).** The agent is generic — one agent per
+> contract — and the values live in the manifest, so the engine appends a
+> fixed trailer to the rendered prompt: *`Answer with exactly one of: a, b,
+> c.`* (values in declared order). The message sent, trailer included, is
+> what the node's input hash covers. The agent: gpt-5.6-sol, reasoning
+> effort low, no tools. A malformed or out-of-set answer is retried under
+> the agent activity policy before the node fails.
+
 ### Evaluation
 
 A classifier runs exactly as a prompt node runs — one activity, the same

@@ -68,7 +68,11 @@ public class DurablePayloadReplayTests
 
         var input = JsonSerializer.Deserialize<ConsultPromptNodeActivityInput>(stored, Durable)!;
 
-        Assert.Equal(stored, JsonSerializer.Serialize(input, Durable));
+        // v10 (#495): the classifier's values are the one slot after it —
+        // appended last, so the stored bytes bind unchanged and write back
+        // with exactly one more trailing null.
+        Assert.Equal(stored[..^1] + ",\"Values\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Null(input.Values);
         Assert.Equal(
             "Seen 2026-08-10. Bill it.",
             PromptTemplateRenderer.Render(Typed, input.Variables, input.VariableTypes));

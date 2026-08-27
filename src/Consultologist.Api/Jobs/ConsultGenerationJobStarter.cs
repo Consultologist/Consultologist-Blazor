@@ -1325,14 +1325,19 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 pair => pair.Key,
                 pair => new ConsultNodeBindingDescriptor(pair.Value.From, pair.Value.As),
                 StringComparer.Ordinal),
-            OutputContract: node.Output is null
-                ? null
-                : schemaContracts?.GetValueOrDefault(node.Output.Schema)
-                    ?? throw new InvalidOperationException(
-                        $"Node '{node.Id}' declares schema '{node.Output.Schema}' with no resolved output contract."),
+            // v10 (#495): a classifier's contract is implied by its kind — the
+            // one shape no package declares by schema id.
+            OutputContract: WorkflowNodeKinds.IsClassifier(node)
+                ? OutputContracts.Classification
+                : node.Output is null
+                    ? null
+                    : schemaContracts?.GetValueOrDefault(node.Output.Schema)
+                        ?? throw new InvalidOperationException(
+                            $"Node '{node.Id}' declares schema '{node.Output.Schema}' with no resolved output contract."),
             FailIfEmpty: node.Output?.FailIfEmpty,
             ForEach: node.ForEach,
             ConceptSource: WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(node.Id, node.Id),
-            Aggregate: node.Aggregate);
+            Aggregate: node.Aggregate,
+            Values: WorkflowNodeKinds.IsClassifier(node) ? node.Values : null);
     }
 }

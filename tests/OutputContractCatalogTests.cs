@@ -57,6 +57,30 @@ public class OutputContractCatalogTests
         Assert.Equal(catalogSchema.ToJsonString(), manifestSchema.ToJsonString());
     }
 
+    // v10 (#495): the third contract, with its own attested agent.
+    [Fact]
+    public void Load_RealCatalog_HasAClassificationEntry_WhoseSchemaMatchesItsAgent()
+    {
+        var catalog = OutputContractCatalog.Load(RepoAgentsDirectory());
+
+        var entry = catalog.GetEntry(OutputContracts.Classification);
+        Assert.Equal("classification", entry.AgentName);
+        Assert.NotNull(entry.SchemaJson);
+
+        var manifest = AttestedAgentManifest.Load(File.ReadAllText(Path.Combine(RepoAgentsDirectory(), "classification.yaml")));
+        Assert.Equal(entry.AgentVersion, manifest.Version);
+        Assert.Equal("json_schema", manifest.Definition.Text!.Format!.Type);
+        Assert.Equal("classification", manifest.Definition.Text.Format.Name);
+        Assert.Equal("true", manifest.Definition.Text.Format.Strict);
+        Assert.Equal(
+            System.Text.Json.Nodes.JsonNode.Parse(entry.SchemaJson!)!.ToJsonString(),
+            System.Text.Json.Nodes.JsonNode.Parse(manifest.Definition.Text.Format.Schema!)!.ToJsonString());
+
+        // The one shape a package may not declare: an object with one string value.
+        Assert.True(catalog.TryResolveContract(System.Text.Json.Nodes.JsonNode.Parse("""{"type":"object","additionalProperties":false,"required":["value"],"properties":{"value":{"type":"string"}}}"""), out var id));
+        Assert.Equal(OutputContracts.Classification, id);
+    }
+
     [Fact]
     public void TryResolveContract_MatchesModuloTitleAndDescription()
     {
@@ -190,4 +214,5 @@ public class CatalogRegistryIdentityTests
             AgentAttestationService.CompareCatalogToBundled(runtime, bundled),
             m => m.Contains("'extra' is not in the runtime catalog", StringComparison.Ordinal));
     }
+
 }
