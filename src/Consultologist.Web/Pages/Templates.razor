@@ -4679,11 +4679,32 @@
     // reload. Trailing optionals — a draft written before v8 restores with null.
     private sealed record DraftInput(
         string Id, string Label, bool Required, string? Type = null, List<string>? Values = null,
-        // v9 (#429): the structure rides too, or a reload strips it.
-        string? Items = null, List<DraftField>? Fields = null);
+        // v9 (#429): the structure rides too, or a reload strips it. v10
+        // (#498): the element's depth rides beside the type name — a draft
+        // written before carries Items alone and restores as a bare element.
+        string? Items = null, List<DraftField>? Fields = null,
+        DraftElement? Element = null);
 
     private sealed record DraftField(
-        string Id, string Label, bool Required, string? Type = null, List<string>? Values = null);
+        string Id, string Label, bool Required, string? Type = null, List<string>? Values = null,
+        DraftElement? Element = null, List<DraftField>? Fields = null);
+
+    /// <summary>v10 (#498): an element's own structure, when it has any.</summary>
+    private sealed record DraftElement(string Type, DraftElement? Items = null, List<DraftField>? Fields = null, List<string>? Values = null);
+
+    private static DraftElement? ToDraft(WorkflowManifestReader.ElementView? element) =>
+        element is null ? null : new DraftElement(element.Type, ToDraft(element.Items), ToDraft(element.Fields), element.Values?.ToList());
+
+    private static List<DraftField>? ToDraft(IReadOnlyList<WorkflowManifestReader.FieldView>? fields) =>
+        fields?.Select(f => new DraftField(f.Id, f.Label, f.Required, f.Type, f.Values?.ToList(), ToDraft(f.Items), ToDraft(f.Fields))).ToList();
+
+    private static WorkflowManifestReader.ElementView? FromDraft(DraftElement? element, string? typeName = null) =>
+        element is null
+            ? typeName is null ? null : new WorkflowManifestReader.ElementView(typeName)
+            : new WorkflowManifestReader.ElementView(element.Type, FromDraft(element.Items), FromDraft(element.Fields), element.Values);
+
+    private static List<WorkflowManifestReader.FieldView>? FromDraft(List<DraftField>? fields) =>
+        fields?.Select(f => new WorkflowManifestReader.FieldView(f.Id, f.Label, f.Required, f.Type, f.Values, FromDraft(f.Element), FromDraft(f.Fields))).ToList();
 
     private sealed record DraftResult(string Id, string Node, string Label, string? When = null);
 
@@ -4957,8 +4978,8 @@
             inputsEdit = draftInputs
                 .Select(input => new WorkflowManifestReader.InputView(
                     input.Id, input.Label, input.Required, input.Type, input.Values,
-                    input.Items is null ? null : new WorkflowManifestReader.ElementView(input.Items),
-                    input.Fields?.Select(f => new WorkflowManifestReader.FieldView(f.Id, f.Label, f.Required, f.Type, f.Values)).ToList()))
+                    FromDraft(input.Element, input.Items),
+                    FromDraft(input.Fields)))
                 .ToList();
         }
 
@@ -5055,7 +5076,8 @@
             inputsEdit?.Select(i => new DraftInput(
                 i.Id, i.Label, i.Required, i.Type, i.Values?.ToList(),
                 i.Items?.Type,
-                i.Fields?.Select(f => new DraftField(f.Id, f.Label, f.Required, f.Type, f.Values?.ToList())).ToList())).ToList(),
+                ToDraft(i.Fields),
+                i.Items is { IsBare: false } ? ToDraft(i.Items) : null)).ToList(),
             resultsEdit?.Select(r => new DraftResult(r.Id, r.Node, r.Label, r.When)).ToList(),
             new Dictionary<string, string>(addedScalars, StringComparer.Ordinal),
             specVersionBump,
@@ -5441,6 +5463,73 @@
     // is tolerant like the reader's — the worker serializer may have written
     // PascalCase, and the server parses either. Binding dictionary keys
     // (variable names) are never re-cased by the serializer.
+    /// <summary>
+    /// v10 (#498): the v9 form is the type name, and the editor writes it
+    /// whenever the element has nothing of its own — an array of objects or
+    /// of enums keeps its fields or values on the input, so every v9 package
+    /// composes the bytes it composed. Only an element that is itself an
+    /// array (or carries structure) writes as a spec, recursively.
+    /// </summary>
+    private static System.Text.Json.Nodes.JsonNode WriteElement(WorkflowManifestReader.ElementView element)
+    {
+        if (element.IsBare)
+        {
+            return element.Type;
+        }
+
+        var node = new System.Text.Json.Nodes.JsonObject { ["type"] = element.Type };
+        if (element.Items != null)
+        {
+            node["items"] = WriteElement(element.Items);
+        }
+
+        if (element.Fields is { Count: > 0 })
+        {
+            node["fields"] = WriteFields(element.Fields);
+        }
+
+        if (element.Values is { Count: > 0 })
+        {
+            node["values"] = new System.Text.Json.Nodes.JsonArray(element.Values.Select(v => (System.Text.Json.Nodes.JsonNode?)v).ToArray());
+        }
+
+        return node;
+    }
+
+    private static System.Text.Json.Nodes.JsonArray WriteFields(IReadOnlyList<WorkflowManifestReader.FieldView> fields) =>
+        new(fields.Select(field =>
+        {
+            var fieldNode = new System.Text.Json.Nodes.JsonObject
+            {
+                ["id"] = field.Id,
+                ["label"] = field.Label,
+                ["required"] = field.Required
+            };
+
+            if (field.Type != null)
+            {
+                fieldNode["type"] = field.Type;
+            }
+
+            if (field.Values is { Count: > 0 })
+            {
+                fieldNode["values"] = new System.Text.Json.Nodes.JsonArray(field.Values.Select(v => (System.Text.Json.Nodes.JsonNode?)v).ToArray());
+            }
+
+            // v10 (#498): a field's own structure, to any depth.
+            if (field.Items != null)
+            {
+                fieldNode["items"] = WriteElement(field.Items);
+            }
+
+            if (field.Fields is { Count: > 0 })
+            {
+                fieldNode["fields"] = WriteFields(field.Fields);
+            }
+
+            return (System.Text.Json.Nodes.JsonNode?)fieldNode;
+        }).ToArray());
+
     private JsonElement ComposeManifest()
     {
         // Nothing structural pending: send the manifest through untouched.
@@ -5681,36 +5770,16 @@
 
                         // v9 (#429): carried as read. Omitted when absent, so
                         // every v7 and v8 package composes the bytes it did.
+                        // v10 (#498): an element that is an array writes as a
+                        // spec; fields write their own structure.
                         if (input.Items != null)
                         {
-                            node["items"] = input.Items.Type;
+                            node["items"] = WriteElement(input.Items);
                         }
 
                         if (input.Fields is { Count: > 0 })
                         {
-                            node["fields"] = new System.Text.Json.Nodes.JsonArray(
-                                input.Fields.Select(field =>
-                                {
-                                    var fieldNode = new System.Text.Json.Nodes.JsonObject
-                                    {
-                                        ["id"] = field.Id,
-                                        ["label"] = field.Label,
-                                        ["required"] = field.Required
-                                    };
-
-                                    if (field.Type != null)
-                                    {
-                                        fieldNode["type"] = field.Type;
-                                    }
-
-                                    if (field.Values is { Count: > 0 })
-                                    {
-                                        fieldNode["values"] = new System.Text.Json.Nodes.JsonArray(
-                                            field.Values.Select(v => (System.Text.Json.Nodes.JsonNode?)v).ToArray());
-                                    }
-
-                                    return (System.Text.Json.Nodes.JsonNode?)fieldNode;
-                                }).ToArray());
+                            node["fields"] = WriteFields(input.Fields);
                         }
 
                         return (System.Text.Json.Nodes.JsonNode?)node;

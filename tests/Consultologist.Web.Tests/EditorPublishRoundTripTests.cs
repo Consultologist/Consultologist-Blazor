@@ -390,6 +390,67 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
     }
 
     [Fact]
+    public async Task AV10NestedPackage_KeepsItsDepthThroughAnUnrelatedRelabel()
+    {
+        // v10 (#498): before this, any pending input edit rebuilt the inputs
+        // list with items as a type name and fields without their structure —
+        // relabelling consult_draft flattened every other input's depth.
+        var (result, sent) = await PublishAndCaptureAsync(page =>
+        {
+            Navigate(page, "Inputs");
+            page.FindAll("li.declared-row input")[1].Change("Referral letter");
+            return Task.CompletedTask;
+        }, EditorFixtures.V10Nested());
+
+        var inputs = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement.GetProperty("inputs").EnumerateArray().ToList();
+
+        Assert.Equal("Referral letter", inputs[0].GetProperty("label").GetString());
+
+        var family = inputs[1];
+        Assert.Equal("object", family.GetProperty("items").GetString());
+        var fields = family.GetProperty("fields").EnumerateArray().ToList();
+        Assert.Equal("text", fields[1].GetProperty("items").GetString());
+        var contact = fields[2].GetProperty("fields").EnumerateArray().ToList();
+        Assert.Equal(new[] { "phone", "preferred" }, contact.Select(f => f.GetProperty("id").GetString()));
+        Assert.Equal(new[] { "phone", "email" }, contact[1].GetProperty("values").EnumerateArray().Select(v => v.GetString()));
+
+        var grid = inputs[2].GetProperty("items");
+        Assert.Equal(JsonValueKind.Object, grid.ValueKind);
+        Assert.Equal("array", grid.GetProperty("type").GetString());
+        Assert.Equal("number", grid.GetProperty("items").GetString());
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public async Task ADraftCarryingDepth_RestoresIt()
+    {
+        var package = EditorFixtures.V10Nested();
+        JSInterop.Setup<string?>("localStorage.getItem", $"workflow-editor-draft:{package.Ref}")
+            .SetResult("""
+                {
+                  "Version": 11,
+                  "Inputs": [
+                    { "Id": "consult_draft", "Label": "Consult draft", "Required": true },
+                    { "Id": "grid", "Label": "Grid (drafted)", "Required": false, "Type": "array", "Items": "array",
+                      "Element": { "Type": "array", "Items": { "Type": "number" } } },
+                    { "Id": "patient", "Label": "Patient", "Required": false, "Type": "object",
+                      "Fields": [ { "Id": "contact", "Label": "Contact", "Required": false, "Type": "object",
+                                    "Fields": [ { "Id": "phone", "Label": "Phone", "Required": true } ] } ] }
+                  ]
+                }
+                """);
+
+        var (result, sent) = await PublishAndCaptureAsync(_ => Task.CompletedTask, package);
+
+        var inputs = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement.GetProperty("inputs").EnumerateArray().ToList();
+        Assert.Equal("Grid (drafted)", inputs[1].GetProperty("label").GetString());
+        Assert.Equal("number", inputs[1].GetProperty("items").GetProperty("items").GetString());
+        Assert.Equal("phone", inputs[2].GetProperty("fields")[0].GetProperty("fields")[0].GetProperty("id").GetString());
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
     public async Task RetypingAnArrayToText_ClearsItsItemsAndFields()
     {
         // Items belong to an array, fields to an object: a slot retyped to

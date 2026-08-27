@@ -244,6 +244,50 @@ public static class EditorFixtures
         }
         """, 9);
 
+    /// <summary>
+    /// v10 (#498): V9Structured at 10 with structure below one level — an
+    /// array of objects whose fields are an array and an object, and an array
+    /// of arrays written as a spec.
+    /// </summary>
+    public static WorkflowPackageContentResponse V10Nested() => Package("""
+        {
+          "name": "acct-1234567890ab",
+          "version": "v2026.08.1",
+          "specVersion": 10,
+          "tags": [],
+          "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
+          "inputs": [
+            { "id": "consult_draft", "label": "Consult draft", "required": true },
+            { "id": "family_history", "label": "Family history", "required": false, "type": "array", "items": "object",
+              "fields": [
+                { "id": "relative", "label": "Relative", "required": true },
+                { "id": "conditions", "label": "Conditions", "required": false, "type": "array", "items": "text" },
+                { "id": "contact", "label": "Contact", "required": false, "type": "object",
+                  "fields": [
+                    { "id": "phone", "label": "Phone", "required": true },
+                    { "id": "preferred", "label": "Preferred", "required": false, "type": "enum", "values": ["phone", "email"] }
+                  ] }
+              ] },
+            { "id": "grid", "label": "Grid", "required": false, "type": "array",
+              "items": { "type": "array", "items": "number" } }
+          ],
+          "data": { "standards": "data/standards/" },
+          "prompts": [
+            { "id": "draft-section", "file": "prompts/draft-section.md",
+              "variables": ["section_name", "consult_draft"] }
+          ],
+          "results": [
+            { "id": "consult_note", "node": "node:assemble-note", "label": "Consultation note" }
+          ],
+          "nodes": [
+            { "id": "draft-section", "forEach": "data:standards", "label": "Drafting section",
+              "prompt": "draft-section",
+              "bindings": { "section_name": "item:name", "consult_draft": "input:consult_draft" } },
+            { "id": "assemble-note", "label": "Assembling note", "aggregate": ["node:draft-section"] }
+          ]
+        }
+        """, 10);
+
     /// <summary>#453: the same package carrying these tags.</summary>
     public static WorkflowPackageContentResponse WithTags(WorkflowPackageContentResponse package, params string[] tags)
     {
