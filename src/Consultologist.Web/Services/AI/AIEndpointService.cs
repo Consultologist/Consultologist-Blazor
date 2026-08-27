@@ -525,7 +525,13 @@ public record ConsultGenerationJobResponse(
     // #486: mirrors the Api's DeliveryOutcome / DeliveredAtUtc / DeliveryDocumentAttached.
     string? DeliveryOutcome = null,
     DateTimeOffset? DeliveredAtUtc = null,
-    bool? DeliveryDocumentAttached = null);
+    bool? DeliveryDocumentAttached = null,
+    // v10 (#496): mirrors the Api's Deciding / DecidedAtUtc / Classifications /
+    // DecisionFailureKind — the boundary, and what the classifiers answered.
+    bool? Deciding = null,
+    DateTimeOffset? DecidedAtUtc = null,
+    IReadOnlyDictionary<string, string>? Classifications = null,
+    string? DecisionFailureKind = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.TerminologySnapshot (#403).</summary>
 public record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);
@@ -573,7 +579,9 @@ public record ConsultGenerationNodeStatus(
     DateTimeOffset? CompletedAtUtc,
     string? Error,
     // #375: the definition the pair was computed under; null before the ladder.
-    int? HashVersion = null);
+    int? HashVersion = null,
+    // v10 (#496): a classifier's answer.
+    string? Classification = null);
 
 public record ConsultGenerationJobHistoryEvent(string Kind, string Label, string? Detail, DateTimeOffset OccurredAt);
 

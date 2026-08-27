@@ -574,11 +574,60 @@
 
                                 @if (RailNodes is { Count: > 0 } railNodes)
                                 {
+                                    @* v10 (#496): a package with classifiers decides what to produce
+                                       first. The stage is named, the classifiers listed under it, and
+                                       the count is "not yet decided" until the boundary. *@
+                                    @if (HasClassifiers)
+                                    {
+                                        var decidingStatus = DecidingRowStatus();
+                                        <details class="node-group node-group--deciding" open>
+                                            <summary class="node-row">
+                                                <span class="node-row__chevron" aria-hidden="true">&#x203A;</span>
+                                                <span class="node-row__status @RunStatusCss(decidingStatus)">@RunStatusGlyph(decidingStatus)</span>
+                                                <span class="node-row__label">Deciding what to produce</span>
+                                                @if (classifications is { Count: > 0 })
+                                                {
+                                                    <span class="node-row__count muted-text">@DecisionState.Describe(classifications)</span>
+                                                }
+                                            </summary>
+                                            @for (var c = 0; c < railNodes.Count; c++)
+                                            {
+                                                var classifier = railNodes[c];
+                                                if (!classifier.IsClassifier)
+                                                {
+                                                    continue;
+                                                }
+                                                var classifierStatus = NodeRowStatus(classifier, c);
+                                                <div class="node-row node-row--item">
+                                                    <span class="node-row__chevron" aria-hidden="true"></span>
+                                                    <span class="node-row__status @RunStatusCss(classifierStatus)">@RunStatusGlyph(classifierStatus)</span>
+                                                    <span class="node-row__label">@classifier.Label</span>
+                                                    @if (classifications?.GetValueOrDefault(classifier.Id) is { } answer)
+                                                    {
+                                                        <span class="node-row__count muted-text">@answer</span>
+                                                    }
+                                                </div>
+                                            }
+                                            @if (NotYetDecided)
+                                            {
+                                                <div class="node-row__caption muted-text deciding-caption">Not yet decided — which documents to produce depends on the answers above.</div>
+                                            }
+                                            else if (decisionFailureKind != null)
+                                            {
+                                                <div class="node-row__caption muted-text deciding-caption">@DecisionState.DoneLabel(decisionFailureKind)@(startFailureDetail is { } why ? $" — {why}" : "")</div>
+                                            }
+                                        </details>
+                                    }
+
                                     @* The manifest node map, loaded at page init: every node named and every
                                        forEach group's sections listed before the first event arrives. *@
                                     for (var i = 0; i < railNodes.Count; i++)
                                     {
                                         var node = railNodes[i];
+                                        if (node.IsClassifier)
+                                        {
+                                            continue;
+                                        }
                                         var stageStatus = NodeRowStatus(node, i);
                                         var done = stageStatus == "Completed";
                                         var current = stageStatus == "Running";
@@ -675,8 +724,12 @@
                                 <div class="node-row">
                                     <span class="node-row__chevron" aria-hidden="true"></span>
                                     <span class="node-row__status @RunStatusCss(doneStatus)">@RunStatusGlyph(doneStatus)</span>
-                                    <span class="node-row__label">@(doneStatus == "Failed" ? "Failed" : "Done")</span>
-                                    @if (doneStatus != null)
+                                    <span class="node-row__label">@(doneStatus == "Failed" ? (decisionFailureKind != null ? DecisionState.DoneLabel(decisionFailureKind) : "Failed") : "Done")</span>
+                                    @if (NotYetDecided)
+                                    {
+                                        <span class="node-row__count muted-text">— sections, not yet decided</span>
+                                    }
+                                    else if (doneStatus != null)
                                     {
                                         <span class="node-row__count muted-text">@generatedBlocks.Count/@totalBlockCount sections</span>
                                     }
@@ -829,10 +882,21 @@
   /// an aggregator is what a result node is in every package the block resolver
   /// accepts, and Aggregate was already being serialized.
   /// </summary>
-  private sealed record RailNode(string Id, string Label, string? ForEach, bool IsResult);
+  private sealed record RailNode(string Id, string Label, string? ForEach, bool IsResult, bool IsClassifier = false);
 
   private IReadOnlyList<RailNode>? RailNodes =>
     jobNodes ?? workflowNodes?.Select(node => new RailNode(node.Id, node.Label, node.ForEach, node.IsResult)).ToList();
+
+  // v10 (#496): the boundary, as the job reports it. Deciding with no date
+  // is "not yet decided" — the count is not known, and the rail says so
+  // rather than showing the pinned skeleton's size.
+  private bool deciding;
+  private DateTimeOffset? decidedAtUtc;
+  private IReadOnlyDictionary<string, string>? classifications;
+  private string? decisionFailureKind;
+  private string? startFailureDetail;
+  private bool NotYetDecided => deciding && decidedAtUtc == null && decisionFailureKind == null && runTerminalStatus == null;
+  private bool HasClassifiers => RailNodes?.Any(node => node.IsClassifier) == true;
   private HashSet<string> completedNodeItems = new();
 
   // #356: node id -> the status the JOB reports for it. The rail used to mark
@@ -1622,6 +1686,11 @@
     runEventSeen = true;
     generatedBlocks = response.GeneratedBlocks;
     textDroppedAtUtc = response.TextDroppedAtUtc;
+    deciding = response.Deciding == true;
+    decidedAtUtc = response.DecidedAtUtc;
+    classifications = response.Classifications ?? classifications;
+    decisionFailureKind = response.DecisionFailureKind;
+    startFailureDetail = response.StartFailure ?? startFailureDetail;
     deliveryOutcome = response.DeliveryOutcome;
     deliveryDocumentAttached = response.DeliveryDocumentAttached;
 
@@ -1647,7 +1716,9 @@
       };
     }
     failedBlockErrors = response.FailedBlocks;
-    totalBlockCount = response.TotalBlockCount == 0 ? blockSnapshots.Count : response.TotalBlockCount;
+    // v10 (#496): while the job is deciding, zero means "not yet decided" and
+    // must not fall back to the pinned skeleton's size.
+    totalBlockCount = response.TotalBlockCount == 0 && !(deciding && response.DecidedAtUtc == null) ? blockSnapshots.Count : response.TotalBlockCount;
     completedBlockCount = response.CompletedBlockCount + response.FailedBlockCount;
 
     // #361: the job's own graph. One seam covers the SSE snapshot and done
@@ -1656,7 +1727,8 @@
     if (response.Nodes is { Count: > 0 })
     {
       jobNodes = response.Nodes
-        .Select(node => new RailNode(node.Id, node.Label, node.ForEach, node.Aggregate is { Count: > 0 }))
+        .Select(node => new RailNode(node.Id, node.Label, node.ForEach, node.Aggregate is { Count: > 0 },
+          IsClassifier: string.Equals(node.OutputContract, "classification", StringComparison.Ordinal)))
         .ToList();
     }
 
@@ -2124,6 +2196,30 @@
   // The Done row resolves only on a terminal signal: the done event, an error
   // event, or a terminal polled status. Failed sections downgrade a Completed
   // status, matching the error bars.
+  // v10 (#496): the deciding stage's own verdict — every classifier's, folded.
+  private string? DecidingRowStatus()
+  {
+    if (decisionFailureKind != null)
+    {
+      return "Failed";
+    }
+
+    if (decidedAtUtc != null)
+    {
+      return "Completed";
+    }
+
+    var classifiers = RailNodes?.Where(node => node.IsClassifier).ToList() ?? new List<RailNode>();
+    if (classifiers.Any(node => nodeStatuses.GetValueOrDefault(node.Id) == "Failed"))
+    {
+      return "Failed";
+    }
+
+    return classifiers.Count > 0 && classifiers.All(node => nodeStatuses.GetValueOrDefault(node.Id) == "Completed")
+      ? "Completed"
+      : isAiRequestLoading || (runEventSeen && runTerminalStatus == null) ? "Running" : null;
+  }
+
   private string? DoneRowStatus()
   {
     if (runTerminalStatus != null)
