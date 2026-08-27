@@ -13,20 +13,23 @@ public static class EditorFixtures
     public const string PromptFile = "prompts/draft-section.md";
     public const string StandardsIndex = "data/standards/index.json";
 
-    public static WorkflowPackageContentResponse Package(string manifestJson, int specVersion) =>
-        new(
-            "acct-1234567890ab",
-            "v2026.07.1",
-            specVersion,
-            JsonDocument.Parse(manifestJson).RootElement.Clone(),
-            new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                [PromptFile] = "Draft {{ section_name }} from {{ consult_draft }}.",
-                [StandardsIndex] = """
-                    { "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "History", "file": "hpi.md" } ] }
-                    """,
-                ["data/standards/hpi.md"] = "Document the presenting illness."
-            });
+    public static WorkflowPackageContentResponse Package(string manifestJson, int specVersion, params (string Path, string Text)[] extraFiles)
+    {
+        var files = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [PromptFile] = "Draft {{ section_name }} from {{ consult_draft }}.",
+            [StandardsIndex] = """
+                { "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "History", "file": "hpi.md" } ] }
+                """,
+            ["data/standards/hpi.md"] = "Document the presenting illness."
+        };
+        foreach (var (path, text) in extraFiles)
+        {
+            files[path] = text;
+        }
+
+        return new("acct-1234567890ab", "v2026.07.1", specVersion, JsonDocument.Parse(manifestJson).RootElement.Clone(), files);
+    }
 
     /// <summary>
     /// A repo-owned package loaded into the editor — what the picker gives you
@@ -287,6 +290,47 @@ public static class EditorFixtures
           ]
         }
         """, 10);
+
+    /// <summary>
+    /// v10 (#498): V9Structured at 10 with a classifier over the draft —
+    /// "scope" answering in_scope or out_of_scope — and a document conditioned
+    /// on its answer.
+    /// </summary>
+    public static WorkflowPackageContentResponse V10Classifier() => Package("""
+        {
+          "name": "acct-1234567890ab",
+          "version": "v2026.08.1",
+          "specVersion": 10,
+          "tags": [],
+          "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
+          "inputs": [
+            { "id": "consult_draft", "label": "Consult draft", "required": true },
+            { "id": "patient", "label": "Patient", "required": true, "type": "object",
+              "fields": [
+                { "id": "age", "label": "Age", "required": true, "type": "number" },
+                { "id": "sex", "label": "Sex", "required": false, "type": "enum", "values": ["female", "male"] }
+              ] }
+          ],
+          "data": { "standards": "data/standards/" },
+          "prompts": [
+            { "id": "classify", "file": "prompts/classify.md", "variables": ["referral"] },
+            { "id": "draft-section", "file": "prompts/draft-section.md",
+              "variables": ["section_name", "consult_draft"] }
+          ],
+          "results": [
+            { "id": "consult_note", "node": "node:assemble-note", "label": "Consultation note", "when": "node:scope == in_scope" }
+          ],
+          "nodes": [
+            { "id": "scope", "label": "Is the referral in scope?", "prompt": "classify", "kind": "classifier",
+              "values": ["in_scope", "out_of_scope"],
+              "bindings": { "referral": "input:consult_draft" } },
+            { "id": "draft-section", "forEach": "data:standards", "label": "Drafting section",
+              "prompt": "draft-section",
+              "bindings": { "section_name": "item:name", "consult_draft": "input:consult_draft" } },
+            { "id": "assemble-note", "label": "Assembling note", "aggregate": ["node:draft-section"] }
+          ]
+        }
+        """, 10, ("prompts/classify.md", "Is this in scope? {{ referral }}"));
 
     /// <summary>#453: the same package carrying these tags.</summary>
     public static WorkflowPackageContentResponse WithTags(WorkflowPackageContentResponse package, params string[] tags)
