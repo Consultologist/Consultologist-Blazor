@@ -132,6 +132,11 @@ diagram with the version folder when present.
 
 ## The output-contracts registry — implemented 2026-07-16 (#93)
 
+> **2026-08-27 (#495).** A third contract, `classification` (v10 § 4), published
+> as `output-contracts@v2026.08.1` with its agent `classification@1`. As
+> every catalog release: publish, strand check, then the app's submodule
+> pin and `OutputContracts__Pin` — nothing activates on publish.
+
 The catalog is a versioned artifact in the public account, container
 `output-contracts`: `vYYYY.MM.N/output-contracts.json` + `vYYYY.MM.N/schemas/…`,
 with the usual mutable `latest.json` pointer and refuse-overwrite immutability

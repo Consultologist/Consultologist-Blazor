@@ -41,6 +41,7 @@ An engine-side, config-driven registry keyed by schema id:
 |---|---|
 | `concept-list` | canonical schema text (`ConceptOutputContract.SchemaJson`), agent name pin, agent version pin |
 | *(text — the absent-`output` default)* | prose agent name + version pins |
+| `classification` | an object with one required string `value` (v10 § 4, #495); agent `classification` |
 | *(future shapes)* | their schema text + their attested agent pins |
 
 Configuration shape (decided 2026-07-15, see Decisions below): a bundled,
@@ -198,3 +199,13 @@ control flow; multiple/non-terminal maps (each waits for a demanding workflow).
 - **SSE payloads generalize to per-item `node-completed`** — settled by the v5
   one-kind decision (`section-prose-step` folds in; see
   [package-format-v5-design.md](package-format-v5-design.md)).
+
+> **Amendment, 2026-08-27 (#495).** The `classification` contract is the one
+> shape a package does not declare by schema id: a classifying node
+> (`kind: classifier`, v10 § 4) implies it, and the catalog is asked for it
+> by its id at `DescribeNode`. "Adding an output shape is a zero-code
+> operation" still holds for the catalog and the agent; a *kind* that
+> implies a contract is engine code by nature — the engine appends the
+> node's values to the prompt, normalises the answer and refuses one
+> outside the set. Its agent runs gpt-5.6-sol at low reasoning effort with
+> no tools.
