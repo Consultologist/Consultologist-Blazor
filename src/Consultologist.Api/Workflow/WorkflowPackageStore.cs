@@ -109,7 +109,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
                     // fires. Anything malformed was refused at publish, so a
                     // parse failure here means an unconditional deliverable
                     // either way.
-                    WorkflowResultConditions.TryParse(result.When, out var condition, out _)
+                    WorkflowResultConditions.TryParseExpression(result.When, out var condition, out _)
                         ? condition
                         : null))
                 .ToList();
