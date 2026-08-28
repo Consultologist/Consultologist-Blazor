@@ -141,6 +141,14 @@ each has, or needs, its own work:
 > the document (compare `extractor`); unequal file digests say a different
 > file. A holder of the original file can check the first against the
 > record at any later date; neither is a name.
+>
+> Since #510 (2026-08-29, provenance `v2026.08.10`) an origin may be
+> `previous-run`: the element was copied at start from the same account's
+> completed run `sourceJobId`, deliverable `sourceResultId`, and
+> `textSha256` is over the copy. The reference resolves through the
+> account's own records, never a registry, and only while the source text
+> is held; a copy the user edited before submitting carries no origin.
+> History reads it as *copied from deliverable … of run …*.
 
 The Foundry agent (system prompt, parameters, tool wiring) is edited in a portal and is
 therefore mutable state. Rule: **track the agent config in git; at startup or job start,

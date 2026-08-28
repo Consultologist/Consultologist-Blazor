@@ -676,6 +676,21 @@ POST /api/ConsultGenerationJobs
   > original can verify it against the record later, and two records over
   > the same file under different extractor builds read as *same file,
   > different reading* rather than as different referrals.
+  > **Amended 2026-08-29 (#510).** A second origin kind, `previous-run`:
+  > an input copied from one of the same account's completed runs. The
+  > request names the run and the deliverable (`InputRefs`, one per
+  > element — a text slot one, an array of text one per entry), never the
+  > text: the starter reads the run (this account's, completed, text still
+  > held — a foreign or unknown run is *not found*, never forbidden; a run
+  > past the retention sweep is refused naming the day), copies the
+  > deliverable's text into the slot the way it copies a document's, and
+  > records `{ kind: previous-run, sourceJobId, sourceResultId, textSha256 }`
+  > with the copy's canonical digest. The copy is the new job's own input
+  > with its own retention clock. The form shows the text as a preview
+  > only; *Edit text* turns it into typed text and drops the reference, so
+  > `previous-run` always means byte-for-byte the deliverable. Only a
+  > `document` origin exempts a slot from the cloud-link check (§ 4): a
+  > previous run's text was typed by someone once.
 
 ## 8. Failure copy (normative)
 
