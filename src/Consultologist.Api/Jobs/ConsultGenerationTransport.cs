@@ -1005,6 +1005,52 @@ public sealed class ConsultGenerationJobs
         var hasDraft = !string.IsNullOrWhiteSpace(request.ConsultDraft);
         var hasInputs = request.Inputs is { Count: > 0 };
         var hasFiles = request.InputFiles is { Count: > 0 };
+        var hasRefs = request.InputRefs is { Count: > 0 };
+
+        // #510: references are resolved at start; here only their shape.
+        if (hasDraft && hasRefs)
+        {
+            return "Send ConsultDraft or InputRefs, not both.";
+        }
+
+        if (hasRefs)
+        {
+            foreach (var (id, refs) in request.InputRefs!)
+            {
+                if (string.IsNullOrWhiteSpace(id))
+                {
+                    return "InputRefs contains a blank id.";
+                }
+
+                if (request.Inputs?.ContainsKey(id) == true)
+                {
+                    return $"Input '{id}' was supplied as both text and a previous run.";
+                }
+
+                if (request.InputFiles?.ContainsKey(id) == true)
+                {
+                    return $"Input '{id}' was supplied as both a file and a previous run.";
+                }
+
+                if (refs is not { Count: > 0 })
+                {
+                    return $"Input '{id}' refers to no previous run.";
+                }
+
+                if (refs.Count > MaxArrayElements)
+                {
+                    return $"Input '{id}' refers to more than {MaxArrayElements} previous runs.";
+                }
+
+                foreach (var reference in refs)
+                {
+                    if (reference == null || !IsJobId(reference.JobId) || string.IsNullOrWhiteSpace(reference.ResultId))
+                    {
+                        return $"Input '{id}' refers to a previous run without a valid run id and deliverable.";
+                    }
+                }
+            }
+        }
 
         // Exactly one of the two forms: silently preferring one would drop
         // caller data (package-format-v7.md request contract).
@@ -1018,7 +1064,7 @@ public sealed class ConsultGenerationJobs
             return "Send ConsultDraft or InputFiles, not both.";
         }
 
-        if (!hasDraft && !hasInputs && !hasFiles)
+        if (!hasDraft && !hasInputs && !hasFiles && !hasRefs)
         {
             return "ConsultDraft, Inputs or InputFiles is required.";
         }
@@ -1878,6 +1924,10 @@ public sealed class ConsultGenerationJobs
     /// no test reached, and its default is 500 — so a missing arm turns a
     /// well-understood refusal into an apparent server fault.
     /// </summary>
+    /// <summary>#510: a job id is a 32-hex instance id, and a reference names nothing else.</summary>
+    internal static bool IsJobId(string? id) =>
+        id is { Length: 32 } && id.All(c => char.IsAsciiHexDigitLower(c) || char.IsAsciiDigit(c));
+
     internal static HttpStatusCode StatusFor(ConsultGenerationJobStartError error)
         => error switch
         {
@@ -1905,6 +1955,12 @@ public sealed class ConsultGenerationJobs
             // content, not a malformed request.
             ConsultGenerationJobStartError.InputWithoutContent => HttpStatusCode.UnprocessableEntity,
             ConsultGenerationJobStartError.InputBehindACloudLink => HttpStatusCode.UnprocessableEntity,
+            // #510: a reference to a run this account does not have, that
+            // did not complete, or whose text is gone — unsatisfiable, and
+            // never a 403 that would confirm a foreign run exists.
+            ConsultGenerationJobStartError.InputRefNotFound => HttpStatusCode.UnprocessableEntity,
+            ConsultGenerationJobStartError.InputRefNotCompleted => HttpStatusCode.UnprocessableEntity,
+            ConsultGenerationJobStartError.InputRefTextDeleted => HttpStatusCode.UnprocessableEntity,
             // #266: nothing is wrong with the request at all — the
             // account has spent its window. 429 is the one status
             // that says "the same request will work later".

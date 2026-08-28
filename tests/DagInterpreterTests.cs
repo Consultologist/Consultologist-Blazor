@@ -405,6 +405,25 @@ public class StartRequestValidationTests
         Assert.Equal("ConsultDraft, Inputs or InputFiles is required.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(" ")));
         Assert.Null(ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest("Draft.")));
 
+        // #510: references — shape only; the run is resolved at start.
+        var reference = new ConsultInputRef("0123456789abcdef0123456789abcdef", "consult");
+        Assert.Null(ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null, InputRefs: new() { ["consult_draft"] = new() { reference } })));
+        Assert.Equal("Send ConsultDraft or InputRefs, not both.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            "Draft.", InputRefs: new() { ["consult_draft"] = new() { reference } })));
+        Assert.Equal("Input 'consult_draft' was supplied as both text and a previous run.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null, Inputs: new() { ["consult_draft"] = "Draft." }, InputRefs: new() { ["consult_draft"] = new() { reference } })));
+        Assert.Equal("Input 'consult_draft' was supplied as both a file and a previous run.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null, InputFiles: new() { ["consult_draft"] = new() { new InputFilePayload("text/plain", new byte[] { 1 }) } }, InputRefs: new() { ["consult_draft"] = new() { reference } })));
+        Assert.Equal("Input 'consult_draft' refers to no previous run.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null, InputRefs: new() { ["consult_draft"] = new() })));
+        Assert.Equal("Input 'consult_draft' refers to a previous run without a valid run id and deliverable.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null, InputRefs: new() { ["consult_draft"] = new() { new ConsultInputRef("../other", "consult") } })));
+        Assert.Equal("Input 'consult_draft' refers to a previous run without a valid run id and deliverable.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null, InputRefs: new() { ["consult_draft"] = new() { new ConsultInputRef("0123456789abcdef0123456789abcdef", " ") } })));
+        Assert.True(ConsultGenerationJobs.IsJobId("0123456789abcdef0123456789abcdef"));
+        Assert.False(ConsultGenerationJobs.IsJobId("0123456789ABCDEF0123456789abcdef"));
+
         Assert.Equal(
             "Send ConsultDraft or Inputs, not both.",
             ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
