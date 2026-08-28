@@ -1,5 +1,12 @@
 @* #510: a previous run's deliverable into an input slot. An inline
    disclosure like the package picker — no dialog infrastructure exists.
+   Every button cancels the click's default action: the picker sits inside
+   the slot's <label>, and when a click's target is removed by the re-render
+   it causes (choosing replaces the picker with the chip), the browser no
+   longer sees an interactive target and runs the label's activation — a
+   synthetic click on the first labelable control, which is the chip's
+   Remove button. preventDefault cancels that; bUnit has no browser to
+   show it, so it is pinned by this note.
    Lists the account's completed runs, newest first; a run whose produced
    text the retention sweep deleted is listed and not choosable, saying so
    in words (tell the user early). *@
@@ -14,7 +21,7 @@
             class="run-picker__trigger"
             aria-expanded="@(isOpen ? "true" : "false")"
             disabled="@Disabled"
-            @onclick="ToggleAsync">Load from a previous run&hellip;</button>
+            @onclick:preventDefault="true" @onclick="ToggleAsync">Load from a previous run&hellip;</button>
     @if (isOpen)
     {
         <div class="run-picker__panel" role="group" aria-label="Previous runs">
@@ -41,7 +48,7 @@
                                     class="run-picker__run-toggle"
                                     disabled="@(current.TextDroppedAtUtc != null)"
                                     aria-expanded="@(expanded == current.JobId ? "true" : "false")"
-                                    @onclick="() => ExpandAsync(current.JobId)">
+                                    @onclick:preventDefault="true" @onclick="() => ExpandAsync(current.JobId)">
                                 <span class="run-picker__run-date">@RunDate(current)</span>
                                 @if (details.TryGetValue(current.JobId, out var known) && known?.PackageTitle is { Length: > 0 } title)
                                 {
@@ -72,7 +79,7 @@
                                                 <button type="button"
                                                         class="run-picker__deliverable"
                                                         disabled="@(chosen.Text == null)"
-                                                        @onclick="() => ChooseAsync(current, detail, chosen)">
+                                                        @onclick:preventDefault="true" @onclick="() => ChooseAsync(current, detail, chosen)">
                                                     @chosen.Label
                                                     @if (chosen.Text == null)
                                                     {
@@ -89,7 +96,7 @@
                 </ul>
                 @if (continuationToken != null)
                 {
-                    <button type="button" class="run-picker__more" @onclick="LoadMoreAsync">Load more</button>
+                    <button type="button" class="run-picker__more" @onclick:preventDefault="true" @onclick="LoadMoreAsync">Load more</button>
                 }
             }
         </div>
