@@ -70,6 +70,23 @@ public class ProvenanceMirrorTests
     }
 
     [Fact]
+    public void TheHostAndTheEngine_ReachTheClient()
+    {
+        // #514: the residency statement and the build, through the wire.
+        var response = new ApiModels.ConsultGenerationJobResponse(
+            "job-1", "user-1", "Completed", 1, 1, 0,
+            new Dictionary<string, string>(), new Dictionary<string, string>(), true,
+            ApiHost: "east.ca.api.consultologist.ai",
+            EngineCommit: "77a617f453cb2d8875c2b6918ff8e9fe92cce7ac");
+
+        var mirrored = JsonSerializer.Deserialize<WebAI.ConsultGenerationJobResponse>(
+            JsonSerializer.Serialize(response, Web), Web)!;
+
+        Assert.Equal("east.ca.api.consultologist.ai", mirrored.ApiHost);
+        Assert.Equal("77a617f453cb2d8875c2b6918ff8e9fe92cce7ac", mirrored.EngineCommit);
+    }
+
+    [Fact]
     public void TheTerminology_ReachesTheClient()
     {
         // #403: the snapshot and the server ref, through the wire.

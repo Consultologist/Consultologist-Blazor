@@ -23,7 +23,11 @@ public sealed record EngineAttestationResponse(
     IReadOnlyList<int> AcceptedSpecVersions,
     IReadOnlyList<int> SupportedSpecVersions,
     string Scriban,
-    DateTimeOffset GeneratedAtUtc);
+    DateTimeOffset GeneratedAtUtc,
+    // #514: the canonical public host of this deployment (Public__ApiHost) —
+    // the data-residency statement every record carries as apiHost. Null
+    // when the deployment names none, which the record then says.
+    string? ApiHost = null);
 
 public static class EngineAttestation
 {
@@ -36,7 +40,7 @@ public static class EngineAttestation
     private const int FullCommitLength = 40;
 
     /// <summary>The rule, separated from reflection and the file system so it can be tested on strings.</summary>
-    public static EngineAttestationResponse Describe(string? informationalVersion, string catalogRef, string? packageFormat, string? provenance, DateTimeOffset now)
+    public static EngineAttestationResponse Describe(string? informationalVersion, string catalogRef, string? packageFormat, string? provenance, DateTimeOffset now, string? apiHost = null)
     {
         var raw = string.IsNullOrWhiteSpace(informationalVersion) ? "unknown" : informationalVersion;
         var separator = raw.IndexOf('+');
@@ -50,8 +54,33 @@ public static class EngineAttestation
             WorkflowPackageValidator.AcceptedSpecVersions,
             WorkflowPackageStore.SupportedSpecVersions,
             WorkflowPackageValidator.EngineScribanVersion.ToString(),
-            now);
+            now,
+            ApiHostOf(apiHost));
     }
+
+    /// <summary>
+    /// A host name and nothing else: trimmed, lower-cased, no scheme, no path,
+    /// no port — so two records of one deployment compare equal. Blank is null.
+    /// </summary>
+    internal static string? ApiHostOf(string? configured)
+    {
+        var value = configured?.Trim();
+        if (string.IsNullOrEmpty(value))
+        {
+            return null;
+        }
+
+        if (value.Contains("://", StringComparison.Ordinal))
+        {
+            value = value[(value.IndexOf("://", StringComparison.Ordinal) + 3)..];
+        }
+
+        var end = value.IndexOfAny(new[] { '/', ':', '?', '#' });
+        return (end < 0 ? value : value[..end]).ToLowerInvariant();
+    }
+
+    /// <summary>The configuration key: <c>Public__ApiHost</c> as an app setting.</summary>
+    public const string ApiHostSetting = "Public:ApiHost";
 
     /// <summary>
     /// The full commit the build stamped as +metadata (-p:SourceRevisionId in the
@@ -108,11 +137,12 @@ public static class EngineAttestation
     public const string PackageFormatRegistry = "package-format";
     public const string ProvenanceRegistry = "provenance";
 
-    public static EngineAttestationResponse Current(OutputContractCatalog catalog) =>
+    public static EngineAttestationResponse Current(OutputContractCatalog catalog, string? apiHost = null) =>
         Describe(
             typeof(EngineAttestation).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
             catalog.ResolvedRef,
             PackageFormatVersionIn(AppContext.BaseDirectory),
             ProvenanceVersionIn(AppContext.BaseDirectory),
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            apiHost);
 }

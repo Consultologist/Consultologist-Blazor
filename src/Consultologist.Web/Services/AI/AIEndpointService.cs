@@ -531,7 +531,10 @@ public record ConsultGenerationJobResponse(
     bool? Deciding = null,
     DateTimeOffset? DecidedAtUtc = null,
     IReadOnlyDictionary<string, string>? Classifications = null,
-    string? DecisionFailureKind = null);
+    string? DecisionFailureKind = null,
+    // #514: mirrors the Api's ApiHost / EngineCommit — where the job ran and what ran it.
+    string? ApiHost = null,
+    string? EngineCommit = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.TerminologySnapshot (#403).</summary>
 public record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);

@@ -115,6 +115,31 @@ public class EngineAttestationTests
         Assert.True(response.Commit == null || Regex.IsMatch(response.Commit, "^[0-9a-f]{40}$"));
     }
 
+    [Theory]
+    [InlineData("east.ca.api.consultologist.ai", "east.ca.api.consultologist.ai")]
+    [InlineData("  East.CA.api.Consultologist.ai  ", "east.ca.api.consultologist.ai")]
+    [InlineData("https://east.ca.api.consultologist.ai/api/", "east.ca.api.consultologist.ai")]
+    [InlineData("east.ca.api.consultologist.ai:443", "east.ca.api.consultologist.ai")]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData(null, null)]
+    public void ApiHostOf_IsAHostNameAndNothingElse(string? configured, string? expected)
+    {
+        // #514: one name per deployment, however the setting was spelled;
+        // unset is null — a named absence on every record, never the Azure name.
+        Assert.Equal(expected, EngineAttestation.ApiHostOf(configured));
+    }
+
+    [Fact]
+    public void Describe_AttestsTheApiHost_AndNullWhenUnset()
+    {
+        var now = new DateTimeOffset(2026, 8, 28, 12, 0, 0, TimeSpan.Zero);
+        Assert.Equal("east.ca.api.consultologist.ai",
+            EngineAttestation.Describe($"1.0.0+{Sha}", "output-contracts@v2026.08.1", "v2026.08.8", "v2026.08.7", now, "https://east.ca.api.consultologist.ai").ApiHost);
+        Assert.Null(EngineAttestation.Describe($"1.0.0+{Sha}", "output-contracts@v2026.08.1", "v2026.08.8", "v2026.08.7", now).ApiHost);
+        Assert.Equal("Public:ApiHost", EngineAttestation.ApiHostSetting);
+    }
+
     [Fact]
     public void TheResponse_CarriesExactlyTheDeploymentFacts()
     {
@@ -122,7 +147,7 @@ public class EngineAttestationTests
         // added here, in the open, before it can reach the wire.
         var properties = typeof(EngineAttestationResponse).GetProperties().Select(p => p.Name).Order(StringComparer.Ordinal);
         Assert.Equal(
-            new[] { "AcceptedSpecVersions", "Commit", "GeneratedAtUtc", "OutputContracts", "PackageFormat", "Provenance", "Scriban", "SupportedSpecVersions", "Version" },
+            new[] { "AcceptedSpecVersions", "ApiHost", "Commit", "GeneratedAtUtc", "OutputContracts", "PackageFormat", "Provenance", "Scriban", "SupportedSpecVersions", "Version" },
             properties);
     }
 

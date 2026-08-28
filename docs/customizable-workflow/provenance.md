@@ -122,6 +122,16 @@ each has, or needs, its own work:
 > at start from the build's own attestation — never a run-time lookup, never a
 > pin the engine might not run. History resolves a record's numbers through
 > its own refs, and through the attestation only for records from before.
+>
+> Since #514 (2026-08-28) the attestation also names the deployment's
+> **canonical public host** (`Public__ApiHost`, e.g.
+> `east.ca.api.consultologist.ai`) and every record carries it as `apiHost`
+> — where the data was processed, the residency statement — beside
+> `engineCommit`, the build that ran the job. The host is configuration, not
+> the request's authority: both hostnames serve one app, and a record must
+> say one name per region. A deployment that names none leaves the field
+> null and History says *not recorded*; it never borrows the base URL the
+> client happens to call.
 
 The Foundry agent (system prompt, parameters, tool wiring) is edited in a portal and is
 therefore mutable state. Rule: **track the agent config in git; at startup or job start,

@@ -39,7 +39,10 @@ public class ConsultGenerationStartFailureRecordTests
             PackageFormatRef: "package-format@v2026.08.6",
             ProvenanceRef: "provenance@v2026.08.4",
             Terminology: new TerminologySnapshot("SNOMEDCT 20251130 import.", "2025-11-30", "2025-12-21T22:39:16.944Z"),
-            TerminologyServerRef: "snomed-snowstorm-mcp@0fff939d4a5c3a6e7b8c9d0e1f2a3b4c5d6e7f80"),
+            TerminologyServerRef: "snomed-snowstorm-mcp@0fff939d4a5c3a6e7b8c9d0e1f2a3b4c5d6e7f80",
+            // #514: a job born Failed says where and by what, as a run does.
+            ApiHost: "east.ca.api.consultologist.ai",
+            EngineCommit: "77a617f453cb2d8875c2b6918ff8e9fe92cce7ac"),
         Reason);
 
     [Fact]
@@ -90,6 +93,8 @@ public class ConsultGenerationStartFailureRecordTests
         Assert.Equal(new[] { "oncology" }, response.PackageTags);
         // #398: a born-Failed record names its rules too.
         Assert.Equal("package-format@v2026.08.6", response.PackageFormatRef);
+        Assert.Equal("east.ca.api.consultologist.ai", response.ApiHost);
+        Assert.Equal("77a617f453cb2d8875c2b6918ff8e9fe92cce7ac", response.EngineCommit);
         Assert.Equal("provenance@v2026.08.4", response.ProvenanceRef);
         // #403: and its terminology.
         Assert.Equal("2025-11-30", response.Terminology!.Version);
