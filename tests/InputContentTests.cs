@@ -212,6 +212,23 @@ public class InputContentTests
     }
 
     [Fact]
+    public void ALinkInAnInputCopiedFromAPreviousRun_IsStillNamed()
+    {
+        // #510: a previous run's text was typed by someone once, and its
+        // links are as unreachable as any. Only a document exempts a slot.
+        var fromARun = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
+        {
+            ["consult_draft"] = new[] { new ConsultInputOrigin(ConsultInputOriginKinds.PreviousRun, SourceJobId: "0123456789abcdef0123456789abcdef", SourceResultId: "consult") }
+        };
+
+        Assert.Equal("consult_draft", InputContent.FindInputBehindACloudLink(
+            new ConsultGenerationRequest($"See also {OneDriveLink}"),
+            V5Fixtures.Manifest(),
+            null,
+            fromARun));
+    }
+
+    [Fact]
     public void AnOrdinaryLinkIsNotACloudFile()
     {
         // A guideline or a journal article is clinical prose, not a document

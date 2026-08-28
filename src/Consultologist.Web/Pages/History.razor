@@ -597,10 +597,18 @@
         }
     };
 
-    private static string DescribeOrigin(ConsultInputOrigin origin) =>
-        $"read from a document by {origin.Extractor ?? "—"}"
-        + (origin.PageCount is { } pages ? $" · {pages} page{(pages == 1 ? "" : "s")}" : "")
-        + (origin.TrackedChangesResolved ? " · tracked changes resolved to the accepted view" : "");
+    private static string DescribeOrigin(ConsultInputOrigin origin) => origin.Kind switch
+    {
+        // #510: copied at start from one of this account's runs — the label
+        // is not on the origin, so the deliverable's id and the run's.
+        "previous-run" => $"copied from deliverable '{origin.SourceResultId}' of run {ShortRun(origin.SourceJobId)}",
+        _ => $"read from a document by {origin.Extractor ?? "—"}"
+            + (origin.PageCount is { } pages ? $" · {pages} page{(pages == 1 ? "" : "s")}" : "")
+            + (origin.TrackedChangesResolved ? " · tracked changes resolved to the accepted view" : "")
+    };
+
+    private static string ShortRun(string? jobId) =>
+        string.IsNullOrEmpty(jobId) ? "—" : jobId.Length > 8 ? jobId[..8] + "…" : jobId;
 
     private List<AccountJobSummaryResponse> jobs = new();
     private string? jobsContinuationToken;
