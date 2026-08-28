@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Reflection;
 using Consultologist.Api.Email;
 using Consultologist.Api.Jobs;
@@ -66,6 +67,35 @@ public class DeliveryRecordTests
         Assert.Equal(DeliveryOutcomes.AddressNotSet, response.DeliveryOutcome);
         Assert.Null(response.DeliveredAtUtc);
         Assert.Contains(response.History, e => e.Kind == "delivery" && e.Label.Contains("no delivery address"));
+    }
+
+    // #518: the account chose no email — recorded as its own outcome, so a
+    // missing email is never read as a failure.
+    [Fact]
+    public async Task RecordDelivery_NotRequested_IsAChoice_NotAFailure()
+    {
+        var (entity, state, _) = Job();
+        await CompleteAsync(entity);
+
+        await entity.RecordDelivery(new ConsultGenerationDeliveryRecord(DeliveryOutcomes.NotRequested, At));
+
+        var response = state().ToResponse();
+        Assert.Equal("not-requested", response.DeliveryOutcome);
+        Assert.Null(response.DeliveredAtUtc);
+        Assert.Contains(response.History, e => e.Kind == "delivery" && e.Label == "Not emailed — by your choice");
+    }
+
+    [Fact]
+    public async Task TheReplyLeg_StopsBeforeTheAddress_WhenTheEmailWasNotRequested()
+    {
+        // The choice wins over address-not-set, and the activity is never
+        // reached: no orchestration context is needed to answer.
+        var input = new ConsultGenerationOrchestrationInput(
+            new ConsultGenerationRequest("draft"), "user-1", Source: "app", ReplyToAddress: "verified@clinic.example", EmailRequested: false);
+
+        var record = await ConsultGenerationOrchestrator.TrySendReplyAsync(null!, input, "Completed", NullLogger.Instance, null, null);
+
+        Assert.Equal(DeliveryOutcomes.NotRequested, record.Outcome);
     }
 
     [Fact]

@@ -221,7 +221,8 @@ public sealed class ConsultGenerationJobs
                 account.AppUserId,
                 new ConsultGenerationJobOrigin(
                     ConsultGenerationJobSources.App,
-                    ReplyAddressFor(await GetDeliveryAddressAsync(account.AppUserId, cancellationToken))),
+                    ReplyAddressFor(await GetDeliveryAddressAsync(account.AppUserId, cancellationToken)),
+                    EmailRequested: await EmailRequestedAsync(account.AppUserId, cancellationToken)),
                 cancellationToken);
 
             if (outcome.Error != null)
@@ -449,7 +450,9 @@ public sealed class ConsultGenerationJobs
             // an email consult rescheduled from the app is delivered to the
             // account, never re-sent to the original sender.
             original.Request.ScheduledAtUtc != null && response.Source != null ? response.Source : ConsultGenerationJobSources.App,
-            ReplyAddressFor(await GetDeliveryAddressAsync(account.AppUserId, cancellationToken)));
+            ReplyAddressFor(await GetDeliveryAddressAsync(account.AppUserId, cancellationToken)),
+            // #518: a reschedule is a new start — the choice is read again.
+            EmailRequested: await EmailRequestedAsync(account.AppUserId, cancellationToken));
 
         var outcome = await _jobStarter.StartAsync(
             client,
@@ -1124,6 +1127,16 @@ public sealed class ConsultGenerationJobs
     // so it is no longer an address. No address → no email, and the job says so.
     internal static string? ReplyAddressFor(string? deliveryAddress) =>
         string.IsNullOrWhiteSpace(deliveryAddress) ? null : deliveryAddress;
+
+    /// <summary>#518: read at start, like the address — a choice changed mid-run does not change what was promised.</summary>
+    private async Task<bool> EmailRequestedAsync(string appUserId, CancellationToken cancellationToken)
+    {
+        var setting = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.EmailPdf, cancellationToken);
+        return EmailRequestedFor(setting?.Value);
+    }
+
+    internal static bool EmailRequestedFor(string? emailPdfSetting) =>
+        DeliveryAddress.EmailPdfOf(emailPdfSetting) != false;
 
     private static async Task<ConsultGenerationJobResponse?> GetJobResponseAsync(
         DurableTaskClient client,

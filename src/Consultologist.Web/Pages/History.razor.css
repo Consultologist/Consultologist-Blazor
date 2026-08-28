@@ -356,7 +356,8 @@
 }
 
 /* #486: the completion email's outcome. */
-.job-source-badge--delivery-sent {
+.job-source-badge--delivery-sent,
+.job-source-badge--delivery-not-requested {
     opacity: 0.85;
 }
 

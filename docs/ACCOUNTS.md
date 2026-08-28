@@ -125,7 +125,16 @@ delivery.documentPassword   (write-only — see below)
 delivery.address            (reserved — set only by confirmation, see below)
 delivery.addressPending     (reserved — the code out to an address)
 delivery.addressVerifiedBy  (reserved — "code" | "tenant", how it was verified)
+delivery.emailPdf           ("true" | "false" — whether app-initiated runs are emailed; absent = not chosen = sent)
 ```
+
+`delivery.emailPdf` (#518) is a preference, not an identity, so it rides
+the generic routes like `consult.scheduleTime`. Only a stored `false`
+turns the completion email off; anything else — absent, blank,
+unreadable — is *not chosen*, which sends, as before the option existed.
+The starter reads it when an app job starts or is rescheduled, and a run
+started under `false` records `deliveryOutcome: not-requested`
+(`docs/ASYNC_DELIVERY.md` §4). Email-door jobs ignore it.
 
 `delivery.address` (#486) is the account's **verified delivery address**:
 the only address app-submitted consults are ever emailed to. It is written

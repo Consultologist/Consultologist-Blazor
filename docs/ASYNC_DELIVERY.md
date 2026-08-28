@@ -318,8 +318,22 @@ now has its delivery half; the 7-day sweep (§1) stays the floor. Decisions
   encrypted attachment (§3). **A link-only reply counts as delivered**
   when no delivery password is set; the record says whether the document
   was attached. Email-door jobs still reply to the matched sender.
+  > **Amended 2026-08-28 (#518).** Unless the account chose otherwise:
+  > the profile option *Email each run's PDF* (`delivery.emailPdf`,
+  > `true` | `false`; absent = not chosen = sent, as before) turns the
+  > completion email off for app-initiated runs, immediate and scheduled.
+  > The choice is read **at start**, beside the address, and carried on
+  > the orchestration input (`emailRequested`, appended last; a payload
+  > from before reads as requested), so a choice changed mid-run does not
+  > change what was promised; a reschedule is a new start and reads it
+  > again. The reply leg then records `not-requested` before it looks at
+  > the address — the user's choice is what History says, whatever the
+  > address state — and never invokes the delivery activity. Consults
+  > says so before submit; History shows *not emailed* / *Not emailed —
+  > by your choice*. Email-door runs always reply to their sender.
 - **Delivery is recorded on the job**: `deliveryOutcome` (`sent`,
-  `failed`, `address-not-set`, `not-configured`), `deliveredAtUtc`,
+  `failed`, `address-not-set`, `not-configured`, `not-requested` since
+  #518), `deliveredAtUtc`,
   `deliveryDocumentAttached`, and a `delivery` History line — never the
   address, which is the account's. History badges every row
   `delivered` / `not delivered` and dates it in the provenance panel;

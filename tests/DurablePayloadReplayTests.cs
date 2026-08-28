@@ -97,7 +97,7 @@ public class DurablePayloadReplayTests
         // what they re-serialise to is those bytes plus exactly the trailing
         // nulls — nothing moved.
         // #496 the twenty-fifth and -sixth (the boundary's flag and inputs).
-        Assert.Equal(stored[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(stored[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null}", JsonSerializer.Serialize(input, Durable));
         Assert.Equal(ConsultInputValue.OfBoolean(true), input.Request.Inputs!["billable"]);
         Assert.Equal("true", input.Inputs!["billable"]);
         Assert.Equal(4, input.EffectiveInputHashVersion);
@@ -140,7 +140,7 @@ public class DurablePayloadReplayTests
         var expected = stored
             .Replace("\"TrackedChangesResolved\":false}", "\"TrackedChangesResolved\":false,\"FileSha256\":null,\"TextSha256\":null}", StringComparison.Ordinal)
             .Replace("\"TrackedChangesResolved\":true}", "\"TrackedChangesResolved\":true,\"FileSha256\":null,\"TextSha256\":null}", StringComparison.Ordinal);
-        Assert.Equal(expected[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(expected[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null}", JsonSerializer.Serialize(input, Durable));
         var origins = Assert.Contains("prior_notes", input.InputDocumentOrigins!);
         Assert.Equal(2, origins.Count);
         Assert.Equal("pdfpig/0.1.15", origins[1].Extractor);

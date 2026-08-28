@@ -505,6 +505,8 @@
     color: var(--warning-foreground, #7a5c00);
 }
 
+/* #518: not-requested is a choice; it keeps the muted colour of sent. */
+
 /* v10 (#496): the deciding stage. */
 .node-group--deciding > summary.node-row .node-row__count {
     font-style: italic;

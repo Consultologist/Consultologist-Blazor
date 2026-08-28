@@ -312,7 +312,15 @@
 
                         @* #486: told before submit, not after — a consult with no delivery
                            address is not emailed, and this is the moment to say so. *@
-                        @if (accountDeliveryAddressKnown && accountDeliveryAddress == null)
+                        @if (accountEmailPdf == false)
+                        {
+                            @* #518: the choice comes before the address — it is what the record will say. *@
+                            <FluentMessageBar Intent="MessageIntent.Info" AllowDismiss="false" Class="delivery-address-notice delivery-address-notice--not-requested">
+                                This consult will not be emailed — you chose not to email runs started from the app.
+                                <a href="/profile">Change it on your profile</a> if you want this one emailed.
+                            </FluentMessageBar>
+                        }
+                        else if (accountDeliveryAddressKnown && accountDeliveryAddress == null)
                         {
                             <FluentMessageBar Intent="MessageIntent.Info" AllowDismiss="false" Class="delivery-address-notice">
                                 This consult will not be emailed — no delivery address is verified.
@@ -979,6 +987,8 @@
   // the schedule confirmation, rather than promising an email that will not come.
   private string? accountDeliveryAddress;
   private bool accountDeliveryAddressKnown;
+  // #518: the account's choice on emailing app-initiated runs; false = not emailed.
+  private bool? accountEmailPdf;
 
   /// <summary>
   /// #390: turning the switch on seeds the time from the account default, so
@@ -1163,9 +1173,11 @@
   /// to be told about a preference.
   /// </summary>
   /// <summary>#486: the promise matches the account — an email only where one will go.</summary>
-  internal static string ScheduleConfirmationFor(DateTimeOffset scheduledAtUtc, string? deliveryAddress) =>
+  internal static string ScheduleConfirmationFor(DateTimeOffset scheduledAtUtc, string? deliveryAddress, bool? emailPdf = null) =>
     $"Consult scheduled for {scheduledAtUtc.ToLocalTime():MMM d, h:mm tt} — it will appear in History"
-    + (deliveryAddress == null
+    + (emailPdf == false
+      ? ", and it will not be emailed — by your choice."
+      : deliveryAddress == null
       ? ", and it will not be emailed: no delivery address is verified on your profile."
       : $", and you'll receive an email at {deliveryAddress} when it's ready.");
 
@@ -1175,6 +1187,8 @@
     {
       var setting = await AccountService.GetSettingAsync(ScheduleDefault.SettingKey);
       accountScheduleTime = ScheduleDefault.Parse(setting?.Value);
+      var emailPdf = await AccountService.GetSettingAsync(EmailPdfPreference.SettingKey);
+      accountEmailPdf = EmailPdfPreference.Parse(emailPdf?.Value);
       var me = await AccountService.GetCurrentAccountAsync();
       accountDeliveryAddress = me.DeliveryAddress;
       accountDeliveryAddressKnown = true;
@@ -1285,7 +1299,7 @@
           ?? ScheduleDefault.NextOccurrenceUtc(accountScheduleTime, DateTime.Now);
         var job = await AIService.StartConsultGenerationJobAsync(
           SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles());
-        scheduleConfirmation = ScheduleConfirmationFor(scheduledAtUtc, accountDeliveryAddress);
+        scheduleConfirmation = ScheduleConfirmationFor(scheduledAtUtc, accountDeliveryAddress, accountEmailPdf);
         runOvernight = false;
         scheduledAtLocal = string.Empty;
         ClearInputs();
