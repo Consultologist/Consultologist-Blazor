@@ -425,6 +425,17 @@ over a nested array; the item is `{ id, name, value }` as v9 defines, with
   example per the record contract's ladder.
 - **Workflow-output hash** unchanged.
 
+> **Amendment, 2026-08-27 (#499).** Published as `provenance@v2026.08.7`:
+> definition 6 with its worked example (`{"family_history":[{"conditions":
+> ["b","a"],"contact":{"phone":"555","preferred":"email"},"relative":
+> "mother"}]}` → `b6a31336…037d`) and the control stated in the document —
+> definition 5's own example hashes the same under 6; the record's
+> `deciding`, `decidedAtUtc`, `classifications`, `decisionFailureKind` and
+> `nodeOutputs[].classification`; the compound skipped-document sentence; and
+> a classifier's per-node pair — the trailer is part of the input bytes, the
+> output hash is over the normalised value, `hashVersion` stays 5. The engine
+> pins the number in `ProvenanceVersionSetTests` and moves its submodule.
+
 ## 9. The v10 closure set
 
 **Kept from v9** (apply to 9 or later): typed and structured inputs, fans

@@ -63,7 +63,9 @@ package was written against. They collide at 7 by coincidence, which is why
 
 A v10 package with classifiers (design record § 5, #496) decides its fire set
 at a boundary inside the run rather than at start. The record carries that
-decision as three fields the registry text for step (h) must name:
+decision as three fields the registry names since `provenance@v2026.08.7`
+(step (h), #499), beside effective-input hash definition 6 and a classifier's
+per-node pair:
 `decidedAtUtc` (the boundary time; stamped at start for every package without
 classifiers, so older records read as decided at start), `classifications`
 (classifier node → the value it answered, a declared value and so printable),
