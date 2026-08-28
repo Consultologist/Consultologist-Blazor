@@ -19,6 +19,7 @@ public class DeliveryStateTests : ClientRenderTestContext
     [InlineData(DeliveryState.Failed, "not delivered")]
     [InlineData(DeliveryState.AddressNotSet, "not delivered")]
     [InlineData(DeliveryState.NotConfigured, "not delivered")]
+    [InlineData(DeliveryState.NotRequested, "not emailed")]
     public void Badge_NamesTheOutcome(string outcome, string expected)
     {
         Assert.Equal(expected, DeliveryState.Badge(outcome));
@@ -38,6 +39,7 @@ public class DeliveryStateTests : ClientRenderTestContext
         Assert.Contains("link only", DeliveryState.Describe(DeliveryState.Sent, false));
         Assert.Contains("no delivery address", DeliveryState.Describe(DeliveryState.AddressNotSet, null));
         Assert.Contains("failed", DeliveryState.Describe(DeliveryState.Failed, null));
+        Assert.Equal("Not emailed — by your choice", DeliveryState.Describe(DeliveryState.NotRequested, null));
     }
 
     // --- History
@@ -158,6 +160,39 @@ public class DeliveryStateTests : ClientRenderTestContext
 
         Assert.Contains("email at dr.a@clinic.example", Consults.ScheduleConfirmationFor(at, "dr.a@clinic.example"));
         Assert.Contains("will not be emailed", Consults.ScheduleConfirmationFor(at, null));
+        // #518: the choice wins over the address, either way round.
+        Assert.Contains("by your choice", Consults.ScheduleConfirmationFor(at, "dr.a@clinic.example", false));
+        Assert.Contains("by your choice", Consults.ScheduleConfirmationFor(at, null, false));
+        Assert.Contains("email at dr.a@clinic.example", Consults.ScheduleConfirmationFor(at, "dr.a@clinic.example", true));
+    }
+
+    // #518: told before submit that the run will not be emailed, by choice —
+    // even with an address verified.
+    [Fact]
+    public void Setup_SaysByYourChoice_WhenTheAccountChoseNoEmail()
+    {
+        WithPinnedPackage(blocks: new[] { Block("section-instructions:hpi", "History of Present Illness") });
+        WithDeliveryAddress("dr.a@clinic.example");
+        AccountService.GetSettingAsync(EmailPdfPreference.SettingKey)
+            .Returns(new AccountSettingResponse(EmailPdfPreference.SettingKey, "false", "text/plain", DateTimeOffset.UtcNow));
+
+        var page = Render<Consults>();
+
+        page.WaitForAssertion(() => Assert.Contains("you chose not to email", page.Find(".delivery-address-notice").TextContent));
+    }
+
+    [Fact]
+    public void Setup_StaysQuiet_WhenTheAccountChoseYes()
+    {
+        WithPinnedPackage(blocks: new[] { Block("section-instructions:hpi", "History of Present Illness") });
+        WithDeliveryAddress("dr.a@clinic.example");
+        AccountService.GetSettingAsync(EmailPdfPreference.SettingKey)
+            .Returns(new AccountSettingResponse(EmailPdfPreference.SettingKey, "true", "text/plain", DateTimeOffset.UtcNow));
+
+        var page = Render<Consults>();
+
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".action-row")));
+        Assert.Empty(page.FindAll(".delivery-address-notice"));
     }
 
     [Fact]

@@ -303,6 +303,65 @@
                 </div>
             </section>
 
+            @* #518: whether runs started from the app are emailed at all.
+               Empty until chosen; the unset line says what unset means, so
+               nothing changes silently for an account that never chose. *@
+            <section class="content-card email-pdf-card">
+                <div class="form-stack">
+                    <h2 class="panel-title">
+                        Email each run's PDF
+                    </h2>
+
+                    <p class="panel-description">
+                        Whether a consult you start from the app — now or scheduled — is emailed
+                        to your delivery address when it completes. Consults sent in by email
+                        always reply to their sender. Either way, every run appears in History.
+                    </p>
+
+                    @if (emailPdfMessage != null)
+                    {
+                        <FluentMessageBar Intent="@emailPdfMessageIntent" AllowDismiss="false" Class="email-pdf-message">
+                            @emailPdfMessage
+                        </FluentMessageBar>
+                    }
+
+                    <div class="state-panel">
+                        <span class="muted-text">Email each run's PDF</span>
+                        <strong class="email-pdf-state">@EmailPdfPreference.Describe(emailPdfChoice)</strong>
+                    </div>
+
+                    <div class="action-row">
+                        @if (emailPdfChoice != true)
+                        {
+                            <FluentButton Appearance="Appearance.Accent"
+                                          Class="email-pdf-yes"
+                                          Disabled="@emailPdfRequestInProgress"
+                                          @onclick="() => SaveEmailPdfAsync(true)">
+                                Yes, email each run
+                            </FluentButton>
+                        }
+                        @if (emailPdfChoice != false)
+                        {
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Class="email-pdf-no"
+                                          Disabled="@emailPdfRequestInProgress"
+                                          @onclick="() => SaveEmailPdfAsync(false)">
+                                No, do not email
+                            </FluentButton>
+                        }
+                        @if (emailPdfChoice != null)
+                        {
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Class="email-pdf-clear"
+                                          Disabled="@emailPdfRequestInProgress"
+                                          @onclick="ClearEmailPdfAsync">
+                                Back to not chosen
+                            </FluentButton>
+                        }
+                    </div>
+                </div>
+            </section>
+
             <section class="content-card">
                 <div class="form-stack">
                     <h2 class="panel-title">
@@ -450,6 +509,7 @@
         {
             account = await AccountService.GetCurrentAccountAsync();
             await LoadScheduleTimeAsync();
+        await LoadEmailPdfAsync();
         }
         catch (AccessTokenNotAvailableException exception)
         {
@@ -553,6 +613,84 @@
         finally
         {
             scheduleRequestInProgress = false;
+        }
+    }
+
+    // #518: whether app-initiated runs are emailed. null = not chosen.
+    private bool? emailPdfChoice;
+    private bool emailPdfRequestInProgress;
+    private string? emailPdfMessage;
+    private MessageIntent emailPdfMessageIntent = MessageIntent.Info;
+
+    private async Task LoadEmailPdfAsync()
+    {
+        try
+        {
+            var setting = await AccountService.GetSettingAsync(EmailPdfPreference.SettingKey);
+            emailPdfChoice = EmailPdfPreference.Parse(setting?.Value);
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch
+        {
+            emailPdfChoice = null;
+        }
+    }
+
+    private async Task SaveEmailPdfAsync(bool choice)
+    {
+        emailPdfRequestInProgress = true;
+
+        try
+        {
+            await AccountService.SaveSettingAsync(
+                EmailPdfPreference.SettingKey, choice ? "true" : "false", EmailPdfPreference.ContentType);
+            emailPdfChoice = choice;
+            emailPdfMessage = choice
+                ? "Runs started from the app will be emailed to your delivery address."
+                : "Runs started from the app will not be emailed. Each will say so in History.";
+            emailPdfMessageIntent = MessageIntent.Success;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            emailPdfMessage = ex.Message;
+            emailPdfMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            emailPdfRequestInProgress = false;
+        }
+    }
+
+    private async Task ClearEmailPdfAsync()
+    {
+        emailPdfRequestInProgress = true;
+
+        try
+        {
+            await AccountService.DeleteSettingAsync(EmailPdfPreference.SettingKey);
+            emailPdfChoice = null;
+            emailPdfMessage = "Back to not chosen: PDFs are sent, as before.";
+            emailPdfMessageIntent = MessageIntent.Success;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            emailPdfMessage = ex.Message;
+            emailPdfMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            emailPdfRequestInProgress = false;
         }
     }
 

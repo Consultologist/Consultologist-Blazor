@@ -10,11 +10,15 @@ public static class DeliveryState
     public const string Failed = "failed";
     public const string AddressNotSet = "address-not-set";
     public const string NotConfigured = "not-configured";
+    /// <summary>#518: the account chose not to email app-initiated runs.</summary>
+    public const string NotRequested = "not-requested";
 
     /// <summary>Short badge text, or null when nothing was recorded (a job from before, or still running).</summary>
     public static string? Badge(string? outcome) => outcome switch
     {
         Sent => "delivered",
+        // #518: a choice, not a failure — its own word so it is never read as one.
+        NotRequested => "not emailed",
         null => null,
         _ => "not delivered"
     };
@@ -27,6 +31,7 @@ public static class DeliveryState
         Sent => "Emailed to your delivery address",
         AddressNotSet => "Not emailed — no delivery address is set on your profile",
         NotConfigured => "Not emailed — delivery is not configured on this deployment",
+        NotRequested => "Not emailed — by your choice",
         Failed => "The email failed — the consult is in History",
         null => null,
         _ => "Not emailed"
