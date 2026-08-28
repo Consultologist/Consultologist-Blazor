@@ -147,7 +147,7 @@ each has, or needs, its own work:
 > completed run `sourceJobId`, deliverable `sourceResultId`, and
 > `textSha256` is over the copy. The reference resolves through the
 > account's own records, never a registry, and only while the source text
-> is held; a copy the user edited before submitting carries no origin.
+> is held; the form shows the copy and does not let it be edited.
 > History reads it as *copied from deliverable … of run …*.
 
 The Foundry agent (system prompt, parameters, tool wiring) is edited in a portal and is

@@ -686,9 +686,10 @@ POST /api/ConsultGenerationJobs
   > deliverable's text into the slot the way it copies a document's, and
   > records `{ kind: previous-run, sourceJobId, sourceResultId, textSha256 }`
   > with the copy's canonical digest. The copy is the new job's own input
-  > with its own retention clock. The form shows the text as a preview
-  > only; *Edit text* turns it into typed text and drops the reference, so
-  > `previous-run` always means byte-for-byte the deliverable. Only a
+  > with its own retention clock. The form shows the text so the user sees
+  > what is loaded, and never lets it be edited — different words mean
+  > removing it and pasting text — so `previous-run` always means
+  > byte-for-byte the deliverable. Only a
   > `document` origin exempts a slot from the cloud-link check (§ 4): a
   > previous run's text was typed by someone once.
 
