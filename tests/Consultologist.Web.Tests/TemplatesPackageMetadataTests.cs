@@ -72,13 +72,13 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
     // ----- the pane ---------------------------------------------------------
 
     [Fact]
-    public void ThePackagePane_IsOfferedAtNine_AndNotBelow()
+    public void ThePackagePane_IsOfferedFromNine_AndNotBelow()
     {
         Assert.Contains("Package", NavLabels(RenderEditor(EditorFixtures.V9Structured())));
 
         var v8 = RenderEditor(EditorFixtures.V8());
         Assert.DoesNotContain("Package", NavLabels(v8));
-        UpgradeTo(v8, 9);
+        UpgradeTo(v8, 10);
         Assert.Contains("Package", NavLabels(v8));
     }
 
@@ -182,11 +182,11 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains(
-            "The package declares a title, which requires specVersion 9. Use \"Upgrade to specVersion 9\" and publish.",
+            "The package declares a title, which requires specVersion 9. Use \"Upgrade to specVersion 10\" and publish.",
             Refusals(page));
 
         WithPublishAccepted();
-        UpgradeTo(page, 9);
+        UpgradeTo(page, 10);
         Publish(page);
         Assert.Equal("Too early", SentManifest(sent!).GetProperty("title").GetString());
     }
@@ -373,7 +373,7 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
         Assert.Null(sent);
         Assert.Contains(Refusals(page), refusal => refusal.StartsWith("The package declares tags, which requires specVersion 9.", StringComparison.Ordinal));
 
-        UpgradeTo(page, 9);
+        UpgradeTo(page, 10);
         Publish(page);
         Assert.Equal(new[] { "too-early" }, SentManifest(sent!).GetProperty("tags").EnumerateArray().Select(tag => tag.GetString()));
         Assert.True(ValidateSent(sent).IsValid, string.Join(" | ", ValidateSent(sent).Errors));

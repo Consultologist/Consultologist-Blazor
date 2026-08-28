@@ -66,7 +66,8 @@ public class SpecVersionMirrorTests
     public void TheEditorsRunnableCeiling_IsTheNewestFormatTheEngineRuns()
     {
         // The other button, and the line the not-yet-runnable notice is drawn
-        // at. #430 moves this to 9 and the two ceilings become one.
+        // at. The two ceilings meet whenever the engine runs the newest format
+        // the registry accepts — as they do at ten (#500).
         Assert.Equal(
             WorkflowPackageStore.SupportedSpecVersions.Max(),
             Templates.RunnableSpecVersion);

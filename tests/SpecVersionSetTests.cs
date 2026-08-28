@@ -96,7 +96,7 @@ public class SpecVersionSetTests
         var store = new WorkflowPackageSpecVersionException(
             "general@v2026.08.1", 3, WorkflowPackageStore.SupportedSpecVersions);
 
-        Assert.Contains("5 or 6 or 7 or 8 or 9", store.Message);
+        Assert.Contains("5 or 6 or 7 or 8 or 9 or 10", store.Message);
         Assert.DoesNotContain(WorkflowPackageValidator.DescribeAcceptedSpecVersions(), store.Message);
     }
 }

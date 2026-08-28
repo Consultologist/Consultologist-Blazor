@@ -220,7 +220,7 @@
             @if (NotYetRunnable)
             {
                 <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">
-                    specVersion @EffectiveSpecVersion is publishable but not yet runnable: consults pinned to a specVersion @EffectiveSpecVersion package will refuse to start until the engine runs it (#500).
+                    specVersion @EffectiveSpecVersion is publishable but not yet runnable: consults pinned to a specVersion @EffectiveSpecVersion package will refuse to start until the engine runs it.
                 </FluentMessageBar>
             }
             @if (!string.IsNullOrWhiteSpace(publishSuccess))
@@ -1723,10 +1723,11 @@
     /// format is publishable but not yet executable (v10 § 10, #492), which
     /// the editor says up front rather than letting an author publish into
     /// silence: the not-yet-runnable notice, its publish-success sentence
-    /// and the second Upgrade button (#429's pattern) are back with the gap
-    /// and retire again when the engine runs ten.
+    /// and the second Upgrade button (#429's pattern) come back with the
+    /// gap and retire when the two ceilings meet — as they did for ten
+    /// (#500). The mechanism stays for the next format.
     /// </summary>
-    internal const int RunnableSpecVersion = 9;
+    internal const int RunnableSpecVersion = 10;
 
     /// <summary>The version this publish will carry: the bump, or what is loaded.</summary>
     /// <summary>
