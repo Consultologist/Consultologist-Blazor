@@ -1632,6 +1632,112 @@ public class ConsultGenerationJobStarterTests
         Assert.Null(captured.Initialize.InputOrigins);
     }
 
+    // ----- #510: an input copied from a previous run -----
+
+    private const string SourceJob = "0123456789abcdef0123456789abcdef";
+
+    private static ConsultGenerationJobState SourceRun(string appUserId = "user-1", string status = "Completed", string? text = "The earlier note.", DateTimeOffset? dropped = null) =>
+        new()
+        {
+            JobId = SourceJob,
+            AppUserId = appUserId,
+            Status = status,
+            TextDroppedAtUtc = dropped,
+            AssembledDocuments = new List<ConsultGenerationResultDocumentState>
+            {
+                new() { ResultId = "consult", Label = "Consultation note", Text = text, Ordinal = 0 }
+            }
+        };
+
+    private void WithSourceRun(ConsultGenerationJobState? state)
+    {
+        _entities.GetEntityAsync<ConsultGenerationJobState>(Arg.Any<EntityInstanceId>(), Arg.Any<CancellationToken>())
+            .Returns(state == null
+                ? null
+                : new EntityMetadata<ConsultGenerationJobState>(new EntityInstanceId(nameof(ConsultGenerationJobEntity), SourceJob), state));
+    }
+
+    private static ConsultGenerationRequest ReferringRequest() => new(
+        null,
+        InputRefs: new Dictionary<string, List<ConsultInputRef>> { ["consult_draft"] = new() { new ConsultInputRef(SourceJob, "consult") } });
+
+    [Fact]
+    public async Task APreviousRunsDeliverable_IsCopiedIn_AndItsOriginRecorded()
+    {
+        WithSourceRun(SourceRun(text: Referral + "\r\nSecond line.  "));
+
+        var captured = await StartV7AndCaptureAsync(ReferringRequest());
+
+        Assert.Null(captured.Outcome.Error);
+        var input = captured.OrchestrationInput!;
+        // The copy is the deliverable's text; the reference itself is gone.
+        Assert.Equal(Referral + "\nSecond line.", input.Inputs!["consult_draft"]);
+        Assert.Null(input.Request.InputRefs);
+        var origin = Assert.Single(input.InputDocumentOrigins!["consult_draft"]);
+        Assert.Equal(ConsultInputOriginKinds.PreviousRun, origin.Kind);
+        Assert.Equal(SourceJob, origin.SourceJobId);
+        Assert.Equal("consult", origin.SourceResultId);
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(Referral + "\nSecond line."), origin.TextSha256);
+        Assert.Null(origin.Extractor);
+        Assert.Null(origin.FileSha256);
+    }
+
+    [Fact]
+    public async Task AnotherAccountsRun_IsNotFound_NeverForbidden()
+    {
+        WithSourceRun(SourceRun(appUserId: "user-2"));
+
+        var captured = await StartV7AndCaptureAsync(ReferringRequest());
+
+        Assert.Equal(ConsultGenerationJobStartError.InputRefNotFound, captured.Outcome.Error);
+        Assert.Contains("does not have", captured.Outcome.ErrorDetail);
+        Assert.DoesNotContain("user-2", captured.Outcome.ErrorDetail);
+    }
+
+    [Fact]
+    public async Task AnUnknownRun_IsNotFound()
+    {
+        WithSourceRun(null);
+
+        var captured = await StartV7AndCaptureAsync(ReferringRequest());
+
+        Assert.Equal(ConsultGenerationJobStartError.InputRefNotFound, captured.Outcome.Error);
+    }
+
+    [Fact]
+    public async Task ARunWhoseTextWasDeleted_IsRefused_NamingTheDay()
+    {
+        // #368: the sweep leaves hashes, not text. An empty copy would be the
+        // worst outcome; the refusal says what happened and when.
+        WithSourceRun(SourceRun(text: null, dropped: new DateTimeOffset(2026, 9, 2, 3, 0, 0, TimeSpan.Zero)));
+
+        var captured = await StartV7AndCaptureAsync(ReferringRequest());
+
+        Assert.Equal(ConsultGenerationJobStartError.InputRefTextDeleted, captured.Outcome.Error);
+        Assert.Contains("deleted on 2026-09-02", captured.Outcome.ErrorDetail);
+    }
+
+    [Fact]
+    public async Task ARunThatDidNotComplete_OrHasNoSuchDeliverable_IsRefused()
+    {
+        WithSourceRun(SourceRun(status: "Failed"));
+        var failed = await StartV7AndCaptureAsync(ReferringRequest());
+        Assert.Equal(ConsultGenerationJobStartError.InputRefNotCompleted, failed.Outcome.Error);
+
+        WithSourceRun(SourceRun());
+        var missing = await StartV7AndCaptureAsync(new ConsultGenerationRequest(
+            null,
+            InputRefs: new Dictionary<string, List<ConsultInputRef>> { ["consult_draft"] = new() { new ConsultInputRef(SourceJob, "letter") } }));
+        Assert.Equal(ConsultGenerationJobStartError.InputRefNotFound, missing.Outcome.Error);
+        Assert.Contains("no deliverable 'letter'", missing.Outcome.ErrorDetail);
+    }
+
+    [Fact]
+    public void ThePreviousRunKind_IsTheKebabWord()
+    {
+        Assert.Equal("previous-run", ConsultInputOriginKinds.PreviousRun);
+    }
+
     [Fact]
     public async Task TypedInput_RecordsNoOrigin()
     {

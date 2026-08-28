@@ -474,6 +474,23 @@ public class HistoryDetailTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ASinglePreviousRunOrigin_NamesTheRunAndTheDeliverable()
+    {
+        // #510: an input copied from one of the account's runs names the run
+        // and the deliverable — never "read from a document".
+        WithJob(3, inputOrigins: new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
+        {
+            ["consult_draft"] = new[] { new ConsultInputOrigin("previous-run", TextSha256: "52593837" + new string('0', 56), SourceJobId: "fedcba9876543210fedcba9876543210", SourceResultId: "consult") }
+        });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var row = page.Find(".provenance-list__nested + dd");
+        Assert.Equal("copied from deliverable 'consult' of run fedcba98… · text 52593837…", row.TextContent.Trim());
+        Assert.DoesNotContain("read from a document", row.TextContent);
+    }
+
+    [Fact]
     public void ASlotReadFromOneDocument_KeepsTheSentence()
     {
         // #428 changed the shape, not the words: one document is the plain

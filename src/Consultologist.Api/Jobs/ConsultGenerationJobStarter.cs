@@ -6,6 +6,7 @@ using Consultologist.Api.RateLimiting;
 using Consultologist.Api.Workflow;
 using Microsoft.DurableTask;
 using Microsoft.DurableTask.Client;
+using Microsoft.DurableTask.Client.Entities;
 using Microsoft.DurableTask.Entities;
 using Microsoft.Extensions.Logging;
 
@@ -57,6 +58,13 @@ public enum ConsultGenerationJobStartError
     // from InputsMismatch, which is about the shape of the request; this is
     // about there being nothing in it to generate from.
     InputWithoutContent,
+    // #510: a slot refers to a previous run that is not this account's (or
+    // does not exist — the two are one answer, never a 403), that did not
+    // complete or has no such deliverable, or whose produced text the
+    // retention sweep has deleted. Well-formed, unsatisfiable: 422.
+    InputRefNotFound,
+    InputRefNotCompleted,
+    InputRefTextDeleted,
     // #291: the referral is behind a link we cannot open. Distinct from
     // InputWithoutContent because the remedy differs -- there IS a document,
     // it just never arrived.
@@ -267,6 +275,17 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // the orchestration — stays the string-keyed pipeline it already was.
         // Extraction is the pre-step docs/DOCUMENT_INPUT.md describes, not a
         // new kind of input.
+        // #510: references to previous runs become text first, the way
+        // documents do — the server copies, so the origin is observed.
+        var resolution = await ResolveInputRefsAsync(client.Entities, request, appUserId, cancellationToken);
+        if (resolution.Error != null)
+        {
+            _logger.LogWarning("Rejected job start: a previous-run reference was refused. Kind={Kind}", resolution.ErrorKind);
+            return new ConsultGenerationJobStartOutcome(null, resolution.ErrorKind, resolution.Error);
+        }
+
+        request = resolution.Request;
+
         var extraction = await ExtractInputFilesAsync(request, package.Manifest, GateWaitFor(origin), cancellationToken);
         if (extraction.Error != null)
         {
@@ -284,7 +303,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         }
 
         request = NormalizeInputs(extraction.Request);
-        var inputOrigins = extraction.Origins;
+        var inputOrigins = MergeOrigins(resolution.Origins, extraction.Origins);
 
         var inputs = ResolveEffectiveInputs(request, package.Manifest);
         if (inputs.Error != null)
@@ -939,6 +958,119 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         string.Equals(origin.Source, ConsultGenerationJobSources.Email, StringComparison.Ordinal)
             ? DocumentExtraction.BackgroundGateWait
             : DocumentExtraction.InteractiveGateWait;
+
+    internal sealed record InputRefResolution(
+        ConsultGenerationRequest Request,
+        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? Origins,
+        string? Error = null,
+        ConsultGenerationJobStartError ErrorKind = ConsultGenerationJobStartError.InputRefNotFound);
+
+    /// <summary>
+    /// #510: copy each referenced deliverable's text into its slot and record
+    /// where it came from. The run must be this account's (a foreign or
+    /// unknown id is one answer: not found), completed, still holding its
+    /// text, and have the deliverable. The reference itself leaves the
+    /// request, as the bytes of a document do.
+    /// </summary>
+    internal static async Task<InputRefResolution> ResolveInputRefsAsync(
+        DurableEntityClient entities,
+        ConsultGenerationRequest request,
+        string appUserId,
+        CancellationToken cancellationToken)
+    {
+        if (request.InputRefs is not { Count: > 0 })
+        {
+            return new InputRefResolution(request, null);
+        }
+
+        var inputs = request.Inputs is { Count: > 0 }
+            ? new Dictionary<string, ConsultInputValue>(request.Inputs, StringComparer.Ordinal)
+            : new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal);
+        var origins = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>(StringComparer.Ordinal);
+        var sources = new Dictionary<string, ConsultGenerationJobState?>(StringComparer.Ordinal);
+
+        foreach (var (id, refs) in request.InputRefs)
+        {
+            var texts = new List<ConsultInputValue>();
+            var slotOrigins = new List<ConsultInputOrigin>();
+
+            foreach (var reference in refs)
+            {
+                if (!sources.TryGetValue(reference.JobId, out var source))
+                {
+                    var entity = await entities.GetEntityAsync<ConsultGenerationJobState>(
+                        new EntityInstanceId(nameof(ConsultGenerationJobEntity), reference.JobId),
+                        cancellation: cancellationToken);
+                    source = entity?.State;
+                    // Someone else's run is not found, not forbidden: a 403
+                    // would confirm it exists.
+                    if (source != null && !string.Equals(source.AppUserId, appUserId, StringComparison.Ordinal))
+                    {
+                        source = null;
+                    }
+                    sources[reference.JobId] = source;
+                }
+
+                var run = ShortRunId(reference.JobId);
+                if (source == null)
+                {
+                    return new InputRefResolution(request, null,
+                        $"Input '{id}' refers to run {run}, which this account does not have.",
+                        ConsultGenerationJobStartError.InputRefNotFound);
+                }
+
+                if (!string.Equals(source.Status, ConsultGenerationJobStatuses.Completed, StringComparison.Ordinal))
+                {
+                    return new InputRefResolution(request, null,
+                        $"Input '{id}' refers to run {run}, which did not complete.",
+                        ConsultGenerationJobStartError.InputRefNotCompleted);
+                }
+
+                var document = source.AssembledDocuments?.FirstOrDefault(d => string.Equals(d.ResultId, reference.ResultId, StringComparison.Ordinal));
+                if (document == null)
+                {
+                    return new InputRefResolution(request, null,
+                        $"Input '{id}' refers to run {run}, which has no deliverable '{reference.ResultId}'.",
+                        ConsultGenerationJobStartError.InputRefNotFound);
+                }
+
+                if (source.TextDroppedAtUtc != null || document.Text == null)
+                {
+                    var when = source.TextDroppedAtUtc is { } dropped ? $" on {dropped:yyyy-MM-dd}" : string.Empty;
+                    return new InputRefResolution(request, null,
+                        $"Input '{id}' refers to run {run}, whose produced text was deleted{when} under the retention policy.",
+                        ConsultGenerationJobStartError.InputRefTextDeleted);
+                }
+
+                texts.Add(ConsultInputValue.OfText(document.Text));
+                slotOrigins.Add(new ConsultInputOrigin(
+                    ConsultInputOriginKinds.PreviousRun,
+                    TextSha256: ConsultGenerationProvenance.Sha256Hex(CanonicalText.Normalize(document.Text)),
+                    SourceJobId: reference.JobId,
+                    SourceResultId: reference.ResultId));
+            }
+
+            // A text slot takes one; several become an array, as documents do.
+            // The declaration is checked downstream, the way it is for files.
+            inputs[id] = texts.Count == 1 ? texts[0] : ConsultInputValue.OfArray(texts);
+            origins[id] = slotOrigins;
+        }
+
+        return new InputRefResolution(request with { Inputs = inputs, InputRefs = null }, origins);
+    }
+
+    private static string ShortRunId(string jobId) => jobId.Length > 8 ? jobId[..8] + "…" : jobId;
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? MergeOrigins(
+        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? first,
+        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? second)
+    {
+        if (first is not { Count: > 0 }) return second;
+        if (second is not { Count: > 0 }) return first;
+        var merged = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>(first, StringComparer.Ordinal);
+        foreach (var (id, list) in second) merged[id] = list;
+        return merged;
+    }
 
     internal static async Task<InputFileExtraction> ExtractInputFilesAsync(
         ConsultGenerationRequest request,

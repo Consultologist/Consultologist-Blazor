@@ -1,0 +1,185 @@
+@* #510: a previous run's deliverable into an input slot. An inline
+   disclosure like the package picker — no dialog infrastructure exists.
+   Lists the account's completed runs, newest first; a run whose produced
+   text the retention sweep deleted is listed and not choosable, saying so
+   in words (tell the user early). *@
+@using Consultologist.Web.Services.Accounts
+@using Consultologist.Web.Services.AI
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@inject IAccountEndpointService AccountService
+@inject IAIEndpointService AIService
+
+<span class="run-picker" @onclick:stopPropagation="true">
+    <button type="button"
+            class="run-picker__trigger"
+            aria-expanded="@(isOpen ? "true" : "false")"
+            disabled="@Disabled"
+            @onclick="ToggleAsync">Load from a previous run&hellip;</button>
+    @if (isOpen)
+    {
+        <div class="run-picker__panel" role="group" aria-label="Previous runs">
+            @if (isLoading)
+            {
+                <span class="muted-text">Loading runs&hellip;</span>
+            }
+            else if (error != null)
+            {
+                <span class="run-picker__error">@error</span>
+            }
+            else if (runs.Count == 0)
+            {
+                <span class="muted-text">No completed runs yet.</span>
+            }
+            else
+            {
+                <ul class="run-picker__runs">
+                    @foreach (var run in runs)
+                    {
+                        var current = run;
+                        <li class="run-picker__run @(current.TextDroppedAtUtc != null ? "run-picker__run--deleted" : "")">
+                            <button type="button"
+                                    class="run-picker__run-toggle"
+                                    disabled="@(current.TextDroppedAtUtc != null)"
+                                    aria-expanded="@(expanded == current.JobId ? "true" : "false")"
+                                    @onclick="() => ExpandAsync(current.JobId)">
+                                <span class="run-picker__run-date">@RunDate(current)</span>
+                                @if (details.TryGetValue(current.JobId, out var known) && known?.PackageTitle is { Length: > 0 } title)
+                                {
+                                    <span class="muted-text">@title</span>
+                                }
+                                @if (current.TextDroppedAtUtc is { } dropped)
+                                {
+                                    <span class="run-picker__deleted">text deleted @dropped.ToLocalTime().ToString("MMM d, yyyy")</span>
+                                }
+                            </button>
+                            @if (expanded == current.JobId)
+                            {
+                                @if (!details.TryGetValue(current.JobId, out var detail))
+                                {
+                                    <span class="muted-text">Loading&hellip;</span>
+                                }
+                                else if (detail?.AssembledDocuments is not { Count: > 0 })
+                                {
+                                    <span class="muted-text">This run lists no deliverables.</span>
+                                }
+                                else
+                                {
+                                    <ul class="run-picker__deliverables">
+                                        @foreach (var document in detail.AssembledDocuments)
+                                        {
+                                            var chosen = document;
+                                            <li>
+                                                <button type="button"
+                                                        class="run-picker__deliverable"
+                                                        disabled="@(chosen.Text == null)"
+                                                        @onclick="() => ChooseAsync(current, detail, chosen)">
+                                                    @chosen.Label
+                                                    @if (chosen.Text == null)
+                                                    {
+                                                        <span class="run-picker__deleted">text deleted</span>
+                                                    }
+                                                </button>
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+                            }
+                        </li>
+                    }
+                </ul>
+                @if (continuationToken != null)
+                {
+                    <button type="button" class="run-picker__more" @onclick="LoadMoreAsync">Load more</button>
+                }
+            }
+        </div>
+    }
+</span>
+
+@code {
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>The chosen deliverable; the slot decides whether it replaces or joins.</summary>
+    [Parameter] public EventCallback<LoadedDeliverable> OnChosen { get; set; }
+
+    private bool isOpen;
+    private bool isLoading;
+    private string? error;
+    private string? expanded;
+    private string? continuationToken;
+    private readonly List<AccountJobSummaryResponse> runs = new();
+    private readonly Dictionary<string, ConsultGenerationJobResponse?> details = new(StringComparer.Ordinal);
+
+    private static string RunDate(AccountJobSummaryResponse run) =>
+        (run.CompletedAtUtc ?? run.CreatedAtUtc).ToLocalTime().ToString("MMM d, yyyy h:mm tt");
+
+    private async Task ToggleAsync()
+    {
+        isOpen = !isOpen;
+        if (isOpen && runs.Count == 0 && error == null)
+        {
+            await LoadAsync(null);
+        }
+    }
+
+    private Task LoadMoreAsync() => LoadAsync(continuationToken);
+
+    private async Task LoadAsync(string? token)
+    {
+        isLoading = true;
+        try
+        {
+            var page = await AccountService.GetJobsAsync(20, token);
+            // Only a completed run has deliverables to copy; the rest are not
+            // listed rather than listed and refused.
+            runs.AddRange((page?.Jobs ?? Array.Empty<AccountJobSummaryResponse>())
+                .Where(job => string.Equals(job.Status, "Completed", StringComparison.Ordinal)));
+            continuationToken = page?.ContinuationToken;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            error = $"Could not list your runs: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ExpandAsync(string jobId)
+    {
+        expanded = expanded == jobId ? null : jobId;
+        if (expanded == null || details.ContainsKey(jobId))
+        {
+            return;
+        }
+
+        try
+        {
+            details[jobId] = await AIService.GetConsultGenerationJobAsync(jobId);
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch
+        {
+            details[jobId] = null;
+        }
+    }
+
+    private async Task ChooseAsync(AccountJobSummaryResponse run, ConsultGenerationJobResponse detail, ConsultGenerationResultDocumentResponse document)
+    {
+        if (document.Text == null)
+        {
+            return;
+        }
+
+        isOpen = false;
+        await OnChosen.InvokeAsync(new LoadedDeliverable(run.JobId, document.ResultId, document.Label, run.CompletedAtUtc ?? detail.CompletedAtUtc, document.Text));
+    }
+}

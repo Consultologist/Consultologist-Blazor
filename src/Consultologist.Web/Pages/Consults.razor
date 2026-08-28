@@ -63,7 +63,44 @@
                                    attached document, never both. The text is
                                    kept underneath so removing the file gives
                                    it back. *@
-                                @if (field.HasFile && field.TakesSeveralDocuments)
+                                @if (field.HasLoaded)
+                                {
+                                    @* #510: filled from previous runs. One chip per
+                                       deliverable, its text shown as a preview: what
+                                       runs is the server's copy of that run's text. *@
+                                    <div class="input-field__documents" @onclick:stopPropagation="true">
+                                        @for (var i = 0; i < field.Loaded.Count; i++)
+                                        {
+                                            var index = i;
+                                            var loaded = field.Loaded[index];
+                                            var currentField = field;
+                                            <div class="input-field__document input-field__loaded">
+                                                <span class="input-field__chip">
+                                                    <span class="input-field__chip-name">@loaded.Label</span>
+                                                    <span class="muted-text">@loaded.RunName</span>
+                                                    <FluentButton Appearance="Appearance.Stealth"
+                                                                  Title="Remove this loaded deliverable"
+                                                                  @onclick="() => RemoveLoaded(currentField, index)">Remove</FluentButton>
+                                                </span>
+                                                <div class="input-field__preview">@loaded.Text</div>
+                                            </div>
+                                        }
+                                        <span class="muted-text input-field__hint">
+                                            The run will use this text as that run produced it.
+                                        </span>
+                                        <span class="input-field__loaded-actions">
+                                            <FluentButton Appearance="Appearance.Stealth"
+                                                          Class="input-field__edit-loaded"
+                                                          Title="Turn the loaded text into text you can edit; the record will then say typed, not copied"
+                                                          @onclick="() => EditLoadedText(field)">Edit text</FluentButton>
+                                            @if (field.TakesSeveralDocuments)
+                                            {
+                                                <PreviousRunPicker OnChosen="loaded => LoadDeliverable(field, loaded)" />
+                                            }
+                                        </span>
+                                    </div>
+                                }
+                                else if (field.HasFile && field.TakesSeveralDocuments)
                                 {
                                     @* #428/#429: several documents, in the order chosen —
                                        the order the elements hash in. Rows are kept
@@ -189,6 +226,8 @@
                                                     <span class="muted-text">Reading&hellip;</span>
                                                 }
                                             </span>
+                                            @* #510: or a previous run's deliverable, one per entry. *@
+                                            <PreviousRunPicker OnChosen="loaded => LoadDeliverable(field, loaded)" />
                                         }
                                     </div>
                                 }
@@ -212,6 +251,8 @@
                                                 <span class="muted-text">Reading&hellip;</span>
                                             }
                                         </span>
+                                        @* #510: or a previous run's deliverable. *@
+                                        <PreviousRunPicker OnChosen="loaded => LoadDeliverable(field, loaded)" />
                                     }
                                 }
                                 @if (field.Problem is { } problem)
@@ -1298,7 +1339,7 @@
         var scheduledAtUtc = ScheduleDefault.FromLocalInputValue(scheduledAtLocal)
           ?? ScheduleDefault.NextOccurrenceUtc(accountScheduleTime, DateTime.Now);
         var job = await AIService.StartConsultGenerationJobAsync(
-          SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles());
+          SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles(), SuppliedRefs());
         scheduleConfirmation = ScheduleConfirmationFor(scheduledAtUtc, accountDeliveryAddress, accountEmailPdf);
         runOvernight = false;
         scheduledAtLocal = string.Empty;
@@ -1339,7 +1380,7 @@
       // Sections are package data resolved server-side; the request carries only
       // the declared inputs (and the resolved package ref).
       var job = await AIService.StartConsultGenerationJobAsync(
-        inputSnapshot, currentPackageRef, files: fileSnapshot);
+        inputSnapshot, currentPackageRef, files: fileSnapshot, refs: SuppliedRefs());
 
       // #207: remember the job per-tab so navigating away and back re-attaches.
       JobSession.Current = new ConsultJobMemento(
@@ -2053,6 +2094,49 @@
     scheduleConfirmation = null;
   }
 
+  // #510: a previous run's deliverable into the slot. A text slot takes one
+  // (replacing what was there); an array of text takes one per entry. Typed
+  // rows and documents give way: a slot is text, files or references.
+  private void LoadDeliverable(ConsultInputField field, LoadedDeliverable loaded)
+  {
+    if (!field.TakesSeveralDocuments)
+    {
+      field.Clear();
+    }
+    else if (!field.HasLoaded)
+    {
+      field.Clear();
+    }
+
+    field.Loaded.Add(loaded);
+    scheduleConfirmation = null;
+  }
+
+  private void RemoveLoaded(ConsultInputField field, int index)
+  {
+    field.Loaded.RemoveAt(index);
+    scheduleConfirmation = null;
+  }
+
+  // #510: the copy becomes text the user owns; the reference goes with it, so
+  // the record says nothing about where the words came from.
+  private void EditLoadedText(ConsultInputField field)
+  {
+    var texts = field.Loaded.Select(loaded => loaded.Text).ToList();
+    field.Clear();
+    if (field.TakesSeveralDocuments)
+    {
+      foreach (var text in texts)
+      {
+        field.AddRow().Scalar.Value = text;
+      }
+    }
+    else
+    {
+      field.RestoreText(string.Join("\n\n", texts));
+    }
+  }
+
   private void RemoveFile(ConsultInputField field)
   {
     field.Documents.Clear();
@@ -2077,8 +2161,22 @@
 
   private Dictionary<string, ConsultInputValue> SuppliedInputs() =>
     inputFields
-      .Where(field => !field.HasFile && field.Supplied is not null)
+      .Where(field => !field.HasFile && !field.HasLoaded && field.Supplied is not null)
       .ToDictionary(field => field.Id, field => field.Supplied!, StringComparer.Ordinal);
+
+  // #510: the references. The server copies each run's text and records the
+  // origin; the text the form showed was only a preview.
+  private Dictionary<string, IReadOnlyList<ConsultInputRef>>? SuppliedRefs()
+  {
+    var refs = inputFields
+      .Where(field => field.HasLoaded)
+      .ToDictionary(
+        field => field.Id,
+        field => (IReadOnlyList<ConsultInputRef>)field.Loaded.Select(loaded => loaded.Reference).ToList(),
+        StringComparer.Ordinal);
+    // Null, not empty: a request with nothing loaded is the request it always was.
+    return refs.Count > 0 ? refs : null;
+  }
 
   // #236: the attached documents. The file travels rather than its text, so
   // the server extracts it and the record says what read it. #428: a slot
@@ -2882,6 +2980,10 @@
 
     public bool HasFile => Documents.Count > 0;
 
+    /// <summary>#510: the previous runs' deliverables filling this slot, in order.</summary>
+    public List<LoadedDeliverable> Loaded { get; } = new();
+    public bool HasLoaded => Loaded.Count > 0;
+
     // The single-document view the markup still renders (#429 PR A keeps it
     // until the multi-file slot lands).
     public string? FileName => Documents.Count > 0 ? Documents[0].FileName : null;
@@ -2899,7 +3001,7 @@
     /// What this slot contributes, whichever way it was filled — the one
     /// question every gate should be asking.
     /// </summary>
-    public bool IsFilled => HasFile || Supplied is not null;
+    public bool IsFilled => HasFile || HasLoaded || Supplied is not null;
 
     /// <summary>
     /// A named sentence about a value that is present and wrong — a number
@@ -2911,7 +3013,7 @@
     {
       get
       {
-        if (HasFile)
+        if (HasFile || HasLoaded)
         {
           return null;
         }
@@ -2930,6 +3032,11 @@
           return string.Join("\n\n", Documents.Select(document => document.PreviewText));
         }
 
+        if (HasLoaded)
+        {
+          return string.Join("\n\n", Loaded.Select(loaded => loaded.Text));
+        }
+
         return Root.EffectiveText;
       }
     }
@@ -2946,6 +3053,7 @@
     {
       Root.Clear();
       Documents.Clear();
+      Loaded.Clear();
       FileError = null;
     }
 
@@ -2963,6 +3071,7 @@
 
       Root.CopyFrom(previous.Root);
       Documents.AddRange(previous.Documents);
+      Loaded.AddRange(previous.Loaded);
     }
 
     /// <summary>What this slot ran on, as a value: documents as the text read, one element each for an array.</summary>
@@ -2970,7 +3079,11 @@
       ? TakesSeveralDocuments
         ? ConsultInputValue.OfArray(Documents.Select(document => ConsultInputValue.OfText(document.PreviewText)))
         : ConsultInputValue.OfText(Documents[0].PreviewText)
-      : Supplied!;
+      : HasLoaded
+        ? TakesSeveralDocuments
+          ? ConsultInputValue.OfArray(Loaded.Select(loaded => ConsultInputValue.OfText(loaded.Text)))
+          : ConsultInputValue.OfText(Loaded[0].Text)
+        : Supplied!;
 
     /// <summary>Re-attach from a typed memento (#429): the tree restores itself from the root.</summary>
     public void Restore(ConsultInputValue value)

@@ -156,7 +156,11 @@ internal static class InputContent
         IReadOnlyDictionary<string, string>? effective,
         IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? origins)
     {
-        bool FromNoDocument(string id) => origins?.ContainsKey(id) != true;
+        // #510: only a document origin exempts a slot — a previous run's text
+        // was typed by someone once, and its links are as unreachable as any.
+        bool FromNoDocument(string id) =>
+            origins?.TryGetValue(id, out var slotOrigins) != true
+            || slotOrigins.All(o => o.Kind != ConsultInputOriginKinds.Document);
 
         if (manifest.SpecVersion < 7 || effective == null)
         {

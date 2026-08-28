@@ -32,7 +32,17 @@ public record ConsultGenerationRequest(
     // several, each becoming one element; a text slot takes exactly one, and
     // the starter refuses more once it knows the declaration
     // (package-format-v9-design.md § 7).
-    Dictionary<string, List<InputFilePayload>>? InputFiles = null);
+    Dictionary<string, List<InputFilePayload>>? InputFiles = null,
+    // #510: the same slots, filled from the account's own previous runs. A
+    // slot maps to the deliverables it is copied from, in order — a text slot
+    // one, an array of text one per element. The server copies the text at
+    // start and records the origin, so a reference is resolved, never
+    // trusted: the caller names a run and a deliverable, not what they said.
+    // A slot appears in one map only.
+    Dictionary<string, List<ConsultInputRef>>? InputRefs = null);
+
+/// <summary>#510: one deliverable of one of the account's completed runs.</summary>
+public sealed record ConsultInputRef(string JobId, string ResultId);
 
 /// <summary>
 /// A document supplied for an input slot. System.Text.Json serialises byte[]
@@ -72,13 +82,24 @@ public sealed record ConsultInputOrigin(
     // digests say the extraction changed, not the document. Null on records
     // from before 2026-08-28. Neither is a name.
     string? FileSha256 = null,
-    string? TextSha256 = null);
+    string? TextSha256 = null,
+    // #510: for a previous-run element, the run it was copied from and the
+    // deliverable — the same account's, resolved by the server at start. The
+    // copy's TextSha256 is over the canonical text as it entered the
+    // effective-input map. Null on every other kind.
+    string? SourceJobId = null,
+    string? SourceResultId = null);
 
 public static class ConsultInputOriginKinds
 {
     // Extracted from a document by the parser (#235). Kebab-case like every
     // other disposition in this codebase; OCR would join it as its own kind.
     public const string Document = "document";
+
+    // #510: copied at start from one of the account's own completed runs.
+    // Byte-for-byte the deliverable: a copy the user edited is typed text and
+    // carries no origin.
+    public const string PreviousRun = "previous-run";
 }
 
 public record ConsultGenerationJobStartResponse(
