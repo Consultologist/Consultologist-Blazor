@@ -18,6 +18,9 @@ public interface IAccountEndpointService
 
     /// <summary>#486: remove the confirmed and any pending address.</summary>
     Task ClearDeliveryAddressAsync();
+
+    /// <summary>#517: take the signed-in email as the delivery address — an organisation's token only. Throws with the server's named reason.</summary>
+    Task UseSignedInDeliveryAddressAsync();
     Task<AccountSettingResponse?> GetSettingAsync(string key);
     Task SaveSettingAsync(string key, string value, string contentType);
     Task DeleteSettingAsync(string key);

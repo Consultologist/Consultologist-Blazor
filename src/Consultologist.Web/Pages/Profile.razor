@@ -224,7 +224,8 @@
                         <strong class="delivery-address-state">
                             @if (account.DeliveryAddress != null)
                             {
-                                <text>Verified: @account.DeliveryAddress</text>
+                                @* #517: which trust the address rests on. *@
+                                <text>@(account.DeliveryAddressVerifiedBy == "tenant" ? "Verified by your organisation: " : "Verified: ")@account.DeliveryAddress</text>
                             }
                             else if (account.DeliveryAddressPending != null)
                             {
@@ -275,6 +276,20 @@
                                       @onclick="StartDeliveryAddressAsync">
                             @(account.DeliveryAddress == null ? "Send code" : "Change address")
                         </FluentButton>
+                        @* #517: an organisation's sign-in already verified this
+                           mailbox is yours — one click, no code. Offered on an
+                           organisation's token only, and not once it is the
+                           verified address; a personal account keeps the code. *@
+                        @if (account.SignInKind == "organisation" && account.SignInEmail is { Length: > 0 } signInEmail
+                            && !string.Equals(account.DeliveryAddress, signInEmail, StringComparison.OrdinalIgnoreCase))
+                        {
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Class="use-signed-in-button"
+                                          Disabled="@addressRequestInProgress"
+                                          @onclick="UseSignedInDeliveryAddressAsync">
+                                Use @signInEmail
+                            </FluentButton>
+                        }
                         @if (account.DeliveryAddress != null || account.DeliveryAddressPending != null)
                         {
                             <FluentButton Appearance="Appearance.Neutral"
@@ -602,6 +617,18 @@
             await AccountService.ClearDeliveryAddressAsync();
             deliveryCodeInput = null;
             return "Delivery address removed. Consults will not be emailed until one is verified.";
+        });
+    }
+
+    // #517: the signed-in email, on an organisation's token — no code.
+    private async Task UseSignedInDeliveryAddressAsync()
+    {
+        await RunDeliveryAddressRequestAsync(async () =>
+        {
+            await AccountService.UseSignedInDeliveryAddressAsync();
+            deliveryAddressInput = null;
+            deliveryCodeInput = null;
+            return "Delivery address set to your work email, verified by your organisation. Completed consults will be emailed there.";
         });
     }
 

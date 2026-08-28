@@ -39,6 +39,23 @@ public static class AccountSettingKeys
     /// refusal on the generic routes.
     /// </summary>
     public const string DeliveryAddressPending = "delivery.addressPending";
+
+    /// <summary>
+    /// #517: how the delivery address was verified — <see cref="DeliveryAddressVerifiedBy.Code"/>
+    /// (it answered a code) or <see cref="DeliveryAddressVerifiedBy.Tenant"/> (an
+    /// organisation's sign-in vouched for it). Same refusal on the generic
+    /// routes: a route that could write "tenant" onto a code-verified address
+    /// would be a way to claim a trust nobody extended. Absent on an address
+    /// set before #517, which only the code could have set.
+    /// </summary>
+    public const string DeliveryAddressVerifiedBy = "delivery.addressVerifiedBy";
+}
+
+/// <summary>#517: the two ways a delivery address gets verified.</summary>
+public static class DeliveryAddressVerifiedBy
+{
+    public const string Code = "code";
+    public const string Tenant = "tenant";
 }
 
 public static class IdentityProviders
@@ -106,7 +123,11 @@ public sealed record AuthenticatedUser(
     string Subject,
     string DisplayName,
     string? Email,
-    IReadOnlyList<string> Scopes);
+    IReadOnlyList<string> Scopes,
+    // #517: the token's tenant (tid). The consumers tenant is a personal
+    // Microsoft account; any other is an organisation whose sign-in vouches
+    // for the mailbox in Email. This token's, never the stored identity's.
+    string? TenantId = null);
 
 public sealed record AppAccount(
     string AppUserId,
@@ -138,7 +159,22 @@ public sealed record AccountMeResponse(
     bool DocumentPasswordSet = false,
     // #486: the confirmed delivery address, and the one a code is out to.
     string? DeliveryAddress = null,
-    string? DeliveryAddressPending = null);
+    string? DeliveryAddressPending = null,
+    // #517: how the address was verified ("code" | "tenant"; null = set
+    // before, by the code), and two facts about THIS request's token, never
+    // stored: the email it carries and whether an organisation signed it
+    // ("organisation" | "personal") — what the card needs to offer, or not,
+    // the one-click choice.
+    string? DeliveryAddressVerifiedBy = null,
+    string? SignInEmail = null,
+    string? SignInKind = null);
+
+/// <summary>#517: what kind of account signed the token — an organisation's, or a personal Microsoft account.</summary>
+public static class SignInKinds
+{
+    public const string Organisation = "organisation";
+    public const string Personal = "personal";
+}
 
 public sealed class AccountSettingEntity : ITableEntity
 {

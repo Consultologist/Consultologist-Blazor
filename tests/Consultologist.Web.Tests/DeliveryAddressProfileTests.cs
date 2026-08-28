@@ -11,11 +11,75 @@ public class DeliveryAddressProfileTests : ClientRenderTestContext
     private static AccountIdentity Entra() =>
         new("entra-external-id", "https://login.microsoftonline.com/x", "sub-1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
-    private void WithAccount(string? address = null, string? pending = null)
+    private void WithAccount(string? address = null, string? pending = null, string? verifiedBy = null, string? signInEmail = null, string? signInKind = null)
     {
         AccountService.GetCurrentAccountAsync().Returns(new AccountMeResponse(
             "user-1", "A Clinician", "clinician@example.com", "Active", Entra(), new[] { Entra() },
-            DeliveryAddress: address, DeliveryAddressPending: pending));
+            DeliveryAddress: address, DeliveryAddressPending: pending,
+            DeliveryAddressVerifiedBy: verifiedBy, SignInEmail: signInEmail, SignInKind: signInKind));
+    }
+
+    // ----- #517: the signed-in email, on an organisation's token -----
+
+    [Fact]
+    public void AnOrganisationsSignIn_OffersItsOwnEmail_WithoutACode()
+    {
+        WithAccount(signInEmail: "dr.a@clinic.example", signInKind: "organisation");
+
+        var page = RenderProfile();
+
+        Assert.Equal("Use dr.a@clinic.example", page.Find(".use-signed-in-button").TextContent.Trim());
+        Assert.Equal("Send code", page.Find(".send-code-button").TextContent.Trim());
+    }
+
+    [Fact]
+    public void APersonalSignIn_IsNotOfferedIt()
+    {
+        // The personal account's address is verified for Microsoft, not for
+        // this channel: the code stays the one way.
+        WithAccount(signInEmail: "someone@outlook.example", signInKind: "personal");
+
+        var page = RenderProfile();
+
+        Assert.Empty(page.FindAll(".use-signed-in-button"));
+        Assert.Equal("Send code", page.Find(".send-code-button").TextContent.Trim());
+    }
+
+    [Fact]
+    public void OnceItIsTheVerifiedAddress_TheOfferGoes_AndTheStateSaysWhoVouched()
+    {
+        WithAccount(address: "dr.a@clinic.example", verifiedBy: "tenant", signInEmail: "Dr.A@clinic.example", signInKind: "organisation");
+
+        var page = RenderProfile();
+
+        Assert.Empty(page.FindAll(".use-signed-in-button"));
+        Assert.Equal("Verified by your organisation: dr.a@clinic.example", State(page));
+        Assert.Equal("Change address", page.Find(".send-code-button").TextContent.Trim());
+    }
+
+    [Fact]
+    public void ACodeVerifiedAddress_ReadsAsBefore_AndStillOffersTheWorkEmail()
+    {
+        WithAccount(address: "other@clinic.example", verifiedBy: "code", signInEmail: "dr.a@clinic.example", signInKind: "organisation");
+
+        var page = RenderProfile();
+
+        Assert.Equal("Verified: other@clinic.example", State(page));
+        Assert.NotNull(page.Find(".use-signed-in-button"));
+    }
+
+    [Fact]
+    public void ClickingIt_SetsTheAddress_AndReloadsTheCard()
+    {
+        WithAccount(signInEmail: "dr.a@clinic.example", signInKind: "organisation");
+        AccountService.UseSignedInDeliveryAddressAsync().Returns(Task.CompletedTask);
+
+        var page = RenderProfile();
+        page.Find(".use-signed-in-button").Click();
+
+        page.WaitForAssertion(() => Assert.Contains("verified by your organisation", page.Markup));
+        AccountService.Received(1).UseSignedInDeliveryAddressAsync();
+        AccountService.Received(2).GetCurrentAccountAsync();
     }
 
     private IRenderedComponent<Profile> RenderProfile() => Render<Profile>();
@@ -128,6 +192,9 @@ public class DeliveryAddressProfileTests : ClientRenderTestContext
     [InlineData("too-many-attempts", "Too many attempts")]
     [InlineData("code-recently-sent", "a moment ago")]
     [InlineData("delivery-not-configured", "not configured")]
+    [InlineData("personal-account", "personal Microsoft account")]
+    [InlineData("no-signed-in-email", "no email address")]
+    [InlineData("address-in-body", "never from the request")]
     [InlineData("Address is not a valid email address.", "Address is not a valid email address.")]
     [InlineData(null, "BadGateway")]
     public void EveryNamedReason_HasWords(string? error, string expected)

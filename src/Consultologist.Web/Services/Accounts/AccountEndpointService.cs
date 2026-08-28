@@ -165,6 +165,23 @@ public sealed class AccountEndpointService : IAccountEndpointService
         }
     }
 
+    public async Task UseSignedInDeliveryAddressAsync()
+    {
+        // No body: the address is the token's own, and the server refuses a
+        // request that names one.
+        using var request = new HttpRequestMessage(HttpMethod.Post, GetAccountBaseUrl() + "/DeliveryAddress/UseSignedIn");
+        await AddAuthorizationAsync(request);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            _logger.LogError("Delivery address from sign-in failed with status {StatusCode}", response.StatusCode);
+            throw new HttpRequestException(DeliveryAddressError(ExtractError(error), response.StatusCode));
+        }
+    }
+
     public async Task ClearDeliveryAddressAsync()
     {
         using var request = new HttpRequestMessage(HttpMethod.Delete, GetAccountBaseUrl() + "/DeliveryAddress");
@@ -189,6 +206,10 @@ public sealed class AccountEndpointService : IAccountEndpointService
         "code-recently-sent" => "A code was sent a moment ago. Check your email, or wait a minute to send another.",
         "code-not-sent" => "The code could not be sent. Try again in a moment.",
         "delivery-not-configured" => "Email delivery is not configured on this deployment.",
+        // #517
+        "personal-account" => "A personal Microsoft account confirms its address with a code; send one to the address above.",
+        "no-signed-in-email" => "Your sign-in carries no email address the app can deliver to; send a code to an address instead.",
+        "address-in-body" => "The signed-in address is taken from your sign-in, never from the request.",
         null => $"The request failed: {status}",
         _ => error
     };

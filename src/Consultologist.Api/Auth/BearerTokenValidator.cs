@@ -102,7 +102,9 @@ public sealed class BearerTokenValidator : IBearerTokenValidator
                 subject,
                 displayName,
                 email,
-                scopes);
+                scopes,
+                // #517: the tenant, read from this token and nowhere else.
+                TenantId: principal.FindFirstValue("tid"));
         }
         catch (Exception ex)
         {

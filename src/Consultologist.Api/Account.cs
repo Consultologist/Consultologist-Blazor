@@ -60,12 +60,14 @@ public sealed class Account
             return optionsResponse;
         }
 
-        var account = await _authorizer.AuthorizeAsync(req, cancellationToken);
+        var authorized = await _authorizer.AuthorizeWithUserAsync(req, cancellationToken);
 
-        if (account == null)
+        if (authorized == null)
         {
             return AccountAuthorizer.CreateUnauthorizedResponse(req);
         }
+
+        var account = authorized.Account;
 
         // No IsActive gate: a Pending/Disabled user may still read their own
         // profile so the client can explain why the rest of the API is 403.
@@ -79,6 +81,10 @@ public sealed class Account
             cancellationToken);
         var pending = DeliveryAddress.Deserialize(
             (await _settingsStore.GetAsync(account.AppUserId, AccountSettingKeys.DeliveryAddressPending, cancellationToken))?.Value);
+        var verifiedBy = await _settingsStore.GetAsync(account.AppUserId, AccountSettingKeys.DeliveryAddressVerifiedBy, cancellationToken);
+        // #517: what this token says, never stored — the card offers the
+        // one-click choice on an organisation's sign-in and not otherwise.
+        var signedIn = DeliveryAddress.SignedInEligibility(authorized.User);
 
         var response = req.CreateResponse(HttpStatusCode.OK);
         FunctionCors.Apply(req, response);
@@ -94,7 +100,10 @@ public sealed class Account
                 DeliveryAddress: deliveryAddress?.Value,
                 // An expired code is not "pending" — the profile would tell
                 // the user to enter a code that can no longer work.
-                DeliveryAddressPending: pending != null && _time.GetUtcNow() < pending.ExpiresAtUtc ? pending.Address : null),
+                DeliveryAddressPending: pending != null && _time.GetUtcNow() < pending.ExpiresAtUtc ? pending.Address : null,
+                DeliveryAddressVerifiedBy: deliveryAddress != null ? verifiedBy?.Value : null,
+                SignInEmail: signedIn.Address,
+                SignInKind: DeliveryAddress.SignInKindOf(authorized.User)),
             cancellationToken);
 
         return response;
@@ -328,6 +337,13 @@ public sealed class Account
                     decision.Pending!.Address,
                     "text/plain",
                     cancellationToken);
+                // #517: how it was verified — the code, here.
+                await _settingsStore.SaveAsync(
+                    account.AppUserId,
+                    AccountSettingKeys.DeliveryAddressVerifiedBy,
+                    DeliveryAddressVerifiedBy.Code,
+                    "text/plain",
+                    cancellationToken);
                 await _settingsStore.DeleteAsync(account.AppUserId, AccountSettingKeys.DeliveryAddressPending, cancellationToken);
                 var ok = req.CreateResponse(HttpStatusCode.NoContent);
                 FunctionCors.Apply(req, ok);
@@ -375,6 +391,71 @@ public sealed class Account
 
         await _settingsStore.DeleteAsync(account.AppUserId, AccountSettingKeys.DeliveryAddress, cancellationToken);
         await _settingsStore.DeleteAsync(account.AppUserId, AccountSettingKeys.DeliveryAddressPending, cancellationToken);
+        await _settingsStore.DeleteAsync(account.AppUserId, AccountSettingKeys.DeliveryAddressVerifiedBy, cancellationToken);
+
+        var response = req.CreateResponse(HttpStatusCode.NoContent);
+        FunctionCors.Apply(req, response);
+        return response;
+    }
+
+    /// <summary>
+    /// #517: a work account takes its own signed-in email as the delivery
+    /// address without a code — the organisation's sign-in already verified
+    /// that the mailbox is this person's. The token decides, not the account:
+    /// the tenant must be an organisation's (a personal Microsoft account is
+    /// refused by name and keeps the code), the address is the token's own
+    /// email claim, and a body carrying anything is refused so a client cannot
+    /// name a different one. The Do-Not stands: the claim becomes a target
+    /// only because the user chose it here, and it is written as the verified
+    /// address like any other.
+    /// </summary>
+    [Function("AccountDeliveryAddressUseSignedIn")]
+    public async Task<HttpResponseData> UseSignedInDeliveryAddressAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", "options", Route = "Account/DeliveryAddress/UseSignedIn")] HttpRequestData req)
+    {
+        var cancellationToken = req.FunctionContext.CancellationToken;
+
+        if (string.Equals(req.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        {
+            var optionsResponse = req.CreateResponse(HttpStatusCode.OK);
+            FunctionCors.Apply(req, optionsResponse);
+            return optionsResponse;
+        }
+
+        var authorized = await _authorizer.AuthorizeWithUserAsync(req, cancellationToken);
+
+        if (authorized == null)
+        {
+            return AccountAuthorizer.CreateUnauthorizedResponse(req);
+        }
+
+        if (!AccountAuthorizer.CanUseApp(authorized.Account))
+        {
+            return AccountAuthorizer.CreateForbiddenResponse(req);
+        }
+
+        var body = await new StreamReader(req.Body).ReadToEndAsync(cancellationToken);
+        if (!string.IsNullOrWhiteSpace(body))
+        {
+            return await CreateErrorResponseAsync(req, "address-in-body", cancellationToken);
+        }
+
+        var decision = DeliveryAddress.SignedInEligibility(authorized.User);
+
+        switch (decision.Outcome)
+        {
+            case SignedInOutcome.PersonalAccount:
+                return await CreateErrorResponseAsync(req, "personal-account", cancellationToken, HttpStatusCode.Forbidden);
+            case SignedInOutcome.NoEmailClaim:
+                return await CreateErrorResponseAsync(req, "no-signed-in-email", cancellationToken);
+        }
+
+        var appUserId = authorized.Account.AppUserId;
+        await _settingsStore.SaveAsync(appUserId, AccountSettingKeys.DeliveryAddress, decision.Address!, "text/plain", cancellationToken);
+        await _settingsStore.SaveAsync(appUserId, AccountSettingKeys.DeliveryAddressVerifiedBy, DeliveryAddressVerifiedBy.Tenant, "text/plain", cancellationToken);
+        await _settingsStore.DeleteAsync(appUserId, AccountSettingKeys.DeliveryAddressPending, cancellationToken);
+
+        _logger.LogInformation("Delivery address set from the organisation sign-in. AppUserId={AppUserId}", appUserId);
 
         var response = req.CreateResponse(HttpStatusCode.NoContent);
         FunctionCors.Apply(req, response);
@@ -430,7 +511,9 @@ public sealed class Account
     internal static bool IsSecretSettingKey(string key) =>
         string.Equals(key, AccountSettingKeys.DeliveryPassword, StringComparison.Ordinal)
         || string.Equals(key, AccountSettingKeys.DeliveryAddress, StringComparison.Ordinal)
-        || string.Equals(key, AccountSettingKeys.DeliveryAddressPending, StringComparison.Ordinal);
+        || string.Equals(key, AccountSettingKeys.DeliveryAddressPending, StringComparison.Ordinal)
+        // #517: how the address was verified is a claim of trust, not a preference.
+        || string.Equals(key, AccountSettingKeys.DeliveryAddressVerifiedBy, StringComparison.Ordinal);
 
     [Function("AccountJobsList")]
     public async Task<HttpResponseData> GetJobsAsync(

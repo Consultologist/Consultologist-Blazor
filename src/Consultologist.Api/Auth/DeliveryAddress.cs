@@ -51,6 +51,44 @@ public static class DeliveryAddress
 
     public static string Normalize(string address) => address.Trim().ToLowerInvariant();
 
+    /// <summary>
+    /// #517: the tenant every personal Microsoft account signs in under. Any
+    /// other tenant is an organisation, whose sign-in has already verified
+    /// that the mailbox in the token belongs to the signed-in person.
+    /// </summary>
+    public const string ConsumersTenantId = "9188040d-6c67-4c5b-b112-36a304b66dad";
+
+    public static bool IsOrganisation(AuthenticatedUser user) =>
+        !string.IsNullOrWhiteSpace(user.TenantId)
+        && !string.Equals(user.TenantId.Trim(), ConsumersTenantId, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// #517: may the signed-in email be taken as the delivery address without
+    /// a code? Only on an organisation's token — a personal account's address
+    /// is verified for Microsoft, not for this delivery channel, and a token
+    /// with no tenant had no organisation vouch for it — and only when the
+    /// token carries an address the code path would have accepted. The
+    /// address is the token's; the caller never supplies one.
+    /// </summary>
+    public static SignedInDecision SignedInEligibility(AuthenticatedUser user)
+    {
+        if (!IsOrganisation(user))
+        {
+            return new SignedInDecision(SignedInOutcome.PersonalAccount, null);
+        }
+
+        if (Validate(user.Email) != null)
+        {
+            return new SignedInDecision(SignedInOutcome.NoEmailClaim, null);
+        }
+
+        return new SignedInDecision(SignedInOutcome.Eligible, Normalize(user.Email!));
+    }
+
+    /// <summary>The kind of account that signed the token, as Account/Me reports it.</summary>
+    public static string SignInKindOf(AuthenticatedUser user) =>
+        IsOrganisation(user) ? SignInKinds.Organisation : SignInKinds.Personal;
+
     /// <summary>Six digits from the CSPRNG, zero-padded. Never <see cref="Random"/>.</summary>
     public static string CreateCode() =>
         RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
@@ -152,6 +190,16 @@ public enum ConfirmOutcome
 }
 
 public sealed record ConfirmDecision(ConfirmOutcome Outcome, PendingDeliveryAddress? Pending);
+
+public enum SignedInOutcome
+{
+    PersonalAccount,
+    NoEmailClaim,
+    Eligible
+}
+
+/// <summary>#517: the decision, and the normalised address when eligible.</summary>
+public sealed record SignedInDecision(SignedInOutcome Outcome, string? Address);
 
 public sealed record SaveDeliveryAddressRequest(string? Address);
 
