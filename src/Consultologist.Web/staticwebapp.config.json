@@ -19,7 +19,7 @@
 		]
 	},
 	"globalHeaders": {
-		"content-security-policy": "default-src 'self' https://login.microsoftonline.com https://graph.microsoft.com https://*.azurestaticapps.net; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://login.microsoftonline.com https://graph.microsoft.com https://*.azurestaticapps.net https://canada-east-ai-function-gmenbbe9erewh4bj.canadaeast-01.azurewebsites.net https://consultologistpublic.blob.core.windows.net"
+		"content-security-policy": "default-src 'self' https://login.microsoftonline.com https://graph.microsoft.com https://*.azurestaticapps.net; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://login.microsoftonline.com https://graph.microsoft.com https://*.azurestaticapps.net https://east.ca.api.consultologist.ai https://canada-east-ai-function-gmenbbe9erewh4bj.canadaeast-01.azurewebsites.net https://consultologistpublic.blob.core.windows.net"
 	},
 	"mimeTypes": {
 		".json": "application/json",

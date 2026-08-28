@@ -121,6 +121,7 @@ The current setting keys are:
 ```text
 consult.workflowPackage
 consult.scheduleTime
+consult.location            (the record of the location a device chose, #515 — the device decides)
 delivery.documentPassword   (write-only — see below)
 delivery.address            (reserved — set only by confirmation, see below)
 delivery.addressPending     (reserved — the code out to an address)
