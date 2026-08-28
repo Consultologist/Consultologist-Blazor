@@ -139,6 +139,18 @@ outcome, and the reply names which of those it was.
 | `EmailIntake__MaxMessagesPerPoll` | Per-tick message cap; excess waits for the next tick | `25` | no |
 | `EmailIntakeStorage__TableServiceUri` | Table endpoint for the `EmailIntakeProcessed` claim table; chains to `AccountStorage` when unset (the usual case) | falls through to `AccountStorage` | no |
 
+**The host name of a region** (#515) mirrors the Azure region name, and
+nothing else: `<direction><digit?>.<country>.api.consultologist.ai`, the
+digit present only where Azure's own name has one — `canadaeast` →
+`east.ca.api.consultologist.ai`, `eastus` → `east.us.api.consultologist.ai`,
+`eastus2` → `east2.us.api.consultologist.ai`, `westus3` →
+`west3.us.api.consultologist.ai`. Azure's unnumbered first site is not
+`1`. A name is permanent once a record carries it, so it is minted from
+this rule before a region's first run, set as that app's `Public__ApiHost`,
+bound to the app as a custom hostname (CNAME to the app's own
+`azurewebsites.net` name), and listed in the client's `Locations` and
+`connect-src`.
+
 Posture, in brief:
 
 - **Authentication floor**: authenticated intra-tenant submission
