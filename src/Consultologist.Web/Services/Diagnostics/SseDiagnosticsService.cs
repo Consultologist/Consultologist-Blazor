@@ -1,3 +1,4 @@
+using Consultologist.Web.Services.Locations;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Components;
@@ -15,6 +16,7 @@ public sealed class SseDiagnosticsService : ISseDiagnosticsService
 {
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
+    private readonly IApiLocations _locations;
     private readonly IAccessTokenProvider _accessTokenProvider;
     private readonly NavigationManager _navigation;
     private readonly IJSRuntime _jsRuntime;
@@ -23,6 +25,7 @@ public sealed class SseDiagnosticsService : ISseDiagnosticsService
     public SseDiagnosticsService(
         HttpClient httpClient,
         IConfiguration configuration,
+        IApiLocations locations,
         IAccessTokenProvider accessTokenProvider,
         NavigationManager navigation,
         IJSRuntime jsRuntime,
@@ -30,6 +33,7 @@ public sealed class SseDiagnosticsService : ISseDiagnosticsService
     {
         _httpClient = httpClient;
         _configuration = configuration;
+        _locations = locations;
         _accessTokenProvider = accessTokenProvider;
         _navigation = navigation;
         _jsRuntime = jsRuntime;
@@ -109,41 +113,7 @@ public sealed class SseDiagnosticsService : ISseDiagnosticsService
         }
     }
 
-    private string GetDiagnosticsEndpointUrl()
-    {
-        var configuredUrl = _configuration["AzureFunction:DiagnosticsSseExitUrl"];
-
-        if (!string.IsNullOrWhiteSpace(configuredUrl))
-        {
-            return configuredUrl;
-        }
-
-        var jobsUrl = _configuration["AzureFunction:ConsultGenerationJobsUrl"];
-
-        if (string.IsNullOrWhiteSpace(jobsUrl))
-        {
-            _logger.LogError("AzureFunction:ConsultGenerationJobsUrl is not configured");
-            throw new InvalidOperationException("Azure Function consult generation jobs URL is not configured");
-        }
-
-        var trimmedJobsUrl = jobsUrl.TrimEnd('/');
-        const string jobsRoute = "/api/ConsultGenerationJobs";
-        var routeIndex = trimmedJobsUrl.IndexOf(jobsRoute, StringComparison.OrdinalIgnoreCase);
-
-        if (routeIndex >= 0)
-        {
-            return trimmedJobsUrl[..routeIndex] + "/api/Diagnostics/SseExit";
-        }
-
-        var uri = new Uri(trimmedJobsUrl);
-        var builder = new UriBuilder(uri);
-        var path = builder.Path.TrimEnd('/');
-        var lastSlash = path.LastIndexOf('/');
-        builder.Path = lastSlash >= 0
-            ? path[..lastSlash] + "/Diagnostics/SseExit"
-            : "/api/Diagnostics/SseExit";
-        return builder.Uri.ToString();
-    }
+    private string GetDiagnosticsEndpointUrl() => _locations.Url(ApiRoutes.DiagnosticsSseExit);
 
     private async Task AddAuthorizationAsync(HttpRequestMessage request)
     {

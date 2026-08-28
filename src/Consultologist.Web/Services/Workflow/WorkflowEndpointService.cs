@@ -1,3 +1,4 @@
+using Consultologist.Web.Services.Locations;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -25,7 +26,7 @@ public interface IWorkflowEndpointService
 }
 
 /// <summary>The deployed engine's attestation, the three refs History resolves numbers through.</summary>
-public record EngineView(string? Commit, string? PackageFormat, string? Provenance);
+public record EngineView(string? Commit, string? PackageFormat, string? Provenance, string? ApiHost = null);
 
 /// <summary>One entry of a specific catalog version's document (public registry blob).</summary>
 public record PublicCatalogEntry(string? AgentName, string? AgentVersion);
@@ -228,6 +229,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
 {
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
+    private readonly IApiLocations _locations;
     private readonly IAccessTokenProvider _accessTokenProvider;
     private readonly NavigationManager _navigation;
     private readonly ILogger<WorkflowEndpointService> _logger;
@@ -235,12 +237,14 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
     public WorkflowEndpointService(
         HttpClient httpClient,
         IConfiguration configuration,
+        IApiLocations locations,
         IAccessTokenProvider accessTokenProvider,
         NavigationManager navigation,
         ILogger<WorkflowEndpointService> logger)
     {
         _httpClient = httpClient;
         _configuration = configuration;
+        _locations = locations;
         _accessTokenProvider = accessTokenProvider;
         _navigation = navigation;
         _logger = logger;
@@ -248,13 +252,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
 
     public async Task<WorkflowPackageResponse> GetCurrentPackageAsync()
     {
-        var packageUrl = _configuration["AzureFunction:WorkflowPackageCurrentUrl"];
-
-        if (string.IsNullOrWhiteSpace(packageUrl))
-        {
-            throw new InvalidOperationException("AzureFunction:WorkflowPackageCurrentUrl is not configured.");
-        }
-
+        var packageUrl = _locations.Url(ApiRoutes.WorkflowPackageCurrent);
         using var request = new HttpRequestMessage(HttpMethod.Get, packageUrl);
         await AddAuthorizationAsync(request);
 
@@ -277,13 +275,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
 
     public async Task<WorkflowPackageContentResponse> GetCurrentPackageContentAsync(string? packageRef = null)
     {
-        var contentUrl = _configuration["AzureFunction:WorkflowPackageContentUrl"];
-
-        if (string.IsNullOrWhiteSpace(contentUrl))
-        {
-            throw new InvalidOperationException("AzureFunction:WorkflowPackageContentUrl is not configured.");
-        }
-
+        var contentUrl = _locations.Url(ApiRoutes.WorkflowPackageContent);
         using var request = new HttpRequestMessage(HttpMethod.Get, WithPackageRef(contentUrl, packageRef));
         await AddAuthorizationAsync(request);
 
@@ -306,13 +298,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
 
     public async Task<WorkflowPublishOutcome> PublishPackageAsync(WorkflowPackagePublishRequest request)
     {
-        var publishUrl = _configuration["AzureFunction:WorkflowPackagePublishUrl"];
-
-        if (string.IsNullOrWhiteSpace(publishUrl))
-        {
-            throw new InvalidOperationException("AzureFunction:WorkflowPackagePublishUrl is not configured.");
-        }
-
+        var publishUrl = _locations.Url(ApiRoutes.WorkflowPackagePublish);
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, publishUrl)
         {
             Content = JsonContent.Create(request)
@@ -349,13 +335,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
 
     public async Task<PublicChainView?> GetPublicChainAsync()
     {
-        var chainUrl = _configuration["AzureFunction:PublicChainUrl"];
-
-        if (string.IsNullOrWhiteSpace(chainUrl))
-        {
-            return null;
-        }
-
+        var chainUrl = _locations.Url(ApiRoutes.PublicChain);
         try
         {
             // Anonymous endpoint — no bearer token; a failure only costs the
@@ -371,12 +351,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
 
     public async Task<EngineView?> GetEngineAsync()
     {
-        var engineUrl = _configuration["AzureFunction:PublicEngineUrl"];
-        if (string.IsNullOrWhiteSpace(engineUrl))
-        {
-            return null;
-        }
-
+        var engineUrl = _locations.Url(ApiRoutes.PublicEngine);
         try
         {
             // Anonymous endpoint — no bearer token; a failure only costs the
@@ -392,13 +367,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
 
     public async Task<IReadOnlyList<PublicPackageView>?> GetMyPackagesAsync()
     {
-        var mineUrl = _configuration["AzureFunction:WorkflowPackageMinePackagesUrl"];
-
-        if (string.IsNullOrWhiteSpace(mineUrl))
-        {
-            return null;
-        }
-
+        var mineUrl = _locations.Url(ApiRoutes.WorkflowPackageMinePackages);
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, mineUrl);
@@ -453,13 +422,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
 
     public async Task<IReadOnlyList<string>?> GetLineageAsync(string packageRef)
     {
-        var lineageUrl = _configuration["AzureFunction:WorkflowPackageLineageUrl"];
-
-        if (string.IsNullOrWhiteSpace(lineageUrl))
-        {
-            return null;
-        }
-
+        var lineageUrl = _locations.Url(ApiRoutes.WorkflowPackageLineage);
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, $"{lineageUrl}?ref={Uri.EscapeDataString(packageRef)}");
@@ -487,13 +450,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
 
     public async Task<string?> GetCurrentDiagramAsync(string? packageRef = null)
     {
-        var diagramUrl = _configuration["AzureFunction:WorkflowPackageDiagramUrl"];
-
-        if (string.IsNullOrWhiteSpace(diagramUrl))
-        {
-            return null;
-        }
-
+        var diagramUrl = _locations.Url(ApiRoutes.WorkflowPackageDiagram);
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, WithPackageRef(diagramUrl, packageRef));
@@ -523,13 +480,7 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
     // to the server's generator, so the diagram stays single-sourced.
     public async Task<string?> GetDiagramForManifestAsync(JsonElement manifest)
     {
-        var previewUrl = _configuration["AzureFunction:WorkflowPackageDiagramPreviewUrl"];
-
-        if (string.IsNullOrWhiteSpace(previewUrl))
-        {
-            return null;
-        }
-
+        var previewUrl = _locations.Url(ApiRoutes.WorkflowPackageDiagramPreview);
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, previewUrl)

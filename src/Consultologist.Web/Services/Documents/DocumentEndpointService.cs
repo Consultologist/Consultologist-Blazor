@@ -1,3 +1,4 @@
+using Consultologist.Web.Services.Locations;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Components;
@@ -41,6 +42,7 @@ public sealed class DocumentEndpointService : IDocumentEndpointService
 {
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
+    private readonly IApiLocations _locations;
     private readonly IAccessTokenProvider _accessTokenProvider;
     private readonly NavigationManager _navigation;
     private readonly ILogger<DocumentEndpointService> _logger;
@@ -48,12 +50,14 @@ public sealed class DocumentEndpointService : IDocumentEndpointService
     public DocumentEndpointService(
         HttpClient httpClient,
         IConfiguration configuration,
+        IApiLocations locations,
         IAccessTokenProvider accessTokenProvider,
         NavigationManager navigation,
         ILogger<DocumentEndpointService> logger)
     {
         _httpClient = httpClient;
         _configuration = configuration;
+        _locations = locations;
         _accessTokenProvider = accessTokenProvider;
         _navigation = navigation;
         _logger = logger;
@@ -61,13 +65,7 @@ public sealed class DocumentEndpointService : IDocumentEndpointService
 
     public async Task<DocumentExtractionOutcome> ExtractAsync(byte[] content, string contentType)
     {
-        var url = _configuration["AzureFunction:DocumentExtractionsUrl"];
-
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            throw new InvalidOperationException("AzureFunction:DocumentExtractionsUrl is not configured.");
-        }
-
+        var url = _locations.Url(ApiRoutes.DocumentExtractions);
         // The only non-JSON request this client makes. Raw bytes rather than
         // multipart, and no filename: one can itself be PHI, the parser
         // dispatches on content anyway, and a filename on the wire would land
