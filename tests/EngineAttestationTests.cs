@@ -122,7 +122,7 @@ public class EngineAttestationTests
         // added here, in the open, before it can reach the wire.
         var properties = typeof(EngineAttestationResponse).GetProperties().Select(p => p.Name).Order(StringComparer.Ordinal);
         Assert.Equal(
-            new[] { "AcceptedSpecVersions", "Commit", "GeneratedAtUtc", "OutputContracts", "PackageFormat", "Provenance", "Scriban", "SupportedSpecVersions", "Version" },
+            new[] { "AcceptedSpecVersions", "ApiHost", "Commit", "GeneratedAtUtc", "OutputContracts", "PackageFormat", "Provenance", "Scriban", "SupportedSpecVersions", "Version" },
             properties);
     }
 

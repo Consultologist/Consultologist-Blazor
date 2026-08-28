@@ -94,7 +94,9 @@ builder.Services.AddSingleton<PublicRegistryReader>();
 builder.Services.AddSingleton<PublicChain>();
 // #449/#398: the build's attestation, computed once — served at Public/Engine
 // and stamped on every record's packageFormatRef/provenanceRef.
-builder.Services.AddSingleton(sp => EngineAttestation.Current(sp.GetRequiredService<OutputContractCatalog>()));
+builder.Services.AddSingleton(sp => EngineAttestation.Current(
+    sp.GetRequiredService<OutputContractCatalog>(),
+    sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()[EngineAttestation.ApiHostSetting]));
 builder.Services.AddSingleton<PublicEngine>();
 // #403: what the terminology server says about itself, read once per cache window.
 builder.Services.AddSingleton<ITerminologyAttestationSource, TerminologyAttestationClient>();
