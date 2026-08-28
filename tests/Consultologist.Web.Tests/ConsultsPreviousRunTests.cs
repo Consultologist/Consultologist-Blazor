@@ -11,7 +11,7 @@ namespace Consultologist.Web.Tests;
 /// <summary>
 /// #510: a previous run's deliverable into an input slot. The form shows the
 /// text as a preview and sends the reference; a run whose text was deleted is
-/// listed and not choosable; editing the text drops the reference.
+/// listed and not choosable; the loaded text is shown, never editable.
 /// </summary>
 public class ConsultsPreviousRunTests : ClientRenderTestContext
 {
@@ -156,48 +156,18 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void EditingTheText_DropsTheReference_AndSendsText()
+    public void ALoadedDeliverable_IsShown_NotEditable()
     {
+        // The words are the run's, verbatim: no control turns them into text
+        // the user can change. Remove and paste is the way to different words.
         WithRuns();
-        CaptureSubmit();
         var page = Rendered(this);
         ChooseNote(page, 0);
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".input-field__loaded")));
 
-        page.Find(".input-field__edit-loaded").Click();
-
-        page.WaitForAssertion(() => Assert.Empty(page.FindAll(".input-field__loaded")));
-        var area = page.FindAll("fluent-text-area")[0];
-        Assert.Equal(Note, area.GetAttribute("current-value") ?? area.GetAttribute("value"));
-
-        page.FindAll("fluent-button").Last().Click();
-
-        page.WaitForAssertion(() => Assert.NotNull(sentInputs));
-        Assert.Equal(Note, sentInputs!["consult_draft"].Text);
-        Assert.True(sentRefs is null || !sentRefs.ContainsKey("consult_draft"));
-    }
-
-    [Fact]
-    public void EditingAnArraysLoadedText_BecomesRows_AndSendsNoReference()
-    {
-        WithRuns();
-        CaptureSubmit();
-        var page = Rendered(this);
-        page.FindAll("fluent-text-area")[0].Change("Referral text, long enough to be a referral and pass the floor for content.");
-        ChooseNote(page, 1);
-        ChooseNote(page, 1);
-        page.WaitForAssertion(() => Assert.Equal(2, page.FindAll(".input-field__loaded").Count));
-
-        page.Find(".input-field__edit-loaded").Click();
-
-        page.WaitForAssertion(() => Assert.Empty(page.FindAll(".input-field__loaded")));
-        Assert.Equal(2, page.FindAll(".input-field__row").Count);
-
-        page.FindAll("fluent-button").Last().Click();
-
-        page.WaitForAssertion(() => Assert.NotNull(sentInputs));
-        Assert.Equal(new[] { Note, Note }, sentInputs!["prior_notes"].Elements!.Select(e => e.Text));
-        Assert.True(sentRefs is null || !sentRefs.ContainsKey("prior_notes"));
+        Assert.Empty(page.FindAll(".input-field__edit-loaded"));
+        Assert.Empty(page.FindAll(".input-field__loaded textarea, .input-field__loaded fluent-text-area"));
+        Assert.Contains("exactly as that run produced it", page.Find(".input-field__hint").TextContent);
     }
 
     [Fact]

@@ -85,19 +85,18 @@
                                                 <div class="input-field__preview">@loaded.Text</div>
                                             </div>
                                         }
+                                        @* Shown, not editable: what runs is the deliverable as
+                                           that run produced it. To change the words, remove it
+                                           and paste text instead. *@
                                         <span class="muted-text input-field__hint">
-                                            The run will use this text as that run produced it.
+                                            The run will use this text exactly as that run produced it. To change it, remove it and paste text instead.
                                         </span>
-                                        <span class="input-field__loaded-actions">
-                                            <FluentButton Appearance="Appearance.Stealth"
-                                                          Class="input-field__edit-loaded"
-                                                          Title="Turn the loaded text into text you can edit; the record will then say typed, not copied"
-                                                          @onclick="() => EditLoadedText(field)">Edit text</FluentButton>
-                                            @if (field.TakesSeveralDocuments)
-                                            {
+                                        @if (field.TakesSeveralDocuments)
+                                        {
+                                            <span class="input-field__loaded-actions">
                                                 <PreviousRunPicker OnChosen="loaded => LoadDeliverable(field, loaded)" />
-                                            }
-                                        </span>
+                                            </span>
+                                        }
                                     </div>
                                 }
                                 else if (field.HasFile && field.TakesSeveralDocuments)
@@ -2116,25 +2115,6 @@
   {
     field.Loaded.RemoveAt(index);
     scheduleConfirmation = null;
-  }
-
-  // #510: the copy becomes text the user owns; the reference goes with it, so
-  // the record says nothing about where the words came from.
-  private void EditLoadedText(ConsultInputField field)
-  {
-    var texts = field.Loaded.Select(loaded => loaded.Text).ToList();
-    field.Clear();
-    if (field.TakesSeveralDocuments)
-    {
-      foreach (var text in texts)
-      {
-        field.AddRow().Scalar.Value = text;
-      }
-    }
-    else
-    {
-      field.RestoreText(string.Join("\n\n", texts));
-    }
   }
 
   private void RemoveFile(ConsultInputField field)
