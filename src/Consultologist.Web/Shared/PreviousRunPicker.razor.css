@@ -1,0 +1,80 @@
+.run-picker {
+	position: relative;
+	display: inline-flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	font-weight: 400;
+}
+
+.run-picker__trigger,
+.run-picker__more {
+	align-self: flex-start;
+	padding: 0.2rem 0.6rem;
+	border: 1px solid var(--consultologist-border);
+	border-radius: var(--consultologist-radius-sm);
+	background: var(--consultologist-surface-muted);
+	font: inherit;
+	font-size: 0.85rem;
+	cursor: pointer;
+}
+
+.run-picker__panel {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	padding: 0.5rem 0.75rem;
+	border: 1px solid var(--consultologist-border);
+	border-radius: var(--consultologist-radius-sm);
+	background: var(--consultologist-surface);
+	font-size: 0.85rem;
+	max-height: 18rem;
+	overflow: auto;
+}
+
+.run-picker__runs,
+.run-picker__deliverables {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+
+.run-picker__deliverables {
+	padding-left: 1rem;
+}
+
+.run-picker__run-toggle,
+.run-picker__deliverable {
+	display: inline-flex;
+	gap: 0.5rem;
+	align-items: baseline;
+	padding: 0.15rem 0.4rem;
+	border: none;
+	border-radius: var(--consultologist-radius-sm);
+	background: transparent;
+	font: inherit;
+	cursor: pointer;
+	text-align: left;
+}
+
+.run-picker__run-toggle:hover:not(:disabled),
+.run-picker__deliverable:hover:not(:disabled) {
+	background: var(--consultologist-surface-muted);
+}
+
+.run-picker__run-toggle:disabled,
+.run-picker__deliverable:disabled {
+	cursor: not-allowed;
+	color: var(--neutral-foreground-hint, #605e5c);
+}
+
+.run-picker__deleted {
+	font-style: italic;
+	color: var(--warning-foreground, #7a5c00);
+}
+
+.run-picker__error {
+	color: var(--error-foreground, #a4262c);
+}
