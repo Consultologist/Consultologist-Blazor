@@ -10,7 +10,12 @@ public sealed record AccountMeResponse(
     bool DocumentPasswordSet = false,
     // #486: the confirmed delivery address, and the one a code is out to.
     string? DeliveryAddress = null,
-    string? DeliveryAddressPending = null);
+    string? DeliveryAddressPending = null,
+    // #517: mirrors the Api's DeliveryAddressVerifiedBy ("code" | "tenant"),
+    // SignInEmail and SignInKind ("organisation" | "personal") — this token's.
+    string? DeliveryAddressVerifiedBy = null,
+    string? SignInEmail = null,
+    string? SignInKind = null);
 
 public sealed record SaveDeliveryPasswordRequest(string Password);
 
