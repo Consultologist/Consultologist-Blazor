@@ -135,7 +135,12 @@ public class DurablePayloadReplayTests
 
         // #398 appended two slots after this payload was frozen: the bytes read
         // as they were, and re-serialise with exactly two trailing nulls.
-        Assert.Equal(stored[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null}", JsonSerializer.Serialize(input, Durable));
+        // #512 appended two digests to the origin record itself, so each
+        // stored origin re-serialises with its own two trailing nulls too.
+        var expected = stored
+            .Replace("\"TrackedChangesResolved\":false}", "\"TrackedChangesResolved\":false,\"FileSha256\":null,\"TextSha256\":null}", StringComparison.Ordinal)
+            .Replace("\"TrackedChangesResolved\":true}", "\"TrackedChangesResolved\":true,\"FileSha256\":null,\"TextSha256\":null}", StringComparison.Ordinal);
+        Assert.Equal(expected[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null}", JsonSerializer.Serialize(input, Durable));
         var origins = Assert.Contains("prior_notes", input.InputDocumentOrigins!);
         Assert.Equal(2, origins.Count);
         Assert.Equal("pdfpig/0.1.15", origins[1].Extractor);

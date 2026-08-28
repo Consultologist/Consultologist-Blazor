@@ -441,7 +441,10 @@ public sealed record ConsultInputOrigin(
     string Kind,
     string? Extractor = null,
     int? PageCount = null,
-    bool TrackedChangesResolved = false);
+    bool TrackedChangesResolved = false,
+    // #512: mirrors the Api's FileSha256 / TextSha256 — the file as received and its reading.
+    string? FileSha256 = null,
+    string? TextSha256 = null);
 public record ConsultGenerationJobStartResponse(string JobId, string StatusUrl);
 
 /// <summary>#390: the new job a reschedule created, and the one it replaced.</summary>

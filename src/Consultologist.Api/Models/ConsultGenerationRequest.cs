@@ -63,7 +63,16 @@ public sealed record ConsultInputOrigin(
     // #240: the document carried tracked changes and the accepted view was
     // taken. A reviewer asking why a consult says something the referral did
     // not can see that a revision layer existed and was resolved.
-    bool TrackedChangesResolved = false);
+    bool TrackedChangesResolved = false,
+    // #512: the file and its reading, each as a digest. FileSha256 is over
+    // the bytes as received — before any decoding, the one thing the bytes
+    // leave behind, since they are never kept; TextSha256 over the extracted
+    // text as it enters the effective-input map (normalised: line endings to
+    // LF, trailing whitespace off). Equal file digests with unequal text
+    // digests say the extraction changed, not the document. Null on records
+    // from before 2026-08-28. Neither is a name.
+    string? FileSha256 = null,
+    string? TextSha256 = null);
 
 public static class ConsultInputOriginKinds
 {

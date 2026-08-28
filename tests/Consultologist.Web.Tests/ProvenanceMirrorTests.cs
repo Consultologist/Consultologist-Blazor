@@ -39,7 +39,8 @@ public class ProvenanceMirrorTests
                 ["prior_notes"] = new[]
                 {
                     new ApiModels.ConsultInputOrigin(ApiModels.ConsultInputOriginKinds.Document, "text/1"),
-                    new ApiModels.ConsultInputOrigin(ApiModels.ConsultInputOriginKinds.Document, "pdfpig/0.1.15", 2, TrackedChangesResolved: true)
+                    new ApiModels.ConsultInputOrigin(ApiModels.ConsultInputOriginKinds.Document, "pdfpig/0.1.15", 2, TrackedChangesResolved: true,
+                        FileSha256: "b6a313365b611c7ec0be83d67237876ae56d4fe5fac3b77e758985551f59037d", TextSha256: "52593837462725201bb86daf11e60f1aee9374ec207aaf234457c4713835032b")
                 }
             });
 
@@ -49,7 +50,9 @@ public class ProvenanceMirrorTests
         var origins = Assert.Contains("prior_notes", mirrored.InputOrigins!);
         Assert.Equal(2, origins.Count);
         Assert.Equal("text/1", origins[0].Extractor);
-        Assert.Equal(new WebAI.ConsultInputOrigin("document", "pdfpig/0.1.15", 2, true), origins[1]);
+        // #512: the two digests ride with the origin.
+        Assert.Equal(new WebAI.ConsultInputOrigin("document", "pdfpig/0.1.15", 2, true,
+            "b6a313365b611c7ec0be83d67237876ae56d4fe5fac3b77e758985551f59037d", "52593837462725201bb86daf11e60f1aee9374ec207aaf234457c4713835032b"), origins[1]);
     }
 
     [Fact]
