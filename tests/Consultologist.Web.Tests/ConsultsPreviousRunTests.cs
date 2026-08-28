@@ -178,6 +178,29 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void EditingAnArraysLoadedText_BecomesRows_AndSendsNoReference()
+    {
+        WithRuns();
+        CaptureSubmit();
+        var page = Rendered(this);
+        page.FindAll("fluent-text-area")[0].Change("Referral text, long enough to be a referral and pass the floor for content.");
+        ChooseNote(page, 1);
+        ChooseNote(page, 1);
+        page.WaitForAssertion(() => Assert.Equal(2, page.FindAll(".input-field__loaded").Count));
+
+        page.Find(".input-field__edit-loaded").Click();
+
+        page.WaitForAssertion(() => Assert.Empty(page.FindAll(".input-field__loaded")));
+        Assert.Equal(2, page.FindAll(".input-field__row").Count);
+
+        page.FindAll("fluent-button").Last().Click();
+
+        page.WaitForAssertion(() => Assert.NotNull(sentInputs));
+        Assert.Equal(new[] { Note, Note }, sentInputs!["prior_notes"].Elements!.Select(e => e.Text));
+        Assert.True(sentRefs is null || !sentRefs.ContainsKey("prior_notes"));
+    }
+
+    [Fact]
     public void Remove_ClearsTheLoadedDeliverable()
     {
         WithRuns();
