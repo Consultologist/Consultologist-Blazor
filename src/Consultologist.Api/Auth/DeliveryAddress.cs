@@ -58,6 +58,21 @@ public static class DeliveryAddress
     /// </summary>
     public const string ConsumersTenantId = "9188040d-6c67-4c5b-b112-36a304b66dad";
 
+    /// <summary>
+    /// #518: the delivery.emailPdf preference, read tolerantly. Only a stored
+    /// "false" (trimmed, any case) turns the email off; "true" is a choice to
+    /// send; anything else — absent, blank, unreadable — is "not chosen", which
+    /// sends as before. Nothing but the user's own "false" silences a run.
+    /// </summary>
+    public static bool? EmailPdfOf(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var word = value.Trim();
+        if (string.Equals(word, "false", StringComparison.OrdinalIgnoreCase)) return false;
+        if (string.Equals(word, "true", StringComparison.OrdinalIgnoreCase)) return true;
+        return null;
+    }
+
     public static bool IsOrganisation(AuthenticatedUser user) =>
         !string.IsNullOrWhiteSpace(user.TenantId)
         && !string.Equals(user.TenantId.Trim(), ConsumersTenantId, StringComparison.OrdinalIgnoreCase);

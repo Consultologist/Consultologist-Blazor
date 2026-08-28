@@ -476,6 +476,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
                     : "Emailed to the delivery address (link only)",
                 DeliveryOutcomes.AddressNotSet => "Not emailed — no delivery address on the account",
                 DeliveryOutcomes.NotConfigured => "Not emailed — delivery not configured",
+                DeliveryOutcomes.NotRequested => "Not emailed — by your choice",
                 _ => "Email failed"
             },
             null,
@@ -613,7 +614,11 @@ public sealed record ConsultGenerationOrchestrationInput(
     // public host (Public__ApiHost; null when it names none) and the engine
     // build's commit, both from the attestation. Appended last, same reason.
     string? ApiHost = null,
-    string? EngineCommit = null);
+    string? EngineCommit = null,
+    // #518: whether the account asked for the completion email at all —
+    // false records not-requested and sends nothing; null (a payload from
+    // before) means requested. Appended last, same reason.
+    bool? EmailRequested = null);
 
 public sealed record ConsultGenerationJobInitialize(
     string JobId,
@@ -734,6 +739,8 @@ public static class DeliveryOutcomes
     public const string AddressNotSet = "address-not-set";
     /// <summary>The mailbox or app URL is not configured on this deployment.</summary>
     public const string NotConfigured = "not-configured";
+    /// <summary>#518: the account chose not to email app-initiated runs; nothing was sent, by design.</summary>
+    public const string NotRequested = "not-requested";
 }
 
 /// <summary>#486: the orchestrator's one delivery signal.</summary>

@@ -49,6 +49,13 @@ public static class AccountSettingKeys
     /// set before #517, which only the code could have set.
     /// </summary>
     public const string DeliveryAddressVerifiedBy = "delivery.addressVerifiedBy";
+
+    /// <summary>
+    /// #518: whether app-initiated runs email the PDF at all — "true" | "false";
+    /// absent = not chosen, which sends, as before. A preference, not an
+    /// identity: it rides the generic settings routes and is read at start.
+    /// </summary>
+    public const string EmailPdf = "delivery.emailPdf";
 }
 
 /// <summary>#517: the two ways a delivery address gets verified.</summary>

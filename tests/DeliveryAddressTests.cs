@@ -1,5 +1,6 @@
 using Consultologist.Api;
 using Consultologist.Api.Auth;
+using Consultologist.Api.Jobs;
 
 namespace Consultologist.Api.Tests;
 
@@ -161,6 +162,32 @@ public class DeliveryAddressTests
         // #517: how it was verified is a claim of trust, not a preference.
         Assert.True(Account.IsSecretSettingKey(AccountSettingKeys.DeliveryAddressVerifiedBy));
         Assert.False(Account.IsSecretSettingKey("consult.scheduleTime"));
+        // #518: a preference, not an identity — the generic routes carry it.
+        Assert.False(Account.IsSecretSettingKey(AccountSettingKeys.EmailPdf));
+    }
+
+    // ----- #518: whether app-initiated runs are emailed at all -----
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData("true", true)]
+    [InlineData("false", false)]
+    [InlineData(" FALSE ", false)]
+    [InlineData("no", null)]
+    public void TheEmailPdfPreference_IsReadTolerantly_OnlyFalseSilences(string? stored, bool? expected)
+    {
+        Assert.Equal(expected, DeliveryAddress.EmailPdfOf(stored));
+        Assert.Equal(expected != false, ConsultGenerationJobs.EmailRequestedFor(stored));
+    }
+
+    [Fact]
+    public void AnOrigin_RequestsTheEmail_UnlessToldOtherwise()
+    {
+        // Email-door jobs never set it; a payload from before reads as requested.
+        Assert.True(new ConsultGenerationJobOrigin(ConsultGenerationJobSources.Email, "doc@example.com").EmailRequested);
+        Assert.Equal("delivery.emailPdf", AccountSettingKeys.EmailPdf);
     }
 
     // ----- #517: the signed-in address, on an organisation's token only -----

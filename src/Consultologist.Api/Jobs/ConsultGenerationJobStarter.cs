@@ -20,7 +20,11 @@ public static class ConsultGenerationJobSources
 
 public sealed record ConsultGenerationJobOrigin(
     string Source,
-    string? ReplyToAddress = null);
+    string? ReplyToAddress = null,
+    // #518: decided at start from delivery.emailPdf — false only when the
+    // account chose not to email app-initiated runs. Email-door jobs always
+    // reply, so they never set it.
+    bool EmailRequested = true);
 
 public enum ConsultGenerationJobStartError
 {
@@ -620,7 +624,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 SuppliedInputs: deciding ? SuppliedCarrier(inputs.Supplied) : null,
                 // #514: where this runs and what runs it, as Public/Engine attests.
                 ApiHost: _engine.ApiHost,
-                EngineCommit: _engine.Commit),
+                EngineCommit: _engine.Commit,
+                // #518: the choice made at start; the reply leg reads only this.
+                EmailRequested: origin.EmailRequested),
             new StartOrchestrationOptions { InstanceId = jobId },
             cancellationToken);
 
