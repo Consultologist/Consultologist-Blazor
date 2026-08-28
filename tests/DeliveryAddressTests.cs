@@ -154,10 +154,67 @@ public class DeliveryAddressTests
     }
 
     [Fact]
-    public void TheGenericSettingsRoutes_RefuseBothAddressKeys()
+    public void TheGenericSettingsRoutes_RefuseEveryAddressKey()
     {
         Assert.True(Account.IsSecretSettingKey(AccountSettingKeys.DeliveryAddress));
         Assert.True(Account.IsSecretSettingKey(AccountSettingKeys.DeliveryAddressPending));
+        // #517: how it was verified is a claim of trust, not a preference.
+        Assert.True(Account.IsSecretSettingKey(AccountSettingKeys.DeliveryAddressVerifiedBy));
         Assert.False(Account.IsSecretSettingKey("consult.scheduleTime"));
+    }
+
+    // ----- #517: the signed-in address, on an organisation's token only -----
+
+    private static AuthenticatedUser User(string? tenantId, string? email) =>
+        new("entra-external-id", "https://login.microsoftonline.com/x/v2.0", "sub-1", "A Clinician", email, Array.Empty<string>(), tenantId);
+
+    private const string OrgTenant = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
+
+    [Fact]
+    public void AnOrganisationsToken_MayUseItsOwnEmail_Normalised()
+    {
+        var decision = DeliveryAddress.SignedInEligibility(User(OrgTenant, "  Dr.A@Clinic.Example "));
+
+        Assert.Equal(SignedInOutcome.Eligible, decision.Outcome);
+        Assert.Equal("dr.a@clinic.example", decision.Address);
+        Assert.Equal(SignInKinds.Organisation, DeliveryAddress.SignInKindOf(User(OrgTenant, "a@b.example")));
+    }
+
+    [Theory]
+    [InlineData("9188040d-6c67-4c5b-b112-36a304b66dad")]
+    [InlineData("9188040D-6C67-4C5B-B112-36A304B66DAD")]
+    [InlineData(null)]
+    [InlineData("   ")]
+    public void APersonalAccount_OrATokenWithNoTenant_KeepsTheCode(string? tenantId)
+    {
+        // The consumers tenant is a personal Microsoft account; a token with no
+        // tenant had no organisation vouch for it. Both keep the code path,
+        // whatever email the token carries.
+        var decision = DeliveryAddress.SignedInEligibility(User(tenantId, "someone@outlook.example"));
+
+        Assert.Equal(SignedInOutcome.PersonalAccount, decision.Outcome);
+        Assert.Null(decision.Address);
+        Assert.Equal(SignInKinds.Personal, DeliveryAddress.SignInKindOf(User(tenantId, "someone@outlook.example")));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not an address")]
+    [InlineData("Dr A <a@b.example>")]
+    public void AnOrganisationsToken_WithoutAUsableEmail_IsNamed(string? email)
+    {
+        var decision = DeliveryAddress.SignedInEligibility(User(OrgTenant, email));
+
+        Assert.Equal(SignedInOutcome.NoEmailClaim, decision.Outcome);
+        Assert.Null(decision.Address);
+    }
+
+    [Fact]
+    public void TheTwoWaysOfVerifying_AreTheTwoWords()
+    {
+        Assert.Equal("code", DeliveryAddressVerifiedBy.Code);
+        Assert.Equal("tenant", DeliveryAddressVerifiedBy.Tenant);
+        Assert.Equal("delivery.addressVerifiedBy", AccountSettingKeys.DeliveryAddressVerifiedBy);
     }
 }
