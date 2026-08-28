@@ -864,6 +864,14 @@ public sealed class ConsultGenerationOrchestrator
         string? assembledDocument,
         IReadOnlyList<Email.EmailIntakeReplyDocument>? documents)
     {
+        // #518: the account's choice, made at start, comes before the address:
+        // a run the user asked not to be emailed is not-requested whatever the
+        // address state, and the activity is never invoked.
+        if (input.EmailRequested == false)
+        {
+            return new ConsultGenerationDeliveryRecord(DeliveryOutcomes.NotRequested, default);
+        }
+
         if (string.IsNullOrWhiteSpace(input.ReplyToAddress))
         {
             return new ConsultGenerationDeliveryRecord(DeliveryOutcomes.AddressNotSet, default);
