@@ -354,7 +354,277 @@ public class ConformanceFixtureExport
             "The v9 width in one valid manifest: structured inputs, a path condition, title, description and tags.",
             v9Structured, V6Fixtures.Files(v9Structured)));
 
+        // ----- v10 (#500): the deferred grammar — package-format-v10-design.md § 4–§ 7, § 9. -----
+        // Generated with the gate flipped; published with the v10 prose.
+        void Bundle(string id, int spec, string description, (WorkflowPackageManifest Manifest, IReadOnlyDictionary<string, string> Files) bundle)
+            => cases.Add(new Case(id, spec, description, bundle.Manifest, bundle.Files));
+
+        // § 4 — the classifying node: accepted, and each of its rules refused by name.
+        Bundle("v10-classifier", 10,
+            "A classifier over the draft: kind classifier, the values it may answer, bound to an input.",
+            V10Fixtures.WithClassifier());
+        Bundle("invalid-classifier-kind-aggregator", 10,
+            "kind 'aggregator' spelled on a node. An aggregator is declared by aggregate, never by kind. A node of no known kind references no prompt, so the second error follows from the first.",
+            Consumed(V10Fixtures.WithClassifier(V10Fixtures.Classifier() with { Kind = "aggregator" })));
+        Bundle("invalid-classifier-kind-unknown", 10,
+            "A kind the format does not define. A node of no known kind references no prompt, so the second error follows from the first.",
+            Consumed(V10Fixtures.WithClassifier(V10Fixtures.Classifier() with { Kind = "router" })));
+        Bundle("invalid-classifier-values-without-kind", 10,
+            "values on a node that is not a classifier. Only kind 'classifier' answers from a value set; the node is not read as a prompt node either, so its prompt goes unreferenced — the second error follows from the first.",
+            Consumed(V10Fixtures.WithClassifier(V10Fixtures.Classifier() with { Kind = null })));
+        Bundle("invalid-classifier-without-values", 10,
+            "A classifier with no values to answer.",
+            V10Fixtures.WithClassifier(V10Fixtures.Classifier() with { Values = null }));
+        Bundle("invalid-classifier-one-value", 10,
+            "A classifier with one value is a constant, not a choice.",
+            V10Fixtures.WithClassifier(V10Fixtures.Classifier(values: new List<string> { "only" })));
+        Bundle("invalid-classifier-value-not-snake-case", 10,
+            "A classifier value that is not snake_case.",
+            V10Fixtures.WithClassifier(V10Fixtures.Classifier(values: new List<string> { "In Scope", "out" })));
+        Bundle("invalid-classifier-value-repeated", 10,
+            "A classifier declaring the same value twice.",
+            V10Fixtures.WithClassifier(V10Fixtures.Classifier(values: new List<string> { "a", "a" })));
+        Bundle("invalid-classifier-declares-output", 10,
+            "A classifier declaring output. Its output is the classification contract, implied by its kind.",
+            V10Fixtures.WithClassifier(V10Fixtures.Classifier(output: new WorkflowNodeOutputSpec("concept-list"))));
+        Bundle("invalid-classifier-declares-foreach", 10,
+            "A classifier declaring forEach. A classification is one answer; a classifier is never fanned.",
+            V10Fixtures.WithClassifier(V10Fixtures.Classifier(forEach: "input:prior_notes")));
+        {
+            var promptNodeId = V10Fixtures.Minimal().Nodes!.First(n => n.Aggregate is null).Id;
+            Bundle("invalid-classifier-binds-a-prompt-node", 10,
+                "A classifier binding a prompt node's output. A classifier may read inputs and classifiers only.",
+                V10Fixtures.WithClassifier(V10Fixtures.Classifier(
+                    bindings: new Dictionary<string, WorkflowBindingValue> { ["referral"] = new($"node:{promptNodeId}") })));
+        }
+        {
+            var (manifest, files) = V10Fixtures.WithClassifier();
+            var aggregator = manifest.Nodes!.First(n => n.Aggregate != null);
+            var nodes = manifest.Nodes!.Select(n => n.Id == aggregator.Id
+                ? n with { Aggregate = new List<string>(n.Aggregate!) { "node:scope" } }
+                : n).ToList();
+            Bundle("invalid-aggregator-aggregates-a-classifier", 10,
+                "An aggregator listing a classifier as a source. A classifier's value is bindable, never aggregated.",
+                (manifest with { Nodes = nodes }, files));
+        }
+        {
+            var (manifest, files) = V10Fixtures.WithClassifier();
+            var second = V10Fixtures.Classifier(id: "urgency",
+                bindings: new Dictionary<string, WorkflowBindingValue> { ["referral"] = new("node:scope") },
+                values: new List<string> { "routine", "urgent" });
+            var nodes = new List<WorkflowNodeSpec> { second };
+            nodes.AddRange(manifest.Nodes!);
+            Bundle("v10-classifier-reads-a-classifier", 10,
+                "A classifier bound to another classifier's answer, and a deliverable conditioned on both.",
+                (manifest with { Nodes = nodes }, files));
+        }
+
+        // § 4, below 10 — kind and values refused by name on a v9 manifest.
+        Bundle("invalid-classifier-kind-at-v9", 9,
+            "kind on a v9 manifest. The classifying node arrives at 10; below it the node references no prompt, so the second error follows from the first.",
+            Consumed(V10Fixtures.WithClassifier(V10Fixtures.Classifier() with { Values = null }, from: V9Fixtures.Structured())));
+        Bundle("invalid-classifier-values-at-v9", 9,
+            "values on a v9 manifest. Below 10 the node references no prompt, so the second error follows from the first.",
+            Consumed(V10Fixtures.WithClassifier(V10Fixtures.Classifier() with { Kind = null }, from: V9Fixtures.Structured())));
+
+        // § 6 — conditions at 10: the expression forms accepted, and each refusal by name.
+        var v10Conditions = new (string Id, string When, string Description)[]
+        {
+            ("and", "length_of_stay > 7 and billable", "Two clauses joined by and."),
+            ("or-and-not-grouped", "(encounter_kind == follow_up or billable) and not length_of_stay > 30", "or, and, not and explicit grouping."),
+            ("arithmetic", "length_of_stay - 2 > 5", "Arithmetic on the left of a comparison."),
+            ("date-plus-days", "seen_on + 30 >= 2026-01-01", "A date plus whole days compared with a date."),
+            ("count-times-two", "count(prior_notes) * 2 > length_of_stay", "A count in arithmetic compared with a number."),
+            ("node-value", "node:scope == in_scope", "A classifier's answer compared with one of its values."),
+            ("node-value-and-boolean", "node:scope != out_of_scope and billable", "A classifier's answer beside a boolean."),
+        };
+        foreach (var form in v10Conditions)
+        {
+            Bundle($"v10-condition-{form.Id}", 10, form.Description, WithClassifierAt10(form.When));
+        }
+
+        var v10Refusals = new (string Id, string When, string Description)[]
+        {
+            ("node-not-a-classifier", "node:nope == x", "A node: operand naming a node that is not a classifier."),
+            ("bare-node", "node:scope", "A classifier tested for truth; compare it to one of its values."),
+            ("node-ordered", "node:scope > in_scope", "An ordering operator on a classifier's value; only == and != compare it."),
+            ("node-value-undeclared", "node:scope == elsewhere", "A value the classifier does not declare."),
+            ("node-in-arithmetic", "node:scope + 1 > 0", "A classifier's value in arithmetic; a symbol, not a number."),
+            ("arithmetic-on-enum", "encounter_kind + 1 > 0", "Arithmetic on an enum; arithmetic applies to a number, a count or a date."),
+            ("arithmetic-without-comparison", "length_of_stay + 1", "Arithmetic with no comparison."),
+            ("divides-by-zero", "length_of_stay / 0 > 1", "Division by a literal zero."),
+            ("date-times-number", "seen_on * 2 > 2026-01-01", "A date multiplied; a date admits only ± whole days."),
+            ("date-compared-with-number", "seen_on + 1 > 7", "A date compared with a number; both sides are numbers, or both dates."),
+            ("arithmetic-undeclared-input", "length_of_stay + abc > 1", "An undeclared input inside arithmetic."),
+            ("arithmetic-literal-exponent", "length_of_stay + 1e3 > 1", "An exponent literal in arithmetic."),
+            ("path-into-a-number", "patient.age.years > 1", "A deeper path into a number."),
+            ("path-to-undeclared-nested-field", "patient.contact.phone == x", "A deeper path to a field the object does not declare."),
+            ("and-undeclared-input", "length_of_stay > 7 and urgency == high", "An undeclared input in the second clause."),
+            ("and-bare-enum", "billable and encounter_kind", "A bare enum in the second clause."),
+            ("trailing-and", "a and", "An and with nothing after it."),
+            ("unbalanced-parenthesis", "(a or b", "A parenthesis never closed."),
+        };
+        foreach (var refusal in v10Refusals)
+        {
+            Bundle($"invalid-condition-{refusal.Id}", 10, refusal.Description, WithClassifierAt10(refusal.When));
+        }
+
+        // § 6, below 10 — each expression form refused by name on a v9 manifest.
+        var v9Gates = new (string Id, string When, string Description)[]
+        {
+            ("and", "length_of_stay > 7 and billable", "and on a v9 manifest. Expressions arrive at 10."),
+            ("or", "billable or length_of_stay > 7", "or on a v9 manifest."),
+            ("not", "not billable", "not on a v9 manifest."),
+            ("arithmetic", "length_of_stay - 2 > 5", "Arithmetic on a v9 manifest."),
+            ("deep-path", "patient.age.x >= 1", "A path of three segments on a v9 manifest."),
+        };
+        foreach (var gate in v9Gates)
+        {
+            Invalid($"invalid-condition-{gate.Id}-at-v9", 9, gate.Description, V9Fixtures.Conditional(gate.When));
+        }
+        Invalid("invalid-condition-node-at-v9", 9,
+            "node: on a v9 manifest. A classifier's answer is a v10 operand.",
+            V9Fixtures.Conditional("node:assemble-note == x"));
+
+        // § 7 — nested structure: accepted, refused by name, and the email warning.
+        var familyHistory = new WorkflowInputSpec("family_history", "Family history", Required: true, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Object,
+            Fields: new List<WorkflowFieldSpec>
+            {
+                new("relative", "Relative"),
+                new("conditions", "Conditions", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text),
+                new("contact", "Contact", Required: false, Type: WorkflowInputTypes.Object, Fields: new List<WorkflowFieldSpec>
+                {
+                    new("phone", "Phone"),
+                    new("preferred", "Preferred", Required: false, Type: WorkflowInputTypes.Enum, Values: new List<string> { "phone", "email" })
+                })
+            });
+        var grid = new WorkflowInputSpec("grid", "Grid", Required: false, Type: WorkflowInputTypes.Array,
+            Items: new WorkflowElementSpec(WorkflowInputTypes.Array, Items: WorkflowInputTypes.Number));
+        Invalid("v10-nested-structure", 10,
+            "Structure below one level: an array of objects whose fields are an array and an object, and an array of arrays as an element spec. Valid; a required array deeper than one level warns about the email door.",
+            V10Fixtures.WithInput(familyHistory) with { Inputs = new List<WorkflowInputSpec>(V10Fixtures.WithInput(familyHistory).Inputs!) { grid } });
+        Invalid("invalid-nested-field-enum-one-value", 10,
+            "A nested enum field with one value.",
+            V10Fixtures.WithInput(familyHistory with
+            {
+                Fields = familyHistory.Fields!.Select(f => f.Id == "contact"
+                    ? f with { Fields = new List<WorkflowFieldSpec> { new("kind", "Kind", Type: WorkflowInputTypes.Enum, Values: new List<string> { "only" }) } }
+                    : f).ToList()
+            }));
+        Invalid("invalid-nested-array-field-without-items", 10,
+            "A nested array field declaring no items.",
+            V10Fixtures.WithInput(familyHistory with
+            {
+                Fields = familyHistory.Fields!.Select(f => f.Id == "conditions" ? f with { Items = null } : f).ToList()
+            }));
+        Invalid("invalid-element-enum-without-values", 10,
+            "An element spec typed enum with no values.",
+            V10Fixtures.WithInput(grid with { Items = new WorkflowElementSpec(WorkflowInputTypes.Enum) }));
+        Invalid("invalid-element-spec-and-fields-together", 10,
+            "An element spec beside fields on the array. A spec carries its own fields and values.",
+            V10Fixtures.WithInput(grid with
+            {
+                Items = new WorkflowElementSpec(WorkflowInputTypes.Object, Fields: new List<WorkflowFieldSpec> { new("a", "A") }),
+                Fields = new List<WorkflowFieldSpec> { new("b", "B") }
+            }));
+
+        // § 7, below 10 — the shapes refused by name on a v9 manifest.
+        Invalid("invalid-items-spec-at-v9", 9,
+            "items as an element spec on a v9 manifest. A spec requires 10.",
+            V9Fixtures.WithInput(grid));
+        Invalid("invalid-field-array-at-v9", 9,
+            "A field typed array on a v9 manifest, where a field holds a scalar.",
+            V9Fixtures.WithInput(new WorkflowInputSpec("patient", "Patient", Required: false, Type: WorkflowInputTypes.Object, Fields: new List<WorkflowFieldSpec>
+            {
+                new("history", "History", Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text)
+            })));
+        Invalid("invalid-field-object-at-v9", 9,
+            "A field typed object on a v9 manifest.",
+            V9Fixtures.WithInput(new WorkflowInputSpec("patient", "Patient", Required: false, Type: WorkflowInputTypes.Object, Fields: new List<WorkflowFieldSpec>
+            {
+                new("contact", "Contact", Type: WorkflowInputTypes.Object, Fields: new List<WorkflowFieldSpec> { new("phone", "Phone") })
+            })));
+
+        // § 12 — the accepted showcase: the demo package's shape (scope → plan, decline letter or a request for information).
+        Bundle("v10-classifier-scope-demo", 10,
+            "The v10 width in one valid manifest: a three-way classifier, three deliverables each conditioned on its answer, a prompt node reading the classifier.",
+            ScopeDemo());
+
         return cases;
+    }
+
+    /// <summary>The classifier's answer bound into the first prompt node, so a case about the node's own rules is refused for that rule alone.</summary>
+    private static (WorkflowPackageManifest Manifest, IReadOnlyDictionary<string, string> Files) Consumed((WorkflowPackageManifest Manifest, IReadOnlyDictionary<string, string> Files) bundle)
+    {
+        var (manifest, files) = bundle;
+        var nodes = manifest.Nodes!.Select(n => n.Aggregate is null && n.Id != "scope" && n.Prompt != null && n.Bindings != null && !n.Bindings.ContainsKey("scope")
+            ? n with { Bindings = new Dictionary<string, WorkflowBindingValue>(n.Bindings) { ["scope"] = new("node:scope") } }
+            : n).ToList();
+        var prompts = manifest.Prompts!.Select(p => nodes.Any(n => n.Prompt == p.Id && n.Bindings?.ContainsKey("scope") == true) && !p.Variables.Contains("scope")
+            ? p with { Variables = new List<string>(p.Variables) { "scope" } }
+            : p).ToList();
+        return (manifest with { Nodes = nodes, Prompts = prompts }, files);
+    }
+
+    private static (WorkflowPackageManifest Manifest, IReadOnlyDictionary<string, string> Files) WithClassifierAt10(string when) =>
+        V10Fixtures.WithClassifier(from: V9Fixtures.Conditional(when) with { SpecVersion = 10 });
+
+    /// <summary>
+    /// The demo package's shape (package-format-v10-design.md § 12): one
+    /// input, a classifier answering three values, three aggregated
+    /// deliverables each firing on one answer, the plan fanned over a data
+    /// collection and the letters reading the classifier's answer.
+    /// </summary>
+    private static (WorkflowPackageManifest Manifest, IReadOnlyDictionary<string, string> Files) ScopeDemo()
+    {
+        var baseline = V10Fixtures.Minimal();
+        var manifest = baseline with
+        {
+            Result = null,
+            Title = "Scope classifier demo",
+            Description = "A classifier decides whether the referral is in scope; the package produces a plan, a decline letter or a request for information. Not intended for clinical use.",
+            Tags = new List<string> { "demo", "classifier" },
+            Inputs = new List<WorkflowInputSpec> { new("consult_draft", "Consult draft") },
+            Prompts = new List<WorkflowPromptSpec>
+            {
+                new("classify-scope", "prompts/classify-scope.md", new List<string> { "referral" }),
+                new("draft-plan-section", "prompts/draft-plan-section.md", new List<string> { "section_name", "section_content", "consult_draft" }),
+                new("draft-decline-letter", "prompts/draft-decline-letter.md", new List<string> { "consult_draft", "scope" }),
+                new("draft-information-request", "prompts/draft-information-request.md", new List<string> { "consult_draft" })
+            },
+            Results = new List<WorkflowResultSpec>
+            {
+                new("plan", "node:assemble-plan", "Plan", When: "node:scope == in_scope"),
+                new("decline_letter", "node:assemble-decline", "Decline letter", When: "node:scope == out_of_scope"),
+                new("information_request", "node:assemble-request", "Request for information", When: "node:scope == needs_information")
+            },
+            Nodes = new List<WorkflowNodeSpec>
+            {
+                V10Fixtures.Classifier(values: new List<string> { "in_scope", "out_of_scope", "needs_information" }) with { Prompt = "classify-scope" },
+                new("draft-plan", "Drafting the plan", Prompt: "draft-plan-section", ForEach: "data:standards",
+                    Bindings: new Dictionary<string, WorkflowBindingValue>
+                    {
+                        ["section_name"] = new("item:name"), ["section_content"] = new("item:content"), ["consult_draft"] = new("input:consult_draft")
+                    }),
+                new("assemble-plan", "Assembling the plan", Aggregate: new List<string> { "node:draft-plan" }),
+                // Every deliverable fans (a deliverable with no fan has no consult):
+                // the letters fan over the same collection, one section each in the demo.
+                new("draft-decline", "Drafting the decline letter", Prompt: "draft-decline-letter", ForEach: "data:standards",
+                    Bindings: new Dictionary<string, WorkflowBindingValue> { ["consult_draft"] = new("input:consult_draft"), ["scope"] = new("node:scope") }),
+                new("assemble-decline", "Assembling the decline letter", Aggregate: new List<string> { "node:draft-decline" }),
+                new("draft-request", "Drafting the request for information", Prompt: "draft-information-request", ForEach: "data:standards",
+                    Bindings: new Dictionary<string, WorkflowBindingValue> { ["consult_draft"] = new("input:consult_draft") }),
+                new("assemble-request", "Assembling the request", Aggregate: new List<string> { "node:draft-request" })
+            }
+        };
+        var files = new Dictionary<string, string>(V6Fixtures.Files(baseline), StringComparer.Ordinal)
+        {
+            ["prompts/classify-scope.md"] = "Is this referral within the clinic's scope? {{ referral }}",
+            ["prompts/draft-plan-section.md"] = "Draft the {{ section_name }} section of the plan from {{ section_content }} and {{ consult_draft }}.",
+            ["prompts/draft-decline-letter.md"] = "Write a decline letter for {{ consult_draft }}; the referral was classified {{ scope }}.",
+            ["prompts/draft-information-request.md"] = "Write a request for the information missing from {{ consult_draft }}."
+        };
+        return (manifest, files);
     }
 
     [Fact]

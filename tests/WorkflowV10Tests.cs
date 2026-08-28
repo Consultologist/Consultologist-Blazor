@@ -65,10 +65,13 @@ public static class V10Fixtures
 public class WorkflowV10GateTests
 {
     [Fact]
-    public void TheValidatorAccepts10_AndTheStoreDoesNot()
+    public void TheValidatorAccepts10_AndTheStoreRunsIt()
     {
+        // (a) #492 accepted ten at publish; (i) #500 runs it — the gate flipped
+        // together with the registry's v10 publication and the pin.
         Assert.Contains(10, WorkflowPackageValidator.AcceptedSpecVersions);
-        Assert.DoesNotContain(10, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions);
+        Assert.Contains(10, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions);
+        Assert.Equal(10, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions.Max());
 
         var result = V10Fixtures.Validate(V10Fixtures.Minimal());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));

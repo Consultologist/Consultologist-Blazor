@@ -132,6 +132,11 @@ diagram with the version folder when present.
 
 ## The output-contracts registry — implemented 2026-07-16 (#93)
 
+> **2026-08-28 (#500).** `package-format@v2026.08.8`: specVersion 10 defined,
+> its schema and its conformance suite (148 cases) published; the engine runs
+> ten from the same deploy, and the demo `example-classifier-scope` follows in
+> the workflows repo.
+>
 > **2026-08-27 (#495).** A third contract, `classification` (v10 § 4), published
 > as `output-contracts@v2026.08.1` with its agent `classification@1`. As
 > every catalog release: publish, strand check, then the app's submodule

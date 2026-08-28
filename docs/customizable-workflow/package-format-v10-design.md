@@ -603,7 +603,8 @@ before anything lands:
 
 No package is migrated; a v9 package is a v10 package with one edit.
 `general` is the control — byte-identical output and hash under 5 and 6.
-The first classifier package is a demo (*scope → plan or decline letter*)
+The first classifier package is a demo (*scope → plan or decline letter*;
+as built, *or a request for information* — § 14 (i))
 published to the public registry after the gate flips, and is the one the
 editor's tests and the conformance suite's valid cases are drawn from.
 
@@ -650,3 +651,20 @@ its own PR; (a) makes v10 publishable, (i) makes it runnable.
 - **(i)** *The engine runs ten*: the gate, the format registry's v10
   publication (spec, schema, conformance, `SHAPE_BLIND`), the submodule
   pin, the demo package.
+
+> **Amendment, 2026-08-28 (#500) — the ladder is climbed.** The gate
+> flipped (`SupportedSpecVersions` {5..10}; the editor's two ceilings meet
+> and the not-yet-runnable notice retires until the next format) together
+> with `package-format@v2026.08.8`: `package-format-v10.md`, the generated
+> v10 schema, the suite regenerated with the gate flipped — 148 cases, 124
+> invalid, a rejection case for every publish-time refusal this record
+> names and the v9 gates on every v10 form; `SHAPE_BLIND` 42 → 73 — and
+> `catalog-schemas.json` gaining `classification`. The demo is
+> `example-classifier-scope` with **three** values (`in_scope`,
+> `out_of_scope`, `needs_information`; the user's choice over § 12's two)
+> and three deliverables — a plan fanned over two sections, a decline
+> letter, a request for information — every deliverable fanned, since a
+> deliverable with no fan has no consult. `general` is the control as
+> § 12 says. One thing the suite taught: a node of no known kind
+> references no prompt, so five refusal cases carry a second, consequent
+> error and say so.
