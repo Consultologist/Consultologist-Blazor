@@ -304,6 +304,14 @@ now has its delivery half; the 7-day sweep (§1) stays the floor. Decisions
   `AppUsers.Email` — a token claim, unverified, not unique — is never an
   address any more, for scheduled jobs either: an account without a
   verified address gets no email, and is told so before it submits.
+  > **Amended 2026-08-28 (#517).** One more way to verify: a user signed
+  > in with an **organisation's** account may take the token's own email as
+  > the address in one click (`POST Account/DeliveryAddress/UseSignedIn`),
+  > because the organisation's sign-in already verified that mailbox is
+  > theirs; a personal Microsoft account keeps the code. The account
+  > records which trust the address rests on (`delivery.addressVerifiedBy`).
+  > Nothing is sent to an address that neither answered a code nor was
+  > vouched for by its organisation on the token that chose it.
 - **Every app job is delivered** to that address — immediate and scheduled
   alike — by the same reply the email door sends: fixed subject,
   boilerplate plus the History link, the document only ever as the

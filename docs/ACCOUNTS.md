@@ -124,17 +124,29 @@ consult.scheduleTime
 delivery.documentPassword   (write-only — see below)
 delivery.address            (reserved — set only by confirmation, see below)
 delivery.addressPending     (reserved — the code out to an address)
+delivery.addressVerifiedBy  (reserved — "code" | "tenant", how it was verified)
 ```
 
 `delivery.address` (#486) is the account's **verified delivery address**:
 the only address app-submitted consults are ever emailed to. It is written
-only by `POST /api/Account/DeliveryAddress` (sends a six-digit code to the
-address) followed by `POST /api/Account/DeliveryAddress/Confirm` (15
-minutes, five attempts); `DELETE /api/Account/DeliveryAddress` removes it.
-The generic settings routes refuse both keys in both directions, so nothing
-can plant an address nobody confirmed. `Account/Me` reports `deliveryAddress`
-and `deliveryAddressPending`. The address is a delivery target, never an
-identity — see "Do Not Do".
+by one of two paths: `POST /api/Account/DeliveryAddress` (sends a six-digit
+code to the address) followed by `POST /api/Account/DeliveryAddress/Confirm`
+(15 minutes, five attempts) — every account; or, since #517,
+`POST /api/Account/DeliveryAddress/UseSignedIn` — **an organisation's
+sign-in only**: the token's `tid` must not be the consumers tenant
+(`9188040d-…`, a personal Microsoft account, which is refused by name and
+keeps the code), the address is the token's own email claim and no body is
+accepted, so a client cannot name a different one. The organisation has
+already verified that mailbox is the signed-in person's; the app records
+which trust the address rests on in `delivery.addressVerifiedBy` (`code` |
+`tenant`, shown on the card as *Verified by your organisation*).
+`DELETE /api/Account/DeliveryAddress` removes all three. The generic
+settings routes refuse the three keys in both directions, so nothing can
+plant an address nobody confirmed, or claim a trust nobody extended.
+`Account/Me` reports `deliveryAddress`, `deliveryAddressPending`,
+`deliveryAddressVerifiedBy`, and — this token's, never stored —
+`signInEmail` and `signInKind` (`organisation` | `personal`). The address
+is a delivery target, never an identity — see "Do Not Do".
 
 `delivery.documentPassword` (#159) is a **secret**: it never travels the
 generic settings routes (they refuse the key in both directions). It is
@@ -241,6 +253,10 @@ everything else takes `CanUseApp`.
   permanent account keys (links key on provider + issuer + `sub`).
 - Do not send anything to `AppUsers.Email` (a token claim — unverified, not
   unique) and do not treat the verified delivery address as an identity:
-  it is where consults go, not who the account is (#486).
+  it is where consults go, not who the account is (#486). #517 does not
+  bend this: the signed-in email becomes a target only when the user
+  chooses it on the card, on an organisation's token, and it is written as
+  the verified address like any other — the stored `AppUsers.Email` is
+  still never a target by itself.
 - Do not accept a LinkedIn identity as a bearer credential — only
   `entra-external-id` identities sign in.
