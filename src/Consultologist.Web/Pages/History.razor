@@ -251,10 +251,22 @@
                                                     }
                                                 </span>
                                             }
-                                            @if (detail.Source == "email")
+                                            @* #158/#514: how the job was initiated — both values, since a
+                                               record that says "app" is saying something too. No chip on
+                                               a record from before the field. *@
+                                            @if (detail.Source is "email" or "app")
                                             {
-                                                <span class="provenance-chip" title="This job was submitted by email intake">
-                                                    source: email
+                                                <span class="provenance-chip provenance-chip--source" title="@(detail.Source == "email" ? "This job was submitted by email intake" : "This job was submitted from the app")">
+                                                    via @detail.Source
+                                                </span>
+                                            }
+                                            @* #514: where the job ran — the deployment's canonical host,
+                                               the data-residency statement. Absent is named, never
+                                               filled from the client's own base URL. *@
+                                            @if (detail.ApiHost is { Length: > 0 } apiHost)
+                                            {
+                                                <span class="provenance-chip provenance-chip--host" title="The API host that ran this job — where the data was processed">
+                                                    @apiHost
                                                 </span>
                                             }
                                         </div>
@@ -318,6 +330,30 @@
                                                     else
                                                     {
                                                         <span title="Recorded before the job named its contract; the numbers below resolve through the deployed engine's">—</span>
+                                                    }
+                                                </dd>
+                                                @* #514: the residency statement and the build, as the record
+                                                   says them. A record without either names the absence. *@
+                                                <dt>Host</dt>
+                                                <dd class="provenance-host">
+                                                    @if (detail.ApiHost is { Length: > 0 } recordedHost)
+                                                    {
+                                                        <span title="The canonical public host of the deployment that ran this job, recorded on the job">@recordedHost</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="muted-text" title="The deployment named no host when this job ran, or the record predates the field">not recorded</span>
+                                                    }
+                                                </dd>
+                                                <dt>Engine</dt>
+                                                <dd class="provenance-engine">
+                                                    @if (detail.EngineCommit is { Length: 40 } engineCommit)
+                                                    {
+                                                        <a class="provenance-ref" href="@EngineCommitLink(engineCommit)" target="_blank" rel="noopener" title="@($"The engine build that ran this job: {engineCommit}")">@engineCommit[..7]</a>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="muted-text" title="The record predates the field; the deployed engine's commit at the time is in the deploy log">not recorded</span>
                                                     }
                                                 </dd>
                                                 <dt>Record storage version</dt>
@@ -911,6 +947,9 @@
             && serverRef[TerminologyServerPrefix.Length..] is { Length: 40 } commit && commit.All(Uri.IsHexDigit)
             ? $"https://github.com/Tauheed-Elahee/snomed-snowstorm-mcp/commit/{commit}"
             : null;
+
+    /// <summary>#514: the engine's commit page — an anchor, not a fetch, so the CSP's connect-src is not involved.</summary>
+    private static string EngineCommitLink(string commit) => $"https://github.com/Consultologist/Consultologist-Blazor/commit/{commit}";
 
     private static string Witness(bool recorded) => recorded ? "recorded on the job" : "the deployed engine's — this record predates its own";
 

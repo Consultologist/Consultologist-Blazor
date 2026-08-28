@@ -38,7 +38,10 @@ public class HistoryDetailTests : ClientRenderTestContext
         string? provenanceRef = null,
         TerminologySnapshot? terminology = null,
         string? terminologyServerRef = null,
-        DateTimeOffset? textDroppedAtUtc = null)
+        DateTimeOffset? textDroppedAtUtc = null,
+        string? source = null,
+        string? apiHost = null,
+        string? engineCommit = null)
     {
         // Terminal status only: a non-terminal row would start the page's real
         // 5-second polling loop.
@@ -81,7 +84,51 @@ public class HistoryDetailTests : ClientRenderTestContext
             TerminologyServerRef: terminologyServerRef,
             TextDroppedAtUtc: textDroppedAtUtc,
             AgentVersions: agentVersions,
-            CatalogRef: catalogRef));
+            CatalogRef: catalogRef,
+            Source: source,
+            ApiHost: apiHost,
+            EngineCommit: engineCommit));
+    }
+
+    // ----- #514: where the job ran, what ran it, how it was initiated -----
+
+    [Fact]
+    public void TheHostAndTheEngine_AreShownAsRecorded_AndLinked()
+    {
+        var commit = "77a617f453cb2d8875c2b6918ff8e9fe92cce7ac";
+        WithJob(3, source: "app", apiHost: "east.ca.api.consultologist.ai", engineCommit: commit);
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Equal("east.ca.api.consultologist.ai", page.Find(".provenance-host span").TextContent.Trim());
+        Assert.Contains("east.ca.api.consultologist.ai", page.Find(".provenance-chip--host").TextContent);
+        var engine = page.Find(".provenance-engine a");
+        Assert.Equal("77a617f", engine.TextContent.Trim());
+        Assert.Equal($"https://github.com/Consultologist/Consultologist-Blazor/commit/{commit}", engine.GetAttribute("href"));
+        Assert.Equal("via app", page.Find(".provenance-chip--source").TextContent.Trim());
+    }
+
+    [Fact]
+    public void ARecordWithoutThem_NamesTheAbsence_AndNeverBorrowsTheClientsHost()
+    {
+        // A deployment that named no host, or a record from before the field:
+        // "not recorded", never the base URL this client happens to call.
+        WithJob(3, source: "email");
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Equal("not recorded", page.Find(".provenance-host span").TextContent.Trim());
+        Assert.Equal("not recorded", page.Find(".provenance-engine span").TextContent.Trim());
+        Assert.Empty(page.FindAll(".provenance-chip--host"));
+        Assert.DoesNotContain("azurewebsites.net", page.Markup);
+        Assert.Equal("via email", page.Find(".provenance-chip--source").TextContent.Trim());
+    }
+
+    [Fact]
+    public void ARecordFromBeforeTheSource_HasNoSourceChip()
+    {
+        WithJob(3);
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Empty(page.FindAll(".provenance-chip--source"));
     }
 
     private const string CatalogVersion = "v2026.07.2";
