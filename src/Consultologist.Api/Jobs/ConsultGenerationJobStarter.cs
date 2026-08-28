@@ -617,7 +617,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 TerminologyServerRef: terminology?.ServerRef,
                 // v10 (#496): the boundary's inputs, only when there is one.
                 Deciding: deciding ? true : null,
-                SuppliedInputs: deciding ? SuppliedCarrier(inputs.Supplied) : null),
+                SuppliedInputs: deciding ? SuppliedCarrier(inputs.Supplied) : null,
+                // #514: where this runs and what runs it, as Public/Engine attests.
+                ApiHost: _engine.ApiHost,
+                EngineCommit: _engine.Commit),
             new StartOrchestrationOptions { InstanceId = jobId },
             cancellationToken);
 
@@ -872,7 +875,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     PackageFormatRef: EngineAttestation.RefOf(EngineAttestation.PackageFormatRegistry, _engine.PackageFormat),
                     ProvenanceRef: EngineAttestation.RefOf(EngineAttestation.ProvenanceRegistry, _engine.Provenance),
                     Terminology: terminology?.Terminology,
-                    TerminologyServerRef: terminology?.ServerRef),
+                    TerminologyServerRef: terminology?.ServerRef,
+                    ApiHost: _engine.ApiHost,
+                    EngineCommit: _engine.Commit),
                 detail));
 
         return new ConsultGenerationJobStartOutcome(

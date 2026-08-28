@@ -95,7 +95,10 @@ public sealed class ConsultGenerationOrchestrator
                 Terminology: input.Terminology,
                 TerminologyServerRef: input.TerminologyServerRef,
                 // v10 (#496): by name, last.
-                Deciding: input.Deciding));
+                Deciding: input.Deciding,
+                // #514: by name, last.
+                ApiHost: input.ApiHost,
+                EngineCommit: input.EngineCommit));
 
         // #157: a scheduled job sleeps here — visible as Scheduled (entity state
         // above) — then proceeds identically. CurrentUtcDateTime keeps the guard

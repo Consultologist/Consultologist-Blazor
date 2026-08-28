@@ -39,6 +39,27 @@ public class ConsultGenerationStateSourceTests
     }
 
     [Fact]
+    public async Task Initialize_StampsTheHostAndTheEngineOnce()
+    {
+        // #514: where the job ran and what ran it, write-once like Source — a
+        // re-Initialize from the orchestrator never moves them, and a record
+        // born without them stays without them.
+        var stateProperty = typeof(ConsultGenerationJobEntity)
+            .GetProperty("State", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)!;
+        var entity = new ConsultGenerationJobEntity(NSubstitute.Substitute.For<IConsultGenerationJobIndexStore>());
+        var items = new List<IReadOnlyDictionary<string, string>> { new Dictionary<string, string> { ["id"] = "hpi", ["name"] = "HPI" } };
+
+        await entity.Initialize(new ConsultGenerationJobInitialize("job-1", "user-1", items, ApiHost: "east.ca.api.consultologist.ai", EngineCommit: new string('a', 40)));
+        await entity.Initialize(new ConsultGenerationJobInitialize("job-1", "user-1", items, ApiHost: "west.ca.api.consultologist.ai", EngineCommit: new string('b', 40)));
+
+        var state = (ConsultGenerationJobState)stateProperty.GetValue(entity)!;
+        Assert.Equal("east.ca.api.consultologist.ai", state.ApiHost);
+        Assert.Equal(new string('a', 40), state.EngineCommit);
+        Assert.Equal("east.ca.api.consultologist.ai", state.ToResponse().ApiHost);
+        Assert.Equal(new string('a', 40), state.ToResponse().EngineCommit);
+    }
+
+    [Fact]
     public async Task Initialize_StampsSourceOnceAndNeverOverwrites()
     {
         var stateProperty = typeof(ConsultGenerationJobEntity)

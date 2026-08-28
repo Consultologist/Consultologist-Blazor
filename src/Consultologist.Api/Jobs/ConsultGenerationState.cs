@@ -175,6 +175,8 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.ProvenanceRef ??= input.ProvenanceRef;
         State.Terminology ??= input.Terminology;
         State.TerminologyServerRef ??= input.TerminologyServerRef;
+        State.ApiHost ??= input.ApiHost;
+        State.EngineCommit ??= input.EngineCommit;
         State.Source ??= input.Source;
         State.ScheduledAtUtc ??= input.ScheduledAtUtc;
         State.PackageSpecVersion ??= input.PackageSpecVersion;
@@ -606,7 +608,12 @@ public sealed record ConsultGenerationOrchestrationInput(
     // supplied values (each as its wire JSON, ConsultInputValue.AsJson) to
     // evaluate the conditions. Appended last, same reason.
     bool? Deciding = null,
-    IReadOnlyDictionary<string, string>? SuppliedInputs = null);
+    IReadOnlyDictionary<string, string>? SuppliedInputs = null,
+    // #514: where the job ran and what ran it — the deployment's canonical
+    // public host (Public__ApiHost; null when it names none) and the engine
+    // build's commit, both from the attestation. Appended last, same reason.
+    string? ApiHost = null,
+    string? EngineCommit = null);
 
 public sealed record ConsultGenerationJobInitialize(
     string JobId,
@@ -656,7 +663,10 @@ public sealed record ConsultGenerationJobInitialize(
     // the count, the blocks, the pruned nodes — is decided at the boundary,
     // not here. Null on every job before, and on every package without a
     // classifier: those are decided at start. Appended last, same reason.
-    bool? Deciding = null);
+    bool? Deciding = null,
+    // #514: see ConsultGenerationOrchestrationInput. Appended last, same reason.
+    string? ApiHost = null,
+    string? EngineCommit = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -876,6 +886,13 @@ public sealed class ConsultGenerationJobState
     // the server could not be read at start and on records from before.
     public TerminologySnapshot? Terminology { get; set; }
     public string? TerminologyServerRef { get; set; }
+
+    // #514: the canonical public host of the deployment that ran the job —
+    // where the data was processed (the residency statement) — and the
+    // engine build that ran it. Write-once; null when the deployment names no
+    // host, and on records from before.
+    public string? ApiHost { get; set; }
+    public string? EngineCommit { get; set; }
     public List<ConsultItemStepDescriptor>? ItemSteps { get; set; }
     public List<ConsultNodeDescriptor>? Nodes { get; set; }
 
@@ -1141,6 +1158,8 @@ public sealed class ConsultGenerationJobState
             ProvenanceRef: ProvenanceRef,
             Terminology: Terminology,
             TerminologyServerRef: TerminologyServerRef,
+            ApiHost: ApiHost,
+            EngineCommit: EngineCommit,
             PackageSpecVersion: PackageSpecVersion,
             PackageTitle: PackageTitle,
             StartFailure: StartFailure,

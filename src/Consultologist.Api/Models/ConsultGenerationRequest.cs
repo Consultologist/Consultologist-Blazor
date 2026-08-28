@@ -172,7 +172,12 @@ public record ConsultGenerationJobResponse(
     bool? Deciding = null,
     DateTimeOffset? DecidedAtUtc = null,
     IReadOnlyDictionary<string, string>? Classifications = null,
-    string? DecisionFailureKind = null);
+    string? DecisionFailureKind = null,
+    // #514: where the job ran (the deployment's canonical public host — the
+    // data-residency statement; null when the deployment names none) and the
+    // engine build that ran it. Null on records from before 2026-08-28.
+    string? ApiHost = null,
+    string? EngineCommit = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and

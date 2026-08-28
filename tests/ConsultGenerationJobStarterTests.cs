@@ -31,7 +31,7 @@ public class ConsultGenerationJobStarterTests
     private const string Referral =
         "65M, newly diagnosed adenocarcinoma of the lung, stage IIIA, for consideration of chemoradiation. PMHx HTN.";
 
-    private ConsultGenerationJobStarter CreateStarter(ILogger<ConsultGenerationJobStarter>? logger = null)
+    private ConsultGenerationJobStarter CreateStarter(ILogger<ConsultGenerationJobStarter>? logger = null, string? apiHost = null)
     {
         _client.Entities.Returns(_entities);
         _rateLimiter
@@ -46,7 +46,8 @@ public class ConsultGenerationJobStarterTests
             _rateLimiter,
             _ownership,
             // #398: the build's attestation — the vendored indexes the test output carries.
-            EngineAttestation.Current(TestCatalog.Instance),
+            // #514: and the host the test names, as Public__ApiHost would.
+            EngineAttestation.Current(TestCatalog.Instance, apiHost),
             // #403: what the terminology server says, or nothing.
             _terminology);
     }
@@ -129,6 +130,43 @@ public class ConsultGenerationJobStarterTests
         Assert.Equal($"package-format@{expectedFormat}", orchestrationInput!.PackageFormatRef);
         Assert.Equal($"provenance@{expectedProvenance}", orchestrationInput.ProvenanceRef);
         Assert.NotEqual(orchestrationInput.CatalogRef, orchestrationInput.PackageFormatRef);
+    }
+
+    [Fact]
+    public async Task TheRecord_NamesTheHostAndTheEngine_FromTheAttestation()
+    {
+        // #514: where the job runs and what runs it — the deployment's
+        // canonical host from configuration (never the request's authority,
+        // never the Azure name) and the build's commit; null host when the
+        // deployment names none, which the record then says.
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V8Fixtures.Minimal(),
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var outcome = await CreateStarter(apiHost: "https://East.CA.api.consultologist.ai/").StartAsync(
+            _client, new ConsultGenerationRequest(Referral), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+
+        Assert.Null(outcome.Error);
+        Assert.Equal("east.ca.api.consultologist.ai", orchestrationInput!.ApiHost);
+        Assert.Equal(EngineAttestation.Current(TestCatalog.Instance).Commit, orchestrationInput.EngineCommit);
+
+        var unnamed = await CreateStarter().StartAsync(
+            _client, new ConsultGenerationRequest(Referral), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+        Assert.Null(unnamed.Error);
+        Assert.Null(orchestrationInput!.ApiHost);
     }
 
     /// <summary>
@@ -422,7 +460,7 @@ public class ConsultGenerationJobStarterTests
 
     private async Task<(ConsultGenerationJobStartOutcome Outcome, ConsultGenerationJobInitialize? Initialize, ConsultGenerationOrchestrationInput? Input)>
         StartFannedAsync(WorkflowPackageManifest manifest, ConsultInputValue? priorNotes, string fannedId = "prior_notes",
-            IReadOnlyList<WorkflowResolvedResult>? results = null)
+            IReadOnlyList<WorkflowResolvedResult>? results = null, string? apiHost = null)
     {
         _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
             .Returns(new WorkflowPackageRef("general", "latest"));
@@ -460,7 +498,7 @@ public class ConsultGenerationJobStarterTests
             supplied[fannedId] = priorNotes;
         }
 
-        var outcome = await CreateStarter().StartAsync(
+        var outcome = await CreateStarter(apiHost: apiHost).StartAsync(
             _client,
             new ConsultGenerationRequest(null, Inputs: supplied),
             "user-1",
@@ -525,7 +563,7 @@ public class ConsultGenerationJobStarterTests
         {
             Inputs = manifest.Inputs!.Select(i => i.Id == "prior_notes" ? i with { Required = false } : i).ToList()
         };
-        var (absent, absentInit, absentRun) = await StartFannedAsync(manifest, priorNotes: null);
+        var (absent, absentInit, absentRun) = await StartFannedAsync(manifest, priorNotes: null, apiHost: "east.ca.api.consultologist.ai");
 
         Assert.Equal(ConsultGenerationJobStartError.NoApplicableDeliverable, absent.Error);
         Assert.Equal(
@@ -544,6 +582,9 @@ public class ConsultGenerationJobStarterTests
         Assert.Empty(recorded.Initialize.Items);
         var notProduced = Assert.Single(recorded.Initialize.SkippedDocuments!);
         Assert.Equal(("consult", "Consultation note"), (notProduced.ResultId, notProduced.Label));
+        // #514: a job born Failed says where and by what, as a run does.
+        Assert.Equal("east.ca.api.consultologist.ai", recorded.Initialize.ApiHost);
+        Assert.Equal(EngineAttestation.Current(TestCatalog.Instance).Commit, recorded.Initialize.EngineCommit);
         Assert.Equal("is written from 'Prior notes', which has no entries", notProduced.Reason);
         Assert.Equal(9, recorded.Initialize.PackageSpecVersion);
         Assert.Equal(ConsultGenerationProvenance.StructuredInputsHashVersion, recorded.Initialize.EffectiveInputHashVersion);
