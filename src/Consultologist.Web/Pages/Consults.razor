@@ -74,7 +74,10 @@
                                             var index = i;
                                             var loaded = field.Loaded[index];
                                             var currentField = field;
-                                            <div class="input-field__document input-field__loaded">
+                                            @* preventDefault: inside the slot's <label>, a click on the
+                                               preview is a label activation — a synthetic click on the
+                                               first labelable control, this chip's Remove (#510). *@
+                                            <div class="input-field__document input-field__loaded" @onclick:preventDefault="true" @onclick:stopPropagation="true">
                                                 <span class="input-field__chip">
                                                     <span class="input-field__chip-name">@loaded.Label</span>
                                                     <span class="muted-text">@loaded.RunName</span>
@@ -110,7 +113,7 @@
                                             var index = i;
                                             var document = field.Documents[index];
                                             var currentField = field;
-                                            <div class="input-field__document" @key="document">
+                                            <div class="input-field__document" @key="document" @onclick:preventDefault="true" @onclick:stopPropagation="true">
                                                 <span class="input-field__chip">
                                                     <span class="muted-text input-field__row-number">@(index + 1).</span>
                                                     <span class="input-field__chip-name">@document.FileName</span>
@@ -150,7 +153,7 @@
                                 }
                                 else if (field.HasFile)
                                 {
-                                    <span class="input-field__chip" @onclick:stopPropagation="true">
+                                    <span class="input-field__chip" @onclick:preventDefault="true" @onclick:stopPropagation="true">
                                         <span class="input-field__chip-name">@field.FileName</span>
                                         @if (field.PageCount is { } pages)
                                         {
@@ -166,7 +169,9 @@
                                        to be visible while it is still cheap to
                                        reject. *@
                                     <span class="muted-text">What we read from this file:</span>
-                                    <div class="input-field__preview">@field.PreviewText</div>
+                                    @* preventDefault: a click on the preview inside the slot's <label> would
+                                       otherwise activate the label — a synthetic click on the chip's Remove. *@
+                                    <div class="input-field__preview" @onclick:preventDefault="true" @onclick:stopPropagation="true">@field.PreviewText</div>
                                     <span class="muted-text input-field__hint">
                                         Looks wrong? Remove the file and paste the text instead.
                                     </span>
