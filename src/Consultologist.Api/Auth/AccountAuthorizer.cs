@@ -8,7 +8,16 @@ public interface IAccountAuthorizer
 {
     Task<AppAccount?> AuthorizeAsync(HttpRequestData req, CancellationToken cancellationToken);
     Task<AppAccount?> AuthorizeAsync(HttpRequest req, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #517: the account and the token that reached it — for the one decision
+    /// that is about this token (its tenant, its email) rather than the
+    /// account it resolved to, whose stored email and issuer are first-seen.
+    /// </summary>
+    Task<AuthorizedRequest?> AuthorizeWithUserAsync(HttpRequestData req, CancellationToken cancellationToken);
 }
+
+public sealed record AuthorizedRequest(AppAccount Account, AuthenticatedUser User);
 
 public sealed class AccountAuthorizer : IAccountAuthorizer
 {
@@ -21,13 +30,24 @@ public sealed class AccountAuthorizer : IAccountAuthorizer
         _accountStore = accountStore;
     }
 
-    public async Task<AppAccount?> AuthorizeAsync(HttpRequestData req, CancellationToken cancellationToken)
+    public async Task<AppAccount?> AuthorizeAsync(HttpRequestData req, CancellationToken cancellationToken) =>
+        (await AuthorizeWithUserAsync(req, cancellationToken))?.Account;
+
+    public async Task<AuthorizedRequest?> AuthorizeWithUserAsync(HttpRequestData req, CancellationToken cancellationToken)
     {
         var authorizationHeader = req.Headers.TryGetValues("Authorization", out var values)
             ? values.FirstOrDefault()
             : null;
 
-        return await AuthorizeAsync(authorizationHeader, cancellationToken);
+        var authenticatedUser = await _tokenValidator.ValidateAsync(authorizationHeader, cancellationToken);
+
+        if (authenticatedUser == null)
+        {
+            return null;
+        }
+
+        var account = await _accountStore.ResolveOrCreateAsync(authenticatedUser, cancellationToken);
+        return account == null ? null : new AuthorizedRequest(account, authenticatedUser);
     }
 
     public async Task<AppAccount?> AuthorizeAsync(HttpRequest req, CancellationToken cancellationToken)
