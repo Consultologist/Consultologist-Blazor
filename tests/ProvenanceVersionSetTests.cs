@@ -176,6 +176,25 @@ public class ProvenanceVersionSetTests
     }
 
     [Fact]
+    public void ThePerInputDocumentPair_IsTheFileAndItsCanonicalReading()
+    {
+        // provenance@v2026.08.9 (#512), hash-definitions.md § 6: the file's
+        // bytes as received, and the text read from it as the input hash saw
+        // it — two trailing newlines trimmed away by the canonical form.
+        var file = System.Text.Encoding.UTF8.GetBytes("Hello\n\n");
+        Assert.Equal(WorkedExample("fileSha256"), ConsultGenerationProvenance.Sha256Hex(file));
+        Assert.Equal(WorkedExample("textSha256"), ConsultGenerationProvenance.Sha256Hex(CanonicalText.Normalize("Hello\n\n")!));
+        Assert.Equal("185f8db32271fe25f561a6fc938b2e264306ec304eda518007d1764826381969", WorkedExample("textSha256"));
+    }
+
+    /// <summary>The digest a named § 6 worked-example row publishes, read from the vendored document.</summary>
+    private static string WorkedExample(string digest)
+    {
+        var line = Vendored("hash-definitions.md").Split('\n').Single(l => l.StartsWith($"| `{digest}` |", StringComparison.Ordinal));
+        return System.Text.RegularExpressions.Regex.Match(line, "`([0-9a-f]{64})`").Groups[1].Value;
+    }
+
+    [Fact]
     public void OutputDefinitions_1_2_3_AndTheAggregateInput()
     {
         Assert.Equal("208471a047a8964edc58a50d8317ad24a711e04b59445006ec06e8e44dc38f85",
