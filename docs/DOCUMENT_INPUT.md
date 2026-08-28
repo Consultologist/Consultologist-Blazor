@@ -669,6 +669,13 @@ POST /api/ConsultGenerationJobs
   original later. Keeping the bytes would mean PHI at rest with its own
   retention and deletion story, which is a larger decision than this
   milestone; the cost is that extraction is a one-way step.
+  > **Amended 2026-08-28 (#512).** The bytes are still not kept, but they
+  > leave a digest: a document's origin carries `fileSha256` over the file
+  > as received and `textSha256` over the text as it entered the
+  > effective-input map, beside the extractor's identity. A holder of the
+  > original can verify it against the record later, and two records over
+  > the same file under different extractor builds read as *same file,
+  > different reading* rather than as different referrals.
 
 ## 8. Failure copy (normative)
 
