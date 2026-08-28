@@ -63,7 +63,6 @@
                                    attached document, never both. The text is
                                    kept underneath so removing the file gives
                                    it back. *@
-                                @{ Console.WriteLine($"[#510] render slot={field.Id} hasLoaded={field.HasLoaded} hasFile={field.HasFile}"); }
                                 @if (field.HasLoaded)
                                 {
                                     @* #510: filled from previous runs. One chip per
@@ -1930,7 +1929,6 @@
   // they could see.
   private void SyncInputFields(IReadOnlyList<WorkflowPackageInputResponse>? declaration)
   {
-    Console.WriteLine($"[#510] SyncInputFields declared={declaration?.Count}");
     var carried = inputFields.ToDictionary(field => field.Id, field => field, StringComparer.Ordinal);
 
     var declared = declaration is { Count: > 0 } ? declaration : LegacyInputs;
@@ -1985,7 +1983,6 @@
   // empty box — a label describing something that was no longer there.
   private void ClearInputs()
   {
-    Console.WriteLine("[#510] ClearInputs");
     foreach (var field in inputFields)
     {
       field.Clear();
@@ -2101,7 +2098,6 @@
   // rows and documents give way: a slot is text, files or references.
   private void LoadDeliverable(ConsultInputField field, LoadedDeliverable loaded)
   {
-    Console.WriteLine($"[#510] LoadDeliverable slot={field.Id} sameInstance={ReferenceEquals(field, inputFields.FirstOrDefault(f => f.Id == field.Id))} loadedBefore={field.Loaded.Count}");
     if (!field.TakesSeveralDocuments)
     {
       field.Clear();
@@ -2113,12 +2109,10 @@
 
     field.Loaded.Add(loaded);
     scheduleConfirmation = null;
-    Console.WriteLine($"[#510] LoadDeliverable done slot={field.Id} loadedAfter={field.Loaded.Count} hasLoaded={field.HasLoaded}");
   }
 
   private void RemoveLoaded(ConsultInputField field, int index)
   {
-    Console.WriteLine($"[#510] RemoveLoaded slot={field.Id} index={index}");
     field.Loaded.RemoveAt(index);
     scheduleConfirmation = null;
   }
@@ -3037,7 +3031,6 @@
 
     public void Clear()
     {
-      Console.WriteLine($"[#510] Field.Clear slot={Id} loaded={Loaded.Count}\n{Environment.StackTrace}");
       Root.Clear();
       Documents.Clear();
       Loaded.Clear();
