@@ -491,6 +491,27 @@ public class HistoryDetailTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ADocumentsDigests_AreShownShortened_WithTheFullValueInTheTitle()
+    {
+        // #512: the file and its reading, beside the extractor — shortened in
+        // the row, whole in the title, so a holder of the file can check it.
+        const string File = "b6a313365b611c7ec0be83d67237876ae56d4fe5fac3b77e758985551f59037d";
+        const string Text = "52593837462725201bb86daf11e60f1aee9374ec207aaf234457c4713835032b";
+        WithJob(3, inputOrigins: new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
+        {
+            ["consult_draft"] = new[] { new ConsultInputOrigin(Consultologist.Api.Models.ConsultInputOriginKinds.Document, "pdfpig/0.1.15", 3, false, File, Text) }
+        });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var row = page.Find(".provenance-list__nested + dd");
+        Assert.Equal("read from a document by pdfpig/0.1.15 · 3 pages · file b6a31336… · text 52593837…", row.TextContent.Trim());
+        Assert.Equal($"SHA-256 of the file's bytes as received: {File}", page.Find(".provenance-digest--file").GetAttribute("title"));
+        Assert.Equal($"SHA-256 of the text read from it, as the input hash saw it: {Text}", page.Find(".provenance-digest--text").GetAttribute("title"));
+        Assert.DoesNotContain(File, row.TextContent);
+    }
+
+    [Fact]
     public void ASlotReadFromFourDocuments_ListsOneRowPerDocumentInOrder()
     {
         // One slot, four readings: the slot's row stays one, and the documents

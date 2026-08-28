@@ -1890,6 +1890,43 @@ public class ConsultGenerationJobStarterTests
         new("text/plain", Encoding.UTF8.GetBytes(text));
 
     [Fact]
+    public async Task ADocumentsOrigin_CarriesTheFilesDigestAndItsReadings()
+    {
+        // #512: the file as received and the text the input hash saw for it —
+        // two digests per document, positionally. The file carries a CRLF and
+        // trailing whitespace, so the reading's digest is not the raw bytes'
+        // digest and not the digest of the un-normalised text: it is exactly
+        // the SHA-256 of the value that lands in the effective-input map.
+        var bytesOne = Encoding.UTF8.GetBytes("One.\r\nline two   \r\n");
+        var bytesTwo = Encoding.UTF8.GetBytes("Two.");
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: V9Typed(),
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
+            {
+                ["prior_notes"] = [new InputFilePayload("text/plain", bytesOne), new InputFilePayload("text/plain", bytesTwo)]
+            });
+
+        var captured = await StartAndCaptureAsync(V9Fixtures.Structured(), request);
+
+        Assert.Null(captured.Outcome.Error);
+        var origins = captured.OrchestrationInput!.InputDocumentOrigins!["prior_notes"];
+        var elements = captured.OrchestrationInput.Request.Inputs!["prior_notes"].Elements!;
+        Assert.Equal(2, origins.Count);
+
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(bytesOne), origins[0].FileSha256);
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(elements[0].Canonical), origins[0].TextSha256);
+        Assert.NotEqual(origins[0].FileSha256, origins[0].TextSha256);
+        Assert.NotEqual(ConsultGenerationProvenance.Sha256Hex("One.\r\nline two   \r\n"), origins[0].TextSha256);
+
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(bytesTwo), origins[1].FileSha256);
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(elements[1].Canonical), origins[1].TextSha256);
+        // A plain file whose reading is its own bytes: the two digests agree,
+        // which is the statement "nothing changed between file and reading".
+        Assert.Equal(origins[1].FileSha256, origins[1].TextSha256);
+    }
+
+    [Fact]
     public async Task FourDocumentsIntoOneSlot_BecomeFourElementsInSuppliedOrderWithFourOrigins()
     {
         // The issue's first test: order is the caller's and is the order the

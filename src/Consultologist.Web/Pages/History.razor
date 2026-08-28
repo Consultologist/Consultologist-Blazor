@@ -375,7 +375,7 @@
                                                     <dd>
                                                         @if (origin.Value.Count == 1)
                                                         {
-                                                            @DescribeOrigin(origin.Value[0])
+                                                            @DescribeOrigin(origin.Value[0])@Digests(origin.Value[0])
                                                         }
                                                         else
                                                         {
@@ -385,7 +385,7 @@
                                                             <ol class="provenance-documents">
                                                                 @foreach (var document in origin.Value)
                                                                 {
-                                                                    <li>@DescribeOrigin(document)</li>
+                                                                    <li>@DescribeOrigin(document)@Digests(document)</li>
                                                                 }
                                                             </ol>
                                                         }
@@ -563,6 +563,40 @@
     /// #238's sentence, one document at a time: what read it, how many pages,
     /// whether a revision layer was resolved. The words are the record's.
     /// </summary>
+    /// <summary>
+    /// #512: the file's digest and its reading's, shortened, the full value in
+    /// the title — a holder of the file can check the first; equal files with
+    /// unequal readings mean the extraction changed, not the document.
+    /// Nothing for a record from before the digests.
+    /// </summary>
+    private static RenderFragment Digests(ConsultInputOrigin origin) => builder =>
+    {
+        if (origin.FileSha256 is null && origin.TextSha256 is null)
+        {
+            return;
+        }
+
+        var sequence = 0;
+        foreach (var (label, digest, title) in new[]
+        {
+            ("file", origin.FileSha256, "SHA-256 of the file's bytes as received"),
+            ("text", origin.TextSha256, "SHA-256 of the text read from it, as the input hash saw it")
+        })
+        {
+            if (digest is null)
+            {
+                continue;
+            }
+
+            builder.AddContent(sequence++, $" · {label} ");
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", $"hash-text provenance-digest provenance-digest--{label}");
+            builder.AddAttribute(sequence++, "title", $"{title}: {digest}");
+            builder.AddContent(sequence++, digest.Length > 8 ? digest[..8] + "…" : digest);
+            builder.CloseElement();
+        }
+    };
+
     private static string DescribeOrigin(ConsultInputOrigin origin) =>
         $"read from a document by {origin.Extractor ?? "—"}"
         + (origin.PageCount is { } pages ? $" · {pages} page{(pages == 1 ? "" : "s")}" : "")

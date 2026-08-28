@@ -10,7 +10,8 @@ namespace Consultologist.Api.Tests;
 public class ConsultGenerationStateOriginsTests
 {
     private static readonly ConsultInputOrigin Pdf = new(ConsultInputOriginKinds.Document, "pdfpig/0.1.15", 3);
-    private static readonly ConsultInputOrigin Docx = new(ConsultInputOriginKinds.Document, "openxml/3.5.1", null, TrackedChangesResolved: true);
+    private static readonly ConsultInputOrigin Docx = new(ConsultInputOriginKinds.Document, "openxml/3.5.1", null, TrackedChangesResolved: true,
+        FileSha256: "b6a313365b611c7ec0be83d67237876ae56d4fe5fac3b77e758985551f59037d", TextSha256: "52593837462725201bb86daf11e60f1aee9374ec207aaf234457c4713835032b");
 
     private static readonly List<IReadOnlyDictionary<string, string>> Items = new()
     {

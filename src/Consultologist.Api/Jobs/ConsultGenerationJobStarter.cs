@@ -993,6 +993,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
             for (var index = 0; index < documents.Count; index++)
             {
+                // #512: the file's digest, over the bytes as received and before
+                // the parser touches them — the one thing the bytes leave on the
+                // record, since they are cleared below and never kept.
+                var fileSha256 = ConsultGenerationProvenance.Sha256Hex(documents[index].Content);
                 var result = await DocumentExtraction.ExtractAsync(documents[index].Content, gateWait, cancellationToken);
 
                 if (!DocumentExtraction.Succeeded(result))
@@ -1023,11 +1027,18 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // A document that read to nothing is still one element and
                 // still one origin: the record says which one it was.
                 texts.Add(ConsultInputValue.OfText(result.Text!));
+                // #512: the reading's digest is over the text as it enters the
+                // effective-input map — extraction has already normalised it,
+                // and NormalizeInputs below is idempotent over it — so the two
+                // hashes the record carries for one document are the file and
+                // exactly the bytes the input hash saw for it.
                 slotOrigins.Add(new ConsultInputOrigin(
                     ConsultInputOriginKinds.Document,
                     result.ExtractorId,
                     result.PageCount,
-                    result.TrackedChangesResolved));
+                    result.TrackedChangesResolved,
+                    FileSha256: fileSha256,
+                    TextSha256: ConsultGenerationProvenance.Sha256Hex(CanonicalText.Normalize(result.Text!))));
             }
 
             // One document into a text slot is the text it always was, so hash

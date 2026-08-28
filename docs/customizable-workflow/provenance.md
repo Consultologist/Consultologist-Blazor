@@ -132,6 +132,15 @@ each has, or needs, its own work:
 > say one name per region. A deployment that names none leaves the field
 > null and History says *not recorded*; it never borrows the base URL the
 > client happens to call.
+>
+> Since #512 (2026-08-28) a document's origin carries two digests beside
+> the extractor's identity: `fileSha256` over the bytes as received — the
+> one thing the bytes leave on the record, since they are never kept — and
+> `textSha256` over the text as it entered the effective-input map. Equal
+> file digests with unequal text digests say the extraction changed, not
+> the document (compare `extractor`); unequal file digests say a different
+> file. A holder of the original file can check the first against the
+> record at any later date; neither is a name.
 
 The Foundry agent (system prompt, parameters, tool wiring) is edited in a portal and is
 therefore mutable state. Rule: **track the agent config in git; at startup or job start,
