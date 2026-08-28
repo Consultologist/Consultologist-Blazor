@@ -171,7 +171,8 @@ Posture, in brief:
   `POST Account/DeliveryAddress` answers 503 `delivery-not-configured`
   while `EmailIntake__MailboxAddress` is unset. The reply itself is sent to
   the account's verified `delivery.address` for every app-submitted job
-  (`docs/ASYNC_DELIVERY.md` §4); the three address keys (`delivery.address`,
+  unless the account chose not to be emailed (`delivery.emailPdf`, #518;
+  `docs/ASYNC_DELIVERY.md` §4); the three address keys (`delivery.address`,
   `delivery.addressPending`, `delivery.addressVerifiedBy`) are reserved and
   refused by the generic settings routes. An organisation's sign-in may set
   the address without a code (#517); that path needs no mailbox.
