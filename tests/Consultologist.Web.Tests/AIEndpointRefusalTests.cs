@@ -50,7 +50,6 @@ public class AIEndpointRefusalTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["AzureFunction:ConsultGenerationJobsUrl"] = "https://function.example/api/ConsultGenerationJobs",
                 ["AzureFunction:ApiScope"] = "api://consultologist/.default"
             })
             .Build();
@@ -71,6 +70,7 @@ public class AIEndpointRefusalTests
         return new AIEndpointService(
             new HttpClient(new StubHandler(response)),
             configuration,
+            new FakeApiLocations(),
             tokens,
             new TestNavigation(),
             Substitute.For<ILogger<AIEndpointService>>());

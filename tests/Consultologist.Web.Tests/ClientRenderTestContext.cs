@@ -35,6 +35,9 @@ public abstract class ClientRenderTestContext : BunitContext
 
     protected WorkflowEditorSession EditorSession { get; } = new();
 
+    // #515: one location, unchosen — the shipped state.
+    protected FakeApiLocations Locations { get; } = new();
+
     protected ClientRenderTestContext()
     {
         // Fluent components resolve LibraryConfiguration from DI and fail
@@ -58,6 +61,7 @@ public abstract class ClientRenderTestContext : BunitContext
         Services.AddSingleton(AppUpdate);
         Services.AddSingleton(Substitute.For<ISseDiagnosticsService>());
         Services.AddSingleton(JobSession);
+        Services.AddSingleton<Consultologist.Web.Services.Locations.IApiLocations>(Locations);
 
         // One per test context, the same way it is one per browser tab: the
         // editor keeps its open pane here so a page switch returns to it.

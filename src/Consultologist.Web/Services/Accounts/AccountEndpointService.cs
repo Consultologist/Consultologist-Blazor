@@ -1,3 +1,4 @@
+using Consultologist.Web.Services.Locations;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Components;
@@ -9,6 +10,7 @@ public sealed class AccountEndpointService : IAccountEndpointService
 {
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
+    private readonly IApiLocations _locations;
     private readonly IAccessTokenProvider _accessTokenProvider;
     private readonly NavigationManager _navigation;
     private readonly ILogger<AccountEndpointService> _logger;
@@ -16,12 +18,14 @@ public sealed class AccountEndpointService : IAccountEndpointService
     public AccountEndpointService(
         HttpClient httpClient,
         IConfiguration configuration,
+        IApiLocations locations,
         IAccessTokenProvider accessTokenProvider,
         NavigationManager navigation,
         ILogger<AccountEndpointService> logger)
     {
         _httpClient = httpClient;
         _configuration = configuration;
+        _locations = locations;
         _accessTokenProvider = accessTokenProvider;
         _navigation = navigation;
         _logger = logger;
@@ -29,13 +33,7 @@ public sealed class AccountEndpointService : IAccountEndpointService
 
     public async Task<AccountMeResponse> GetCurrentAccountAsync()
     {
-        var accountUrl = _configuration["AzureFunction:AccountMeUrl"];
-
-        if (string.IsNullOrWhiteSpace(accountUrl))
-        {
-            throw new InvalidOperationException("AzureFunction:AccountMeUrl is not configured.");
-        }
-
+        var accountUrl = _locations.Url(ApiRoutes.AccountMe);
         using var request = new HttpRequestMessage(HttpMethod.Get, accountUrl);
         await AddAuthorizationAsync(request);
 
@@ -359,17 +357,5 @@ public sealed class AccountEndpointService : IAccountEndpointService
         return accountUrl + "/Jobs";
     }
 
-    private string GetAccountBaseUrl()
-    {
-        var accountUrl = _configuration["AzureFunction:AccountMeUrl"];
-
-        if (string.IsNullOrWhiteSpace(accountUrl))
-        {
-            throw new InvalidOperationException("AzureFunction:AccountMeUrl is not configured.");
-        }
-
-        return accountUrl.EndsWith("/Me", StringComparison.OrdinalIgnoreCase)
-            ? accountUrl[..^"/Me".Length]
-            : accountUrl.TrimEnd('/');
-    }
+    private string GetAccountBaseUrl() => _locations.Url(ApiRoutes.Account);
 }

@@ -474,15 +474,17 @@ The Blazor WASM app is configured by this JSON file (bundled, per-environment ov
 via `appsettings.Development.json`), not by environment variables:
 
 - `AzureAd:Authority`, `AzureAd:ClientId`, `AzureAd:ValidateAuthority` — MSAL sign-in.
-- `AzureFunction:ApiScope` — scope requested for API tokens.
-- `AzureFunction:*Url` — endpoint URLs: `AccountMeUrl`, `ConsultGenerationJobsUrl`,
-  `DiagnosticsSseExitUrl`, `WorkflowPackageCurrentUrl`, and the editor pair
-  `WorkflowPackageContentUrl` / `WorkflowPackagePublishUrl` (#57),
-  `WorkflowPackageLineageUrl` (#89), `WorkflowPackageDiagramUrl` (#114),
-  `WorkflowPackageMineUrl` (#134 — the package selector's fork listing), and
-  `WorkflowPackageDiagramPreviewUrl` (#144 — POST a manifest, get its diagram;
-  the editor's pending-edits graph preview). (`AgentProxyUrl`
-  and `ConsultGenerationUrl` were removed with their legacy endpoints in milestone 3.)
+- `Locations` — the deployed regions the profile may choose between (#515),
+  each `{ Id, Name, ApiBase }`; today one entry, `ca-east` / *Canada East* /
+  `https://east.ca.api.consultologist.ai/api`. Every API URL the client
+  calls is built on the chosen entry's `ApiBase` (`ApiRoutes`); the choice
+  is kept on the device (localStorage `api-location`) and, unchosen, the
+  first entry is used and the profile says so. **A location's host must be
+  in `staticwebapp.config.json`'s `connect-src`** — the browser blocks a
+  host that is not, silently. The `AzureFunction:*Url` keys that named each
+  endpoint absolutely are gone.
+- `AzureFunction:ApiScope` — scope requested for API tokens; audience-based,
+  so one app registration serves every location.
 - `AzureFunction:TimeoutSeconds` — HTTP client timeout for AI calls (default 240 when
   absent; shipped value 300).
 - `Build:Commit` — **not an operator setting.** The SWA workflow writes the

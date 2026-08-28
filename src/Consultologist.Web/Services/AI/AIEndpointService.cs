@@ -1,3 +1,4 @@
+using Consultologist.Web.Services.Locations;
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -47,6 +48,7 @@ public class AIEndpointService : IAIEndpointService
 {
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
+    private readonly IApiLocations _locations;
     private readonly IAccessTokenProvider _accessTokenProvider;
     private readonly NavigationManager _navigation;
     private readonly ILogger<AIEndpointService> _logger;
@@ -54,12 +56,14 @@ public class AIEndpointService : IAIEndpointService
     public AIEndpointService(
         HttpClient httpClient,
         IConfiguration configuration,
+        IApiLocations locations,
         IAccessTokenProvider accessTokenProvider,
         NavigationManager navigation,
         ILogger<AIEndpointService> logger)
     {
         _httpClient = httpClient;
         _configuration = configuration;
+        _locations = locations;
         _accessTokenProvider = accessTokenProvider;
         _navigation = navigation;
         _logger = logger;
@@ -146,14 +150,7 @@ public class AIEndpointService : IAIEndpointService
 
         try
         {
-            var functionUrl = _configuration["AzureFunction:ConsultGenerationJobsUrl"];
-
-            if (string.IsNullOrEmpty(functionUrl))
-            {
-                _logger.LogError("AzureFunction:ConsultGenerationJobsUrl is not configured");
-                throw new InvalidOperationException("Azure Function consult generation jobs URL is not configured");
-            }
-
+            var functionUrl = _locations.Url(ApiRoutes.ConsultGenerationJobs);
             var request = new ConsultGenerationRequest(
                 null,
                 workflowPackage,
@@ -215,13 +212,7 @@ public class AIEndpointService : IAIEndpointService
 
     public async Task<string> RescheduleConsultGenerationJobAsync(string jobId, DateTimeOffset scheduledAtUtc)
     {
-        var functionUrl = _configuration["AzureFunction:ConsultGenerationJobsUrl"];
-
-        if (string.IsNullOrEmpty(functionUrl))
-        {
-            throw new InvalidOperationException("Azure Function consult generation jobs URL is not configured");
-        }
-
+        var functionUrl = _locations.Url(ApiRoutes.ConsultGenerationJobs);
         var url = $"{functionUrl.TrimEnd('/')}/{Uri.EscapeDataString(jobId)}/Reschedule";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, url)
@@ -245,13 +236,7 @@ public class AIEndpointService : IAIEndpointService
 
     public async Task CancelConsultGenerationJobAsync(string jobId)
     {
-        var functionUrl = _configuration["AzureFunction:ConsultGenerationJobsUrl"];
-
-        if (string.IsNullOrEmpty(functionUrl))
-        {
-            throw new InvalidOperationException("Azure Function consult generation jobs URL is not configured");
-        }
-
+        var functionUrl = _locations.Url(ApiRoutes.ConsultGenerationJobs);
         var cancelUrl = $"{functionUrl.TrimEnd('/')}/{Uri.EscapeDataString(jobId)}/Cancel";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, cancelUrl);
@@ -273,14 +258,7 @@ public class AIEndpointService : IAIEndpointService
 
         try
         {
-            var functionUrl = _configuration["AzureFunction:ConsultGenerationJobsUrl"];
-
-            if (string.IsNullOrEmpty(functionUrl))
-            {
-                _logger.LogError("AzureFunction:ConsultGenerationJobsUrl is not configured");
-                throw new InvalidOperationException("Azure Function consult generation jobs URL is not configured");
-            }
-
+            var functionUrl = _locations.Url(ApiRoutes.ConsultGenerationJobs);
             var statusUrl = $"{functionUrl.TrimEnd('/')}/{Uri.EscapeDataString(jobId)}";
 
             _logger.LogDebug("Polling consult generation job at {Url}. JobId={JobId}", statusUrl, jobId);
@@ -329,14 +307,7 @@ public class AIEndpointService : IAIEndpointService
 
     public string GetConsultGenerationJobEventsUrl(string jobId, string attemptId, string? lastEventId = null)
     {
-        var functionUrl = _configuration["AzureFunction:ConsultGenerationJobsUrl"];
-
-        if (string.IsNullOrEmpty(functionUrl))
-        {
-            _logger.LogError("AzureFunction:ConsultGenerationJobsUrl is not configured");
-            throw new InvalidOperationException("Azure Function consult generation jobs URL is not configured");
-        }
-
+        var functionUrl = _locations.Url(ApiRoutes.ConsultGenerationJobs);
         return $"{functionUrl.TrimEnd('/')}/{Uri.EscapeDataString(jobId)}/events?attemptId={Uri.EscapeDataString(attemptId)}";
     }
 

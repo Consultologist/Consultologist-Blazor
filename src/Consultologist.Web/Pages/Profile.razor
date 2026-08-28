@@ -2,6 +2,8 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
 @using Consultologist.Web.Services.AppUpdate
+@using Consultologist.Web.Services.Locations
+@inject IApiLocations Locations
 @inject IAccountEndpointService AccountService
 @inject IWorkflowEndpointService WorkflowService
 @inject IConfiguration Configuration
@@ -147,6 +149,65 @@
                                           Disabled="@linkedInDisconnectInProgress"
                                           @onclick="DisconnectLinkedInAsync">
                                 @(disconnectArmed ? "Confirm disconnect" : "Disconnect")
+                            </FluentButton>
+                        }
+                    </div>
+                </div>
+            </section>
+
+            @* #515: the location — where the app sends data and reads the
+               account. Kept on this device; empty until chosen, and the
+               unchosen line says which location is used meanwhile. *@
+            <section class="content-card location-card">
+                <div class="form-stack">
+                    <h2 class="panel-title">
+                        Location
+                    </h2>
+
+                    <p class="panel-description">
+                        Where the app sends your data and reads your account, packages and History.
+                        The choice is kept on this device. Each location holds its own accounts,
+                        packages and History, so changing it shows you that location's, not a copy.
+                        Every run records the host it ran on.
+                    </p>
+
+                    @if (locationMessage != null)
+                    {
+                        <FluentMessageBar Intent="@locationMessageIntent" AllowDismiss="false" Class="location-message">
+                            @locationMessage
+                        </FluentMessageBar>
+                    }
+
+                    <div class="state-panel">
+                        <span class="muted-text">Location</span>
+                        <strong class="location-state">@LocationState()</strong>
+                        @if (engineHost != null)
+                        {
+                            <span class="muted-text location-answers">Answers as @engineHost</span>
+                        }
+                    </div>
+
+                    <div class="action-row">
+                        @foreach (var location in Locations.All)
+                        {
+                            @if (Locations.Chosen?.Id != location.Id)
+                            {
+                                <FluentButton Appearance="Appearance.Accent"
+                                              Class="location-choose"
+                                              data-location="@location.Id"
+                                              Disabled="@locationRequestInProgress"
+                                              @onclick="() => ChooseLocationAsync(location)">
+                                    Use @location.Name
+                                </FluentButton>
+                            }
+                        }
+                        @if (Locations.Chosen != null)
+                        {
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Class="location-clear"
+                                          Disabled="@locationRequestInProgress"
+                                          @onclick="ClearLocationAsync">
+                                Back to not chosen
                             </FluentButton>
                         }
                     </div>
@@ -510,6 +571,7 @@
             account = await AccountService.GetCurrentAccountAsync();
             await LoadScheduleTimeAsync();
         await LoadEmailPdfAsync();
+        await LoadEngineHostAsync();
         }
         catch (AccessTokenNotAvailableException exception)
         {
@@ -613,6 +675,109 @@
         finally
         {
             scheduleRequestInProgress = false;
+        }
+    }
+
+    // #515: the location. The device's copy is the authority; the account
+    // keeps a record in the chosen location.
+    private bool locationRequestInProgress;
+    private string? locationMessage;
+    private MessageIntent locationMessageIntent = MessageIntent.Info;
+    private string? engineHost;
+
+    private string LocationState()
+    {
+        if (Locations.Chosen is { } chosen)
+        {
+            return $"{chosen.Name} — {chosen.Host}";
+        }
+
+        var used = Locations.Current;
+        return Locations.All.Count == 1
+            ? $"Not chosen — {used.Name}, the only location, is used"
+            : $"Not chosen — {used.Name} is used until you choose";
+    }
+
+    private async Task LoadEngineHostAsync()
+    {
+        try
+        {
+            engineHost = (await WorkflowService.GetEngineAsync())?.ApiHost;
+        }
+        catch
+        {
+            engineHost = null;
+        }
+    }
+
+    private async Task ChooseLocationAsync(ApiLocation location)
+    {
+        locationRequestInProgress = true;
+
+        try
+        {
+            await Locations.ChooseAsync(location.Id);
+            // The record, in the location just chosen — best effort: the
+            // device's copy already decides.
+            try
+            {
+                await AccountService.SaveSettingAsync(LocationPreference.SettingKey, location.Id, LocationPreference.ContentType);
+            }
+            catch (AccessTokenNotAvailableException exception)
+            {
+                exception.Redirect();
+            }
+            catch
+            {
+            }
+
+            locationMessage = $"Location set to {location.Name} — reloading.";
+            locationMessageIntent = MessageIntent.Success;
+            // Every session holder (job, editor) belongs to the old location.
+            Navigation.NavigateTo("/profile", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            locationMessage = ex.Message;
+            locationMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            locationRequestInProgress = false;
+        }
+    }
+
+    private async Task ClearLocationAsync()
+    {
+        locationRequestInProgress = true;
+
+        try
+        {
+            try
+            {
+                await AccountService.DeleteSettingAsync(LocationPreference.SettingKey);
+            }
+            catch (AccessTokenNotAvailableException exception)
+            {
+                exception.Redirect();
+            }
+            catch
+            {
+            }
+
+            await Locations.ClearAsync();
+            locationMessage = "Back to not chosen — reloading.";
+            locationMessageIntent = MessageIntent.Success;
+            Navigation.NavigateTo("/profile", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            locationMessage = ex.Message;
+            locationMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            locationRequestInProgress = false;
         }
     }
 

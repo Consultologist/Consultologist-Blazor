@@ -31,6 +31,9 @@ builder.Services.AddHttpClient<IAIEndpointService, AIEndpointService>(client =>
     client.Timeout = TimeSpan.FromSeconds(agentProxyTimeoutSeconds);
 });
 
+// #515: the location the app talks to — read from this device before the
+// first call; every endpoint service builds its URLs on it.
+builder.Services.AddScoped<Consultologist.Web.Services.Locations.IApiLocations, Consultologist.Web.Services.Locations.ApiLocations>();
 builder.Services.AddHttpClient<IAccountEndpointService, AccountEndpointService>();
 builder.Services.AddHttpClient<ISseDiagnosticsService, SseDiagnosticsService>();
 builder.Services.AddHttpClient<IWorkflowEndpointService, WorkflowEndpointService>();
