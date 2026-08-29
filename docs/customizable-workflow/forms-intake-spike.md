@@ -322,7 +322,17 @@ findings on the way there, both for the flow recipe (issue D):
   bridge**: the flow mails the answers from the clinician's own mailbox to
   the intake mailbox, matched by sender as today (§ 1), at email's cost
   (text only, no staged review). To be weighed in the split.
-The 200 from `Account/Me` itself is pending the trial licence.
+*Result (2026-08-29, organisation half closed):* with a Premium licence
+assigned, the flow ran green and `GET /api/Account/Me` answered **200**
+with the operator's own account — the same `AppUserId` the app resolves,
+`SignInKind: "organisation"`, `DeliveryAddressVerifiedBy: "tenant"`. The
+gateway added its own `x-ms-*` headers and ~3.9 s upstream time; the API
+saw an ordinary bearer request. One fact that made it the *same* account:
+the validator keys identity on the token's `oid` claim
+(`BearerTokenValidator.cs:80`), not the pairwise `sub` — `sub` differs per
+client application, and the flow's client is not the SPA, so an account
+keyed on `sub` would have split in two. The personal-account half (the
+connector refusing a personal sign-in) is still to run.
 
 **E2 — payload.** A test form with one question of each type: text
 (short), text (long), choice (single), choice (multiple), date, number,
