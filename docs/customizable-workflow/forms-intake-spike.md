@@ -147,6 +147,36 @@ anywhere. What it needs, once per tenant:
 - the API registration lists it under *Authorized client applications*,
   so the clinician sees no consent prompt beyond the connection.
 
+**Tenant setup, done 2026-08-28** (the operator's `az` session, tenant
+`consultologist.ai`; each step reversible):
+
+```sh
+C=d2ebd3a9-1ada-4480-8b2d-eac162716601          # PowerPlatform-webcontentsv2-Connector
+API=b3866040-8bae-4c01-88ba-ecff646df451        # the API registration
+SCOPE=56062e5c-58b4-4282-b497-27350d152114      # its access_as_user scope id
+
+# 1. The connector's service principal (absent until created).
+az ad sp create --id $C
+# 2. Tenant-wide delegated consent: the connector may call the API as the signed-in user.
+az ad app permission grant --id $C --api $API --scope access_as_user
+# 3. Preauthorize the connector on the API registration — MERGED with the
+#    existing entries (the SPA), never replacing them.
+cur=$(az ad app show --id $API --query api.preAuthorizedApplications -o json)
+new=$(python3 -c "import json,sys; a=json.loads(sys.argv[1]); a=[x for x in a if x['appId']!='$C']; \
+  a.append({'appId':'$C','delegatedPermissionIds':['$SCOPE']}); print(json.dumps(a))" "$cur")
+objid=$(az ad app show --id $API --query id -o tsv)
+az rest --method PATCH --url "https://graph.microsoft.com/v1.0/applications/$objid" \
+  --headers "Content-Type=application/json" --body "{\"api\":{\"preAuthorizedApplications\":$new}}"
+```
+
+Verify: `az ad sp show --id $C`; the grant via
+`oauth2PermissionGrants?$filter=clientId eq '<sp object id>'` shows
+`access_as_user` / `AllPrincipals`; `az ad app show --id $API --query
+api.preAuthorizedApplications[].appId` lists both apps. Reverse with
+`az ad sp delete --id $C` (drops the grant too) and a PATCH that omits the
+entry. A second region's API is a second registration only if it has one;
+today one registration serves every location (#515), so this is once.
+
 The older *HTTP with Microsoft Entra ID (preauthorized)* connector uses a
 first-party app preauthorized only for Microsoft services and is being
 retired in favour of discrete consent; it is not the path. The fallback,
@@ -267,7 +297,42 @@ Microsoft Entra ID → Invoke an HTTP request*, resource
 account: `GET /api/Account/Me`. Expected 200 with the account. Then the
 same connection attempted from a personal Microsoft account: expected to
 fail at the connector.
-*Result:* _pending_.
+*Result (2026-08-28, partial):* the tenant setup above took effect within
+minutes — a connection for `api://b3866040-…` with the organisation account
+completed with **no consent prompt** (the token side of E1 holds). Two
+findings on the way there, both for the flow recipe (issue D):
+- *Making the connection is convoluted in the new designer.* Its
+  in-editor dialog asks only for the Entra Resource URI, and a connection
+  made there never completes (*Invalid connection, please update your
+  connection to load complete details*). The fields are easy to swap on
+  the Connections page too — the base URL in the resource field gives
+  `AADSTS500011: The resource principal named https://east.ca.api.… was
+  not found`. What worked: create the connection from the action, then
+  **edit it on the Connections page** to add Base Resource URL
+  `https://east.ca.api.consultologist.ai` beside the resource URI, then
+  re-enter the action's method and URL. A solution flow also binds to a
+  *connection reference*, not the connection — a plain flow (*My flows →
+  New*) is simpler for this.
+- *The run is gated by licensing.* The flow checker: *This flow's owner
+  needs a Power Automate Premium license.* Both HTTP connectors and custom
+  connectors are premium, so **every clinician running a Forms flow into
+  the API needs a premium licence** (a 90-day self-service trial exists).
+  The one licence-free way out of a Forms flow is a standard connector —
+  *Office 365 Outlook → Send an email* — i.e. a **Forms → email-door
+  bridge**: the flow mails the answers from the clinician's own mailbox to
+  the intake mailbox, matched by sender as today (§ 1), at email's cost
+  (text only, no staged review). To be weighed in the split.
+*Result (2026-08-29, organisation half closed):* with a Premium licence
+assigned, the flow ran green and `GET /api/Account/Me` answered **200**
+with the operator's own account — the same `AppUserId` the app resolves,
+`SignInKind: "organisation"`, `DeliveryAddressVerifiedBy: "tenant"`. The
+gateway added its own `x-ms-*` headers and ~3.9 s upstream time; the API
+saw an ordinary bearer request. One fact that made it the *same* account:
+the validator keys identity on the token's `oid` claim
+(`BearerTokenValidator.cs:80`), not the pairwise `sub` — `sub` differs per
+client application, and the flow's client is not the SPA, so an account
+keyed on `sub` would have split in two. The personal-account half (the
+connector refusing a personal sign-in) is still to run.
 
 **E2 — payload.** A test form with one question of each type: text
 (short), text (long), choice (single), choice (multiple), date, number,
