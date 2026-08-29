@@ -332,37 +332,111 @@ the validator keys identity on the token's `oid` claim
 (`BearerTokenValidator.cs:80`), not the pairwise `sub` — `sub` differs per
 client application, and the flow's client is not the SPA, so an account
 keyed on `sub` would have split in two. The personal-account half (the
-connector refusing a personal sign-in) is still to run.
+connector refusing a personal sign-in) was not run: § 2.2's two
+documented refusals stand as the answer.
 
 **E2 — payload.** A test form with one question of each type: text
 (short), text (long), choice (single), choice (multiple), date, number,
 rating, yes/no (a two-option choice), file upload. One response; the
 *Get response details* raw output pasted here with any name replaced.
-*Result:* _pending_.
+*Result (2026-08-29):* two responses, both exactly the shape § 2.4
+predicted. The first (plain link; Rating skipped; a PDF attached):
+
+```json
+{
+  "responder": "anonymous",
+  "submitDate": "8/29/2026 8:37:39 PM",
+  "r47b39424b1d74d9fa9429073481dd210": "alpha",
+  "r3044f9d17c3d40c3b0aac3f2d7b5d7ca": "Lorem ipsum dolor sit amet, … id est laborum.",
+  "rf4fdee220eb643dc9149bc12511c9a55": "Routine",
+  "rc41a5fcedd4c4b9d9659d6e549549a67": "[\"A\",\"C\"]",
+  "r5d761e0d016c483c9b2097d8b33863fd": "No",
+  "r839d6ec84c764f09b703f2b355b19e8f": "2026-08-29",
+  "r6364829f474b420dba762161b484c296": "",
+  "r7578537728414840a23d25a04848fdb6": "42",
+  "r97899a54d2ef41198eed60a46668785b": "[{\"name\":\"referral-text_anonymous 1.pdf\",\"link\":\"https://<tenant>-my.sharepoint.com/personal/<user>/Documents/Apps/Microsoft%20Forms/…/referral-text_anonymous%201.pdf\",\"id\":\"017…\",\"type\":null,\"size\":21944,\"referenceId\":\"017…\",\"driveId\":\"b!…\",\"status\":1,\"uploadSessionUrl\":null,\"badgerToken\":null}]"
+}
+```
+
+Read against the questions: short text, long text (no newline was typed;
+a typed newline is expected as `\n`), single choice as the option's text,
+multiple choice as a JSON array *string*, the two-option Yes/No as its
+text, date as `yyyy-MM-dd`, the skipped rating as `""`, the
+number-restricted text as the digits, and the file upload as a JSON array
+string of OneDrive links into the *form owner's* tenant (§ 2.4 holds:
+not followed). `responder` is `"anonymous"` and the upload is named
+`…_anonymous` because the form does not record names — the account never
+comes from `responder` anyway (§ 4.1). The second response (the
+pre-filled link, *Other* chosen for Urgency with the text `Semi-urgent`)
+differed in two keys only:
+
+```json
+  "r47b39424b1d74d9fa9429073481dd210": "token-123",
+  "rf4fdee220eb643dc9149bc12511c9a55": "Semi-urgent",
+```
+
+**An *Other* answer arrives as its free text, indistinguishable from a
+declared option.** The picker therefore checks every choice answer
+against the package's `Values` and names one that is not among them
+(§ 4.2); the question's type is no guarantee.
 
 **E3 — pre-fill.** *Get Pre-filled URL* with the short text question
 pre-filled `token-123`; opened in a private window and submitted — does
 `token-123` arrive in E2's payload? Opened again in a normal window after
 a prior response — is the pre-fill applied?
-*Result:* _pending_.
+*Result (2026-08-29):* the pre-filled value was **shown and editable** in
+the private window and arrived intact (`"token-123"`, E2's second
+response). Opened again in the signed-in session that had already
+responded, the field was **again pre-filled** — the "not applied on a
+restored session" caveat from the write-ups did not reproduce on this
+form (multiple responses allowed, names not recorded); it is conditional
+on a form's settings, not a rule. The property the design rests on holds
+either way: a pre-filled value is a visible, editable field, never a
+hidden binding (§ 2.3).
 
 **E4 — push shape.** The flow POSTs
 `{ formId, responseId, submittedAtUtc, inputs: { consult_draft: <long text> } }`
 to `/api/Intake/Forms/Responses` (which does not exist yet). Expected: a
 404 from the API *after* the bearer was accepted (a 401 would mean the
 token was refused at the edge).
-*Result:* _pending_.
+*Result (2026-08-29):* **404**, from the API's own host — the response
+carried `x-servicefabric: ResourceNotFound` and ~4.6 s of upstream time,
+so a POST with a JSON body traversed the Entra connection to
+`east.ca.api.consultologist.ai` and met a Functions host with no such
+route. Two facts for issue A: the connector reports any non-JSON response
+body as an error (*"The response is not in a JSON format"*), so the
+endpoint must answer JSON on **every** status — the API's
+`CreateErrorResponseAsync` already does; only the host's bare 404 does
+not — and the connection's user is the flow's owner, so the account the
+API resolves is the clinician's, with no account named in the body.
+
+### 6.1 What the experiments changed
+
+Nothing in § 4 needed reversing. Three things sharpened: the coercion in
+§ 4.2 must treat a choice answer as untrusted text (E2's *Other*); the
+endpoint in § 4.1 must answer JSON on every status (E4); and the licence
+gate (E1) is real — **each clinician running a flow into the API needs a
+Power Automate Premium licence** (a 90-day self-service trial exists;
+pay-as-you-go per environment is the alternative at scale). The one
+licence-free way out of a Forms flow is a standard connector, and
+*Office 365 Outlook → Send an email* is one: a **Forms → email-door
+bridge** — the flow mails the answers from the clinician's own mailbox to
+the intake mailbox, matched by sender as today (§ 1) — costs nothing
+extra and needs no new endpoint, at email's price: every value text (no
+booleans, enums, numbers, arrays), no staged review, no origin per
+input. It is a fallback for a clinic without premium licences, not the
+design; issue D documents it beside the recipe.
 
 ## 7. The split
 
 | Issue | Builds | Order |
 |---|---|---|
-| A | § 4.1 held responses: endpoint, table, retention sweep, list/discard | first |
-| B | § 4.2 picker, coercion, `InputFormRefs`, origin at start | after A |
-| C | § 4.3 provenance `form-response` kind (registry, version bump) | before B lands |
-| D | § 4.4 flow recipe, tenant setup, CONFIGURATION/ACCOUNTS docs | after E1 |
+| A | #539 — § 4.1 held responses: endpoint, table, retention sweep, list/discard | first |
+| B | #540 — § 4.2 picker, coercion, `InputFormRefs`, origin at start | after A |
+| C | #541 — § 4.3 provenance `form-response` kind (registry, version bump) | before B lands |
+| D | #542 — § 4.4 flow recipe, tenant setup, licensing, the email bridge | after A |
 
-#511 closes when this record carries E1–E4's results and A–D are filed.
+#511 closed 2026-08-29 with E1–E4 recorded and A–D filed.
 
 [graph-admin]: https://learn.microsoft.com/graph/api/resources/adminforms?view=graph-rest-beta
 [qa-api]: https://learn.microsoft.com/en-us/answers/questions/5810347/extract-microsoft-forms-responses-data-using-api
