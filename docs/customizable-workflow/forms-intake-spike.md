@@ -1,7 +1,7 @@
 # Microsoft Forms as an intake source — spike record (#511)
 
 **Status: spike record for Milestone 21 (research settled 2026-08-28;
-experiments E1–E4 pending, § 6).** #511 asked whether a Microsoft Forms
+experiments E1–E4 run 2026-08-29, § 6; split filed, § 7).** #511 asked whether a Microsoft Forms
 questionnaire response can fill a package's declared inputs the way an
 email (#157–#159) or a document (#235–#240) does, and said *exploration
 first*: which integration path is reachable for a personal Microsoft
