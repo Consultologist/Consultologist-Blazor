@@ -297,7 +297,32 @@ Microsoft Entra ID → Invoke an HTTP request*, resource
 account: `GET /api/Account/Me`. Expected 200 with the account. Then the
 same connection attempted from a personal Microsoft account: expected to
 fail at the connector.
-*Result:* _pending_.
+*Result (2026-08-28, partial):* the tenant setup above took effect within
+minutes — a connection for `api://b3866040-…` with the organisation account
+completed with **no consent prompt** (the token side of E1 holds). Two
+findings on the way there, both for the flow recipe (issue D):
+- *Making the connection is convoluted in the new designer.* Its
+  in-editor dialog asks only for the Entra Resource URI, and a connection
+  made there never completes (*Invalid connection, please update your
+  connection to load complete details*). The fields are easy to swap on
+  the Connections page too — the base URL in the resource field gives
+  `AADSTS500011: The resource principal named https://east.ca.api.… was
+  not found`. What worked: create the connection from the action, then
+  **edit it on the Connections page** to add Base Resource URL
+  `https://east.ca.api.consultologist.ai` beside the resource URI, then
+  re-enter the action's method and URL. A solution flow also binds to a
+  *connection reference*, not the connection — a plain flow (*My flows →
+  New*) is simpler for this.
+- *The run is gated by licensing.* The flow checker: *This flow's owner
+  needs a Power Automate Premium license.* Both HTTP connectors and custom
+  connectors are premium, so **every clinician running a Forms flow into
+  the API needs a premium licence** (a 90-day self-service trial exists).
+  The one licence-free way out of a Forms flow is a standard connector —
+  *Office 365 Outlook → Send an email* — i.e. a **Forms → email-door
+  bridge**: the flow mails the answers from the clinician's own mailbox to
+  the intake mailbox, matched by sender as today (§ 1), at email's cost
+  (text only, no staged review). To be weighed in the split.
+The 200 from `Account/Me` itself is pending the trial licence.
 
 **E2 — payload.** A test form with one question of each type: text
 (short), text (long), choice (single), choice (multiple), date, number,
