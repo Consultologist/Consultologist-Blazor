@@ -68,6 +68,11 @@ another (#400); what stays here is why each was chosen. Public by design, like t
   the fire set is decided, a condition evaluator with `and`/`or`/`not` and
   arithmetic, unbounded nesting and hash definition 6; the ladder of PRs;
   the three v9 § 13 roads taken deliberately, trigger unfired
+- [forms-intake-spike.md](forms-intake-spike.md) — spike record (#511, 2026-08-28):
+  a Microsoft Forms response as an intake source — no supported API, so the
+  clinician's Power Automate flow pushes responses with the clinician's own
+  token into a held list the setup form picks from; organisation sign-ins
+  only; experiments E1–E4 pending
 - [package-format-v5-design.md](package-format-v5-design.md) — converged design
   (2026-07-15): fork-everything with derivedFrom lineage, data/
   collections replacing the standards straddle, one node kind with forEach,

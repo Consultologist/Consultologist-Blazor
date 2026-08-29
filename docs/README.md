@@ -66,7 +66,10 @@ would otherwise have carried it (#397).
   [package format v8 design](customizable-workflow/package-format-v8-design.md)
   (typed inputs and conditional deliverables; also carries the candidates
   considered and not taken, and why the trigger was overridden rather than
-  met)
+  met),
+  [Forms intake spike](customizable-workflow/forms-intake-spike.md)
+  (#511: what the documentation and the engine establish about a Microsoft
+  Forms door, the staged design, and the operator-run experiments)
 
 ## Research
 
