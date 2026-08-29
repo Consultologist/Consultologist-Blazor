@@ -147,6 +147,36 @@ anywhere. What it needs, once per tenant:
 - the API registration lists it under *Authorized client applications*,
   so the clinician sees no consent prompt beyond the connection.
 
+**Tenant setup, done 2026-08-28** (the operator's `az` session, tenant
+`consultologist.ai`; each step reversible):
+
+```sh
+C=d2ebd3a9-1ada-4480-8b2d-eac162716601          # PowerPlatform-webcontentsv2-Connector
+API=b3866040-8bae-4c01-88ba-ecff646df451        # the API registration
+SCOPE=56062e5c-58b4-4282-b497-27350d152114      # its access_as_user scope id
+
+# 1. The connector's service principal (absent until created).
+az ad sp create --id $C
+# 2. Tenant-wide delegated consent: the connector may call the API as the signed-in user.
+az ad app permission grant --id $C --api $API --scope access_as_user
+# 3. Preauthorize the connector on the API registration — MERGED with the
+#    existing entries (the SPA), never replacing them.
+cur=$(az ad app show --id $API --query api.preAuthorizedApplications -o json)
+new=$(python3 -c "import json,sys; a=json.loads(sys.argv[1]); a=[x for x in a if x['appId']!='$C']; \
+  a.append({'appId':'$C','delegatedPermissionIds':['$SCOPE']}); print(json.dumps(a))" "$cur")
+objid=$(az ad app show --id $API --query id -o tsv)
+az rest --method PATCH --url "https://graph.microsoft.com/v1.0/applications/$objid" \
+  --headers "Content-Type=application/json" --body "{\"api\":{\"preAuthorizedApplications\":$new}}"
+```
+
+Verify: `az ad sp show --id $C`; the grant via
+`oauth2PermissionGrants?$filter=clientId eq '<sp object id>'` shows
+`access_as_user` / `AllPrincipals`; `az ad app show --id $API --query
+api.preAuthorizedApplications[].appId` lists both apps. Reverse with
+`az ad sp delete --id $C` (drops the grant too) and a PATCH that omits the
+entry. A second region's API is a second registration only if it has one;
+today one registration serves every location (#515), so this is once.
+
 The older *HTTP with Microsoft Entra ID (preauthorized)* connector uses a
 first-party app preauthorized only for Microsoft services and is being
 retired in favour of discrete consent; it is not the path. The fallback,
