@@ -12,11 +12,12 @@ documentation and the engine, states the two decisions taken with the
 operator, proposes the design the split issues will build, and carries
 the experiment protocol whose results complete it.
 
-Decisions taken with the operator: responses are **staged, not
-automatic** — the clinician's flow pushes each response into a held list,
-and on the setup form a *Load from a form response…* picker (the #510
-pattern) fills the declared inputs for review before a run; and the flow
-authenticates with **the clinician's own token, no secrets** — a
+Decisions taken with the operator: responses are **staged first, and
+ultimately both** — the clinician's flow pushes each response into a held
+list, and on the setup form a *Load from a form response…* picker (the
+#510 pattern) fills the declared inputs for review before a run; an
+account option to run each response at once follows (§ 4.5, #543); and
+the flow authenticates with **the clinician's own token, no secrets** — a
 delegated `access_as_user` bearer, so the account is the token's and
 nothing is stored.
 
@@ -275,11 +276,41 @@ passed as they arrive (a JSON array string). For the operator, once:
 create the connector's service principal, grant it `access_as_user`,
 authorize it on the API registration (§ 2.5).
 
+### 4.5 Both ways: hold for review, or run at once (#543)
+
+The question put to the operator on 2026-08-28, verbatim:
+
+> **How should a form response become a consult?**
+>
+> 1. *Each response starts a run.* Like the email door: the clinician's
+>    Power Automate flow pushes each response to the API, which starts a
+>    job on the account's pinned package at once and records the source.
+>    No per-consult link or token needed — the response is the consult.
+>    Fully automatic; nothing to review before it runs.
+> 2. *Responses are staged; the clinician picks one.* The flow pushes
+>    responses into a held list; on the setup form a *Load from a form
+>    response…* picker (like #510's) fills the declared inputs, the
+>    clinician reviews, then runs. Adds a store of PHI-bearing responses
+>    with its own retention; no automatic runs.
+
+The answer was 2 — and, on 2026-08-30, **ultimately both**. Option 2 is
+what A–D build; option 1 follows as an account option, *Form responses:
+hold for review / run at once*, empty until chosen (unset means hold,
+said on the card — the #518 rule). With *run at once*, the push in § 4.1
+holds the response **and** starts a job on the pinned package with the
+coercion of § 4.2; a value that does not fit its declaration refuses the
+start by name and the response stays held for the picker. Such a run
+records `source: forms` — the third value beside `app` and `email` (§ 3)
+— with `form-response` origins per input; delivery follows #518's setting
+like any app-initiated run, and the respondent is never replied to. The
+held row is the exactly-once claim: a retried push of a response that
+already started a job is 204 and starts nothing.
+
 ## 5. What is not in this design
 
 - A per-consult link or token (§ 2.3) — the staged picker replaces it.
-- Automatic runs from a response — the operator chose review first; an
-  *auto-run* switch could be a later profile option with #518's shape.
+- Automatic runs from a response in A–D — the operator chose review
+  first; the run-at-once option is § 4.5 / #543.
 - Following file-upload links into the clinician's tenant (§ 2.4).
 - Personal Microsoft accounts (§ 2.2).
 - A reply to the respondent — the respondent is the patient; the consult
@@ -435,6 +466,7 @@ design; issue D documents it beside the recipe.
 | B | #540 — § 4.2 picker, coercion, `InputFormRefs`, origin at start | after A |
 | C | #541 — § 4.3 provenance `form-response` kind (registry, version bump) | before B lands |
 | D | #542 — § 4.4 flow recipe, tenant setup, licensing, the email bridge | after A |
+| E | #543 — § 4.5 the account option: hold for review or run at once; `source: forms` | after A and B |
 
 #511 closed 2026-08-29 with E1–E4 recorded and A–D filed.
 
