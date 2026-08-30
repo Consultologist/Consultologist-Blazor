@@ -17,8 +17,11 @@ one class per container**, and the entity keeps hashes and pointers —
 deletion is a blob delete, a storage lifecycle policy backs the sweep, and
 PHI leaves Durable state; **two private storage accounts per region**, a
 *text* account for what is PHI and short-lived and a *records* account for
-what is permanent and PHI-free; one store set per location (#515), the
-public registries shared; identity-only access everywhere, as since M11.
+what is permanent and PHI-free; **enterprise and personal accounts kept
+apart** — every text container comes as a pair, one for organisation
+sign-ins and one for personal Microsoft accounts (§ 2.5); one store set
+per location (#515), the public registries shared; identity-only access
+everywhere, as since M11.
 
 ## 1. What exists
 
@@ -98,8 +101,8 @@ purge leaves behind, and its residency.
 
 | Class | Holds | Account | Store | Key | Retention | Deleter |
 |---|---|---|---|---|---|---|
-| **Inputs** | the effective input map (documents already extracted, references already copied, form values already coerced); held form responses | text | `job-inputs` container; `form-responses` container | `{appUserId}/{jobId}.json`; `{appUserId}/{formId}-{responseId}.json` | the account's `retention.inputDays` (#548), default `TextRetention__Days`, ≤ outputs, ≤ 30 | the sweep (blob delete + `inputsDroppedAtUtc`); lifecycle policy at 30 days as the backstop |
-| **Outputs** | assembled deliverables, node outputs and concepts, the SSE snapshots | text | `job-outputs` container; `ConsultGenerationJobEvents` table (moved) | `{appUserId}/{jobId}.json`; jobId partition | `retention.outputDays`, default `TextRetention__Days`, ≤ 30 | the sweep (blob delete + `textDroppedAtUtc`, events partition delete); same backstop |
+| **Inputs** | the effective input map (documents already extracted, references already copied, form values already coerced); held form responses | text | `org-job-inputs` / `personal-job-inputs`; `org-form-responses` / `personal-form-responses` (§ 2.5) | `{appUserId}/{jobId}.json`; `{appUserId}/{formId}-{responseId}.json` | the account's `retention.inputDays` (#548), default `TextRetention__Days`, ≤ outputs, ≤ 30 | the sweep (blob delete + `inputsDroppedAtUtc`); lifecycle policy at 30 days as the backstop |
+| **Outputs** | assembled deliverables, node outputs and concepts, the SSE snapshots | text | `org-job-outputs` / `personal-job-outputs`; `ConsultGenerationJobEvents` table (moved) | `{appUserId}/{jobId}.json`; jobId partition | `retention.outputDays`, default `TextRetention__Days`, ≤ 30 | the sweep (blob delete + `textDroppedAtUtc`, events partition delete); same backstop |
 | **History / record** | the entity minus its text; the index row; the links index (#546); the origins with digests | records | Durable entity state; `ConsultGenerationJobIndex`; `ConsultGenerationLinks` table | jobId; appUserId / reverse-ticks_jobId; sourceJobId / consumerJobId | **never** | none — hashes are stamped at completion and outlive everything |
 | **Usage** | per-account, per-day counts (#552): consults completed, input and output tokens; per-run numbers on the record (#551) | records | `AccountUsage` table | appUserId / `yyyy-MM-dd` | indefinite — the store that survives every purge | none; numbers only, derived at completion, **never re-derived from records** |
 
@@ -153,6 +156,42 @@ row per account per hour, the same shape of store, and the cleanup rule
 (§ 7 M6) applies to both — rows older than the longest window anyone
 reads (90 days) go.
 
+### 2.5 Enterprise and personal accounts, apart
+
+An account signs in either with an **organisation** tenant or with a
+**personal Microsoft account** (the consumers tenant
+`9188040d-6c67-4c5b-b112-36a304b66dad`; `docs/ACCOUNTS.md`, and the rule
+#517 draws in `DeliveryAddress.IsOrganisation`). The two populations
+differ in who is accountable for the data, what an organisation may ask
+for (its own retention, its own hardening, one day its own store set),
+and what a personal user expects. Their text is therefore never in one
+container: **every text container is a pair**, `org-…` and `personal-…`,
+same layout, same clocks, separate lifecycle rules and separate access
+policies if ever needed — `org-job-inputs`, `personal-job-inputs`,
+`org-job-outputs`, `personal-job-outputs`, `org-form-responses`,
+`personal-form-responses`. The events table stays one table (rows are
+per job, deleted per job); the records account's tables stay shared —
+every row is already partitioned by the account.
+
+The kind is a property of the **account**, decided once: `AppUsers`
+gains `AccountKind` (`organisation` | `personal`), stamped at creation
+from the first Entra identity's issuer tenant, and for existing accounts
+derived once from their linked Entra identity (an account with none —
+LinkedIn-only is impossible; Entra is the sign-in — cannot exist). The
+kind is on `Account/Me` as `signInKind` already is for the *token*; the
+two agree by construction for a single-identity account, and the account's
+kind wins for the store. A blob pointer on the record names the container,
+so the kind is readable from any record without a lookup. Moving an
+account between kinds is not a feature: it would be a migration of every
+held blob, and there is no path by which an account changes tenant.
+
+Why containers, not accounts: the two populations need different
+*policies* on the same *class* of data, and a container is the unit those
+are set on within one region and one class; a third and fourth account per
+region would double the operator surface for no separation the container
+does not already give. An organisation that later needs its own store set
+is a new location in #515's sense, not a new container.
+
 ## 3. Two accounts per region
 
 Named from the host rule (`docs/CONFIGURATION.md` 142–152): the region
@@ -165,7 +204,7 @@ already forbid it in code). The **text** account is new (§ 7 M1).
 
 | | text account | records account |
 |---|---|---|
-| Holds | `job-inputs`, `job-outputs`, `form-responses` containers; `ConsultGenerationJobEvents` | the Durable hub; the account, settings, claim, ownership, index, links and usage tables; the private `workflow-packages` |
+| Holds | the six text containers of § 2.5 (`org-`/`personal-` × `job-inputs`, `job-outputs`, `form-responses`); `ConsultGenerationJobEvents` | the Durable hub; the account, settings, claim, ownership, index, links and usage tables; the private `workflow-packages` |
 | Shared key | off | off |
 | Identity's roles | Storage Blob Data Contributor, Storage Table Data Contributor | as today: Blob Data Owner, Queue Data Contributor, Table Data Contributor |
 | Lifecycle policy | delete blobs 30 days after creation, every container — the ceiling of #548, never the rule | none |
@@ -195,8 +234,8 @@ holds patient data.
 
 | Class | Before the sweep | After |
 |---|---|---|
-| Inputs | `job-inputs/{a}/{j}.json`; the orchestration payload | blob gone; payload purged; `inputsDroppedAtUtc` on the record; the effective-input hash and the origins' digests stay |
-| Outputs | `job-outputs/{a}/{j}.json`; the events partition; the entity's text fields (until M2 lands) | blob and partition gone; `textDroppedAtUtc`; `documentHash`, `workflowOutputHash`, every node's `outputHash` stay |
+| Inputs | `<kind>-job-inputs/{a}/{j}.json`; the orchestration payload | blob gone; payload purged; `inputsDroppedAtUtc` on the record; the effective-input hash and the origins' digests stay |
+| Outputs | `<kind>-job-outputs/{a}/{j}.json`; the events partition; the entity's text fields (until M2 lands) | blob and partition gone; `textDroppedAtUtc`; `documentHash`, `workflowOutputHash`, every node's `outputHash` stay |
 | Record | the entity, the index row, the links | untouched, plus the `retention` history event |
 | Usage | the day's row | untouched |
 
@@ -218,7 +257,7 @@ be checked against it once the text is gone; the record says when.
 
 | Step | Builds | Issue |
 |---|---|---|
-| M1 | The Canada East text account: create, shared key off, soft delete off, lifecycle policy, RBAC on the user-assigned identity, the `TextStorage__*` settings — operator steps, on the operator's go | to file (M22) |
+| M1 | The Canada East text account: create, shared key off, soft delete off, the six containers with their lifecycle policy, RBAC on the user-assigned identity, the `TextStorage__*` settings — operator steps, on the operator's go; and `AccountKind` on `AppUsers`, stamped at creation and back-filled once | to file (M22) |
 | M2 | Outputs to blobs: write `job-outputs` at completion beside the entity fields; read from the blob; then stop writing text on the entity; `DropText` as § 2.2; the events table on the text account | to file (M22) |
 | M3 | Inputs on `job-inputs`; held form responses on `form-responses` | #547; #539 amended |
 | M4 | Per-account retention drives the sweep over both classes | #548 |
