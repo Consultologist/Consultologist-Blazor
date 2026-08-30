@@ -223,7 +223,7 @@ public class WorkflowV10StructureTests
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    private static string Write(WorkflowPackageManifest manifest) => JsonSerializer.Serialize(manifest, Wire);
+    internal static string Write(WorkflowPackageManifest manifest) => JsonSerializer.Serialize(manifest, Wire);
 
     private static WorkflowInputSpec FamilyHistory() =>
         new("family_history", "Family history", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Object,

@@ -59,6 +59,33 @@ public class PackageFormatSchemaTests
     }
 
     [Fact]
+    public void TheV11Schema_CarriesTheDeclarationRules_AheadOfItsPublication()
+    {
+        // #563: specVersion 11 is accepted before it is run, so no published
+        // schema exists yet; the shape is pinned here as v10's was, and the
+        // v10 render is seen to be untouched by the members v11 added.
+        var schema = PackageFormatSchema.Build(11);
+        var properties = schema["properties"]!.AsObject();
+
+        Assert.True(properties.ContainsKey("macros"));
+        var macroProperties = properties["macros"]!["items"]!["properties"]!.AsObject();
+        Assert.True(macroProperties.ContainsKey("id"));
+        Assert.True(macroProperties.ContainsKey("label"));
+        Assert.True(macroProperties.ContainsKey("file"));
+        Assert.True(properties["results"]!["items"]!["properties"]!.AsObject().ContainsKey("macros"));
+        Assert.True(properties["results"]!["items"]!["properties"]!.AsObject().ContainsKey("signature"));
+        Assert.True(properties["nodes"]!["items"]!["properties"]!.AsObject().ContainsKey("reproducible"));
+
+        // And none of it below 11.
+        var v10 = PackageFormatSchema.Build(10)["properties"]!.AsObject();
+        Assert.False(v10.ContainsKey("macros"));
+        Assert.False(v10["results"]!["items"]!["properties"]!.AsObject().ContainsKey("macros"));
+        Assert.False(v10["results"]!["items"]!["properties"]!.AsObject().ContainsKey("signature"));
+        Assert.False(v10["nodes"]!["items"]!["properties"]!.AsObject().ContainsKey("reproducible"));
+        Assert.Equal("Consultologist workflow package manifest, specVersion 11", schema["title"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void TheV10Schema_CarriesTheDeclarationRules_AheadOfItsPublication()
     {
         // #492: specVersion 10 is accepted before it is run, so no published
