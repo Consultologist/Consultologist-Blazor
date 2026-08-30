@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -27,7 +28,7 @@ public static class WorkflowPackageValidator
     /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
     /// are checked against the published spec-versions.json there too.
     /// </summary>
-    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10 };
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11 };
 
     /// <summary>
     /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
@@ -150,7 +151,7 @@ public static class WorkflowPackageValidator
         {
             ValidateMetadata(manifest, errors);
             ValidateDerivedFrom(manifest, errors);
-            ValidateNodes(manifest, files, catalogSchemas, stampedContracts, errors);
+            ValidateNodes(manifest, files, catalogSchemas, stampedContracts, errors, warnings);
             WarnUnreachableByEmail(manifest, warnings);
             WarnFannedOptionalInputs(manifest, warnings);
         }
@@ -318,7 +319,8 @@ public static class WorkflowPackageValidator
         IReadOnlyDictionary<string, string> files,
         IReadOnlyDictionary<string, string> catalogSchemas,
         IReadOnlyDictionary<string, string>? stampedContracts,
-        List<string> errors)
+        List<string> errors,
+        List<string> warnings)
     {
         var v6OrLater = manifest.SpecVersion >= 6;
         var declaredInputs = ValidateInputs(manifest, errors);
@@ -552,6 +554,14 @@ public static class WorkflowPackageValidator
                 errors.Add($"Node '{node.Id}' has no label.");
             }
 
+            // v11 (§ 6): reproducible arrives at 11 — refused by name below it,
+            // the posture every gated member has had since v8. No continue: the
+            // node's other members are whatever version they are.
+            if (manifest.SpecVersion < 11 && node.Reproducible != null)
+            {
+                errors.Add($"Node '{node.Id}' declares reproducible, which requires specVersion 11.");
+            }
+
             // v10 (§ 4): kind and values arrive at 10 — below it each is refused
             // by name, the posture every gated member has had since v8.
             if (manifest.SpecVersion < 10)
@@ -683,6 +693,7 @@ public static class WorkflowPackageValidator
         }
 
         ValidateResult(manifest, nodesById, v6OrLater, errors);
+        ValidateMacros(manifest, files, inputsById, data, classifierIds, errors, warnings);
 
         if (v6OrLater)
         {
@@ -1839,6 +1850,166 @@ public static class WorkflowPackageValidator
             default:
                 error = $"forEach '{node.ForEach}' must be a data: collection reference.";
                 return false;
+        }
+    }
+
+    /// <summary>
+    /// v11 § 4 (#513): the package's macros — template files with placeholders
+    /// from closed namespaces, appended verbatim to the deliverables that name
+    /// them. Validated whole here: declaration, file, placeholders, and the
+    /// result-side references (the string result form has no macros).
+    /// </summary>
+    private static void ValidateMacros(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> files,
+        IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
+        WorkflowPackageData data,
+        IReadOnlySet<string> classifierIds,
+        List<string> errors,
+        List<string> warnings)
+    {
+        var results = manifest.Results ?? new List<WorkflowResultSpec>();
+
+        // The result-side keys gate below 11 by name, macros declared or not.
+        if (manifest.SpecVersion < 11)
+        {
+            if (manifest.Macros != null)
+            {
+                errors.Add("macros requires specVersion 11.");
+            }
+
+            foreach (var result in results)
+            {
+                if (result.Macros != null)
+                {
+                    errors.Add($"Result '{result.Id}' declares macros, which requires specVersion 11.");
+                }
+
+                if (result.Signature != null)
+                {
+                    errors.Add($"Result '{result.Id}' declares signature, which requires specVersion 11.");
+                }
+            }
+
+            return;
+        }
+
+        var macros = manifest.Macros ?? new List<WorkflowMacroSpec>();
+        var macroIds = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var macro in macros)
+        {
+            if (!WorkflowDeclaredIds.IsValid(macro.Id))
+            {
+                errors.Add($"Macro id '{macro.Id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).");
+            }
+            else if (!macroIds.Add(macro.Id))
+            {
+                errors.Add($"Duplicate macro id '{macro.Id}'.");
+            }
+
+            if (string.IsNullOrWhiteSpace(macro.Label))
+            {
+                errors.Add($"Macro '{macro.Id}' has no label.");
+            }
+
+            if (!files.TryGetValue(macro.File, out var template))
+            {
+                errors.Add($"Macro '{macro.Id}' file '{macro.File}' is missing from the package.");
+                continue;
+            }
+
+            // Unlike a prompt, whose template probe would catch it, an empty
+            // macro appends nothing and means an authoring mistake (§ 4).
+            if (string.IsNullOrWhiteSpace(template))
+            {
+                errors.Add($"Macro '{macro.Id}' file '{macro.File}' is empty.");
+                continue;
+            }
+
+            ValidateMacroPlaceholders(macro, template, inputsById, data, classifierIds, errors, warnings);
+        }
+
+        var referenced = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var result in results)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (var macroId in result.Macros ?? new List<string>())
+            {
+                if (!macroIds.Contains(macroId))
+                {
+                    errors.Add($"Result '{result.Id}' references undeclared macro '{macroId}'.");
+                }
+                else if (!seen.Add(macroId))
+                {
+                    errors.Add($"Result '{result.Id}' lists macro '{macroId}' more than once.");
+                }
+
+                referenced.Add(macroId);
+            }
+        }
+
+        foreach (var orphan in macroIds.Where(id => !referenced.Contains(id)))
+        {
+            errors.Add($"Macro '{orphan}' is not referenced by any result.");
+        }
+    }
+
+    /// <summary>The closed run: vocabulary (v11 § 4) — facts about the run itself.</summary>
+    private static readonly IReadOnlySet<string> MacroRunFacts =
+        new HashSet<string>(StringComparer.Ordinal) { "date", "job", "package", "host" };
+
+    /// <summary>The closed profile: vocabulary (v11 § 4). The signature is § 5's flag, deliberately absent.</summary>
+    private static readonly IReadOnlySet<string> MacroProfileFacts =
+        new HashSet<string>(StringComparer.Ordinal) { "name" };
+
+    private static readonly Regex MacroPlaceholderPattern = new(@"\{\{([^}]*)\}\}", RegexOptions.Compiled);
+
+    /// <summary>
+    /// v11 § 4: every placeholder must name a declared input, a data value, a
+    /// classifier, or a word from the closed run:/profile: lists — anything
+    /// else is refused naming the token. Macro files are never handed to
+    /// Scriban; this scanner is the whole of their grammar.
+    /// </summary>
+    private static void ValidateMacroPlaceholders(
+        WorkflowMacroSpec macro,
+        string template,
+        IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
+        WorkflowPackageData data,
+        IReadOnlySet<string> classifierIds,
+        List<string> errors,
+        List<string> warnings)
+    {
+        foreach (Match match in MacroPlaceholderPattern.Matches(template))
+        {
+            var token = match.Groups[1].Value.Trim();
+            var colon = token.IndexOf(':');
+            var ns = colon > 0 ? token[..colon] : null;
+            var id = colon > 0 ? token[(colon + 1)..] : string.Empty;
+
+            var resolves = ns switch
+            {
+                "input" => inputsById.ContainsKey(id),
+                "data" => data.Scalars.ContainsKey(id),
+                "classification" => classifierIds.Contains(id),
+                "run" => MacroRunFacts.Contains(id),
+                "profile" => MacroProfileFacts.Contains(id),
+                _ => false
+            };
+
+            if (!resolves)
+            {
+                errors.Add($"Macro '{macro.Id}' placeholder '{{{{{token}}}}}' does not resolve.");
+                continue;
+            }
+
+            // The author chose an optional input knowingly: absent renders empty (§ 4).
+            if (ns == "input" && !inputsById[id].Required)
+            {
+                warnings.Add($"Macro '{macro.Id}' references optional input '{id}', which renders as empty when not supplied.");
+            }
         }
     }
 

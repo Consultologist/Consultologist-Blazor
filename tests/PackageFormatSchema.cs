@@ -81,6 +81,17 @@ internal static class PackageFormatSchema
         // v9 § 4 (#432): both arrive at 9. The engine counts UTF-16 units where
         // JSON Schema's maxLength counts code points; the engine is the
         // authority, and the schema is looser only for astral characters.
+        // v11 (§ 4): macros arrive at 11. Below it the member does not exist,
+        // and the published v5–v10 bytes must not move.
+        if (specVersion < 11)
+        {
+            Remove(properties, "macros");
+        }
+        else
+        {
+            EnrichMacros(Object(properties, "macros"));
+        }
+
         if (specVersion < 9)
         {
             Remove(properties, "title");
@@ -161,6 +172,17 @@ internal static class PackageFormatSchema
         Close(item);
     }
 
+    private static void EnrichMacros(JsonObject macros)
+    {
+        macros["minItems"] = 1;
+        var item = Object(macros, "items");
+        var properties = Object(item, "properties");
+        Object(properties, "id")["pattern"] = DeclaredId;
+        Object(properties, "label")["minLength"] = 1;
+        Object(properties, "file")["minLength"] = 1;
+        Close(item);
+    }
+
     private static void EnrichNodes(JsonObject nodes, int specVersion)
     {
         nodes["minItems"] = 1;
@@ -211,6 +233,12 @@ internal static class PackageFormatSchema
             var aggregate = Object(properties, "aggregate");
             aggregate["minItems"] = 1;
             Object(aggregate, "items")["pattern"] = NodeRef;
+        }
+
+        // v11 (§ 6): reproducible arrives at 11; a boolean needs no enriching.
+        if (specVersion < 11)
+        {
+            Remove(properties, "reproducible");
         }
 
         if (specVersion < 10)
@@ -431,6 +459,19 @@ internal static class PackageFormatSchema
         else
         {
             Object(properties, "when")["minLength"] = 1;
+        }
+
+        // v11 (§ 4/§ 5): a deliverable's macro list and its signature flag.
+        if (specVersion < 11)
+        {
+            Remove(properties, "macros");
+            Remove(properties, "signature");
+        }
+        else
+        {
+            var macros = Object(properties, "macros");
+            macros["minItems"] = 1;
+            Object(macros, "items")["pattern"] = DeclaredId;
         }
 
         Close(item);
