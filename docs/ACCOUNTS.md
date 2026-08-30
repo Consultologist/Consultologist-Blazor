@@ -127,6 +127,7 @@ delivery.address            (reserved — set only by confirmation, see below)
 delivery.addressPending     (reserved — the code out to an address)
 delivery.addressVerifiedBy  (reserved — "code" | "tenant", how it was verified)
 delivery.emailPdf           ("true" | "false" — whether app-initiated runs are emailed; absent = not chosen = sent)
+profile.signatures          (JSON — the profile's signature blocks and the chosen one, #516)
 ```
 
 `delivery.emailPdf` (#518) is a preference, not an identity, so it rides
@@ -136,6 +137,16 @@ unreadable — is *not chosen*, which sends, as before the option existed.
 The starter reads it when an app job starts or is rescheduled, and a run
 started under `false` records `deliveryOutcome: not-requested`
 (`docs/ASYNC_DELIVERY.md` §4). Email-door jobs ignore it.
+
+`profile.signatures` (#516) holds the profile's named signature blocks and
+which one is chosen, as one JSON row (PascalCase:
+`{ "Blocks": [{ "Id", "Name", "Text", "UpdatedAtUtc" }], "ChosenId" }`).
+A preference-shaped identity artifact — it rides the generic routes; the
+Web writes it, and the job starter reads it at start when a package marks
+a deliverable signed (the chosen block is snapshotted onto the job, the
+EmailRequested principle). Explicit initialisation: absent, blank, or
+unreadable is an empty set, and with no chosen block a signed deliverable
+is produced unsigned, said by name on the record and in History.
 
 `delivery.address` (#486) is the account's **verified delivery address**:
 the only address app-submitted consults are ever emailed to. It is written
