@@ -75,6 +75,15 @@ Value: <dedicated storage account connection string>
 For now, using `AzureWebJobsStorage` is the fastest fix and is supported by
 default.
 
+## Where each class of state lives
+
+This file is the Durable Functions plumbing. Which account and container or
+table holds a job's inputs, its outputs, the permanent record and the usage
+counts — and what deletes each, when — is the design record
+[storage separation](customizable-workflow/storage-separation.md) (#545): a
+*text* account for what is PHI and short-lived, a *records* account (this
+one, `consultologistjobqueue`) for what is permanent and PHI-free.
+
 ## After Setup
 
 In the storage account, Durable Functions will create runtime artifacts such as

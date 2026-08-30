@@ -34,6 +34,9 @@ would otherwise have carried it (#397).
 
 - [CONFIGURATION.md](CONFIGURATION.md) — environment variable / app setting reference for the Api and frontend config keys
 - [STORAGE.md](STORAGE.md) — Durable Functions storage setup
+- [storage separation](customizable-workflow/storage-separation.md) — the classes of
+  state (inputs, outputs, record, usage), their stores and accounts, retention,
+  residency, and what a purge leaves behind (#545)
 - [NETWORK_HARDENING.md](NETWORK_HARDENING.md) — network hardening notes
 
 ## Customizable workflow (design notes)
@@ -69,7 +72,10 @@ would otherwise have carried it (#397).
   met),
   [Forms intake spike](customizable-workflow/forms-intake-spike.md)
   (#511: what the documentation and the engine establish about a Microsoft
-  Forms door, the staged design, and the operator-run experiments)
+  Forms door, the staged design, and the operator-run experiments),
+  [storage separation](customizable-workflow/storage-separation.md)
+  (#545: four classes of state, two private accounts per region, the
+  migration order)
 
 ## Research
 
