@@ -219,7 +219,23 @@ public sealed record ConsultGenerationResultDocumentResponse(
     string Label,
     // #368: null once the retention policy deleted the text; DocumentHash stays.
     string? Text,
-    string? DocumentHash = null);
+    string? DocumentHash = null,
+    // v11 #513 (provenance § 7): what was appended after the aggregated
+    // sections, in applied order. Null on every record without appends.
+    IReadOnlyList<ConsultAppendedEntry>? Appended = null);
+
+/// <summary>
+/// v11 #513 (provenance § 7): one block appended to a deliverable's assembled
+/// document after the aggregated sections — a macro now, the signature from
+/// rung (c). The job's package version pins the template's bytes; the text
+/// itself is inside the document and its hash.
+/// </summary>
+public sealed record ConsultAppendedEntry(string Kind, string Id);
+
+public static class ConsultAppendedKinds
+{
+    public const string Macro = "macro";
+}
 
 /// <summary>
 /// The identity and display label of one per-item chain step, snapshotted from the
@@ -266,7 +282,13 @@ public sealed record ConsultNodeBindingDescriptor(string From, string? As = null
 /// set at start — a Jobs-layer type so registry records never enter durable
 /// payloads.
 /// </summary>
-public sealed record ConsultResultDescriptor(string Id, string NodeId, string Label);
+public sealed record ConsultResultDescriptor(
+    string Id,
+    string NodeId,
+    string Label,
+    // v11 #513: the macro ids appended to this deliverable, in declared order.
+    // Null on every pre-v11 job — appended last, this is a durable payload.
+    IReadOnlyList<string>? Macros = null);
 
 /// <summary>
 /// A deliverable the package declared and this job did not produce, because its

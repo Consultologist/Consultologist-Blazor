@@ -1,5 +1,6 @@
 using System.Text;
 using Consultologist.Api.Documents;
+using Consultologist.Api.Auth;
 using Consultologist.Api.Jobs;
 using Consultologist.Api.Models;
 using Consultologist.Api.RateLimiting;
@@ -23,6 +24,7 @@ public class ConsultGenerationJobStarterTests
     private readonly DurableTaskClient _client = Substitute.For<DurableTaskClient>("test");
     private readonly DurableEntityClient _entities = Substitute.For<DurableEntityClient>("test");
     private readonly FakeOwnership _ownership = new();
+    private readonly IAccountStore _accounts = Substitute.For<IAccountStore>();
 
     // #290: a terse but genuine referral. These fixtures used to say
     // "draft", which is not a referral and which the content floor
@@ -49,7 +51,8 @@ public class ConsultGenerationJobStarterTests
             // #514: and the host the test names, as Public__ApiHost would.
             EngineAttestation.Current(TestCatalog.Instance, apiHost),
             // #403: what the terminology server says, or nothing.
-            _terminology);
+            _terminology,
+            _accounts);
     }
 
     private readonly FakeTerminologySource _terminology = new();
@@ -298,6 +301,67 @@ public class ConsultGenerationJobStarterTests
             Data: data,
             ResultNodeId: results.Count == 1 ? results[0].NodeId : null,
             Results: results);
+    }
+
+    [Fact]
+    public async Task AMacroPackage_SnapshotsTemplatesAndTheProfileName_AndAPlainOneDoesNot()
+    {
+        // v11 #513: the templates and the display name ride the orchestration
+        // input — what was promised when the job was submitted, the
+        // EmailRequested principle — and only a macro package pays the lookup.
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        var (manifest, files) = V11Fixtures.WithMacro("By {{profile:name}}.");
+        var errors = new List<string>();
+        var data = WorkflowDataResolver.Resolve(manifest, files, errors);
+        Assert.Empty(errors);
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackage(
+                manifest,
+                Nodes: manifest.Nodes,
+                SchemaContracts: TestOutputContracts.CatalogSchemas,
+                Data: data,
+                ResultNodeId: "assemble-note",
+                SourceFiles: files,
+                Results: new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Consultation note", null, new[] { "disclaimer" }) }));
+        _accounts.GetDisplayNameAsync("user-1", Arg.Any<CancellationToken>()).Returns("Taylor Reyes");
+
+        // The v11 fixture descends from the structured v9 one: supply its map.
+        var supplied = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = Referral,
+            ["seen_on"] = "2026-08-10",
+            ["encounter_kind"] = "follow_up",
+            ["prior_notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("First.") })
+        };
+
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var outcome = await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(null, Inputs: supplied), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+
+        Assert.Null(outcome.Error);
+        Assert.Equal("By {{profile:name}}.", orchestrationInput!.MacroTexts!["disclaimer"]);
+        Assert.Equal("Taylor Reyes", orchestrationInput.ProfileName);
+        Assert.Equal(new[] { "disclaimer" }, Assert.Single(orchestrationInput.Results!).Macros);
+
+        // A package with no macros pays no table read and writes the nulls of before.
+        orchestrationInput = null;
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V8Fixtures.Minimal(),
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+        await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(Referral), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+        Assert.Null(orchestrationInput!.MacroTexts);
+        Assert.Null(orchestrationInput.ProfileName);
+        await _accounts.Received(1).GetDisplayNameAsync("user-1", Arg.Any<CancellationToken>());
     }
 
     [Fact]

@@ -17,7 +17,10 @@ public sealed record WorkflowResolvedResult(
     // Parsed at load so the engine evaluates a structure rather than
     // re-parsing a string. Null = always produced. v10 (#494): an expression
     // tree; a v9 condition is its one leaf.
-    WorkflowConditionExpression? Condition = null);
+    WorkflowConditionExpression? Condition = null,
+    // v11 #513: the macro ids this deliverable appends, in declared order —
+    // null below 11 and when the result names none.
+    IReadOnlyList<string>? Macros = null);
 
 public sealed record WorkflowPackage(
     WorkflowPackageManifest Manifest,

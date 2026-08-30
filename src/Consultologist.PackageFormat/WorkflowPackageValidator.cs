@@ -1957,21 +1957,13 @@ public static class WorkflowPackageValidator
         }
     }
 
-    /// <summary>The closed run: vocabulary (v11 § 4) — facts about the run itself.</summary>
-    private static readonly IReadOnlySet<string> MacroRunFacts =
-        new HashSet<string>(StringComparer.Ordinal) { "date", "job", "package", "host" };
-
-    /// <summary>The closed profile: vocabulary (v11 § 4). The signature is § 5's flag, deliberately absent.</summary>
-    private static readonly IReadOnlySet<string> MacroProfileFacts =
-        new HashSet<string>(StringComparer.Ordinal) { "name" };
-
-    private static readonly Regex MacroPlaceholderPattern = new(@"\{\{([^}]*)\}\}", RegexOptions.Compiled);
-
     /// <summary>
     /// v11 § 4: every placeholder must name a declared input, a data value, a
     /// classifier, or a word from the closed run:/profile: lists — anything
     /// else is refused naming the token. Macro files are never handed to
-    /// Scriban; this scanner is the whole of their grammar.
+    /// Scriban; this scanner is the whole of their grammar, and the grammar
+    /// itself (pattern, closed word sets) lives in WorkflowMacroPlaceholders,
+    /// shared with the run-time expander.
     /// </summary>
     private static void ValidateMacroPlaceholders(
         WorkflowMacroSpec macro,
@@ -1982,20 +1974,16 @@ public static class WorkflowPackageValidator
         List<string> errors,
         List<string> warnings)
     {
-        foreach (Match match in MacroPlaceholderPattern.Matches(template))
+        foreach (Match match in WorkflowMacroPlaceholders.Pattern.Matches(template))
         {
-            var token = match.Groups[1].Value.Trim();
-            var colon = token.IndexOf(':');
-            var ns = colon > 0 ? token[..colon] : null;
-            var id = colon > 0 ? token[(colon + 1)..] : string.Empty;
-
-            var resolves = ns switch
+            var token = WorkflowMacroPlaceholders.TokenOf(match);
+            var resolves = WorkflowMacroPlaceholders.TryParse(token, out var ns, out var id) && ns switch
             {
                 "input" => inputsById.ContainsKey(id),
                 "data" => data.Scalars.ContainsKey(id),
                 "classification" => classifierIds.Contains(id),
-                "run" => MacroRunFacts.Contains(id),
-                "profile" => MacroProfileFacts.Contains(id),
+                "run" => WorkflowMacroPlaceholders.RunFacts.Contains(id),
+                "profile" => WorkflowMacroPlaceholders.ProfileFacts.Contains(id),
                 _ => false
             };
 

@@ -39,6 +39,13 @@ public interface IAccountStore
     /// noted follow-up if that changes is the same index table.
     /// </summary>
     Task<IReadOnlyList<AccountSummary>> ListAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// v11 #513: one account's display name, or null when the account does not
+    /// exist — the starter snapshots it at job start for macro expansion
+    /// (profile:name), the way EmailRequested is chosen at start.
+    /// </summary>
+    Task<string?> GetDisplayNameAsync(string appUserId, CancellationToken cancellationToken);
 }
 
 public sealed record AccountSummary(string AppUserId, string Status);
@@ -303,6 +310,14 @@ public sealed class AccountStore : IAccountStore
     /// but not the account. Only from Active: an account that was never
     /// activated does not become Unverified by unlinking, and Disabled stays.
     /// </summary>
+    public async Task<string?> GetDisplayNameAsync(string appUserId, CancellationToken cancellationToken)
+    {
+        var response = await _appUsers.GetEntityIfExistsAsync<AppUserEntity>(
+            "app-user", appUserId, cancellationToken: cancellationToken);
+
+        return response.HasValue ? response.Value!.DisplayName : null;
+    }
+
     internal static string StatusAfterUnlink(string current) =>
         current == AccountStatuses.Active ? AccountStatuses.Unverified : current;
 

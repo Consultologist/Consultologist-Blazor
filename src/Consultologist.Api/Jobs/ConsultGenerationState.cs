@@ -280,7 +280,9 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             ResultId = input.ResultId,
             Label = input.Label,
             Text = input.Text,
-            Ordinal = input.Ordinal
+            Ordinal = input.Ordinal,
+            // v11 #513: null when nothing was appended — the control's bytes.
+            Appended = input.Appended is { Count: > 0 } ? new List<ConsultAppendedEntry>(input.Appended) : null
         });
         state.AssembledDocuments.Sort((a, b) => a.Ordinal.CompareTo(b.Ordinal));
         state.History.Add(new JobHistoryEvent("success", $"Assembled document produced: {input.Label}", null, DateTimeOffset.UtcNow));
@@ -618,7 +620,13 @@ public sealed record ConsultGenerationOrchestrationInput(
     // #518: whether the account asked for the completion email at all —
     // false records not-requested and sends nothing; null (a payload from
     // before) means requested. Appended last, same reason.
-    bool? EmailRequested = null);
+    bool? EmailRequested = null,
+    // v11 #513: the package's macro templates (id → raw markdown) and the
+    // account's display name — the expansion facts assembly needs that the
+    // orchestrator cannot fetch, snapshotted at start like EmailRequested.
+    // Null unless the package declares macros. Appended last, same reason.
+    IReadOnlyDictionary<string, string>? MacroTexts = null,
+    string? ProfileName = null);
 
 public sealed record ConsultGenerationJobInitialize(
     string JobId,
@@ -765,7 +773,11 @@ public sealed record ConsultGenerationResultDocument(
     string ResultId,
     string Label,
     string Text,
-    int Ordinal);
+    int Ordinal,
+    // v11 #513: what was appended after the aggregated sections, in applied
+    // order — inside Text already; this names it. Null when nothing was.
+    // Appended last — the engine sends this payload to the entity.
+    IReadOnlyList<ConsultAppendedEntry>? Appended = null);
 
 /// <summary>
 /// One forEach instance's completion: per-item provenance plus the item's chain
@@ -1200,7 +1212,8 @@ public sealed class ConsultGenerationJobState
                         d.ResultId,
                         d.Label,
                         d.Text,
-                        d.DocumentHash ?? (d.Text == null ? null : ConsultGenerationProvenance.Sha256Hex(d.Text))))
+                        d.DocumentHash ?? (d.Text == null ? null : ConsultGenerationProvenance.Sha256Hex(d.Text)),
+                        d.Appended))
                     .ToList()
                 : null,
             TextDroppedAtUtc: TextDroppedAtUtc,
@@ -1235,6 +1248,11 @@ public sealed class ConsultGenerationResultDocumentState
     public int Ordinal { get; set; }
     // #368: stored at completion; null on records from before (derived then).
     public string? DocumentHash { get; set; }
+    // v11 #513 (provenance § 7): what was appended after the aggregated
+    // sections, in applied order — a macro now, the signature from rung (c).
+    // Null on every record without appends, so those store the bytes they
+    // always stored.
+    public List<ConsultAppendedEntry>? Appended { get; set; }
 }
 
 /// <summary>One forEach item's chain progress — the section-prose-step source.</summary>

@@ -1,6 +1,7 @@
 using System.Globalization;
 using Consultologist.Api.Agents;
 using Consultologist.Api.Documents;
+using Consultologist.Api.Auth;
 using Consultologist.Api.Models;
 using Consultologist.Api.RateLimiting;
 using Consultologist.Api.Workflow;
@@ -140,6 +141,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly ITerminologyAttestationSource _terminology;
     private readonly IAccountRateLimiter _rateLimiter;
     private readonly IWorkflowPackageOwnership _ownership;
+    private readonly IAccountStore _accounts;
 
     public ConsultGenerationJobStarter(
         ILogger<ConsultGenerationJobStarter> logger,
@@ -149,7 +151,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IAccountRateLimiter rateLimiter,
         IWorkflowPackageOwnership ownership,
         EngineAttestationResponse engine,
-        ITerminologyAttestationSource terminology)
+        ITerminologyAttestationSource terminology,
+        IAccountStore accounts)
     {
         _logger = logger;
         _packageStore = packageStore;
@@ -159,6 +162,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         _terminology = terminology;
         _rateLimiter = rateLimiter;
         _ownership = ownership;
+        _accounts = accounts;
     }
 
     public async Task<ConsultGenerationJobStartOutcome> StartAsync(
@@ -575,8 +579,24 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         }
 
         var resultDescriptors = package.Results?
-            .Select(result => new ConsultResultDescriptor(result.Id, result.NodeId, result.Label))
+            .Select(result => new ConsultResultDescriptor(result.Id, result.NodeId, result.Label, result.Macros))
             .ToList();
+
+        // v11 #513: the macro templates and the account's display name,
+        // snapshotted at start — what was promised when the job was submitted,
+        // not what the package or profile says when it wakes. Null unless the
+        // package declares macros, so every pre-v11 payload writes the bytes
+        // it always wrote, and no macro-less start pays the table read.
+        IReadOnlyDictionary<string, string>? macroTexts = null;
+        string? profileName = null;
+        if (package.Manifest.Macros is { Count: > 0 } macroSpecs)
+        {
+            macroTexts = macroSpecs.ToDictionary(
+                macro => macro.Id,
+                macro => package.SourceFiles![macro.File],
+                StringComparer.Ordinal);
+            profileName = await _accounts.GetDisplayNameAsync(appUserId, cancellationToken);
+        }
 
         await client.Entities.SignalEntityAsync(
             entityId,
@@ -645,7 +665,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 ApiHost: _engine.ApiHost,
                 EngineCommit: _engine.Commit,
                 // #518: the choice made at start; the reply leg reads only this.
-                EmailRequested: origin.EmailRequested),
+                EmailRequested: origin.EmailRequested,
+                // v11 #513: the expansion facts assembly needs, when macros are declared.
+                MacroTexts: macroTexts,
+                ProfileName: profileName),
             new StartOrchestrationOptions { InstanceId = jobId },
             cancellationToken);
 

@@ -193,6 +193,24 @@ public class DecideActivityTests
     };
 
     [Fact]
+    public void TheBoundary_CarriesTheMacroIds_OntoTheDescriptors()
+    {
+        // v11 #513: a deciding job's deliverables come from Decide, not the
+        // starter — the macro list must survive this door too. The texts
+        // themselves are on the orchestration input (top-level manifest facts,
+        // untouched by the fire-set narrowing).
+        var package = ClassifierPackage("node:scope == in_scope");
+        package = package with
+        {
+            Results = package.Results!.Select(r => r with { Macros = new[] { "closing" } }).ToList()
+        };
+
+        var decision = DecideActivity.Decide(package, Supplied, new Dictionary<string, string> { ["scope"] = "in_scope" });
+
+        Assert.Equal(new[] { "closing" }, Assert.Single(decision.Results).Macros);
+    }
+
+    [Fact]
     public void TheAnswerThatHolds_DecidesTheSkeleton_AndKeepsTheClassifier()
     {
         var decision = DecideActivity.Decide(ClassifierPackage("node:scope == in_scope"), Supplied,

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Consultologist.Api.Agents;
 using Consultologist.Api.Models;
 using Consultologist.Api.Workflow;
@@ -459,10 +460,32 @@ public sealed class ConsultGenerationOrchestrator
                         var deliverable = deliverables.FirstOrDefault(d => string.Equals(d.NodeId, aggregator.Id, StringComparison.Ordinal));
                         if (deliverable != null)
                         {
+                            // v11 #513 (§ 4 append rule): the deliverable's
+                            // macros expand and append after Render returns —
+                            // inside the document, and so inside documentHash
+                            // (stamped over Text at completion); outside this
+                            // aggregator's outputHash, which stays over
+                            // Render's bytes above. A deliverable with no
+                            // macros passes rendered through untouched — the
+                            // control's bytes.
+                            var (text, appended) = ConsultMacroExpander.Append(
+                                rendered,
+                                deliverable.MacroIds,
+                                input.MacroTexts,
+                                effectiveInputs,
+                                input.DataScalars,
+                                Classifications(),
+                                new ConsultMacroExpander.RunFacts(
+                                    context.CurrentUtcDateTime,
+                                    context.InstanceId,
+                                    input.WorkflowPackage ?? string.Empty,
+                                    input.ApiHost,
+                                    input.ProfileName));
+
                             await context.Entities.CallEntityAsync(
                                 entityId,
                                 nameof(ConsultGenerationJobEntity.CompleteResultDocument),
-                                new ConsultGenerationResultDocument(deliverable.ResultId!, deliverable.Label ?? deliverable.ResultId!, rendered, deliverable.Ordinal));
+                                new ConsultGenerationResultDocument(deliverable.ResultId!, deliverable.Label ?? deliverable.ResultId!, text, deliverable.Ordinal, appended));
                         }
                     }
                     else if (string.Equals(aggregator.Id, resultNodeId, StringComparison.Ordinal))
@@ -1012,7 +1035,9 @@ internal static class ConsultDeliverables
         string BlockPrefix,
         string NodeId,
         IReadOnlyList<string> SourceIds,
-        int Ordinal);
+        int Ordinal,
+        // v11 #513: the macro ids this deliverable appends, in declared order.
+        IReadOnlyList<string>? MacroIds = null);
 
     public static IReadOnlyList<Deliverable> Resolve(
         IReadOnlyList<ConsultResultDescriptor>? results,
@@ -1036,7 +1061,8 @@ internal static class ConsultDeliverables
                     $"{result.Id}:",
                     result.NodeId,
                     SourcesOf(nodesById.GetValueOrDefault(result.NodeId)),
-                    ordinal))
+                    ordinal,
+                    result.Macros))
                 .ToList();
         }
 
