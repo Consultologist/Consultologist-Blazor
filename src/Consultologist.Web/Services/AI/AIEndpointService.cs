@@ -538,7 +538,11 @@ public record ConsultGenerationResultDocumentResponse(
     string Label,
     // #368: null once the retention policy deleted the text; DocumentHash stays.
     string? Text,
-    string? DocumentHash = null);
+    string? DocumentHash = null,
+    // v11 #516: produced unsigned although the package requested a signature —
+    // true or absent, never false. (Appended[] is deliberately not mirrored;
+    // unknown JSON properties are ignored on deserialize.)
+    bool? Unsigned = null);
 
 /// <summary>
 /// One node of the job's workflow DAG (v5: one kind, ForEach as multiplicity).

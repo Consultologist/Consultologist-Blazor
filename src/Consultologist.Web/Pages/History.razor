@@ -403,6 +403,12 @@
                                                 {
                                                     <dt class="provenance-list__nested">@document.Label</dt>
                                                     <dd class="hash-text">@(document.DocumentHash ?? "—") @HashCheckMark(document.ResultId, detail)</dd>
+                                                    @* v11 #516: said by name, beside the document's evidence. *@
+                                                    @if (document.Unsigned == true)
+                                                    {
+                                                        <dt class="provenance-list__nested"></dt>
+                                                        <dd class="document-unsigned">produced unsigned — signature requested by the package; none chosen on the profile</dd>
+                                                    }
                                                 }
                                                 @* #315: a deliverable the package
                                                    declared and this job's inputs

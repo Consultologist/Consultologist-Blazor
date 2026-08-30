@@ -20,7 +20,10 @@ public sealed record WorkflowResolvedResult(
     WorkflowConditionExpression? Condition = null,
     // v11 #513: the macro ids this deliverable appends, in declared order —
     // null below 11 and when the result names none.
-    IReadOnlyList<string>? Macros = null);
+    IReadOnlyList<string>? Macros = null,
+    // v11 #516: the package says this deliverable is signed — the profile's
+    // chosen block is appended at completion. Null below 11 and when unset.
+    bool? Signature = null);
 
 public sealed record WorkflowPackage(
     WorkflowPackageManifest Manifest,

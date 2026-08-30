@@ -423,6 +423,116 @@
                 </div>
             </section>
 
+            @* #516: the profile's signature blocks — appended to deliverables a
+               v11 package marks signed. Explicit initialisation: a new account
+               has none, and nothing is appended until a block exists and is
+               chosen; the unchosen line names the consequence. *@
+            <section class="content-card signature-card">
+                <div class="form-stack">
+                    <h2 class="panel-title">
+                        Signature
+                    </h2>
+
+                    <p class="panel-description">
+                        Named signature blocks — name, credentials, contact — that belong to you,
+                        not to a package. A package may mark a deliverable as signed; the block
+                        chosen here is then appended to that document when it completes, and the
+                        record names it. Nothing is appended until a block is chosen.
+                    </p>
+
+                    @if (signatureMessage != null)
+                    {
+                        <FluentMessageBar Intent="@signatureMessageIntent" AllowDismiss="false" Class="signature-message">
+                            @signatureMessage
+                        </FluentMessageBar>
+                    }
+
+                    <div class="state-panel">
+                        <span class="muted-text">Signature</span>
+                        <strong class="signature-state">@SignatureBlocks.Describe(signatureSet)</strong>
+                    </div>
+
+                    @foreach (var block in signatureSet.Blocks)
+                    {
+                        <div class="state-panel signature-block" @key="block.Id">
+                            <span class="muted-text">@block.Name@(signatureSet.ChosenId == block.Id ? " — in use" : "")</span>
+                            <span class="signature-block-preview">@Preview(block.Text)</span>
+                            <div class="action-row">
+                                @if (signatureSet.ChosenId != block.Id)
+                                {
+                                    <FluentButton Appearance="Appearance.Accent"
+                                                  Class="signature-use"
+                                                  Disabled="@signatureRequestInProgress"
+                                                  @onclick="() => UseSignatureAsync(block.Id)">
+                                        Use
+                                    </FluentButton>
+                                }
+                                <FluentButton Appearance="Appearance.Neutral"
+                                              Class="signature-edit"
+                                              Disabled="@signatureRequestInProgress"
+                                              @onclick="() => EditSignature(block.Id)">
+                                    Edit
+                                </FluentButton>
+                                <FluentButton Appearance="Appearance.Neutral"
+                                              Class="signature-remove"
+                                              Disabled="@signatureRequestInProgress"
+                                              @onclick="() => RemoveSignatureAsync(block.Id)">
+                                    @(signatureRemoveArmedId == block.Id ? "Confirm remove" : "Remove")
+                                </FluentButton>
+                            </div>
+                        </div>
+                    }
+
+                    @if (signatureSet.ChosenId != null)
+                    {
+                        <div class="action-row">
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Class="signature-clear"
+                                          Disabled="@signatureRequestInProgress"
+                                          @onclick="ClearChosenSignatureAsync">
+                                Back to none chosen
+                            </FluentButton>
+                        </div>
+                    }
+
+                    @if (editingSignatureId != null || signatureSet.Blocks.Count < SignatureBlocks.MaxBlocks)
+                    {
+                        <div class="form-stack signature-form">
+                            <input class="node-field__input signature-name-input"
+                                   value="@signatureNameInput"
+                                   @onchange="args => signatureNameInput = args.Value?.ToString()"
+                                   maxlength="@SignatureBlocks.MaxNameLength"
+                                   placeholder="Block name (e.g. Clinic letters)"
+                                   aria-label="Signature block name" />
+                            <textarea class="node-field__input signature-text-input"
+                                      rows="5"
+                                      value="@signatureTextInput"
+                                      @onchange="args => signatureTextInput = args.Value?.ToString()"
+                                      maxlength="@SignatureBlocks.MaxTextLength"
+                                      placeholder="The signature text, exactly as it should appear"
+                                      aria-label="Signature text"></textarea>
+                            <div class="action-row">
+                                <FluentButton Appearance="Appearance.Accent"
+                                              Class="signature-save"
+                                              Disabled="@(signatureRequestInProgress || !SignatureFormValid)"
+                                              @onclick="SaveSignatureAsync">
+                                    @(editingSignatureId == null ? "Add signature block" : "Save changes")
+                                </FluentButton>
+                                @if (editingSignatureId != null)
+                                {
+                                    <FluentButton Appearance="Appearance.Neutral"
+                                                  Class="signature-cancel-edit"
+                                                  Disabled="@signatureRequestInProgress"
+                                                  @onclick="CancelSignatureEdit">
+                                        Cancel
+                                    </FluentButton>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </section>
+
             <section class="content-card">
                 <div class="form-stack">
                     <h2 class="panel-title">
@@ -571,6 +681,7 @@
             account = await AccountService.GetCurrentAccountAsync();
             await LoadScheduleTimeAsync();
         await LoadEmailPdfAsync();
+        await LoadSignaturesAsync();
         await LoadEngineHostAsync();
         }
         catch (AccessTokenNotAvailableException exception)
@@ -857,6 +968,181 @@
         {
             emailPdfRequestInProgress = false;
         }
+    }
+
+    // #516: the profile's signature blocks. Explicit initialisation — empty
+    // until a block exists and is chosen; every mutation is one write of the
+    // one row (or its deletion when the last block goes). Removing the block
+    // in use clears the choice in the same save; the state line names what
+    // that means.
+    private SignatureBlocks.SignatureBlockSet signatureSet = SignatureBlocks.Empty();
+    private bool signatureRequestInProgress;
+    private string? signatureMessage;
+    private MessageIntent signatureMessageIntent = MessageIntent.Info;
+    private string? signatureRemoveArmedId;
+    private string? editingSignatureId;
+    private string? signatureNameInput;
+    private string? signatureTextInput;
+
+    private bool SignatureFormValid =>
+        !string.IsNullOrWhiteSpace(signatureNameInput)
+        && !string.IsNullOrWhiteSpace(signatureTextInput)
+        && signatureNameInput!.Trim().Length <= SignatureBlocks.MaxNameLength
+        && signatureTextInput!.Trim().Length <= SignatureBlocks.MaxTextLength;
+
+    private static string Preview(string text) =>
+        text.Length <= 160 ? text : text[..160] + "…";
+
+    private async Task LoadSignaturesAsync()
+    {
+        try
+        {
+            var setting = await AccountService.GetSettingAsync(SignatureBlocks.SettingKey);
+            signatureSet = SignatureBlocks.Parse(setting?.Value);
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch
+        {
+            signatureSet = SignatureBlocks.Empty();
+        }
+    }
+
+    private async Task SaveSignatureSetAsync(SignatureBlocks.SignatureBlockSet next, string message)
+    {
+        signatureRequestInProgress = true;
+
+        try
+        {
+            if (next.Blocks.Count == 0)
+            {
+                await AccountService.DeleteSettingAsync(SignatureBlocks.SettingKey);
+            }
+            else
+            {
+                await AccountService.SaveSettingAsync(
+                    SignatureBlocks.SettingKey, SignatureBlocks.Serialize(next), SignatureBlocks.ContentType);
+            }
+
+            signatureSet = next;
+            signatureMessage = message;
+            signatureMessageIntent = MessageIntent.Success;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            signatureMessage = ex.Message;
+            signatureMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            signatureRequestInProgress = false;
+        }
+    }
+
+    private async Task SaveSignatureAsync()
+    {
+        if (!SignatureFormValid)
+        {
+            return;
+        }
+
+        var name = signatureNameInput!.Trim();
+        var text = signatureTextInput!.Trim();
+        var blocks = new List<SignatureBlocks.SignatureBlock>(signatureSet.Blocks);
+        string message;
+
+        var editIndex = editingSignatureId == null ? -1 : blocks.FindIndex(b => b.Id == editingSignatureId);
+        if (editIndex >= 0)
+        {
+            blocks[editIndex] = blocks[editIndex] with { Name = name, Text = text, UpdatedAtUtc = DateTimeOffset.UtcNow };
+            message = $"Signature block '{name}' updated.";
+        }
+        else
+        {
+            if (blocks.Count >= SignatureBlocks.MaxBlocks)
+            {
+                return;
+            }
+
+            var id = SignatureBlocks.SlugFor(name, blocks.Select(b => b.Id));
+            blocks.Add(new SignatureBlocks.SignatureBlock(id, name, text, DateTimeOffset.UtcNow));
+            message = $"Signature block '{name}' added. Choose Use to append it to signed deliverables.";
+        }
+
+        await SaveSignatureSetAsync(signatureSet with { Blocks = blocks }, message);
+        editingSignatureId = null;
+        signatureNameInput = null;
+        signatureTextInput = null;
+    }
+
+    private void EditSignature(string id)
+    {
+        var block = signatureSet.Blocks.FirstOrDefault(b => b.Id == id);
+        if (block == null)
+        {
+            return;
+        }
+
+        editingSignatureId = id;
+        signatureNameInput = block.Name;
+        signatureTextInput = block.Text;
+        signatureRemoveArmedId = null;
+    }
+
+    private void CancelSignatureEdit()
+    {
+        editingSignatureId = null;
+        signatureNameInput = null;
+        signatureTextInput = null;
+    }
+
+    private async Task UseSignatureAsync(string id)
+    {
+        var block = signatureSet.Blocks.FirstOrDefault(b => b.Id == id);
+        if (block == null)
+        {
+            return;
+        }
+
+        await SaveSignatureSetAsync(
+            signatureSet with { ChosenId = id },
+            $"'{block.Name}' is now appended to deliverables a package marks signed.");
+    }
+
+    private async Task ClearChosenSignatureAsync()
+    {
+        await SaveSignatureSetAsync(
+            signatureSet with { ChosenId = null },
+            "Back to none chosen — deliverables a package marks signed are produced unsigned.");
+    }
+
+    /// <summary>
+    /// #516: remove, in two clicks — the #195 arming pattern; no dialogs in
+    /// this app. Removing the block in use clears the choice in the same
+    /// save, and the state line immediately says what that means.
+    /// </summary>
+    private async Task RemoveSignatureAsync(string id)
+    {
+        if (signatureRemoveArmedId != id)
+        {
+            signatureRemoveArmedId = id;
+            signatureMessage = "Removing a signature block cannot be undone. Click Confirm remove to proceed.";
+            signatureMessageIntent = MessageIntent.Warning;
+            return;
+        }
+
+        signatureRemoveArmedId = null;
+        var blocks = signatureSet.Blocks.Where(b => b.Id != id).ToList();
+        var chosenId = signatureSet.ChosenId == id ? null : signatureSet.ChosenId;
+        await SaveSignatureSetAsync(
+            new SignatureBlocks.SignatureBlockSet(blocks, chosenId),
+            blocks.Count == 0 ? "Signature block removed. No blocks remain." : "Signature block removed.");
     }
 
     // #486: the verified delivery address. Send → Confirm; nothing is ever

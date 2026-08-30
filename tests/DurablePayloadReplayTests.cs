@@ -102,12 +102,15 @@ public class DurablePayloadReplayTests
         // trailing null too — Macros, appended last on the record it rides.
         var withRefs = stored
             .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null}", StringComparison.Ordinal)
-            .Replace("\"Label\":\"Consultation note\"}", "\"Label\":\"Consultation note\",\"Macros\":null}", StringComparison.Ordinal);
-        Assert.Equal(withRefs[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null}", JsonSerializer.Serialize(input, Durable));
-        // v11 #513: the two macro slots and the descriptor's list bind null.
+            .Replace("\"Label\":\"Consultation note\"}", "\"Label\":\"Consultation note\",\"Macros\":null,\"Signature\":null}", StringComparison.Ordinal);
+        Assert.Equal(withRefs[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null}", JsonSerializer.Serialize(input, Durable));
+        // v11 #513/#516: the macro and signature slots and the descriptor's
+        // trailing fields bind null.
         Assert.Null(input.MacroTexts);
         Assert.Null(input.ProfileName);
+        Assert.Null(input.Signature);
         Assert.Null(input.Results![0].Macros);
+        Assert.Null(input.Results[0].Signature);
         Assert.Equal(ConsultInputValue.OfBoolean(true), input.Request.Inputs!["billable"]);
         Assert.Equal("true", input.Inputs!["billable"]);
         Assert.Equal(4, input.EffectiveInputHashVersion);
@@ -151,7 +154,7 @@ public class DurablePayloadReplayTests
             .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null}", StringComparison.Ordinal)
             .Replace("\"TrackedChangesResolved\":false}", "\"TrackedChangesResolved\":false,\"FileSha256\":null,\"TextSha256\":null,\"SourceJobId\":null,\"SourceResultId\":null}", StringComparison.Ordinal)
             .Replace("\"TrackedChangesResolved\":true}", "\"TrackedChangesResolved\":true,\"FileSha256\":null,\"TextSha256\":null,\"SourceJobId\":null,\"SourceResultId\":null}", StringComparison.Ordinal);
-        Assert.Equal(expected[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(expected[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null}", JsonSerializer.Serialize(input, Durable));
         var origins = Assert.Contains("prior_notes", input.InputDocumentOrigins!);
         Assert.Equal(2, origins.Count);
         Assert.Equal("pdfpig/0.1.15", origins[1].Extractor);
@@ -172,7 +175,22 @@ public class DurablePayloadReplayTests
         var document = JsonSerializer.Deserialize<ConsultGenerationResultDocument>(stored, Durable)!;
 
         Assert.Null(document.Appended);
-        Assert.Equal(stored[..^1] + ",\"Appended\":null}", JsonSerializer.Serialize(document, Durable));
+        Assert.Equal(stored[..^1] + ",\"Appended\":null,\"Unsigned\":null}", JsonSerializer.Serialize(document, Durable));
+    }
+
+    [Fact]
+    public void AStoredAppendedEntry_WithoutAsOf_BindsNull()
+    {
+        // v11 #516: rung-b jobs already stored macro entries with two fields;
+        // AsOf binds null and re-serialises with exactly one trailing null.
+        const string stored = """
+            {"Kind":"macro","Id":"disclaimer"}
+            """;
+
+        var entry = JsonSerializer.Deserialize<ConsultAppendedEntry>(stored, Durable)!;
+
+        Assert.Null(entry.AsOf);
+        Assert.Equal(stored[..^1] + ",\"AsOf\":null}", JsonSerializer.Serialize(entry, Durable));
     }
 
     [Fact]

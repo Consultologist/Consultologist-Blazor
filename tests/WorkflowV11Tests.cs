@@ -425,3 +425,169 @@ public class WorkflowV11AppendedRecordTests
         Assert.Null(state().AssembledDocuments!.Single().Appended);
     }
 }
+
+/// <summary>
+/// v11 rung (c) (#516, § 5): the signature block, strictly last — applied to
+/// the expander's output, so it follows every macro; verbatim, blank-line
+/// separated, no invented heading, named in appended[] with its as-of date.
+/// Not signed is the § 7 control (same references); signed with no chosen
+/// block is the unsigned-although-requested state, never a hold or refusal.
+/// </summary>
+public class ConsultSignatureAppendTests
+{
+    private static readonly ConsultSignatureSnapshot Snapshot =
+        new("clinic-letters", "Taylor Reyes, MD\nDept. of Medicine", "2026-08-30");
+
+    [Fact]
+    public void NotSigned_IsTheControl_SameReferences()
+    {
+        var text = "## History\n\nUnremarkable.";
+        var appended = new[] { new ConsultAppendedEntry(ConsultAppendedKinds.Macro, "disclaimer") };
+
+        var (resultText, resultAppended, unsigned) = ConsultSignatureAppend.Apply(text, appended, false, Snapshot);
+
+        Assert.Same(text, resultText);
+        Assert.Same(appended, resultAppended);
+        Assert.Null(unsigned);
+    }
+
+    [Fact]
+    public void Signed_AppendsLast_AfterEveryMacro_AndNamesTheAsOf()
+    {
+        // The expander's output is the input: two macros already appended.
+        var expanded = "## History\n\nUnremarkable.\n\nDisclaimer.\n\nClosing.";
+        var appended = new[]
+        {
+            new ConsultAppendedEntry(ConsultAppendedKinds.Macro, "disclaimer"),
+            new ConsultAppendedEntry(ConsultAppendedKinds.Macro, "closing")
+        };
+
+        var (text, entries, unsigned) = ConsultSignatureAppend.Apply(expanded, appended, true, Snapshot);
+
+        Assert.Equal(expanded + "\n\nTaylor Reyes, MD\nDept. of Medicine", text);
+        Assert.Equal(
+            new[] { ("macro", "disclaimer", (string?)null), ("macro", "closing", null), ("signature", "clinic-letters", "2026-08-30") },
+            entries!.Select(entry => (entry.Kind, entry.Id, entry.AsOf)));
+        Assert.Null(unsigned);
+    }
+
+    [Fact]
+    public void Signed_WithNoMacrosBefore_StartsTheList()
+    {
+        var (text, entries, unsigned) = ConsultSignatureAppend.Apply("Body.", null, true, Snapshot);
+
+        Assert.Equal("Body.\n\nTaylor Reyes, MD\nDept. of Medicine", text);
+        var entry = Assert.Single(entries!);
+        Assert.Equal(("signature", "clinic-letters", "2026-08-30"), (entry.Kind, entry.Id, entry.AsOf));
+        Assert.Null(unsigned);
+    }
+
+    [Fact]
+    public void SignedWithNoChosenBlock_IsUnsignedByName_NothingChanged()
+    {
+        var text = "Body.";
+        var appended = new[] { new ConsultAppendedEntry(ConsultAppendedKinds.Macro, "disclaimer") };
+
+        var (resultText, resultAppended, unsigned) = ConsultSignatureAppend.Apply(text, appended, true, null);
+
+        Assert.Same(text, resultText);
+        Assert.Same(appended, resultAppended);
+        Assert.True(unsigned);
+    }
+
+    [Fact]
+    public void TheReplyLeg_ReadsTheRecordedText_NotTheAggregatorsOutput()
+    {
+        // v11 #516: the fork close — the reply/PDF documents come from what
+        // CompleteResultDocument stored, appends and all.
+        var deliverables = ConsultDeliverables.Resolve(
+            new[] { new ConsultResultDescriptor("consult", "assemble-note", "Consultation note") },
+            null,
+            new Dictionary<string, ConsultNodeDescriptor>(StringComparer.Ordinal));
+        var recorded = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["consult"] = "Rendered.\n\nAppended block."
+        };
+
+        var documents = ConsultDeliverables.ReplyDocumentsFor(deliverables, recorded);
+
+        var document = Assert.Single(documents);
+        Assert.Equal("consult", document.ResultId);
+        Assert.Equal("Consultation note", document.Label);
+        Assert.Equal("Rendered.\n\nAppended block.", document.Text);
+    }
+}
+
+/// <summary>
+/// v11 rung (c) (#516, § 7): a signature entry is inside both hashes and
+/// named with its as-of; the unsigned state is stored only when true, said
+/// in History by name, and absent on the control.
+/// </summary>
+public class WorkflowV11SignatureRecordTests
+{
+    private static readonly PropertyInfo StateProperty =
+        typeof(ConsultGenerationJobEntity).GetProperty("State", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!;
+
+    private static (ConsultGenerationJobEntity Entity, Func<ConsultGenerationJobState> State) Job()
+    {
+        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>());
+        StateProperty.SetValue(entity, ConsultGenerationJobState.Create("job-1", "user-1", new[]
+        {
+            new Dictionary<string, string> { ["id"] = "note:draft", ["name"] = "Consultation note" }
+        }));
+        return (entity, () => (ConsultGenerationJobState)StateProperty.GetValue(entity)!);
+    }
+
+    private static async Task CompleteAsync(ConsultGenerationJobEntity entity, ConsultGenerationResultDocument document)
+    {
+        await entity.CompleteBlock(new BlockGenerationResult("note:draft", "Consultation note", true, "Consultation note", null));
+        await entity.CompleteResultDocument(document);
+        await entity.FinalizeJob(new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Completed));
+    }
+
+    [Fact]
+    public async Task ASignatureEntry_IsInsideBothHashes_WithItsAsOf()
+    {
+        var (entity, state) = Job();
+        const string signedText = "Consultation note\n\nTaylor Reyes, MD";
+
+        await CompleteAsync(entity, new ConsultGenerationResultDocument("note", "Consultation note", signedText, 0,
+            new[] { new ConsultAppendedEntry(ConsultAppendedKinds.Signature, "clinic-letters", "2026-08-30") }));
+
+        var document = state().AssembledDocuments!.Single();
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(signedText), document.DocumentHash);
+        Assert.Equal(
+            ConsultGenerationProvenance.ComputeResultSetHash(new Dictionary<string, string>(StringComparer.Ordinal) { ["note"] = signedText }),
+            state().WorkflowOutputHash);
+        var entry = Assert.Single(state().ToResponse().AssembledDocuments!.Single().Appended!);
+        Assert.Equal(("signature", "clinic-letters", "2026-08-30"), (entry.Kind, entry.Id, entry.AsOf));
+        Assert.Null(document.Unsigned);
+    }
+
+    [Fact]
+    public async Task AnUnsignedDocument_StoresTrue_SurfacesIt_AndHistorySaysSo()
+    {
+        var (entity, state) = Job();
+
+        await CompleteAsync(entity, new ConsultGenerationResultDocument("note", "Consultation note", "Consultation note", 0, null, true));
+
+        Assert.True(state().AssembledDocuments!.Single().Unsigned);
+        Assert.True(state().ToResponse().AssembledDocuments!.Single().Unsigned);
+        var said = state().History.Single(h => h.Kind == "unsigned");
+        Assert.Equal(
+            "Produced unsigned: Consultation note — signature requested by the package; none chosen on the profile",
+            said.Label);
+    }
+
+    [Fact]
+    public async Task TheControl_StoresNoUnsigned_EvenWhenSentFalse()
+    {
+        var (entity, state) = Job();
+
+        await CompleteAsync(entity, new ConsultGenerationResultDocument("note", "Consultation note", "Consultation note", 0, null, false));
+
+        Assert.Null(state().AssembledDocuments!.Single().Unsigned);
+        Assert.Null(state().ToResponse().AssembledDocuments!.Single().Unsigned);
+        Assert.DoesNotContain(state().History, h => h.Kind == "unsigned");
+    }
+}

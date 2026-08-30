@@ -115,7 +115,8 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
                     WorkflowResultConditions.TryParseExpression(result.When, out var condition, out _)
                         ? condition
                         : null,
-                    result.Macros))
+                    result.Macros,
+                    result.Signature))
                 .ToList();
         }
 

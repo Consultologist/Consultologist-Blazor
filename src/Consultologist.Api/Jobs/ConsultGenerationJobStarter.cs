@@ -142,6 +142,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly IAccountRateLimiter _rateLimiter;
     private readonly IWorkflowPackageOwnership _ownership;
     private readonly IAccountStore _accounts;
+    private readonly IAccountSettingsStore _settingsStore;
 
     public ConsultGenerationJobStarter(
         ILogger<ConsultGenerationJobStarter> logger,
@@ -152,7 +153,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IWorkflowPackageOwnership ownership,
         EngineAttestationResponse engine,
         ITerminologyAttestationSource terminology,
-        IAccountStore accounts)
+        IAccountStore accounts,
+        IAccountSettingsStore settingsStore)
     {
         _logger = logger;
         _packageStore = packageStore;
@@ -163,6 +165,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         _rateLimiter = rateLimiter;
         _ownership = ownership;
         _accounts = accounts;
+        _settingsStore = settingsStore;
     }
 
     public async Task<ConsultGenerationJobStartOutcome> StartAsync(
@@ -579,7 +582,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         }
 
         var resultDescriptors = package.Results?
-            .Select(result => new ConsultResultDescriptor(result.Id, result.NodeId, result.Label, result.Macros))
+            .Select(result => new ConsultResultDescriptor(result.Id, result.NodeId, result.Label, result.Macros, result.Signature))
             .ToList();
 
         // v11 #513: the macro templates and the account's display name,
@@ -596,6 +599,25 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 macro => package.SourceFiles![macro.File],
                 StringComparer.Ordinal);
             profileName = await _accounts.GetDisplayNameAsync(appUserId, cancellationToken);
+        }
+
+        // v11 #516: the chosen signature block, snapshotted at start — what
+        // was promised when the job was submitted, through both doors. Only
+        // a package that marks a deliverable signed pays the table read; no
+        // chosen block travels as the flag without a snapshot, which the
+        // engine records as produced unsigned.
+        ConsultSignatureSnapshot? signatureSnapshot = null;
+        if (package.Results?.Any(result => result.Signature == true) == true)
+        {
+            var signatureSetting = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.ProfileSignatures, cancellationToken);
+            var chosen = SignatureBlocks.Chosen(SignatureBlocks.Parse(signatureSetting?.Value));
+            if (chosen != null)
+            {
+                signatureSnapshot = new ConsultSignatureSnapshot(
+                    chosen.Id,
+                    chosen.Text,
+                    chosen.UpdatedAtUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            }
         }
 
         await client.Entities.SignalEntityAsync(
@@ -668,7 +690,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 EmailRequested: origin.EmailRequested,
                 // v11 #513: the expansion facts assembly needs, when macros are declared.
                 MacroTexts: macroTexts,
-                ProfileName: profileName),
+                ProfileName: profileName,
+                // v11 #516: the chosen signature as of this start, when the
+                // package marks a deliverable signed.
+                Signature: signatureSnapshot),
             new StartOrchestrationOptions { InstanceId = jobId },
             cancellationToken);
 
