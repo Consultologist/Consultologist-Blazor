@@ -219,7 +219,23 @@ public sealed record ConsultGenerationResultDocumentResponse(
     string Label,
     // #368: null once the retention policy deleted the text; DocumentHash stays.
     string? Text,
-    string? DocumentHash = null);
+    string? DocumentHash = null,
+    // v11 #513 (provenance § 7): what was appended after the aggregated
+    // sections, in applied order. Null on every record without appends.
+    IReadOnlyList<ConsultAppendedEntry>? Appended = null);
+
+/// <summary>
+/// v11 #513 (provenance § 7): one block appended to a deliverable's assembled
+/// document after the aggregated sections — a macro now, the signature from
+/// rung (c). The job's package version pins the template's bytes; the text
+/// itself is inside the document and its hash.
+/// </summary>
+public sealed record ConsultAppendedEntry(string Kind, string Id);
+
+public static class ConsultAppendedKinds
+{
+    public const string Macro = "macro";
+}
 
 /// <summary>
 /// The identity and display label of one per-item chain step, snapshotted from the
