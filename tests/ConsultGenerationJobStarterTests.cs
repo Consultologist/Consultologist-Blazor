@@ -25,6 +25,7 @@ public class ConsultGenerationJobStarterTests
     private readonly DurableEntityClient _entities = Substitute.For<DurableEntityClient>("test");
     private readonly FakeOwnership _ownership = new();
     private readonly IAccountStore _accounts = Substitute.For<IAccountStore>();
+    private readonly IAccountSettingsStore _settings = Substitute.For<IAccountSettingsStore>();
 
     // #290: a terse but genuine referral. These fixtures used to say
     // "draft", which is not a referral and which the content floor
@@ -52,7 +53,8 @@ public class ConsultGenerationJobStarterTests
             EngineAttestation.Current(TestCatalog.Instance, apiHost),
             // #403: what the terminology server says, or nothing.
             _terminology,
-            _accounts);
+            _accounts,
+            _settings);
     }
 
     private readonly FakeTerminologySource _terminology = new();

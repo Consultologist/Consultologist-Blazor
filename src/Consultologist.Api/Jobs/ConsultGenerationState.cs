@@ -626,7 +626,21 @@ public sealed record ConsultGenerationOrchestrationInput(
     // orchestrator cannot fetch, snapshotted at start like EmailRequested.
     // Null unless the package declares macros. Appended last, same reason.
     IReadOnlyDictionary<string, string>? MacroTexts = null,
-    string? ProfileName = null);
+    string? ProfileName = null,
+    // v11 #516: the profile's chosen signature block, snapshotted at start —
+    // a signature changed mid-run does not change what was promised, and a
+    // sleeping scheduled job signs with what was chosen when it was
+    // submitted. Null when the package marks nothing signed, and when the
+    // account has no chosen block (the engine then records the deliverable
+    // as produced unsigned). Appended last, same reason.
+    ConsultSignatureSnapshot? Signature = null);
+
+/// <summary>
+/// v11 #516: the chosen signature as it was at job start — the block's id,
+/// its text verbatim, and its as-of date (yyyy-MM-dd, when the block was
+/// last edited). One nested slot, the TerminologySnapshot precedent.
+/// </summary>
+public sealed record ConsultSignatureSnapshot(string Id, string Text, string AsOf);
 
 public sealed record ConsultGenerationJobInitialize(
     string JobId,

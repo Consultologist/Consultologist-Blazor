@@ -56,6 +56,15 @@ public static class AccountSettingKeys
     /// identity: it rides the generic settings routes and is read at start.
     /// </summary>
     public const string EmailPdf = "delivery.emailPdf";
+
+    /// <summary>
+    /// #516: the profile's signature blocks and the chosen one, as one JSON
+    /// row — a preference-shaped identity artifact on the generic routes.
+    /// The Web writes it (Services/Accounts/SignatureBlocks.cs); the job
+    /// starter reads it at start when a package marks a deliverable signed
+    /// (Auth/SignatureBlocks.cs is the read half).
+    /// </summary>
+    public const string ProfileSignatures = "profile.signatures";
 }
 
 /// <summary>#517: the two ways a delivery address gets verified.</summary>
