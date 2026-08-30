@@ -225,7 +225,9 @@ DeepSeek V4 Pro supports disabling reasoning via parameters. Implications:
   Since the in-app editor (#57, 2026-07-16), the `workflowPackage` ref may name a
   per-account fork (`acct-…@vN`); the fork's manifest carries a server-stamped
   `derivedFrom` chain that walks back to the repo root, and account versions are
-  never deleted — provenance refs stay resolvable forever.
+  never deleted while the account exists — provenance refs stay resolvable for as
+  long as the account does. (Amended 2026-08-30, #559: account closure removes an
+  account's forks together with its records, so no ref outlives its package.)
 - **Where variance enters is visible**: per-(node, item) Input/OutputHash chains
   localize divergence between runs. In practice (2026-07-16): two runs of the same
   package on the same draft diverged at exactly one point — the first node's

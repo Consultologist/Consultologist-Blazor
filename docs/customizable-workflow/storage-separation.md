@@ -103,7 +103,8 @@ purge leaves behind, and its residency.
 |---|---|---|---|---|---|---|
 | **Inputs** | the effective input map (documents already extracted, references already copied, form values already coerced); held form responses | text | `org-job-inputs` / `personal-job-inputs`; `org-form-responses` / `personal-form-responses` (§ 2.5) | `{appUserId}/{jobId}.json`; `{appUserId}/{formId}-{responseId}.json` | the account's `retention.inputDays` (#548), default `TextRetention__Days`, ≤ outputs, ≤ 30 | the sweep (blob delete + `inputsDroppedAtUtc`); lifecycle policy at 30 days as the backstop |
 | **Outputs** | assembled deliverables, node outputs and concepts, the SSE snapshots | text | `org-job-outputs` / `personal-job-outputs`; `ConsultGenerationJobEvents` table (moved) | `{appUserId}/{jobId}.json`; jobId partition | `retention.outputDays`, default `TextRetention__Days`, ≤ 30 | the sweep (blob delete + `textDroppedAtUtc`, events partition delete); same backstop |
-| **History / record** | the entity minus its text; the index row; the links index (#546); the origins with digests | records | Durable entity state; `ConsultGenerationJobIndex`; `ConsultGenerationLinks` table | jobId; appUserId / reverse-ticks_jobId; sourceJobId / consumerJobId | **never** | none — hashes are stamped at completion and outlive everything |
+| **History / record** | the entity minus its text; the index row; the links index (#546); the origins with digests | records | Durable entity state; `ConsultGenerationJobIndex`; `ConsultGenerationLinks` table | jobId; appUserId / reverse-ticks_jobId; sourceJobId / consumerJobId | **never** while the account exists | account closure only (§ 2.6) — hashes are stamped at completion and outlive everything else |
+| **Packages** (account forks) | `acct-*` versions: manifest and files, immutable | records | `org-account-packages` / `personal-account-packages` (§ 2.5); `PackageOwners` | `{name}/{version}/…`, `{name}/latest.json`; appUserId / name | **never** while the account exists | account closure only (§ 2.6) |
 | **Usage** | per-account, per-day counts (#552): consults completed, input and output tokens; per-run numbers on the record (#551) | records | `AccountUsage` table | appUserId / `yyyy-MM-dd` | indefinite — the store that survives every purge | none; numbers only, derived at completion, **never re-derived from records** |
 
 The account, identity, settings, claim and ownership tables of § 1.2 stay
@@ -192,6 +193,30 @@ region would double the operator surface for no separation the container
 does not already give. An organisation that later needs its own store set
 is a new location in #515's sense, not a new container.
 
+### 2.6 Account closure — the one deleter of what is never deleted
+
+Three classes above say *never*: the record, the links, and — added here —
+the account's package forks. Each is never deleted **while the account
+exists**. The one thing that deletes them is **account closure** (#559):
+an operator action, on the existing allowlist, that removes everything an
+account owns in an order that leaves no orphan still resolving — text,
+then packages (every version of every `acct-*` fork, and the ownership
+rows), then records and links, then the index, settings, identities, and
+the `AppUsers` row. What stays: the usage counts (numbers), the rate-limit
+rows, the email claim ledger (message ids and outcomes), and one closure
+row as the audit of the act. The provenance registry's promise that
+*account versions are never deleted — provenance refs stay resolvable
+forever* is thereby narrowed to *for as long as the account exists*; a
+record that named a closed account's package is gone with the account,
+so no ref dangles. Public packages are never closed: they belong to the
+repository, not to an account.
+
+Account forks therefore get the same org/personal pairing as text
+(§ 2.5): `org-account-packages` and `personal-account-packages` on the
+records account, the writer and the reader choosing by `AccountKind`; the
+public container on `consultologistpublic` is untouched. Nothing in the
+package format changes — a container name in the writer and the reader.
+
 ## 3. Two accounts per region
 
 Named from the host rule (`docs/CONFIGURATION.md` 142–152): the region
@@ -204,7 +229,7 @@ already forbid it in code). The **text** account is new (§ 7 M1).
 
 | | text account | records account |
 |---|---|---|
-| Holds | the six text containers of § 2.5 (`org-`/`personal-` × `job-inputs`, `job-outputs`, `form-responses`); `ConsultGenerationJobEvents` | the Durable hub; the account, settings, claim, ownership, index, links and usage tables; the private `workflow-packages` |
+| Holds | the six text containers of § 2.5 (`org-`/`personal-` × `job-inputs`, `job-outputs`, `form-responses`); `ConsultGenerationJobEvents` | the Durable hub; the account, settings, claim, ownership, index, links, usage and closure tables; the account forks in `org-account-packages` / `personal-account-packages` (§ 2.6; today one `workflow-packages`) |
 | Shared key | off | off |
 | Identity's roles | Storage Blob Data Contributor, Storage Table Data Contributor | as today: Blob Data Owner, Queue Data Contributor, Table Data Contributor |
 | Lifecycle policy | delete blobs 30 days after creation, every container — the ceiling of #548, never the rule | none |
@@ -262,7 +287,8 @@ be checked against it once the text is gone; the record says when.
 | M3 | Inputs on `job-inputs`; held form responses on `form-responses` | #547; #539 amended |
 | M4 | Per-account retention drives the sweep over both classes | #548 |
 | M5 | `AccountUsage` on the records account, after the numbers exist | #551 → #552 |
-| M6 | Cleanup: the stale hub tables in `consultologistgroup8cbf`; the AML/training accounts (shared key off, or deleted); the `AccountRateLimits` / `LinkedInLinkStates` cleanup rule | to file (M22) |
+| M6 | Cleanup: the stale hub tables in `consultologistgroup8cbf`; the AML/training accounts (shared key off, or deleted); the `AccountRateLimits` / `LinkedInLinkStates` cleanup rule | #558 |
+| M7 | Account forks into `org-`/`personal-account-packages` (writer and reader by `AccountKind`; the existing `workflow-packages` forks moved once); account closure (§ 2.6) | #559 (after #556) |
 
 M2 before M3 so the read path, the pointer fields and the new `DropText`
 exist before inputs — the class with the shorter clock — arrive. #546's
