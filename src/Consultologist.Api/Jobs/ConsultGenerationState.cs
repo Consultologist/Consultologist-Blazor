@@ -618,7 +618,13 @@ public sealed record ConsultGenerationOrchestrationInput(
     // #518: whether the account asked for the completion email at all —
     // false records not-requested and sends nothing; null (a payload from
     // before) means requested. Appended last, same reason.
-    bool? EmailRequested = null);
+    bool? EmailRequested = null,
+    // v11 #513: the package's macro templates (id → raw markdown) and the
+    // account's display name — the expansion facts assembly needs that the
+    // orchestrator cannot fetch, snapshotted at start like EmailRequested.
+    // Null unless the package declares macros. Appended last, same reason.
+    IReadOnlyDictionary<string, string>? MacroTexts = null,
+    string? ProfileName = null);
 
 public sealed record ConsultGenerationJobInitialize(
     string JobId,

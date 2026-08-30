@@ -266,7 +266,13 @@ public sealed record ConsultNodeBindingDescriptor(string From, string? As = null
 /// set at start — a Jobs-layer type so registry records never enter durable
 /// payloads.
 /// </summary>
-public sealed record ConsultResultDescriptor(string Id, string NodeId, string Label);
+public sealed record ConsultResultDescriptor(
+    string Id,
+    string NodeId,
+    string Label,
+    // v11 #513: the macro ids appended to this deliverable, in declared order.
+    // Null on every pre-v11 job — appended last, this is a durable payload.
+    IReadOnlyList<string>? Macros = null);
 
 /// <summary>
 /// A deliverable the package declared and this job did not produce, because its

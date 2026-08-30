@@ -114,7 +114,8 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
                     // either way.
                     WorkflowResultConditions.TryParseExpression(result.When, out var condition, out _)
                         ? condition
-                        : null))
+                        : null,
+                    result.Macros))
                 .ToList();
         }
 
@@ -142,6 +143,9 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         var paths = (manifest.Prompts ?? new List<WorkflowPromptSpec>()).Select(p => p.File)
             .Concat((manifest.Preludes ?? new Dictionary<string, string>()).Values)
             .Concat((manifest.Schemas ?? new Dictionary<string, string>()).Values)
+            // v11 #513: macro templates are package files like prompts — they
+            // must be in SourceFiles for the starter to snapshot.
+            .Concat((manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.File))
             .Distinct(StringComparer.Ordinal);
 
         foreach (var path in paths)
