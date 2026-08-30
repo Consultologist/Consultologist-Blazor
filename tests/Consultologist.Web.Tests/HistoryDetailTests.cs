@@ -398,6 +398,26 @@ public class HistoryDetailTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void AnUnsignedDeliverable_IsSaidByName_BesideItsDigest()
+    {
+        // v11 #516 § 5: signature requested by the package; none chosen on
+        // the profile — the record and History say so by name.
+        WithJob(3, new[]
+        {
+            new ConsultGenerationResultDocumentResponse("letter", "Decline letter", "Letter.", "hash-letter", Unsigned: true),
+            new ConsultGenerationResultDocumentResponse("consult_note", "Consultation note", "Note.", "hash-note")
+        });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var unsigned = page.FindAll(".document-unsigned");
+        Assert.Single(unsigned);
+        Assert.Equal(
+            "produced unsigned — signature requested by the package; none chosen on the profile",
+            unsigned[0].TextContent.Trim());
+    }
+
+    [Fact]
     public void ADeliverableThatDidNotFire_IsRecordedBesideTheDigests()
     {
         // The absence belongs next to the evidence for the documents that do
