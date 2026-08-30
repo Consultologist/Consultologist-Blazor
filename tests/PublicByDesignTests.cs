@@ -12,10 +12,12 @@ public class PublicByDesignTests
 
     // Settings documentation names the private account as a value to configure,
     // which is not a recipe; every other mention belongs in the operations repo.
+    // #545's storage record names it as the records account the settings point
+    // at — an inventory, not a recipe — and joins the list.
     private static readonly string[] PrivateAccountAllowed =
     {
         "docs/CONFIGURATION.md", "docs/STORAGE.md", "docs/ACCOUNTS.md", "docs/customizable-workflow/content-repos.md",
-        "docs/NETWORK_HARDENING.md", "scripts/verify-rate-limit.sh"
+        "docs/NETWORK_HARDENING.md", "docs/customizable-workflow/storage-separation.md", "scripts/verify-rate-limit.sh"
     };
 
     [Theory]
