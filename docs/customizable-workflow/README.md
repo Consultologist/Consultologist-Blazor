@@ -73,6 +73,11 @@ another (#400); what stays here is why each was chosen. Public by design, like t
   clinician's Power Automate flow pushes responses with the clinician's own
   token into a held list the setup form picks from; organisation sign-ins
   only; experiments E1–E4 pending
+- [storage-separation.md](storage-separation.md) — design record (#545,
+  2026-08-30): the four classes of state — inputs, outputs, history/record,
+  usage — each with its store, key, retention, deleter and residency; a text
+  (PHI) account and a records account per region; what a purge leaves
+  behind; the migration order
 - [package-format-v5-design.md](package-format-v5-design.md) — converged design
   (2026-07-15): fork-everything with derivedFrom lineage, data/
   collections replacing the standards straddle, one node kind with forEach,
