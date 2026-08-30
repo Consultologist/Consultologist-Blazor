@@ -582,7 +582,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         }
 
         var resultDescriptors = package.Results?
-            .Select(result => new ConsultResultDescriptor(result.Id, result.NodeId, result.Label, result.Macros))
+            .Select(result => new ConsultResultDescriptor(result.Id, result.NodeId, result.Label, result.Macros, result.Signature))
             .ToList();
 
         // v11 #513: the macro templates and the account's display name,

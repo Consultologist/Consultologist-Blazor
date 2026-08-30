@@ -306,6 +306,65 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
+    public async Task ASignedPackage_SnapshotsTheChosenSignature_AndAPlainOneDoesNot()
+    {
+        // v11 #516: the chosen block rides the orchestration input as of the
+        // start — through both doors, since both come through this starter.
+        // Only a package that marks a deliverable signed pays the table read;
+        // a signed package on an account with no chosen block starts with a
+        // null snapshot (the engine records the deliverable unsigned).
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V8Fixtures.Minimal(),
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Consultation note", null, null, true) }));
+        _settings.GetAsync("user-1", AccountSettingKeys.ProfileSignatures, Arg.Any<CancellationToken>())
+            .Returns(new AccountSetting(
+                AccountSettingKeys.ProfileSignatures,
+                """{"Blocks":[{"Id":"clinic-letters","Name":"Clinic letters","Text":"Taylor Reyes, MD","UpdatedAtUtc":"2026-08-30T12:00:00+00:00"}],"ChosenId":"clinic-letters"}""",
+                "application/json",
+                DateTimeOffset.UtcNow));
+
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var outcome = await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(Referral), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+
+        Assert.Null(outcome.Error);
+        Assert.Equal(new ConsultSignatureSnapshot("clinic-letters", "Taylor Reyes, MD", "2026-08-30"), orchestrationInput!.Signature);
+        Assert.True(Assert.Single(orchestrationInput.Results!).Signature);
+
+        // Signed package, no chosen block: starts, with a null snapshot.
+        orchestrationInput = null;
+        _settings.GetAsync("user-1", AccountSettingKeys.ProfileSignatures, Arg.Any<CancellationToken>())
+            .Returns((AccountSetting?)null);
+        var unsignedOutcome = await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(Referral), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+        Assert.Null(unsignedOutcome.Error);
+        Assert.Null(orchestrationInput!.Signature);
+        Assert.True(Assert.Single(orchestrationInput.Results!).Signature);
+
+        // A package that marks nothing signed pays no table read.
+        orchestrationInput = null;
+        _settings.ClearReceivedCalls();
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V8Fixtures.Minimal(),
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Consultation note") }));
+        await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(Referral), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+        Assert.Null(orchestrationInput!.Signature);
+        await _settings.DidNotReceive().GetAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task AMacroPackage_SnapshotsTemplatesAndTheProfileName_AndAPlainOneDoesNot()
     {
         // v11 #513: the templates and the display name ride the orchestration

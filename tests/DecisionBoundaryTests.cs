@@ -193,6 +193,22 @@ public class DecideActivityTests
     };
 
     [Fact]
+    public void TheBoundary_CarriesTheSignatureFlag_OntoTheDescriptors()
+    {
+        // v11 #516: a deciding job's deliverables come from Decide — the
+        // signed flag must survive this door too.
+        var package = ClassifierPackage("node:scope == in_scope");
+        package = package with
+        {
+            Results = package.Results!.Select(r => r with { Signature = true }).ToList()
+        };
+
+        var decision = DecideActivity.Decide(package, Supplied, new Dictionary<string, string> { ["scope"] = "in_scope" });
+
+        Assert.True(Assert.Single(decision.Results).Signature);
+    }
+
+    [Fact]
     public void TheBoundary_CarriesTheMacroIds_OntoTheDescriptors()
     {
         // v11 #513: a deciding job's deliverables come from Decide, not the

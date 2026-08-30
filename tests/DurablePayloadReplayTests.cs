@@ -179,6 +179,21 @@ public class DurablePayloadReplayTests
     }
 
     [Fact]
+    public void AStoredAppendedEntry_WithoutAsOf_BindsNull()
+    {
+        // v11 #516: rung-b jobs already stored macro entries with two fields;
+        // AsOf binds null and re-serialises with exactly one trailing null.
+        const string stored = """
+            {"Kind":"macro","Id":"disclaimer"}
+            """;
+
+        var entry = JsonSerializer.Deserialize<ConsultAppendedEntry>(stored, Durable)!;
+
+        Assert.Null(entry.AsOf);
+        Assert.Equal(stored[..^1] + ",\"AsOf\":null}", JsonSerializer.Serialize(entry, Durable));
+    }
+
+    [Fact]
     public void AStructuredValue_SurvivesTheOrchestrationPayload()
     {
         // #421 made the typed request carry structure, and the request rides
