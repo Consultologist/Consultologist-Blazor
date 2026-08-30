@@ -1,4 +1,9 @@
+using System.Reflection;
+using Consultologist.Api.Jobs;
+using Consultologist.Api.Models;
+using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
+using NSubstitute;
 
 namespace Consultologist.Api.Tests;
 
@@ -221,5 +226,202 @@ public class WorkflowV11MacroTests
 
         var result = V11Fixtures.Validate(manifest);
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+}
+
+/// <summary>
+/// v11 rung (b) (#513, § 4 append rule): the engine's expansion — substitution
+/// over the closed namespaces, no model, no Scriban, no recursion — and the
+/// append after the aggregated sections: declared order, blank-line separated,
+/// no invented heading. The control: no macros, the text untouched, nothing
+/// recorded.
+/// </summary>
+public class ConsultMacroExpanderTests
+{
+    private static readonly Dictionary<string, string> NoValues = new(StringComparer.Ordinal);
+
+    private static ConsultMacroExpander.RunFacts Facts(string? apiHost = "east.ca.api.consultologist.ai", string? profileName = "Taylor Reyes") =>
+        new(new DateTime(2026, 8, 30, 21, 5, 0, DateTimeKind.Utc), "0123456789abcdef", "general@v2026.09.1", apiHost, profileName);
+
+    private static string Expand(
+        string template,
+        Dictionary<string, string>? inputs = null,
+        Dictionary<string, string>? data = null,
+        Dictionary<string, string>? classifications = null,
+        ConsultMacroExpander.RunFacts? facts = null)
+        => ConsultMacroExpander.Expand(template, inputs ?? NoValues, data, classifications ?? NoValues, facts ?? Facts());
+
+    [Fact]
+    public void FixedText_ExpandsVerbatim()
+    {
+        // The SmartPhrase sense: a macro file with no placeholders is the
+        // file itself — its own markdown, no heading invented for it.
+        Assert.Equal("**Disclaimer.** This text is fixed.", Expand("**Disclaimer.** This text is fixed."));
+    }
+
+    [Fact]
+    public void EachSenseResolves()
+    {
+        var expanded = Expand(
+            "Stay {{input:length_of_stay}}; guide {{ data:intro }}; scope {{classification:scope}}; on {{run:date}} job {{run:job}} of {{run:package}} at {{run:host}} by {{profile:name}}.",
+            inputs: new(StringComparer.Ordinal) { ["length_of_stay"] = "3 days" },
+            data: new(StringComparer.Ordinal) { ["intro"] = "the guide" },
+            classifications: new(StringComparer.Ordinal) { ["scope"] = "in_scope" });
+
+        Assert.Equal(
+            "Stay 3 days; guide the guide; scope in_scope; on 2026-08-30 job 01234567 of general@v2026.09.1 at east.ca.api.consultologist.ai by Taylor Reyes.",
+            expanded);
+    }
+
+    [Fact]
+    public void AnAbsentOptionalInput_RendersEmpty()
+    {
+        // The effective map carries every declared id; an absent optional is
+        // already the empty string (§ 4) — nothing special happens here.
+        Assert.Equal("Stay .", Expand("Stay {{input:length_of_stay}}.", inputs: new(StringComparer.Ordinal) { ["length_of_stay"] = "" }));
+    }
+
+    [Fact]
+    public void HostAndProfileName_AreDataAbsence_NotGrammarFailure()
+    {
+        // A deployment naming no host, an account with no display name: the
+        // token resolves — to nothing — mirroring the optional-input rule.
+        Assert.Equal("At  by .", Expand("At {{run:host}} by {{profile:name}}.", facts: Facts(apiHost: null, profileName: null)));
+    }
+
+    [Fact]
+    public void AShortJobId_RendersWhole()
+    {
+        Assert.Equal("job-1", Expand("{{run:job}}", facts: Facts() with { JobId = "job-1" }));
+    }
+
+    [Theory]
+    [InlineData("{{input:nope}}", "input:nope")]
+    [InlineData("{{data:intro}}", "data:intro")]
+    [InlineData("{{classification:scope}}", "classification:scope")]
+    [InlineData("{{run:time}}", "run:time")]
+    [InlineData("{{profile:signature}}", "profile:signature")]
+    [InlineData("{{no_namespace}}", "no_namespace")]
+    [InlineData("{{sql:drop}}", "sql:drop")]
+    public void ATokenThatDoesNotResolve_FailsLoud_NamingIt(string template, string token)
+    {
+        // Unreachable for a validated package — the publish scanner shares
+        // this grammar — so a miss is a broken snapshot, and a loud failure
+        // beats a silently wrong clinical document.
+        var exception = Assert.Throws<InvalidOperationException>(() => Expand(template));
+        Assert.Equal($"Macro placeholder '{{{{{token}}}}}' does not resolve.", exception.Message);
+    }
+
+    [Fact]
+    public void NoMacros_IsTheControl_TextUntouchedAndNothingRecorded()
+    {
+        var (text, appended) = ConsultMacroExpander.Append("## A\n\nBody", null, null, NoValues, null, NoValues, Facts());
+        Assert.Equal("## A\n\nBody", text);
+        Assert.Null(appended);
+
+        // An empty-but-present list is no append either.
+        (text, appended) = ConsultMacroExpander.Append("## A\n\nBody", Array.Empty<string>(), null, NoValues, null, NoValues, Facts());
+        Assert.Equal("## A\n\nBody", text);
+        Assert.Null(appended);
+    }
+
+    [Fact]
+    public void MacrosAppend_InDeclaredOrder_BlankLineSeparated_NoInventedHeading()
+    {
+        var texts = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["disclaimer"] = "This disclaimer is fixed.",
+            ["closing"] = "Signed on {{run:date}}."
+        };
+
+        var (text, appended) = ConsultMacroExpander.Append(
+            "## History\n\nUnremarkable.", new[] { "disclaimer", "closing" }, texts, NoValues, null, NoValues, Facts());
+
+        Assert.Equal("## History\n\nUnremarkable.\n\nThis disclaimer is fixed.\n\nSigned on 2026-08-30.", text);
+        Assert.Equal(new[] { ("macro", "disclaimer"), ("macro", "closing") }, appended!.Select(entry => (entry.Kind, entry.Id)));
+    }
+
+    [Fact]
+    public void AMissingTemplate_FailsLoud()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => ConsultMacroExpander.Append(
+            "Body", new[] { "ghost" }, new Dictionary<string, string>(StringComparer.Ordinal), NoValues, null, NoValues, Facts()));
+        Assert.Equal("Macro 'ghost' has no snapshotted template.", exception.Message);
+    }
+
+    [Fact]
+    public void TheDeliverableTable_CarriesTheMacroIds()
+    {
+        var deliverable = ConsultDeliverables.Resolve(
+            new[] { new ConsultResultDescriptor("consult", "assemble-note", "Consultation note", new[] { "closing" }) },
+            null,
+            new Dictionary<string, ConsultNodeDescriptor>(StringComparer.Ordinal)).Single();
+
+        Assert.Equal(new[] { "closing" }, deliverable.MacroIds);
+    }
+}
+
+/// <summary>
+/// v11 rung (b) (#513, § 7): the appended text is inside Text before the
+/// entity stores it, so documentHash and the workflow output hash cover it
+/// with no definition moving; appended[] names what was appended, in applied
+/// order — and its absence stores the bytes of before.
+/// </summary>
+public class WorkflowV11AppendedRecordTests
+{
+    private static readonly PropertyInfo StateProperty =
+        typeof(ConsultGenerationJobEntity).GetProperty("State", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!;
+
+    private static (ConsultGenerationJobEntity Entity, Func<ConsultGenerationJobState> State) Job()
+    {
+        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>());
+        StateProperty.SetValue(entity, ConsultGenerationJobState.Create("job-1", "user-1", new[]
+        {
+            new Dictionary<string, string> { ["id"] = "note:draft", ["name"] = "Consultation note" }
+        }));
+        return (entity, () => (ConsultGenerationJobState)StateProperty.GetValue(entity)!);
+    }
+
+    private static async Task CompleteAsync(ConsultGenerationJobEntity entity, string text, IReadOnlyList<ConsultAppendedEntry>? appended)
+    {
+        await entity.CompleteBlock(new BlockGenerationResult("note:draft", "Consultation note", true, "Consultation note", null));
+        await entity.CompleteResultDocument(new ConsultGenerationResultDocument("note", "Consultation note", text, 0, appended));
+        await entity.FinalizeJob(new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Completed));
+    }
+
+    [Fact]
+    public async Task TheAppendedText_IsInsideBothHashes_AndAppendedNamesIt()
+    {
+        var (entity, state) = Job();
+        const string appendedText = "Consultation note\n\nThis disclaimer is fixed.";
+
+        await CompleteAsync(entity, appendedText, new[] { new ConsultAppendedEntry(ConsultAppendedKinds.Macro, "disclaimer") });
+
+        var document = state().AssembledDocuments!.Single();
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(appendedText), document.DocumentHash);
+        Assert.Equal(
+            ConsultGenerationProvenance.ComputeResultSetHash(new Dictionary<string, string>(StringComparer.Ordinal) { ["note"] = appendedText }),
+            state().WorkflowOutputHash);
+        var entry = Assert.Single(document.Appended!);
+        Assert.Equal(("macro", "disclaimer"), (entry.Kind, entry.Id));
+        var response = Assert.Single(state().ToResponse().AssembledDocuments!);
+        Assert.Equal("disclaimer", Assert.Single(response.Appended!).Id);
+    }
+
+    [Fact]
+    public async Task TheControl_NoAppends_StoresNullAndTheBytesOfBefore()
+    {
+        var (entity, state) = Job();
+
+        await CompleteAsync(entity, "Consultation note", null);
+
+        var document = state().AssembledDocuments!.Single();
+        Assert.Null(document.Appended);
+        Assert.Null(Assert.Single(state().ToResponse().AssembledDocuments!).Appended);
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex("Consultation note"), document.DocumentHash);
+
+        // An empty list is no append either — stored as the null of before.
+        await entity.CompleteResultDocument(new ConsultGenerationResultDocument("note", "Consultation note", "Consultation note", 0, Array.Empty<ConsultAppendedEntry>()));
+        Assert.Null(state().AssembledDocuments!.Single().Appended);
     }
 }

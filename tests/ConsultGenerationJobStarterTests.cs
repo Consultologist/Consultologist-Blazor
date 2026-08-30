@@ -304,6 +304,67 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
+    public async Task AMacroPackage_SnapshotsTemplatesAndTheProfileName_AndAPlainOneDoesNot()
+    {
+        // v11 #513: the templates and the display name ride the orchestration
+        // input — what was promised when the job was submitted, the
+        // EmailRequested principle — and only a macro package pays the lookup.
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        var (manifest, files) = V11Fixtures.WithMacro("By {{profile:name}}.");
+        var errors = new List<string>();
+        var data = WorkflowDataResolver.Resolve(manifest, files, errors);
+        Assert.Empty(errors);
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackage(
+                manifest,
+                Nodes: manifest.Nodes,
+                SchemaContracts: TestOutputContracts.CatalogSchemas,
+                Data: data,
+                ResultNodeId: "assemble-note",
+                SourceFiles: files,
+                Results: new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Consultation note", null, new[] { "disclaimer" }) }));
+        _accounts.GetDisplayNameAsync("user-1", Arg.Any<CancellationToken>()).Returns("Taylor Reyes");
+
+        // The v11 fixture descends from the structured v9 one: supply its map.
+        var supplied = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = Referral,
+            ["seen_on"] = "2026-08-10",
+            ["encounter_kind"] = "follow_up",
+            ["prior_notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("First.") })
+        };
+
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var outcome = await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(null, Inputs: supplied), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+
+        Assert.Null(outcome.Error);
+        Assert.Equal("By {{profile:name}}.", orchestrationInput!.MacroTexts!["disclaimer"]);
+        Assert.Equal("Taylor Reyes", orchestrationInput.ProfileName);
+        Assert.Equal(new[] { "disclaimer" }, Assert.Single(orchestrationInput.Results!).Macros);
+
+        // A package with no macros pays no table read and writes the nulls of before.
+        orchestrationInput = null;
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V8Fixtures.Minimal(),
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+        await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(Referral), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+        Assert.Null(orchestrationInput!.MacroTexts);
+        Assert.Null(orchestrationInput.ProfileName);
+        await _accounts.Received(1).GetDisplayNameAsync("user-1", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task SpecVersion8Package_StampsHashVersion4()
     {
         // A text-only v8 package hashes to the same bytes a v7 one would,
