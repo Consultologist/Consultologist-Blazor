@@ -78,10 +78,12 @@ public class WorkflowV10GateTests
     }
 
     [Fact]
-    public void ElevenIsRefused_NamingTheSet()
+    public void ElevenIsAccepted_ButDoesNotRunYet()
     {
-        Assert.Contains(V10Fixtures.Validate(V10Fixtures.Minimal() with { SpecVersion = 11 }).Errors,
-            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9 or 10"));
+        // (a) #563: the validator's gate moved first, the engine's follows at
+        // rung (g). Twelve is what the gate refuses now — WorkflowV11Tests.
+        Assert.Contains(11, WorkflowPackageValidator.AcceptedSpecVersions);
+        Assert.DoesNotContain(11, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions);
     }
 }
 
