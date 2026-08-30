@@ -43,7 +43,7 @@ would otherwise have carried it (#397).
 
 - [customizable-workflow/](customizable-workflow/README.md) — versioned workflow
   packages, specialty bundles, and the per-consult provenance record — the design
-  records behind package formats v2–v9, all shipped; the normative specifications
+  records behind package formats v2–v10, all shipped, and v11, designed; the normative specifications
   and the record contract are published registries (#376, #400): [current state](customizable-workflow/current-state.md),
   [workflow packages](customizable-workflow/workflow-packages.md),
   [provenance](customizable-workflow/provenance.md),
@@ -70,6 +70,12 @@ would otherwise have carried it (#397).
   (typed inputs and conditional deliverables; also carries the candidates
   considered and not taken, and why the trigger was overridden rather than
   met),
+  [package format v9 design](customizable-workflow/package-format-v9-design.md),
+  [package format v10 design](customizable-workflow/package-format-v10-design.md)
+  (the classifying node, the condition evaluator, unbounded nesting),
+  [package format v11 design](customizable-workflow/package-format-v11-design.md)
+  (macros as templates with namespaced placeholders, the signature flag,
+  reproducible stages),
   [Forms intake spike](customizable-workflow/forms-intake-spike.md)
   (#511: what the documentation and the engine establish about a Microsoft
   Forms door, the staged design, and the operator-run experiments),
