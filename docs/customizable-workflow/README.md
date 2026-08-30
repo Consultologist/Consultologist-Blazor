@@ -2,7 +2,7 @@
 
 Design records, begun 2026-07-09, on turning the consult-generation workflow and
 section template system into versioned, code-independent artifacts. Since then
-formats v2–v9 have shipped and v10 is designed (2026-08-26), the normative
+formats v2–v10 have shipped and v11 is designed (2026-08-31), the normative
 specifications live in their own registry (#376) and the record contract in
 another (#400); what stays here is why each was chosen. Public by design, like the rest of this repository.
 
@@ -68,6 +68,12 @@ another (#400); what stays here is why each was chosen. Public by design, like t
   the fire set is decided, a condition evaluator with `and`/`or`/`not` and
   arithmetic, unbounded nesting and hash definition 6; the ladder of PRs;
   the three v9 § 13 roads taken deliberately, trigger unfired
+- [package-format-v11-design.md](package-format-v11-design.md) — design record
+  (2026-08-31, Milestone 22): macros as package-owned templates with
+  placeholders from closed namespaces (the three clinical senses, one
+  grammar), the per-deliverable signature flag appended at completion
+  inside the hash, and `reproducible` on nodes for the rerun verdict; the
+  ladder of PRs; trigger unfired, said so
 - [forms-intake-spike.md](forms-intake-spike.md) — spike record (#511, 2026-08-28):
   a Microsoft Forms response as an intake source — no supported API, so the
   clinician's Power Automate flow pushes responses with the clinician's own
