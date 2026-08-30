@@ -31,7 +31,22 @@ public sealed record WorkflowPackageManifest(
     // whether absence was a choice; null is not a spelling of "none" on a v9
     // manifest, only the value a pre-v9 manifest carries. Authored content,
     // the safety class of a label; order as authored, never sorted.
-    List<string>? Tags = null);
+    List<string>? Tags = null,
+    // v11 (package-format-v11-design.md § 4, #513): named texts the package
+    // owns — template files with placeholders from closed namespaces,
+    // appended verbatim to the deliverables that name them. Trailing
+    // optional, omitted when null, so every earlier manifest writes the
+    // bytes it always wrote. The version gate is the validator's.
+    List<WorkflowMacroSpec>? Macros = null);
+
+/// <summary>
+/// One declared macro (v11 § 4): a package-owned template file, applied to a
+/// deliverable by substitution and appended verbatim — never through a model.
+/// </summary>
+public sealed record WorkflowMacroSpec(
+    string Id,
+    string Label,
+    string File);
 
 /// <summary>
 /// One declared input slot of a specVersion-7 package: the id nodes bind as
@@ -249,7 +264,14 @@ public sealed record WorkflowResultSpec(
     // v8: produced only when this holds (package-format-v8-design.md § 5).
     // Trailing optional — a v7 results block stays valid, and a deliverable
     // without one always fires.
-    string? When = null);
+    string? When = null,
+    // v11 (§ 4/§ 5, #513/#516): the macros appended after this deliverable's
+    // aggregated sections, in this order, and whether the profile's signature
+    // is appended last. Trailing optionals — bool? on purpose: a plain bool
+    // would write "signature": false onto every earlier manifest. Below 11
+    // both are refused by name by the validator.
+    List<string>? Macros = null,
+    bool? Signature = null);
 
 public sealed record WorkflowTemplatingSpec(
     string Engine,
@@ -278,7 +300,12 @@ public sealed record WorkflowNodeSpec(
     // "classifier" with the values it may answer. Trailing optionals, omitted
     // when null; below 10 both are refused by name by the validator.
     string? Kind = null,
-    List<string>? Values = null);
+    List<string>? Values = null,
+    // v11 (§ 6, #550): the package's claim that this node's output is the
+    // same for the same input — carried for the rerun verdict, never
+    // enforced at run time. bool? on purpose (see WorkflowResultSpec); below
+    // 11 refused by name by the validator.
+    bool? Reproducible = null);
 
 /// <summary>
 /// The node kinds a manifest may spell (v10 § 4). Absent is a prompt node
