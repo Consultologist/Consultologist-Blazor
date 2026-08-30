@@ -178,6 +178,11 @@ public sealed class ConsultGenerationOrchestrator
         // with an empty prefix, reproducing today's block ids byte-for-byte;
         // v5 = empty (blocks are the fan items themselves).
         var deliverables = ConsultDeliverables.Resolve(results, v6 ? resultNodeId : null, nodesById);
+        // v11 #516: the recorded text of each completed v7 deliverable — what
+        // CompleteResultDocument stored, appends and all. The reply/PDF leg
+        // reads THIS from rung (c) on (§ 5, closing the fork): the orchestrator
+        // can never read entity state back, so the engine keeps what it sent.
+        var recordedTexts = new Dictionary<string, string>(StringComparer.Ordinal);
         // v10 (#496): the skipped set the reply names — the starter's, or the boundary's.
         var skippedForReply = input.SkippedDocuments;
 
@@ -482,10 +487,18 @@ public sealed class ConsultGenerationOrchestrator
                                     input.ApiHost,
                                     input.ProfileName));
 
+                            // v11 #516: the signature, strictly last — on the
+                            // expander's output, so it follows every macro;
+                            // inside the document and its hash, or the named
+                            // unsigned state when none was chosen.
+                            var (finalText, finalAppended, unsigned) = ConsultSignatureAppend.Apply(
+                                text, appended, deliverable.Signature == true, input.Signature);
+                            recordedTexts[deliverable.ResultId!] = finalText;
+
                             await context.Entities.CallEntityAsync(
                                 entityId,
                                 nameof(ConsultGenerationJobEntity.CompleteResultDocument),
-                                new ConsultGenerationResultDocument(deliverable.ResultId!, deliverable.Label ?? deliverable.ResultId!, text, deliverable.Ordinal, appended));
+                                new ConsultGenerationResultDocument(deliverable.ResultId!, deliverable.Label ?? deliverable.ResultId!, finalText, deliverable.Ordinal, finalAppended, unsigned));
                         }
                     }
                     else if (string.Equals(aggregator.Id, resultNodeId, StringComparison.Ordinal))
@@ -798,13 +811,11 @@ public sealed class ConsultGenerationOrchestrator
         // outcome gate above guarantees every deliverable produced); v6 sends
         // its single document. Sourced from replayed activity outputs —
         // deterministic.
+        // v11 #516: the reply/PDF leg reads the recorded document — the same
+        // text CompleteResultDocument stored, appends and all — so the app,
+        // History, the PDF and the delivery email are one text (§ 5).
         var replyDocuments = v7 && finalStatus == ConsultGenerationJobStatuses.Completed
-            ? deliverables
-                .Select(deliverable => new Email.EmailIntakeReplyDocument(
-                    deliverable.ResultId!,
-                    deliverable.Label ?? deliverable.ResultId!,
-                    outputs[deliverable.NodeId].RawOutput))
-                .ToList()
+            ? ConsultDeliverables.ReplyDocumentsFor(deliverables, recordedTexts)
             : null;
         var assembledDocument = !v7 && v6 && outputs.TryGetValue(resultNodeId!, out var resultOutput)
             ? resultOutput.RawOutput
@@ -1037,7 +1048,9 @@ internal static class ConsultDeliverables
         IReadOnlyList<string> SourceIds,
         int Ordinal,
         // v11 #513: the macro ids this deliverable appends, in declared order.
-        IReadOnlyList<string>? MacroIds = null);
+        IReadOnlyList<string>? MacroIds = null,
+        // v11 #516: the package marks this deliverable signed.
+        bool? Signature = null);
 
     public static IReadOnlyList<Deliverable> Resolve(
         IReadOnlyList<ConsultResultDescriptor>? results,
@@ -1062,7 +1075,8 @@ internal static class ConsultDeliverables
                     result.NodeId,
                     SourcesOf(nodesById.GetValueOrDefault(result.NodeId)),
                     ordinal,
-                    result.Macros))
+                    result.Macros,
+                    result.Signature))
                 .ToList();
         }
 
@@ -1073,6 +1087,25 @@ internal static class ConsultDeliverables
         }
 
         return new[] { new Deliverable(null, null, string.Empty, v6ResultNodeId, SourcesOf(resultNode), 0) };
+    }
+
+    /// <summary>
+    /// v11 #516: the reply/PDF leg's documents, from the recorded texts (the
+    /// bytes CompleteResultDocument stored — appends and all). Strict
+    /// indexing on purpose: a Completed job recorded every deliverable, so a
+    /// missing key is a broken invariant and fails loud, as the pre-#516
+    /// outputs indexing did.
+    /// </summary>
+    internal static List<Email.EmailIntakeReplyDocument> ReplyDocumentsFor(
+        IReadOnlyList<Deliverable> deliverables,
+        IReadOnlyDictionary<string, string> recordedTexts)
+    {
+        return deliverables
+            .Select(deliverable => new Email.EmailIntakeReplyDocument(
+                deliverable.ResultId!,
+                deliverable.Label ?? deliverable.ResultId!,
+                recordedTexts[deliverable.ResultId!]))
+            .ToList();
     }
 
     /// <summary>

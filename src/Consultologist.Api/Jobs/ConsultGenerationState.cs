@@ -282,10 +282,22 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             Text = input.Text,
             Ordinal = input.Ordinal,
             // v11 #513: null when nothing was appended — the control's bytes.
-            Appended = input.Appended is { Count: > 0 } ? new List<ConsultAppendedEntry>(input.Appended) : null
+            Appended = input.Appended is { Count: > 0 } ? new List<ConsultAppendedEntry>(input.Appended) : null,
+            // v11 #516: only true or null, never false.
+            Unsigned = input.Unsigned == true ? true : null
         });
         state.AssembledDocuments.Sort((a, b) => a.Ordinal.CompareTo(b.Ordinal));
         state.History.Add(new JobHistoryEvent("success", $"Assembled document produced: {input.Label}", null, DateTimeOffset.UtcNow));
+        if (input.Unsigned == true)
+        {
+            // v11 #516 § 5: said by name — the document is the work; the
+            // signature is a block on it, and none was chosen.
+            state.History.Add(new JobHistoryEvent(
+                "unsigned",
+                $"Produced unsigned: {input.Label} — signature requested by the package; none chosen on the profile",
+                null,
+                DateTimeOffset.UtcNow));
+        }
         State = state;
 
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
@@ -791,7 +803,10 @@ public sealed record ConsultGenerationResultDocument(
     // v11 #513: what was appended after the aggregated sections, in applied
     // order — inside Text already; this names it. Null when nothing was.
     // Appended last — the engine sends this payload to the entity.
-    IReadOnlyList<ConsultAppendedEntry>? Appended = null);
+    IReadOnlyList<ConsultAppendedEntry>? Appended = null,
+    // v11 #516: signature requested by the package; none chosen on the
+    // profile. Only true or null, never false. Appended last, same reason.
+    bool? Unsigned = null);
 
 /// <summary>
 /// One forEach instance's completion: per-item provenance plus the item's chain
@@ -1227,7 +1242,8 @@ public sealed class ConsultGenerationJobState
                         d.Label,
                         d.Text,
                         d.DocumentHash ?? (d.Text == null ? null : ConsultGenerationProvenance.Sha256Hex(d.Text)),
-                        d.Appended))
+                        d.Appended,
+                        d.Unsigned))
                     .ToList()
                 : null,
             TextDroppedAtUtc: TextDroppedAtUtc,
@@ -1263,10 +1279,13 @@ public sealed class ConsultGenerationResultDocumentState
     // #368: stored at completion; null on records from before (derived then).
     public string? DocumentHash { get; set; }
     // v11 #513 (provenance § 7): what was appended after the aggregated
-    // sections, in applied order — a macro now, the signature from rung (c).
+    // sections, in applied order — a macro, then the signature, last.
     // Null on every record without appends, so those store the bytes they
     // always stored.
     public List<ConsultAppendedEntry>? Appended { get; set; }
+    // v11 #516: produced unsigned although the package requested a signature.
+    // Only true or null — a signed-and-appended document stores nothing here.
+    public bool? Unsigned { get; set; }
 }
 
 /// <summary>One forEach item's chain progress — the section-prose-step source.</summary>

@@ -222,7 +222,12 @@ public sealed record ConsultGenerationResultDocumentResponse(
     string? DocumentHash = null,
     // v11 #513 (provenance § 7): what was appended after the aggregated
     // sections, in applied order. Null on every record without appends.
-    IReadOnlyList<ConsultAppendedEntry>? Appended = null);
+    IReadOnlyList<ConsultAppendedEntry>? Appended = null,
+    // v11 #516: true when the package marked this deliverable signed and no
+    // block was chosen on the profile — produced unsigned, said by name.
+    // Only true or null, never false: a signed-and-appended document stores
+    // nothing here.
+    bool? Unsigned = null);
 
 /// <summary>
 /// v11 #513 (provenance § 7): one block appended to a deliverable's assembled
@@ -230,11 +235,20 @@ public sealed record ConsultGenerationResultDocumentResponse(
 /// rung (c). The job's package version pins the template's bytes; the text
 /// itself is inside the document and its hash.
 /// </summary>
-public sealed record ConsultAppendedEntry(string Kind, string Id);
+public sealed record ConsultAppendedEntry(
+    string Kind,
+    string Id,
+    // v11 #516: the signature's as-of date (yyyy-MM-dd — when the block was
+    // last edited, as snapshotted at start). Null on macro entries and on
+    // entries stored before this field existed. Appended last — entries are
+    // stored payloads.
+    string? AsOf = null);
 
 public static class ConsultAppendedKinds
 {
     public const string Macro = "macro";
+
+    public const string Signature = "signature";
 }
 
 /// <summary>

@@ -175,7 +175,7 @@ public class DurablePayloadReplayTests
         var document = JsonSerializer.Deserialize<ConsultGenerationResultDocument>(stored, Durable)!;
 
         Assert.Null(document.Appended);
-        Assert.Equal(stored[..^1] + ",\"Appended\":null}", JsonSerializer.Serialize(document, Durable));
+        Assert.Equal(stored[..^1] + ",\"Appended\":null,\"Unsigned\":null}", JsonSerializer.Serialize(document, Durable));
     }
 
     [Fact]
