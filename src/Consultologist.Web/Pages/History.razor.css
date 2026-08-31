@@ -496,3 +496,24 @@
     vertical-align: middle;
     margin-left: 0.25rem;
 }
+
+/* #546: the "Used by" rows and the copied-from source link. */
+.used-by {
+    margin: 0.5rem 0 0;
+    padding-left: 1.25rem;
+    font-size: 0.8rem;
+}
+
+.used-by__row {
+    margin: 0.15rem 0;
+}
+
+.used-by__unavailable {
+    font-size: 0.8rem;
+    font-style: italic;
+}
+
+.provenance-source-link {
+    font-size: 0.75rem;
+    margin-left: 0.25rem;
+}
