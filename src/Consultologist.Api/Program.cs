@@ -82,6 +82,8 @@ builder.Services.AddSingleton<IAccountStore, AccountStore>();
 builder.Services.AddSingleton<IAccountSettingsStore, AccountSettingsStore>();
 builder.Services.AddSingleton<IConsultGenerationJobEventStore, TableConsultGenerationJobEventStore>();
 builder.Services.AddSingleton<IConsultGenerationJobIndexStore, TableConsultGenerationJobIndexStore>();
+// #546: the links index — the lineage graph, ids only, records account.
+builder.Services.AddSingleton<IConsultGenerationLinkStore, TableConsultGenerationLinkStore>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<WorkflowPackageBlobContainerFactory>();
 builder.Services.AddSingleton<IWorkflowPackageStore, WorkflowPackageStore>();

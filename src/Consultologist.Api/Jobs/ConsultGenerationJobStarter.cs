@@ -152,6 +152,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly IAccountSettingsStore _settingsStore;
     private readonly IJobOutputsBlobStore _outputsBlobs;
     private readonly IJobInputsBlobStore _inputsBlobs;
+    private readonly IConsultGenerationLinkStore _links;
 
     public ConsultGenerationJobStarter(
         ILogger<ConsultGenerationJobStarter> logger,
@@ -165,7 +166,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IAccountStore accounts,
         IAccountSettingsStore settingsStore,
         IJobOutputsBlobStore outputsBlobs,
-        IJobInputsBlobStore inputsBlobs)
+        IJobInputsBlobStore inputsBlobs,
+        IConsultGenerationLinkStore links)
     {
         _logger = logger;
         _packageStore = packageStore;
@@ -179,6 +181,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         _settingsStore = settingsStore;
         _outputsBlobs = outputsBlobs;
         _inputsBlobs = inputsBlobs;
+        _links = links;
     }
 
     public async Task<ConsultGenerationJobStartOutcome> StartAsync(
@@ -654,6 +657,24 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Inputs blob not written; the run proceeds unheld. JobId={JobId}", jobId);
+            }
+        }
+
+        // #546: the lineage edges, inverted — one row per copied element and
+        // one per replay, keyed by the source so its History can say "used
+        // by". Best-effort like the hold above: a storage blip never refuses
+        // a start, and the consumer's own origins remain the truth this
+        // index merely projects.
+        var lineageLinks = LinksFrom(jobId, appUserId, inputOrigins, origin.RerunOfJobId, DateTimeOffset.UtcNow);
+        if (lineageLinks.Count > 0)
+        {
+            try
+            {
+                await _links.WriteAsync(lineageLinks, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Lineage links not written; the run proceeds. JobId={JobId}", jobId);
             }
         }
 
@@ -1196,6 +1217,47 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var merged = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>(first, StringComparer.Ordinal);
         foreach (var (id, list) in second) merged[id] = list;
         return merged;
+    }
+
+    /// <summary>
+    /// #546: the lineage edges this start creates, from the final origins.
+    /// One row per previous-run element (slot id + element index, so one
+    /// consumer copying twice from one source keeps both rows) and exactly
+    /// one row for a replay — never one per rerun slot origin, which would
+    /// spell one logical edge N times. Deterministic order for the tests:
+    /// the rerun edge first, then previous-run edges by slot id.
+    /// </summary>
+    internal static IReadOnlyList<ConsultGenerationLink> LinksFrom(
+        string jobId,
+        string appUserId,
+        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? origins,
+        string? rerunOfJobId,
+        DateTimeOffset now)
+    {
+        var links = new List<ConsultGenerationLink>();
+
+        if (rerunOfJobId != null)
+        {
+            links.Add(new ConsultGenerationLink(
+                rerunOfJobId, jobId, ConsultInputOriginKinds.Rerun, null, null, appUserId, now));
+        }
+
+        foreach (var (inputId, slotOrigins) in (origins ?? new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>())
+            .OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        {
+            for (var index = 0; index < slotOrigins.Count; index++)
+            {
+                var slotOrigin = slotOrigins[index];
+                if (slotOrigin.Kind == ConsultInputOriginKinds.PreviousRun && slotOrigin.SourceJobId != null)
+                {
+                    links.Add(new ConsultGenerationLink(
+                        slotOrigin.SourceJobId, jobId, ConsultInputOriginKinds.PreviousRun,
+                        inputId, slotOrigin.SourceResultId, appUserId, now, index));
+                }
+            }
+        }
+
+        return links;
     }
 
     internal static async Task<InputFileExtraction> ExtractInputFilesAsync(
