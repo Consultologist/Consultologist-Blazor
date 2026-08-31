@@ -496,6 +496,13 @@
                                     <p class="delivery-line delivery-line--@(deliveryOutcome)">@deliveryText</p>
                                 }
 
+                                @* #551: what the run spent — stamped on the record at
+                                   completion; a record from before says nothing. *@
+                                @if (jobTokens is { } jobTokenTotal)
+                                {
+                                    <p class="tokens-line muted-text" title="Total tokens the run's model calls spent, as the provider reported them">@($"{jobTokenTotal.Input:N0} input · {jobTokenTotal.Output:N0} output tokens")</p>
+                                }
+
                                 @* #549: the greyed button's reason, in words. *@
                                 @if (runTerminalStatus == "Completed" && lastAppliedJobId != null && !heldInputsAvailable)
                                 {
@@ -979,6 +986,9 @@
   // #486
   private string? deliveryOutcome;
   private bool? deliveryDocumentAttached;
+
+  // #551: the run's token totals, stamped at completion; null = not recorded.
+  private ConsultTokenUsage? jobTokens;
 
   // #549: whether the shown run's inputs are held (rerun-able), and the run
   // they belong to. HeldInputs rides every hydrated payload — the GET on
@@ -1866,6 +1876,7 @@
     heldInputsAvailable = response.HeldInputs != null;
     inputsDroppedAtUtc = response.InputsDroppedAtUtc;
     lastAppliedJobId = response.JobId;
+    jobTokens = response.Tokens ?? jobTokens;
     deciding = response.Deciding == true;
     decidedAtUtc = response.DecidedAtUtc;
     classifications = response.Classifications ?? classifications;

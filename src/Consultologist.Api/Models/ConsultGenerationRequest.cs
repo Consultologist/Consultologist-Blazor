@@ -114,6 +114,14 @@ public record ConsultGenerationJobStartResponse(
     string StatusUrl);
 
 /// <summary>
+/// #551: token counts as the model provider reported them for one response —
+/// the succeeding attempt's when the call was retried, reasoning tokens
+/// inside Output. Numbers, never text: safe in logs and telemetry (#245).
+/// Null wherever usage was not recorded — an absent count is never zero.
+/// </summary>
+public sealed record ConsultTokenUsage(int Input, int Output);
+
+/// <summary>
 /// #546: one "used by" edge on a source run — the consumer's id and how it
 /// used this run: a previous-run copy names the deliverable and the slot it
 /// filled; a rerun names neither (the whole run was replayed). Ids and
@@ -246,7 +254,11 @@ public record ConsultGenerationJobResponse(
     // non-reruns and on #549-era reruns from before the baseline existed.
     string? RerunOf = null,
     string? RerunVerdict = null,
-    string? RerunDivergence = null);
+    string? RerunDivergence = null,
+    // #551: the job's token totals, stamped once at completion over the node
+    // instances that recorded usage. Null when none did or the record
+    // predates the field — not recorded, never zero.
+    ConsultTokenUsage? Tokens = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
@@ -396,7 +408,9 @@ public sealed record ConsultGenerationNodeStatusResponse(
     // #375: the definition the pair was computed under; absent before the ladder.
     int? HashVersion = null,
     // v10 (#496): a classifier's answer, a declared value.
-    string? Classification = null);
+    string? Classification = null,
+    // #551: what this instance's call cost; null is not recorded, never 0.
+    ConsultTokenUsage? Tokens = null);
 
 /// <summary>#390: the body of a reschedule — a job id in the route, a time here.</summary>
 public sealed record RescheduleConsultRequest(DateTimeOffset? ScheduledAtUtc);

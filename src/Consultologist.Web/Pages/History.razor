@@ -534,7 +534,7 @@
                                                         <div class="rerun-comparison__scroll">
                                                             <table class="rerun-comparison__table">
                                                                 <thead>
-                                                                    <tr><th>Stage</th><th>Source out</th><th>Rerun out</th><th></th></tr>
+                                                                    <tr><th>Stage</th><th>Source out</th><th>Rerun out</th><th title="input/output tokens">Source tok</th><th title="input/output tokens">Rerun tok</th><th></th></tr>
                                                                 </thead>
                                                                 <tbody>
                                                                     @foreach (var row in RerunComparison.Stages(detail, rerunSource))
@@ -549,6 +549,8 @@
                                                                             </td>
                                                                             <td class="hash-text" title="@row.SourceHash">@HashPrefix(row.SourceHash)</td>
                                                                             <td class="hash-text" title="@row.RerunHash">@HashPrefix(row.RerunHash)</td>
+                                                                            <td class="rerun-comparison__tokens">@RerunComparison.DescribeTokens(row.SourceTokens)</td>
+                                                                            <td class="rerun-comparison__tokens">@RerunComparison.DescribeTokens(row.RerunTokens)</td>
                                                                             <td class="rerun-comparison__verdict rerun-comparison__verdict--@row.Verdict.Replace(' ', '-')">@row.Verdict</td>
                                                                         </tr>
                                                                     }
@@ -558,6 +560,8 @@
                                                                             <td>@row.Label</td>
                                                                             <td class="hash-text" title="@row.SourceHash">@HashPrefix(row.SourceHash)</td>
                                                                             <td class="hash-text" title="@row.RerunHash">@HashPrefix(row.RerunHash)</td>
+                                                                            <td class="rerun-comparison__tokens">—</td>
+                                                                            <td class="rerun-comparison__tokens">—</td>
                                                                             <td class="rerun-comparison__verdict rerun-comparison__verdict--@row.Verdict.Replace(' ', '-')">@row.Verdict</td>
                                                                         </tr>
                                                                     }
@@ -632,6 +636,7 @@
                                                                 <span class="node-row__status @StatusCss(group.NodeLevel?.Status)">@StatusGlyph(group.NodeLevel?.Status)</span>
                                                                 <span class="node-row__label">@group.Descriptor.Label</span>
                                                                 <span class="node-row__contract muted-text">@ContractLabel(group.Descriptor, detail)</span>
+                                                                @TokensSpan(group.NodeLevel?.Tokens, group.Descriptor.PromptId != null)
                                                                 <span class="node-row__hashes hash-text">
                                                                     <span title="@group.NodeLevel?.InputHash">in @HashPrefix(group.NodeLevel?.InputHash)</span>
                                                                     <span title="@group.NodeLevel?.OutputHash">out @HashPrefix(group.NodeLevel?.OutputHash)</span>
@@ -656,6 +661,7 @@
                                                                         <span class="node-row__chevron" aria-hidden="true"></span>
                                                                         <span class="node-row__status @StatusCss(entry.Status)">@StatusGlyph(entry.Status)</span>
                                                                         <span class="node-row__label">@itemId</span>
+                                                                        @TokensSpan(entry.Tokens, group.Descriptor.PromptId != null)
                                                                         <span class="node-row__hashes hash-text">
                                                                             <span title="@entry.InputHash">in @HashPrefix(entry.InputHash)</span>
                                                                             <span title="@entry.OutputHash">out @HashPrefix(entry.OutputHash)</span>
@@ -679,6 +685,12 @@
                                                         @(detail.RuntimeFailureError != null ? $" · {detail.RuntimeFailureError}" : "")
                                                         @(detail.StartFailure != null ? $" · {detail.StartFailure}" : "")
                                                     </span>
+                                                    @* #551: the run's totals — stamped at completion; a
+                                                       record from before says nothing. *@
+                                                    @if (detail.Tokens is { } jobTokens)
+                                                    {
+                                                        <span class="node-row__tokens" title="Total tokens the run's model calls spent, as the provider reported them">@($"{jobTokens.Input:N0} in · {jobTokens.Output:N0} out tokens")</span>
+                                                    }
                                                     @if (detail.WorkflowOutputHash != null)
                                                     {
                                                         <span class="node-row__hashes hash-text">
@@ -1501,6 +1513,29 @@
 
     private static string? HashPrefix(string? hash) =>
         string.IsNullOrEmpty(hash) ? "—" : hash[..Math.Min(12, hash.Length)] + "…";
+
+    // #551: a stage's cost, or — on a stage that SHOULD have one (a prompt
+    // node) — the named absence. Aggregates, roll-ups and fan summaries
+    // render nothing: no model ran, and "not recorded" on every non-model
+    // row would be noise. Never a zero.
+    private static RenderFragment TokensSpan(ConsultTokenUsage? tokens, bool promptStage) => builder =>
+    {
+        if (tokens is { } t)
+        {
+            builder.OpenElement(0, "span");
+            builder.AddAttribute(1, "class", "node-row__tokens");
+            builder.AddAttribute(2, "title", "Tokens this call spent, as the provider reported them (input · output)");
+            builder.AddContent(3, $"{t.Input:N0} in · {t.Output:N0} out");
+            builder.CloseElement();
+        }
+        else if (promptStage)
+        {
+            builder.OpenElement(0, "span");
+            builder.AddAttribute(1, "class", "node-row__tokens node-row__tokens--missing muted-text");
+            builder.AddContent(2, "tokens not recorded");
+            builder.CloseElement();
+        }
+    };
 
     private static string StatusCss(string? status) => status switch
     {

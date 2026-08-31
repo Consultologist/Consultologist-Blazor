@@ -47,7 +47,8 @@ public class HistoryDetailTests : ClientRenderTestContext
         string status = "Completed",
         string? rerunOf = null,
         string? rerunVerdict = null,
-        string? rerunDivergence = null)
+        string? rerunDivergence = null,
+        ConsultTokenUsage? tokens = null)
     {
         // Terminal status only: a non-terminal row would start the page's real
         // 5-second polling loop.
@@ -98,7 +99,8 @@ public class HistoryDetailTests : ClientRenderTestContext
             EngineCommit: engineCommit,
             RerunOf: rerunOf,
             RerunVerdict: rerunVerdict,
-            RerunDivergence: rerunDivergence));
+            RerunDivergence: rerunDivergence,
+            Tokens: tokens));
     }
 
     // ----- #514: where the job ran, what ran it, how it was initiated -----
@@ -873,8 +875,8 @@ public class HistoryDetailTests : ClientRenderTestContext
             EffectiveInputHashVersion: 3));
     }
 
-    private static ConsultGenerationNodeStatus Node(string id, string? inputHash, string? outputHash) =>
-        new(id, id, "Completed", inputHash, outputHash, null, null, HashVersion: 5);
+    private static ConsultGenerationNodeStatus Node(string id, string? inputHash, string? outputHash, ConsultTokenUsage? tokens = null) =>
+        new(id, id, "Completed", inputHash, outputHash, null, null, HashVersion: 5, Tokens: tokens);
 
     [Fact]
     public void ARerunDetail_ShowsTheTableAgainstItsSource_WithHonestVerdicts()
@@ -973,6 +975,71 @@ public class HistoryDetailTests : ClientRenderTestContext
         var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
 
         Assert.Contains("first divergence at draft", page.Find(".rerun-verdict--fail").TextContent);
+    }
+
+    // ----- #551: tokens per stage and per run -----
+
+    [Fact]
+    public void APromptStage_ShowsItsCounts_AndTheRunItsTotal()
+    {
+        WithJob(3,
+            tokens: new ConsultTokenUsage(2100, 650),
+            nodes: new[] { new ConsultGenerationNodeDescriptor("extract", "Extract", PromptId: "extract-prompt") },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["extract"] = Node("extract", "in1", "outA", new ConsultTokenUsage(1234, 567))
+            });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var spans = page.FindAll(".node-row__tokens").Select(s => s.TextContent.Trim()).ToList();
+        Assert.Contains("1,234 in · 567 out", spans);
+        Assert.Contains("2,100 in · 650 out tokens", spans);
+    }
+
+    [Fact]
+    public void APromptStageWithoutUsage_SaysNotRecorded_AndAnAggregateSaysNothing()
+    {
+        WithJob(3,
+            nodes: new[]
+            {
+                new ConsultGenerationNodeDescriptor("extract", "Extract", PromptId: "extract-prompt"),
+                new ConsultGenerationNodeDescriptor("assemble", "Assemble", Aggregate: new[] { "extract" })
+            },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["extract"] = Node("extract", "in1", "outA"),
+                ["assemble"] = Node("assemble", "in2", "outB")
+            });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var missing = Assert.Single(page.FindAll(".node-row__tokens--missing"));
+        Assert.Equal("tokens not recorded", missing.TextContent.Trim());
+        // No total on a record without one — nothing, never zero.
+        Assert.DoesNotContain(page.FindAll(".node-row__tokens"), s => s.TextContent.Contains("tokens") && s.TextContent.Contains("0 in"));
+    }
+
+    [Fact]
+    public void TheRerunTable_ShowsBothRunsCounts_SideBySide()
+    {
+        WithJob(3,
+            rerunOf: SourceJobId, rerunVerdict: "pass",
+            nodes: new[] { new ConsultGenerationNodeDescriptor("extract", "Extract", PromptId: "p", Reproducible: true) },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["extract"] = Node("extract", "in1", "outA", new ConsultTokenUsage(1300, 580))
+            });
+        WithRerunSource(new Dictionary<string, ConsultGenerationNodeStatus>
+        {
+            ["extract"] = Node("extract", "in1", "outA", new ConsultTokenUsage(1234, 567))
+        });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var cells = page.FindAll(".rerun-comparison__tokens").Select(c => c.TextContent.Trim()).ToList();
+        Assert.Contains("1,234/567", cells);
+        Assert.Contains("1,300/580", cells);
     }
 
     // ----- #546: links both ways -----

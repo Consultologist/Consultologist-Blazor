@@ -37,8 +37,11 @@ public sealed class AgentSectionGenerator
     /// schema-conformant JSON — Foundry rejects request-level text options for
     /// agent-bound calls, which is why the format lives on a dedicated agent rather
     /// than on this request.
+    /// #551: the response's token usage rides back beside the text — the
+    /// Responses API reports one usage object per response, and this is the
+    /// only place it exists before it dies with the SDK object.
     /// </summary>
-    public async Task<string> SendPromptAsync(
+    public async Task<AgentPromptResult> SendPromptAsync(
         string stage,
         string userMessage,
         string agentName,
@@ -139,8 +142,19 @@ public sealed class AgentSectionGenerator
         }
 
         Console.Error.WriteLine(PromptDiagnostics.Describe("AgentResponse", stage, assistantText));
-        return assistantText;
+        return new AgentPromptResult(assistantText, UsageOf(sdkResponse.Usage));
     }
+
+    /// <summary>
+    /// #551: the provider's counts, or null when the SDK carried none —
+    /// never zero. Reasoning tokens are inside OutputTokenCount, per the
+    /// Responses contract.
+    /// </summary>
+    internal static ConsultTokenUsage? UsageOf(ResponseTokenUsage? usage) =>
+        usage == null ? null : new ConsultTokenUsage(usage.InputTokenCount, usage.OutputTokenCount);
+
+    /// <summary>#551: one call's text and what it cost — the usage the SDK reported, or null.</summary>
+    public sealed record AgentPromptResult(string Text, ConsultTokenUsage? Tokens);
 
     internal static string FormatConcepts(IReadOnlyList<ClinicalConcept> concepts)
     {

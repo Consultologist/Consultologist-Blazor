@@ -59,7 +59,14 @@ public static class RerunComparison
         string? SourceHash,
         string? RerunHash,
         string Verdict,
-        bool Reproducible = false);
+        bool Reproducible = false,
+        // #551: both runs' counts, side by side; null is not recorded.
+        ConsultTokenUsage? SourceTokens = null,
+        ConsultTokenUsage? RerunTokens = null);
+
+    /// <summary>#551: a table cell's counts, or a dash — never a zero.</summary>
+    public static string DescribeTokens(ConsultTokenUsage? tokens) =>
+        tokens is { } t ? $"{t.Input:N0}/{t.Output:N0}" : "—";
 
     /// <summary>
     /// Equal by construction — the rerun resubmitted the source's own
@@ -87,7 +94,8 @@ public static class RerunComparison
         void Add(string key, string label, bool isItem, ConsultGenerationNodeStatus entry, bool reproducible)
         {
             source.NodeOutputs!.TryGetValue(key, out var sourceEntry);
-            rows.Add(new Row(key, label, isItem, sourceEntry?.OutputHash, entry.OutputHash, Verdict(sourceEntry, entry), reproducible));
+            rows.Add(new Row(key, label, isItem, sourceEntry?.OutputHash, entry.OutputHash, Verdict(sourceEntry, entry), reproducible,
+                sourceEntry?.Tokens, entry.Tokens));
         }
 
         if (source.NodeOutputs is not { Count: > 0 })
