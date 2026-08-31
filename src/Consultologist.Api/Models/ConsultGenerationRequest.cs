@@ -225,7 +225,16 @@ public record ConsultGenerationJobResponse(
     DateTimeOffset? InputsDroppedAtUtc = null,
     // #547: the held effective map, hydrated from the inputs blob while it
     // is held — what History shows; null once dropped or never held.
-    IReadOnlyDictionary<string, string>? HeldInputs = null);
+    IReadOnlyDictionary<string, string>? HeldInputs = null,
+    // #582: a rerun's lineage and judgment. RerunOf names the source run
+    // (the slot origins carry it too); RerunVerdict is "pass" | "fail" |
+    // "no-reproducible-stages" (RerunVerdicts), stamped once at the rerun's
+    // completion; RerunDivergence names the first divergent stage on a fail,
+    // or "effective-inputs" for the by-construction breach. All null on
+    // non-reruns and on #549-era reruns from before the baseline existed.
+    string? RerunOf = null,
+    string? RerunVerdict = null,
+    string? RerunDivergence = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
