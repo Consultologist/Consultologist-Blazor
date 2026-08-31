@@ -80,7 +80,7 @@ public class AssembledDocumentEntityTests
 
     private static (ConsultGenerationJobEntity Entity, Func<ConsultGenerationJobState> State) CreateEntity()
     {
-        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>());
+        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>(), Substitute.For<IJobInputsBlobStore>());
         var state = ConsultGenerationJobState.Create(
             "job-1", "user-1",
             new[] { (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(StringComparer.Ordinal) { ["id"] = "b1", ["name"] = "Block one" } });

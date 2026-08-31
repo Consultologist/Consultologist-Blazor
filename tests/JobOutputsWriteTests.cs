@@ -20,7 +20,7 @@ public class JobOutputsWriteTests
     private static (ConsultGenerationJobEntity Entity, Func<ConsultGenerationJobState> State, IJobOutputsBlobStore Store) Job()
     {
         var store = Substitute.For<IJobOutputsBlobStore>();
-        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>(), store);
+        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>(), store, Substitute.For<IJobInputsBlobStore>());
         StateProperty.SetValue(entity, ConsultGenerationJobState.Create("job-1", "user-1", new[]
         {
             new Dictionary<string, string> { ["id"] = "note:draft", ["name"] = "Consultation note" }
@@ -126,5 +126,70 @@ public class JobOutputsWriteTests
         await entity.FinalizeJob(new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Failed, "boom"));
 
         await store.DidNotReceiveWithAnyArgs().WriteAsync(default, default!, default!, default!, default);
+    }
+
+    // ----- #547: the held inputs ride the same drop -----
+
+    private static (ConsultGenerationJobEntity Entity, Func<ConsultGenerationJobState> State, IJobOutputsBlobStore Outputs, IJobInputsBlobStore Inputs) JobWithInputs()
+    {
+        var outputs = Substitute.For<IJobOutputsBlobStore>();
+        var inputs = Substitute.For<IJobInputsBlobStore>();
+        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>(), outputs, inputs);
+        StateProperty.SetValue(entity, ConsultGenerationJobState.Create("job-1", "user-1", new[]
+        {
+            new Dictionary<string, string> { ["id"] = "note:draft", ["name"] = "Consultation note" }
+        }));
+        return (entity, () => (ConsultGenerationJobState)StateProperty.GetValue(entity)!, outputs, inputs);
+    }
+
+    [Fact]
+    public async Task DropText_DeletesTheHeldInputs_StampsAndSaysSo()
+    {
+        var (entity, state, _, inputs) = JobWithInputs();
+        var pointer = new ConsultInputsBlobPointer("org-job-inputs", "user-1/job-1.json");
+        state().InputsBlob = pointer;
+        await ProduceAsync(entity);
+        await entity.FinalizeJob(new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Completed));
+        var droppedAt = new DateTimeOffset(2026, 9, 8, 3, 0, 0, TimeSpan.Zero);
+
+        await entity.DropText(new ConsultGenerationTextDrop(droppedAt));
+
+        await inputs.Received(1).DeleteAsync(pointer, Arg.Any<CancellationToken>());
+        Assert.Equal(droppedAt, state().InputsDroppedAtUtc);
+        // The pointer is part of the record; InputsDroppedAtUtc gates it.
+        Assert.Equal(pointer, state().InputsBlob);
+        Assert.Contains(state().History, h => h.Kind == "retention" && h.Label.Contains("Held inputs deleted"));
+    }
+
+    [Fact]
+    public async Task AnUnheldJob_DropsWithoutClaimingInputs()
+    {
+        var (entity, state, _, inputs) = JobWithInputs();
+        await ProduceAsync(entity);
+        await entity.FinalizeJob(new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Completed));
+
+        await entity.DropText(new ConsultGenerationTextDrop(DateTimeOffset.UtcNow));
+
+        await inputs.DidNotReceiveWithAnyArgs().DeleteAsync(default!, default);
+        Assert.Null(state().InputsDroppedAtUtc);
+        Assert.DoesNotContain(state().History, h => h.Label.Contains("Held inputs deleted"));
+    }
+
+    [Fact]
+    public async Task AFailedInputsDelete_PersistsNothing_SoTheSweepRetries()
+    {
+        var (entity, state, _, inputs) = JobWithInputs();
+        var pointer = new ConsultInputsBlobPointer("org-job-inputs", "user-1/job-1.json");
+        state().InputsBlob = pointer;
+        await ProduceAsync(entity);
+        await entity.FinalizeJob(new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Completed));
+        inputs.DeleteAsync(pointer, Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("storage blip"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => entity.DropText(new ConsultGenerationTextDrop(DateTimeOffset.UtcNow)));
+
+        Assert.Null(state().TextDroppedAtUtc);
+        Assert.Null(state().InputsDroppedAtUtc);
     }
 }

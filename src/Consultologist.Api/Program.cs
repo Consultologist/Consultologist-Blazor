@@ -107,6 +107,9 @@ builder.Services.AddSingleton<PinHealthReporter>();
 // #557: the text account's outputs blobs — written at completion, read on
 // GET, deleted by the retention drop.
 builder.Services.AddSingleton<IJobOutputsBlobStore, JobOutputsBlobStore>();
+// #547: the held inputs — written by the starter, read by History and the
+// rerun, deleted by the retention drop.
+builder.Services.AddSingleton<IJobInputsBlobStore, JobInputsBlobStore>();
 // #368: the retention sweep — the text is deleted N days after completion.
 builder.Services.AddSingleton<IJobTextPurger, JobTextPurger>();
 // #557: the events-move transition's old-table delete; removed by #558.

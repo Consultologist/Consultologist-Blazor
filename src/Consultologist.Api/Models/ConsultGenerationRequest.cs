@@ -211,7 +211,14 @@ public record ConsultGenerationJobResponse(
     // #557: where the produced text lives (container + name, never a URL).
     // Null on pre-#557 records, on Failed jobs, and when the completion
     // write failed and the text stayed on the entity.
-    ConsultOutputsBlobPointer? OutputsBlob = null);
+    ConsultOutputsBlobPointer? OutputsBlob = null,
+    // #547: where the held inputs live, and when the retention drop deleted
+    // them. Null on unheld jobs (v5/v6, pre-#547, or the write failed).
+    ConsultInputsBlobPointer? InputsBlob = null,
+    DateTimeOffset? InputsDroppedAtUtc = null,
+    // #547: the held effective map, hydrated from the inputs blob while it
+    // is held — what History shows; null once dropped or never held.
+    IReadOnlyDictionary<string, string>? HeldInputs = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
@@ -262,6 +269,13 @@ public static class ConsultAppendedKinds
 /// textDroppedAtUtc gates every read of it.
 /// </summary>
 public sealed record ConsultOutputsBlobPointer(string Container, string Name);
+
+/// <summary>
+/// #547 (storage-separation.md § 2.1): where a job's held inputs live —
+/// container + name, never a URL. Kept after the drop;
+/// inputsDroppedAtUtc gates every read of it.
+/// </summary>
+public sealed record ConsultInputsBlobPointer(string Container, string Name);
 
 /// <summary>
 /// The identity and display label of one per-item chain step, snapshotted from the

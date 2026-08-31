@@ -20,7 +20,7 @@ public class TextRetentionTests
     private static (ConsultGenerationJobEntity Entity, Func<ConsultGenerationJobState> State, IConsultGenerationJobIndexStore Index) CompletedV7Job()
     {
         var index = Substitute.For<IConsultGenerationJobIndexStore>();
-        var entity = new ConsultGenerationJobEntity(index, Substitute.For<IJobOutputsBlobStore>());
+        var entity = new ConsultGenerationJobEntity(index, Substitute.For<IJobOutputsBlobStore>(), Substitute.For<IJobInputsBlobStore>());
         var state = ConsultGenerationJobState.Create("job-1", "user-1", new[]
         {
             new Dictionary<string, string> { ["id"] = "note:draft", ["name"] = "Consultation note" },

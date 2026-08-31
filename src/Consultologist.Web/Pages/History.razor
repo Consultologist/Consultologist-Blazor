@@ -321,6 +321,12 @@
                                                     <dt>Text deleted</dt>
                                                     <dd class="provenance-text-deleted">@FormatDate(textDroppedAt) — the produced text was deleted under the retention policy; the record is kept</dd>
                                                 }
+                                                @* #547: the same named state for the held inputs. *@
+                                                @if (detail.InputsDroppedAtUtc is { } inputsDroppedAt)
+                                                {
+                                                    <dt>Inputs deleted</dt>
+                                                    <dd class="provenance-inputs-deleted">@FormatDate(inputsDroppedAt) — the held inputs were deleted under the retention policy; the hashes are kept</dd>
+                                                }
                                                 <dt>Contract</dt>
                                                 <dd class="provenance-contract">
                                                     @if (detail.ProvenanceRef is { } provenanceRef && ProvenanceDocument(detail, "provenance-record.md") is { } contractHref)
@@ -388,6 +394,25 @@
                                                                     <li>@DescribeOrigin(document)@Digests(document)</li>
                                                                 }
                                                             </ol>
+                                                        }
+                                                    </dd>
+                                                }
+                                                @* #547: the inputs the run actually ran on, while the
+                                                   store holds them — each value behind its own fold, since
+                                                   an input can be a whole document. *@
+                                                @if (detail.HeldInputs is { Count: > 0 } heldInputs)
+                                                {
+                                                    <dt>Inputs (held)</dt>
+                                                    <dd class="provenance-held-inputs">
+                                                        @foreach (var held in heldInputs)
+                                                        {
+                                                            <details class="held-input">
+                                                                <summary><code>@held.Key</code>@(held.Value.Length == 0 ? " — (empty)" : "")</summary>
+                                                                @if (held.Value.Length > 0)
+                                                                {
+                                                                    <pre class="held-input__value">@held.Value</pre>
+                                                                }
+                                                            </details>
                                                         }
                                                     </dd>
                                                 }

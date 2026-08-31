@@ -59,7 +59,7 @@ public class ConsultGenerationStateOriginsTests
     {
         var stateProperty = typeof(ConsultGenerationJobEntity)
             .GetProperty("State", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)!;
-        var entity = new ConsultGenerationJobEntity(NSubstitute.Substitute.For<IConsultGenerationJobIndexStore>(), NSubstitute.Substitute.For<IJobOutputsBlobStore>());
+        var entity = new ConsultGenerationJobEntity(NSubstitute.Substitute.For<IConsultGenerationJobIndexStore>(), NSubstitute.Substitute.For<IJobOutputsBlobStore>(), NSubstitute.Substitute.For<IJobInputsBlobStore>());
 
         await entity.Initialize(new ConsultGenerationJobInitialize(
             "job-1", "user-1", Items,

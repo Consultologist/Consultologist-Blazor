@@ -39,6 +39,8 @@ public class HistoryDetailTests : ClientRenderTestContext
         TerminologySnapshot? terminology = null,
         string? terminologyServerRef = null,
         DateTimeOffset? textDroppedAtUtc = null,
+        IReadOnlyDictionary<string, string>? heldInputs = null,
+        DateTimeOffset? inputsDroppedAtUtc = null,
         string? source = null,
         string? apiHost = null,
         string? engineCommit = null)
@@ -83,6 +85,8 @@ public class HistoryDetailTests : ClientRenderTestContext
             Terminology: terminology,
             TerminologyServerRef: terminologyServerRef,
             TextDroppedAtUtc: textDroppedAtUtc,
+            HeldInputs: heldInputs,
+            InputsDroppedAtUtc: inputsDroppedAtUtc,
             AgentVersions: agentVersions,
             CatalogRef: catalogRef,
             Source: source,
@@ -415,6 +419,47 @@ public class HistoryDetailTests : ClientRenderTestContext
         Assert.Equal(
             "produced unsigned — signature requested by the package; none chosen on the profile",
             unsigned[0].TextContent.Trim());
+    }
+
+    [Fact]
+    public void HeldInputs_AreShown_EachBehindItsOwnFold()
+    {
+        // #547: an input can be a whole document — folded, never dumped.
+        WithJob(3, heldInputs: new Dictionary<string, string>
+        {
+            ["consult_draft"] = "Referral text, long enough to matter.",
+            ["length_of_stay"] = ""
+        });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var folds = page.FindAll(".held-input");
+        Assert.Equal(2, folds.Count);
+        Assert.Contains("consult_draft", page.Find(".provenance-held-inputs").TextContent);
+        Assert.Contains("Referral text, long enough to matter.", page.Find(".provenance-held-inputs").TextContent);
+        Assert.Contains("(empty)", page.Find(".provenance-held-inputs").TextContent);
+    }
+
+    [Fact]
+    public void DroppedInputs_AreSaidByName_AndNotShown()
+    {
+        WithJob(3, inputsDroppedAtUtc: new DateTimeOffset(2026, 9, 8, 3, 0, 0, TimeSpan.Zero));
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Contains("the held inputs were deleted under the retention policy", page.Find(".provenance-inputs-deleted").TextContent);
+        Assert.Empty(page.FindAll(".provenance-held-inputs"));
+    }
+
+    [Fact]
+    public void AJobNeverHeld_ShowsNeitherInputsBlockNorDeletionRow()
+    {
+        WithJob(3);
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Empty(page.FindAll(".provenance-held-inputs"));
+        Assert.Empty(page.FindAll(".provenance-inputs-deleted"));
     }
 
     [Fact]

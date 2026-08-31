@@ -24,11 +24,13 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
 {
     private readonly IConsultGenerationJobIndexStore _indexStore;
     private readonly IJobOutputsBlobStore _outputsStore;
+    private readonly IJobInputsBlobStore _inputsStore;
 
-    public ConsultGenerationJobEntity(IConsultGenerationJobIndexStore indexStore, IJobOutputsBlobStore outputsStore)
+    public ConsultGenerationJobEntity(IConsultGenerationJobIndexStore indexStore, IJobOutputsBlobStore outputsStore, IJobInputsBlobStore inputsStore)
     {
         _indexStore = indexStore;
         _outputsStore = outputsStore;
+        _inputsStore = inputsStore;
     }
 
     public async Task Initialize(ConsultGenerationJobInitialize input)
@@ -179,6 +181,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.TerminologyServerRef ??= input.TerminologyServerRef;
         State.ApiHost ??= input.ApiHost;
         State.EngineCommit ??= input.EngineCommit;
+        State.InputsBlob ??= input.InputsBlob;
         State.Source ??= input.Source;
         State.ScheduledAtUtc ??= input.ScheduledAtUtc;
         State.PackageSpecVersion ??= input.PackageSpecVersion;
@@ -454,6 +457,14 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             await _outputsStore.DeleteAsync(state.OutputsBlob, CancellationToken.None);
         }
 
+        // #547: the held inputs go with the text — same op, same self-healing.
+        // One clock until #548 splits them; the pointer stays, gated by
+        // InputsDroppedAtUtc.
+        if (state.InputsBlob != null)
+        {
+            await _inputsStore.DeleteAsync(state.InputsBlob, CancellationToken.None);
+        }
+
         state.StampOutputHashes();
         state.AssembledDocument = null;
         foreach (var document in state.AssembledDocuments ?? new List<ConsultGenerationResultDocumentState>())
@@ -473,6 +484,11 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
 
         state.TextDroppedAtUtc = input.DroppedAtUtc;
         state.History.Add(new JobHistoryEvent("retention", "Produced text deleted (retention policy)", null, input.DroppedAtUtc));
+        if (state.InputsBlob != null)
+        {
+            state.InputsDroppedAtUtc = input.DroppedAtUtc;
+            state.History.Add(new JobHistoryEvent("retention", "Held inputs deleted (retention policy)", null, input.DroppedAtUtc));
+        }
         State = state;
 
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
@@ -764,7 +780,11 @@ public sealed record ConsultGenerationJobInitialize(
     bool? Deciding = null,
     // #514: see ConsultGenerationOrchestrationInput. Appended last, same reason.
     string? ApiHost = null,
-    string? EngineCommit = null);
+    string? EngineCommit = null,
+    // #547: where the starter held this job's inputs; null when unheld
+    // (v5/v6, or the write failed). Appended last — the engine calls
+    // Initialize positionally.
+    ConsultInputsBlobPointer? InputsBlob = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -1039,6 +1059,12 @@ public sealed class ConsultGenerationJobState
     // records and when the completion write failed.
     public ConsultOutputsBlobPointer? OutputsBlob { get; set; }
 
+    // #547: where the starter held this job's inputs, and when the retention
+    // drop deleted them. The pointer is kept after the drop;
+    // InputsDroppedAtUtc gates every read of it. Null on unheld jobs.
+    public ConsultInputsBlobPointer? InputsBlob { get; set; }
+    public DateTimeOffset? InputsDroppedAtUtc { get; set; }
+
     // #486: what happened to the completion email (DeliveryOutcomes); null
     // on records from before, or while the job is still running.
     public string? DeliveryOutcome { get; set; }
@@ -1295,6 +1321,8 @@ public sealed class ConsultGenerationJobState
             ApiHost: ApiHost,
             EngineCommit: EngineCommit,
             OutputsBlob: OutputsBlob,
+            InputsBlob: InputsBlob,
+            InputsDroppedAtUtc: InputsDroppedAtUtc,
             PackageSpecVersion: PackageSpecVersion,
             PackageTitle: PackageTitle,
             StartFailure: StartFailure,
