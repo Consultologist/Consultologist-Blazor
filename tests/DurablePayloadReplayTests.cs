@@ -178,6 +178,25 @@ public class DurablePayloadReplayTests
     }
 
     [Fact]
+    public void AStoredNodeRunResult_WithoutTokens_BindsNull()
+    {
+        // #551: the file's first activity-OUTPUT pin — NodeRunResult is
+        // recorded in the Durable history and re-read on every replay, so a
+        // mid-flight job's stored result must bind the new trailing field as
+        // null and re-serialise with exactly one more trailing null. (The
+        // record gained HashVersion and Classification with only a weaker
+        // read-side pin behind them; this closes that gap.)
+        const string stored = """
+            {"RawOutput":"x","Concepts":null,"InputHash":"a","OutputHash":"b","HashVersion":5,"Classification":null}
+            """;
+
+        var result = JsonSerializer.Deserialize<NodeRunResult>(stored, Durable)!;
+
+        Assert.Null(result.Tokens);
+        Assert.Equal(stored[..^1] + ",\"Tokens\":null}", JsonSerializer.Serialize(result, Durable));
+    }
+
+    [Fact]
     public void AStoredResultDocument_WithoutAppended_BindsNull()
     {
         // v11 #513: the entity payload every pre-macro job sends — Appended

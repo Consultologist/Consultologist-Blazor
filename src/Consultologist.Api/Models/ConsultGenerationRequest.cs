@@ -114,6 +114,14 @@ public record ConsultGenerationJobStartResponse(
     string StatusUrl);
 
 /// <summary>
+/// #551: token counts as the model provider reported them for one response —
+/// the succeeding attempt's when the call was retried, reasoning tokens
+/// inside Output. Numbers, never text: safe in logs and telemetry (#245).
+/// Null wherever usage was not recorded — an absent count is never zero.
+/// </summary>
+public sealed record ConsultTokenUsage(int Input, int Output);
+
+/// <summary>
 /// #546: one "used by" edge on a source run — the consumer's id and how it
 /// used this run: a previous-run copy names the deliverable and the slot it
 /// filled; a rerun names neither (the whole run was replayed). Ids and

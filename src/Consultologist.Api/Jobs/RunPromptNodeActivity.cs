@@ -44,7 +44,11 @@ public sealed record NodeRunResult(
     // v10 (#495): a classifier's normalised answer — one of its declared
     // values. RawOutput keeps the JSON as the agent sent it; OutputHash is the
     // SHA-256 of this value (v10 § 8). Appended last, defaulted.
-    string? Classification = null);
+    string? Classification = null,
+    // #551: what the call cost, as the provider reported it. Appended last,
+    // defaulted: a recorded activity result from before replays with null,
+    // and null is "not recorded", never zero.
+    ConsultTokenUsage? Tokens = null);
 
 /// <summary>
 /// The generic DAG prompt node: renders the node's prompt with orchestrator-resolved
@@ -124,12 +128,13 @@ public sealed class RunPromptNodeActivity
             var inputHash = ConsultGenerationProvenance.Sha256Hex(sent);
 
             var entry = _catalog.GetEntry(input.OutputContract ?? OutputContracts.Text);
-            var rawOutput = await _agent.SendPromptAsync(
+            var agentResponse = await _agent.SendPromptAsync(
                 input.NodeId,
                 sent,
                 entry.AgentName,
                 entry.AgentVersion,
                 cancellationToken);
+            var rawOutput = agentResponse.Text;
 
             var classification = isClassifier
                 ? ClassificationOutputContract.Normalize(rawOutput, values, input.NodeId)
@@ -151,7 +156,7 @@ public sealed class RunPromptNodeActivity
             Console.Error.WriteLine(
                 $"[PromptNode] NodeId={input.NodeId}; ConceptCount={concepts?.Count.ToString() ?? "-"}; InputHash={inputHash}; OutputHash={outputHash}; ElapsedMs={stopwatch.ElapsedMilliseconds}");
 
-            return new NodeRunResult(rawOutput, concepts, inputHash, outputHash, ConsultGenerationProvenance.NodeHashVersion, classification);
+            return new NodeRunResult(rawOutput, concepts, inputHash, outputHash, ConsultGenerationProvenance.NodeHashVersion, classification, agentResponse.Tokens);
         }
         catch (Exception ex)
         {
