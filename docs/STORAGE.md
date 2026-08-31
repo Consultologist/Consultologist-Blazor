@@ -84,6 +84,79 @@ counts — and what deletes each, when — is the design record
 *text* account for what is PHI and short-lived, a *records* account (this
 one, `consultologistjobqueue`) for what is permanent and PHI-free.
 
+## The text account (PHI) — consultologisteastcatext (#556)
+
+The [storage separation](customizable-workflow/storage-separation.md) record's
+§ 3 text account for Canada East, named by the host rule
+(`consultologist<region>text`). It holds the six org/personal text containers
+(`org-`/`personal-` × `job-inputs`, `job-outputs`, `form-responses`) and, from
+M2, the `ConsultGenerationJobEvents` table. Its axes differ from this records
+account on purpose:
+
+- **Shared key off** — identity-only, as everywhere since #10.
+- **Blob soft delete, container soft delete and versioning OFF** — a deleted
+  blob must be gone; text is the class that is deleted on schedule.
+- **Lifecycle policy**: delete blobs 30 days after creation, every container —
+  the ceiling of #548, never the rule (the app's sweeps delete earlier).
+- **RBAC**: the user-assigned identity gets Storage Blob Data Contributor and
+  Storage Table Data Contributor on this account only.
+- **Network**: public access as today; this account is first in line for a
+  private endpoint (NETWORK_HARDENING.md owns that path).
+
+Driving it by hand (operator steps, on the operator's go — each mutation
+confirmed before it runs):
+
+```azurecli
+# The user-assigned identity the function app runs as:
+CLIENT_ID=$(az functionapp config appsettings list --name canada-east-ai-function --resource-group consultologist_group --query "[?name=='AZURE_CLIENT_ID'].value | [0]" -o tsv)
+PRINCIPAL_ID=$(az identity list --resource-group consultologist_group --query "[?clientId=='$CLIENT_ID'].principalId | [0]" -o tsv)
+
+# 1. The account. CLI-created accounts start with soft delete and versioning
+#    disabled; the show command below is the proof, not an assumption.
+az storage account create --name consultologisteastcatext --resource-group consultologist_group   --location canadaeast --sku Standard_LRS --kind StorageV2   --allow-shared-key-access false --min-tls-version TLS1_2 --allow-blob-public-access false
+
+az storage account blob-service-properties show --account-name consultologisteastcatext   --resource-group consultologist_group   --query "{softDelete:deleteRetentionPolicy.enabled, containerSoftDelete:containerDeleteRetentionPolicy.enabled, versioning:isVersioningEnabled}"
+
+# 2. The six containers — control-plane creates, so shared-key-off never bites.
+for c in org-job-inputs personal-job-inputs org-job-outputs personal-job-outputs org-form-responses personal-form-responses; do
+  az storage container-rm create --storage-account consultologisteastcatext --resource-group consultologist_group --name "$c"
+done
+
+# 3. The 30-day ceiling, every container (the sweeps delete earlier; this
+#    deletes what a bug or an outage left behind).
+az storage account management-policy create --account-name consultologisteastcatext --resource-group consultologist_group --policy '{
+  "rules": [ { "enabled": true, "name": "text-30-day-ceiling", "type": "Lifecycle",
+    "definition": { "actions": { "baseBlob": { "delete": { "daysAfterCreationGreaterThan": 30 } } },
+                    "filters": { "blobTypes": [ "blockBlob" ] } } } ] }'
+
+# 4. The identity's two roles, scoped to this account only.
+SCOPE=$(az storage account show --name consultologisteastcatext --resource-group consultologist_group --query id -o tsv)
+az role assignment create --assignee-object-id "$PRINCIPAL_ID" --assignee-principal-type ServicePrincipal --role "Storage Blob Data Contributor" --scope "$SCOPE"
+az role assignment create --assignee-object-id "$PRINCIPAL_ID" --assignee-principal-type ServicePrincipal --role "Storage Table Data Contributor" --scope "$SCOPE"
+
+# 5. The settings (CONFIGURATION.md; nothing reads them until M2/#557).
+az functionapp config appsettings set --name canada-east-ai-function --resource-group consultologist_group --settings   TextStorage__BlobServiceUri=https://consultologisteastcatext.blob.core.windows.net   TextStorage__TableServiceUri=https://consultologisteastcatext.table.core.windows.net   TextStorage__credential=managedidentity   "TextStorage__clientId=$CLIENT_ID"
+```
+
+The one-shot `AccountKind` back-fill (#556's code half stamps new accounts and
+lazily back-fills at sign-in; this recipe covers accounts that have not signed
+in since). Read the linked identities, decide the kind — an issuer carrying
+the consumers tenant `9188040d-6c67-4c5b-b112-36a304b66dad` is `personal`,
+any other is `organisation` — and merge it, idempotently (a stamped kind is
+never changed; the account cannot change tenant):
+
+```azurecli
+az storage entity query --account-name consultologistjobqueue --table-name UserIdentityLinks   --auth-mode login --query "items[].{account:PartitionKey, issuer:Issuer}" -o table
+
+# Per account, once:
+az storage entity merge --account-name consultologistjobqueue --table-name AppUsers --auth-mode login   --entity PartitionKey=app-user RowKey=<appUserId> AccountKind=<organisation|personal>
+```
+
+Verification, read-only: `az storage container-rm list`, `az storage account
+management-policy show`, `az role assignment list --scope "$SCOPE"`,
+`az storage account show --query allowSharedKeyAccess`, and `Account/Me`
+returning `accountKind` after the back-fill.
+
 ## After Setup
 
 In the storage account, Durable Functions will create runtime artifacts such as
