@@ -182,6 +182,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.ApiHost ??= input.ApiHost;
         State.EngineCommit ??= input.EngineCommit;
         State.InputsBlob ??= input.InputsBlob;
+        State.RerunBaseline ??= input.RerunBaseline;
         State.Source ??= input.Source;
         State.ScheduledAtUtc ??= input.ScheduledAtUtc;
         State.PackageSpecVersion ??= input.PackageSpecVersion;
@@ -809,7 +810,10 @@ public sealed record ConsultGenerationJobInitialize(
     // #547: where the starter held this job's inputs; null when unheld
     // (v5/v6, or the write failed). Appended last — the engine calls
     // Initialize positionally.
-    ConsultInputsBlobPointer? InputsBlob = null);
+    ConsultInputsBlobPointer? InputsBlob = null,
+    // #582: the source's hashes when this job is a rerun; null otherwise.
+    // Appended last, same positional-call rule.
+    ConsultRerunBaseline? RerunBaseline = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -871,6 +875,24 @@ public sealed record ConsultGenerationTextDrop(DateTimeOffset DroppedAtUtc);
 
 /// <summary>#548: the shorter inputs clock's signal — the held inputs alone are deleted.</summary>
 public sealed record ConsultGenerationInputsDrop(DateTimeOffset DroppedAtUtc);
+
+/// <summary>
+/// #582: the source run's hashes, captured by the rerun door at start from
+/// the source's own entity state — immutable once Completed — so the verdict
+/// at this job's completion compares two records and reads nothing else.
+/// Hashes only, never text. Keys are the NodeOutputs keys (nodeId, or
+/// nodeId:itemId for fanned items).
+/// </summary>
+public sealed record ConsultRerunBaseline(
+    string SourceJobId,
+    string? EffectiveInputHash,
+    int? EffectiveInputHashVersion,
+    IReadOnlyDictionary<string, ConsultRerunBaselineNode> NodeHashes);
+
+public sealed record ConsultRerunBaselineNode(
+    string? InputHash,
+    string? OutputHash,
+    int? HashVersion);
 
 /// <summary>
 /// #486: what happened to the completion email, written once when the job
@@ -1092,6 +1114,14 @@ public sealed class ConsultGenerationJobState
     // InputsDroppedAtUtc gates every read of it. Null on unheld jobs.
     public ConsultInputsBlobPointer? InputsBlob { get; set; }
     public DateTimeOffset? InputsDroppedAtUtc { get; set; }
+
+    // #582: a rerun's evidence and its judgment. The baseline is the source's
+    // hashes, seeded at Initialize; the verdict and the first divergence are
+    // stamped once at completion (RerunVerdicts). All null on non-reruns, and
+    // on #549-era reruns from before the baseline existed.
+    public ConsultRerunBaseline? RerunBaseline { get; set; }
+    public string? RerunVerdict { get; set; }
+    public string? RerunDivergence { get; set; }
 
     // #486: what happened to the completion email (DeliveryOutcomes); null
     // on records from before, or while the job is still running.

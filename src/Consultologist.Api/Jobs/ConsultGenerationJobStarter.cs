@@ -30,7 +30,10 @@ public sealed record ConsultGenerationJobOrigin(
     // #549: set only by the rerun door — the completed run whose held inputs
     // this start replays. Server-derived, never from the wire: it makes the
     // starter stamp a rerun origin on every effective slot.
-    string? RerunOfJobId = null);
+    string? RerunOfJobId = null,
+    // #582: the source's hashes, captured by the rerun door beside the id —
+    // the verdict's evidence, seeded onto the new job's record at Initialize.
+    ConsultRerunBaseline? RerunBaseline = null);
 
 public enum ConsultGenerationJobStartError
 {
@@ -702,7 +705,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // leaves it null and writes the bytes it always wrote.
                 Deciding: deciding ? true : null,
                 // #547: where the held inputs live; null when unheld.
-                InputsBlob: inputsBlob));
+                InputsBlob: inputsBlob,
+                // #582: the source's hashes when this is a rerun.
+                RerunBaseline: origin.RerunBaseline));
 
         var terminology = await _terminology.GetAsync(cancellationToken);
         var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(

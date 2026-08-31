@@ -576,7 +576,10 @@ public sealed class ConsultGenerationJobs
             ConsultGenerationJobSources.App,
             ReplyAddressFor(await GetDeliveryAddressAsync(account.AppUserId, cancellationToken)),
             EmailRequested: await EmailRequestedAsync(account.AppUserId, cancellationToken),
-            RerunOfJobId: jobId);
+            RerunOfJobId: jobId,
+            // #582: the verdict's evidence, taken here while the source is in
+            // hand — its hashes are immutable once Completed.
+            RerunBaseline: BaselineFrom(jobId, response));
 
         var outcome = await _jobStarter.StartAsync(
             client,
@@ -622,6 +625,22 @@ public sealed class ConsultGenerationJobs
                     : response.WorkflowPackage == null
                         ? "This record does not name the package version it ran, so it cannot be rerun."
                         : null;
+
+    /// <summary>
+    /// #582: the source's hashes, lifted from its entity-backed response —
+    /// every per-stage pair with its hashVersion, and the effective-input
+    /// hash the rerun must reproduce. Hashes only, never text.
+    /// </summary>
+    internal static ConsultRerunBaseline BaselineFrom(string sourceJobId, ConsultGenerationJobResponse source) =>
+        new(
+            sourceJobId,
+            source.EffectiveInputHash,
+            source.EffectiveInputHashVersion,
+            source.NodeOutputs?.ToDictionary(
+                pair => pair.Key,
+                pair => new ConsultRerunBaselineNode(pair.Value.InputHash, pair.Value.OutputHash, pair.Value.HashVersion),
+                StringComparer.Ordinal)
+                ?? new Dictionary<string, ConsultRerunBaselineNode>(StringComparer.Ordinal));
 
     /// <summary>
     /// The rebuild: no draft, no files, no refs, no schedule — only the held

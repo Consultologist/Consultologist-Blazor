@@ -427,10 +427,14 @@ public class ConsultGenerationJobStarterTests
                 Arg.Any<CancellationToken>())
             .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
 
+        var baseline = new ConsultRerunBaseline("source-job-1", "aaaa", 5,
+            new Dictionary<string, ConsultRerunBaselineNode> { ["extract"] = new("in1", "out1", 5) });
         var outcome = await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(Referral), "user-1",
-            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App, RerunOfJobId: "source-job-1"), CancellationToken.None);
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App, RerunOfJobId: "source-job-1", RerunBaseline: baseline), CancellationToken.None);
 
         Assert.Null(outcome.Error);
+        // #582: the baseline rides Initialize untouched — the verdict's evidence.
+        Assert.Same(baseline, initialize!.RerunBaseline);
         var origins = initialize!.InputDocumentOrigins;
         Assert.NotNull(origins);
         var origin = Assert.Single(origins!["consult_draft"]);
