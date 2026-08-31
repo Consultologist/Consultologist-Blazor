@@ -1,5 +1,6 @@
 using System.Net;
 using Consultologist.Api.Jobs;
+using Consultologist.Api.Models;
 using Consultologist.Api.Workflow;
 
 using Consultologist.PackageFormat;
@@ -101,5 +102,87 @@ public class ConsultGenerationStartStatusTests
         // Deliberate, and inherited from #157: a past time runs immediately,
         // which is a legitimate way to say "actually, now".
         Assert.Null(ConsultGenerationJobs.RefusalForScheduleTime(DateTimeOffset.UtcNow.AddHours(-1)));
+    }
+
+    // ----- #549: the rerun refusals and the rebuild -----
+
+    private static ConsultGenerationJobResponse RerunSource(
+        string status = ConsultGenerationJobStatuses.Completed,
+        bool held = true,
+        DateTimeOffset? inputsDroppedAtUtc = null,
+        string? workflowPackage = "general@v2026.08.4") =>
+        new("job-1", "user-1", status, 1, 1, 0, new Dictionary<string, string>(), new Dictionary<string, string>(), true,
+            WorkflowPackage: workflowPackage,
+            InputsBlob: held ? new ConsultInputsBlobPointer("org-job-inputs", "user-1/job-1.json") : null,
+            InputsDroppedAtUtc: inputsDroppedAtUtc);
+
+    [Fact]
+    public void ACompletedHeldRun_MayBeRerun()
+    {
+        Assert.Null(ConsultGenerationJobs.RefusalForRerun(RerunSource()));
+    }
+
+    [Theory]
+    [InlineData(ConsultGenerationJobStatuses.Running)]
+    [InlineData(ConsultGenerationJobStatuses.Scheduled)]
+    [InlineData(ConsultGenerationJobStatuses.Failed)]
+    [InlineData(ConsultGenerationJobStatuses.Cancelled)]
+    public void OnlyACompletedRunMayBeRerun(string status)
+    {
+        var refusal = ConsultGenerationJobs.RefusalForRerun(RerunSource(status));
+
+        Assert.Contains("Only a completed consult can be rerun", refusal, StringComparison.Ordinal);
+        Assert.Contains(status.ToLowerInvariant(), refusal, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnUnheldRun_RefusesByName()
+    {
+        Assert.Contains(
+            "inputs were not held",
+            ConsultGenerationJobs.RefusalForRerun(RerunSource(held: false)),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ADroppedRun_RefusesWithTheDate()
+    {
+        var refusal = ConsultGenerationJobs.RefusalForRerun(
+            RerunSource(inputsDroppedAtUtc: new DateTimeOffset(2026, 9, 8, 3, 0, 0, TimeSpan.Zero)));
+
+        Assert.Contains("deleted on 2026-09-08", refusal, StringComparison.Ordinal);
+        Assert.Contains("retention policy", refusal, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ARecordWithoutItsPackageRef_Refuses()
+    {
+        // A rerun never re-resolves a pin — with no recorded ref there is
+        // nothing faithful to run.
+        Assert.Contains(
+            "does not name the package version",
+            ConsultGenerationJobs.RefusalForRerun(RerunSource(workflowPackage: null)),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheRebuild_CarriesOnlyTheSuppliedValues_UnderTheRecordsExactRef()
+    {
+        var payload = new JobInputsPayload(
+            JobInputsPayload.CurrentVersion,
+            Effective: new Dictionary<string, string> { ["consult_draft"] = "The referral text." },
+            Supplied: new Dictionary<string, string>
+            {
+                ["consult_draft"] = ConsultInputValue.OfText("The referral text.").AsJson()
+            });
+
+        var request = ConsultGenerationJobs.RerunRequestFrom(RerunSource(), payload);
+
+        Assert.Equal("general@v2026.08.4", request.WorkflowPackage);
+        Assert.Equal(ConsultInputValue.OfText("The referral text."), request.Inputs!["consult_draft"]);
+        Assert.Null(request.ConsultDraft);
+        Assert.Null(request.InputFiles);
+        Assert.Null(request.InputRefs);
+        Assert.Null(request.ScheduledAtUtc);
     }
 }
