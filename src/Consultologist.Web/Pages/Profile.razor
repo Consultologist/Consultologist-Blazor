@@ -428,6 +428,84 @@
                 </div>
             </section>
 
+            @* #548: how long a run's text is kept. Empty until chosen; each
+               unset line says what unset means, and a change is refused by
+               name rather than silently reordered. *@
+            <section class="content-card retention-card">
+                <div class="form-stack">
+                    <h2 class="panel-title">
+                        Retention
+                    </h2>
+
+                    <p class="panel-description">
+                        How many days a completed run's text is kept — the produced documents
+                        (outputs) and, separately, the referral text held for a rerun (inputs).
+                        Inputs never outlive outputs, and 30 days is the ceiling. Hashes and
+                        history are never deleted. A shortened setting applies to runs already
+                        held at the next nightly sweep.
+                    </p>
+
+                    @if (retentionMessage != null)
+                    {
+                        <FluentMessageBar Intent="@retentionMessageIntent" AllowDismiss="false" Class="retention-message">
+                            @retentionMessage
+                        </FluentMessageBar>
+                    }
+
+                    <div class="state-panel">
+                        <span class="muted-text">Outputs</span>
+                        <strong class="retention-output-state">@RetentionPreference.Describe(savedRetentionOutputDays)</strong>
+                        <span class="muted-text">Inputs</span>
+                        <strong class="retention-input-state">@RetentionPreference.Describe(savedRetentionInputDays)</strong>
+                    </div>
+
+                    <div class="action-row">
+                        <input type="number"
+                               min="@RetentionPreference.MinDays"
+                               max="@RetentionPreference.MaxDays"
+                               class="node-field__input retention-output-input"
+                               value="@retentionOutputInput"
+                               @onchange="args => retentionOutputInput = args.Value?.ToString() ?? string.Empty"
+                               disabled="@retentionRequestInProgress"
+                               placeholder="Outputs"
+                               aria-label="Days outputs are kept" />
+                        <input type="number"
+                               min="@RetentionPreference.MinDays"
+                               max="@RetentionPreference.MaxDays"
+                               class="node-field__input retention-input-input"
+                               value="@retentionInputInput"
+                               @onchange="args => retentionInputInput = args.Value?.ToString() ?? string.Empty"
+                               disabled="@retentionRequestInProgress"
+                               placeholder="Inputs"
+                               aria-label="Days inputs are kept" />
+                        <FluentButton Appearance="Appearance.Accent"
+                                      Class="retention-save"
+                                      Disabled="@(retentionRequestInProgress || (string.IsNullOrWhiteSpace(retentionOutputInput) && string.IsNullOrWhiteSpace(retentionInputInput)))"
+                                      @onclick="SaveRetentionAsync">
+                            Save
+                        </FluentButton>
+                        @if (savedRetentionOutputDays != null)
+                        {
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Class="retention-output-clear"
+                                          Disabled="@retentionRequestInProgress"
+                                          @onclick="() => ClearRetentionAsync(RetentionPreference.OutputDaysKey)">
+                                Clear outputs
+                            </FluentButton>
+                        }
+                        @if (savedRetentionInputDays != null)
+                        {
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Class="retention-input-clear"
+                                          Disabled="@retentionRequestInProgress"
+                                          @onclick="() => ClearRetentionAsync(RetentionPreference.InputDaysKey)">
+                                Clear inputs
+                            </FluentButton>
+                        }
+                    </div>
+                </div>
+            </section>
+
             @* #516: the profile's signature blocks — appended to deliverables a
                v11 package marks signed. Explicit initialisation: a new account
                has none, and nothing is appended until a block exists and is
@@ -686,6 +764,7 @@
             account = await AccountService.GetCurrentAccountAsync();
             await LoadScheduleTimeAsync();
         await LoadEmailPdfAsync();
+        await LoadRetentionAsync();
         await LoadSignaturesAsync();
         await LoadEngineHostAsync();
         }
@@ -972,6 +1051,153 @@
         finally
         {
             emailPdfRequestInProgress = false;
+        }
+    }
+
+    // #548: the retention clocks. null = not chosen (the deployment default
+    // governs); saved values are what is stored, the inputs are what the
+    // controls hold. Writes are ordered so the server's cross-key check never
+    // trips on a save the client already validated.
+    private int? savedRetentionOutputDays;
+    private int? savedRetentionInputDays;
+    private string retentionOutputInput = string.Empty;
+    private string retentionInputInput = string.Empty;
+    private bool retentionRequestInProgress;
+    private string? retentionMessage;
+    private MessageIntent retentionMessageIntent = MessageIntent.Info;
+
+    private async Task LoadRetentionAsync()
+    {
+        try
+        {
+            var output = await AccountService.GetSettingAsync(RetentionPreference.OutputDaysKey);
+            var input = await AccountService.GetSettingAsync(RetentionPreference.InputDaysKey);
+            savedRetentionOutputDays = RetentionPreference.Parse(output?.Value);
+            savedRetentionInputDays = RetentionPreference.Parse(input?.Value);
+            retentionOutputInput = savedRetentionOutputDays?.ToString() ?? string.Empty;
+            retentionInputInput = savedRetentionInputDays?.ToString() ?? string.Empty;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch
+        {
+            savedRetentionOutputDays = null;
+            savedRetentionInputDays = null;
+        }
+    }
+
+    private async Task SaveRetentionAsync()
+    {
+        var outputChosen = !string.IsNullOrWhiteSpace(retentionOutputInput);
+        var inputChosen = !string.IsNullOrWhiteSpace(retentionInputInput);
+
+        int? newOutput = outputChosen ? RetentionPreference.Parse(retentionOutputInput) : null;
+        int? newInput = inputChosen ? RetentionPreference.Parse(retentionInputInput) : null;
+
+        if (outputChosen && (newOutput == null || !RetentionPreference.InRange(newOutput.Value)))
+        {
+            retentionMessage = $"Outputs must be a whole number of days between {RetentionPreference.MinDays} and {RetentionPreference.MaxDays}.";
+            retentionMessageIntent = MessageIntent.Error;
+            return;
+        }
+
+        if (inputChosen && (newInput == null || !RetentionPreference.InRange(newInput.Value)))
+        {
+            retentionMessage = $"Inputs must be a whole number of days between {RetentionPreference.MinDays} and {RetentionPreference.MaxDays}.";
+            retentionMessageIntent = MessageIntent.Error;
+            return;
+        }
+
+        // The cross-key rule against what will be stored — a blank input
+        // leaves that clock as it is. Same test the server runs.
+        var crossOutput = newOutput ?? savedRetentionOutputDays;
+        var crossInput = newInput ?? savedRetentionInputDays;
+        if (crossOutput != null && crossInput != null && crossInput > crossOutput)
+        {
+            retentionMessage = $"Inputs ({crossInput}) cannot be kept longer than outputs ({crossOutput}).";
+            retentionMessageIntent = MessageIntent.Error;
+            return;
+        }
+
+        retentionRequestInProgress = true;
+
+        try
+        {
+            // Inputs first unless the new inputs value would exceed the
+            // outputs value still stored — then outputs must widen first.
+            var inputsFirst = newInput == null
+                || savedRetentionOutputDays == null
+                || newInput <= savedRetentionOutputDays;
+
+            if (inputsFirst)
+            {
+                if (newInput != null) await SaveRetentionValueAsync(RetentionPreference.InputDaysKey, newInput.Value);
+                if (newOutput != null) await SaveRetentionValueAsync(RetentionPreference.OutputDaysKey, newOutput.Value);
+            }
+            else
+            {
+                if (newOutput != null) await SaveRetentionValueAsync(RetentionPreference.OutputDaysKey, newOutput.Value);
+                if (newInput != null) await SaveRetentionValueAsync(RetentionPreference.InputDaysKey, newInput.Value);
+            }
+
+            savedRetentionOutputDays = newOutput ?? savedRetentionOutputDays;
+            savedRetentionInputDays = newInput ?? savedRetentionInputDays;
+            retentionMessage = "Retention saved. Runs already held follow the new setting at the next nightly sweep.";
+            retentionMessageIntent = MessageIntent.Success;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            retentionMessage = ex.Message;
+            retentionMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            retentionRequestInProgress = false;
+        }
+    }
+
+    private Task SaveRetentionValueAsync(string key, int days) =>
+        AccountService.SaveSettingAsync(key, RetentionPreference.Store(days), RetentionPreference.ContentType);
+
+    private async Task ClearRetentionAsync(string key)
+    {
+        retentionRequestInProgress = true;
+
+        try
+        {
+            await AccountService.DeleteSettingAsync(key);
+            if (key == RetentionPreference.OutputDaysKey)
+            {
+                savedRetentionOutputDays = null;
+                retentionOutputInput = string.Empty;
+            }
+            else
+            {
+                savedRetentionInputDays = null;
+                retentionInputInput = string.Empty;
+            }
+
+            retentionMessage = $"Back to not chosen: kept {RetentionPreference.DefaultDays} days, as before.";
+            retentionMessageIntent = MessageIntent.Success;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            retentionMessage = ex.Message;
+            retentionMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            retentionRequestInProgress = false;
         }
     }
 
