@@ -22,6 +22,12 @@ public interface IConsultGenerationJobIndexStore
         string appUserId,
         DateTimeOffset completedBefore,
         CancellationToken cancellationToken);
+
+    /// <summary>#548: every terminal job of the account completed before the inputs cutoff still holding its inputs blob.</summary>
+    Task<IReadOnlyList<ConsultGenerationJobIndexEntry>> ListDueForInputsDropAsync(
+        string appUserId,
+        DateTimeOffset completedBefore,
+        CancellationToken cancellationToken);
 }
 
 internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJobIndexStore
@@ -88,6 +94,29 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
         {
             var entry = ToEntry(entity);
             if (TextRetentionSweep.IsDue(entry, completedBefore))
+            {
+                due.Add(entry);
+            }
+        }
+
+        return due;
+    }
+
+    public async Task<IReadOnlyList<ConsultGenerationJobIndexEntry>> ListDueForInputsDropAsync(
+        string appUserId,
+        DateTimeOffset completedBefore,
+        CancellationToken cancellationToken)
+    {
+        await EnsureTableAsync(cancellationToken);
+
+        // Same partition scan as the outputs leg, filtered in memory — the
+        // absence tests (dropped stamp unset) can't run server-side.
+        var due = new List<ConsultGenerationJobIndexEntry>();
+        var filter = TableClient.CreateQueryFilter($"PartitionKey eq {appUserId} and CompletedAtUtc lt {completedBefore}");
+        await foreach (var entity in _index.QueryAsync<ConsultGenerationJobIndexEntity>(filter, cancellationToken: cancellationToken))
+        {
+            var entry = ToEntry(entity);
+            if (TextRetentionSweep.IsInputsDue(entry, completedBefore))
             {
                 due.Add(entry);
             }
