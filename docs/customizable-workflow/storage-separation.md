@@ -145,8 +145,15 @@ Nothing new is stored; two things are added to what is: the blob pointers
 store can move without rewriting records) and the second dropped-at
 state. The provenance registry's "three kinds of field"
 (`provenance.md` 34–54) is untouched: the pointers are operational
-snapshots. The links index (#546) is a records-account table keyed by the
-source job, ids only, never deleted.
+snapshots. The links index (#546, built) is a records-account table keyed
+by the source job, ids only, never deleted. Its row key refines the
+consumer id with the slot and element for a previous-run copy
+(`{consumerJobId}_{inputId}_{i}` — one consumer may copy twice from one
+source) and is the bare consumer id for a rerun — one row per replay,
+never one per slot origin. Written best-effort at start (a storage blip
+never refuses the run; the consumer's own origins remain the truth this
+index projects), which also means edges from runs started before #546
+are absent, not back-filled.
 
 ### 2.4 Usage
 

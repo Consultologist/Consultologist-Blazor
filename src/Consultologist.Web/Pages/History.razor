@@ -406,7 +406,7 @@
                                                     <dd>
                                                         @if (origin.Value.Count == 1)
                                                         {
-                                                            @DescribeOrigin(origin.Value[0])@Digests(origin.Value[0])
+                                                            @DescribeOrigin(origin.Value[0]) @SourceLink(origin.Value[0])@Digests(origin.Value[0])
                                                         }
                                                         else
                                                         {
@@ -416,7 +416,7 @@
                                                             <ol class="provenance-documents">
                                                                 @foreach (var document in origin.Value)
                                                                 {
-                                                                    <li>@DescribeOrigin(document)@Digests(document)</li>
+                                                                    <li>@DescribeOrigin(document) @SourceLink(document)@Digests(document)</li>
                                                                 }
                                                             </ol>
                                                         }
@@ -566,6 +566,33 @@
                                                         </div>
                                                     }
                                                 </div>
+                                            </details>
+                                        }
+
+                                        @* #546: the other direction — who used this run. Rendered
+                                           only when there is something to say (an edge, or a fetch
+                                           failure worth naming); an ordinary run adds no section. *@
+                                        @if (_usedByErrors.TryGetValue(detail.JobId, out var usedByError))
+                                        {
+                                            <details class="job-detail-section" open>
+                                                <summary class="muted-text">Used by</summary>
+                                                <p class="used-by__unavailable muted-text">The links could not be loaded — @usedByError</p>
+                                            </details>
+                                        }
+                                        else if (_usedByLinks.TryGetValue(detail.JobId, out var usedBy) && usedBy is { Count: > 0 })
+                                        {
+                                            <details class="job-detail-section" open>
+                                                <summary class="muted-text">Used by (@usedBy.Count)</summary>
+                                                <ul class="used-by">
+                                                    @foreach (var link in usedBy)
+                                                    {
+                                                        <li class="used-by__row">
+                                                            @(link.Kind == "rerun"
+                                                                ? "replayed by run "
+                                                                : $"deliverable '{link.ResultId}' copied into input '{link.InputId}' of run ")<a href="/history/@link.JobId">@ShortRun(link.JobId)</a>
+                                                        </li>
+                                                    }
+                                                </ul>
                                             </details>
                                         }
 
@@ -734,9 +761,28 @@
         // #510: copied at start from one of this account's runs — the label
         // is not on the origin, so the deliverable's id and the run's.
         "previous-run" => $"copied from deliverable '{origin.SourceResultId}' of run {ShortRun(origin.SourceJobId)}",
+        // #549: the whole run replays the source; the comparison section
+        // below carries the detail, this row just says the slot's part.
+        "rerun" => $"replayed from run {ShortRun(origin.SourceJobId)}",
         _ => $"read from a document by {origin.Extractor ?? "—"}"
             + (origin.PageCount is { } pages ? $" · {pages} page{(pages == 1 ? "" : "s")}" : "")
             + (origin.TrackedChangesResolved ? " · tracked changes resolved to the accepted view" : "")
+    };
+
+    // #546: the issue's other half of "links both ways" — a copied-from line
+    // links to the source run's History entry rather than only naming it.
+    private static RenderFragment SourceLink(ConsultInputOrigin origin) => builder =>
+    {
+        if (origin.SourceJobId is not { Length: > 0 } sourceJobId)
+        {
+            return;
+        }
+
+        builder.OpenElement(0, "a");
+        builder.AddAttribute(1, "class", "provenance-source-link");
+        builder.AddAttribute(2, "href", $"/history/{sourceJobId}");
+        builder.AddContent(3, "view");
+        builder.CloseElement();
     };
 
     private static string ShortRun(string? jobId) =>
@@ -1372,6 +1418,7 @@
             await EnsureCatalogLoadedAsync(detail?.CatalogRef);
             await EnsureLineageLoadedAsync(detail?.WorkflowPackage);
             await EnsureRerunSourceLoadedAsync(jobId, detail);
+            await EnsureUsedByLoadedAsync(jobId);
         }
         catch (AccessTokenNotAvailableException exception)
         {
@@ -1390,6 +1437,32 @@
     // and never breaks the panel.
     private readonly Dictionary<string, ConsultGenerationJobResponse?> _rerunSourceDetails = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _rerunSourceErrors = new(StringComparer.Ordinal);
+
+    // #546: who used each expanded run, from the links index; same degrade
+    // posture — a fetch failure becomes a named row, never a broken panel.
+    private readonly Dictionary<string, IReadOnlyList<ConsultJobLinkResponse>> _usedByLinks = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _usedByErrors = new(StringComparer.Ordinal);
+
+    private async Task EnsureUsedByLoadedAsync(string jobId)
+    {
+        if (_usedByLinks.ContainsKey(jobId))
+        {
+            return;
+        }
+
+        try
+        {
+            _usedByLinks[jobId] = await AIService.GetConsultGenerationJobLinksAsync(jobId);
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            _usedByErrors[jobId] = ex.Message;
+        }
+    }
 
     private async Task EnsureRerunSourceLoadedAsync(string jobId, ConsultGenerationJobResponse? detail)
     {

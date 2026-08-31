@@ -191,7 +191,10 @@ whose every effective slot carries a `rerun` origin naming the source.
 Since #582 the door also captures the source's hashes as a baseline,
 and the rerun's completion stamps `rerunVerdict` — pass/fail over the
 package's own reproducible claims, judged from two records and nothing
-else.
+else. Since #546 every start also inverts its origins into the
+`ConsultGenerationLinks` table on the records account (PK the source
+job, ids only, never deleted while the account exists) — the "used by"
+side of History's lineage; account closure (#559) is its one deleter.
 
 ## After Setup
 

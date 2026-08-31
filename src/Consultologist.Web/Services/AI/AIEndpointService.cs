@@ -44,6 +44,9 @@ public interface IAIEndpointService
     /// </summary>
     Task<string> RerunConsultGenerationJobAsync(string jobId);
 
+    /// <summary>#546: who used this run — the links index's rows, ids only.</summary>
+    Task<IReadOnlyList<ConsultJobLinkResponse>> GetConsultGenerationJobLinksAsync(string jobId);
+
     string GetConsultGenerationJobEventsUrl(string jobId, string attemptId, string? lastEventId = null);
 
     IAsyncEnumerable<ConsultGenerationJobSseEvent> StreamConsultGenerationJobEventsAsync(
@@ -270,6 +273,26 @@ public class AIEndpointService : IAIEndpointService
             ?? throw new InvalidOperationException("Rerun succeeded but returned no job id.");
     }
 
+    public async Task<IReadOnlyList<ConsultJobLinkResponse>> GetConsultGenerationJobLinksAsync(string jobId)
+    {
+        var functionUrl = _locations.Url(ApiRoutes.ConsultGenerationJobs);
+        var url = $"{functionUrl.TrimEnd('/')}/{Uri.EscapeDataString(jobId)}/Links";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        await AddAuthorizationAsync(request);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await DescribeFailureAsync(response, "Consult links");
+        }
+
+        var payload = await response.Content.ReadFromJsonAsync<ConsultJobLinksResponse>();
+
+        return payload?.UsedBy ?? Array.Empty<ConsultJobLinkResponse>();
+    }
+
     public async Task CancelConsultGenerationJobAsync(string jobId)
     {
         var functionUrl = _locations.Url(ApiRoutes.ConsultGenerationJobs);
@@ -469,6 +492,11 @@ public record RescheduleConsultResponse(string JobId, string CancelledJobId, Dat
 
 /// <summary>#549: the new job and the run it replays.</summary>
 public record RerunConsultResponse(string JobId, string SourceJobId);
+
+/// <summary>#546: one "used by" edge — mirrors the Api's ConsultJobLinkResponse.</summary>
+public sealed record ConsultJobLinkResponse(string JobId, string Kind, string? InputId = null, string? ResultId = null);
+
+public sealed record ConsultJobLinksResponse(IReadOnlyList<ConsultJobLinkResponse>? UsedBy);
 public record ConsultGenerationJobSseEvent(string EventName, string Json, string? EventId = null);
 public record ConsultGenerationJobResponse(
     string JobId,

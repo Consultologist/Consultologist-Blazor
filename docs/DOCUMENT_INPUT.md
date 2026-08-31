@@ -701,6 +701,13 @@ POST /api/ConsultGenerationJobs
   > slot's effective value verbatim. A `rerun` origin exempts the
   > cloud-link check the way `document` does: the text already ran once,
   > and refusing the replay would refuse what was accepted.
+  > **Amended (#546).** The link runs both ways: at start the origins are
+  > inverted into the `ConsultGenerationLinks` index (records account,
+  > keyed by the source, ids only, never deleted), so the source run's
+  > History shows *Used by* rows — which run copied which deliverable
+  > into which slot, and which runs replayed it — while the consumer's
+  > copied-from line links back. Best-effort at start: a storage blip
+  > never refuses the run, and the origins remain the truth.
 
 ## 8. Failure copy (normative)
 

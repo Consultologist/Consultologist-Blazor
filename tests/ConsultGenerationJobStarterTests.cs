@@ -29,6 +29,7 @@ public class ConsultGenerationJobStarterTests
     private readonly IAccountSettingsStore _settings = Substitute.For<IAccountSettingsStore>();
     private readonly IJobOutputsBlobStore _outputsBlobs = Substitute.For<IJobOutputsBlobStore>();
     private readonly IJobInputsBlobStore _inputsBlobs = Substitute.For<IJobInputsBlobStore>();
+    private readonly IConsultGenerationLinkStore _links = Substitute.For<IConsultGenerationLinkStore>();
 
     // #290: a terse but genuine referral. These fixtures used to say
     // "draft", which is not a referral and which the content floor
@@ -59,7 +60,8 @@ public class ConsultGenerationJobStarterTests
             _accounts,
             _settings,
             _outputsBlobs,
-            _inputsBlobs);
+            _inputsBlobs,
+            _links);
     }
 
     private readonly FakeTerminologySource _terminology = new();
@@ -435,6 +437,13 @@ public class ConsultGenerationJobStarterTests
         Assert.Null(outcome.Error);
         // #582: the baseline rides Initialize untouched — the verdict's evidence.
         Assert.Same(baseline, initialize!.RerunBaseline);
+        // #546: one lineage edge for the whole replay, never one per slot.
+        await _links.Received(1).WriteAsync(
+            Arg.Is<IReadOnlyList<ConsultGenerationLink>>(links =>
+                links.Count == 1
+                && links[0].SourceJobId == "source-job-1"
+                && links[0].Kind == ConsultInputOriginKinds.Rerun),
+            Arg.Any<CancellationToken>());
         var origins = initialize!.InputDocumentOrigins;
         Assert.NotNull(origins);
         var origin = Assert.Single(origins!["consult_draft"]);
@@ -472,6 +481,34 @@ public class ConsultGenerationJobStarterTests
             new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
 
         Assert.Null(initialize!.InputDocumentOrigins);
+        // #546: a plain run writes no lineage edges.
+        await _links.DidNotReceiveWithAnyArgs().WriteAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task ALinkWriteFailure_NeverRefusesTheStart()
+    {
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V8Fixtures.Minimal(),
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+        _links.WriteAsync(Arg.Any<IReadOnlyList<ConsultGenerationLink>>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("storage blip"));
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Any<object?>(),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var outcome = await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(Referral), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App, RerunOfJobId: "source-job-1"), CancellationToken.None);
+
+        // The index is a projection; the record's origins remain the truth.
+        Assert.Null(outcome.Error);
+        Assert.NotNull(outcome.JobId);
     }
 
     [Fact]

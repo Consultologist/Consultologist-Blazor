@@ -558,8 +558,11 @@ public class HistoryDetailTests : ClientRenderTestContext
         var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
 
         var row = page.Find(".provenance-list__nested + dd");
-        Assert.Equal("copied from deliverable 'consult' of run fedcba98… · text 52593837…", row.TextContent.Trim());
+        // #546 appended the source link; the sentence itself is unchanged.
+        Assert.StartsWith("copied from deliverable 'consult' of run fedcba98…", row.TextContent.Trim());
+        Assert.Contains("text 52593837…", row.TextContent);
         Assert.DoesNotContain("read from a document", row.TextContent);
+        Assert.Equal("/history/fedcba9876543210fedcba9876543210", row.QuerySelector(".provenance-source-link")!.GetAttribute("href"));
     }
 
     [Fact]
@@ -970,6 +973,69 @@ public class HistoryDetailTests : ClientRenderTestContext
         var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
 
         Assert.Contains("first divergence at draft", page.Find(".rerun-verdict--fail").TextContent);
+    }
+
+    // ----- #546: links both ways -----
+
+    [Fact]
+    public void ARunThatWasUsed_ListsItsConsumers_WithLinks()
+    {
+        WithJob(3);
+        AIService.GetConsultGenerationJobLinksAsync(JobId).Returns(new[]
+        {
+            new ConsultJobLinkResponse("aaaa1111aaaa1111aaaa1111aaaa1111", "rerun"),
+            new ConsultJobLinkResponse("bbbb2222bbbb2222bbbb2222bbbb2222", "previous-run", "referrals", "note")
+        });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var rows = page.FindAll(".used-by__row");
+        Assert.Equal(2, rows.Count);
+        Assert.Contains("replayed by run", rows[0].TextContent);
+        Assert.Contains("deliverable 'note' copied into input 'referrals' of run", rows[1].TextContent);
+        Assert.Equal("/history/aaaa1111aaaa1111aaaa1111aaaa1111", rows[0].QuerySelector("a")!.GetAttribute("href"));
+        Assert.Equal("/history/bbbb2222bbbb2222bbbb2222bbbb2222", rows[1].QuerySelector("a")!.GetAttribute("href"));
+    }
+
+    [Fact]
+    public void ARunNobodyUsed_AddsNoSection()
+    {
+        WithJob(3);
+        AIService.GetConsultGenerationJobLinksAsync(JobId).Returns(Array.Empty<ConsultJobLinkResponse>());
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Empty(page.FindAll(".used-by"));
+        Assert.Empty(page.FindAll(".used-by__unavailable"));
+    }
+
+    [Fact]
+    public void ALinksFetchFailure_DegradesToANamedRow()
+    {
+        WithJob(3);
+        AIService.GetConsultGenerationJobLinksAsync(JobId)
+            .Returns<IReadOnlyList<ConsultJobLinkResponse>>(_ => throw new InvalidOperationException("storage blip"));
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Contains("could not be loaded", page.Find(".used-by__unavailable").TextContent);
+    }
+
+    [Fact]
+    public void ACopiedFromLine_LinksToItsSource()
+    {
+        WithJob(3, inputOrigins: new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
+        {
+            ["referrals"] = new[]
+            {
+                new ConsultInputOrigin("previous-run", TextSha256: "aa", SourceJobId: SourceJobId, SourceResultId: "note")
+            }
+        });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var link = page.Find(".provenance-source-link");
+        Assert.Equal($"/history/{SourceJobId}", link.GetAttribute("href"));
     }
 
     [Fact]
