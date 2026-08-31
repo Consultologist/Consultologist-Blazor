@@ -166,20 +166,32 @@ public class ConsultGenerationStartStatusTests
     }
 
     [Fact]
-    public void TheRebuild_CarriesOnlyTheSuppliedValues_UnderTheRecordsExactRef()
+    public void TheRebuild_CarriesTheSuppliedValues_NeverTheEffectiveMap_UnderTheRecordsExactRef()
     {
+        // The two halves differ on purpose here: Effective pads the absent
+        // optional with "" and flattens the boolean to resolver form —
+        // resubmitting it would change the effectiveInputHash. Supplied is
+        // typed and omits the absent optional; the rebuild must be Supplied.
         var payload = new JobInputsPayload(
             JobInputsPayload.CurrentVersion,
-            Effective: new Dictionary<string, string> { ["consult_draft"] = "The referral text." },
+            Effective: new Dictionary<string, string>
+            {
+                ["consult_draft"] = "The referral text.",
+                ["billable"] = "true",
+                ["optional_note"] = ""
+            },
             Supplied: new Dictionary<string, string>
             {
-                ["consult_draft"] = ConsultInputValue.OfText("The referral text.").AsJson()
+                ["consult_draft"] = ConsultInputValue.OfText("The referral text.").AsJson(),
+                ["billable"] = ConsultInputValue.OfBoolean(true).AsJson()
             });
 
         var request = ConsultGenerationJobs.RerunRequestFrom(RerunSource(), payload);
 
         Assert.Equal("general@v2026.08.4", request.WorkflowPackage);
         Assert.Equal(ConsultInputValue.OfText("The referral text."), request.Inputs!["consult_draft"]);
+        Assert.Equal(ConsultInputValue.OfBoolean(true), request.Inputs["billable"]);
+        Assert.False(request.Inputs.ContainsKey("optional_note"));
         Assert.Null(request.ConsultDraft);
         Assert.Null(request.InputFiles);
         Assert.Null(request.InputRefs);
