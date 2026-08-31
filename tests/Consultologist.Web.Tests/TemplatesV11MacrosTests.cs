@@ -375,4 +375,67 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
 
         Assert.False(Result(sent!).TryGetProperty("macros", out _));
     }
+
+    // ----- the reproducible toggle -----
+
+    [Fact]
+    public void TheReproducibleToggle_IsOffered_At11AndNotBelow_InBothPanes()
+    {
+        var eleven = RenderEditor(EditorFixtures.V11Macro());
+        Navigate(eleven, "Graph");
+        Assert.NotEmpty(eleven.FindAll("input[aria-label='Reproducible for node scope']"));
+        Navigate(eleven, "Is the referral in scope?");
+        Assert.NotEmpty(eleven.FindAll("input[aria-label='Reproducible for node scope']"));
+
+        var ten = RenderEditor(EditorFixtures.V10Classifier());
+        Navigate(ten, "Graph");
+        Assert.Empty(ten.FindAll("input[aria-label='Reproducible for node scope']"));
+    }
+
+    [Fact]
+    public void TogglingOn_WritesInPlace_OtherKeysUntouched()
+    {
+        var package = EditorFixtures.V11();
+        CapturePublish();
+        var page = RenderEditor(package);
+        Navigate(page, "Graph");
+
+        page.Find("input[aria-label='Reproducible for node scope']").Change(true);
+        Publish(page);
+
+        var scope = Node(sent!, "scope");
+        Assert.True(scope.GetProperty("reproducible").GetBoolean());
+        Assert.Equal("classifier", scope.GetProperty("kind").GetString());
+        Assert.Equal(2, scope.GetProperty("values").GetArrayLength());
+    }
+
+    [Fact]
+    public void TogglingOff_RemovesTheKey()
+    {
+        var package = EditorFixtures.V11Macro();
+        CapturePublish();
+        var page = RenderEditor(package);
+        Navigate(page, "Graph");
+
+        page.Find("input[aria-label='Reproducible for node scope']").Change(false);
+        Publish(page);
+
+        Assert.False(Node(sent!, "scope").TryGetProperty("reproducible", out _));
+    }
+
+    [Fact]
+    public void TogglingTwice_SelfRemovesTheEdit()
+    {
+        var page = RenderEditor(EditorFixtures.V11());
+        Navigate(page, "Graph");
+
+        page.Find("input[aria-label='Reproducible for node scope']").Change(true);
+        page.Find("input[aria-label='Reproducible for node scope']").Change(false);
+
+        // The field-equality check removed the edit: the Graph dot is clean.
+        var graphDot = page.FindAll("button.editor-nav__item")
+            .First(b => b.TextContent.Replace("●", string.Empty).Trim() == "Graph")
+            .QuerySelector(".editor-nav__dot")!.TextContent.Trim();
+        Assert.Equal(string.Empty, graphDot);
+    }
 }
