@@ -1,4 +1,5 @@
 using Consultologist.Api.Jobs;
+using NSubstitute;
 using Consultologist.Api.Models;
 
 namespace Consultologist.Api.Tests;
@@ -73,5 +74,55 @@ public class JobOutputsHydrationTests
         var hydrated = JobOutputsHydration.Apply(response, Payload());
 
         Assert.Equal("entity text", hydrated.AssembledDocuments!.Single().Text);
+    }
+
+    // ----- the transport's hydration condition -----
+
+    private static ConsultGenerationJobs Transport(IJobOutputsBlobStore store) => new(
+        Microsoft.Extensions.Logging.Abstractions.NullLogger<ConsultGenerationJobs>.Instance,
+        Substitute.For<Consultologist.Api.Auth.IAccountAuthorizer>(),
+        Substitute.For<IConsultGenerationJobEventStore>(),
+        Substitute.For<IConsultGenerationJobStarter>(),
+        Substitute.For<Consultologist.Api.Email.IGraphMailClient>(),
+        new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
+        Substitute.For<Consultologist.Api.Auth.IAccountSettingsStore>(),
+        store);
+
+    private static ConsultGenerationJobResponse Terminal(ConsultOutputsBlobPointer? pointer, DateTimeOffset? dropped) => new(
+        "job-1", "user-1", "Completed", 1, 1, 0,
+        new Dictionary<string, string>(),
+        new Dictionary<string, string>(),
+        true,
+        TextDroppedAtUtc: dropped,
+        OutputsBlob: pointer);
+
+    [Fact]
+    public async Task NoPointer_IsAPreMigrationRecord_ServedAsIs()
+    {
+        var store = Substitute.For<IJobOutputsBlobStore>();
+        var response = Terminal(null, null);
+
+        Assert.Same(response, await Transport(store).HydrateOutputsAsync(response, CancellationToken.None));
+        await store.DidNotReceiveWithAnyArgs().ReadAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task ADroppedRecord_IsNeverHydrated()
+    {
+        var store = Substitute.For<IJobOutputsBlobStore>();
+        var response = Terminal(new ConsultOutputsBlobPointer("org-job-outputs", "u/j.json"), DateTimeOffset.UtcNow);
+
+        Assert.Same(response, await Transport(store).HydrateOutputsAsync(response, CancellationToken.None));
+        await store.DidNotReceiveWithAnyArgs().ReadAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task ALivePointer_WithNoBlob_IsABrokenInvariant_NeverEmptyText()
+    {
+        var store = Substitute.For<IJobOutputsBlobStore>();
+        var response = Terminal(new ConsultOutputsBlobPointer("org-job-outputs", "u/j.json"), null);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Transport(store).HydrateOutputsAsync(response, CancellationToken.None));
     }
 }

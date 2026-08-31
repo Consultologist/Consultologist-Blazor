@@ -1269,7 +1269,7 @@ public sealed class ConsultGenerationJobs
     /// the text is not dropped. A live pointer with a missing blob is a
     /// broken invariant — surfaced, never served as silently empty text.
     /// </summary>
-    private async Task<ConsultGenerationJobResponse> HydrateOutputsAsync(
+    internal async Task<ConsultGenerationJobResponse> HydrateOutputsAsync(
         ConsultGenerationJobResponse response,
         CancellationToken cancellationToken)
     {
