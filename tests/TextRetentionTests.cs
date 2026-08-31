@@ -182,12 +182,13 @@ public class TextRetentionTests
     public async Task ThePurger_SignalsTheEntity_PurgesTheOrchestration_DeletesTheEvents_InThatOrder()
     {
         var events = Substitute.For<IConsultGenerationJobEventStore>();
+        var legacyEvents = Substitute.For<ILegacyJobEventDelete>();
         var client = Substitute.For<DurableTaskClient>("test");
         var entities = Substitute.For<DurableEntityClient>("test");
         client.Entities.Returns(entities);
         var now = DateTimeOffset.UtcNow;
 
-        await new JobTextPurger(events).PurgeAsync(client, "0123456789abcdef0123456789abcdef", now, CancellationToken.None);
+        await new JobTextPurger(events, legacyEvents).PurgeAsync(client, "0123456789abcdef0123456789abcdef", now, CancellationToken.None);
 
         Received.InOrder(() =>
         {
@@ -196,6 +197,8 @@ public class TextRetentionTests
                 nameof(ConsultGenerationJobEntity.DropText), Arg.Any<object?>(), Arg.Any<SignalEntityOptions?>(), Arg.Any<CancellationToken>());
             client.PurgeInstanceAsync("0123456789abcdef0123456789abcdef", Arg.Any<CancellationToken>());
             events.DeleteJobAsync("0123456789abcdef0123456789abcdef", Arg.Any<CancellationToken>());
+            // #557: the transition's trailing leg — the old table's partition.
+            legacyEvents.DeleteJobAsync("0123456789abcdef0123456789abcdef", Arg.Any<CancellationToken>());
         });
         // The entity's own instance is never purged.
         Assert.NotEqual(new EntityInstanceId(nameof(ConsultGenerationJobEntity), "x").ToString(), JobTextPurger.OrchestrationInstanceId("x"));

@@ -45,8 +45,12 @@ internal sealed class TableConsultGenerationJobEventStore : IConsultGenerationJo
         ILogger<TableConsultGenerationJobEventStore> logger)
     {
         _logger = logger;
+        // #557: the events rows ride with the text (storage-separation.md
+        // § 2.2) — the chain resolves through the text account now; the
+        // explicit override and the Azurite fallback stay. Old rows on the
+        // records account age out through LegacyJobEventDelete.
         _events = StorageTables.CreateClient(
-            configuration, credential, EventsTableName, "ConsultGenerationJobEventStorage", "AccountStorage");
+            configuration, credential, EventsTableName, "ConsultGenerationJobEventStorage", "TextStorage", "AccountStorage");
     }
 
     public async Task<int> DeleteJobAsync(string jobId, CancellationToken cancellationToken)
