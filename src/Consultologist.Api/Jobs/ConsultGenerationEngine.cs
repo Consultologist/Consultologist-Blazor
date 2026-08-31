@@ -548,9 +548,7 @@ public sealed class ConsultGenerationOrchestrator
                 await context.Entities.CallEntityAsync(
                     entityId,
                     nameof(ConsultGenerationJobEntity.MarkNodeCompleted),
-                    new ConsultGenerationNodeUpdate(
-                        node.Id, node.Label, result.Concepts, result.InputHash, result.OutputHash,
-                        completedNodeCount, totalNodeCount, result.HashVersion, result.Classification, result.Tokens));
+                    NodeUpdateFrom(node, result, completedNodeCount, totalNodeCount));
 
                 // A scalar source of a result aggregator is one block per owning
                 // deliverable (v6: the single empty-prefix entry; v5: no entries).
@@ -604,10 +602,7 @@ public sealed class ConsultGenerationOrchestrator
                 await context.Entities.CallEntityAsync(
                     entityId,
                     nameof(ConsultGenerationJobEntity.MarkNodeItemCompleted),
-                    new ConsultGenerationNodeItemUpdate(
-                        node.Id, node.Label, itemId, ItemName(node, itemId),
-                        result.Concepts, result.InputHash, result.OutputHash,
-                        completedChainCount, chain.Count, result.HashVersion, result.Tokens));
+                    ItemUpdateFrom(node, itemId, ItemName(node, itemId), result, completedChainCount, chain.Count));
 
                 if (!v6 && nodeId == resultNodeId)
                 {
@@ -941,6 +936,23 @@ public sealed class ConsultGenerationOrchestrator
     /// A null outcome is a replay of a run whose activity returned nothing
     /// (before #486): it sent, and whether a document rode along is unknown.
     /// </summary>
+    /// <summary>
+    /// #551: the one seam an activity result crosses into an entity update —
+    /// extracted so a test can hold that everything the record keeps (the
+    /// hashes, the classification, the tokens) actually rides. The
+    /// orchestrator body has no harness; this does.
+    /// </summary>
+    internal static ConsultGenerationNodeUpdate NodeUpdateFrom(
+        ConsultNodeDescriptor node, NodeRunResult result, int completedNodeCount, int totalNodeCount) =>
+        new(node.Id, node.Label, result.Concepts, result.InputHash, result.OutputHash,
+            completedNodeCount, totalNodeCount, result.HashVersion, result.Classification, result.Tokens);
+
+    internal static ConsultGenerationNodeItemUpdate ItemUpdateFrom(
+        ConsultNodeDescriptor node, string itemId, string itemName, NodeRunResult result, int completedChainCount, int totalChainCount) =>
+        new(node.Id, node.Label, itemId, itemName,
+            result.Concepts, result.InputHash, result.OutputHash,
+            completedChainCount, totalChainCount, result.HashVersion, result.Tokens);
+
     internal static ConsultGenerationDeliveryRecord DeliveryRecordFor(Email.EmailIntakeReplyOutcome? outcome) =>
         outcome switch
         {

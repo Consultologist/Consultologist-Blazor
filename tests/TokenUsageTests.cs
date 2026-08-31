@@ -34,6 +34,28 @@ public class TokenUsageTests
         Assert.Null(AgentSectionGenerator.UsageOf(null));
     }
 
+    // ----- the seam from activity result to entity update -----
+
+    [Fact]
+    public void EverythingTheRecordKeeps_RidesTheUpdates()
+    {
+        // #551: the orchestrator body has no harness; this seam does. A
+        // result's tokens (and hashes, and classification) must reach both
+        // update payloads — dropping any is the fan-spend-lost bug.
+        var node = new Consultologist.Api.Models.ConsultNodeDescriptor("section", "Sections");
+        var result = new Consultologist.Api.Jobs.NodeRunResult(
+            "raw", null, "in1", "out1", 5, "in_scope", new ConsultTokenUsage(1234, 567));
+
+        var nodeUpdate = Consultologist.Api.Jobs.ConsultGenerationOrchestrator.NodeUpdateFrom(node, result, 1, 2);
+        var itemUpdate = Consultologist.Api.Jobs.ConsultGenerationOrchestrator.ItemUpdateFrom(node, "hpi", "HPI", result, 1, 2);
+
+        Assert.Equal(new ConsultTokenUsage(1234, 567), nodeUpdate.Tokens);
+        Assert.Equal("in_scope", nodeUpdate.Classification);
+        Assert.Equal(("in1", "out1", 5), (nodeUpdate.InputHash, nodeUpdate.OutputHash, nodeUpdate.HashVersion));
+        Assert.Equal(new ConsultTokenUsage(1234, 567), itemUpdate.Tokens);
+        Assert.Equal(("hpi", "HPI", "in1", "out1", 5), (itemUpdate.ItemId, itemUpdate.ItemName, itemUpdate.InputHash, itemUpdate.OutputHash, itemUpdate.HashVersion));
+    }
+
     // ----- the record: per stage, and the total stamped once -----
 
     private static readonly System.Reflection.PropertyInfo StateProperty =
