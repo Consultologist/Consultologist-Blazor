@@ -128,6 +128,8 @@ delivery.addressPending     (reserved — the code out to an address)
 delivery.addressVerifiedBy  (reserved — "code" | "tenant", how it was verified)
 delivery.emailPdf           ("true" | "false" — whether app-initiated runs are emailed; absent = not chosen = sent)
 profile.signatures          (JSON — the profile's signature blocks and the chosen one, #516)
+retention.outputDays        (whole days produced text is kept after completion, #548 — 1..30; absent = TextRetention__Days)
+retention.inputDays         (whole days held inputs are kept, #548 — 1..30, never past outputs; absent = TextRetention__Days)
 ```
 
 `delivery.emailPdf` (#518) is a preference, not an identity, so it rides
@@ -147,6 +149,19 @@ a deliverable signed (the chosen block is snapshotted onto the job, the
 EmailRequested principle). Explicit initialisation: absent, blank, or
 unreadable is an empty set, and with no chosen block a signed deliverable
 is produced unsigned, said by name on the record and in History.
+
+`retention.outputDays` / `retention.inputDays` (#548) are the account's
+retention clocks — how many whole days a completed run's produced text
+and held inputs are kept before the daily sweep deletes them. Preferences
+on the generic routes, but the one pair with a cross-key rule: the PUT
+validates `1 ≤ inputDays ≤ outputDays ≤ 30` against the stored sibling
+(`Auth/RetentionSettings.cs`) and refuses by name — inputs never outlive
+outputs, and 30 days is the storage lifecycle ceiling. Absent means the
+deployment default (`TextRetention__Days`). The sweep reads tolerantly:
+a value that is missing, unreadable, or out of shape falls back and is
+clamped, so nothing is ever kept past the ceiling. A shortened setting
+applies to runs already held at the next sweep; the record's hashes and
+history are never subject to retention.
 
 `delivery.address` (#486) is the account's **verified delivery address**:
 the only address app-submitted consults are ever emailed to. It is written
