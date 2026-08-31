@@ -52,7 +52,15 @@ sorting is the design decision that keeps the record honest over time:
   from before derive them on read, and serve the same values). Anyone holding
   the record recomputes them while the text is present; after the retention
   policy deletes it (`textDroppedAtUtc`) they attest what was produced and
-  can no longer be checked against it.
+  can no longer be checked against it. Since #551 (provenance
+  `v2026.09.1`) the record also carries **token counts** — per node
+  instance (`nodeOutputs[].tokens`, the provider's `{ input, output }`
+  for that one Responses-API call) and the job's totals, summed once at
+  completion. Counts are numbers, never text, and survive every
+  retention drop; absent means *not recorded*, never zero — aggregates
+  and fan roll-ups record none, and every record from before says
+  nothing. The usage stores (#552) are written from these at completion
+  and never re-derive from records.
 
 `agentVersions` was the one copy the record ever stored; #105 retired it in
 favour of `catalogRef` for exactly the reason above.

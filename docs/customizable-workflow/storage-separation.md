@@ -159,7 +159,8 @@ are absent, not back-filled.
 
 A fourth thing, deliberately outside the provenance record: a **derived
 store**. Written once at completion from the numbers the record carries
-(#551), read by the profile (#552) and the admin page (#553), never
+(#551, **built**: per-stage and per-job `tokens` on the record — M5/#552
+is unblocked), read by the profile (#552) and the admin page (#553), never
 recomputed from job records — which the sweep may purge and which a
 region may one day retire. `AccountRateLimits` is its older cousin: one
 row per account per hour, the same shape of store, and the cleanup rule
