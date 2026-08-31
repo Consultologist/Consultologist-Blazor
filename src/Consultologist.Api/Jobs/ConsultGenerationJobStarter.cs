@@ -143,6 +143,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly IWorkflowPackageOwnership _ownership;
     private readonly IAccountStore _accounts;
     private readonly IAccountSettingsStore _settingsStore;
+    private readonly IJobOutputsBlobStore _outputsBlobs;
 
     public ConsultGenerationJobStarter(
         ILogger<ConsultGenerationJobStarter> logger,
@@ -154,7 +155,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         EngineAttestationResponse engine,
         ITerminologyAttestationSource terminology,
         IAccountStore accounts,
-        IAccountSettingsStore settingsStore)
+        IAccountSettingsStore settingsStore,
+        IJobOutputsBlobStore outputsBlobs)
     {
         _logger = logger;
         _packageStore = packageStore;
@@ -166,6 +168,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         _ownership = ownership;
         _accounts = accounts;
         _settingsStore = settingsStore;
+        _outputsBlobs = outputsBlobs;
     }
 
     public async Task<ConsultGenerationJobStartOutcome> StartAsync(
@@ -284,7 +287,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // new kind of input.
         // #510: references to previous runs become text first, the way
         // documents do — the server copies, so the origin is observed.
-        var resolution = await ResolveInputRefsAsync(client.Entities, request, appUserId, cancellationToken);
+        var resolution = await ResolveInputRefsAsync(client.Entities, _outputsBlobs, request, appUserId, cancellationToken);
         if (resolution.Error != null)
         {
             _logger.LogWarning("Rejected job start: a previous-run reference was refused. Kind={Kind}", resolution.ErrorKind);
@@ -1028,6 +1031,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// </summary>
     internal static async Task<InputRefResolution> ResolveInputRefsAsync(
         DurableEntityClient entities,
+        IJobOutputsBlobStore outputsBlobs,
         ConsultGenerationRequest request,
         string appUserId,
         CancellationToken cancellationToken)
@@ -1062,6 +1066,21 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     {
                         source = null;
                     }
+
+                    // #557: a source completed after the migration holds its
+                    // text in the outputs blob — hydrate before the reads
+                    // below, so the copy and its digest see the real text. A
+                    // missing blob leaves the state unhydrated and falls into
+                    // the text-deleted refusal, never a silent empty copy.
+                    if (source is { OutputsBlob: not null, TextDroppedAtUtc: null })
+                    {
+                        var payload = await outputsBlobs.ReadAsync(source.OutputsBlob, cancellationToken);
+                        if (payload != null)
+                        {
+                            JobOutputsHydration.Apply(source, payload);
+                        }
+                    }
+
                     sources[reference.JobId] = source;
                 }
 
