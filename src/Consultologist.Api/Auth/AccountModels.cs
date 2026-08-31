@@ -65,6 +65,22 @@ public static class AccountSettingKeys
     /// (Auth/SignatureBlocks.cs is the read half).
     /// </summary>
     public const string ProfileSignatures = "profile.signatures";
+
+    /// <summary>
+    /// #548: how many days produced text (outputs) is kept after completion —
+    /// a whole number of days; absent = not chosen, which keeps the
+    /// deployment default (TextRetention__Days). Rides the generic routes;
+    /// saves are validated by <see cref="RetentionSettings"/>
+    /// (1 ≤ inputDays ≤ outputDays ≤ 30) and the sweep clamps on read.
+    /// </summary>
+    public const string RetentionOutputDays = "retention.outputDays";
+
+    /// <summary>
+    /// #548: how many days held inputs are kept after completion. Same shape
+    /// and routes as <see cref="RetentionOutputDays"/>; never longer than the
+    /// outputs clock — inputs are the more sensitive class.
+    /// </summary>
+    public const string RetentionInputDays = "retention.inputDays";
 }
 
 /// <summary>#517: the two ways a delivery address gets verified.</summary>

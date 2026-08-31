@@ -178,8 +178,12 @@ wire form for a rerun (#549) — to `<kind>-job-inputs/{appUserId}/{jobId}.json`
 before the orchestration is scheduled (a storage failure never refuses a
 start; the run proceeds unheld). The record carries `inputsBlob` and,
 after the drop, `inputsDroppedAtUtc`; History shows the inputs while held.
-One retention clock covers both classes until #548 shortens the inputs
-side. v5/v6 jobs are not held.
+Since M4 (#548) the clocks are the account's: `retention.outputDays` for
+produced text and a never-longer `retention.inputDays` for held inputs
+(both 1..30, default `TextRetention__Days`, clamped on read). A shorter
+inputs clock drops the held inputs alone — `DropInputs` deletes the blob
+and stamps `inputsDroppedAtUtc`, no instance purge, no events delete;
+those run when the outputs clock arrives. v5/v6 jobs are not held.
 
 ## After Setup
 

@@ -192,4 +192,127 @@ public class JobOutputsWriteTests
         Assert.Null(state().TextDroppedAtUtc);
         Assert.Null(state().InputsDroppedAtUtc);
     }
+
+    // ----- #548: the inputs clock may fire first — the inputs-only drop -----
+
+    [Fact]
+    public async Task DropInputs_DeletesTheBlob_StampsAndKeepsThePointer_AndTouchesNoText()
+    {
+        var (entity, state, _, inputs) = JobWithInputs();
+        var pointer = new ConsultInputsBlobPointer("org-job-inputs", "user-1/job-1.json");
+        state().InputsBlob = pointer;
+        await ProduceAsync(entity);
+        await entity.FinalizeJob(new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Completed));
+        var droppedAt = new DateTimeOffset(2026, 9, 8, 3, 0, 0, TimeSpan.Zero);
+
+        await entity.DropInputs(new ConsultGenerationInputsDrop(droppedAt));
+
+        await inputs.Received(1).DeleteAsync(pointer, Arg.Any<CancellationToken>());
+        Assert.Equal(droppedAt, state().InputsDroppedAtUtc);
+        Assert.Equal(pointer, state().InputsBlob);
+        Assert.Contains(state().History, h => h.Kind == "retention" && h.Label.Contains("Held inputs deleted"));
+        // The produced text is untouched: its own clock has not fired.
+        Assert.Null(state().TextDroppedAtUtc);
+        Assert.DoesNotContain(state().History, h => h.Label.Contains("Produced text deleted"));
+    }
+
+    [Fact]
+    public async Task DropInputs_OnAnUnheldJob_RecordsNothing()
+    {
+        var (entity, state, _, inputs) = JobWithInputs();
+        await ProduceAsync(entity);
+        await entity.FinalizeJob(new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Completed));
+
+        await entity.DropInputs(new ConsultGenerationInputsDrop(DateTimeOffset.UtcNow));
+
+        await inputs.DidNotReceiveWithAnyArgs().DeleteAsync(default!, default);
+        Assert.Null(state().InputsDroppedAtUtc);
+        Assert.DoesNotContain(state().History, h => h.Label.Contains("Held inputs deleted"));
+    }
+
+    [Fact]
+    public async Task DropInputs_OnANonTerminalJob_RecordsNothing()
+    {
+        var (entity, state, _, inputs) = JobWithInputs();
+        state().InputsBlob = new ConsultInputsBlobPointer("org-job-inputs", "user-1/job-1.json");
+
+        await entity.DropInputs(new ConsultGenerationInputsDrop(DateTimeOffset.UtcNow));
+
+        await inputs.DidNotReceiveWithAnyArgs().DeleteAsync(default!, default);
+        Assert.Null(state().InputsDroppedAtUtc);
+    }
+
+    [Fact]
+    public async Task DropInputs_IsIdempotent()
+    {
+        var (entity, state, _, inputs) = JobWithInputs();
+        state().InputsBlob = new ConsultInputsBlobPointer("org-job-inputs", "user-1/job-1.json");
+        await ProduceAsync(entity);
+        await entity.FinalizeJob(new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Completed));
+        var droppedAt = new DateTimeOffset(2026, 9, 8, 3, 0, 0, TimeSpan.Zero);
+        await entity.DropInputs(new ConsultGenerationInputsDrop(droppedAt));
+
+        await entity.DropInputs(new ConsultGenerationInputsDrop(droppedAt.AddDays(1)));
+
+        await inputs.Received(1).DeleteAsync(Arg.Any<ConsultInputsBlobPointer>(), Arg.Any<CancellationToken>());
+        Assert.Equal(droppedAt, state().InputsDroppedAtUtc);
+        Assert.Single(state().History, h => h.Label.Contains("Held inputs deleted"));
+    }
+
+    [Fact]
+    public async Task AFailedInputsOnlyDelete_PersistsNothing_SoTheSweepRetries()
+    {
+        var (entity, state, _, inputs) = JobWithInputs();
+        var pointer = new ConsultInputsBlobPointer("org-job-inputs", "user-1/job-1.json");
+        state().InputsBlob = pointer;
+        await ProduceAsync(entity);
+        await entity.FinalizeJob(new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Completed));
+        inputs.DeleteAsync(pointer, Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("storage blip"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => entity.DropInputs(new ConsultGenerationInputsDrop(DateTimeOffset.UtcNow)));
+
+        Assert.Null(state().InputsDroppedAtUtc);
+    }
+
+    [Fact]
+    public async Task DropText_AfterDropInputs_NeitherRedeletesNorResays()
+    {
+        var (entity, state, _, inputs) = JobWithInputs();
+        var pointer = new ConsultInputsBlobPointer("org-job-inputs", "user-1/job-1.json");
+        state().InputsBlob = pointer;
+        await ProduceAsync(entity);
+        await entity.FinalizeJob(new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Completed));
+        var inputsDroppedAt = new DateTimeOffset(2026, 9, 8, 3, 0, 0, TimeSpan.Zero);
+        await entity.DropInputs(new ConsultGenerationInputsDrop(inputsDroppedAt));
+
+        await entity.DropText(new ConsultGenerationTextDrop(inputsDroppedAt.AddDays(4)));
+
+        // One delete, one sentence, the first stamp: the split clocks never
+        // make the record say the same deletion twice.
+        await inputs.Received(1).DeleteAsync(Arg.Any<ConsultInputsBlobPointer>(), Arg.Any<CancellationToken>());
+        Assert.Single(state().History, h => h.Label.Contains("Held inputs deleted"));
+        Assert.Equal(inputsDroppedAt, state().InputsDroppedAtUtc);
+        Assert.NotNull(state().TextDroppedAtUtc);
+    }
+
+    [Fact]
+    public async Task TheIndexEntry_CarriesTheInputsColumns()
+    {
+        var (entity, state, _, _) = JobWithInputs();
+        await ProduceAsync(entity);
+        await entity.FinalizeJob(new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Completed));
+
+        Assert.False(state().ToIndexEntry().InputsHeld);
+
+        state().InputsBlob = new ConsultInputsBlobPointer("org-job-inputs", "user-1/job-1.json");
+        Assert.True(state().ToIndexEntry().InputsHeld);
+        Assert.Null(state().ToIndexEntry().InputsDroppedAtUtc);
+
+        var droppedAt = new DateTimeOffset(2026, 9, 8, 3, 0, 0, TimeSpan.Zero);
+        await entity.DropInputs(new ConsultGenerationInputsDrop(droppedAt));
+        Assert.True(state().ToIndexEntry().InputsHeld);
+        Assert.Equal(droppedAt, state().ToIndexEntry().InputsDroppedAtUtc);
+    }
 }

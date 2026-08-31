@@ -17,6 +17,14 @@ namespace Consultologist.Api.Jobs;
 public interface IJobTextPurger
 {
     Task PurgeAsync(DurableTaskClient client, string jobId, DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #548: the inputs clock fired alone — signal the entity to drop the
+    /// held inputs and nothing else. No instance purge, no events delete:
+    /// the produced text is still being served, and those are the full
+    /// drop's to run when the outputs clock arrives.
+    /// </summary>
+    Task DropInputsAsync(DurableTaskClient client, string jobId, DateTimeOffset now, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -86,12 +94,22 @@ public sealed class JobTextPurger : IJobTextPurger
         await _events.DeleteJobAsync(jobId, cancellationToken);
         await _legacyEvents.DeleteJobAsync(jobId, cancellationToken);
     }
+
+    public async Task DropInputsAsync(DurableTaskClient client, string jobId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var entityId = new EntityInstanceId(nameof(ConsultGenerationJobEntity), jobId);
+        await client.Entities.SignalEntityAsync(entityId, nameof(ConsultGenerationJobEntity.DropInputs), new ConsultGenerationInputsDrop(now), cancellation: cancellationToken);
+    }
 }
 
 /// <summary>
 /// #368: the retention sweep. Every account, every terminal job completed
-/// more than TextRetention__Days ago whose text is still present, purged.
+/// more than the account's retention ago whose text is still present, purged.
 /// Provenance stays; the text is the one thing the record ever loses.
+/// #548: the clocks are the account's — retention.outputDays and
+/// retention.inputDays, TextRetention__Days when unset — so the cutoffs are
+/// computed per account, and an inputs clock shorter than the outputs clock
+/// drops the held inputs alone.
 /// </summary>
 public sealed class TextRetentionSweep
 {
@@ -101,13 +119,15 @@ public sealed class TextRetentionSweep
     private readonly IAccountStore _accounts;
     private readonly IConsultGenerationJobIndexStore _index;
     private readonly IJobTextPurger _purger;
+    private readonly IAccountSettingsStore _settings;
     private readonly ILogger<TextRetentionSweep> _logger;
 
-    public TextRetentionSweep(IAccountStore accounts, IConsultGenerationJobIndexStore index, IJobTextPurger purger, ILogger<TextRetentionSweep> logger)
+    public TextRetentionSweep(IAccountStore accounts, IConsultGenerationJobIndexStore index, IJobTextPurger purger, IAccountSettingsStore settings, ILogger<TextRetentionSweep> logger)
     {
         _accounts = accounts;
         _index = index;
         _purger = purger;
+        _settings = settings;
         _logger = logger;
     }
 
@@ -120,18 +140,30 @@ public sealed class TextRetentionSweep
         && entry.CompletedAtUtc is { } completed && completed < completedBefore
         && entry.TextDroppedAtUtc == null;
 
-    public async Task<(int Accounts, int Due, int Dropped)> RunOnceAsync(DurableTaskClient client, DateTimeOffset now, int retentionDays, CancellationToken cancellationToken)
+    /// <summary>
+    /// #548: the inputs leg's rule — terminal, completed before the inputs
+    /// cutoff, holding an inputs blob not yet dropped. InputsHeld keeps
+    /// unheld and pre-#547 rows off the signal path.
+    /// </summary>
+    public static bool IsInputsDue(ConsultGenerationJobIndexEntry entry, DateTimeOffset completedBefore) =>
+        ConsultGenerationJobEntity.IsTerminal(entry.Status)
+        && entry.CompletedAtUtc is { } completed && completed < completedBefore
+        && entry.InputsHeld
+        && entry.InputsDroppedAtUtc == null;
+
+    public async Task<(int Accounts, int Due, int Dropped, int InputsDropped)> RunOnceAsync(DurableTaskClient client, DateTimeOffset now, int defaultDays, CancellationToken cancellationToken)
     {
-        var cutoff = now.AddDays(-retentionDays);
-        int accounts = 0, due = 0, dropped = 0;
+        int accounts = 0, due = 0, dropped = 0, inputsDropped = 0;
 
         foreach (var account in await _accounts.ListAsync(cancellationToken))
         {
             accounts++;
+            var (outputDays, inputDays) = await EffectiveDaysAsync(account.AppUserId, defaultDays, cancellationToken);
+
             IReadOnlyList<ConsultGenerationJobIndexEntry> jobs;
             try
             {
-                jobs = await _index.ListDueForTextDropAsync(account.AppUserId, cutoff, cancellationToken);
+                jobs = await _index.ListDueForTextDropAsync(account.AppUserId, now.AddDays(-outputDays), cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -153,12 +185,67 @@ public sealed class TextRetentionSweep
                     _logger.LogWarning(ex, "Text retention: could not purge job {JobId}.", job.JobId);
                 }
             }
+
+            // #548: the shorter inputs clock. Queried after the outputs leg on
+            // purpose: a job that just took the full drop signalled its stamps
+            // through the entity before this list is built. Equal clocks need
+            // no leg — everything inputs-due is outputs-due and already taken.
+            if (inputDays >= outputDays)
+            {
+                continue;
+            }
+
+            IReadOnlyList<ConsultGenerationJobIndexEntry> inputsJobs;
+            try
+            {
+                inputsJobs = await _index.ListDueForInputsDropAsync(account.AppUserId, now.AddDays(-inputDays), cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Text retention: could not list an account's held inputs.");
+                continue;
+            }
+
+            foreach (var job in inputsJobs)
+            {
+                try
+                {
+                    await _purger.DropInputsAsync(client, job.JobId, now, cancellationToken);
+                    inputsDropped++;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Next run retries: the index row still says the inputs are held.
+                    _logger.LogWarning(ex, "Text retention: could not drop inputs for job {JobId}.", job.JobId);
+                }
+            }
         }
 
-        var summary = $"{accounts} accounts, {due} jobs past {retentionDays} days, {dropped} dropped";
+        var summary = $"{accounts} accounts, {due} jobs past the outputs clock, {dropped} dropped, {inputsDropped} inputs-only drops";
         _logger.LogInformation("Text retention: {Summary}", summary);
         Console.Error.WriteLine($"[TextRetention] {summary}");
-        return (accounts, due, dropped);
+        return (accounts, due, dropped, inputsDropped);
+    }
+
+    /// <summary>
+    /// The account's clocks, tolerantly: a failed settings read (or a value
+    /// out of shape) falls back to the deployment default rather than
+    /// stopping the sweep — clamped either way, inputs never past outputs.
+    /// </summary>
+    private async Task<(int OutputDays, int InputDays)> EffectiveDaysAsync(string appUserId, int defaultDays, CancellationToken cancellationToken)
+    {
+        string? outputValue = null, inputValue = null;
+        try
+        {
+            outputValue = (await _settings.GetAsync(appUserId, AccountSettingKeys.RetentionOutputDays, cancellationToken))?.Value;
+            inputValue = (await _settings.GetAsync(appUserId, AccountSettingKeys.RetentionInputDays, cancellationToken))?.Value;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Text retention: could not read an account's retention settings; using the default.");
+        }
+
+        return RetentionSettings.Effective(outputValue, inputValue, defaultDays);
     }
 }
 

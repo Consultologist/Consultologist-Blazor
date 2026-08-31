@@ -22,6 +22,12 @@ public interface IConsultGenerationJobIndexStore
         string appUserId,
         DateTimeOffset completedBefore,
         CancellationToken cancellationToken);
+
+    /// <summary>#548: every terminal job of the account completed before the inputs cutoff still holding its inputs blob.</summary>
+    Task<IReadOnlyList<ConsultGenerationJobIndexEntry>> ListDueForInputsDropAsync(
+        string appUserId,
+        DateTimeOffset completedBefore,
+        CancellationToken cancellationToken);
 }
 
 internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJobIndexStore
@@ -96,6 +102,29 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
         return due;
     }
 
+    public async Task<IReadOnlyList<ConsultGenerationJobIndexEntry>> ListDueForInputsDropAsync(
+        string appUserId,
+        DateTimeOffset completedBefore,
+        CancellationToken cancellationToken)
+    {
+        await EnsureTableAsync(cancellationToken);
+
+        // Same partition scan as the outputs leg, filtered in memory — the
+        // absence tests (dropped stamp unset) can't run server-side.
+        var due = new List<ConsultGenerationJobIndexEntry>();
+        var filter = TableClient.CreateQueryFilter($"PartitionKey eq {appUserId} and CompletedAtUtc lt {completedBefore}");
+        await foreach (var entity in _index.QueryAsync<ConsultGenerationJobIndexEntity>(filter, cancellationToken: cancellationToken))
+        {
+            var entry = ToEntry(entity);
+            if (TextRetentionSweep.IsInputsDue(entry, completedBefore))
+            {
+                due.Add(entry);
+            }
+        }
+
+        return due;
+    }
+
     private async Task EnsureTableAsync(CancellationToken cancellationToken)
     {
         if (_tableEnsured)
@@ -142,7 +171,9 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
             DeliveryOutcome = entry.DeliveryOutcome,
             DeliveredAtUtc = entry.DeliveredAtUtc,
             Deciding = entry.Deciding,
-            DecisionFailureKind = entry.DecisionFailureKind
+            DecisionFailureKind = entry.DecisionFailureKind,
+            InputsHeld = entry.InputsHeld,
+            InputsDroppedAtUtc = entry.InputsDroppedAtUtc
         };
     }
 
@@ -165,7 +196,9 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
             entity.DeliveryOutcome,
             entity.DeliveredAtUtc,
             entity.Deciding,
-            entity.DecisionFailureKind);
+            entity.DecisionFailureKind,
+            entity.InputsHeld,
+            entity.InputsDroppedAtUtc);
     }
 
     private static string FormatRowKey(DateTimeOffset createdAtUtc, string jobId)
@@ -227,7 +260,13 @@ public sealed record ConsultGenerationJobIndexEntry(
     // v10 (#496): still deciding what to produce; and why a job ended in that
     // stage. Additive columns.
     bool Deciding = false,
-    string? DecisionFailureKind = null);
+    string? DecisionFailureKind = null,
+    // #548: whether the job holds an inputs blob, and when the inputs clock
+    // deleted it. Additive columns: rows from before read false/null, and
+    // false is right — those jobs hold nothing, so the inputs leg never
+    // signals them. The pointer itself never reaches the index.
+    bool InputsHeld = false,
+    DateTimeOffset? InputsDroppedAtUtc = null);
 
 internal sealed class ConsultGenerationJobIndexEntity : ITableEntity
 {
@@ -251,4 +290,6 @@ internal sealed class ConsultGenerationJobIndexEntity : ITableEntity
     public DateTimeOffset? DeliveredAtUtc { get; set; }
     public bool Deciding { get; set; }
     public string? DecisionFailureKind { get; set; }
+    public bool InputsHeld { get; set; }
+    public DateTimeOffset? InputsDroppedAtUtc { get; set; }
 }

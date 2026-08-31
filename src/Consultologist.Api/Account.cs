@@ -672,6 +672,19 @@ public sealed class Account
             return await CreateTextResponseAsync(req, HttpStatusCode.BadRequest, "Setting content type is too long.", cancellationToken);
         }
 
+        // #548: the retention clocks are the one pair of generic settings with
+        // a cross-key rule (1 ≤ inputDays ≤ outputDays ≤ 30) — refused here by
+        // name so a bad value never lands; the sweep still clamps on read.
+        if (RetentionSettings.IsRetentionKey(key))
+        {
+            var sibling = await _settingsStore.GetAsync(account.AppUserId, RetentionSettings.SiblingKey(key), cancellationToken);
+            var retentionError = RetentionSettings.Validate(key, request.Value, sibling?.Value);
+            if (retentionError != null)
+            {
+                return await CreateTextResponseAsync(req, HttpStatusCode.BadRequest, retentionError, cancellationToken);
+            }
+        }
+
         await _settingsStore.SaveAsync(account.AppUserId, key, request.Value, contentType, cancellationToken);
 
         var response = req.CreateResponse(HttpStatusCode.NoContent);

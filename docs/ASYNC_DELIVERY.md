@@ -49,9 +49,12 @@ Implementation decisions (settled 2026-07-25):
   duration, not exposure surface. Since #368 (2026-08-25)
 the produced text of every terminal job — the record's documents and
 sections, the orchestration history's prompts and outputs, the streamed
-snapshots — is deleted `TextRetention__Days` after completion (7) by a
-daily sweep; the record's hashes, nodes, refs and labels stay forever, and
-the record says when the text went (`textDroppedAtUtc`).
+snapshots — is deleted after the account's retention
+(`retention.outputDays` since #548; default `TextRetention__Days` = 7,
+ceiling 30) by a daily sweep, and held inputs may go earlier on their own
+never-longer clock (`retention.inputDays`); the record's hashes, nodes,
+refs and labels stay forever, and the record says when each went
+(`textDroppedAtUtc`, `inputsDroppedAtUtc`).
 
 ## 2. Email intake (#158) — IMPLEMENTED 2026-07-25
 
@@ -339,7 +342,9 @@ now has its delivery half; the 7-day sweep (§1) stays the floor. Decisions
   `delivered` / `not delivered` and dates it in the provenance panel;
   Consults carries the same line on a completed run. A record from before
   says nothing.
-- **The sweep clock is unchanged**: completion + `TextRetention__Days`,
-  for every job. "N days after confirmed delivery" was considered and not
-  taken — delivery happens at completion, so the two clocks differ by
-  seconds, and the period itself is #368's policy.
+- **The sweep clock counts from completion**: completion + the account's
+  `retention.outputDays` (default `TextRetention__Days`) for produced
+  text, and a separate, never-longer `retention.inputDays` for held
+  inputs (#548). "N days after confirmed delivery" was considered and not
+  taken — delivery happens at completion, so those two clocks would
+  differ by seconds, and the period itself is #368's policy.

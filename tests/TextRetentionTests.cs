@@ -154,11 +154,32 @@ public class TextRetentionTests
         Assert.False(TextRetentionSweep.IsDue(Entry("Completed", cutoff.AddDays(-1), cutoff.AddDays(-1)), cutoff));
     }
 
+    private static IAccountStore Accounts(params string[] appUserIds)
+    {
+        var accounts = Substitute.For<IAccountStore>();
+        accounts.ListAsync(Arg.Any<CancellationToken>()).Returns(appUserIds.Select(id => new AccountSummary(id, "Active")).ToList());
+        return accounts;
+    }
+
+    // #548: an unstubbed pair reads as not chosen — the deployment default.
+    private static IAccountSettingsStore Settings(params (string User, string Key, string Value)[] rows)
+    {
+        var settings = Substitute.For<IAccountSettingsStore>();
+        foreach (var (user, key, value) in rows)
+        {
+            settings.GetAsync(user, key, Arg.Any<CancellationToken>())
+                .Returns(new AccountSetting(key, value, "text/plain", DateTimeOffset.UtcNow));
+        }
+
+        return settings;
+    }
+
+    private static readonly IReadOnlyList<ConsultGenerationJobIndexEntry> NoJobs = new List<ConsultGenerationJobIndexEntry>();
+
     [Fact]
     public async Task TheSweep_PurgesEveryDueJob_AndKeepsGoingPastAFailure()
     {
-        var accounts = Substitute.For<IAccountStore>();
-        accounts.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<AccountSummary> { new("a", "Active"), new("b", "Active") });
+        var accounts = Accounts("a", "b");
         var index = Substitute.For<IConsultGenerationJobIndexStore>();
         var now = new DateTimeOffset(2026, 9, 2, 3, 0, 0, TimeSpan.Zero);
         index.ListDueForTextDropAsync("a", now.AddDays(-7), Arg.Any<CancellationToken>()).Returns(new List<ConsultGenerationJobIndexEntry>
@@ -166,16 +187,153 @@ public class TextRetentionTests
             new("j1", "a", "Completed", now.AddDays(-9), null, now.AddDays(-8), 1, 1, 0),
             new("j2", "a", "Completed", now.AddDays(-9), null, now.AddDays(-8), 1, 1, 0)
         });
-        index.ListDueForTextDropAsync("b", now.AddDays(-7), Arg.Any<CancellationToken>()).Returns(new List<ConsultGenerationJobIndexEntry>());
+        index.ListDueForTextDropAsync("b", now.AddDays(-7), Arg.Any<CancellationToken>()).Returns(NoJobs);
         var purger = Substitute.For<IJobTextPurger>();
         purger.PurgeAsync(Arg.Any<DurableTaskClient>(), "j1", now, Arg.Any<CancellationToken>()).Returns(Task.FromException(new InvalidOperationException("storage")));
         var client = Substitute.For<DurableTaskClient>("test");
 
-        var (a, due, dropped) = await new TextRetentionSweep(accounts, index, purger, NullLogger<TextRetentionSweep>.Instance)
+        var (a, due, dropped, inputsDropped) = await new TextRetentionSweep(accounts, index, purger, Settings(), NullLogger<TextRetentionSweep>.Instance)
             .RunOnceAsync(client, now, 7, CancellationToken.None);
 
-        Assert.Equal((2, 2, 1), (a, due, dropped));
+        Assert.Equal((2, 2, 1, 0), (a, due, dropped, inputsDropped));
         await purger.Received(1).PurgeAsync(client, "j2", now, Arg.Any<CancellationToken>());
+        // Equal clocks (nothing chosen): the inputs leg never runs.
+        await index.DidNotReceiveWithAnyArgs().ListDueForInputsDropAsync(default!, default, default);
+    }
+
+    // ----- #548: the clocks are the account's -----
+
+    [Fact]
+    public void IsInputsDue_TerminalHeldNotYetDroppedBeforeCutoff()
+    {
+        var cutoff = new DateTimeOffset(2026, 8, 25, 0, 0, 0, TimeSpan.Zero);
+        ConsultGenerationJobIndexEntry Entry(string status, DateTimeOffset? completed, bool held = true, DateTimeOffset? dropped = null) =>
+            new("j", "u", status, completed ?? cutoff, null, completed, 1, 1, 0, InputsHeld: held, InputsDroppedAtUtc: dropped);
+
+        Assert.True(TextRetentionSweep.IsInputsDue(Entry("Completed", cutoff.AddDays(-1)), cutoff));
+        Assert.True(TextRetentionSweep.IsInputsDue(Entry("Failed", cutoff.AddDays(-1)), cutoff));
+        Assert.False(TextRetentionSweep.IsInputsDue(Entry("Running", cutoff.AddDays(-1)), cutoff));
+        Assert.False(TextRetentionSweep.IsInputsDue(Entry("Completed", cutoff.AddHours(1)), cutoff));
+        Assert.False(TextRetentionSweep.IsInputsDue(Entry("Completed", null), cutoff));
+        // Unheld (a pre-#547 row, or a run that held nothing): never signalled.
+        Assert.False(TextRetentionSweep.IsInputsDue(Entry("Completed", cutoff.AddDays(-1), held: false), cutoff));
+        // Already dropped — by its own clock or a full drop.
+        Assert.False(TextRetentionSweep.IsInputsDue(Entry("Completed", cutoff.AddDays(-1), dropped: cutoff.AddDays(-1)), cutoff));
+    }
+
+    [Fact]
+    public async Task TheSweep_ReadsEachAccountsClock()
+    {
+        var accounts = Accounts("a", "b");
+        var settings = Settings(("a", AccountSettingKeys.RetentionOutputDays, "3"));
+        var index = Substitute.For<IConsultGenerationJobIndexStore>();
+        var now = new DateTimeOffset(2026, 9, 2, 3, 0, 0, TimeSpan.Zero);
+        index.ListDueForTextDropAsync(Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns(NoJobs);
+        index.ListDueForInputsDropAsync(Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns(NoJobs);
+        var client = Substitute.For<DurableTaskClient>("test");
+
+        await new TextRetentionSweep(accounts, index, Substitute.For<IJobTextPurger>(), settings, NullLogger<TextRetentionSweep>.Instance)
+            .RunOnceAsync(client, now, 7, CancellationToken.None);
+
+        // The chosen clock for a, the deployment default for b — exact cutoffs.
+        await index.Received(1).ListDueForTextDropAsync("a", now.AddDays(-3), Arg.Any<CancellationToken>());
+        await index.Received(1).ListDueForTextDropAsync("b", now.AddDays(-7), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AShorterInputsClock_SignalsTheInputsDropAlone()
+    {
+        var accounts = Accounts("a");
+        var settings = Settings(("a", AccountSettingKeys.RetentionInputDays, "2"));
+        var index = Substitute.For<IConsultGenerationJobIndexStore>();
+        var now = new DateTimeOffset(2026, 9, 2, 3, 0, 0, TimeSpan.Zero);
+        index.ListDueForTextDropAsync("a", now.AddDays(-7), Arg.Any<CancellationToken>()).Returns(NoJobs);
+        index.ListDueForInputsDropAsync("a", now.AddDays(-2), Arg.Any<CancellationToken>()).Returns(new List<ConsultGenerationJobIndexEntry>
+        {
+            new("j1", "a", "Completed", now.AddDays(-4), null, now.AddDays(-3), 1, 1, 0, InputsHeld: true)
+        });
+        var purger = Substitute.For<IJobTextPurger>();
+        var client = Substitute.For<DurableTaskClient>("test");
+
+        var (_, due, dropped, inputsDropped) = await new TextRetentionSweep(accounts, index, purger, settings, NullLogger<TextRetentionSweep>.Instance)
+            .RunOnceAsync(client, now, 7, CancellationToken.None);
+
+        Assert.Equal((0, 0, 1), (due, dropped, inputsDropped));
+        await purger.Received(1).DropInputsAsync(client, "j1", now, Arg.Any<CancellationToken>());
+        // The inputs clock never takes the full path: no purge, no events delete.
+        await purger.DidNotReceiveWithAnyArgs().PurgeAsync(default!, default!, default, default);
+    }
+
+    [Fact]
+    public async Task AJobPastBothClocks_TakesTheFullPathOnce()
+    {
+        var accounts = Accounts("a");
+        var settings = Settings(("a", AccountSettingKeys.RetentionInputDays, "2"));
+        var index = Substitute.For<IConsultGenerationJobIndexStore>();
+        var now = new DateTimeOffset(2026, 9, 2, 3, 0, 0, TimeSpan.Zero);
+        index.ListDueForTextDropAsync("a", now.AddDays(-7), Arg.Any<CancellationToken>()).Returns(new List<ConsultGenerationJobIndexEntry>
+        {
+            new("j1", "a", "Completed", now.AddDays(-10), null, now.AddDays(-9), 1, 1, 0, InputsHeld: true)
+        });
+        // The inputs list is built after the outputs leg: the full drop just
+        // stamped InputsDroppedAtUtc, so the re-query no longer returns j1.
+        index.ListDueForInputsDropAsync("a", now.AddDays(-2), Arg.Any<CancellationToken>()).Returns(NoJobs);
+        var purger = Substitute.For<IJobTextPurger>();
+        var client = Substitute.For<DurableTaskClient>("test");
+
+        var (_, due, dropped, inputsDropped) = await new TextRetentionSweep(accounts, index, purger, settings, NullLogger<TextRetentionSweep>.Instance)
+            .RunOnceAsync(client, now, 7, CancellationToken.None);
+
+        Assert.Equal((1, 1, 0), (due, dropped, inputsDropped));
+        await purger.Received(1).PurgeAsync(client, "j1", now, Arg.Any<CancellationToken>());
+        await purger.DidNotReceiveWithAnyArgs().DropInputsAsync(default!, default!, default, default);
+        Received.InOrder(() =>
+        {
+            index.ListDueForTextDropAsync("a", now.AddDays(-7), Arg.Any<CancellationToken>());
+            index.ListDueForInputsDropAsync("a", now.AddDays(-2), Arg.Any<CancellationToken>());
+        });
+    }
+
+    [Fact]
+    public async Task ABrokenSettingsRead_FallsBackToTheDefault_AndTheSweepGoesOn()
+    {
+        var accounts = Accounts("a");
+        var settings = Substitute.For<IAccountSettingsStore>();
+        settings.GetAsync("a", Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<AccountSetting?>(_ => throw new InvalidOperationException("storage blip"));
+        var index = Substitute.For<IConsultGenerationJobIndexStore>();
+        var now = new DateTimeOffset(2026, 9, 2, 3, 0, 0, TimeSpan.Zero);
+        index.ListDueForTextDropAsync("a", now.AddDays(-7), Arg.Any<CancellationToken>()).Returns(NoJobs);
+        var client = Substitute.For<DurableTaskClient>("test");
+
+        await new TextRetentionSweep(accounts, index, Substitute.For<IJobTextPurger>(), settings, NullLogger<TextRetentionSweep>.Instance)
+            .RunOnceAsync(client, now, 7, CancellationToken.None);
+
+        await index.Received(1).ListDueForTextDropAsync("a", now.AddDays(-7), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AFailedInputsSignal_DoesNotStopTheRun()
+    {
+        var accounts = Accounts("a");
+        var settings = Settings(("a", AccountSettingKeys.RetentionInputDays, "2"));
+        var index = Substitute.For<IConsultGenerationJobIndexStore>();
+        var now = new DateTimeOffset(2026, 9, 2, 3, 0, 0, TimeSpan.Zero);
+        index.ListDueForTextDropAsync("a", now.AddDays(-7), Arg.Any<CancellationToken>()).Returns(NoJobs);
+        index.ListDueForInputsDropAsync("a", now.AddDays(-2), Arg.Any<CancellationToken>()).Returns(new List<ConsultGenerationJobIndexEntry>
+        {
+            new("j1", "a", "Completed", now.AddDays(-4), null, now.AddDays(-3), 1, 1, 0, InputsHeld: true),
+            new("j2", "a", "Completed", now.AddDays(-4), null, now.AddDays(-3), 1, 1, 0, InputsHeld: true)
+        });
+        var purger = Substitute.For<IJobTextPurger>();
+        purger.DropInputsAsync(Arg.Any<DurableTaskClient>(), "j1", now, Arg.Any<CancellationToken>()).Returns(Task.FromException(new InvalidOperationException("storage")));
+        var client = Substitute.For<DurableTaskClient>("test");
+
+        var (_, _, _, inputsDropped) = await new TextRetentionSweep(accounts, index, purger, settings, NullLogger<TextRetentionSweep>.Instance)
+            .RunOnceAsync(client, now, 7, CancellationToken.None);
+
+        Assert.Equal(1, inputsDropped);
+        await purger.Received(1).DropInputsAsync(client, "j2", now, Arg.Any<CancellationToken>());
     }
 
     [Fact]
