@@ -211,8 +211,9 @@ case. `nodes[]` gains `reproducible` beside the declared fields it already
 snapshots. The provenance registry documents both and bumps; the rerun's
 `rerunVerdict` is #549's bump and may travel with it. *(As built: #549
 shipped the rerun and its report-only comparison table with the `rerun`
-origin kind — provenance `v2026.08.12`; the verdict and its record
-fields are #582's, with their own bump.)*
+origin kind — provenance `v2026.08.12` — and #582 shipped the verdict:
+`rerunOf`/`rerunVerdict`/`rerunDivergence` stamped at the rerun's
+completion, provenance `v2026.08.13`.)*
 
 **The control**: a v11 package with no `macros`, no `signature: true` and
 no `reproducible: true` hashes and renders byte-identically to its v10
