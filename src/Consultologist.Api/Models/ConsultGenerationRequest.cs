@@ -207,7 +207,11 @@ public record ConsultGenerationJobResponse(
     // data-residency statement; null when the deployment names none) and the
     // engine build that ran it. Null on records from before 2026-08-28.
     string? ApiHost = null,
-    string? EngineCommit = null);
+    string? EngineCommit = null,
+    // #557: where the produced text lives (container + name, never a URL).
+    // Null on pre-#557 records, on Failed jobs, and when the completion
+    // write failed and the text stayed on the entity.
+    ConsultOutputsBlobPointer? OutputsBlob = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and

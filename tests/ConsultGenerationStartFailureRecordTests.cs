@@ -49,7 +49,7 @@ public class ConsultGenerationStartFailureRecordTests
     public async Task RecordStartFailure_IsBornTerminal_InOneOperation()
     {
         var index = Substitute.For<IConsultGenerationJobIndexStore>();
-        var entity = new ConsultGenerationJobEntity(index);
+        var entity = new ConsultGenerationJobEntity(index, Substitute.For<IJobOutputsBlobStore>());
 
         await entity.RecordStartFailure(Failure());
 
@@ -75,7 +75,7 @@ public class ConsultGenerationStartFailureRecordTests
     [Fact]
     public async Task TheRecordCarriesProvenance_AndAStatedZero()
     {
-        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>());
+        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>());
 
         await entity.RecordStartFailure(Failure());
 
@@ -109,7 +109,7 @@ public class ConsultGenerationStartFailureRecordTests
     public async Task AJobThatStarted_HasNoStartFailure_AndTheIndexSaysSo()
     {
         var index = Substitute.For<IConsultGenerationJobIndexStore>();
-        var entity = new ConsultGenerationJobEntity(index);
+        var entity = new ConsultGenerationJobEntity(index, Substitute.For<IJobOutputsBlobStore>());
 
         await entity.Initialize(new ConsultGenerationJobInitialize(
             "job-2", "user-1", new[] { (IReadOnlyDictionary<string, string>)new Dictionary<string, string> { ["id"] = "hpi", ["name"] = "HPI" } }));
@@ -124,7 +124,7 @@ public class ConsultGenerationStartFailureRecordTests
     {
         // Terminal is terminal (#202): a stray MarkRunning must not resurrect
         // a row that says nothing ran.
-        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>());
+        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>());
         await entity.RecordStartFailure(Failure());
 
         await entity.MarkRunning();
