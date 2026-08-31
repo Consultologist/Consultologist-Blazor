@@ -118,8 +118,10 @@ What #547 stores is the **effective** map — exactly what ran — as one JSON
 blob per job, written by the starter after extraction and resolution,
 before the orchestration is scheduled. The orchestration payload still
 carries the map (the engine reads it there), but the payload is purged
-with the instance as today; the blob is the copy that History shows and a
-rerun (#549) reads. Held form responses (#539) are inputs before any job:
+with the instance as today; the blob is the copy that History shows and
+the rerun door (#549, built) reads — the Supplied half back through its
+typed wire form, reproducing the source's `effectiveInputHash` by
+construction. Held form responses (#539) are inputs before any job:
 one blob per response, the same container family, the same clock from
 `submittedAtUtc`, and a row in the records account's `FormResponses`
 table for the list (form id, response id, submitted, input ids present,

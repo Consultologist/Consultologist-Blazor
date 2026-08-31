@@ -184,6 +184,10 @@ produced text and a never-longer `retention.inputDays` for held inputs
 inputs clock drops the held inputs alone — `DropInputs` deletes the blob
 and stamps `inputsDroppedAtUtc`, no instance purge, no events delete;
 those run when the outputs clock arrives. v5/v6 jobs are not held.
+Since #549 the blob is what the rerun door reads: `POST
+ConsultGenerationJobs/{jobId}/Rerun` rebuilds the request from the
+Supplied half under the record's exact package ref and starts a new job
+whose every effective slot carries a `rerun` origin naming the source.
 
 ## After Setup
 
