@@ -58,6 +58,11 @@
                         <strong>@account.CurrentIdentity.Provider</strong>
                     </div>
 
+                    <div class="state-panel">
+                        <span class="muted-text">Account kind</span>
+                        <strong class="account-kind">@(account.AccountKind ?? "—")</strong>
+                    </div>
+
                     <FluentMessageBar Intent="MessageIntent.Info">
                         Protected API requests use this account identity for server-side authorization and job ownership.
                     </FluentMessageBar>

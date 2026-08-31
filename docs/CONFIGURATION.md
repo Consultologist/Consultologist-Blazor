@@ -391,7 +391,7 @@ az storage entity delete --account-name consultologistjobqueue --auth-mode login
     --table-name AccountRateLimits --partition-key <APP_USER_ID> --row-key <WINDOW>
 ```
 
-## Storage stores (Azure Tables)
+## Storage stores
 
 Entra ID first (#10, mirroring the workflow-package registry): when a
 `…__TableServiceUri` setting is present the store authenticates as the app's
@@ -405,6 +405,9 @@ string remains only as the local-dev (Azurite) fallback.
 | `ConsultGenerationJobEventStorage__TableServiceUri` | `Jobs/ConsultGenerationJobEventStore.cs` (optional override) |
 | `ConsultGenerationJobIndexStorage__TableServiceUri` | `Jobs/ConsultGenerationJobIndexStore.cs` (optional override) |
 | `AccountStorage__ConnectionStringName` | Local-dev fallback name (default `AzureWebJobsStorage`); same chain as before for the two job stores |
+| `TextStorage__BlobServiceUri` | #556 (storage-separation.md § 3): the PHI text account. Production: `https://consultologisteastcatext.blob.core.windows.net`. **Nothing reads it until M2 (#557)** — set with the account so the read path lands against a store that exists |
+| `TextStorage__TableServiceUri` | Production: `https://consultologisteastcatext.table.core.windows.net` (the events table moves there in M2) |
+| `TextStorage__credential` / `TextStorage__clientId` | `managedidentity` + the user-assigned identity's client id — the identity-form pair, as `AzureWebJobsStorage__*` uses |
 
 ## Platform / runtime (not set by application code)
 

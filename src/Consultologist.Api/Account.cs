@@ -103,7 +103,9 @@ public sealed class Account
                 DeliveryAddressPending: pending != null && _time.GetUtcNow() < pending.ExpiresAtUtc ? pending.Address : null,
                 DeliveryAddressVerifiedBy: deliveryAddress != null ? verifiedBy?.Value : null,
                 SignInEmail: signedIn.Address,
-                SignInKind: DeliveryAddress.SignInKindOf(authorized.User)),
+                SignInKind: DeliveryAddress.SignInKindOf(authorized.User),
+                // #556: the account's stored kind — null until back-filled.
+                AccountKind: account.AccountKind),
             cancellationToken);
 
         return response;

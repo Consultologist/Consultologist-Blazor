@@ -30,6 +30,17 @@ public class PublicByDesignTests
     public void ThePrivateAccount_IsNamedOnlyAsASettingValue() =>
         Assert.Empty(Hits("consultologistjobqueue", PrivateAccountAllowed));
 
+    // #556: the text account joins the same discipline — a setting value and
+    // an operator runbook, never a recipe scattered anywhere else.
+    private static readonly string[] TextAccountAllowed =
+    {
+        "docs/CONFIGURATION.md", "docs/STORAGE.md", "docs/customizable-workflow/storage-separation.md"
+    };
+
+    [Fact]
+    public void TheTextAccount_IsNamedOnlyAsASettingValue() =>
+        Assert.Empty(Hits("consultologisteastcatext", TextAccountAllowed));
+
     private static IReadOnlyList<string> Hits(string needle, string[] allowed)
     {
         var root = RepoRoot();
