@@ -843,4 +843,97 @@ public class HistoryDetailTests : ClientRenderTestContext
             .GetService(typeof(Microsoft.AspNetCore.Components.NavigationManager))!;
         Assert.EndsWith("/consults/new-job-1", navigation.Uri);
     }
+
+    // ----- #549: the per-stage comparison on a rerun's detail -----
+
+    private const string SourceJobId = "fedcba9876543210fedcba9876543210";
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>> RerunOrigins() =>
+        new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
+        {
+            ["consult_draft"] = new[] { new ConsultInputOrigin("rerun", TextSha256: "aa", SourceJobId: SourceJobId) }
+        };
+
+    private void WithRerunSource(IReadOnlyDictionary<string, ConsultGenerationNodeStatus> nodeOutputs, string effectiveInputHash = "aaaa")
+    {
+        AIService.GetConsultGenerationJobAsync(SourceJobId).Returns(new ConsultGenerationJobResponse(
+            SourceJobId, "user-1", "Completed", 9, 9, 0,
+            new Dictionary<string, string>(), new Dictionary<string, string>(), true,
+            NodeOutputs: nodeOutputs,
+            EffectiveInputHash: effectiveInputHash,
+            EffectiveInputHashVersion: 3));
+    }
+
+    private static ConsultGenerationNodeStatus Node(string id, string? inputHash, string? outputHash) =>
+        new(id, id, "Completed", inputHash, outputHash, null, null, HashVersion: 5);
+
+    [Fact]
+    public void ARerunDetail_ShowsTheTableAgainstItsSource_WithHonestVerdicts()
+    {
+        WithJob(3,
+            inputOrigins: RerunOrigins(),
+            nodes: new[]
+            {
+                new ConsultGenerationNodeDescriptor("extract", "Extract"),
+                new ConsultGenerationNodeDescriptor("draft", "Draft")
+            },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["extract"] = Node("extract", "in1", "outA"),
+                ["draft"] = Node("draft", "in2", "outX")
+            });
+        WithRerunSource(new Dictionary<string, ConsultGenerationNodeStatus>
+        {
+            ["extract"] = Node("extract", "in1", "outA"),
+            ["draft"] = Node("draft", "in2", "outB")
+        });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var verdicts = page.FindAll(".rerun-comparison__verdict").Select(cell => cell.TextContent.Trim()).ToArray();
+        Assert.Contains("same", verdicts);
+        Assert.Contains("different", verdicts);
+        // The section names its source and links to it.
+        Assert.Contains(SourceJobId[..8], page.Find(".rerun-comparison").Parent!.TextContent);
+    }
+
+    [Fact]
+    public void EqualEffectiveInputs_ReadAsByConstruction_AndUnequalOnesSayBug()
+    {
+        // Both jobs stamp version 3 here (WithJob's outputHashVersion doubles
+        // as the effective-input version in this fixture).
+        WithJob(3, inputOrigins: RerunOrigins(),
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus> { ["extract"] = Node("extract", "in1", "outA") });
+        WithRerunSource(new Dictionary<string, ConsultGenerationNodeStatus> { ["extract"] = Node("extract", "in1", "outA") });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+        Assert.Contains("equal by construction", page.Find(".rerun-comparison__inputs").TextContent);
+
+        // A differing hash is a bug and the panel says exactly that.
+        WithRerunSource(new Dictionary<string, ConsultGenerationNodeStatus> { ["extract"] = Node("extract", "in1", "outA") }, effectiveInputHash: "zzzz");
+        var mismatchPage = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+        Assert.Contains("this is a bug", mismatchPage.Find(".rerun-comparison__inputs--bug").TextContent);
+    }
+
+    [Fact]
+    public void AnUnreachableSource_DegradesToANamedRow_NeverABrokenPanel()
+    {
+        WithJob(3, inputOrigins: RerunOrigins());
+        AIService.GetConsultGenerationJobAsync(SourceJobId)
+            .Returns<ConsultGenerationJobResponse>(_ => throw new InvalidOperationException("storage blip"));
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Contains("could not be loaded", page.Find(".rerun-comparison__unavailable").TextContent);
+    }
+
+    [Fact]
+    public void AnOrdinaryRun_ShowsNoComparison()
+    {
+        WithJob(3);
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Empty(page.FindAll(".rerun-comparison"));
+    }
 }

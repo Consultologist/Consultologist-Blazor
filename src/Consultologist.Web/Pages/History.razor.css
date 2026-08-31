@@ -376,3 +376,95 @@
 .provenance-decided {
     font-style: italic;
 }
+
+/* #549: the Rerun action and the per-stage comparison table. */
+.rerun-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+}
+
+.rerun-row__reason {
+    font-size: 0.8rem;
+    font-style: italic;
+    color: var(--consultologist-text-muted);
+}
+
+.rerun-row__error {
+    font-size: 0.8rem;
+    color: #a4262c;
+}
+
+.rerun-comparison__inputs {
+    margin: 0.5rem 0;
+}
+
+.rerun-comparison__inputs--bug {
+    color: #a4262c;
+    font-weight: 600;
+}
+
+.rerun-comparison__scroll {
+    overflow-x: auto;
+}
+
+.rerun-comparison__table {
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    width: 100%;
+}
+
+.rerun-comparison__table th {
+    text-align: left;
+    padding: 0.2rem 0.75rem 0.2rem 0.25rem;
+    color: var(--consultologist-text-muted);
+    font-weight: 600;
+}
+
+.rerun-comparison__table td {
+    padding: 0.2rem 0.75rem 0.2rem 0.25rem;
+    white-space: nowrap;
+}
+
+.rerun-comparison__row--item td:first-child {
+    padding-left: 1.75rem;
+    font-weight: 400;
+}
+
+.rerun-comparison__row--document td:first-child {
+    font-weight: 600;
+}
+
+.rerun-comparison__verdict--same {
+    color: #107c10;
+}
+
+.rerun-comparison__verdict--different {
+    color: #a4262c;
+    font-weight: 600;
+}
+
+.rerun-comparison__verdict--inputs-differ,
+.rerun-comparison__verdict--hash-version-differs,
+.rerun-comparison__verdict--not-on-the-source-run {
+    color: var(--consultologist-text-muted);
+    font-style: italic;
+}
+
+/* #547 rider: the held-inputs folds and the inputs-deleted row shipped
+   markup-only; give them the same quiet treatment as their text-side kin. */
+.provenance-inputs-deleted {
+    font-style: italic;
+}
+
+.held-input__value {
+    font-size: 0.75rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    margin: 0.25rem 0 0.5rem;
+}
+
+.held-input > summary {
+    cursor: pointer;
+}

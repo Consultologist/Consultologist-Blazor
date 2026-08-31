@@ -493,6 +493,68 @@
                                             </dl>
                                         </details>
 
+                                        @* #549: this record replays another — the per-stage table
+                                           against the source. Reports only; which differences fail
+                                           is the rerun verdict's (follow-up issue). Guards over
+                                           false verdicts: an outputHash is compared only when the
+                                           inputHash and hashVersion match. *@
+                                        @if (RerunComparison.SourceJobIdOf(detail) is { } rerunSourceId)
+                                        {
+                                            <details class="job-detail-section" open>
+                                                <summary class="muted-text">Rerun of <a href="/history/@rerunSourceId">@rerunSourceId[..Math.Min(8, rerunSourceId.Length)]&hellip;</a></summary>
+                                                <div class="rerun-comparison">
+                                                    @if (_rerunSourceErrors.TryGetValue(detail.JobId, out var rerunSourceError))
+                                                    {
+                                                        <p class="rerun-comparison__unavailable muted-text">The source record could not be loaded — @rerunSourceError</p>
+                                                    }
+                                                    else if (!_rerunSourceDetails.TryGetValue(rerunSourceId, out var rerunSource) || rerunSource == null)
+                                                    {
+                                                        <p class="muted-text">Loading the source record&hellip;</p>
+                                                    }
+                                                    else
+                                                    {
+                                                        @if (RerunComparison.EffectiveInputsAgree(detail, rerunSource))
+                                                        {
+                                                            <p class="rerun-comparison__inputs hash-text">effective inputs @HashPrefix(detail.EffectiveInputHash) — equal by construction</p>
+                                                        }
+                                                        else
+                                                        {
+                                                            <p class="rerun-comparison__inputs rerun-comparison__inputs--bug">
+                                                                The effective-input hash differs from the source (@HashPrefix(rerunSource.EffectiveInputHash) vs @HashPrefix(detail.EffectiveInputHash)) — this is a bug: the rerun did not replay what it claims.
+                                                            </p>
+                                                        }
+                                                        <div class="rerun-comparison__scroll">
+                                                            <table class="rerun-comparison__table">
+                                                                <thead>
+                                                                    <tr><th>Stage</th><th>Source out</th><th>Rerun out</th><th></th></tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    @foreach (var row in RerunComparison.Stages(detail, rerunSource))
+                                                                    {
+                                                                        <tr class="rerun-comparison__row @(row.IsItem ? "rerun-comparison__row--item" : "")">
+                                                                            <td>@row.Label</td>
+                                                                            <td class="hash-text" title="@row.SourceHash">@HashPrefix(row.SourceHash)</td>
+                                                                            <td class="hash-text" title="@row.RerunHash">@HashPrefix(row.RerunHash)</td>
+                                                                            <td class="rerun-comparison__verdict rerun-comparison__verdict--@row.Verdict.Replace(' ', '-')">@row.Verdict</td>
+                                                                        </tr>
+                                                                    }
+                                                                    @foreach (var row in RerunComparison.Deliverables(detail, rerunSource))
+                                                                    {
+                                                                        <tr class="rerun-comparison__row rerun-comparison__row--document">
+                                                                            <td>@row.Label</td>
+                                                                            <td class="hash-text" title="@row.SourceHash">@HashPrefix(row.SourceHash)</td>
+                                                                            <td class="hash-text" title="@row.RerunHash">@HashPrefix(row.RerunHash)</td>
+                                                                            <td class="rerun-comparison__verdict rerun-comparison__verdict--@row.Verdict.Replace(' ', '-')">@row.Verdict</td>
+                                                                        </tr>
+                                                                    }
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </details>
+                                        }
+
                                         var nodeGroups = BuildNodeGroups(detail);
                                             var setupBadge = detail.StartedAtUtc != null
                                                 ? ("✓", "node-status--success")
@@ -1295,6 +1357,7 @@
             _jobDetails[jobId] = detail;
             await EnsureCatalogLoadedAsync(detail?.CatalogRef);
             await EnsureLineageLoadedAsync(detail?.WorkflowPackage);
+            await EnsureRerunSourceLoadedAsync(jobId, detail);
         }
         catch (AccessTokenNotAvailableException exception)
         {
@@ -1306,6 +1369,35 @@
         }
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    // #549: the source records reruns compare against, by source job id; and
+    // per-rerun fetch failures, so a missing source degrades to a named row
+    // and never breaks the panel.
+    private readonly Dictionary<string, ConsultGenerationJobResponse?> _rerunSourceDetails = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _rerunSourceErrors = new(StringComparer.Ordinal);
+
+    private async Task EnsureRerunSourceLoadedAsync(string jobId, ConsultGenerationJobResponse? detail)
+    {
+        if (detail == null
+            || RerunComparison.SourceJobIdOf(detail) is not { } sourceJobId
+            || _rerunSourceDetails.ContainsKey(sourceJobId))
+        {
+            return;
+        }
+
+        try
+        {
+            _rerunSourceDetails[sourceJobId] = await AIService.GetConsultGenerationJobAsync(sourceJobId);
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            _rerunSourceErrors[jobId] = ex.Message;
+        }
     }
 
 
