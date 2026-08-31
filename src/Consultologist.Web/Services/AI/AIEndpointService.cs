@@ -524,7 +524,12 @@ public record ConsultGenerationJobResponse(
     string? DecisionFailureKind = null,
     // #514: mirrors the Api's ApiHost / EngineCommit — where the job ran and what ran it.
     string? ApiHost = null,
-    string? EngineCommit = null);
+    string? EngineCommit = null,
+    // #547: the held effective inputs (hydrated server-side while held) and
+    // when the retention drop deleted them. HeldInputs is null once dropped
+    // or for a job never held; the pointer itself is not mirrored.
+    IReadOnlyDictionary<string, string>? HeldInputs = null,
+    DateTimeOffset? InputsDroppedAtUtc = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.TerminologySnapshot (#403).</summary>
 public record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);
