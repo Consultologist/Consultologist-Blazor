@@ -28,7 +28,10 @@ public static class WorkflowManifestReader
         string? FailIfEmpty = null,
         // v10 (#498): a classifying node — kind "classifier" and the values it
         // may answer. Null on every node before 10.
-        string? Kind = null, IReadOnlyList<string>? Values = null)
+        string? Kind = null, IReadOnlyList<string>? Values = null,
+        // v11 #564: the package's reproducibility claim (record § 6) —
+        // false when absent or not literally true.
+        bool Reproducible = false)
     {
         public bool IsClassifier => Kind == Consultologist.PackageFormat.WorkflowNodeKinds.Classifier;
     }
@@ -90,7 +93,20 @@ public static class WorkflowManifestReader
     /// manifest written elsewhere as <c>when: billable</c> is not rewritten to
     /// <c>billable == true</c> by an editor that only passed it through.
     /// </summary>
-    public sealed record ResultView(string Id, string Node, string Label, string? When = null);
+    public sealed record ResultView(
+        string Id,
+        string Node,
+        string Label,
+        string? When = null,
+        // v11 #564: the deliverable's ordered macro list and the signed flag
+        // (§ 4/§ 5). Signature is tri-state on purpose: presence, not truth,
+        // is what the validator refuses below 11 — an authored false is
+        // carried as read.
+        IReadOnlyList<string>? Macros = null,
+        bool? Signature = null);
+
+    /// <summary>One declared macro (v11 § 4): package-owned template text.</summary>
+    public sealed record MacroView(string Id, string Label, string File);
 
     public sealed record DataItemView(string Id, string Name, string File);
 
@@ -170,7 +186,8 @@ public static class WorkflowManifestReader
                 hasOutput ? ReadString(output, "schema") : null,
                 hasOutput ? ReadString(output, "failIfEmpty") : null,
                 ReadString(node, "kind"),
-                ReadStringArray(node, "values")));
+                ReadStringArray(node, "values"),
+                ReadBool(node, "reproducible") == true));
         }
 
         return nodes;
@@ -426,10 +443,34 @@ public static class WorkflowManifestReader
                 id,
                 ReadString(result, "node") ?? string.Empty,
                 ReadString(result, "label") ?? id,
-                ReadString(result, "when")));
+                ReadString(result, "when"),
+                ReadStringArray(result, "macros"),
+                ReadBool(result, "signature")));
         }
 
         return results;
+    }
+
+    /// <summary>The declared macros (v11 § 4). Empty below 11.</summary>
+    public static IReadOnlyList<MacroView> ReadMacros(JsonElement manifest)
+    {
+        var macros = new List<MacroView>();
+
+        if (!TryGetProperty(manifest, "macros", out var array) || array.ValueKind != JsonValueKind.Array)
+        {
+            return macros;
+        }
+
+        foreach (var macro in array.EnumerateArray())
+        {
+            var id = ReadString(macro, "id") ?? string.Empty;
+            macros.Add(new MacroView(
+                id,
+                ReadString(macro, "label") ?? id,
+                ReadString(macro, "file") ?? string.Empty));
+        }
+
+        return macros;
     }
 
     /// <summary>
@@ -494,6 +535,12 @@ public static class WorkflowManifestReader
     private static string? ReadString(JsonElement element, string property) =>
         TryGetProperty(element, property, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
+            : null;
+
+    /// <summary>A boolean property; null when absent or not a JSON boolean.</summary>
+    private static bool? ReadBool(JsonElement element, string property) =>
+        TryGetProperty(element, property, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? value.ValueKind == JsonValueKind.True
             : null;
 
     /// <summary>An enum input's declared values; null when the property is absent.</summary>

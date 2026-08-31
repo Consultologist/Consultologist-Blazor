@@ -332,6 +332,70 @@ public static class EditorFixtures
         }
         """, 10, ("prompts/classify.md", "Is this in scope? {{ referral }}"));
 
+    /// <summary>v11 (#564): the classifier package at 11 with a macro wired end to end — declared, referenced, signed, and a reproducible classifier.</summary>
+    public static WorkflowPackageContentResponse V11Macro() => Package("""
+        {
+          "name": "acct-1234567890ab",
+          "version": "v2026.08.1",
+          "specVersion": 11,
+          "tags": [],
+          "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
+          "inputs": [
+            { "id": "consult_draft", "label": "Consult draft", "required": true }
+          ],
+          "data": { "standards": "data/standards/", "intro": "data/intro.md" },
+          "prompts": [
+            { "id": "classify", "file": "prompts/classify.md", "variables": ["referral"] },
+            { "id": "draft-section", "file": "prompts/draft-section.md",
+              "variables": ["section_name", "consult_draft"] }
+          ],
+          "macros": [
+            { "id": "disclaimer", "label": "Standing disclaimer", "file": "macros/disclaimer.md" }
+          ],
+          "results": [
+            { "id": "consult_note", "node": "node:assemble-note", "label": "Consultation note", "when": "node:scope == in_scope",
+              "macros": ["disclaimer"], "signature": true }
+          ],
+          "nodes": [
+            { "id": "scope", "label": "Is the referral in scope?", "prompt": "classify", "kind": "classifier",
+              "values": ["in_scope", "out_of_scope"], "reproducible": true,
+              "bindings": { "referral": "input:consult_draft" } },
+            { "id": "draft-section", "forEach": "data:standards", "label": "Drafting section",
+              "prompt": "draft-section",
+              "bindings": { "section_name": "item:name", "consult_draft": "input:consult_draft" } },
+            { "id": "assemble-note", "label": "Assembling note", "aggregate": ["node:draft-section"] }
+          ]
+        }
+        """, 11,
+        ("prompts/classify.md", "Is this in scope? {{ referral }}"),
+        ("macros/disclaimer.md", "By {{profile:name}} on {{run:date}}: {{input:consult_draft}} — {{data:intro}} ({{classification:scope}})"),
+        ("data/intro.md", "A scalar the macro reads."));
+
+    /// <summary>v11 (#564): the classifier package with only the version raised — no v11 shape used (the control's sibling).</summary>
+    public static WorkflowPackageContentResponse V11() 
+    {
+        var package = V10Classifier();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["specVersion"] = 11;
+
+        return package with { SpecVersion = 11, Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
+
+    /// <summary>v11 (#564): the macro package with one optional input added — the help panel's annotation case.</summary>
+    public static WorkflowPackageContentResponse V11Macros_WithOptionalInput()
+    {
+        var package = V11Macro();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["inputs"]!.AsArray().Add(new System.Text.Json.Nodes.JsonObject
+        {
+            ["id"] = "length_of_stay",
+            ["label"] = "Length of stay",
+            ["required"] = false
+        });
+
+        return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
+
     /// <summary>#453: the same package carrying these tags.</summary>
     public static WorkflowPackageContentResponse WithTags(WorkflowPackageContentResponse package, params string[] tags)
     {

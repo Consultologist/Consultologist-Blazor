@@ -281,6 +281,38 @@
                         <span class="editor-nav__dot"></span>
                         <span>+ Prompt</span>
                     </button>
+                    @* v11 #564: package-owned macro templates (§ 4/§ 9). The
+                       group shows whenever macros exist so a carried one is
+                       reachable below 11; authoring is offered only at 11. *@
+                    @if (EffectiveMacros.Count > 0 || EffectiveSpecVersion >= 11)
+                    {
+                        <span class="editor-nav__group">Macros</span>
+                        @foreach (var navMacro in EffectiveMacros)
+                        {
+                            <button type="button"
+                                    class="editor-nav__item @(selectedKey == navMacro.File ? "editor-nav__item--selected" : "")"
+                                    @onclick="() => Select(navMacro.File)">
+                                <span class="editor-nav__dot">@(edits.ContainsKey(navMacro.File) || AddedMacroForFile(navMacro.File) != null ? "●" : "")</span>
+                                <span>@navMacro.Id</span>
+                            </button>
+                            @if (AddedMacroForFile(navMacro.File) is { } pendingMacro)
+                            {
+                                <div class="editor-nav__item editor-nav__item--nested">
+                                    <span class="editor-nav__dot"></span>
+                                    <button type="button" class="editor-nav__restore" @onclick="() => RemoveAddedMacroAsync(pendingMacro)">(remove)</button>
+                                </div>
+                            }
+                        }
+                        @if (EffectiveSpecVersion >= 11)
+                        {
+                            <button type="button"
+                                    class="editor-nav__item editor-nav__add @(selectedKey == AddMacroKey ? "editor-nav__item--selected" : "")"
+                                    @onclick="() => Select(AddMacroKey)">
+                                <span class="editor-nav__dot"></span>
+                                <span>+ Macro</span>
+                            </button>
+                        }
+                    }
                     <span class="editor-nav__group">Data</span>
                     @foreach (var collection in EffectiveCollections)
                     {
@@ -902,6 +934,50 @@
                                             @ConditionEditor(deliverable)
                                         }
                                     </li>
+
+                                    @* v11 #564: the deliverable's ordered macro list
+                                       (§ 4 — append order is semantic) and the signed
+                                       flag (§ 5), both through resultsEdit as `when`. *@
+                                    @if (EffectiveSpecVersion >= 11)
+                                    {
+                                        <li class="declared-row__v11" data-v11-for="@deliverable.Id">
+                                            <span class="muted-text">Appended:</span>
+                                            @{ var resultMacros = deliverable.Macros ?? Array.Empty<string>(); }
+                                            @foreach (var (macroId, macroIndex) in resultMacros.Select((m, i) => (m, i)))
+                                            {
+                                                <span class="result-macro-row">
+                                                    <code>@macroId</code>
+                                                    <button type="button" class="aggregate-row__button result-macro-up" title="Move up"
+                                                            disabled="@(macroIndex == 0)"
+                                                            @onclick="() => MoveResultMacroAsync(deliverable, macroId, -1)">↑</button>
+                                                    <button type="button" class="aggregate-row__button result-macro-down" title="Move down"
+                                                            disabled="@(macroIndex == resultMacros.Count - 1)"
+                                                            @onclick="() => MoveResultMacroAsync(deliverable, macroId, 1)">↓</button>
+                                                    <button type="button" class="aggregate-row__button result-macro-remove" title="Remove macro"
+                                                            @onclick="() => RemoveResultMacroAsync(deliverable, macroId)">×</button>
+                                                </span>
+                                            }
+                                            @if (EffectiveMacros.Any(m => !resultMacros.Contains(m.Id)))
+                                            {
+                                                <select class="binding-row__select result-macro-append"
+                                                        @onchange="args => AppendResultMacroAsync(deliverable, args.Value?.ToString())"
+                                                        aria-label="@($"Append macro to document {deliverable.Id}")">
+                                                    <option value="">append macro…</option>
+                                                    @foreach (var candidateMacro in EffectiveMacros.Where(m => !resultMacros.Contains(m.Id)))
+                                                    {
+                                                        <option value="@candidateMacro.Id">@candidateMacro.Id</option>
+                                                    }
+                                                </select>
+                                            }
+                                            <label class="result-signed">
+                                                <input type="checkbox"
+                                                       checked="@(deliverable.Signature == true)"
+                                                       @onchange="args => ToggleResultSignatureAsync(deliverable, args.Value is bool isChecked && isChecked)"
+                                                       aria-label="@($"Signed for document {deliverable.Id}")" />
+                                                <span>signed</span>
+                                            </label>
+                                        </li>
+                                    }
                                 }
                             </ul>
                             <div class="add-variable__form">
@@ -979,6 +1055,7 @@
                                              ContractOptions="@ContractOptions"
                                              PromptOptions="@EffectivePrompts.Select(p => p.Id).ToList()"
                                              AllowPromptChange="@(EffectiveSpecVersion >= 6)"
+                                             OfferReproducible="@(EffectiveSpecVersion >= 11)"
                                              NodeModified="@(id => nodeEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id))"
                                              RemovedNodes="@RemovedNodes"
                                              RowsFor="@RowsFor"
@@ -1015,6 +1092,38 @@
                         <div class="action-row">
                             <FluentButton Appearance="Appearance.Accent" @onclick="AddPromptAsync">
                                 Create prompt
+                            </FluentButton>
+                        </div>
+                    }
+                    else if (selectedKey == AddMacroKey && EffectiveSpecVersion >= 11)
+                    {
+                        <div class="pane-header">
+                            <div>
+                                <h3 class="panel-title">New macro</h3>
+                                <p class="muted-text">
+                                    A named text the package owns, appended after a document's aggregated
+                                    sections when that document lists it (Documents pane). Publish stays
+                                    blocked until some document uses it.
+                                </p>
+                            </div>
+                        </div>
+                        @if (newMacroError != null)
+                        {
+                            <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false">@newMacroError</FluentMessageBar>
+                        }
+                        <div class="new-item-fields">
+                            <label class="input-field">
+                                <span>id (snake_case)</span>
+                                <FluentTextField @bind-Value="newMacroId" Placeholder="closing_paragraph" />
+                            </label>
+                            <label class="input-field">
+                                <span>label (optional — defaults from the id)</span>
+                                <FluentTextField @bind-Value="newMacroLabel" Placeholder="Closing paragraph" />
+                            </label>
+                        </div>
+                        <div class="action-row">
+                            <FluentButton Appearance="Appearance.Accent" @onclick="AddMacroAsync">
+                                Create macro
                             </FluentButton>
                         </div>
                     }
@@ -1124,6 +1233,7 @@
                                              ContractOptions="@ContractOptions"
                                              PromptOptions="@EffectivePrompts.Select(p => p.Id).ToList()"
                                              AllowPromptChange="@(EffectiveSpecVersion >= 6)"
+                                             OfferReproducible="@(EffectiveSpecVersion >= 11)"
                                              NodeModified="@(id => nodeEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id))"
                                              RowsFor="@RowsFor"
                                              ValidateVariableName="@ValidateVariableNameForNode"
@@ -1235,6 +1345,43 @@
                                     <span> · shared prelude: @prompt.Prelude (read-only)</span>
                                 }
                             </p>
+                        </WorkflowEditorPane>
+                    }
+                    else if (SelectedMacro() is { } macro)
+                    {
+                        <WorkflowEditorPane Title="@macro.Id"
+                                            Subtitle="@macro.File"
+                                            EditLabel="Macro text"
+                                            Text="@GetText(macro.File)"
+                                            Modified="@(edits.ContainsKey(macro.File) || AddedMacroForFile(macro.File) != null)"
+                                            TextChanged="@(value => OnTextChangedAsync(macro.File, value))">
+                            <div class="macro-placeholders">
+                                <span class="muted-text">
+                                    Placeholders — substituted at assembly, verbatim; an unknown token blocks publish
+                                </span>
+                                <ul class="macro-placeholders__list">
+                                    @foreach (var helpInput in EffectiveInputs)
+                                    {
+                                        <li><code>{{input:@helpInput.Id}}</code>@(helpInput.Required ? "" : " (optional — renders as empty when not supplied)")</li>
+                                    }
+                                    @foreach (var scalarId in ScalarIds)
+                                    {
+                                        <li><code>{{data:@scalarId}}</code></li>
+                                    }
+                                    @foreach (var classifier in EffectiveNodes.Where(n => n.IsClassifier))
+                                    {
+                                        <li><code>{{classification:@classifier.Id}}</code></li>
+                                    }
+                                    @foreach (var runWord in PF.WorkflowMacroPlaceholders.RunFacts)
+                                    {
+                                        <li><code>{{run:@runWord}}</code></li>
+                                    }
+                                    @foreach (var profileWord in PF.WorkflowMacroPlaceholders.ProfileFacts)
+                                    {
+                                        <li><code>{{profile:@profileWord}}</code></li>
+                                    }
+                                </ul>
+                            </div>
                         </WorkflowEditorPane>
                     }
                     else
@@ -1881,6 +2028,9 @@
                 () => $"{aggregateEdits.Count} aggregate", () => aggregateEdits.Count > 0),
             new("addedPrompts", () => addedPrompts.Count, addedPrompts.Clear,
                 () => $"+{addedPrompts.Count} {Plural(addedPrompts.Count, "prompt")}", () => addedPrompts.Count > 0),
+            // v11 #564: pending macro templates.
+            new("addedMacros", () => addedMacros.Count, addedMacros.Clear,
+                () => $"+{addedMacros.Count} {Plural(addedMacros.Count, "macro")}", () => addedMacros.Count > 0),
 
             new("resultEdit", () => resultEdit != null ? 1 : 0, () => resultEdit = null,
                 () => "deliverable", () => resultEdit != null),
@@ -1953,6 +2103,10 @@
         || content!.Files.ContainsKey(key)
         || EffectiveScalars.Any(scalar => scalar.Path == key)
         || EffectivePrompts.Any(prompt => prompt.File == key)
+        // v11 #564: the macro panes; the add form only where it renders —
+        // a remembered pane on a v10 package must not restore blank.
+        || (key == AddMacroKey && EffectiveSpecVersion >= 11)
+        || EffectiveMacros.Any(m => m.File == key)
         || addedItems.Any(added => added.Key == key);
 
     private string AddedPath(AddedItem item) => $"data/{item.Collection}/{item.Id}.md";
@@ -2262,6 +2416,9 @@
         public string? Kind { get; set; }
         public List<string>? Values { get; set; }
 
+        // v11 #564: the reproducibility claim on a node born in the editor.
+        public bool Reproducible { get; set; }
+
         public bool IsClassifier => Kind == ClassifierKind;
     }
 
@@ -2284,6 +2441,87 @@
 
     private AddedPrompt? AddedPromptForFile(string path) =>
         addedPrompts.FirstOrDefault(p => AddedStandalonePromptFile(p.Id) == path);
+
+    // v11 #564: pending macro templates (§ 9) — the standalone-prompt shape.
+    // Publishable only once some document lists them (the orphan rule).
+    private sealed class AddedMacro
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Label { get; set; } = string.Empty;
+        public string Text { get; set; } = string.Empty;
+    }
+
+    private readonly List<AddedMacro> addedMacros = new();
+    private string? newMacroId;
+    private string? newMacroLabel;
+    private string? newMacroError;
+
+    private const string AddMacroKey = "add-macro";
+
+    private static string AddedMacroFile(string macroId) => $"macros/{macroId}.md";
+
+    private AddedMacro? AddedMacroForFile(string path) =>
+        addedMacros.FirstOrDefault(m => AddedMacroFile(m.Id) == path);
+
+    // The declared macros plus a synthesized view per pending one — the nav,
+    // the panes, the Documents pane and the desk all read this one list.
+    private IReadOnlyList<WorkflowManifestReader.MacroView> EffectiveMacros =>
+        (content == null
+            ? Array.Empty<WorkflowManifestReader.MacroView>()
+            : WorkflowManifestReader.ReadMacros(content.Manifest))
+        .Concat(addedMacros.Select(m => new WorkflowManifestReader.MacroView(m.Id, m.Label, AddedMacroFile(m.Id))))
+        .ToList();
+
+    private WorkflowManifestReader.MacroView? SelectedMacro() =>
+        EffectiveMacros.FirstOrDefault(m => m.File == selectedKey);
+
+    private async Task AddMacroAsync()
+    {
+        var id = newMacroId?.Trim() ?? string.Empty;
+
+        if (!DeclaredIdPattern.IsMatch(id))
+        {
+            newMacroError = "Macro ids are snake_case: a lowercase letter, then lowercase letters, digits, or underscores.";
+            return;
+        }
+
+        if (EffectiveMacros.Any(m => m.Id == id))
+        {
+            newMacroError = $"A macro named '{id}' already exists.";
+            return;
+        }
+
+        if (content!.Files.ContainsKey(AddedMacroFile(id)))
+        {
+            newMacroError = $"The package already has a file at '{AddedMacroFile(id)}'.";
+            return;
+        }
+
+        // A blank label defaults from the id, humanized — the validator's
+        // no-label refusal never fires from editor-authored macros.
+        var label = string.IsNullOrWhiteSpace(newMacroLabel)
+            ? char.ToUpperInvariant(id[0]) + id[1..].Replace('_', ' ')
+            : newMacroLabel!.Trim();
+        addedMacros.Add(new AddedMacro { Id = id, Label = label });
+        newMacroId = null;
+        newMacroLabel = null;
+        newMacroError = null;
+        // Land on the new macro's pane — writing its text is the next step.
+        selectedKey = AddedMacroFile(id);
+        await PendingChangedAsync();
+    }
+
+    private async Task RemoveAddedMacroAsync(AddedMacro pending)
+    {
+        addedMacros.Remove(pending);
+
+        if (selectedKey == AddedMacroFile(pending.Id))
+        {
+            selectedKey = prompts.FirstOrDefault()?.File ?? GraphKey;
+        }
+
+        await PendingChangedAsync();
+    }
 
     // Pending aggregator source lists (#117), keyed by node id — the full
     // ordered list; one equal to the manifest removes itself.
@@ -2319,7 +2557,8 @@
         OutputSchema: added.OutputSchema,
         FailIfEmpty: added.FailIfEmpty,
         Kind: added.Kind,
-        Values: added.Values);
+        Values: added.Values,
+        Reproducible: added.Reproducible);
 
     // Pending v7 declarations, each the whole list when dirty (the
     // aggregate-source idiom) and null when unchanged.
@@ -2645,7 +2884,92 @@
             .Where(result => !aggregatorIds.Contains(result.Node))
             .Select(result => $"Result '{result.Id}' must reference an aggregator node ('{result.Node}' is not one)."));
 
+        // ----- v11 #564: the desk's mirror of the validator's macro rules -----
+
+        if (EffectiveSpecVersion < 11)
+        {
+            // Carried shapes from forks or drafts — the editor never offers
+            // the controls below 11; the desk refuses them by name, the
+            // validator's sentences plus the upgrade pointer.
+            errors.AddRange(EffectiveNodes
+                .Where(node => node.Reproducible)
+                .Select(node => $"Node '{node.Id}' declares reproducible, which requires specVersion 11. "
+                    + $"Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish."));
+
+            if (EffectiveMacros.Count > 0)
+            {
+                errors.Add($"macros requires specVersion 11. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.");
+            }
+
+            errors.AddRange(results
+                .Where(result => result.Macros is { Count: > 0 })
+                .Select(result => $"Result '{result.Id}' declares macros, which requires specVersion 11. "
+                    + $"Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish."));
+
+            errors.AddRange(results
+                .Where(result => result.Signature != null)
+                .Select(result => $"Result '{result.Id}' declares signature, which requires specVersion 11. "
+                    + $"Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish."));
+        }
+        else
+        {
+            // The orphan rule, the validator's sentence verbatim.
+            var referencedMacroIds = results
+                .SelectMany(result => result.Macros ?? Array.Empty<string>())
+                .ToHashSet(StringComparer.Ordinal);
+            errors.AddRange(EffectiveMacros
+                .Where(m => !referencedMacroIds.Contains(m.Id))
+                .Select(m => $"Macro '{m.Id}' is not referenced by any result."));
+
+            foreach (var macroView in EffectiveMacros)
+            {
+                var macroText = GetText(macroView.File);
+
+                if (string.IsNullOrWhiteSpace(macroText))
+                {
+                    errors.Add($"Macro '{macroView.Id}' file '{macroView.File}' is empty.");
+                    continue;
+                }
+
+                errors.AddRange(MacroTokenErrors(macroView.Id, macroText));
+            }
+        }
+
         return errors;
+    }
+
+    /// <summary>
+    /// v11 #564: the desk's mirror of the validator's placeholder scanner —
+    /// the one grammar (PF.WorkflowMacroPlaceholders) resolved against the
+    /// EFFECTIVE declarations (they are what the composed manifest will
+    /// declare), each miss in the server's sentence verbatim. The
+    /// optional-input case is a server warning, not a desk error — the help
+    /// panel annotates it instead.
+    /// </summary>
+    private IEnumerable<string> MacroTokenErrors(string macroId, string text)
+    {
+        var inputIds = EffectiveInputs.Select(i => i.Id).ToHashSet(StringComparer.Ordinal);
+        var scalarIdSet = ScalarIds.ToHashSet(StringComparer.Ordinal);
+        var classifierIds = EffectiveNodes.Where(n => n.IsClassifier).Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
+
+        foreach (System.Text.RegularExpressions.Match match in PF.WorkflowMacroPlaceholders.Pattern.Matches(text))
+        {
+            var token = PF.WorkflowMacroPlaceholders.TokenOf(match);
+            var resolves = PF.WorkflowMacroPlaceholders.TryParse(token, out var ns, out var id) && ns switch
+            {
+                "input" => inputIds.Contains(id),
+                "data" => scalarIdSet.Contains(id),
+                "classification" => classifierIds.Contains(id),
+                "run" => PF.WorkflowMacroPlaceholders.RunFacts.Contains(id),
+                "profile" => PF.WorkflowMacroPlaceholders.ProfileFacts.Contains(id),
+                _ => false
+            };
+
+            if (!resolves)
+            {
+                yield return $"Macro '{macroId}' placeholder '{{{{{token}}}}}' does not resolve.";
+            }
+        }
     }
 
     /// <summary>
@@ -4123,6 +4447,78 @@
         await CommitDeclarationAsync();
     }
 
+    // v11 #564: the deliverable's macro list and signed flag — all through
+    // resultsEdit, exactly as `when` edits go.
+    private async Task ToggleResultSignatureAsync(WorkflowManifestReader.ResultView result, bool signedChecked)
+    {
+        var results = MutableResults();
+        var index = results.FindIndex(existing => existing.Id == result.Id);
+
+        if (index >= 0)
+        {
+            // Checked is true; unchecked returns to absence, never false —
+            // presence, not truth, is what the validator refuses below 11.
+            results[index] = results[index] with { Signature = signedChecked ? true : null };
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    private async Task AppendResultMacroAsync(WorkflowManifestReader.ResultView result, string? macroId)
+    {
+        if (string.IsNullOrEmpty(macroId))
+        {
+            return;
+        }
+
+        var results = MutableResults();
+        var index = results.FindIndex(existing => existing.Id == result.Id);
+
+        if (index >= 0 && !(results[index].Macros ?? Array.Empty<string>()).Contains(macroId))
+        {
+            var list = (results[index].Macros ?? Array.Empty<string>()).ToList();
+            list.Add(macroId);
+            results[index] = results[index] with { Macros = list };
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    private async Task RemoveResultMacroAsync(WorkflowManifestReader.ResultView result, string macroId)
+    {
+        var results = MutableResults();
+        var index = results.FindIndex(existing => existing.Id == result.Id);
+
+        if (index >= 0)
+        {
+            var list = (results[index].Macros ?? Array.Empty<string>()).Where(m => m != macroId).ToList();
+            results[index] = results[index] with { Macros = list.Count == 0 ? null : list };
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    private async Task MoveResultMacroAsync(WorkflowManifestReader.ResultView result, string macroId, int delta)
+    {
+        var results = MutableResults();
+        var index = results.FindIndex(existing => existing.Id == result.Id);
+
+        if (index >= 0 && results[index].Macros is { } current)
+        {
+            var list = current.ToList();
+            var from = list.IndexOf(macroId);
+            var to = from + delta;
+
+            if (from >= 0 && to >= 0 && to < list.Count)
+            {
+                (list[from], list[to]) = (list[to], list[from]);
+                results[index] = results[index] with { Macros = list };
+            }
+        }
+
+        await CommitDeclarationAsync();
+    }
+
     private async Task RepointResultAsync(WorkflowManifestReader.ResultView result, string? value)
     {
         var node = value ?? string.Empty;
@@ -4171,7 +4567,8 @@
                         FailIfEmpty = edit.FailIfEmpty,
                         HasOutput = edit.OutputSchema != null,
                         Prompt = edit.Prompt ?? n.Prompt,
-                        Values = edit.Values ?? n.Values
+                        Values = edit.Values ?? n.Values,
+                        Reproducible = edit.Reproducible
                     };
                 }
 
@@ -4496,6 +4893,7 @@
             addedNode.ForEach = change.ForEach;
             addedNode.OutputSchema = change.OutputSchema;
             addedNode.FailIfEmpty = change.FailIfEmpty;
+            addedNode.Reproducible = change.Reproducible;
             if (addedNode.IsClassifier && change.Values != null)
             {
                 addedNode.Values = change.Values.ToList();
@@ -4521,6 +4919,7 @@
             && change.ForEach == original.ForEach
             && change.OutputSchema == original.OutputSchema
             && change.FailIfEmpty == original.FailIfEmpty
+            && change.Reproducible == original.Reproducible
             && (change.Prompt == null || change.Prompt == original.Prompt)
             && (change.Values == null || change.Values.SequenceEqual(original.Values ?? Array.Empty<string>(), StringComparer.Ordinal)))
         {
@@ -5218,6 +5617,7 @@
     private string GetText(string path) =>
         AddedNodeForPromptFile(path) is { } addedNode ? addedNode.PromptText
         : AddedPromptForFile(path) is { } addedPrompt ? addedPrompt.Text
+        : AddedMacroForFile(path) is { } addedMacro ? addedMacro.Text
         : AddedScalarIdForPath(path) is { } pendingScalar ? addedScalars[pendingScalar]
         : edits.TryGetValue(path, out var edited) ? edited : content!.Files.GetValueOrDefault(path, string.Empty);
 
@@ -5300,11 +5700,13 @@
 
     private sealed record DraftBinding(string NodeId, string Variable, string From, string? As);
 
-    private sealed record DraftNodeEdit(string NodeId, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string? Prompt = null, List<string>? Values = null);
+    private sealed record DraftNodeEdit(string NodeId, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string? Prompt = null, List<string>? Values = null, bool Reproducible = false);
 
-    private sealed record DraftAddedNode(string Id, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string PromptText, List<string>? Aggregate = null, string? PromptRef = null, string? Kind = null, List<string>? Values = null);
+    private sealed record DraftAddedNode(string Id, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string PromptText, List<string>? Aggregate = null, string? PromptRef = null, string? Kind = null, List<string>? Values = null, bool Reproducible = false);
 
     private sealed record DraftAddedPrompt(string Id, string Text);
+
+    private sealed record DraftAddedMacro(string Id, string Label, string Text);
 
     private sealed record DraftPayload(
         int Version,
@@ -5335,7 +5737,9 @@
         string? Title = null,
         string? Description = null,
         // #453: the tags as edited; an empty list is the stated empty set.
-        List<string>? Tags = null);
+        List<string>? Tags = null,
+        // v11 #564: pending macro templates. Trailing optional, as ever.
+        List<DraftAddedMacro>? AddedMacros = null);
 
     // #316: Type and Values ride here or a typed input is silently untyped on
     // reload. Trailing optionals — a draft written before v8 restores with null.
@@ -5368,7 +5772,7 @@
     private static List<WorkflowManifestReader.FieldView>? FromDraft(List<DraftField>? fields) =>
         fields?.Select(f => new WorkflowManifestReader.FieldView(f.Id, f.Label, f.Required, f.Type, f.Values, FromDraft(f.Element), FromDraft(f.Fields))).ToList();
 
-    private sealed record DraftResult(string Id, string Node, string Label, string? When = null);
+    private sealed record DraftResult(string Id, string Node, string Label, string? When = null, List<string>? Macros = null, bool? Signature = null);
 
     private async Task RestoreDraftAsync()
     {
@@ -5392,6 +5796,7 @@
         Dictionary<string, List<string>>? draftAggregateEdits = null;
         string? draftResultEdit = null;
         List<DraftAddedPrompt>? draftAddedPrompts = null;
+        List<DraftAddedMacro>? draftAddedMacros = null;
         int? draftSpecVersionBump = null;
         string? draftTitle = null;
         string? draftDescription = null;
@@ -5419,6 +5824,7 @@
                 draftAggregateEdits = payload?.AggregateEdits;
                 draftResultEdit = payload?.ResultEdit;
                 draftAddedPrompts = payload?.AddedPrompts;
+                draftAddedMacros = payload?.AddedMacros;
                 draftInputs = payload?.Inputs;
                 draftResults = payload?.Results;
                 draftAddedScalars = payload?.AddedScalars;
@@ -5543,6 +5949,14 @@
             }
         }
 
+        foreach (var draftAddedMacro in draftAddedMacros ?? new List<DraftAddedMacro>())
+        {
+            if (EffectiveMacros.All(m => m.Id != draftAddedMacro.Id))
+            {
+                addedMacros.Add(new AddedMacro { Id = draftAddedMacro.Id, Label = draftAddedMacro.Label, Text = draftAddedMacro.Text });
+            }
+        }
+
         foreach (var draftAddedNode in draftAddedNodes ?? new List<DraftAddedNode>())
         {
             if (!string.IsNullOrWhiteSpace(draftAddedNode.Id)
@@ -5569,7 +5983,8 @@
                     Aggregate = draftAddedNode.Aggregate,
                     PromptRef = promptRef,
                     Kind = draftAddedNode.Kind,
-                    Values = draftAddedNode.Kind == ClassifierKind ? draftAddedNode.Values ?? new List<string>() : null
+                    Values = draftAddedNode.Kind == ClassifierKind ? draftAddedNode.Values ?? new List<string>() : null,
+                    Reproducible = draftAddedNode.Reproducible
                 });
             }
         }
@@ -5651,7 +6066,7 @@
             && draftResults.All(result => EffectiveNodes.Any(node => $"node:{node.Id}" == result.Node)))
         {
             resultsEdit = draftResults
-                .Select(result => new WorkflowManifestReader.ResultView(result.Id, result.Node, result.Label, result.When))
+                .Select(result => new WorkflowManifestReader.ResultView(result.Id, result.Node, result.Label, result.When, result.Macros, result.Signature))
                 .ToList();
         }
 
@@ -5667,6 +6082,7 @@
                     && draftNodeEdit.ForEach == original.ForEach
                     && draftNodeEdit.OutputSchema == original.OutputSchema
                     && draftNodeEdit.FailIfEmpty == original.FailIfEmpty
+                    && draftNodeEdit.Reproducible == original.Reproducible
                     && (draftNodeEdit.Prompt == null || draftNodeEdit.Prompt == original.Prompt)
                     && (draftNodeEdit.Values == null || draftNodeEdit.Values.SequenceEqual(original.Values ?? Array.Empty<string>(), StringComparer.Ordinal))))
             {
@@ -5674,7 +6090,7 @@
             }
 
             nodeEdits[draftNodeEdit.NodeId] = new WorkflowNodeSummary.NodeChange(
-                draftNodeEdit.NodeId, draftNodeEdit.Label, draftNodeEdit.ForEach, draftNodeEdit.OutputSchema, draftNodeEdit.FailIfEmpty, draftNodeEdit.Prompt, draftNodeEdit.Values);
+                draftNodeEdit.NodeId, draftNodeEdit.Label, draftNodeEdit.ForEach, draftNodeEdit.OutputSchema, draftNodeEdit.FailIfEmpty, draftNodeEdit.Prompt, draftNodeEdit.Values, draftNodeEdit.Reproducible);
         }
 
         foreach (var draftBinding in bindings ?? new List<DraftBinding>())
@@ -5720,7 +6136,7 @@
         }
 
         var payload = new DraftPayload(
-            13,
+            14,
             edits,
             addedItems.Select(a => new DraftAdded(a.Collection, a.Id, a.Name, a.Content)).ToList(),
             removedFiles.ToList(),
@@ -5732,8 +6148,8 @@
             variableAdds.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             variableRemovals.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             addedCollections.ToList(),
-            nodeEdits.Values.Select(edit => new DraftNodeEdit(edit.NodeId, edit.Label, edit.ForEach, edit.OutputSchema, edit.FailIfEmpty, edit.Prompt, edit.Values?.ToList())).ToList(),
-            addedNodes.Select(a => new DraftAddedNode(a.Id, a.Label, a.ForEach, a.OutputSchema, a.FailIfEmpty, a.PromptText, a.Aggregate, a.PromptRef, a.Kind, a.Values)).ToList(),
+            nodeEdits.Values.Select(edit => new DraftNodeEdit(edit.NodeId, edit.Label, edit.ForEach, edit.OutputSchema, edit.FailIfEmpty, edit.Prompt, edit.Values?.ToList(), edit.Reproducible)).ToList(),
+            addedNodes.Select(a => new DraftAddedNode(a.Id, a.Label, a.ForEach, a.OutputSchema, a.FailIfEmpty, a.PromptText, a.Aggregate, a.PromptRef, a.Kind, a.Values, a.Reproducible)).ToList(),
             removedNodeIds.ToList(),
             aggregateEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             resultEdit,
@@ -5743,12 +6159,13 @@
                 i.Items?.Type,
                 ToDraft(i.Fields),
                 i.Items is { IsBare: false } ? ToDraft(i.Items) : null)).ToList(),
-            resultsEdit?.Select(r => new DraftResult(r.Id, r.Node, r.Label, r.When)).ToList(),
+            resultsEdit?.Select(r => new DraftResult(r.Id, r.Node, r.Label, r.When, r.Macros?.ToList(), r.Signature)).ToList(),
             new Dictionary<string, string>(addedScalars, StringComparer.Ordinal),
             specVersionBump,
             titleEdit,
             descriptionEdit,
-            tagsEdit);
+            tagsEdit,
+            addedMacros.Select(m => new DraftAddedMacro(m.Id, m.Label, m.Text)).ToList());
         await JS.InvokeVoidAsync("localStorage.setItem", DraftKey, JsonSerializer.Serialize(payload));
     }
 
@@ -5767,6 +6184,13 @@
         if (AddedPromptForFile(path) is { } addedPrompt)
         {
             addedPrompt.Text = value;
+            await PendingChangedAsync();
+            return;
+        }
+
+        if (AddedMacroForFile(path) is { } addedMacroDraft)
+        {
+            addedMacroDraft.Text = value;
             await PendingChangedAsync();
             return;
         }
@@ -5986,6 +6410,12 @@
                 files[AddedStandalonePromptFile(pending.Id)] = pending.Text;
             }
 
+            // v11 #564: each pending macro's template file.
+            foreach (var pendingMacro in addedMacros)
+            {
+                files[AddedMacroFile(pendingMacro.Id)] = pendingMacro.Text;
+            }
+
             foreach (var removedNodeId in removedNodeIds)
             {
                 var promptId = nodes.FirstOrDefault(n => n.Id == removedNodeId)?.Prompt;
@@ -6096,6 +6526,9 @@
     /// </summary>
     private void ResetFormScratch()
     {
+        newMacroId = null;
+        newMacroLabel = null;
+        newMacroError = null;
         declaredError = null;
         newPromptId = newPromptError = null;
         newVariableName = newVariableError = null;
@@ -6396,6 +6829,12 @@
                     (addedNode.Values ?? new List<string>()).Select(v => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(v)).ToArray());
             }
 
+            // v11 #564: the reproducibility claim on a new node.
+            if (addedNode.Reproducible)
+            {
+                newNodeObject["reproducible"] = true;
+            }
+
             nodesArray.Add(newNodeObject);
         }
 
@@ -6460,6 +6899,29 @@
                     .ToArray());
         }
 
+        // v11 #564: pending macros — create the array when the manifest has
+        // none yet (the data-block pattern), then append each declaration.
+        if (addedMacros.Count > 0)
+        {
+            var macrosKey = root["Macros"] is not null ? "Macros" : "macros";
+
+            if (root[macrosKey] is not System.Text.Json.Nodes.JsonArray macrosArray)
+            {
+                macrosArray = new System.Text.Json.Nodes.JsonArray();
+                root[macrosKey] = macrosArray;
+            }
+
+            foreach (var pendingMacro in addedMacros)
+            {
+                macrosArray.Add(new System.Text.Json.Nodes.JsonObject
+                {
+                    ["id"] = pendingMacro.Id,
+                    ["label"] = pendingMacro.Label,
+                    ["file"] = AddedMacroFile(pendingMacro.Id)
+                });
+            }
+        }
+
         if (resultsEdit != null)
         {
             root.AsObject().Remove("result");
@@ -6480,6 +6942,21 @@
                         if (!string.IsNullOrWhiteSpace(result.When))
                         {
                             node["when"] = result.When;
+                        }
+
+                        // v11 #564: the deliverable's ordered macro list and
+                        // the signed flag — written here or the first results
+                        // edit would erase them. Signature is carried as read:
+                        // presence, not truth, is what's refused below 11.
+                        if (result.Macros is { Count: > 0 })
+                        {
+                            node["macros"] = new System.Text.Json.Nodes.JsonArray(
+                                result.Macros.Select(m => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(m)).ToArray());
+                        }
+
+                        if (result.Signature is { } signature)
+                        {
+                            node["signature"] = signature;
                         }
 
                         return (System.Text.Json.Nodes.JsonNode?)node;
@@ -6586,6 +7063,18 @@
             {
                 nodeObject[nodeObject.ContainsKey("Values") ? "Values" : "values"] = new System.Text.Json.Nodes.JsonArray(
                     pair.Value.Values.Select(v => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(v)).ToArray());
+            }
+
+            // v11 #564: the reproducibility claim, written or removed to
+            // match the effective tuple (record § 6 — carried, not enforced).
+            if (pair.Value.Reproducible)
+            {
+                nodeObject[nodeObject.ContainsKey("Reproducible") ? "Reproducible" : "reproducible"] = true;
+            }
+            else
+            {
+                nodeObject.Remove("reproducible");
+                nodeObject.Remove("Reproducible");
             }
         }
 

@@ -155,6 +155,19 @@
                         </label>
                     }
                 }
+                @if (OfferReproducible)
+                {
+                    @* v11 #564 (record § 6): any node may claim it — the
+                       classifier and extraction stages are the intended cases,
+                       so this sits outside the prompt-only guard. *@
+                    <label class="node-field node-field--reproducible">
+                        <input type="checkbox"
+                               checked="@node.Reproducible"
+                               @onchange="args => EmitReproducibleAsync(node, args.Value is bool isChecked && isChecked)"
+                               aria-label="@($"Reproducible for node {node.Id}")" />
+                        <span>reproducible — same input, same output (the rerun verdict reads this)</span>
+                    </label>
+                }
             </div>
         }
         @if (node.Aggregate != null)
@@ -301,7 +314,11 @@
     public sealed record VariableAdd(string NodeId, string Variable, string From, string? As);
 
     /// <summary>The node's full effective field tuple after one field changed (#117/#170).</summary>
-    public sealed record NodeChange(string NodeId, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string? Prompt = null, IReadOnlyList<string>? Values = null);
+    public sealed record NodeChange(string NodeId, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string? Prompt = null, IReadOnlyList<string>? Values = null,
+        // v11 #564: the reproducibility claim — the effective value always
+        // rides the tuple (never null-means-unchanged), so later edits to
+        // other fields can never clobber it.
+        bool Reproducible = false);
 
     /// <summary>An aggregator's full effective ordered source list after one change (#117).</summary>
     public sealed record AggregateChange(string NodeId, List<string> Sources);
@@ -318,6 +335,9 @@
     [Parameter] public IReadOnlyList<string> ArrayInputs { get; set; } = Array.Empty<string>();
     [Parameter] public IReadOnlyList<string> ContractOptions { get; set; } = Array.Empty<string>();
     [Parameter] public IReadOnlyList<string> PromptOptions { get; set; } = Array.Empty<string>();
+
+    /// <summary>v11 #564: whether the reproducible toggle renders — the page gates it at specVersion 11.</summary>
+    [Parameter] public bool OfferReproducible { get; set; }
     [Parameter] public bool AllowPromptChange { get; set; }
     [Parameter] public string? Only { get; set; }
     [Parameter] public Func<string, bool>? NodeModified { get; set; }
@@ -390,8 +410,11 @@
         await EmitValuesAsync(node, (node.Values ?? Array.Empty<string>()).Append(candidate).ToList());
     }
 
+    private Task EmitReproducibleAsync(WorkflowManifestReader.NodeView node, bool reproducible) =>
+        OnNodeChanged.InvokeAsync(new NodeChange(node.Id, node.Label, node.ForEach, node.OutputSchema, node.FailIfEmpty, node.Prompt, node.Values, reproducible));
+
     private Task EmitValuesAsync(WorkflowManifestReader.NodeView node, List<string> values) =>
-        OnNodeChanged.InvokeAsync(new NodeChange(node.Id, node.Label, node.ForEach, node.OutputSchema, node.FailIfEmpty, node.Prompt, values));
+        OnNodeChanged.InvokeAsync(new NodeChange(node.Id, node.Label, node.ForEach, node.OutputSchema, node.FailIfEmpty, node.Prompt, values, node.Reproducible));
 
     private async Task EmitNodeChangeAsync(
         WorkflowManifestReader.NodeView node,
@@ -415,7 +438,7 @@
             effectiveFailIfEmpty = null;
         }
 
-        await OnNodeChanged.InvokeAsync(new NodeChange(node.Id, effectiveLabel, effectiveForEach, effectiveSchema, effectiveFailIfEmpty, effectivePrompt));
+        await OnNodeChanged.InvokeAsync(new NodeChange(node.Id, effectiveLabel, effectiveForEach, effectiveSchema, effectiveFailIfEmpty, effectivePrompt, Reproducible: node.Reproducible));
     }
 
     private sealed class AddForm
