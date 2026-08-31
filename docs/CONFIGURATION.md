@@ -405,8 +405,8 @@ string remains only as the local-dev (Azurite) fallback.
 | `ConsultGenerationJobEventStorage__TableServiceUri` | `Jobs/ConsultGenerationJobEventStore.cs` (optional override) |
 | `ConsultGenerationJobIndexStorage__TableServiceUri` | `Jobs/ConsultGenerationJobIndexStore.cs` (optional override) |
 | `AccountStorage__ConnectionStringName` | Local-dev fallback name (default `AzureWebJobsStorage`); same chain as before for the two job stores |
-| `TextStorage__BlobServiceUri` | #556 (storage-separation.md § 3): the PHI text account. Production: `https://consultologisteastcatext.blob.core.windows.net`. **Nothing reads it until M2 (#557)** — set with the account so the read path lands against a store that exists |
-| `TextStorage__TableServiceUri` | Production: `https://consultologisteastcatext.table.core.windows.net` (the events table moves there in M2) |
+| `TextStorage__BlobServiceUri` | #556/#557 (storage-separation.md § 3): the PHI text account's blobs — `Jobs/JobOutputsBlobStore.cs` writes a completed job's outputs there and reads them back on GET. Production: `https://consultologisteastcatext.blob.core.windows.net` |
+| `TextStorage__TableServiceUri` | Production: `https://consultologisteastcatext.table.core.windows.net`. `ConsultGenerationJobEvents` resolves through it (#557); the `ConsultGenerationJobEventStorage__TableServiceUri` override still wins when set |
 | `TextStorage__credential` / `TextStorage__clientId` | `managedidentity` + the user-assigned identity's client id — the identity-form pair, as `AzureWebJobsStorage__*` uses |
 
 ## Platform / runtime (not set by application code)
