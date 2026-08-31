@@ -287,7 +287,12 @@ public sealed record ConsultNodeDescriptor(
     IReadOnlyList<string>? Aggregate = null,
     // v10 (#495): a classifier's declared values. Trailing optional, so the
     // snapshot a sleeping job re-reads binds as it did.
-    IReadOnlyList<string>? Values = null);
+    IReadOnlyList<string>? Values = null,
+    // v11 #550 (record § 6): the package's claim that this node's output is
+    // the same for the same input — carried for #549's rerun verdict, never
+    // enforced at run time. Only true or null, never false. Appended last,
+    // same reason as Values.
+    bool? Reproducible = null);
 
 public sealed record ConsultNodeBindingDescriptor(string From, string? As = null);
 
