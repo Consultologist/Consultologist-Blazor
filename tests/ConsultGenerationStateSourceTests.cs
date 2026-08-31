@@ -46,7 +46,7 @@ public class ConsultGenerationStateSourceTests
         // born without them stays without them.
         var stateProperty = typeof(ConsultGenerationJobEntity)
             .GetProperty("State", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)!;
-        var entity = new ConsultGenerationJobEntity(NSubstitute.Substitute.For<IConsultGenerationJobIndexStore>(), NSubstitute.Substitute.For<IJobOutputsBlobStore>());
+        var entity = new ConsultGenerationJobEntity(NSubstitute.Substitute.For<IConsultGenerationJobIndexStore>(), NSubstitute.Substitute.For<IJobOutputsBlobStore>(), NSubstitute.Substitute.For<IJobInputsBlobStore>());
         var items = new List<IReadOnlyDictionary<string, string>> { new Dictionary<string, string> { ["id"] = "hpi", ["name"] = "HPI" } };
 
         await entity.Initialize(new ConsultGenerationJobInitialize("job-1", "user-1", items, ApiHost: "east.ca.api.consultologist.ai", EngineCommit: new string('a', 40)));
@@ -65,7 +65,7 @@ public class ConsultGenerationStateSourceTests
         var stateProperty = typeof(ConsultGenerationJobEntity)
             .GetProperty("State", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)!;
         var indexStore = NSubstitute.Substitute.For<IConsultGenerationJobIndexStore>();
-        var entity = new ConsultGenerationJobEntity(indexStore, NSubstitute.Substitute.For<IJobOutputsBlobStore>());
+        var entity = new ConsultGenerationJobEntity(indexStore, NSubstitute.Substitute.For<IJobOutputsBlobStore>(), NSubstitute.Substitute.For<IJobInputsBlobStore>());
 
         var items = new List<IReadOnlyDictionary<string, string>>
         {

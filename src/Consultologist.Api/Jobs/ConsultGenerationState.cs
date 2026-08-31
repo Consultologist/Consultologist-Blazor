@@ -24,11 +24,13 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
 {
     private readonly IConsultGenerationJobIndexStore _indexStore;
     private readonly IJobOutputsBlobStore _outputsStore;
+    private readonly IJobInputsBlobStore _inputsStore;
 
-    public ConsultGenerationJobEntity(IConsultGenerationJobIndexStore indexStore, IJobOutputsBlobStore outputsStore)
+    public ConsultGenerationJobEntity(IConsultGenerationJobIndexStore indexStore, IJobOutputsBlobStore outputsStore, IJobInputsBlobStore inputsStore)
     {
         _indexStore = indexStore;
         _outputsStore = outputsStore;
+        _inputsStore = inputsStore;
     }
 
     public async Task Initialize(ConsultGenerationJobInitialize input)
@@ -455,6 +457,14 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             await _outputsStore.DeleteAsync(state.OutputsBlob, CancellationToken.None);
         }
 
+        // #547: the held inputs go with the text — same op, same self-healing.
+        // One clock until #548 splits them; the pointer stays, gated by
+        // InputsDroppedAtUtc.
+        if (state.InputsBlob != null)
+        {
+            await _inputsStore.DeleteAsync(state.InputsBlob, CancellationToken.None);
+        }
+
         state.StampOutputHashes();
         state.AssembledDocument = null;
         foreach (var document in state.AssembledDocuments ?? new List<ConsultGenerationResultDocumentState>())
@@ -474,6 +484,11 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
 
         state.TextDroppedAtUtc = input.DroppedAtUtc;
         state.History.Add(new JobHistoryEvent("retention", "Produced text deleted (retention policy)", null, input.DroppedAtUtc));
+        if (state.InputsBlob != null)
+        {
+            state.InputsDroppedAtUtc = input.DroppedAtUtc;
+            state.History.Add(new JobHistoryEvent("retention", "Held inputs deleted (retention policy)", null, input.DroppedAtUtc));
+        }
         State = state;
 
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);

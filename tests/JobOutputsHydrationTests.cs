@@ -78,7 +78,7 @@ public class JobOutputsHydrationTests
 
     // ----- the transport's hydration condition -----
 
-    private static ConsultGenerationJobs Transport(IJobOutputsBlobStore store) => new(
+    private static ConsultGenerationJobs Transport(IJobOutputsBlobStore store, IJobInputsBlobStore? inputsStore = null) => new(
         Microsoft.Extensions.Logging.Abstractions.NullLogger<ConsultGenerationJobs>.Instance,
         Substitute.For<Consultologist.Api.Auth.IAccountAuthorizer>(),
         Substitute.For<IConsultGenerationJobEventStore>(),
@@ -86,15 +86,22 @@ public class JobOutputsHydrationTests
         Substitute.For<Consultologist.Api.Email.IGraphMailClient>(),
         new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
         Substitute.For<Consultologist.Api.Auth.IAccountSettingsStore>(),
-        store);
+        store,
+        inputsStore ?? Substitute.For<IJobInputsBlobStore>());
 
-    private static ConsultGenerationJobResponse Terminal(ConsultOutputsBlobPointer? pointer, DateTimeOffset? dropped) => new(
+    private static ConsultGenerationJobResponse Terminal(
+        ConsultOutputsBlobPointer? pointer,
+        DateTimeOffset? dropped,
+        ConsultInputsBlobPointer? inputsPointer = null,
+        DateTimeOffset? inputsDropped = null) => new(
         "job-1", "user-1", "Completed", 1, 1, 0,
         new Dictionary<string, string>(),
         new Dictionary<string, string>(),
         true,
         TextDroppedAtUtc: dropped,
-        OutputsBlob: pointer);
+        OutputsBlob: pointer,
+        InputsBlob: inputsPointer,
+        InputsDroppedAtUtc: inputsDropped);
 
     [Fact]
     public async Task NoPointer_IsAPreMigrationRecord_ServedAsIs()
@@ -124,5 +131,46 @@ public class JobOutputsHydrationTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => Transport(store).HydrateOutputsAsync(response, CancellationToken.None));
+    }
+
+    // ----- #547: the held inputs at the choke point -----
+
+    [Fact]
+    public async Task HeldInputs_AreHydrated_WhileHeld()
+    {
+        var store = Substitute.For<IJobOutputsBlobStore>();
+        var inputsStore = Substitute.For<IJobInputsBlobStore>();
+        var pointer = new ConsultInputsBlobPointer("org-job-inputs", "u/j.json");
+        inputsStore.ReadAsync(pointer, Arg.Any<CancellationToken>())
+            .Returns(new JobInputsPayload(1, new Dictionary<string, string> { ["consult_draft"] = "Referral." }, null));
+        var response = Terminal(null, null, pointer);
+
+        var hydrated = await Transport(store, inputsStore).HydrateOutputsAsync(response, CancellationToken.None);
+
+        Assert.Equal("Referral.", hydrated.HeldInputs!["consult_draft"]);
+    }
+
+    [Fact]
+    public async Task DroppedInputs_AreNeverHydrated()
+    {
+        var store = Substitute.For<IJobOutputsBlobStore>();
+        var inputsStore = Substitute.For<IJobInputsBlobStore>();
+        var response = Terminal(null, null, new ConsultInputsBlobPointer("org-job-inputs", "u/j.json"), DateTimeOffset.UtcNow);
+
+        var hydrated = await Transport(store, inputsStore).HydrateOutputsAsync(response, CancellationToken.None);
+
+        Assert.Null(hydrated.HeldInputs);
+        await inputsStore.DidNotReceiveWithAnyArgs().ReadAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task ALiveInputsPointer_WithNoBlob_IsLoud()
+    {
+        var store = Substitute.For<IJobOutputsBlobStore>();
+        var inputsStore = Substitute.For<IJobInputsBlobStore>();
+        var response = Terminal(null, null, new ConsultInputsBlobPointer("org-job-inputs", "u/j.json"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Transport(store, inputsStore).HydrateOutputsAsync(response, CancellationToken.None));
     }
 }

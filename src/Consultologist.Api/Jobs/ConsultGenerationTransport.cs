@@ -81,6 +81,7 @@ public sealed class ConsultGenerationJobs
     // #486: the verified delivery address lives in the account's settings.
     private readonly IAccountSettingsStore _settingsStore;
     private readonly IJobOutputsBlobStore _outputsStore;
+    private readonly IJobInputsBlobStore _inputsStore;
 
     public ConsultGenerationJobs(
         ILogger<ConsultGenerationJobs> logger,
@@ -90,7 +91,8 @@ public sealed class ConsultGenerationJobs
         Email.IGraphMailClient mail,
         IConfiguration configuration,
         IAccountSettingsStore settingsStore,
-        IJobOutputsBlobStore outputsStore)
+        IJobOutputsBlobStore outputsStore,
+        IJobInputsBlobStore inputsStore)
     {
         _logger = logger;
         _authorizer = authorizer;
@@ -100,6 +102,7 @@ public sealed class ConsultGenerationJobs
         _configuration = configuration;
         _settingsStore = settingsStore;
         _outputsStore = outputsStore;
+        _inputsStore = inputsStore;
     }
 
     /// <summary>#486: the confirmed address, or null — never the token claim.</summary>
@@ -1273,16 +1276,26 @@ public sealed class ConsultGenerationJobs
         ConsultGenerationJobResponse response,
         CancellationToken cancellationToken)
     {
-        if (response.OutputsBlob == null || response.TextDroppedAtUtc != null)
+        if (response.OutputsBlob != null && response.TextDroppedAtUtc == null)
         {
-            return response;
+            var payload = await _outputsStore.ReadAsync(response.OutputsBlob, cancellationToken);
+            response = payload == null
+                ? throw new InvalidOperationException($"Outputs blob missing for job {response.JobId}.")
+                : JobOutputsHydration.Apply(response, payload);
         }
 
-        var payload = await _outputsStore.ReadAsync(response.OutputsBlob, cancellationToken);
+        // #547: the held inputs, while held — what History shows. The same
+        // broken-invariant posture as outputs: a live pointer with no blob
+        // is loud, never silently absent inputs.
+        if (response.InputsBlob != null && response.InputsDroppedAtUtc == null)
+        {
+            var held = await _inputsStore.ReadAsync(response.InputsBlob, cancellationToken);
+            response = held == null
+                ? throw new InvalidOperationException($"Inputs blob missing for job {response.JobId}.")
+                : response with { HeldInputs = held.Effective };
+        }
 
-        return payload == null
-            ? throw new InvalidOperationException($"Outputs blob missing for job {response.JobId}.")
-            : JobOutputsHydration.Apply(response, payload);
+        return response;
     }
 
     private static async Task<ConsultGenerationJobResponse?> GetEntityBackedJobResponseAsync(

@@ -215,7 +215,10 @@ public record ConsultGenerationJobResponse(
     // #547: where the held inputs live, and when the retention drop deleted
     // them. Null on unheld jobs (v5/v6, pre-#547, or the write failed).
     ConsultInputsBlobPointer? InputsBlob = null,
-    DateTimeOffset? InputsDroppedAtUtc = null);
+    DateTimeOffset? InputsDroppedAtUtc = null,
+    // #547: the held effective map, hydrated from the inputs blob while it
+    // is held — what History shows; null once dropped or never held.
+    IReadOnlyDictionary<string, string>? HeldInputs = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
