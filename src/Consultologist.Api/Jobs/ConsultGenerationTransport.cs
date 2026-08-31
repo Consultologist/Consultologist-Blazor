@@ -82,6 +82,7 @@ public sealed class ConsultGenerationJobs
     private readonly IAccountSettingsStore _settingsStore;
     private readonly IJobOutputsBlobStore _outputsStore;
     private readonly IJobInputsBlobStore _inputsStore;
+    private readonly IConsultGenerationLinkStore _linkStore;
 
     public ConsultGenerationJobs(
         ILogger<ConsultGenerationJobs> logger,
@@ -92,7 +93,8 @@ public sealed class ConsultGenerationJobs
         IConfiguration configuration,
         IAccountSettingsStore settingsStore,
         IJobOutputsBlobStore outputsStore,
-        IJobInputsBlobStore inputsStore)
+        IJobInputsBlobStore inputsStore,
+        IConsultGenerationLinkStore linkStore)
     {
         _logger = logger;
         _authorizer = authorizer;
@@ -103,6 +105,7 @@ public sealed class ConsultGenerationJobs
         _settingsStore = settingsStore;
         _outputsStore = outputsStore;
         _inputsStore = inputsStore;
+        _linkStore = linkStore;
     }
 
     /// <summary>#486: the confirmed address, or null — never the token claim.</summary>
@@ -625,6 +628,68 @@ public sealed class ConsultGenerationJobs
                     : response.WorkflowPackage == null
                         ? "This record does not name the package version it ran, so it cannot be rerun."
                         : null;
+
+    /// <summary>
+    /// #546: who used this run — the links index's rows for it, ids only.
+    /// The "copied from" side lives on each consumer's own origins; this is
+    /// the inversion. Entity-backed ownership on purpose: the response
+    /// contains OTHER runs' ids, so the synthesizing read's caller-supplied
+    /// ownership is not acceptable, and someone else's job is not found,
+    /// never forbidden.
+    /// </summary>
+    [Function("GetConsultGenerationJobLinks")]
+    public async Task<HttpResponseData> GetLinksAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", "options", Route = "ConsultGenerationJobs/{jobId}/Links")] HttpRequestData req,
+        [DurableClient] DurableTaskClient client,
+        string jobId)
+    {
+        var cancellationToken = req.FunctionContext.CancellationToken;
+
+        if (IsOptions(req))
+        {
+            return CreateEmptyResponse(req, HttpStatusCode.OK);
+        }
+
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest, new { error = "JobId is required." }, cancellationToken);
+        }
+
+        var account = await _authorizer.AuthorizeAsync(req, cancellationToken);
+
+        if (account == null)
+        {
+            return AccountAuthorizer.CreateUnauthorizedResponse(req);
+        }
+
+        if (!AccountAuthorizer.CanUseApp(account))
+        {
+            return AccountAuthorizer.CreateForbiddenResponse(req);
+        }
+
+        var response = await GetEntityBackedJobResponseAsync(client, jobId, cancellationToken);
+
+        if (response == null
+            || !string.Equals(response.AppUserId, account.AppUserId, StringComparison.Ordinal))
+        {
+            return await CreateJsonResponseAsync(
+                req, HttpStatusCode.NotFound, new { error = "Consult generation job was not found." }, cancellationToken);
+        }
+
+        var consumers = await _linkStore.ListConsumersAsync(jobId, cancellationToken);
+
+        return await CreateJsonResponseAsync(
+            req,
+            HttpStatusCode.OK,
+            new { usedBy = UsedByFrom(consumers) },
+            cancellationToken);
+    }
+
+    /// <summary>The wire projection: consumer ids and the edge's words, nothing else. Extracted so it can be asserted directly.</summary>
+    internal static IReadOnlyList<ConsultJobLinkResponse> UsedByFrom(IReadOnlyList<ConsultGenerationLink> links) =>
+        links
+            .Select(link => new ConsultJobLinkResponse(link.ConsumerJobId, link.Kind, link.InputId, link.ResultId))
+            .ToList();
 
     /// <summary>
     /// #582: the source's hashes, lifted from its entity-backed response —

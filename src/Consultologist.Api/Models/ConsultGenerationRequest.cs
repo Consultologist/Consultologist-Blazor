@@ -113,6 +113,18 @@ public record ConsultGenerationJobStartResponse(
     string JobId,
     string StatusUrl);
 
+/// <summary>
+/// #546: one "used by" edge on a source run — the consumer's id and how it
+/// used this run: a previous-run copy names the deliverable and the slot it
+/// filled; a rerun names neither (the whole run was replayed). Ids and
+/// declared words only, never text.
+/// </summary>
+public sealed record ConsultJobLinkResponse(
+    string JobId,
+    string Kind,
+    string? InputId = null,
+    string? ResultId = null);
+
 public record ConsultGenerationJobResponse(
     string JobId,
     string AppUserId,

@@ -87,7 +87,8 @@ public class JobOutputsHydrationTests
         new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
         Substitute.For<Consultologist.Api.Auth.IAccountSettingsStore>(),
         store,
-        inputsStore ?? Substitute.For<IJobInputsBlobStore>());
+        inputsStore ?? Substitute.For<IJobInputsBlobStore>(),
+        Substitute.For<IConsultGenerationLinkStore>());
 
     private static ConsultGenerationJobResponse Terminal(
         ConsultOutputsBlobPointer? pointer,

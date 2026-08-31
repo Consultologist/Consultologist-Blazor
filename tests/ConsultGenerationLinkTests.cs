@@ -77,4 +77,19 @@ public class ConsultGenerationLinkTests
 
         Assert.Equal("consumer-1_referrals_1", TableConsultGenerationLinkStore.RowKeyFor(link));
     }
+
+    [Fact]
+    public void TheWireProjection_CarriesIdsAndWords_NeverTheAccount()
+    {
+        var links = new[]
+        {
+            new ConsultGenerationLink("source-1", "consumer-1", "previous-run", "referrals", "note", "user-1", Now, 0),
+            new ConsultGenerationLink("source-1", "consumer-2", "rerun", null, null, "user-1", Now)
+        };
+
+        var usedBy = ConsultGenerationJobs.UsedByFrom(links);
+
+        Assert.Equal(new ConsultJobLinkResponse("consumer-1", "previous-run", "referrals", "note"), usedBy[0]);
+        Assert.Equal(new ConsultJobLinkResponse("consumer-2", "rerun"), usedBy[1]);
+    }
 }
