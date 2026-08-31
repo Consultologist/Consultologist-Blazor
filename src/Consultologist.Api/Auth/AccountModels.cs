@@ -92,6 +92,11 @@ public sealed class AppUserEntity : ITableEntity
     public string DisplayName { get; set; } = string.Empty;
     public string? Email { get; set; }
     public string Status { get; set; } = AccountStatuses.Pending;
+    // #556 (storage-separation.md § 2.5): organisation | personal, decided
+    // once — stamped at creation from the sign-in tenant, back-filled at
+    // sign-in for rows from before. Null = a pre-#556 row not yet seen.
+    // Every text container is an org-/personal- pair keyed by this.
+    public string? AccountKind { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset UpdatedAtUtc { get; set; }
     public DateTimeOffset LastSeenAtUtc { get; set; }
@@ -151,7 +156,9 @@ public sealed record AppAccount(
     string? Email,
     string Status,
     AccountIdentity CurrentIdentity,
-    IReadOnlyList<AccountIdentity> LinkedIdentities);
+    IReadOnlyList<AccountIdentity> LinkedIdentities,
+    // #556: the account's kind (storage-separation.md § 2.5).
+    string? AccountKind = null);
 
 public sealed record AccountIdentity(
     string Provider,
@@ -183,7 +190,12 @@ public sealed record AccountMeResponse(
     // the one-click choice.
     string? DeliveryAddressVerifiedBy = null,
     string? SignInEmail = null,
-    string? SignInKind = null);
+    string? SignInKind = null,
+    // #556: the ACCOUNT's kind ("organisation" | "personal") — decided once
+    // and stored, where SignInKind above is this token's. The two agree by
+    // construction for a single-identity account, and the account's kind is
+    // what the store keys on. Null on a pre-#556 row not yet back-filled.
+    string? AccountKind = null);
 
 /// <summary>#517: what kind of account signed the token — an organisation's, or a personal Microsoft account.</summary>
 public static class SignInKinds

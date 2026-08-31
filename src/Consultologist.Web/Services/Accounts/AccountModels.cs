@@ -15,7 +15,10 @@ public sealed record AccountMeResponse(
     // SignInEmail and SignInKind ("organisation" | "personal") — this token's.
     string? DeliveryAddressVerifiedBy = null,
     string? SignInEmail = null,
-    string? SignInKind = null);
+    string? SignInKind = null,
+    // #556: the account's stored kind ("organisation" | "personal");
+    // SignInKind above is this token's. Null until back-filled.
+    string? AccountKind = null);
 
 public sealed record SaveDeliveryPasswordRequest(string Password);
 

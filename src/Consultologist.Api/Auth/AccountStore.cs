@@ -111,6 +111,9 @@ public sealed class AccountStore : IAccountStore
                 DisplayName = user.DisplayName,
                 Email = user.Email,
                 Status = AccountStatuses.Pending,
+                // #556: decided once, from the tenant that signed this first
+                // sign-in (storage-separation.md § 2.5).
+                AccountKind = KindFor(user),
                 CreatedAtUtc = now,
                 UpdatedAtUtc = now,
                 LastSeenAtUtc = now
@@ -152,6 +155,10 @@ public sealed class AccountStore : IAccountStore
         var appUser = appUserEntity.Value;
         appUser.DisplayName = string.IsNullOrWhiteSpace(appUser.DisplayName) ? user.DisplayName : appUser.DisplayName;
         appUser.Email = appUser.Email ?? user.Email;
+        // #556: the lazy back-fill — a pre-#556 row gains its kind at the next
+        // sign-in; a stamped kind is never overwritten (the account cannot
+        // change tenant, and the store keys containers on this).
+        appUser.AccountKind ??= KindFor(user);
         appUser.UpdatedAtUtc = now;
         appUser.LastSeenAtUtc = now;
 
@@ -171,8 +178,17 @@ public sealed class AccountStore : IAccountStore
             appUser.Email,
             appUser.Status,
             currentIdentity,
-            linkedIdentities);
+            linkedIdentities,
+            appUser.AccountKind);
     }
+
+    /// <summary>
+    /// #556: the account's kind, decided from the signing tenant — the one
+    /// rule (#517's): the consumers tenant, or no tenant, is personal;
+    /// everything else is an organisation. The same words SignInKinds owns,
+    /// because the two agree by construction for a single-identity account.
+    /// </summary>
+    internal static string KindFor(AuthenticatedUser user) => DeliveryAddress.SignInKindOf(user);
 
     public async Task<IdentityLinkOutcome> LinkIdentityAsync(
         string appUserId,
