@@ -257,4 +257,82 @@ public class ManifestReaderTests
         Assert.Empty(WorkflowManifestReader.ReadScalarEntries(
             Parse("""{ "data": { "standards": "data/standards/" } }""")));
     }
+
+    // ----- v11 #564: macros, the deliverable's list and signed flag, reproducible -----
+
+    [Fact]
+    public void ReadMacros_ReadsTheDeclaredList_InOrder_WithLabelDefaulting()
+    {
+        var macros = WorkflowManifestReader.ReadMacros(Parse("""
+            { "macros": [
+                { "id": "disclaimer", "label": "Standing disclaimer", "file": "macros/disclaimer.md" },
+                { "id": "closing", "file": "macros/closing.md" }
+            ] }
+            """));
+
+        Assert.Equal(new[] { "disclaimer", "closing" }, macros.Select(m => m.Id));
+        Assert.Equal("Standing disclaimer", macros[0].Label);
+        Assert.Equal("closing", macros[1].Label);
+        Assert.Equal("macros/closing.md", macros[1].File);
+    }
+
+    [Fact]
+    public void ReadMacros_IsEmpty_WhenTheKeyIsAbsent()
+    {
+        Assert.Empty(WorkflowManifestReader.ReadMacros(Parse("""{ "specVersion": 10 }""")));
+    }
+
+    [Fact]
+    public void ReadResults_CarriesTheMacroList_InOrder_AndTheTriStateSignature()
+    {
+        var results = WorkflowManifestReader.ReadResults(Parse("""
+            { "results": [
+                { "id": "letter", "node": "node:assemble-letter", "label": "Letter", "macros": ["disclaimer", "closing"], "signature": true },
+                { "id": "summary", "node": "node:assemble-summary", "label": "Summary", "signature": false },
+                { "id": "note", "node": "node:assemble-note", "label": "Note" }
+            ] }
+            """));
+
+        Assert.Equal(new[] { "disclaimer", "closing" }, results[0].Macros);
+        Assert.True(results[0].Signature);
+        // Presence, not truth, is refused below 11: an authored false reads
+        // as false, and absence as null — the carried-as-read discipline.
+        Assert.False(results[1].Signature);
+        Assert.Null(results[1].Macros);
+        Assert.Null(results[2].Signature);
+    }
+
+    [Fact]
+    public void ReadNodes_ReadsReproducible_FalseWhenAbsent()
+    {
+        var nodes = WorkflowManifestReader.ReadNodes(Parse("""
+            { "nodes": [
+                { "id": "extract", "label": "Extract", "prompt": "extract", "bindings": {}, "reproducible": true },
+                { "id": "draft", "label": "Draft", "prompt": "draft", "bindings": {} }
+            ] }
+            """));
+
+        Assert.True(nodes[0].Reproducible);
+        Assert.False(nodes[1].Reproducible);
+    }
+
+    [Fact]
+    public void TheV11Keys_TolerateTheServersPascalCasing()
+    {
+        var macros = WorkflowManifestReader.ReadMacros(Parse("""
+            { "Macros": [ { "Id": "closing", "Label": "Closing", "File": "macros/closing.md" } ] }
+            """));
+        Assert.Equal("closing", Assert.Single(macros).Id);
+
+        var results = WorkflowManifestReader.ReadResults(Parse("""
+            { "Results": [ { "Id": "letter", "Node": "node:a", "Label": "L", "Macros": ["closing"], "Signature": true } ] }
+            """));
+        Assert.Equal(new[] { "closing" }, results[0].Macros);
+        Assert.True(results[0].Signature);
+
+        var nodes = WorkflowManifestReader.ReadNodes(Parse("""
+            { "Nodes": [ { "Id": "extract", "Label": "E", "Prompt": "p", "Bindings": {}, "Reproducible": true } ] }
+            """));
+        Assert.True(nodes[0].Reproducible);
+    }
 }
