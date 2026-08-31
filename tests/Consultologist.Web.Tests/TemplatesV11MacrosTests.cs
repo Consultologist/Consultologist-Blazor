@@ -268,4 +268,111 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
 
         Assert.DoesNotContain(page.FindAll("button.editor-nav__item"), b => b.TextContent.Contains("closing_paragraph"));
     }
+
+    // ----- the Documents pane: macro list + signed toggle -----
+
+    [Fact]
+    public void TheDocumentsRow_IsOffered_At11AndNotBelow()
+    {
+        var eleven = RenderEditor(EditorFixtures.V11Macro());
+        Navigate(eleven, "Documents");
+        Assert.NotEmpty(eleven.FindAll(".declared-row__v11"));
+
+        var ten = RenderEditor(EditorFixtures.V10Classifier());
+        Navigate(ten, "Documents");
+        Assert.Empty(ten.FindAll(".declared-row__v11"));
+    }
+
+    [Fact]
+    public void SigningADocument_PublishesTrue_AndValidates()
+    {
+        var package = EditorFixtures.V11();
+        CapturePublish();
+        var page = RenderEditor(package);
+        Navigate(page, "Documents");
+
+        page.Find(".result-signed input[type=checkbox]").Change(true);
+        Publish(page);
+
+        Assert.True(Result(sent!).GetProperty("signature").GetBoolean());
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join(" | ", validated.Errors));
+    }
+
+    [Fact]
+    public void Unchecking_ReturnsToAbsence_NeverFalse()
+    {
+        var package = EditorFixtures.V11Macro();
+        CapturePublish();
+        var page = RenderEditor(package);
+        Navigate(page, "Documents");
+
+        page.Find(".result-signed input[type=checkbox]").Change(false);
+        Publish(page);
+
+        var result = Result(sent!);
+        Assert.False(result.TryGetProperty("signature", out _));
+        // The macro list is untouched by the signature toggle.
+        Assert.Equal(new[] { "disclaimer" }, result.GetProperty("macros").EnumerateArray().Select(m => m.GetString()));
+    }
+
+    [Fact]
+    public void ACarriedFalse_SurvivesOtherEdits_AsRead()
+    {
+        // Presence, not truth, is refused below 11 — an authored false is
+        // carried as read and written back, never silently promoted or
+        // dropped by an unrelated edit.
+        var package = EditorFixtures.V11Macro();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["results"]![0]!["signature"] = false;
+        package = package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+        CapturePublish();
+        var page = RenderEditor(package);
+        Navigate(page, "Documents");
+
+        page.Find("input[aria-label='Label for document consult_note']").Change("Renamed note");
+        Publish(page);
+
+        Assert.False(Result(sent!).GetProperty("signature").GetBoolean());
+    }
+
+    [Fact]
+    public void TheFullPath_AddReferenceReorder_PublishesTheOrderedList_Validated()
+    {
+        var package = EditorFixtures.V11Macro();
+        CapturePublish();
+        var page = RenderEditor(package);
+
+        // A second macro, born in the pane…
+        Navigate(page, "+ Macro");
+        page.Find("fluent-text-field[placeholder='closing_paragraph']").Change("closing_paragraph");
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Create macro")).Click();
+        page.Find("fluent-text-area").Change("Thank you for this referral.");
+
+        // …referenced on the deliverable, then moved first.
+        Navigate(page, "Documents");
+        page.Find(".result-macro-append").Change("closing_paragraph");
+        page.FindAll(".result-macro-up")[1].Click();
+        Publish(page);
+
+        var result = Result(sent!);
+        Assert.Equal(new[] { "closing_paragraph", "disclaimer" },
+            result.GetProperty("macros").EnumerateArray().Select(m => m.GetString()));
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join(" | ", validated.Errors));
+    }
+
+    [Fact]
+    public void RemovingTheLastMacro_OmitsTheKey()
+    {
+        var package = EditorFixtures.V11Macro();
+        CapturePublish();
+        var page = RenderEditor(package);
+        Navigate(page, "Documents");
+
+        page.Find(".result-macro-remove").Click();
+        Publish(page);
+
+        Assert.False(Result(sent!).TryGetProperty("macros", out _));
+    }
 }

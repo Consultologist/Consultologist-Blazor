@@ -934,6 +934,50 @@
                                             @ConditionEditor(deliverable)
                                         }
                                     </li>
+
+                                    @* v11 #564: the deliverable's ordered macro list
+                                       (§ 4 — append order is semantic) and the signed
+                                       flag (§ 5), both through resultsEdit as `when`. *@
+                                    @if (EffectiveSpecVersion >= 11)
+                                    {
+                                        <li class="declared-row__v11" data-v11-for="@deliverable.Id">
+                                            <span class="muted-text">Appended:</span>
+                                            @{ var resultMacros = deliverable.Macros ?? Array.Empty<string>(); }
+                                            @foreach (var (macroId, macroIndex) in resultMacros.Select((m, i) => (m, i)))
+                                            {
+                                                <span class="result-macro-row">
+                                                    <code>@macroId</code>
+                                                    <button type="button" class="aggregate-row__button result-macro-up" title="Move up"
+                                                            disabled="@(macroIndex == 0)"
+                                                            @onclick="() => MoveResultMacroAsync(deliverable, macroId, -1)">↑</button>
+                                                    <button type="button" class="aggregate-row__button result-macro-down" title="Move down"
+                                                            disabled="@(macroIndex == resultMacros.Count - 1)"
+                                                            @onclick="() => MoveResultMacroAsync(deliverable, macroId, 1)">↓</button>
+                                                    <button type="button" class="aggregate-row__button result-macro-remove" title="Remove macro"
+                                                            @onclick="() => RemoveResultMacroAsync(deliverable, macroId)">×</button>
+                                                </span>
+                                            }
+                                            @if (EffectiveMacros.Any(m => !resultMacros.Contains(m.Id)))
+                                            {
+                                                <select class="binding-row__select result-macro-append"
+                                                        @onchange="args => AppendResultMacroAsync(deliverable, args.Value?.ToString())"
+                                                        aria-label="@($"Append macro to document {deliverable.Id}")">
+                                                    <option value="">append macro…</option>
+                                                    @foreach (var candidateMacro in EffectiveMacros.Where(m => !resultMacros.Contains(m.Id)))
+                                                    {
+                                                        <option value="@candidateMacro.Id">@candidateMacro.Id</option>
+                                                    }
+                                                </select>
+                                            }
+                                            <label class="result-signed">
+                                                <input type="checkbox"
+                                                       checked="@(deliverable.Signature == true)"
+                                                       @onchange="args => ToggleResultSignatureAsync(deliverable, args.Value is bool isChecked && isChecked)"
+                                                       aria-label="@($"Signed for document {deliverable.Id}")" />
+                                                <span>signed</span>
+                                            </label>
+                                        </li>
+                                    }
                                 }
                             </ul>
                             <div class="add-variable__form">
@@ -4311,6 +4355,78 @@
         if (index >= 0)
         {
             results[index] = results[index] with { Label = label };
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    // v11 #564: the deliverable's macro list and signed flag — all through
+    // resultsEdit, exactly as `when` edits go.
+    private async Task ToggleResultSignatureAsync(WorkflowManifestReader.ResultView result, bool signedChecked)
+    {
+        var results = MutableResults();
+        var index = results.FindIndex(existing => existing.Id == result.Id);
+
+        if (index >= 0)
+        {
+            // Checked is true; unchecked returns to absence, never false —
+            // presence, not truth, is what the validator refuses below 11.
+            results[index] = results[index] with { Signature = signedChecked ? true : null };
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    private async Task AppendResultMacroAsync(WorkflowManifestReader.ResultView result, string? macroId)
+    {
+        if (string.IsNullOrEmpty(macroId))
+        {
+            return;
+        }
+
+        var results = MutableResults();
+        var index = results.FindIndex(existing => existing.Id == result.Id);
+
+        if (index >= 0 && !(results[index].Macros ?? Array.Empty<string>()).Contains(macroId))
+        {
+            var list = (results[index].Macros ?? Array.Empty<string>()).ToList();
+            list.Add(macroId);
+            results[index] = results[index] with { Macros = list };
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    private async Task RemoveResultMacroAsync(WorkflowManifestReader.ResultView result, string macroId)
+    {
+        var results = MutableResults();
+        var index = results.FindIndex(existing => existing.Id == result.Id);
+
+        if (index >= 0)
+        {
+            var list = (results[index].Macros ?? Array.Empty<string>()).Where(m => m != macroId).ToList();
+            results[index] = results[index] with { Macros = list.Count == 0 ? null : list };
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    private async Task MoveResultMacroAsync(WorkflowManifestReader.ResultView result, string macroId, int delta)
+    {
+        var results = MutableResults();
+        var index = results.FindIndex(existing => existing.Id == result.Id);
+
+        if (index >= 0 && results[index].Macros is { } current)
+        {
+            var list = current.ToList();
+            var from = list.IndexOf(macroId);
+            var to = from + delta;
+
+            if (from >= 0 && to >= 0 && to < list.Count)
+            {
+                (list[from], list[to]) = (list[to], list[from]);
+                results[index] = results[index] with { Macros = list };
+            }
         }
 
         await CommitDeclarationAsync();
