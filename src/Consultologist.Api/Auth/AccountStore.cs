@@ -158,7 +158,7 @@ public sealed class AccountStore : IAccountStore
         // #556: the lazy back-fill — a pre-#556 row gains its kind at the next
         // sign-in; a stamped kind is never overwritten (the account cannot
         // change tenant, and the store keys containers on this).
-        appUser.AccountKind ??= KindFor(user);
+        appUser.AccountKind = StampedKind(appUser.AccountKind, user);
         appUser.UpdatedAtUtc = now;
         appUser.LastSeenAtUtc = now;
 
@@ -189,6 +189,9 @@ public sealed class AccountStore : IAccountStore
     /// because the two agree by construction for a single-identity account.
     /// </summary>
     internal static string KindFor(AuthenticatedUser user) => DeliveryAddress.SignInKindOf(user);
+
+    /// <summary>#556: the back-fill's whole rule — fill once, never overwrite.</summary>
+    internal static string StampedKind(string? existing, AuthenticatedUser user) => existing ?? KindFor(user);
 
     public async Task<IdentityLinkOutcome> LinkIdentityAsync(
         string appUserId,

@@ -88,4 +88,18 @@ public class AccountStoreLinkOutcomeTests
         // token's kind agree by construction for a single-identity account.
         Assert.Equal(DeliveryAddress.SignInKindOf(user), AccountStore.KindFor(user));
     }
+
+    [Fact]
+    public void AStampedKind_IsNeverOverwritten_AndAnEmptyOneFillsOnce()
+    {
+        // #556: the back-fill's whole rule. An organisation token arriving on
+        // an account already stamped personal changes nothing — an account
+        // cannot change tenant, and the store keys containers on the kind.
+        var organisation = new AuthenticatedUser(
+            IdentityProviders.EntraExternalId, "https://login.microsoftonline.com/x/v2.0", "sub-1",
+            "A Clinician", "clinician@example.com", Array.Empty<string>(), "11111111-2222-3333-4444-555555555555");
+
+        Assert.Equal(SignInKinds.Personal, AccountStore.StampedKind(SignInKinds.Personal, organisation));
+        Assert.Equal(SignInKinds.Organisation, AccountStore.StampedKind(null, organisation));
+    }
 }
