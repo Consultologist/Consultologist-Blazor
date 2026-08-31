@@ -252,6 +252,14 @@ public static class ConsultAppendedKinds
 }
 
 /// <summary>
+/// #557 (storage-separation.md § 2.2): where a completed job's text lives —
+/// the container (which carries the account's kind) and the blob name,
+/// never a URL. Part of the record: kept after the text is dropped, when
+/// textDroppedAtUtc gates every read of it.
+/// </summary>
+public sealed record ConsultOutputsBlobPointer(string Container, string Name);
+
+/// <summary>
 /// The identity and display label of one per-item chain step, snapshotted from the
 /// job's workflow package at start.
 /// </summary>
