@@ -195,6 +195,20 @@ public class ProvenanceVersionSetTests
     }
 
     [Fact]
+    public void ThePerDocumentDigest_IsUnchangedByAnAppendedBlock()
+    {
+        // provenance@v2026.08.11 (#565), hash-definitions.md § 5: the appended
+        // text (a macro's expansion, the signature block) is inside `text`
+        // before the digest is taken — one document, never a document plus
+        // attachments. The v11 record's § 7 control, as the registry's worked
+        // example row publishes it.
+        Assert.Equal(WorkedExample("documentHash"), ConsultGenerationProvenance.Sha256Hex("Note.\n\nAppended disclaimer."));
+        Assert.Equal(
+            "4c4be8b3d6ef10d96f96d95f0cefbf81dfcf268030bf44679227b80f9c74aac3",
+            ConsultGenerationProvenance.Sha256Hex("Note.\n\nAppended disclaimer."));
+    }
+
+    [Fact]
     public void OutputDefinitions_1_2_3_AndTheAggregateInput()
     {
         Assert.Equal("208471a047a8964edc58a50d8317ad24a711e04b59445006ec06e8e44dc38f85",
