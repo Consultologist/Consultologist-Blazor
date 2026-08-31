@@ -194,6 +194,24 @@ public class DurablePayloadReplayTests
     }
 
     [Fact]
+    public void AStoredNodeDescriptor_WithoutReproducible_BindsNull()
+    {
+        // v11 #550: node snapshots stored before the flag existed —
+        // Reproducible binds null and re-serialises with exactly one more
+        // trailing null. The pin that cannot be added later: this is the
+        // snapshot a sleeping job re-reads.
+        const string stored = """
+            {"Id":"scope","Label":"Scope","PromptId":"classify","Bindings":null,"OutputContract":"classification.v1","FailIfEmpty":null,"ForEach":null,"ConceptSource":"scope","Aggregate":null,"Values":["in_scope","out_of_scope"]}
+            """;
+
+        var node = JsonSerializer.Deserialize<ConsultNodeDescriptor>(stored, Durable)!;
+
+        Assert.Null(node.Reproducible);
+        Assert.Equal(new[] { "in_scope", "out_of_scope" }, node.Values);
+        Assert.Equal(stored[..^1] + ",\"Reproducible\":null}", JsonSerializer.Serialize(node, Durable));
+    }
+
+    [Fact]
     public void AStructuredValue_SurvivesTheOrchestrationPayload()
     {
         // #421 made the typed request carry structure, and the request rides

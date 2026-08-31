@@ -1616,6 +1616,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             ForEach: node.ForEach,
             ConceptSource: WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(node.Id, node.Id),
             Aggregate: node.Aggregate,
-            Values: WorkflowNodeKinds.IsClassifier(node) ? node.Values : null);
+            Values: WorkflowNodeKinds.IsClassifier(node) ? node.Values : null,
+            // v11 #550: only true or null — an indifferent or pre-v11 node
+            // writes the bytes it always wrote.
+            Reproducible: node.Reproducible == true ? true : null);
     }
 }

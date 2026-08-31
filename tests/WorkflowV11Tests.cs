@@ -591,3 +591,48 @@ public class WorkflowV11SignatureRecordTests
         Assert.DoesNotContain(state().History, h => h.Kind == "unsigned");
     }
 }
+
+/// <summary>
+/// v11 rung (d) (#550, record § 6): reproducible is carried, not enforced —
+/// onto the descriptor through the one producer both doors share, and onto
+/// the record as stored. Only true or null, never false.
+/// </summary>
+public class WorkflowV11ReproducibleTests
+{
+    [Fact]
+    public void DescribeNode_CarriesTheFlag_OnlyWhenTrue()
+    {
+        var claimed = ConsultGenerationJobStarter.DescribeNode(V10Fixtures.Classifier() with { Reproducible = true }, null);
+        Assert.True(claimed.Reproducible);
+
+        var indifferent = ConsultGenerationJobStarter.DescribeNode(V10Fixtures.Classifier(), null);
+        Assert.Null(indifferent.Reproducible);
+
+        // A declared false is the same as silence — no node writes a false byte.
+        var declined = ConsultGenerationJobStarter.DescribeNode(V10Fixtures.Classifier() with { Reproducible = false }, null);
+        Assert.Null(declined.Reproducible);
+    }
+
+    [Fact]
+    public async Task TheRecord_SurfacesTheFlag_AsStored()
+    {
+        // The entity stores the descriptor list as-is and ToResponse hands
+        // the same records to the wire — this pins that zero-mapping claim.
+        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>());
+        await entity.Initialize(new ConsultGenerationJobInitialize("job-1", "user-1",
+            new[] { (IReadOnlyDictionary<string, string>)new Dictionary<string, string> { ["id"] = "a", ["name"] = "A" } },
+            Nodes: new[]
+            {
+                new ConsultNodeDescriptor("extract", "Extract", Reproducible: true),
+                new ConsultNodeDescriptor("draft", "Draft")
+            }));
+
+        var state = (ConsultGenerationJobState)typeof(ConsultGenerationJobEntity)
+            .GetProperty("State", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!
+            .GetValue(entity)!;
+        var response = state.ToResponse();
+
+        Assert.True(response.Nodes!.Single(node => node.Id == "extract").Reproducible);
+        Assert.Null(response.Nodes!.Single(node => node.Id == "draft").Reproducible);
+    }
+}
