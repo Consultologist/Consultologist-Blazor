@@ -254,7 +254,11 @@ public record ConsultGenerationJobResponse(
     // non-reruns and on #549-era reruns from before the baseline existed.
     string? RerunOf = null,
     string? RerunVerdict = null,
-    string? RerunDivergence = null);
+    string? RerunDivergence = null,
+    // #551: the job's token totals, stamped once at completion over the node
+    // instances that recorded usage. Null when none did or the record
+    // predates the field — not recorded, never zero.
+    ConsultTokenUsage? Tokens = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
@@ -404,7 +408,9 @@ public sealed record ConsultGenerationNodeStatusResponse(
     // #375: the definition the pair was computed under; absent before the ladder.
     int? HashVersion = null,
     // v10 (#496): a classifier's answer, a declared value.
-    string? Classification = null);
+    string? Classification = null,
+    // #551: what this instance's call cost; null is not recorded, never 0.
+    ConsultTokenUsage? Tokens = null);
 
 /// <summary>#390: the body of a reschedule — a job id in the route, a time here.</summary>
 public sealed record RescheduleConsultRequest(DateTimeOffset? ScheduledAtUtc);

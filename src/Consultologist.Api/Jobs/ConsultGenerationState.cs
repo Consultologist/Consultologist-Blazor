@@ -341,6 +341,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         output.InputHash = input.InputHash;
         output.OutputHash = input.OutputHash;
         output.HashVersion = input.HashVersion;
+        output.Tokens = input.Tokens;
         output.CompletedAtUtc = DateTimeOffset.UtcNow;
 
         var progress = state.GetOrAddItemProgress(input.ItemId, input.ItemName);
@@ -361,6 +362,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         node.InputHash = input.InputHash;
         node.OutputHash = input.OutputHash;
         node.HashVersion = input.HashVersion;
+        node.Tokens = input.Tokens;
         node.CompletedAtUtc = DateTimeOffset.UtcNow;
 
         // v10 (#496): a classifier's answer, a declared value — on the node
@@ -746,9 +748,35 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             }
         }
 
+        // #551: the job's totals — summed once over the instances that
+        // recorded usage (roll-ups and aggregates carry none, so no double
+        // count), on Completed and Failed alike: a failed run spent tokens
+        // too. Nothing recorded stamps nothing, never zero.
+        state.Tokens ??= TokensOf(state.NodeOutputs);
+
         State = state;
 
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+    }
+
+    /// <summary>#551: the sum over the instances that recorded usage, or null when none did.</summary>
+    internal static ConsultTokenUsage? TokensOf(IReadOnlyDictionary<string, ConsultNodeOutputState>? nodeOutputs)
+    {
+        var input = 0;
+        var output = 0;
+        var any = false;
+
+        foreach (var node in nodeOutputs?.Values ?? Enumerable.Empty<ConsultNodeOutputState>())
+        {
+            if (node.Tokens is { } tokens)
+            {
+                any = true;
+                input += tokens.Input;
+                output += tokens.Output;
+            }
+        }
+
+        return any ? new ConsultTokenUsage(input, output) : null;
     }
 
     [Function(nameof(ConsultGenerationJobEntity))]
@@ -932,7 +960,10 @@ public sealed record ConsultGenerationNodeUpdate(
     // trailing fields give: the engine calls this positionally.
     int? HashVersion = null,
     // v10 (#496): a classifier's normalised answer. Appended last, same reason.
-    string? Classification = null);
+    string? Classification = null,
+    // #551: what the node's call cost. Appended last, same reason; null on
+    // roll-ups and aggregates (no model ran) and on payloads from before.
+    ConsultTokenUsage? Tokens = null);
 
 /// <summary>v10 (#496): what the boundary decided — the one Decide signal.</summary>
 public sealed record ConsultGenerationDecision(
@@ -1082,7 +1113,10 @@ public sealed record ConsultGenerationNodeItemUpdate(
     int CompletedChainCount,
     int TotalChainCount,
     // #375: appended last, same reason.
-    int? HashVersion = null);
+    int? HashVersion = null,
+    // #551: what the item's call cost. Appended last, same reason; null is
+    // "not recorded", never zero.
+    ConsultTokenUsage? Tokens = null);
 
 public sealed class ConsultGenerationJobState
 {
@@ -1246,6 +1280,13 @@ public sealed class ConsultGenerationJobState
     public ConsultRerunBaseline? RerunBaseline { get; set; }
     public string? RerunVerdict { get; set; }
     public string? RerunDivergence { get; set; }
+
+    // #551: the job's token totals, stamped once at completion (Completed or
+    // Failed — a failed run spent tokens too) over the node instances that
+    // recorded usage. Null when none did, or on records from before: not
+    // recorded, never zero. Numbers survive DropText and the blob shed —
+    // which is what #552's usage store reads at completion.
+    public ConsultTokenUsage? Tokens { get; set; }
 
     // #486: what happened to the completion email (DeliveryOutcomes); null
     // on records from before, or while the job is still running.
@@ -1494,7 +1535,8 @@ public sealed class ConsultGenerationJobState
                     pair.Value.CompletedAtUtc,
                     pair.Value.Error,
                     pair.Value.HashVersion,
-                    pair.Value.Classification)),
+                    pair.Value.Classification,
+                    pair.Value.Tokens)),
             AgentVersions: AgentVersions,
             EffectiveInputHashVersion: EffectiveInputHashVersion,
             CatalogRef: CatalogRef,
@@ -1512,6 +1554,8 @@ public sealed class ConsultGenerationJobState
             RerunOf: RerunBaseline?.SourceJobId,
             RerunVerdict: RerunVerdict,
             RerunDivergence: RerunDivergence,
+            // #551: stamped once at completion; null is not recorded, never 0.
+            Tokens: Tokens,
             PackageSpecVersion: PackageSpecVersion,
             PackageTitle: PackageTitle,
             StartFailure: StartFailure,
@@ -1617,6 +1661,9 @@ public sealed class ConsultNodeOutputState
     // #375: the definition both hashes were computed under; null on records
     // from before the ladder (hash-definitions.md § 4 says what that means).
     public int? HashVersion { get; set; }
+    // #551: what this instance's call cost; null on roll-ups, aggregates and
+    // records from before — not recorded, never zero.
+    public ConsultTokenUsage? Tokens { get; set; }
     public DateTimeOffset? CompletedAtUtc { get; set; }
     public string? Error { get; set; }
     // v10 (#496): a classifier's answer — a declared value.

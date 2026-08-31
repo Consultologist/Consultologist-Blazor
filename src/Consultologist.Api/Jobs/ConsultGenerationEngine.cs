@@ -550,7 +550,7 @@ public sealed class ConsultGenerationOrchestrator
                     nameof(ConsultGenerationJobEntity.MarkNodeCompleted),
                     new ConsultGenerationNodeUpdate(
                         node.Id, node.Label, result.Concepts, result.InputHash, result.OutputHash,
-                        completedNodeCount, totalNodeCount, result.HashVersion, result.Classification));
+                        completedNodeCount, totalNodeCount, result.HashVersion, result.Classification, result.Tokens));
 
                 // A scalar source of a result aggregator is one block per owning
                 // deliverable (v6: the single empty-prefix entry; v5: no entries).
@@ -607,7 +607,7 @@ public sealed class ConsultGenerationOrchestrator
                     new ConsultGenerationNodeItemUpdate(
                         node.Id, node.Label, itemId, ItemName(node, itemId),
                         result.Concepts, result.InputHash, result.OutputHash,
-                        completedChainCount, chain.Count, result.HashVersion));
+                        completedChainCount, chain.Count, result.HashVersion, result.Tokens));
 
                 if (!v6 && nodeId == resultNodeId)
                 {
