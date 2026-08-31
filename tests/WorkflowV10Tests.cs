@@ -68,22 +68,22 @@ public class WorkflowV10GateTests
     public void TheValidatorAccepts10_AndTheStoreRunsIt()
     {
         // (a) #492 accepted ten at publish; (i) #500 runs it — the gate flipped
-        // together with the registry's v10 publication and the pin.
+        // together with the registry's v10 publication and the pin. The
+        // ceiling moved on to eleven (#566); the max is WorkflowV11Tests' pin.
         Assert.Contains(10, WorkflowPackageValidator.AcceptedSpecVersions);
         Assert.Contains(10, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions);
-        Assert.Equal(10, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions.Max());
 
         var result = V10Fixtures.Validate(V10Fixtures.Minimal());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
 
     [Fact]
-    public void ElevenIsAccepted_ButDoesNotRunYet()
+    public void ElevenIsAccepted_AndRunsNow()
     {
-        // (a) #563: the validator's gate moved first, the engine's follows at
-        // rung (g). Twelve is what the gate refuses now — WorkflowV11Tests.
+        // (a) #563 moved the validator's gate; (g) #566 moved the engine's.
+        // Twelve is what the gate refuses now — WorkflowV11Tests.
         Assert.Contains(11, WorkflowPackageValidator.AcceptedSpecVersions);
-        Assert.DoesNotContain(11, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions);
+        Assert.Contains(11, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions);
     }
 }
 

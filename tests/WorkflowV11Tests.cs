@@ -56,12 +56,12 @@ public static class V11Fixtures
 public class WorkflowV11GateTests
 {
     [Fact]
-    public void TheValidatorAccepts11_ButTheStoreDoesNotRunItYet()
+    public void TheValidatorAccepts11_AndTheStoreRunsIt()
     {
-        // (a) #563: publishable before runnable, as v8 and v10 shipped.
+        // (a) #563 made it publishable; (g) #566 makes it run.
         Assert.Contains(11, WorkflowPackageValidator.AcceptedSpecVersions);
-        Assert.DoesNotContain(11, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions);
-        Assert.Equal(10, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions.Max());
+        Assert.Contains(11, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions);
+        Assert.Equal(11, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions.Max());
 
         var result = V11Fixtures.Validate(V11Fixtures.Minimal());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));

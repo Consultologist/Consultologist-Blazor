@@ -521,8 +521,8 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains("requires specVersion 8", page.Markup, StringComparison.Ordinal);
-        // #430: the hint names the one rung on offer, which is 9 now.
-        Assert.Contains("Upgrade to specVersion 10", page.Markup, StringComparison.Ordinal);
+        // #430: the hint names the one rung on offer — 11 since #566.
+        Assert.Contains("Upgrade to specVersion 11", page.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -543,8 +543,8 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
 
         var root = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement;
 
-        // #430: the one offered rung was 9; #500: it is 10.
-        Assert.Equal(10, root.GetProperty("specVersion").GetInt32());
+        // #430: the one offered rung was 9; #500 made it 10; #566, 11.
+        Assert.Equal(11, root.GetProperty("specVersion").GetInt32());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
 
@@ -560,7 +560,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V9Structured());
 
         var page = Render<Templates>();
-        UpgradeTo(page, 10);
+        UpgradeTo(page, 11);
 
         Assert.DoesNotContain("Upgrade to specVersion", page.Markup, StringComparison.Ordinal);
     }
@@ -568,16 +568,16 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
     [Fact]
     public void AV7Package_IsOfferedTheOneRungThatRuns()
     {
-        // #492 reopened the gap and #500 closed it: ten is the newest that
+        // #563 reopened the gap and #566 closed it: eleven is the newest that
         // publishes and the newest that runs, so there is one button, and it
-        // names ten. #429's one-button-per-rung returns with the next format.
+        // names eleven. #429's one-button-per-rung returns with the next format.
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
 
         var page = Render<Templates>();
 
-        Assert.Contains("Upgrade to specVersion 10", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Upgrade to specVersion 11", page.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Upgrade to specVersion 10", page.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Upgrade to specVersion 9", page.Markup, StringComparison.Ordinal);
-        Assert.DoesNotContain("Upgrade to specVersion 8", page.Markup, StringComparison.Ordinal);
     }
 
     private static IEnumerable<string> UpgradeButtons(IRenderedComponent<Templates> page) =>
@@ -588,76 +588,58 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
     [Fact]
     public void TheRungsOffered_AreThoseAboveTheLoadedVersion()
     {
-        // Two rungs again (#563): the runnable ceiling and the newest, parted
-        // while 11 is publishable but not yet runnable — #429's pattern.
+        // One rung again (#566): eleven publishes and eleven runs — the two
+        // ceilings met, as they did at #500. #429's pattern returns with the
+        // next format.
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
-        Assert.Equal(new[] { "Upgrade to specVersion 10", "Upgrade to specVersion 11" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 11" }, UpgradeButtons(Render<Templates>()));
 
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V8());
-        Assert.Equal(new[] { "Upgrade to specVersion 10", "Upgrade to specVersion 11" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 11" }, UpgradeButtons(Render<Templates>()));
 
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V9Structured());
-        Assert.Equal(new[] { "Upgrade to specVersion 10", "Upgrade to specVersion 11" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 11" }, UpgradeButtons(Render<Templates>()));
 
-        // A v10 package has one rung left, and it does not run yet.
+        // A v10 package has one rung left, and it runs.
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V10Nested());
         Assert.Equal(new[] { "Upgrade to specVersion 11" }, UpgradeButtons(Render<Templates>()));
     }
 
     [Fact]
-    public void ABumpToTen_IsRunnable_AndSaysNothingOfAGap()
+    public void ABumpToEleven_IsRunnable_AndSaysNothingOfAGap()
     {
-        // The runnable rung stays quiet; only the parted ceiling speaks.
-        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V8());
-        var page = Render<Templates>();
-        UpgradeTo(page, 10);
-        Assert.DoesNotContain("not yet runnable", page.Markup, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void AStagedBumpToEleven_SaysNotYetRunnable()
-    {
-        // #429's notice, back for v11 (#563): a format the registry accepts
-        // before the engine runs it is said up front, not published into
-        // silence. It retires again when the ceilings meet at rung (g).
+        // #429's notice retired again at rung (g) (#566): the ceilings meet,
+        // the one rung runs, and nothing warns. The mechanism stays for the
+        // next format.
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V10Nested());
         var page = Render<Templates>();
         UpgradeTo(page, 11);
-        Assert.Contains("specVersion 11 is publishable but not yet runnable", page.Markup, StringComparison.Ordinal);
-        Assert.True(Templates.NewestSpecVersion > Templates.RunnableSpecVersion);
+        Assert.DoesNotContain("not yet runnable", page.Markup, StringComparison.Ordinal);
+        Assert.Empty(UpgradeButtons(page));
+        Assert.Equal(Templates.NewestSpecVersion, Templates.RunnableSpecVersion);
     }
 
     [Fact]
-    public async Task ThePublishSuccess_AppendsARunnabilityWarning_OnlyPastTheRunnableCeiling()
+    public async Task ThePublishSuccess_AppendsNoRunnabilityWarning_WhenTheCeilingsMeet()
     {
-        // To the runnable rung: no warning.
-        var (result, _) = await PublishAndCaptureAsync(page => { UpgradeTo(page, 10); return Task.CompletedTask; }, EditorFixtures.V7());
+        // #566: the one rung runs, so the success sentence carries no warning.
+        var (result, _) = await PublishAndCaptureAsync(page => { UpgradeTo(page, 11); return Task.CompletedTask; }, EditorFixtures.V7());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
 
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
         var page = Render<Templates>();
-        UpgradeTo(page, 10);
+        UpgradeTo(page, 11);
         page.FindAll("fluent-button").First(button => button.TextContent.Contains("Publish")).Click();
 
         var success = page.FindAll(".fluent-messagebar-message").Select(bar => bar.TextContent.Trim())
             .First(text => text.StartsWith("Published", StringComparison.Ordinal));
         Assert.DoesNotContain("not yet runnable", success, StringComparison.Ordinal);
-
-        // Past it (#563): the sentence an author needs to read.
-        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V10Nested());
-        var eleven = Render<Templates>();
-        UpgradeTo(eleven, 11);
-        eleven.FindAll("fluent-button").First(button => button.TextContent.Contains("Publish")).Click();
-
-        var elevenSuccess = eleven.FindAll(".fluent-messagebar-message").Select(bar => bar.TextContent.Trim())
-            .First(text => text.StartsWith("Published", StringComparison.Ordinal));
-        Assert.EndsWith("It is not yet runnable.", elevenSuccess);
     }
 
     [Theory]
-    [InlineData(7, 10)]
-    [InlineData(8, 10)]
-    [InlineData(9, 10)]
+    [InlineData(7, 11)]
+    [InlineData(8, 11)]
+    [InlineData(9, 11)]
     [InlineData(10, 11)]
     public async Task AnUpgradeAlone_ChangesOnlyTheSpecVersion(int from, int to)
     {
@@ -764,8 +746,9 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
 
         var root = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement;
 
-        // #430: the one offered rung was 9 (and the migration adds tags); #500: it is 10.
-        Assert.Equal(10, root.GetProperty("specVersion").GetInt32());
+        // #430: the one offered rung was 9 (and the migration adds tags);
+        // #500 made it 10; #566, 11.
+        Assert.Equal(11, root.GetProperty("specVersion").GetInt32());
         Assert.Equal(0, root.GetProperty("tags").GetArrayLength());
         Assert.Equal("consult_draft", root.GetProperty("inputs")[0].GetProperty("id").GetString());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
