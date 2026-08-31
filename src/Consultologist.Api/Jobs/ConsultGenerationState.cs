@@ -23,10 +23,12 @@ namespace Consultologist.Api.Jobs;
 public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJobState>
 {
     private readonly IConsultGenerationJobIndexStore _indexStore;
+    private readonly IJobOutputsBlobStore _outputsStore;
 
-    public ConsultGenerationJobEntity(IConsultGenerationJobIndexStore indexStore)
+    public ConsultGenerationJobEntity(IConsultGenerationJobIndexStore indexStore, IJobOutputsBlobStore outputsStore)
     {
         _indexStore = indexStore;
+        _outputsStore = outputsStore;
     }
 
     public async Task Initialize(ConsultGenerationJobInitialize input)
@@ -441,6 +443,17 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             return;
         }
 
+        // #557: the outputs blob goes first — a failure here fails the whole
+        // op with nothing persisted, the index still says text present, and
+        // the sweep re-signals on its next run; the purge and events legs it
+        // already ran are idempotent, and the account's 30-day lifecycle
+        // policy is the backstop. The pointer itself stays on the record:
+        // TextDroppedAtUtc gates every read of it.
+        if (state.OutputsBlob != null)
+        {
+            await _outputsStore.DeleteAsync(state.OutputsBlob, CancellationToken.None);
+        }
+
         state.StampOutputHashes();
         state.AssembledDocument = null;
         foreach (var document in state.AssembledDocuments ?? new List<ConsultGenerationResultDocumentState>())
@@ -531,6 +544,47 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         {
             state.History.Add(new JobHistoryEvent("success", "Done", null, DateTimeOffset.UtcNow));
             state.StampOutputHashes();
+
+            // #557: the outputs blob, written after the hashes are stamped so
+            // the payload carries them. A write failure is caught HERE — an
+            // exception out of FinalizeJob would land in the orchestrator's
+            // catch and re-finalize a produced consult as Failed; instead the
+            // record stays pre-#557-shaped (text on the entity, no pointer —
+            // the invariant: the only copy is never shed without a recorded
+            // pointer) and the record itself says what happened.
+            try
+            {
+                state.OutputsBlob = await _outputsStore.WriteAsync(
+                    input.AccountKind, state.AppUserId, state.JobId, state.ToOutputsPayload(), CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                state.History.Add(new JobHistoryEvent(
+                    "storage", "Outputs blob not written; the text stays on the record", ex.Message, DateTimeOffset.UtcNow));
+            }
+
+            // #557: with the pointer recorded, the entity sheds the four text
+            // species — the blob is the copy now. Gated on the pointer: the
+            // only copy is never shed after a failed write, and every reader
+            // then sees a pre-#557-shaped record.
+            if (state.OutputsBlob != null)
+            {
+                state.AssembledDocument = null;
+                foreach (var document in state.AssembledDocuments ?? Enumerable.Empty<ConsultGenerationResultDocumentState>())
+                {
+                    document.Text = null;
+                }
+
+                foreach (var block in state.Blocks.Values)
+                {
+                    block.GeneratedText = null;
+                }
+
+                foreach (var node in state.NodeOutputs?.Values ?? Enumerable.Empty<ConsultNodeOutputState>())
+                {
+                    node.Concepts = null;
+                }
+            }
         }
         else if (input.Status == ConsultGenerationJobStatuses.Failed)
         {
@@ -645,7 +699,12 @@ public sealed record ConsultGenerationOrchestrationInput(
     // submitted. Null when the package marks nothing signed, and when the
     // account has no chosen block (the engine then records the deliverable
     // as produced unsigned). Appended last, same reason.
-    ConsultSignatureSnapshot? Signature = null);
+    ConsultSignatureSnapshot? Signature = null,
+    // #557: the account's kind at start — which text container this job's
+    // outputs blob lands in (storage-separation.md § 2.5). Null on payloads
+    // from before; the writer's rule falls to personal. Appended last, same
+    // reason as everything above.
+    string? AccountKind = null);
 
 /// <summary>
 /// v11 #516: the chosen signature as it was at job start — the block's id,
@@ -754,7 +813,13 @@ public sealed record ConsultGenerationNodeFailure(
     string Error,
     IReadOnlyList<ConsultItemStepDescriptor> SkippedNodes);
 
-public sealed record ConsultGenerationJobFinalize(string Status, string? Error = null);
+public sealed record ConsultGenerationJobFinalize(
+    string Status,
+    string? Error = null,
+    // #557: rides to FinalizeJob so the entity writes the outputs blob into
+    // the right container. Appended last — a sleeping completed job replays
+    // this payload.
+    string? AccountKind = null);
 
 /// <summary>#368: the retention sweep's one signal — when the text is deleted.</summary>
 public sealed record ConsultGenerationTextDrop(DateTimeOffset DroppedAtUtc);
@@ -968,6 +1033,12 @@ public sealed class ConsultGenerationJobState
     // every hash, node, ref and label stays. Null while the text is present.
     public DateTimeOffset? TextDroppedAtUtc { get; set; }
 
+    // #557: where this job's text lives once written at completion —
+    // container + name, never a URL. Kept after the drop (part of the
+    // record); TextDroppedAtUtc gates every read of it. Null on pre-#557
+    // records and when the completion write failed.
+    public ConsultOutputsBlobPointer? OutputsBlob { get; set; }
+
     // #486: what happened to the completion email (DeliveryOutcomes); null
     // on records from before, or while the job is still running.
     public string? DeliveryOutcome { get; set; }
@@ -1133,6 +1204,21 @@ public sealed class ConsultGenerationJobState
         }
     }
 
+    /// <summary>
+    /// #557: the four text species, exactly — what the outputs blob holds
+    /// and the entity sheds. Names and flags (hashes, Appended, Unsigned,
+    /// statuses) stay on the entity.
+    /// </summary>
+    public JobOutputsPayload ToOutputsPayload() => new(
+        JobOutputsPayload.CurrentVersion,
+        AssembledDocument,
+        AssembledDocuments?.Where(d => d.Text != null)
+            .Select(d => new JobOutputsDocument(d.ResultId, d.Text!, d.DocumentHash)).ToList(),
+        Blocks.Where(b => b.Value.GeneratedText != null)
+            .ToDictionary(b => b.Key, b => b.Value.GeneratedText!, StringComparer.Ordinal),
+        NodeOutputs?.Where(n => n.Value.Concepts is { Count: > 0 })
+            .ToDictionary(n => n.Key, n => (IReadOnlyList<ClinicalConcept>)n.Value.Concepts!, StringComparer.Ordinal));
+
     public ConsultGenerationJobResponse ToResponse()
     {
         // #368: once the text is deleted the sections are gone too — an empty
@@ -1208,6 +1294,7 @@ public sealed class ConsultGenerationJobState
             TerminologyServerRef: TerminologyServerRef,
             ApiHost: ApiHost,
             EngineCommit: EngineCommit,
+            OutputsBlob: OutputsBlob,
             PackageSpecVersion: PackageSpecVersion,
             PackageTitle: PackageTitle,
             StartFailure: StartFailure,

@@ -80,6 +80,7 @@ public sealed class ConsultGenerationJobs
     private readonly IConfiguration _configuration;
     // #486: the verified delivery address lives in the account's settings.
     private readonly IAccountSettingsStore _settingsStore;
+    private readonly IJobOutputsBlobStore _outputsStore;
 
     public ConsultGenerationJobs(
         ILogger<ConsultGenerationJobs> logger,
@@ -88,7 +89,8 @@ public sealed class ConsultGenerationJobs
         IConsultGenerationJobStarter jobStarter,
         Email.IGraphMailClient mail,
         IConfiguration configuration,
-        IAccountSettingsStore settingsStore)
+        IAccountSettingsStore settingsStore,
+        IJobOutputsBlobStore outputsStore)
     {
         _logger = logger;
         _authorizer = authorizer;
@@ -97,6 +99,7 @@ public sealed class ConsultGenerationJobs
         _mail = mail;
         _configuration = configuration;
         _settingsStore = settingsStore;
+        _outputsStore = outputsStore;
     }
 
     /// <summary>#486: the confirmed address, or null — never the token claim.</summary>
@@ -1184,7 +1187,7 @@ public sealed class ConsultGenerationJobs
     internal static bool EmailRequestedFor(string? emailPdfSetting) =>
         DeliveryAddress.EmailPdfOf(emailPdfSetting) != false;
 
-    private static async Task<ConsultGenerationJobResponse?> GetJobResponseAsync(
+    private async Task<ConsultGenerationJobResponse?> GetJobResponseAsync(
         DurableTaskClient client,
         string jobId,
         string appUserId,
@@ -1206,9 +1209,15 @@ public sealed class ConsultGenerationJobs
                 return null;
             }
 
-            return MergeEntityAndRuntimeStatus(
-                entityBackedResponse,
-                instance);
+            // #557: a record whose text lives in the outputs blob is
+            // hydrated here — the one choke point every terminal read (GET,
+            // SSE snapshot/done, polling materialization) flows through, so
+            // a text-less response can never be served or persisted as an
+            // event. Pre-#557 records (no pointer) and dropped records pass
+            // through untouched.
+            return await HydrateOutputsAsync(
+                MergeEntityAndRuntimeStatus(entityBackedResponse, instance),
+                cancellationToken);
         }
 
         if (instance == null)
@@ -1232,7 +1241,7 @@ public sealed class ConsultGenerationJobs
             RuntimeFailureError: runtimeFailure?.Error);
     }
 
-    private static async Task<ConsultGenerationJobResponse?> WaitForInitialJobResponseAsync(
+    private async Task<ConsultGenerationJobResponse?> WaitForInitialJobResponseAsync(
         DurableTaskClient client,
         string jobId,
         string appUserId,
@@ -1253,6 +1262,27 @@ public sealed class ConsultGenerationJobs
         }
 
         return await GetJobResponseAsync(client, jobId, appUserId, cancellationToken);
+    }
+
+    /// <summary>
+    /// #557: text from the outputs blob, when the record points at one and
+    /// the text is not dropped. A live pointer with a missing blob is a
+    /// broken invariant — surfaced, never served as silently empty text.
+    /// </summary>
+    internal async Task<ConsultGenerationJobResponse> HydrateOutputsAsync(
+        ConsultGenerationJobResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (response.OutputsBlob == null || response.TextDroppedAtUtc != null)
+        {
+            return response;
+        }
+
+        var payload = await _outputsStore.ReadAsync(response.OutputsBlob, cancellationToken);
+
+        return payload == null
+            ? throw new InvalidOperationException($"Outputs blob missing for job {response.JobId}.")
+            : JobOutputsHydration.Apply(response, payload);
     }
 
     private static async Task<ConsultGenerationJobResponse?> GetEntityBackedJobResponseAsync(

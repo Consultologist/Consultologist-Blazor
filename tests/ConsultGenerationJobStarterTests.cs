@@ -26,6 +26,7 @@ public class ConsultGenerationJobStarterTests
     private readonly FakeOwnership _ownership = new();
     private readonly IAccountStore _accounts = Substitute.For<IAccountStore>();
     private readonly IAccountSettingsStore _settings = Substitute.For<IAccountSettingsStore>();
+    private readonly IJobOutputsBlobStore _outputsBlobs = Substitute.For<IJobOutputsBlobStore>();
 
     // #290: a terse but genuine referral. These fixtures used to say
     // "draft", which is not a referral and which the content floor
@@ -54,7 +55,8 @@ public class ConsultGenerationJobStarterTests
             // #403: what the terminology server says, or nothing.
             _terminology,
             _accounts,
-            _settings);
+            _settings,
+            _outputsBlobs);
     }
 
     private readonly FakeTerminologySource _terminology = new();
@@ -1805,6 +1807,43 @@ public class ConsultGenerationJobStarterTests
         Assert.Equal(ConsultGenerationProvenance.Sha256Hex(Referral + "\nSecond line."), origin.TextSha256);
         Assert.Null(origin.Extractor);
         Assert.Null(origin.FileSha256);
+    }
+
+    [Fact]
+    public async Task AMigratedSourceRun_IsHydratedFromItsOutputsBlob()
+    {
+        // #557: a source completed after the migration carries no entity
+        // text — the copy reads it from the outputs blob through the same
+        // refusal ladder, so digest and origin see the real text.
+        var pointer = new ConsultOutputsBlobPointer("org-job-outputs", "user-1/" + SourceJob + ".json");
+        var source = SourceRun(text: null);
+        source.OutputsBlob = pointer;
+        WithSourceRun(source);
+        _outputsBlobs.ReadAsync(pointer, Arg.Any<CancellationToken>())
+            .Returns(new JobOutputsPayload(
+                JobOutputsPayload.CurrentVersion,
+                null,
+                new[] { new JobOutputsDocument("consult", Referral, null) },
+                null,
+                null));
+
+        var captured = await StartV7AndCaptureAsync(ReferringRequest());
+
+        Assert.Null(captured.Outcome.Error);
+        Assert.Equal(Referral, captured.OrchestrationInput!.Inputs!["consult_draft"]);
+    }
+
+    [Fact]
+    public async Task AMigratedSourceRun_WithItsBlobGone_IsRefusedAsDeleted()
+    {
+        // A live pointer with no blob never becomes a silent empty copy.
+        var source = SourceRun(text: null);
+        source.OutputsBlob = new ConsultOutputsBlobPointer("org-job-outputs", "user-1/x.json");
+        WithSourceRun(source);
+
+        var captured = await StartV7AndCaptureAsync(ReferringRequest());
+
+        Assert.Equal(ConsultGenerationJobStartError.InputRefTextDeleted, captured.Outcome.Error);
     }
 
     [Fact]

@@ -207,7 +207,11 @@ public record ConsultGenerationJobResponse(
     // data-residency statement; null when the deployment names none) and the
     // engine build that ran it. Null on records from before 2026-08-28.
     string? ApiHost = null,
-    string? EngineCommit = null);
+    string? EngineCommit = null,
+    // #557: where the produced text lives (container + name, never a URL).
+    // Null on pre-#557 records, on Failed jobs, and when the completion
+    // write failed and the text stayed on the entity.
+    ConsultOutputsBlobPointer? OutputsBlob = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
@@ -250,6 +254,14 @@ public static class ConsultAppendedKinds
 
     public const string Signature = "signature";
 }
+
+/// <summary>
+/// #557 (storage-separation.md § 2.2): where a completed job's text lives —
+/// the container (which carries the account's kind) and the blob name,
+/// never a URL. Part of the record: kept after the text is dropped, when
+/// textDroppedAtUtc gates every read of it.
+/// </summary>
+public sealed record ConsultOutputsBlobPointer(string Container, string Name);
 
 /// <summary>
 /// The identity and display label of one per-item chain step, snapshotted from the

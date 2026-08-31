@@ -41,7 +41,10 @@ sorting is the design decision that keeps the record honest over time:
 - **operational snapshots** — what the engine had in hand when the job ran
   (nodes, rosters, origins, skipped deliverables, title, tags), kept so the
   job replays and reads the same way forever. Durable replay determinism is
-  the reason these are stored rather than re-derived.
+  the reason these are stored rather than re-derived. `outputsBlob` (#557)
+  is one of these: where the produced text lives — container + name, never
+  a URL — written at completion, kept after the text is deleted (part of
+  what happened), with `textDroppedAtUtc` gating every read of it.
 - **derived projections, stored at completion** — the deliverable hashes,
   computed from the text once when the job completes and kept (#368; records
   from before derive them on read, and serve the same values). Anyone holding

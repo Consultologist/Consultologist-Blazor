@@ -19,13 +19,60 @@ public interface IJobTextPurger
     Task PurgeAsync(DurableTaskClient client, string jobId, DateTimeOffset now, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// #557: the transition's second delete — the events table moved to the text
+/// account, and rows written before the move sit on the records account
+/// until their jobs purge. This deletes a job's old-table partition; it
+/// never creates the old table (M6/#558 wants it empty and removable) and a
+/// missing table reads as nothing to delete. Removed by #558 once empty.
+/// No dual-READ on purpose: the SSE loop exits on terminal status whatever
+/// the sequence says, events re-derive from the response into the new
+/// table, and the GET path never depends on this table — the loss is
+/// bounded to resume continuity for streams open at the deploy minute.
+/// </summary>
+public interface ILegacyJobEventDelete
+{
+    Task DeleteJobAsync(string jobId, CancellationToken cancellationToken);
+}
+
+public sealed class LegacyJobEventDelete : ILegacyJobEventDelete
+{
+    private readonly Azure.Data.Tables.TableClient _oldTable;
+
+    public LegacyJobEventDelete(Microsoft.Extensions.Configuration.IConfiguration configuration, Azure.Core.TokenCredential credential)
+    {
+        // The pre-#557 chain, verbatim — the records account.
+        _oldTable = StorageTables.CreateClient(
+            configuration, credential, "ConsultGenerationJobEvents", "ConsultGenerationJobEventStorage", "AccountStorage");
+    }
+
+    public async Task DeleteJobAsync(string jobId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var row in _oldTable.QueryAsync<Azure.Data.Tables.TableEntity>(
+                e => e.PartitionKey == jobId, select: new[] { "PartitionKey", "RowKey" }, cancellationToken: cancellationToken))
+            {
+                await _oldTable.DeleteEntityAsync(row.PartitionKey, row.RowKey, cancellationToken: cancellationToken);
+            }
+        }
+        catch (Azure.RequestFailedException ex) when (ex.Status == 404)
+        {
+            // The old table is gone (or was never created locally): nothing
+            // to delete — the state #558 drives toward.
+        }
+    }
+}
+
 public sealed class JobTextPurger : IJobTextPurger
 {
     private readonly IConsultGenerationJobEventStore _events;
+    private readonly ILegacyJobEventDelete _legacyEvents;
 
-    public JobTextPurger(IConsultGenerationJobEventStore events)
+    public JobTextPurger(IConsultGenerationJobEventStore events, ILegacyJobEventDelete legacyEvents)
     {
         _events = events;
+        _legacyEvents = legacyEvents;
     }
 
     /// <summary>The orchestration instance is the job id; the entity is its own instance and stays.</summary>
@@ -37,6 +84,7 @@ public sealed class JobTextPurger : IJobTextPurger
         await client.Entities.SignalEntityAsync(entityId, nameof(ConsultGenerationJobEntity.DropText), new ConsultGenerationTextDrop(now), cancellation: cancellationToken);
         await client.PurgeInstanceAsync(OrchestrationInstanceId(jobId), cancellationToken);
         await _events.DeleteJobAsync(jobId, cancellationToken);
+        await _legacyEvents.DeleteJobAsync(jobId, cancellationToken);
     }
 }
 

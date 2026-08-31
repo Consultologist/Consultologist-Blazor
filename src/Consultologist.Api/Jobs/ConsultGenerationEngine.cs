@@ -803,7 +803,7 @@ public sealed class ConsultGenerationOrchestrator
         await context.Entities.CallEntityAsync(
             entityId,
             nameof(ConsultGenerationJobEntity.FinalizeJob),
-            new ConsultGenerationJobFinalize(finalStatus, finalError));
+            new ConsultGenerationJobFinalize(finalStatus, finalError, input.AccountKind));
 
         // #159/#217: the completed documents ride into the reply activity so
         // each can be attached as an encrypted PDF when the account has a
@@ -839,7 +839,7 @@ public sealed class ConsultGenerationOrchestrator
                 await context.Entities.CallEntityAsync(
                     entityId,
                     nameof(ConsultGenerationJobEntity.FinalizeJob),
-                    new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Failed, ex.Message));
+                    new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Failed, ex.Message, input.AccountKind));
             }
             catch (Exception cleanupEx)
             {

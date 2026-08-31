@@ -104,8 +104,13 @@ builder.Services.AddScoped<WorkflowPackages>();
 builder.Services.AddHttpClient();
 builder.Services.AddHostedService<AgentAttestationService>();
 builder.Services.AddSingleton<PinHealthReporter>();
+// #557: the text account's outputs blobs — written at completion, read on
+// GET, deleted by the retention drop.
+builder.Services.AddSingleton<IJobOutputsBlobStore, JobOutputsBlobStore>();
 // #368: the retention sweep — the text is deleted N days after completion.
 builder.Services.AddSingleton<IJobTextPurger, JobTextPurger>();
+// #557: the events-move transition's old-table delete; removed by #558.
+builder.Services.AddSingleton<ILegacyJobEventDelete, LegacyJobEventDelete>();
 builder.Services.AddSingleton<TextRetentionSweep>();
 builder.Services.AddSingleton<IWorkflowPackageRegistryReader, WorkflowPackageRegistryReader>();
 builder.Services.AddSingleton<CatalogStrandSweeper>();

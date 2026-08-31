@@ -374,7 +374,7 @@ public class WorkflowV11AppendedRecordTests
 
     private static (ConsultGenerationJobEntity Entity, Func<ConsultGenerationJobState> State) Job()
     {
-        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>());
+        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>());
         StateProperty.SetValue(entity, ConsultGenerationJobState.Create("job-1", "user-1", new[]
         {
             new Dictionary<string, string> { ["id"] = "note:draft", ["name"] = "Consultation note" }
@@ -530,7 +530,7 @@ public class WorkflowV11SignatureRecordTests
 
     private static (ConsultGenerationJobEntity Entity, Func<ConsultGenerationJobState> State) Job()
     {
-        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>());
+        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>());
         StateProperty.SetValue(entity, ConsultGenerationJobState.Create("job-1", "user-1", new[]
         {
             new Dictionary<string, string> { ["id"] = "note:draft", ["name"] = "Consultation note" }
@@ -618,7 +618,7 @@ public class WorkflowV11ReproducibleTests
     {
         // The entity stores the descriptor list as-is and ToResponse hands
         // the same records to the wire — this pins that zero-mapping claim.
-        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>());
+        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>());
         await entity.Initialize(new ConsultGenerationJobInitialize("job-1", "user-1",
             new[] { (IReadOnlyDictionary<string, string>)new Dictionary<string, string> { ["id"] = "a", ["name"] = "A" } },
             Nodes: new[]

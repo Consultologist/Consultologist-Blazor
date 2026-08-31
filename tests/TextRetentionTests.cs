@@ -20,7 +20,7 @@ public class TextRetentionTests
     private static (ConsultGenerationJobEntity Entity, Func<ConsultGenerationJobState> State, IConsultGenerationJobIndexStore Index) CompletedV7Job()
     {
         var index = Substitute.For<IConsultGenerationJobIndexStore>();
-        var entity = new ConsultGenerationJobEntity(index);
+        var entity = new ConsultGenerationJobEntity(index, Substitute.For<IJobOutputsBlobStore>());
         var state = ConsultGenerationJobState.Create("job-1", "user-1", new[]
         {
             new Dictionary<string, string> { ["id"] = "note:draft", ["name"] = "Consultation note" },
@@ -30,6 +30,11 @@ public class TextRetentionTests
         return (entity, () => (ConsultGenerationJobState)StateProperty.GetValue(entity)!, index);
     }
 
+    // #557: these tests run with a bare (unconfigured) outputs store whose
+    // WriteAsync returns a null pointer — the finalize then deliberately
+    // keeps the entity text, so every test below models a pre-#557 record,
+    // which is exactly the shape they always asserted. The migrated shape is
+    // JobOutputsWriteTests' subject.
     private static async Task RunToCompletionAsync(ConsultGenerationJobEntity entity)
     {
         await entity.CompleteBlock(new BlockGenerationResult("note:draft", "Consultation note", true, "Consultation note", null));
@@ -177,12 +182,13 @@ public class TextRetentionTests
     public async Task ThePurger_SignalsTheEntity_PurgesTheOrchestration_DeletesTheEvents_InThatOrder()
     {
         var events = Substitute.For<IConsultGenerationJobEventStore>();
+        var legacyEvents = Substitute.For<ILegacyJobEventDelete>();
         var client = Substitute.For<DurableTaskClient>("test");
         var entities = Substitute.For<DurableEntityClient>("test");
         client.Entities.Returns(entities);
         var now = DateTimeOffset.UtcNow;
 
-        await new JobTextPurger(events).PurgeAsync(client, "0123456789abcdef0123456789abcdef", now, CancellationToken.None);
+        await new JobTextPurger(events, legacyEvents).PurgeAsync(client, "0123456789abcdef0123456789abcdef", now, CancellationToken.None);
 
         Received.InOrder(() =>
         {
@@ -191,6 +197,8 @@ public class TextRetentionTests
                 nameof(ConsultGenerationJobEntity.DropText), Arg.Any<object?>(), Arg.Any<SignalEntityOptions?>(), Arg.Any<CancellationToken>());
             client.PurgeInstanceAsync("0123456789abcdef0123456789abcdef", Arg.Any<CancellationToken>());
             events.DeleteJobAsync("0123456789abcdef0123456789abcdef", Arg.Any<CancellationToken>());
+            // #557: the transition's trailing leg — the old table's partition.
+            legacyEvents.DeleteJobAsync("0123456789abcdef0123456789abcdef", Arg.Any<CancellationToken>());
         });
         // The entity's own instance is never purged.
         Assert.NotEqual(new EntityInstanceId(nameof(ConsultGenerationJobEntity), "x").ToString(), JobTextPurger.OrchestrationInstanceId("x"));
