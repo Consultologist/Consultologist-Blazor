@@ -301,7 +301,11 @@
     public sealed record VariableAdd(string NodeId, string Variable, string From, string? As);
 
     /// <summary>The node's full effective field tuple after one field changed (#117/#170).</summary>
-    public sealed record NodeChange(string NodeId, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string? Prompt = null, IReadOnlyList<string>? Values = null);
+    public sealed record NodeChange(string NodeId, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string? Prompt = null, IReadOnlyList<string>? Values = null,
+        // v11 #564: the reproducibility claim — the effective value always
+        // rides the tuple (never null-means-unchanged), so later edits to
+        // other fields can never clobber it.
+        bool Reproducible = false);
 
     /// <summary>An aggregator's full effective ordered source list after one change (#117).</summary>
     public sealed record AggregateChange(string NodeId, List<string> Sources);
@@ -391,7 +395,7 @@
     }
 
     private Task EmitValuesAsync(WorkflowManifestReader.NodeView node, List<string> values) =>
-        OnNodeChanged.InvokeAsync(new NodeChange(node.Id, node.Label, node.ForEach, node.OutputSchema, node.FailIfEmpty, node.Prompt, values));
+        OnNodeChanged.InvokeAsync(new NodeChange(node.Id, node.Label, node.ForEach, node.OutputSchema, node.FailIfEmpty, node.Prompt, values, node.Reproducible));
 
     private async Task EmitNodeChangeAsync(
         WorkflowManifestReader.NodeView node,
@@ -415,7 +419,7 @@
             effectiveFailIfEmpty = null;
         }
 
-        await OnNodeChanged.InvokeAsync(new NodeChange(node.Id, effectiveLabel, effectiveForEach, effectiveSchema, effectiveFailIfEmpty, effectivePrompt));
+        await OnNodeChanged.InvokeAsync(new NodeChange(node.Id, effectiveLabel, effectiveForEach, effectiveSchema, effectiveFailIfEmpty, effectivePrompt, Reproducible: node.Reproducible));
     }
 
     private sealed class AddForm
