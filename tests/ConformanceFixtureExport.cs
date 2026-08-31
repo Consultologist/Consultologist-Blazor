@@ -550,6 +550,122 @@ public class ConformanceFixtureExport
             "The v10 width in one valid manifest: a three-way classifier, three deliverables each conditioned on its answer, a prompt node reading the classifier.",
             ScopeDemo());
 
+        // ----- v11 (#566): macros, the signed flag, reproducible —
+        // package-format-v11-design.md § 4–§ 6, § 8. Generated with the gate
+        // flipped; published with the v11 prose. -----
+
+        var v10Minimal = V10Fixtures.Minimal();
+
+        // The § 7 control: one edit, nothing of v11 used.
+        Bundle("v11-minimal-is-v10-plus-a-line", 11,
+            "The migration v11 promises: a valid v10 manifest with specVersion 11 and nothing else changed.",
+            (v10Minimal with { SpecVersion = 11 }, V6Fixtures.Files(v10Minimal)));
+
+        {
+            // The v11 width in one valid manifest — the demo's shape.
+            var (classifier, classifierFiles) = V10Fixtures.WithClassifier();
+            var (manifest, files) = V11Fixtures.WithMacro(
+                "This determination ({{classification:scope}}) was made on {{run:date}} by {{profile:name}}, "
+                + "from {{input:consult_draft}} under {{data:intro}} ({{run:package}} at {{run:host}}, job {{run:job}}).",
+                from: V11Fixtures.WithResultsList(classifier with { SpecVersion = 11 }),
+                macroId: "closing");
+            foreach (var pair in classifierFiles)
+            {
+                files.TryAdd(pair.Key, pair.Value);
+            }
+
+            manifest = manifest with
+            {
+                Data = new Dictionary<string, string>(manifest.Data ?? new Dictionary<string, string>()) { ["intro"] = "data/intro.md" },
+                Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Signature = true } : r).ToList(),
+                Nodes = manifest.Nodes!.Select(n => WorkflowNodeKinds.IsClassifier(n) ? n with { Reproducible = true } : n).ToList()
+            };
+            files["data/intro.md"] = "A scalar the macro reads.";
+            Bundle("v11-macro-signed-reproducible", 11,
+                "The v11 width in one valid manifest: a macro over every namespace appended to a signed deliverable, and a reproducible classifier.",
+                (manifest, files));
+        }
+
+        Bundle("v11-macro-optional-input-warns", 11,
+            "A macro reading an optional input: valid, with the warning recorded — absent renders as empty at assembly.",
+            V11Fixtures.WithMacro("Stay: {{input:length_of_stay}}."));
+
+        // § 4's rules, each refused by name against an otherwise-valid baseline.
+        {
+            var manifest = V11Fixtures.Minimal() with
+            {
+                Macros = new List<WorkflowMacroSpec> { new("closing", "Closing paragraph", "macros/closing.md") }
+            };
+            var files = new Dictionary<string, string>(V6Fixtures.Files(manifest), StringComparer.Ordinal)
+            {
+                ["macros/closing.md"] = "Thank you for this referral."
+            };
+            Bundle("invalid-macro-orphaned", 11,
+                "A declared macro no result references. The orphan rule, as prompts have.",
+                (manifest, files));
+        }
+        {
+            var manifest = V11Fixtures.Minimal();
+            Invalid("invalid-macro-reference-undeclared", 11,
+                "A result naming a macro the manifest does not declare.",
+                manifest with { Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<string> { "ghost" } } : r).ToList() });
+        }
+        {
+            var (manifest, files) = V11Fixtures.WithMacro();
+            Bundle("invalid-macro-listed-twice", 11,
+                "The same macro twice on one deliverable.",
+                (manifest with { Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<string> { "disclaimer", "disclaimer" } } : r).ToList() }, files));
+        }
+        {
+            var (manifest, files) = V11Fixtures.WithMacro();
+            var trimmed = new Dictionary<string, string>(files, StringComparer.Ordinal);
+            trimmed.Remove("macros/disclaimer.md");
+            Bundle("invalid-macro-file-missing", 11, "A macro whose file is not in the package.", (manifest, trimmed));
+        }
+        Bundle("invalid-macro-file-empty", 11,
+            "A macro whose file is blank. Prompts check presence only; a macro's file must carry text.",
+            V11Fixtures.WithMacro("   "));
+        Bundle("invalid-macro-id-not-snake-case", 11,
+            "A macro id with a dash. Macro ids are snake_case, the declared-id grammar.",
+            V11Fixtures.WithMacro(macroId: "Bad-Id"));
+        {
+            var (manifest, files) = V11Fixtures.WithMacro();
+            Bundle("invalid-macro-without-label", 11, "A macro with a blank label.",
+                (manifest with { Macros = new List<WorkflowMacroSpec> { manifest.Macros![0] with { Label = " " } } }, files));
+        }
+
+        // The placeholder scanner: closed namespaces, every miss named.
+        Bundle("invalid-macro-token-unknown-input", 11,
+            "A macro placeholder naming an input the manifest does not declare.",
+            V11Fixtures.WithMacro("Stay: {{input:nope}}."));
+        Bundle("invalid-macro-token-unknown-run-word", 11,
+            "A run: word outside the closed set (date, job, package, host).",
+            V11Fixtures.WithMacro("At {{run:time}}."));
+        Bundle("invalid-macro-token-profile-signature", 11,
+            "profile:signature is deliberately absent from the grammar — the signature is the results[].signature flag, with placement and recording of its own.",
+            V11Fixtures.WithMacro("Signed {{profile:signature}}."));
+        Bundle("invalid-macro-token-unknown-namespace", 11,
+            "A namespace outside the closed set.",
+            V11Fixtures.WithMacro("Do {{sql:drop}}."));
+        Bundle("invalid-macro-token-without-namespace", 11,
+            "A token with no namespace at all.",
+            V11Fixtures.WithMacro("Just {{closing}}."));
+
+        // The gates at v10 (§ 8): each new form refused below 11 by name.
+        var v10WithResults = V11Fixtures.WithResultsList(v10Minimal);
+        Invalid("invalid-macros-at-v10", 10,
+            "A macros section on a v10 manifest. The section arrives at 11.",
+            v10Minimal with { Macros = new List<WorkflowMacroSpec> { new("closing", "Closing", "macros/closing.md") } });
+        Invalid("invalid-result-macros-at-v10", 10,
+            "A deliverable's macro list on a v10 manifest.",
+            v10WithResults with { Results = v10WithResults.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<string> { "closing" } } : r).ToList() });
+        Invalid("invalid-result-signature-at-v10", 10,
+            "A deliverable's signature flag on a v10 manifest — presence, not truth, is the error.",
+            v10WithResults with { Results = v10WithResults.Results!.Select((r, i) => i == 0 ? r with { Signature = false } : r).ToList() });
+        Invalid("invalid-reproducible-at-v10", 10,
+            "A node's reproducible claim on a v10 manifest.",
+            v10Minimal with { Nodes = v10Minimal.Nodes!.Select((n, i) => i == 0 ? n with { Reproducible = true } : n).ToList() });
+
         return cases;
     }
 
