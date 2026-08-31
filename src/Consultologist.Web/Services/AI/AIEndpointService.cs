@@ -562,7 +562,11 @@ public record ConsultGenerationJobResponse(
     // when the retention drop deleted them. HeldInputs is null once dropped
     // or for a job never held; the pointer itself is not mirrored.
     IReadOnlyDictionary<string, string>? HeldInputs = null,
-    DateTimeOffset? InputsDroppedAtUtc = null);
+    DateTimeOffset? InputsDroppedAtUtc = null,
+    // #582: a rerun's lineage and judgment — mirrors the Api's trailing trio.
+    string? RerunOf = null,
+    string? RerunVerdict = null,
+    string? RerunDivergence = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.TerminologySnapshot (#403).</summary>
 public record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);
@@ -595,7 +599,11 @@ public record ConsultGenerationNodeDescriptor(
     // #361: already serialized by the API, merely undeclared here. An
     // aggregator is what a result node is in every package the block resolver
     // accepts, which is the one thing the rail needed and the wire lacked.
-    IReadOnlyList<string>? Aggregate = null);
+    IReadOnlyList<string>? Aggregate = null,
+    // #582: the package's reproducibility claim (v11 #550) — same #361
+    // situation, the wire always carried it; the comparison table marks the
+    // stages the verdict counted.
+    bool? Reproducible = null);
 
 public record ConsultItemStepDescriptor(string Id, string Label);
 

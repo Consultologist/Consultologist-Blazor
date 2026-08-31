@@ -139,6 +139,54 @@ public class RerunComparisonTests
     }
 
     [Fact]
+    public void TheJobLevelField_WinsOverTheOrigins()
+    {
+        // #582: RerunOf is authoritative when present; #549-era reruns still
+        // resolve through their slot origins.
+        var stamped = Job(inputOrigins: new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
+        {
+            ["consult_draft"] = new[] { new ConsultInputOrigin("rerun", SourceJobId: "origin-source") }
+        }) with { RerunOf = "stamped-source" };
+
+        Assert.Equal("stamped-source", RerunComparison.SourceJobIdOf(stamped));
+    }
+
+    [Theory]
+    [InlineData("pass", null, "Verdict: pass — every reproducible stage matched the source")]
+    [InlineData("fail", "draft", "Verdict: fail — first divergence at draft")]
+    [InlineData("fail", "effective-inputs", "Verdict: fail — the effective inputs differ from the source; this is a bug")]
+    [InlineData("no-reproducible-stages", null, "Verdict: no reproducible stages to hold — the package claims none, or none were comparable")]
+    [InlineData(null, null, null)]
+    [InlineData("something-newer", null, null)]
+    public void TheVerdictLine_SaysTheStampedJudgment_OrNothing(string? verdict, string? divergence, string? expected) =>
+        Assert.Equal(expected, RerunComparison.DescribeVerdict(verdict, divergence));
+
+    [Fact]
+    public void StageRows_MarkTheCountedStages()
+    {
+        var source = Job(nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+        {
+            ["extract"] = Node("extract", "in1", "outA"),
+            ["draft"] = Node("draft", "in2", "outB")
+        });
+        var rerun = Job(
+            nodes: new[]
+            {
+                new ConsultGenerationNodeDescriptor("extract", "Extract", Reproducible: true),
+                new ConsultGenerationNodeDescriptor("draft", "Draft")
+            },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["extract"] = Node("extract", "in1", "outA"),
+                ["draft"] = Node("draft", "in2", "outB")
+            });
+
+        var rows = RerunComparison.Stages(rerun, source);
+
+        Assert.Equal(new[] { true, false }, rows.Select(row => row.Reproducible));
+    }
+
+    [Fact]
     public void EffectiveInputs_AgreeOnlyOnHashAndVersion()
     {
         Assert.True(RerunComparison.EffectiveInputsAgree(Job(), Job()));

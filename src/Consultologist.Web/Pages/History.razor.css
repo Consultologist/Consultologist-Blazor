@@ -468,3 +468,31 @@
 .held-input > summary {
     cursor: pointer;
 }
+
+/* #582: the stamped rerun verdict and the counted-stage marker. */
+.rerun-verdict {
+    margin: 0.25rem 0 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.rerun-verdict--pass {
+    color: #107c10;
+}
+
+.rerun-verdict--fail {
+    color: #a4262c;
+}
+
+.rerun-verdict--no-reproducible-stages {
+    color: var(--consultologist-text-muted);
+    font-style: italic;
+    font-weight: 400;
+}
+
+.rerun-comparison__counted {
+    color: #107c10;
+    font-size: 0.65rem;
+    vertical-align: middle;
+    margin-left: 0.25rem;
+}

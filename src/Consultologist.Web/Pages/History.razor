@@ -494,10 +494,11 @@
                                         </details>
 
                                         @* #549: this record replays another — the per-stage table
-                                           against the source. Reports only; which differences fail
-                                           is the rerun verdict's (follow-up issue). Guards over
-                                           false verdicts: an outputHash is compared only when the
-                                           inputHash and hashVersion match. *@
+                                           against the source. #582: the record's own stamped
+                                           verdict renders above it; the table still guards over
+                                           false row verdicts (an outputHash is compared only when
+                                           the inputHash and hashVersion match), and ◆ marks the
+                                           stages the verdict counted. *@
                                         @if (RerunComparison.SourceJobIdOf(detail) is { } rerunSourceId)
                                         {
                                             <details class="job-detail-section" open>
@@ -523,6 +524,13 @@
                                                                 The effective-input hash differs from the source (@HashPrefix(rerunSource.EffectiveInputHash) vs @HashPrefix(detail.EffectiveInputHash)) — this is a bug: the rerun did not replay what it claims.
                                                             </p>
                                                         }
+                                                        @* #582: the stamped verdict — the record's claim, not a
+                                                           client recomputation. Absent (a #549-era rerun) shows
+                                                           no line rather than a guessed one. *@
+                                                        @if (RerunComparison.DescribeVerdict(detail.RerunVerdict, detail.RerunDivergence) is { } verdictLine)
+                                                        {
+                                                            <p class="rerun-verdict rerun-verdict--@detail.RerunVerdict">@verdictLine</p>
+                                                        }
                                                         <div class="rerun-comparison__scroll">
                                                             <table class="rerun-comparison__table">
                                                                 <thead>
@@ -532,7 +540,13 @@
                                                                     @foreach (var row in RerunComparison.Stages(detail, rerunSource))
                                                                     {
                                                                         <tr class="rerun-comparison__row @(row.IsItem ? "rerun-comparison__row--item" : "")">
-                                                                            <td>@row.Label</td>
+                                                                            <td>
+                                                                                @row.Label
+                                                                                @if (row.Reproducible)
+                                                                                {
+                                                                                    <span class="rerun-comparison__counted" title="The package declares this stage reproducible — the verdict counts it">&#x25C6;</span>
+                                                                                }
+                                                                            </td>
                                                                             <td class="hash-text" title="@row.SourceHash">@HashPrefix(row.SourceHash)</td>
                                                                             <td class="hash-text" title="@row.RerunHash">@HashPrefix(row.RerunHash)</td>
                                                                             <td class="rerun-comparison__verdict rerun-comparison__verdict--@row.Verdict.Replace(' ', '-')">@row.Verdict</td>
