@@ -46,6 +46,9 @@ public interface IAccountStore
     /// (profile:name), the way EmailRequested is chosen at start.
     /// </summary>
     Task<string?> GetDisplayNameAsync(string appUserId, CancellationToken cancellationToken);
+
+    /// <summary>#557: the account's stored kind, for the outputs container choice at job start.</summary>
+    Task<string?> GetAccountKindAsync(string appUserId, CancellationToken cancellationToken);
 }
 
 public sealed record AccountSummary(string AppUserId, string Status);
@@ -335,6 +338,19 @@ public sealed class AccountStore : IAccountStore
             "app-user", appUserId, cancellationToken: cancellationToken);
 
         return response.HasValue ? response.Value!.DisplayName : null;
+    }
+
+    /// <summary>
+    /// #557: the account's stored kind, or null for an account that does not
+    /// exist — the starter snapshots it at job start so the outputs blob
+    /// lands in the container the kind names (storage-separation.md § 2.5).
+    /// </summary>
+    public async Task<string?> GetAccountKindAsync(string appUserId, CancellationToken cancellationToken)
+    {
+        var response = await _appUsers.GetEntityIfExistsAsync<AppUserEntity>(
+            "app-user", appUserId, cancellationToken: cancellationToken);
+
+        return response.HasValue ? response.Value!.AccountKind : null;
     }
 
     internal static string StatusAfterUnlink(string current) =>

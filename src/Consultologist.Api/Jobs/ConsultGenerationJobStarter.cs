@@ -601,6 +601,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             profileName = await _accounts.GetDisplayNameAsync(appUserId, cancellationToken);
         }
 
+        // #557: the account's kind — which text container the outputs blob
+        // lands in. Read unconditionally: every completed job writes one.
+        var accountKind = await _accounts.GetAccountKindAsync(appUserId, cancellationToken);
+
         // v11 #516: the chosen signature block, snapshotted at start — what
         // was promised when the job was submitted, through both doors. Only
         // a package that marks a deliverable signed pays the table read; no
@@ -693,7 +697,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 ProfileName: profileName,
                 // v11 #516: the chosen signature as of this start, when the
                 // package marks a deliverable signed.
-                Signature: signatureSnapshot),
+                Signature: signatureSnapshot,
+                // #557: the outputs container's kind.
+                AccountKind: accountKind),
             new StartOrchestrationOptions { InstanceId = jobId },
             cancellationToken);
 

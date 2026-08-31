@@ -645,7 +645,12 @@ public sealed record ConsultGenerationOrchestrationInput(
     // submitted. Null when the package marks nothing signed, and when the
     // account has no chosen block (the engine then records the deliverable
     // as produced unsigned). Appended last, same reason.
-    ConsultSignatureSnapshot? Signature = null);
+    ConsultSignatureSnapshot? Signature = null,
+    // #557: the account's kind at start — which text container this job's
+    // outputs blob lands in (storage-separation.md § 2.5). Null on payloads
+    // from before; the writer's rule falls to personal. Appended last, same
+    // reason as everything above.
+    string? AccountKind = null);
 
 /// <summary>
 /// v11 #516: the chosen signature as it was at job start — the block's id,
@@ -754,7 +759,13 @@ public sealed record ConsultGenerationNodeFailure(
     string Error,
     IReadOnlyList<ConsultItemStepDescriptor> SkippedNodes);
 
-public sealed record ConsultGenerationJobFinalize(string Status, string? Error = null);
+public sealed record ConsultGenerationJobFinalize(
+    string Status,
+    string? Error = null,
+    // #557: rides to FinalizeJob so the entity writes the outputs blob into
+    // the right container. Appended last — a sleeping completed job replays
+    // this payload.
+    string? AccountKind = null);
 
 /// <summary>#368: the retention sweep's one signal — when the text is deleted.</summary>
 public sealed record ConsultGenerationTextDrop(DateTimeOffset DroppedAtUtc);
