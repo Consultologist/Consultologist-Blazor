@@ -9,6 +9,7 @@
 @inject IAccountEndpointService AccountService
 @inject IAIEndpointService AIService
 @inject IWorkflowEndpointService WorkflowService
+@inject NavigationManager Navigation
 @attribute [Authorize]
 @implements IDisposable
 
@@ -270,6 +271,30 @@
                                                 </span>
                                             }
                                         </div>
+
+                                        @* #549: replay this run on its held inputs, same exact
+                                           package version. Greyed with the reason in words while
+                                           it cannot run (tell the user early). *@
+                                        @if (detail.Status == "Completed")
+                                        {
+                                            <div class="rerun-row">
+                                                <FluentButton Appearance="Appearance.Outline"
+                                                              Class="rerun-button"
+                                                              Disabled="@(detail.HeldInputs == null || _rerunInProgress)"
+                                                              OnClick="@(() => RerunAsync(detail.JobId))"
+                                                              title="Run this consult again on the same inputs and the same package version">
+                                                    Rerun
+                                                </FluentButton>
+                                                @if (RerunBlockedReason(detail) is { } rerunReason)
+                                                {
+                                                    <span class="rerun-row__reason">@rerunReason</span>
+                                                }
+                                                @if (_rerunErrors.TryGetValue(detail.JobId, out var rerunError))
+                                                {
+                                                    <span class="rerun-row__error">@rerunError</span>
+                                                }
+                                            </div>
+                                        }
 
                                         <details class="job-detail-section">
                                             <summary class="muted-text">Provenance</summary>
@@ -798,6 +823,53 @@
         finally
         {
             _rescheduling = null;
+        }
+    }
+
+    // #549: replay a completed run on its held inputs.
+    private bool _rerunInProgress;
+    private readonly Dictionary<string, string> _rerunErrors = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Why the Rerun button is greyed, in words, or null when it is not.
+    /// HeldInputs is hydrated exactly while the inputs blob is live, so its
+    /// absence plus a dropped stamp is the retention clock, and its absence
+    /// alone is a run that was never held (pre-#547, v5/v6, or a failed hold).
+    /// </summary>
+    private static string? RerunBlockedReason(ConsultGenerationJobResponse detail) =>
+        detail.HeldInputs != null
+            ? null
+            : detail.InputsDroppedAtUtc is { } dropped
+                ? $"inputs deleted {FormatDate(dropped)}"
+                : "inputs were not held for this run";
+
+    private async Task RerunAsync(string jobId)
+    {
+        if (_rerunInProgress)
+        {
+            return;
+        }
+
+        _rerunInProgress = true;
+        _rerunErrors.Remove(jobId);
+
+        try
+        {
+            var newJobId = await AIService.RerunConsultGenerationJobAsync(jobId);
+            // The run view shows the replay live, as a fresh submit would.
+            Navigation.NavigateTo($"/consults/{newJobId}");
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            _rerunErrors[jobId] = ex.Message;
+        }
+        finally
+        {
+            _rerunInProgress = false;
         }
     }
 

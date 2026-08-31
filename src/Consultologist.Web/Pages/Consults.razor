@@ -472,6 +472,18 @@
                                     <h2 class="panel-title">@(assembledDocuments.Count == 1 ? assembledDocuments[0].Label : "Documents")</h2>
                                     <div class="result-header__actions">
                                         <FluentBadge Appearance="Appearance.Accent">assembled</FluentBadge>
+                                        @* #549: replay this run on its held inputs, same exact
+                                           package version. Greyed with the reason said below. *@
+                                        @if (runTerminalStatus == "Completed" && lastAppliedJobId != null)
+                                        {
+                                            <FluentButton Appearance="Appearance.Outline"
+                                                          Class="rerun-button"
+                                                          Disabled="@(!heldInputsAvailable || rerunInProgress)"
+                                                          @onclick="RerunCurrentAsync"
+                                                          title="Run this consult again on the same inputs and the same package version">
+                                                Rerun
+                                            </FluentButton>
+                                        }
                                         <FluentButton Appearance="Appearance.Accent" @onclick="CopyNoteAsync">
                                             @CopyButtonLabel
                                         </FluentButton>
@@ -482,6 +494,16 @@
                                 @if (DeliveryState.Describe(deliveryOutcome, deliveryDocumentAttached) is { } deliveryText)
                                 {
                                     <p class="delivery-line delivery-line--@(deliveryOutcome)">@deliveryText</p>
+                                }
+
+                                @* #549: the greyed button's reason, in words. *@
+                                @if (runTerminalStatus == "Completed" && lastAppliedJobId != null && !heldInputsAvailable)
+                                {
+                                    <p class="rerun-blocked-line">Rerun unavailable — @(inputsDroppedAtUtc is { } droppedInputs ? $"inputs deleted {droppedInputs.ToLocalTime():MMM d, yyyy}" : "inputs were not held for this run").</p>
+                                }
+                                @if (rerunError != null)
+                                {
+                                    <p class="rerun-error-line">@rerunError</p>
                                 }
 
                                 @if (textDroppedAtUtc is { } deletedAt)
@@ -957,6 +979,15 @@
   // #486
   private string? deliveryOutcome;
   private bool? deliveryDocumentAttached;
+
+  // #549: whether the shown run's inputs are held (rerun-able), and the run
+  // they belong to. HeldInputs rides every hydrated payload — the GET on
+  // reattach and the SSE done both pass the transport's choke point.
+  private bool heldInputsAvailable;
+  private DateTimeOffset? inputsDroppedAtUtc;
+  private string? lastAppliedJobId;
+  private bool rerunInProgress;
+  private string? rerunError;
 
   // #315: declared deliverables this job's inputs excluded.
   private IReadOnlyList<ConsultSkippedDocumentResponse> skippedDocuments = Array.Empty<ConsultSkippedDocumentResponse>();
@@ -1789,6 +1820,39 @@
     }
   }
 
+  // #549: replay the shown run. A full navigation on purpose: this page
+  // attaches to its route job only at initialization, so an in-place route
+  // change would leave the old run's state on screen; the fresh load
+  // re-enters the proven deep-link reattach path.
+  private async Task RerunCurrentAsync()
+  {
+    if (rerunInProgress || lastAppliedJobId == null)
+    {
+      return;
+    }
+
+    rerunInProgress = true;
+    rerunError = null;
+
+    try
+    {
+      var newJobId = await AIService.RerunConsultGenerationJobAsync(lastAppliedJobId);
+      Navigation.NavigateTo($"/consults/{Uri.EscapeDataString(newJobId)}", forceLoad: true);
+    }
+    catch (AccessTokenNotAvailableException exception)
+    {
+      exception.Redirect();
+    }
+    catch (Exception ex)
+    {
+      rerunError = ex.Message;
+    }
+    finally
+    {
+      rerunInProgress = false;
+    }
+  }
+
   private void ApplyConsultGenerationJobResponse(
     ConsultGenerationJobResponse response,
     IReadOnlyList<PackageBlock> blockSnapshots)
@@ -1799,6 +1863,9 @@
     runEventSeen = true;
     generatedBlocks = response.GeneratedBlocks;
     textDroppedAtUtc = response.TextDroppedAtUtc;
+    heldInputsAvailable = response.HeldInputs != null;
+    inputsDroppedAtUtc = response.InputsDroppedAtUtc;
+    lastAppliedJobId = response.JobId;
     deciding = response.Deciding == true;
     decidedAtUtc = response.DecidedAtUtc;
     classifications = response.Classifications ?? classifications;

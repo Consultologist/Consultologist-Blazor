@@ -19,7 +19,9 @@ public class ConsultsResultTests : ClientRenderTestContext
     private void WithCompletedJob(
         string? assembledDocument = null,
         IReadOnlyList<ConsultGenerationResultDocumentResponse>? documents = null,
-        IReadOnlyList<ConsultSkippedDocumentResponse>? skipped = null)
+        IReadOnlyList<ConsultSkippedDocumentResponse>? skipped = null,
+        IReadOnlyDictionary<string, string>? heldInputs = null,
+        DateTimeOffset? inputsDroppedAtUtc = null)
     {
         WithPinnedPackage(blocks: new[] { Block("section-instructions:hpi", "History of Present Illness") });
 
@@ -37,7 +39,64 @@ public class ConsultsResultTests : ClientRenderTestContext
             Success: true,
             AssembledDocument: assembledDocument,
             AssembledDocuments: documents,
-            SkippedDocuments: skipped));
+            SkippedDocuments: skipped,
+            HeldInputs: heldInputs,
+            InputsDroppedAtUtc: inputsDroppedAtUtc));
+    }
+
+    private static readonly ConsultGenerationResultDocumentResponse[] OneNote =
+    {
+        new("consult", "Consultation note", "The assembled note.")
+    };
+
+    // ----- #549: the Rerun action on the result panel -----
+
+    [Fact]
+    public void AHeldRun_OffersRerun_WithNoBlockedLine()
+    {
+        WithCompletedJob(documents: OneNote, heldInputs: new Dictionary<string, string> { ["consult_draft"] = "The referral." });
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.False(page.Find(".rerun-button").HasAttribute("disabled"));
+        Assert.Empty(page.FindAll(".rerun-blocked-line"));
+    }
+
+    [Fact]
+    public void ARunNeverHeld_GreysRerun_AndSaysSo()
+    {
+        WithCompletedJob(documents: OneNote);
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.True(page.Find(".rerun-button").HasAttribute("disabled"));
+        Assert.Contains("inputs were not held for this run", page.Find(".rerun-blocked-line").TextContent);
+    }
+
+    [Fact]
+    public void ADroppedRun_GreysRerun_AndSaysTheDate()
+    {
+        WithCompletedJob(documents: OneNote, inputsDroppedAtUtc: new DateTimeOffset(2026, 9, 8, 3, 0, 0, TimeSpan.Zero));
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.True(page.Find(".rerun-button").HasAttribute("disabled"));
+        Assert.Contains("inputs deleted", page.Find(".rerun-blocked-line").TextContent);
+    }
+
+    [Fact]
+    public async Task Rerun_StartsTheReplay_FromTheShownRun()
+    {
+        WithCompletedJob(documents: OneNote, heldInputs: new Dictionary<string, string> { ["consult_draft"] = "The referral." });
+        AIService.RerunConsultGenerationJobAsync(JobId).Returns("new-job-1");
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+        await page.Find(".rerun-button").ClickAsync(new());
+
+        await AIService.Received(1).RerunConsultGenerationJobAsync(JobId);
+        var navigation = (Microsoft.AspNetCore.Components.NavigationManager)Services
+            .GetService(typeof(Microsoft.AspNetCore.Components.NavigationManager))!;
+        Assert.EndsWith("/consults/new-job-1", navigation.Uri);
     }
 
     [Fact]

@@ -43,7 +43,8 @@ public class HistoryDetailTests : ClientRenderTestContext
         DateTimeOffset? inputsDroppedAtUtc = null,
         string? source = null,
         string? apiHost = null,
-        string? engineCommit = null)
+        string? engineCommit = null,
+        string status = "Completed")
     {
         // Terminal status only: a non-terminal row would start the page's real
         // 5-second polling loop.
@@ -51,7 +52,7 @@ public class HistoryDetailTests : ClientRenderTestContext
             new[]
             {
                 new AccountJobSummaryResponse(
-                    JobId, "Completed", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+                    JobId, status, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
                     TotalBlockCount: 9, CompletedBlockCount: 9, FailedBlockCount: 0, TextDroppedAtUtc: textDroppedAtUtc)
             },
             null));
@@ -59,7 +60,7 @@ public class HistoryDetailTests : ClientRenderTestContext
         AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
             JobId,
             "user-1",
-            "Completed",
+            status,
             TotalBlockCount: 9,
             CompletedBlockCount: 9,
             FailedBlockCount: 0,
@@ -781,5 +782,65 @@ public class HistoryDetailTests : ClientRenderTestContext
         var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
 
         Assert.DoesNotContain(Chips(page), chip => chip.Contains("format", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // ----- #549: the Rerun action -----
+
+    [Fact]
+    public void AHeldRun_OffersRerun_WithNoReason()
+    {
+        WithJob(3, heldInputs: new Dictionary<string, string> { ["consult_draft"] = "The referral." });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.False(page.Find(".rerun-button").HasAttribute("disabled"));
+        Assert.Empty(page.FindAll(".rerun-row__reason"));
+    }
+
+    [Fact]
+    public void ADroppedRun_GreysRerun_AndSaysTheDate()
+    {
+        WithJob(3, inputsDroppedAtUtc: new DateTimeOffset(2026, 9, 8, 3, 0, 0, TimeSpan.Zero));
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.True(page.Find(".rerun-button").HasAttribute("disabled"));
+        Assert.Contains("inputs deleted", page.Find(".rerun-row__reason").TextContent);
+    }
+
+    [Fact]
+    public void ARunNeverHeld_GreysRerun_AndSaysSo()
+    {
+        WithJob(3);
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.True(page.Find(".rerun-button").HasAttribute("disabled"));
+        Assert.Equal("inputs were not held for this run", page.Find(".rerun-row__reason").TextContent.Trim());
+    }
+
+    [Fact]
+    public void AFailedRun_OffersNoRerun()
+    {
+        WithJob(3, status: "Failed", heldInputs: new Dictionary<string, string> { ["consult_draft"] = "The referral." });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Empty(page.FindAll(".rerun-button"));
+    }
+
+    [Fact]
+    public async Task Rerun_StartsTheReplay_AndOpensItsRunView()
+    {
+        WithJob(3, heldInputs: new Dictionary<string, string> { ["consult_draft"] = "The referral." });
+        AIService.RerunConsultGenerationJobAsync(JobId).Returns("new-job-1");
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+        await page.Find(".rerun-button").ClickAsync(new());
+
+        await AIService.Received(1).RerunConsultGenerationJobAsync(JobId);
+        var navigation = (Microsoft.AspNetCore.Components.NavigationManager)Services
+            .GetService(typeof(Microsoft.AspNetCore.Components.NavigationManager))!;
+        Assert.EndsWith("/consults/new-job-1", navigation.Uri);
     }
 }
