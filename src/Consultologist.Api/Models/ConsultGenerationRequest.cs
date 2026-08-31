@@ -264,6 +264,13 @@ public static class ConsultAppendedKinds
 public sealed record ConsultOutputsBlobPointer(string Container, string Name);
 
 /// <summary>
+/// #547 (storage-separation.md § 2.1): where a job's held inputs live —
+/// container + name, never a URL. Kept after the drop;
+/// inputsDroppedAtUtc gates every read of it.
+/// </summary>
+public sealed record ConsultInputsBlobPointer(string Container, string Name);
+
+/// <summary>
 /// The identity and display label of one per-item chain step, snapshotted from the
 /// job's workflow package at start.
 /// </summary>

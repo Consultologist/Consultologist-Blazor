@@ -53,4 +53,40 @@ public class JobOutputsBlobStoreTests
         var withExtra = json[..^1] + ",\"FutureField\":true}";
         Assert.Equal(1, JsonSerializer.Deserialize<JobOutputsPayload>(withExtra)!.Version);
     }
+
+    // ----- #547: the inputs store's naming and wire shape -----
+
+    [Theory]
+    [InlineData(SignInKinds.Organisation, "org-job-inputs")]
+    [InlineData(SignInKinds.Personal, "personal-job-inputs")]
+    [InlineData(null, "personal-job-inputs")]
+    public void TheInputsContainer_IsTheAccountsKind(string? kind, string expected)
+    {
+        Assert.Equal(expected, JobInputsBlobStore.ContainerFor(kind));
+    }
+
+    [Fact]
+    public void TheInputsName_IsAccountThenJob()
+    {
+        Assert.Equal("user-1/0123abcd.json", JobInputsBlobStore.NameFor("user-1", "0123abcd"));
+    }
+
+    [Fact]
+    public void TheInputsPayload_RoundTrips_AndToleratesUnknownFields()
+    {
+        var payload = new JobInputsPayload(
+            JobInputsPayload.CurrentVersion,
+            new Dictionary<string, string> { ["consult_draft"] = "Referral text.", ["length_of_stay"] = "" },
+            new Dictionary<string, string> { ["consult_draft"] = "\"Referral text.\"" });
+
+        var json = JsonSerializer.Serialize(payload);
+        var read = JsonSerializer.Deserialize<JobInputsPayload>(json)!;
+        Assert.Equal(1, read.Version);
+        Assert.Equal("Referral text.", read.Effective!["consult_draft"]);
+        Assert.Equal("", read.Effective["length_of_stay"]);
+        Assert.Equal("\"Referral text.\"", read.Supplied!["consult_draft"]);
+
+        var withExtra = json[..^1] + ",\"FutureField\":true}";
+        Assert.Equal(1, JsonSerializer.Deserialize<JobInputsPayload>(withExtra)!.Version);
+    }
 }
