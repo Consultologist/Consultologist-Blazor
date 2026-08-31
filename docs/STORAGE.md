@@ -157,7 +157,7 @@ management-policy show`, `az role assignment list --scope "$SCOPE"`,
 `az storage account show --query allowSharedKeyAccess`, and `Account/Me`
 returning `accountKind` after the back-fill.
 
-### What lives there since M2 (#557)
+### What lives there since M2 (#557) and M3 (#547)
 
 At completion the engine writes one JSON blob per job — the deliverables
 with their text, the block texts, the node concepts — to
@@ -171,6 +171,15 @@ sweep deletes from both tables during the transition (`LegacyJobEventDelete`,
 removed by #558 once the old table is empty). `DropText` deletes the blob
 first, then stamps the record; the 30-day lifecycle policy above is the
 backstop for anything a failure leaves behind.
+
+Since M3 (#547) the **held inputs** live here too: the starter writes the
+effective input map — exactly what ran, plus each supplied value's typed
+wire form for a rerun (#549) — to `<kind>-job-inputs/{appUserId}/{jobId}.json`
+before the orchestration is scheduled (a storage failure never refuses a
+start; the run proceeds unheld). The record carries `inputsBlob` and,
+after the drop, `inputsDroppedAtUtc`; History shows the inputs while held.
+One retention clock covers both classes until #548 shortens the inputs
+side. v5/v6 jobs are not held.
 
 ## After Setup
 
