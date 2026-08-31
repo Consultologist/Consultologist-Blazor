@@ -142,7 +142,9 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
             DeliveryOutcome = entry.DeliveryOutcome,
             DeliveredAtUtc = entry.DeliveredAtUtc,
             Deciding = entry.Deciding,
-            DecisionFailureKind = entry.DecisionFailureKind
+            DecisionFailureKind = entry.DecisionFailureKind,
+            InputsHeld = entry.InputsHeld,
+            InputsDroppedAtUtc = entry.InputsDroppedAtUtc
         };
     }
 
@@ -165,7 +167,9 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
             entity.DeliveryOutcome,
             entity.DeliveredAtUtc,
             entity.Deciding,
-            entity.DecisionFailureKind);
+            entity.DecisionFailureKind,
+            entity.InputsHeld,
+            entity.InputsDroppedAtUtc);
     }
 
     private static string FormatRowKey(DateTimeOffset createdAtUtc, string jobId)
@@ -227,7 +231,13 @@ public sealed record ConsultGenerationJobIndexEntry(
     // v10 (#496): still deciding what to produce; and why a job ended in that
     // stage. Additive columns.
     bool Deciding = false,
-    string? DecisionFailureKind = null);
+    string? DecisionFailureKind = null,
+    // #548: whether the job holds an inputs blob, and when the inputs clock
+    // deleted it. Additive columns: rows from before read false/null, and
+    // false is right — those jobs hold nothing, so the inputs leg never
+    // signals them. The pointer itself never reaches the index.
+    bool InputsHeld = false,
+    DateTimeOffset? InputsDroppedAtUtc = null);
 
 internal sealed class ConsultGenerationJobIndexEntity : ITableEntity
 {
@@ -251,4 +261,6 @@ internal sealed class ConsultGenerationJobIndexEntity : ITableEntity
     public DateTimeOffset? DeliveredAtUtc { get; set; }
     public bool Deciding { get; set; }
     public string? DecisionFailureKind { get; set; }
+    public bool InputsHeld { get; set; }
+    public DateTimeOffset? InputsDroppedAtUtc { get; set; }
 }

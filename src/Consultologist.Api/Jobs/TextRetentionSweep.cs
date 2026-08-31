@@ -17,6 +17,14 @@ namespace Consultologist.Api.Jobs;
 public interface IJobTextPurger
 {
     Task PurgeAsync(DurableTaskClient client, string jobId, DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #548: the inputs clock fired alone — signal the entity to drop the
+    /// held inputs and nothing else. No instance purge, no events delete:
+    /// the produced text is still being served, and those are the full
+    /// drop's to run when the outputs clock arrives.
+    /// </summary>
+    Task DropInputsAsync(DurableTaskClient client, string jobId, DateTimeOffset now, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -85,6 +93,12 @@ public sealed class JobTextPurger : IJobTextPurger
         await client.PurgeInstanceAsync(OrchestrationInstanceId(jobId), cancellationToken);
         await _events.DeleteJobAsync(jobId, cancellationToken);
         await _legacyEvents.DeleteJobAsync(jobId, cancellationToken);
+    }
+
+    public async Task DropInputsAsync(DurableTaskClient client, string jobId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var entityId = new EntityInstanceId(nameof(ConsultGenerationJobEntity), jobId);
+        await client.Entities.SignalEntityAsync(entityId, nameof(ConsultGenerationJobEntity.DropInputs), new ConsultGenerationInputsDrop(now), cancellation: cancellationToken);
     }
 }
 

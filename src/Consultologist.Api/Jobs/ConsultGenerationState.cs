@@ -458,9 +458,9 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         }
 
         // #547: the held inputs go with the text — same op, same self-healing.
-        // One clock until #548 splits them; the pointer stays, gated by
-        // InputsDroppedAtUtc.
-        if (state.InputsBlob != null)
+        // #548 split the clocks: an inputs-only drop may already have run, and
+        // its stamp says so — nothing left to delete, nothing to re-say.
+        if (state.InputsBlob != null && state.InputsDroppedAtUtc == null)
         {
             await _inputsStore.DeleteAsync(state.InputsBlob, CancellationToken.None);
         }
@@ -484,11 +484,36 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
 
         state.TextDroppedAtUtc = input.DroppedAtUtc;
         state.History.Add(new JobHistoryEvent("retention", "Produced text deleted (retention policy)", null, input.DroppedAtUtc));
-        if (state.InputsBlob != null)
+        if (state.InputsBlob != null && state.InputsDroppedAtUtc == null)
         {
             state.InputsDroppedAtUtc = input.DroppedAtUtc;
             state.History.Add(new JobHistoryEvent("retention", "Held inputs deleted (retention policy)", null, input.DroppedAtUtc));
         }
+        State = state;
+
+        await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+    }
+
+    /// <summary>
+    /// #548: the inputs clock fired before the outputs clock — the held
+    /// inputs alone are deleted. Terminal jobs only; idempotent; a job
+    /// holding nothing records nothing. Delete-first as DropText: a failure
+    /// persists no stamp, the index still says the inputs are held, and the
+    /// sweep re-signals next run. The pointer stays, gated by the stamp; a
+    /// later DropText skips what this already dropped.
+    /// </summary>
+    public async Task DropInputs(ConsultGenerationInputsDrop input)
+    {
+        var state = EnsureState();
+        if (!IsTerminal(state.Status) || state.InputsDroppedAtUtc != null || state.InputsBlob == null)
+        {
+            return;
+        }
+
+        await _inputsStore.DeleteAsync(state.InputsBlob, CancellationToken.None);
+
+        state.InputsDroppedAtUtc = input.DroppedAtUtc;
+        state.History.Add(new JobHistoryEvent("retention", "Held inputs deleted (retention policy)", null, input.DroppedAtUtc));
         State = state;
 
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
@@ -844,6 +869,9 @@ public sealed record ConsultGenerationJobFinalize(
 /// <summary>#368: the retention sweep's one signal — when the text is deleted.</summary>
 public sealed record ConsultGenerationTextDrop(DateTimeOffset DroppedAtUtc);
 
+/// <summary>#548: the shorter inputs clock's signal — the held inputs alone are deleted.</summary>
+public sealed record ConsultGenerationInputsDrop(DateTimeOffset DroppedAtUtc);
+
 /// <summary>
 /// #486: what happened to the completion email, written once when the job
 /// ends. The address itself is never on the record — it is the account's.
@@ -1123,7 +1151,9 @@ public sealed class ConsultGenerationJobState
             DeliveryOutcome: DeliveryOutcome,
             DeliveredAtUtc: DeliveredAtUtc,
             Deciding: Deciding == true && DecidedAtUtc == null && StartFailure == null,
-            DecisionFailureKind: DecisionFailureKind);
+            DecisionFailureKind: DecisionFailureKind,
+            InputsHeld: InputsBlob != null,
+            InputsDroppedAtUtc: InputsDroppedAtUtc);
     }
 
     public ConsultNodeOutputState GetOrAddNodeOutput(string nodeId, string label)
