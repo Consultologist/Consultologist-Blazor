@@ -100,6 +100,13 @@ public static class ConsultInputOriginKinds
     // Byte-for-byte the deliverable: a copy the user edited is typed text and
     // carries no origin.
     public const string PreviousRun = "previous-run";
+
+    // #549: the whole run is a replay of one of the account's own completed
+    // runs' held inputs — every effective slot carries one, SourceJobId names
+    // the source, and TextSha256 digests the slot's effective value verbatim
+    // (equal to the source's by construction, so the two records'
+    // effectiveInputHash agree or one of them is wrong).
+    public const string Rerun = "rerun";
 }
 
 public record ConsultGenerationJobStartResponse(

@@ -497,6 +497,148 @@ public sealed class ConsultGenerationJobs
     }
 
     /// <summary>
+    /// #549: start a new job from a completed run's held inputs — the blob's
+    /// Supplied half under the record's exact package ref, never a
+    /// re-resolved pin. The blob and only the blob: the orchestration
+    /// instance is purged by retention, and #547 made the blob the durable
+    /// copy. Every effective slot of the new job carries a rerun origin
+    /// naming this source. A rerun is a new consult: it passes the start
+    /// door's account gate and spends a rate-limit unit like any other run.
+    /// </summary>
+    [Function("RerunConsultGenerationJob")]
+    public async Task<HttpResponseData> RerunAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", "options", Route = "ConsultGenerationJobs/{jobId}/Rerun")] HttpRequestData req,
+        [DurableClient] DurableTaskClient client,
+        string jobId)
+    {
+        var cancellationToken = req.FunctionContext.CancellationToken;
+
+        if (IsOptions(req))
+        {
+            return CreateEmptyResponse(req, HttpStatusCode.OK);
+        }
+
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest, new { error = "JobId is required." }, cancellationToken);
+        }
+
+        var account = await _authorizer.AuthorizeAsync(req, cancellationToken);
+
+        if (account == null)
+        {
+            return AccountAuthorizer.CreateUnauthorizedResponse(req);
+        }
+
+        if (!AccountAuthorizer.CanUseApp(account))
+        {
+            return AccountAuthorizer.CreateForbiddenResponse(req);
+        }
+
+        // #195: a rerun makes a new consult, so it passes the same gate the
+        // start door holds, with the same named sentence.
+        if (!AccountAuthorizer.CanStartConsults(account))
+        {
+            return await CreateJsonResponseAsync(
+                req,
+                HttpStatusCode.Forbidden,
+                new { error = "This account cannot start new consults until its LinkedIn profile is reconnected. Existing consults remain available." },
+                cancellationToken);
+        }
+
+        // Entity-backed only, for the reason CancelAsync gives.
+        var response = await GetEntityBackedJobResponseAsync(client, jobId, cancellationToken);
+
+        if (response == null
+            || !string.Equals(response.AppUserId, account.AppUserId, StringComparison.Ordinal))
+        {
+            return await CreateJsonResponseAsync(
+                req, HttpStatusCode.NotFound, new { error = "Consult generation job was not found." }, cancellationToken);
+        }
+
+        if (RefusalForRerun(response) is { } refusal)
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.Conflict, new { error = refusal }, cancellationToken);
+        }
+
+        // A live pointer whose blob is gone is a broken invariant — loud, as
+        // the read choke point throws, never a quiet unheld fallback.
+        var payload = await _inputsStore.ReadAsync(response.InputsBlob!, cancellationToken);
+        if (payload?.Supplied == null)
+        {
+            throw new InvalidOperationException($"Inputs blob missing for job {jobId}.");
+        }
+
+        var origin = new ConsultGenerationJobOrigin(
+            // The issue's word: a rerun is an app action wherever the source
+            // came from, delivered to the account's verified address (#486),
+            // with the email choice read afresh (#518).
+            ConsultGenerationJobSources.App,
+            ReplyAddressFor(await GetDeliveryAddressAsync(account.AppUserId, cancellationToken)),
+            EmailRequested: await EmailRequestedAsync(account.AppUserId, cancellationToken),
+            RerunOfJobId: jobId);
+
+        var outcome = await _jobStarter.StartAsync(
+            client,
+            RerunRequestFrom(response, payload),
+            account.AppUserId,
+            origin,
+            cancellationToken);
+
+        if (outcome.Error != null)
+        {
+            return await CreateJsonResponseAsync(
+                req,
+                StatusFor(outcome.Error.Value),
+                new { error = outcome.ErrorDetail },
+                cancellationToken);
+        }
+
+        _logger.LogInformation(
+            "Rerun started. SourceJobId={SourceJobId}, NewJobId={NewJobId}",
+            jobId,
+            outcome.JobId);
+
+        return await CreateJsonResponseAsync(
+            req,
+            HttpStatusCode.OK,
+            new { jobId = outcome.JobId, sourceJobId = jobId },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Why this job may not be rerun, or null when it may. Completed runs
+    /// only (#549's word); the inputs must be held and not yet dropped; and
+    /// the record must name the exact package version — a rerun never
+    /// re-resolves a pin. Extracted so it can be asserted directly.
+    /// </summary>
+    internal static string? RefusalForRerun(ConsultGenerationJobResponse response) =>
+        response.Status != ConsultGenerationJobStatuses.Completed
+            ? $"Only a completed consult can be rerun; this one is {response.Status.ToLowerInvariant()}."
+            : response.InputsBlob == null
+                ? "This run's inputs were not held, so it cannot be rerun."
+                : response.InputsDroppedAtUtc is { } dropped
+                    ? $"The held inputs were deleted on {dropped:yyyy-MM-dd} under the retention policy, so this run can no longer be rerun."
+                    : response.WorkflowPackage == null
+                        ? "This record does not name the package version it ran, so it cannot be rerun."
+                        : null;
+
+    /// <summary>
+    /// The rebuild: no draft, no files, no refs, no schedule — only the held
+    /// Supplied values (typed wire JSON back to ConsultInputValue, the exact
+    /// inverse of what #547 wrote) under the record's own package ref, which
+    /// resolves to itself. The same map means the same effectiveInputHash.
+    /// </summary>
+    internal static ConsultGenerationRequest RerunRequestFrom(ConsultGenerationJobResponse source, JobInputsPayload payload) =>
+        new(
+            ConsultDraft: null,
+            WorkflowPackage: source.WorkflowPackage,
+            Inputs: payload.Supplied!.ToDictionary(
+                pair => pair.Key,
+                pair => ConsultInputValue.FromJson(pair.Value),
+                StringComparer.Ordinal));
+
+    /// <summary>
     /// The same horizon the start endpoint enforces, so a reschedule cannot put
     /// a job somewhere a fresh submit could not. Past times stay valid — they
     /// run immediately, which is a legitimate way to say "actually, now".

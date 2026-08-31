@@ -26,7 +26,11 @@ public sealed record ConsultGenerationJobOrigin(
     // #518: decided at start from delivery.emailPdf — false only when the
     // account chose not to email app-initiated runs. Email-door jobs always
     // reply, so they never set it.
-    bool EmailRequested = true);
+    bool EmailRequested = true,
+    // #549: set only by the rerun door — the completed run whose held inputs
+    // this start replays. Server-derived, never from the wire: it makes the
+    // starter stamp a rerun origin on every effective slot.
+    string? RerunOfJobId = null);
 
 public enum ConsultGenerationJobStartError
 {
@@ -332,6 +336,24 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // Set for some mismatches and not others — the single clearest
                 // reason this cannot be an allowlist over error kinds.
                 SenderSafeDetail: inputs.SenderSafeError);
+        }
+
+        // #549: a rerun replays the source's held inputs, so every effective
+        // slot names the run it came from. Built server-side like every
+        // origin; the digest is over the effective value verbatim, equal to
+        // the source's slot values by construction.
+        if (origin.RerunOfJobId is { } rerunOf && inputs.Effective != null)
+        {
+            inputOrigins = MergeOrigins(inputOrigins, inputs.Effective.ToDictionary(
+                pair => pair.Key,
+                pair => (IReadOnlyList<ConsultInputOrigin>)new[]
+                {
+                    new ConsultInputOrigin(
+                        ConsultInputOriginKinds.Rerun,
+                        TextSha256: ConsultGenerationProvenance.Sha256Hex(pair.Value),
+                        SourceJobId: rerunOf)
+                },
+                StringComparer.Ordinal));
         }
 
         // #290: present is not the same as filled. ResolveEffectiveInputs has

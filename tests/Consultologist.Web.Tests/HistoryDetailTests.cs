@@ -43,7 +43,8 @@ public class HistoryDetailTests : ClientRenderTestContext
         DateTimeOffset? inputsDroppedAtUtc = null,
         string? source = null,
         string? apiHost = null,
-        string? engineCommit = null)
+        string? engineCommit = null,
+        string status = "Completed")
     {
         // Terminal status only: a non-terminal row would start the page's real
         // 5-second polling loop.
@@ -51,7 +52,7 @@ public class HistoryDetailTests : ClientRenderTestContext
             new[]
             {
                 new AccountJobSummaryResponse(
-                    JobId, "Completed", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+                    JobId, status, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
                     TotalBlockCount: 9, CompletedBlockCount: 9, FailedBlockCount: 0, TextDroppedAtUtc: textDroppedAtUtc)
             },
             null));
@@ -59,7 +60,7 @@ public class HistoryDetailTests : ClientRenderTestContext
         AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
             JobId,
             "user-1",
-            "Completed",
+            status,
             TotalBlockCount: 9,
             CompletedBlockCount: 9,
             FailedBlockCount: 0,
@@ -781,5 +782,158 @@ public class HistoryDetailTests : ClientRenderTestContext
         var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
 
         Assert.DoesNotContain(Chips(page), chip => chip.Contains("format", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // ----- #549: the Rerun action -----
+
+    [Fact]
+    public void AHeldRun_OffersRerun_WithNoReason()
+    {
+        WithJob(3, heldInputs: new Dictionary<string, string> { ["consult_draft"] = "The referral." });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.False(page.Find(".rerun-button").HasAttribute("disabled"));
+        Assert.Empty(page.FindAll(".rerun-row__reason"));
+    }
+
+    [Fact]
+    public void ADroppedRun_GreysRerun_AndSaysTheDate()
+    {
+        WithJob(3, inputsDroppedAtUtc: new DateTimeOffset(2026, 9, 8, 3, 0, 0, TimeSpan.Zero));
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.True(page.Find(".rerun-button").HasAttribute("disabled"));
+        Assert.Contains("inputs deleted", page.Find(".rerun-row__reason").TextContent);
+    }
+
+    [Fact]
+    public void ARunNeverHeld_GreysRerun_AndSaysSo()
+    {
+        WithJob(3);
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.True(page.Find(".rerun-button").HasAttribute("disabled"));
+        Assert.Equal("inputs were not held for this run", page.Find(".rerun-row__reason").TextContent.Trim());
+    }
+
+    [Fact]
+    public void AFailedRun_OffersNoRerun()
+    {
+        WithJob(3, status: "Failed", heldInputs: new Dictionary<string, string> { ["consult_draft"] = "The referral." });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Empty(page.FindAll(".rerun-button"));
+    }
+
+    [Fact]
+    public async Task Rerun_StartsTheReplay_AndOpensItsRunView()
+    {
+        WithJob(3, heldInputs: new Dictionary<string, string> { ["consult_draft"] = "The referral." });
+        AIService.RerunConsultGenerationJobAsync(JobId).Returns("new-job-1");
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+        await page.Find(".rerun-button").ClickAsync(new());
+
+        await AIService.Received(1).RerunConsultGenerationJobAsync(JobId);
+        var navigation = (Microsoft.AspNetCore.Components.NavigationManager)Services
+            .GetService(typeof(Microsoft.AspNetCore.Components.NavigationManager))!;
+        Assert.EndsWith("/consults/new-job-1", navigation.Uri);
+    }
+
+    // ----- #549: the per-stage comparison on a rerun's detail -----
+
+    private const string SourceJobId = "fedcba9876543210fedcba9876543210";
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>> RerunOrigins() =>
+        new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
+        {
+            ["consult_draft"] = new[] { new ConsultInputOrigin("rerun", TextSha256: "aa", SourceJobId: SourceJobId) }
+        };
+
+    private void WithRerunSource(IReadOnlyDictionary<string, ConsultGenerationNodeStatus> nodeOutputs, string effectiveInputHash = "aaaa")
+    {
+        AIService.GetConsultGenerationJobAsync(SourceJobId).Returns(new ConsultGenerationJobResponse(
+            SourceJobId, "user-1", "Completed", 9, 9, 0,
+            new Dictionary<string, string>(), new Dictionary<string, string>(), true,
+            NodeOutputs: nodeOutputs,
+            EffectiveInputHash: effectiveInputHash,
+            EffectiveInputHashVersion: 3));
+    }
+
+    private static ConsultGenerationNodeStatus Node(string id, string? inputHash, string? outputHash) =>
+        new(id, id, "Completed", inputHash, outputHash, null, null, HashVersion: 5);
+
+    [Fact]
+    public void ARerunDetail_ShowsTheTableAgainstItsSource_WithHonestVerdicts()
+    {
+        WithJob(3,
+            inputOrigins: RerunOrigins(),
+            nodes: new[]
+            {
+                new ConsultGenerationNodeDescriptor("extract", "Extract"),
+                new ConsultGenerationNodeDescriptor("draft", "Draft")
+            },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["extract"] = Node("extract", "in1", "outA"),
+                ["draft"] = Node("draft", "in2", "outX")
+            });
+        WithRerunSource(new Dictionary<string, ConsultGenerationNodeStatus>
+        {
+            ["extract"] = Node("extract", "in1", "outA"),
+            ["draft"] = Node("draft", "in2", "outB")
+        });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var verdicts = page.FindAll(".rerun-comparison__verdict").Select(cell => cell.TextContent.Trim()).ToArray();
+        Assert.Contains("same", verdicts);
+        Assert.Contains("different", verdicts);
+        // The section names its source and links to it.
+        Assert.Contains(SourceJobId[..8], page.Find(".rerun-comparison").Parent!.TextContent);
+    }
+
+    [Fact]
+    public void EqualEffectiveInputs_ReadAsByConstruction_AndUnequalOnesSayBug()
+    {
+        // Both jobs stamp version 3 here (WithJob's outputHashVersion doubles
+        // as the effective-input version in this fixture).
+        WithJob(3, inputOrigins: RerunOrigins(),
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus> { ["extract"] = Node("extract", "in1", "outA") });
+        WithRerunSource(new Dictionary<string, ConsultGenerationNodeStatus> { ["extract"] = Node("extract", "in1", "outA") });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+        Assert.Contains("equal by construction", page.Find(".rerun-comparison__inputs").TextContent);
+
+        // A differing hash is a bug and the panel says exactly that.
+        WithRerunSource(new Dictionary<string, ConsultGenerationNodeStatus> { ["extract"] = Node("extract", "in1", "outA") }, effectiveInputHash: "zzzz");
+        var mismatchPage = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+        Assert.Contains("this is a bug", mismatchPage.Find(".rerun-comparison__inputs--bug").TextContent);
+    }
+
+    [Fact]
+    public void AnUnreachableSource_DegradesToANamedRow_NeverABrokenPanel()
+    {
+        WithJob(3, inputOrigins: RerunOrigins());
+        AIService.GetConsultGenerationJobAsync(SourceJobId)
+            .Returns<ConsultGenerationJobResponse>(_ => throw new InvalidOperationException("storage blip"));
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Contains("could not be loaded", page.Find(".rerun-comparison__unavailable").TextContent);
+    }
+
+    [Fact]
+    public void AnOrdinaryRun_ShowsNoComparison()
+    {
+        WithJob(3);
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Empty(page.FindAll(".rerun-comparison"));
     }
 }

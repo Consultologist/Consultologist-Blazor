@@ -37,6 +37,13 @@ public interface IAIEndpointService
     /// </summary>
     Task<string> RescheduleConsultGenerationJobAsync(string jobId, DateTimeOffset scheduledAtUtc);
 
+    /// <summary>
+    /// #549: run a completed consult again on its held inputs and the same
+    /// exact package version. Server-side start from the source job id alone
+    /// — the typed inputs never enter the browser. Returns the NEW job id.
+    /// </summary>
+    Task<string> RerunConsultGenerationJobAsync(string jobId);
+
     string GetConsultGenerationJobEventsUrl(string jobId, string attemptId, string? lastEventId = null);
 
     IAsyncEnumerable<ConsultGenerationJobSseEvent> StreamConsultGenerationJobEventsAsync(
@@ -240,6 +247,29 @@ public class AIEndpointService : IAIEndpointService
             ?? throw new InvalidOperationException("Reschedule succeeded but returned no job id.");
     }
 
+    public async Task<string> RerunConsultGenerationJobAsync(string jobId)
+    {
+        var functionUrl = _locations.Url(ApiRoutes.ConsultGenerationJobs);
+        var url = $"{functionUrl.TrimEnd('/')}/{Uri.EscapeDataString(jobId)}/Rerun";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        await AddAuthorizationAsync(request);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // Carries the server's sentence — a 409 names which state refused
+            // (not held, deleted on a date, not completed).
+            throw await DescribeFailureAsync(response, "Consult rerun");
+        }
+
+        var payload = await response.Content.ReadFromJsonAsync<RerunConsultResponse>();
+
+        return payload?.JobId
+            ?? throw new InvalidOperationException("Rerun succeeded but returned no job id.");
+    }
+
     public async Task CancelConsultGenerationJobAsync(string jobId)
     {
         var functionUrl = _locations.Url(ApiRoutes.ConsultGenerationJobs);
@@ -436,6 +466,9 @@ public record ConsultGenerationJobStartResponse(string JobId, string StatusUrl);
 
 /// <summary>#390: the new job a reschedule created, and the one it replaced.</summary>
 public record RescheduleConsultResponse(string JobId, string CancelledJobId, DateTimeOffset ScheduledAtUtc);
+
+/// <summary>#549: the new job and the run it replays.</summary>
+public record RerunConsultResponse(string JobId, string SourceJobId);
 public record ConsultGenerationJobSseEvent(string EventName, string Json, string? EventId = null);
 public record ConsultGenerationJobResponse(
     string JobId,

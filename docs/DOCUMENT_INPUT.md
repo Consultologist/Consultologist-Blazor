@@ -692,6 +692,15 @@ POST /api/ConsultGenerationJobs
   > byte-for-byte the deliverable. Only a
   > `document` origin exempts a slot from the cloud-link check (§ 4): a
   > previous run's text was typed by someone once.
+  > **Amended (#549).** A third origin kind, `rerun`: the whole run
+  > replays a completed run's held inputs (`POST
+  > ConsultGenerationJobs/{jobId}/Rerun` — no request body; the server
+  > reads the held blob's Supplied half under the record's exact package
+  > ref, never a re-resolved pin). Every effective slot records
+  > `{ kind: rerun, sourceJobId, textSha256 }` with the digest of the
+  > slot's effective value verbatim. A `rerun` origin exempts the
+  > cloud-link check the way `document` does: the text already ran once,
+  > and refusing the replay would refuse what was accepted.
 
 ## 8. Failure copy (normative)
 
