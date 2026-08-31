@@ -53,7 +53,7 @@ sorting is the design decision that keeps the record honest over time:
   the record recomputes them while the text is present; after the retention
   policy deletes it (`textDroppedAtUtc`) they attest what was produced and
   can no longer be checked against it. Since #551 (provenance
-  `v2026.09.1`) the record also carries **token counts** — per node
+  `v2026.08.14`) the record also carries **token counts** — per node
   instance (`nodeOutputs[].tokens`, the provider's `{ input, output }`
   for that one Responses-API call) and the job's totals, summed once at
   completion. Counts are numbers, never text, and survive every
