@@ -12,6 +12,7 @@ using Microsoft.DurableTask.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
@@ -27,6 +28,7 @@ public class ConsultGenerationJobStarterTests
     private readonly IAccountStore _accounts = Substitute.For<IAccountStore>();
     private readonly IAccountSettingsStore _settings = Substitute.For<IAccountSettingsStore>();
     private readonly IJobOutputsBlobStore _outputsBlobs = Substitute.For<IJobOutputsBlobStore>();
+    private readonly IJobInputsBlobStore _inputsBlobs = Substitute.For<IJobInputsBlobStore>();
 
     // #290: a terse but genuine referral. These fixtures used to say
     // "draft", which is not a referral and which the content floor
@@ -56,7 +58,8 @@ public class ConsultGenerationJobStarterTests
             _terminology,
             _accounts,
             _settings,
-            _outputsBlobs);
+            _outputsBlobs,
+            _inputsBlobs);
     }
 
     private readonly FakeTerminologySource _terminology = new();
@@ -305,6 +308,99 @@ public class ConsultGenerationJobStarterTests
             Data: data,
             ResultNodeId: results.Count == 1 ? results[0].NodeId : null,
             Results: results);
+    }
+
+    [Fact]
+    public async Task TheInputs_AreHeld_AtStart_AndThePointerRidesInitialize()
+    {
+        // #547: the effective map, byte-for-byte what runs, plus each
+        // supplied value's typed wire form — written before the
+        // orchestration is scheduled, into the container the kind names.
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V8Fixtures.Minimal(),
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+        _accounts.GetAccountKindAsync("user-1", Arg.Any<CancellationToken>()).Returns("organisation");
+        var pointer = new ConsultInputsBlobPointer("org-job-inputs", "user-1/x.json");
+        JobInputsPayload? written = null;
+        _inputsBlobs.WriteAsync("organisation", "user-1", Arg.Any<string>(), Arg.Do<JobInputsPayload>(p => written = p), Arg.Any<CancellationToken>())
+            .Returns(pointer);
+
+        ConsultGenerationJobInitialize? initialize = null;
+        await _entities.SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(),
+            nameof(ConsultGenerationJobEntity.Initialize),
+            Arg.Do<object>(payload => initialize = payload as ConsultGenerationJobInitialize));
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Any<object?>(),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var outcome = await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(Referral), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+
+        Assert.Null(outcome.Error);
+        Assert.Equal(Referral, written!.Effective!["consult_draft"]);
+        Assert.Equal(ConsultInputValue.OfText(Referral).AsJson(), written.Supplied!["consult_draft"]);
+        Assert.Equal(pointer, initialize!.InputsBlob);
+    }
+
+    [Fact]
+    public async Task AnInputsWriteFailure_NeverRefusesTheStart()
+    {
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V8Fixtures.Minimal(),
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+        _inputsBlobs.WriteAsync(Arg.Any<string?>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<JobInputsPayload>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("storage blip"));
+
+        ConsultGenerationJobInitialize? initialize = null;
+        await _entities.SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(),
+            nameof(ConsultGenerationJobEntity.Initialize),
+            Arg.Do<object>(payload => initialize = payload as ConsultGenerationJobInitialize));
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Any<object?>(),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var outcome = await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(Referral), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+
+        // The run proceeds unheld; a rerun later refuses by name.
+        Assert.Null(outcome.Error);
+        Assert.Null(initialize!.InputsBlob);
+    }
+
+    [Fact]
+    public async Task ALegacyJob_IsNotHeld()
+    {
+        // v5/v6 carries no effective map — the archived-format tail.
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV5Package());
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Any<object?>(),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var outcome = await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(Referral), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+
+        Assert.Null(outcome.Error);
+        await _inputsBlobs.DidNotReceiveWithAnyArgs().WriteAsync(default, default!, default!, default!, default);
     }
 
     [Fact]

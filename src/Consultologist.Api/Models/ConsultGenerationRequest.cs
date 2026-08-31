@@ -211,7 +211,11 @@ public record ConsultGenerationJobResponse(
     // #557: where the produced text lives (container + name, never a URL).
     // Null on pre-#557 records, on Failed jobs, and when the completion
     // write failed and the text stayed on the entity.
-    ConsultOutputsBlobPointer? OutputsBlob = null);
+    ConsultOutputsBlobPointer? OutputsBlob = null,
+    // #547: where the held inputs live, and when the retention drop deleted
+    // them. Null on unheld jobs (v5/v6, pre-#547, or the write failed).
+    ConsultInputsBlobPointer? InputsBlob = null,
+    DateTimeOffset? InputsDroppedAtUtc = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and

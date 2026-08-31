@@ -179,6 +179,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.TerminologyServerRef ??= input.TerminologyServerRef;
         State.ApiHost ??= input.ApiHost;
         State.EngineCommit ??= input.EngineCommit;
+        State.InputsBlob ??= input.InputsBlob;
         State.Source ??= input.Source;
         State.ScheduledAtUtc ??= input.ScheduledAtUtc;
         State.PackageSpecVersion ??= input.PackageSpecVersion;
@@ -764,7 +765,11 @@ public sealed record ConsultGenerationJobInitialize(
     bool? Deciding = null,
     // #514: see ConsultGenerationOrchestrationInput. Appended last, same reason.
     string? ApiHost = null,
-    string? EngineCommit = null);
+    string? EngineCommit = null,
+    // #547: where the starter held this job's inputs; null when unheld
+    // (v5/v6, or the write failed). Appended last — the engine calls
+    // Initialize positionally.
+    ConsultInputsBlobPointer? InputsBlob = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -1039,6 +1044,12 @@ public sealed class ConsultGenerationJobState
     // records and when the completion write failed.
     public ConsultOutputsBlobPointer? OutputsBlob { get; set; }
 
+    // #547: where the starter held this job's inputs, and when the retention
+    // drop deleted them. The pointer is kept after the drop;
+    // InputsDroppedAtUtc gates every read of it. Null on unheld jobs.
+    public ConsultInputsBlobPointer? InputsBlob { get; set; }
+    public DateTimeOffset? InputsDroppedAtUtc { get; set; }
+
     // #486: what happened to the completion email (DeliveryOutcomes); null
     // on records from before, or while the job is still running.
     public string? DeliveryOutcome { get; set; }
@@ -1295,6 +1306,8 @@ public sealed class ConsultGenerationJobState
             ApiHost: ApiHost,
             EngineCommit: EngineCommit,
             OutputsBlob: OutputsBlob,
+            InputsBlob: InputsBlob,
+            InputsDroppedAtUtc: InputsDroppedAtUtc,
             PackageSpecVersion: PackageSpecVersion,
             PackageTitle: PackageTitle,
             StartFailure: StartFailure,

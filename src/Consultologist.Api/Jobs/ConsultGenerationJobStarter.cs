@@ -144,6 +144,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly IAccountStore _accounts;
     private readonly IAccountSettingsStore _settingsStore;
     private readonly IJobOutputsBlobStore _outputsBlobs;
+    private readonly IJobInputsBlobStore _inputsBlobs;
 
     public ConsultGenerationJobStarter(
         ILogger<ConsultGenerationJobStarter> logger,
@@ -156,7 +157,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         ITerminologyAttestationSource terminology,
         IAccountStore accounts,
         IAccountSettingsStore settingsStore,
-        IJobOutputsBlobStore outputsBlobs)
+        IJobOutputsBlobStore outputsBlobs,
+        IJobInputsBlobStore inputsBlobs)
     {
         _logger = logger;
         _packageStore = packageStore;
@@ -169,6 +171,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         _accounts = accounts;
         _settingsStore = settingsStore;
         _outputsBlobs = outputsBlobs;
+        _inputsBlobs = inputsBlobs;
     }
 
     public async Task<ConsultGenerationJobStartOutcome> StartAsync(
@@ -608,6 +611,27 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // lands in. Read unconditionally: every completed job writes one.
         var accountKind = await _accounts.GetAccountKindAsync(appUserId, cancellationToken);
 
+        // #547: the held inputs — the effective map, exactly what will run,
+        // and each supplied value's typed wire form (what a rerun resubmits) —
+        // written before the orchestration is scheduled. A storage blip never
+        // refuses a start: the job runs unheld and a rerun later refuses by
+        // name. v5/v6 jobs carry no effective map and are not held.
+        ConsultInputsBlobPointer? inputsBlob = null;
+        if (inputs.Effective != null)
+        {
+            try
+            {
+                inputsBlob = await _inputsBlobs.WriteAsync(
+                    accountKind, appUserId, jobId,
+                    new JobInputsPayload(JobInputsPayload.CurrentVersion, inputs.Effective, SuppliedCarrier(inputs.Supplied)),
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Inputs blob not written; the run proceeds unheld. JobId={JobId}", jobId);
+            }
+        }
+
         // v11 #516: the chosen signature block, snapshotted at start — what
         // was promised when the job was submitted, through both doors. Only
         // a package that marks a deliverable signed pays the table read; no
@@ -654,7 +678,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 PackageTags: package.Manifest.Tags,
                 // v10 (#496): by name, last — a package without a classifier
                 // leaves it null and writes the bytes it always wrote.
-                Deciding: deciding ? true : null));
+                Deciding: deciding ? true : null,
+                // #547: where the held inputs live; null when unheld.
+                InputsBlob: inputsBlob));
 
         var terminology = await _terminology.GetAsync(cancellationToken);
         var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(
