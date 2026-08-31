@@ -204,8 +204,11 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         Navigate(page, "+ Macro");
         page.Find("fluent-text-field[placeholder='closing_paragraph']").Change("closing_paragraph");
         page.FindAll("fluent-button").First(b => b.TextContent.Contains("Create macro")).Click();
-        // Landed on the new macro's pane; write its text.
+        // Landed on the new macro's pane; write its text, then reference it —
+        // the desk's orphan mirror blocks an unreferenced macro.
         page.Find("fluent-text-area").Change("Thank you for this referral.");
+        Navigate(page, "Documents");
+        page.Find(".result-macro-append").Change("closing_paragraph");
         Publish(page);
 
         Assert.NotNull(sent);
@@ -363,8 +366,11 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void RemovingTheLastMacro_OmitsTheKey()
+    public void RemovingTheLastReference_LeavesAnOrphan_AndTheDeskSaysSo()
     {
+        // Declared-macro removal is deferred (follow-up issue), so dropping
+        // the only reference orphans the declaration — refused by name, the
+        // validator's sentence, before any version is minted.
         var package = EditorFixtures.V11Macro();
         CapturePublish();
         var page = RenderEditor(package);
@@ -373,7 +379,8 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         page.Find(".result-macro-remove").Click();
         Publish(page);
 
-        Assert.False(Result(sent!).TryGetProperty("macros", out _));
+        Assert.Contains("Macro 'disclaimer' is not referenced by any result.", Refusals(page));
+        Assert.Null(sent);
     }
 
     // ----- the reproducible toggle -----
@@ -437,5 +444,112 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
             .First(b => b.TextContent.Replace("●", string.Empty).Trim() == "Graph")
             .QuerySelector(".editor-nav__dot")!.TextContent.Trim();
         Assert.Equal(string.Empty, graphDot);
+    }
+
+    // ----- the desk: below-11 refusals, the orphan rule, the token scan -----
+
+    private static WorkflowPackageContentResponse V10CarryingV11Shapes()
+    {
+        var package = EditorFixtures.V10Classifier();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["macros"] = new System.Text.Json.Nodes.JsonArray(
+            new System.Text.Json.Nodes.JsonObject { ["id"] = "disclaimer", ["label"] = "D", ["file"] = "macros/disclaimer.md" });
+        root["results"]![0]!["macros"] = new System.Text.Json.Nodes.JsonArray("disclaimer");
+        root["results"]![0]!["signature"] = true;
+        root["nodes"]![0]!["reproducible"] = true;
+
+        return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
+
+    [Fact]
+    public void BelowEleven_TheCarriedShapes_AreRefusedByName()
+    {
+        var package = V10CarryingV11Shapes();
+        // A pending edit opens the publish gate; the desk then refuses.
+        WithDraft(package, """
+            {
+              "Version": 14,
+              "NodeEdits": [ { "NodeId": "scope", "Label": "Renamed scope", "ForEach": null, "OutputSchema": null, "FailIfEmpty": null, "Prompt": "classify", "Values": ["in_scope", "out_of_scope"], "Reproducible": true } ]
+            }
+            """);
+        CapturePublish();
+        var page = RenderEditor(package);
+
+        Publish(page);
+
+        var refusals = Refusals(page);
+        Assert.Contains("macros requires specVersion 11. Use \"Upgrade to specVersion 11\" and publish.", refusals);
+        Assert.Contains("Result 'consult_note' declares macros, which requires specVersion 11. Use \"Upgrade to specVersion 11\" and publish.", refusals);
+        Assert.Contains("Result 'consult_note' declares signature, which requires specVersion 11. Use \"Upgrade to specVersion 11\" and publish.", refusals);
+        Assert.Contains("Node 'scope' declares reproducible, which requires specVersion 11. Use \"Upgrade to specVersion 11\" and publish.", refusals);
+        Assert.Null(sent);
+    }
+
+    [Fact]
+    public void AnOrphanMacro_BlocksPublish_ByName()
+    {
+        var page = RenderEditor(EditorFixtures.V11());
+        CapturePublish();
+        Navigate(page, "+ Macro");
+        page.Find("fluent-text-field[placeholder='closing_paragraph']").Change("closing_paragraph");
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Create macro")).Click();
+        page.Find("fluent-text-area").Change("Thank you.");
+
+        Publish(page);
+
+        Assert.Contains("Macro 'closing_paragraph' is not referenced by any result.", Refusals(page));
+        Assert.Contains("Publish rejected", page.Markup);
+        Assert.Null(sent);
+    }
+
+    [Fact]
+    public void AnEmptyMacroFile_BlocksPublish_ByName()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+        CapturePublish();
+        Navigate(page, "disclaimer");
+        page.Find("fluent-text-area").Change("   ");
+
+        Publish(page);
+
+        Assert.Contains("Macro 'disclaimer' file 'macros/disclaimer.md' is empty.", Refusals(page));
+        Assert.Null(sent);
+    }
+
+    [Theory]
+    [InlineData("{{input:nope}}", "input:nope")]
+    [InlineData("{{data:missing}}", "data:missing")]
+    [InlineData("{{classification:assemble-note}}", "classification:assemble-note")]
+    [InlineData("{{run:time}}", "run:time")]
+    [InlineData("{{profile:signature}}", "profile:signature")]
+    [InlineData("{{no_colon}}", "no_colon")]
+    [InlineData("{{sql:drop}}", "sql:drop")]
+    public void AnUnresolvableToken_BlocksPublish_WithTheValidatorsSentence(string token, string named)
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+        CapturePublish();
+        Navigate(page, "disclaimer");
+        page.Find("fluent-text-area").Change($"Text {token} text.");
+
+        Publish(page);
+
+        Assert.Contains($"Macro 'disclaimer' placeholder '{{{{{named}}}}}' does not resolve.", Refusals(page));
+        Assert.Null(sent);
+    }
+
+    [Fact]
+    public void OneGoodTokenPerSense_PassesTheDesk()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+        CapturePublish();
+        Navigate(page, "disclaimer");
+        page.Find("fluent-text-area").Change(
+            "{{input:consult_draft}} {{data:intro}} {{classification:scope}} {{run:package}} {{profile:name}}");
+
+        Publish(page);
+
+        Assert.NotNull(sent);
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join(" | ", validated.Errors));
     }
 }

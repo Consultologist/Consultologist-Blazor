@@ -2884,7 +2884,92 @@
             .Where(result => !aggregatorIds.Contains(result.Node))
             .Select(result => $"Result '{result.Id}' must reference an aggregator node ('{result.Node}' is not one)."));
 
+        // ----- v11 #564: the desk's mirror of the validator's macro rules -----
+
+        if (EffectiveSpecVersion < 11)
+        {
+            // Carried shapes from forks or drafts — the editor never offers
+            // the controls below 11; the desk refuses them by name, the
+            // validator's sentences plus the upgrade pointer.
+            errors.AddRange(EffectiveNodes
+                .Where(node => node.Reproducible)
+                .Select(node => $"Node '{node.Id}' declares reproducible, which requires specVersion 11. "
+                    + $"Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish."));
+
+            if (EffectiveMacros.Count > 0)
+            {
+                errors.Add($"macros requires specVersion 11. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.");
+            }
+
+            errors.AddRange(results
+                .Where(result => result.Macros is { Count: > 0 })
+                .Select(result => $"Result '{result.Id}' declares macros, which requires specVersion 11. "
+                    + $"Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish."));
+
+            errors.AddRange(results
+                .Where(result => result.Signature != null)
+                .Select(result => $"Result '{result.Id}' declares signature, which requires specVersion 11. "
+                    + $"Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish."));
+        }
+        else
+        {
+            // The orphan rule, the validator's sentence verbatim.
+            var referencedMacroIds = results
+                .SelectMany(result => result.Macros ?? Array.Empty<string>())
+                .ToHashSet(StringComparer.Ordinal);
+            errors.AddRange(EffectiveMacros
+                .Where(m => !referencedMacroIds.Contains(m.Id))
+                .Select(m => $"Macro '{m.Id}' is not referenced by any result."));
+
+            foreach (var macroView in EffectiveMacros)
+            {
+                var macroText = GetText(macroView.File);
+
+                if (string.IsNullOrWhiteSpace(macroText))
+                {
+                    errors.Add($"Macro '{macroView.Id}' file '{macroView.File}' is empty.");
+                    continue;
+                }
+
+                errors.AddRange(MacroTokenErrors(macroView.Id, macroText));
+            }
+        }
+
         return errors;
+    }
+
+    /// <summary>
+    /// v11 #564: the desk's mirror of the validator's placeholder scanner —
+    /// the one grammar (PF.WorkflowMacroPlaceholders) resolved against the
+    /// EFFECTIVE declarations (they are what the composed manifest will
+    /// declare), each miss in the server's sentence verbatim. The
+    /// optional-input case is a server warning, not a desk error — the help
+    /// panel annotates it instead.
+    /// </summary>
+    private IEnumerable<string> MacroTokenErrors(string macroId, string text)
+    {
+        var inputIds = EffectiveInputs.Select(i => i.Id).ToHashSet(StringComparer.Ordinal);
+        var scalarIdSet = ScalarIds.ToHashSet(StringComparer.Ordinal);
+        var classifierIds = EffectiveNodes.Where(n => n.IsClassifier).Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
+
+        foreach (System.Text.RegularExpressions.Match match in PF.WorkflowMacroPlaceholders.Pattern.Matches(text))
+        {
+            var token = PF.WorkflowMacroPlaceholders.TokenOf(match);
+            var resolves = PF.WorkflowMacroPlaceholders.TryParse(token, out var ns, out var id) && ns switch
+            {
+                "input" => inputIds.Contains(id),
+                "data" => scalarIdSet.Contains(id),
+                "classification" => classifierIds.Contains(id),
+                "run" => PF.WorkflowMacroPlaceholders.RunFacts.Contains(id),
+                "profile" => PF.WorkflowMacroPlaceholders.ProfileFacts.Contains(id),
+                _ => false
+            };
+
+            if (!resolves)
+            {
+                yield return $"Macro '{macroId}' placeholder '{{{{{token}}}}}' does not resolve.";
+            }
+        }
     }
 
     /// <summary>
