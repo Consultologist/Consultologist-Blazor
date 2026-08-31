@@ -158,9 +158,13 @@ internal static class InputContent
     {
         // #510: only a document origin exempts a slot — a previous run's text
         // was typed by someone once, and its links are as unreachable as any.
+        // #549: a rerun origin exempts too — the text already ran once, and
+        // the acceptance decision was made at the source; refusing the replay
+        // would refuse what was accepted.
         bool FromNoDocument(string id) =>
             origins?.TryGetValue(id, out var slotOrigins) != true
-            || slotOrigins.All(o => o.Kind != ConsultInputOriginKinds.Document);
+            || slotOrigins.All(o => o.Kind != ConsultInputOriginKinds.Document
+                && o.Kind != ConsultInputOriginKinds.Rerun);
 
         if (manifest.SpecVersion < 7 || effective == null)
         {

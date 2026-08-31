@@ -403,6 +403,120 @@ public class ConsultGenerationJobStarterTests
         await _inputsBlobs.DidNotReceiveWithAnyArgs().WriteAsync(default, default!, default!, default!, default);
     }
 
+    // ----- #549: a rerun replays the held inputs and names its source -----
+
+    [Fact]
+    public async Task ARerunStart_StampsARerunOrigin_OnEveryEffectiveSlot()
+    {
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V8Fixtures.Minimal(),
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+
+        ConsultGenerationJobInitialize? initialize = null;
+        await _entities.SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(),
+            nameof(ConsultGenerationJobEntity.Initialize),
+            Arg.Do<object>(payload => initialize = payload as ConsultGenerationJobInitialize));
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Any<object?>(),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var outcome = await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(Referral), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App, RerunOfJobId: "source-job-1"), CancellationToken.None);
+
+        Assert.Null(outcome.Error);
+        var origins = initialize!.InputDocumentOrigins;
+        Assert.NotNull(origins);
+        var origin = Assert.Single(origins!["consult_draft"]);
+        Assert.Equal(ConsultInputOriginKinds.Rerun, origin.Kind);
+        Assert.Equal("source-job-1", origin.SourceJobId);
+        // The digest is over the effective value verbatim — equal to the
+        // source's slot value by construction.
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(Referral), origin.TextSha256);
+        Assert.Null(origin.SourceResultId);
+        Assert.Null(origin.FileSha256);
+    }
+
+    [Fact]
+    public async Task AnOrdinaryStart_StampsNoRerunOrigin()
+    {
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V8Fixtures.Minimal(),
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+        ConsultGenerationJobInitialize? initialize = null;
+        await _entities.SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(),
+            nameof(ConsultGenerationJobEntity.Initialize),
+            Arg.Do<object>(payload => initialize = payload as ConsultGenerationJobInitialize));
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Any<object?>(),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(Referral), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+
+        Assert.Null(initialize!.InputDocumentOrigins);
+    }
+
+    [Fact]
+    public async Task ARequestRebuiltFromTheHeldPayload_ReproducesTheEffectiveInputHash()
+    {
+        // The pin the whole feature rests on: resubmitting the blob's
+        // Supplied half (typed wire JSON → FromJson) under the same package
+        // yields the same effectiveInputHash the source recorded.
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(
+                V8Fixtures.Minimal(),
+                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+        _accounts.GetAccountKindAsync("user-1", Arg.Any<CancellationToken>()).Returns("organisation");
+        JobInputsPayload? written = null;
+        _inputsBlobs.WriteAsync(Arg.Any<string?>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Do<JobInputsPayload>(p => written = p), Arg.Any<CancellationToken>())
+            .Returns(new ConsultInputsBlobPointer("org-job-inputs", "user-1/x.json"));
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var sourceOutcome = await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(Referral), "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+        Assert.Null(sourceOutcome.Error);
+        var sourceHash = orchestrationInput!.EffectiveInputHash;
+        Assert.NotNull(sourceHash);
+        Assert.NotNull(written);
+
+        // The rerun's rebuild: no draft, no files, no refs — only Supplied.
+        var rebuilt = new ConsultGenerationRequest(
+            ConsultDraft: null,
+            Inputs: written!.Supplied!.ToDictionary(
+                pair => pair.Key,
+                pair => ConsultInputValue.FromJson(pair.Value),
+                StringComparer.Ordinal));
+        orchestrationInput = null;
+
+        var rerunOutcome = await CreateStarter().StartAsync(_client, rebuilt, "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App, RerunOfJobId: "source-job-1"), CancellationToken.None);
+
+        Assert.Null(rerunOutcome.Error);
+        Assert.Equal(sourceHash, orchestrationInput!.EffectiveInputHash);
+    }
+
     [Fact]
     public async Task ASignedPackage_SnapshotsTheChosenSignature_AndAPlainOneDoesNot()
     {
