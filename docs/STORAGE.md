@@ -188,6 +188,10 @@ Since #549 the blob is what the rerun door reads: `POST
 ConsultGenerationJobs/{jobId}/Rerun` rebuilds the request from the
 Supplied half under the record's exact package ref and starts a new job
 whose every effective slot carries a `rerun` origin naming the source.
+Since #582 the door also captures the source's hashes as a baseline,
+and the rerun's completion stamps `rerunVerdict` — pass/fail over the
+package's own reproducible claims, judged from two records and nothing
+else.
 
 ## After Setup
 

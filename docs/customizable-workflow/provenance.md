@@ -162,8 +162,17 @@ each has, or needs, its own work:
 > construction, so the two records' `effectiveInputHash` agree or one of
 > them is wrong. The rerun could only start while the source's held
 > inputs existed; the origin stands after they are deleted. The rerun's
-> History shows the per-stage table against the source; the pass/fail
-> verdict is #582's.
+> History shows the per-stage table against the source.
+>
+> Since #582 (provenance `v2026.08.13`) a rerun's record also carries the
+> judgment: `rerunOf` lifts the source id to the job level, and
+> `rerunVerdict`/`rerunDivergence` are derived once at the rerun's
+> completion — `pass` when every reproducible node's `outputHash` equals
+> the source's for the same `inputHash` and per-node `hashVersion`;
+> `fail` naming the first divergent stage in package order (or
+> `effective-inputs`, the by-construction breach); and
+> `no-reproducible-stages`, named rather than a vacuous pass. Stages
+> failing the preconditions are shown, not counted.
 
 The Foundry agent (system prompt, parameters, tool wiring) is edited in a portal and is
 therefore mutable state. Rule: **track the agent config in git; at startup or job start,

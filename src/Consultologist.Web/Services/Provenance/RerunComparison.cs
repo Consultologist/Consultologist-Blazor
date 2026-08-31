@@ -23,21 +23,43 @@ public static class RerunComparison
     public const string HashVersionDiffers = "hash version differs";
     public const string NotOnSource = "not on the source run";
 
-    /// <summary>The run this record replays, from its origins — null for an ordinary run.</summary>
+    /// <summary>
+    /// The run this record replays — the job-level field since #582, the slot
+    /// origins for #549-era reruns; null for an ordinary run.
+    /// </summary>
     public static string? SourceJobIdOf(ConsultGenerationJobResponse detail) =>
-        detail.InputOrigins?.Values
+        detail.RerunOf
+        ?? detail.InputOrigins?.Values
             .SelectMany(origins => origins)
             .FirstOrDefault(origin => origin.Kind == OriginKind)
             ?.SourceJobId;
 
-    /// <summary>One comparison row: a stage (node or fanned item) or a deliverable.</summary>
+    /// <summary>
+    /// #582: the stamped verdict as a sentence, or null when the record has
+    /// none (an ordinary run, a #549-era rerun, a rerun that did not
+    /// complete) — no line is shown rather than a guessed one.
+    /// </summary>
+    public static string? DescribeVerdict(string? verdict, string? divergence) => verdict switch
+    {
+        "pass" => "Verdict: pass — every reproducible stage matched the source",
+        "fail" when divergence == "effective-inputs" =>
+            "Verdict: fail — the effective inputs differ from the source; this is a bug",
+        "fail" => $"Verdict: fail — first divergence at {divergence}",
+        "no-reproducible-stages" =>
+            "Verdict: no reproducible stages to hold — the package claims none, or none were comparable",
+        _ => null
+    };
+
+    /// <summary>One comparison row: a stage (node or fanned item) or a deliverable.
+    /// Reproducible marks the stages the verdict counts (#550's claim).</summary>
     public sealed record Row(
         string Key,
         string Label,
         bool IsItem,
         string? SourceHash,
         string? RerunHash,
-        string Verdict);
+        string Verdict,
+        bool Reproducible = false);
 
     /// <summary>
     /// Equal by construction — the rerun resubmitted the source's own
@@ -62,10 +84,10 @@ public static class RerunComparison
 
         var rows = new List<Row>();
 
-        void Add(string key, string label, bool isItem, ConsultGenerationNodeStatus entry)
+        void Add(string key, string label, bool isItem, ConsultGenerationNodeStatus entry, bool reproducible)
         {
             source.NodeOutputs!.TryGetValue(key, out var sourceEntry);
-            rows.Add(new Row(key, label, isItem, sourceEntry?.OutputHash, entry.OutputHash, Verdict(sourceEntry, entry)));
+            rows.Add(new Row(key, label, isItem, sourceEntry?.OutputHash, entry.OutputHash, Verdict(sourceEntry, entry), reproducible));
         }
 
         if (source.NodeOutputs is not { Count: > 0 })
@@ -82,16 +104,18 @@ public static class RerunComparison
         {
             foreach (var descriptor in nodes)
             {
+                var reproducible = descriptor.Reproducible == true;
+
                 if (outputs.TryGetValue(descriptor.Id, out var nodeLevel))
                 {
-                    Add(descriptor.Id, descriptor.Label, isItem: false, nodeLevel);
+                    Add(descriptor.Id, descriptor.Label, isItem: false, nodeLevel, reproducible);
                 }
 
                 foreach (var (key, entry) in outputs
                     .Where(pair => pair.Key.StartsWith(descriptor.Id + ":", StringComparison.Ordinal))
                     .OrderBy(pair => pair.Key, StringComparer.Ordinal))
                 {
-                    Add(key, key[(descriptor.Id.Length + 1)..], isItem: true, entry);
+                    Add(key, key[(descriptor.Id.Length + 1)..], isItem: true, entry, reproducible);
                 }
             }
         }
@@ -99,7 +123,7 @@ public static class RerunComparison
         {
             foreach (var (key, entry) in outputs.OrderBy(pair => pair.Key, StringComparer.Ordinal))
             {
-                Add(key, entry.Label, key.Contains(':'), entry);
+                Add(key, entry.Label, key.Contains(':'), entry, reproducible: false);
             }
         }
 

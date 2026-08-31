@@ -44,7 +44,10 @@ public class HistoryDetailTests : ClientRenderTestContext
         string? source = null,
         string? apiHost = null,
         string? engineCommit = null,
-        string status = "Completed")
+        string status = "Completed",
+        string? rerunOf = null,
+        string? rerunVerdict = null,
+        string? rerunDivergence = null)
     {
         // Terminal status only: a non-terminal row would start the page's real
         // 5-second polling loop.
@@ -92,7 +95,10 @@ public class HistoryDetailTests : ClientRenderTestContext
             CatalogRef: catalogRef,
             Source: source,
             ApiHost: apiHost,
-            EngineCommit: engineCommit));
+            EngineCommit: engineCommit,
+            RerunOf: rerunOf,
+            RerunVerdict: rerunVerdict,
+            RerunDivergence: rerunDivergence));
     }
 
     // ----- #514: where the job ran, what ran it, how it was initiated -----
@@ -935,5 +941,49 @@ public class HistoryDetailTests : ClientRenderTestContext
         var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
 
         Assert.Empty(page.FindAll(".rerun-comparison"));
+    }
+
+    // ----- #582: the stamped verdict line -----
+
+    [Fact]
+    public void AStampedPass_RendersItsLine_AndMarksTheCountedStage()
+    {
+        WithJob(3,
+            rerunOf: SourceJobId, rerunVerdict: "pass",
+            nodes: new[] { new ConsultGenerationNodeDescriptor("extract", "Extract", Reproducible: true) },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus> { ["extract"] = Node("extract", "in1", "outA") });
+        WithRerunSource(new Dictionary<string, ConsultGenerationNodeStatus> { ["extract"] = Node("extract", "in1", "outA") });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Contains("Verdict: pass — every reproducible stage matched", page.Find(".rerun-verdict--pass").TextContent);
+        Assert.Single(page.FindAll(".rerun-comparison__counted"));
+    }
+
+    [Fact]
+    public void AStampedFail_NamesTheStage()
+    {
+        WithJob(3, rerunOf: SourceJobId, rerunVerdict: "fail", rerunDivergence: "draft",
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus> { ["draft"] = Node("draft", "in1", "outX") });
+        WithRerunSource(new Dictionary<string, ConsultGenerationNodeStatus> { ["draft"] = Node("draft", "in1", "outB") });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Contains("first divergence at draft", page.Find(".rerun-verdict--fail").TextContent);
+    }
+
+    [Fact]
+    public void A549EraRerun_ShowsTheTable_AndNoVerdictLine()
+    {
+        // The comparison resolves through the slot origins; the record has no
+        // stamped verdict, and no line is guessed.
+        WithJob(3, inputOrigins: RerunOrigins(),
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus> { ["extract"] = Node("extract", "in1", "outA") });
+        WithRerunSource(new Dictionary<string, ConsultGenerationNodeStatus> { ["extract"] = Node("extract", "in1", "outA") });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.NotEmpty(page.FindAll(".rerun-comparison__table"));
+        Assert.Empty(page.FindAll(".rerun-verdict"));
     }
 }

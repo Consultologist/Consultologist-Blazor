@@ -166,6 +166,32 @@ public class ConsultGenerationStartStatusTests
     }
 
     [Fact]
+    public void TheBaseline_LiftsEveryStagePair_AndTheEffectiveInputHash()
+    {
+        // #582: hashes only, keys verbatim (node-level and fanned items),
+        // each pair with the hashVersion that computed it.
+        var source = new ConsultGenerationJobResponse(
+            "job-1", "user-1", ConsultGenerationJobStatuses.Completed, 1, 1, 0,
+            new Dictionary<string, string>(), new Dictionary<string, string>(), true,
+            EffectiveInputHash: "aaaa",
+            EffectiveInputHashVersion: 5,
+            NodeOutputs: new Dictionary<string, ConsultGenerationNodeStatusResponse>
+            {
+                ["extract"] = new("extract", "Extract", "Completed", "in1", "out1", null, null, HashVersion: 5),
+                ["section:hpi"] = new("section", "HPI", "Completed", "in2", "out2", null, null, HashVersion: 5)
+            });
+
+        var baseline = ConsultGenerationJobs.BaselineFrom("job-1", source);
+
+        Assert.Equal("job-1", baseline.SourceJobId);
+        Assert.Equal("aaaa", baseline.EffectiveInputHash);
+        Assert.Equal(5, baseline.EffectiveInputHashVersion);
+        Assert.Equal(2, baseline.NodeHashes.Count);
+        Assert.Equal(new ConsultRerunBaselineNode("in1", "out1", 5), baseline.NodeHashes["extract"]);
+        Assert.Equal(new ConsultRerunBaselineNode("in2", "out2", 5), baseline.NodeHashes["section:hpi"]);
+    }
+
+    [Fact]
     public void TheRebuild_CarriesTheSuppliedValues_NeverTheEffectiveMap_UnderTheRecordsExactRef()
     {
         // The two halves differ on purpose here: Effective pads the absent

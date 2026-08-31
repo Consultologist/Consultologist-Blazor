@@ -182,6 +182,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.ApiHost ??= input.ApiHost;
         State.EngineCommit ??= input.EngineCommit;
         State.InputsBlob ??= input.InputsBlob;
+        State.RerunBaseline ??= input.RerunBaseline;
         State.Source ??= input.Source;
         State.ScheduledAtUtc ??= input.ScheduledAtUtc;
         State.PackageSpecVersion ??= input.PackageSpecVersion;
@@ -560,6 +561,88 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             or ConsultGenerationJobStatuses.Failed
             or ConsultGenerationJobStatuses.Cancelled;
 
+    /// <summary>
+    /// #582: the rule (package-format-v11-design.md § reproducible stages).
+    /// A breach of the effective-input hash fails as the by-construction bug
+    /// before anything else is looked at. Then, in manifest order (node
+    /// level, then fanned items sorted), every stage of a node the package
+    /// declared reproducible is counted when its pair exists on both sides
+    /// with the same hashVersion and the same inputHash — the only
+    /// conditions under which a cross-record outputHash comparison means
+    /// anything (hash-definitions § 4) — and the first counted pair whose
+    /// outputHash differs fails the rerun naming that stage. Zero counted
+    /// pairs is its own named verdict, never a vacuous pass.
+    /// </summary>
+    internal static (string Verdict, string? Divergence, int Counted) RerunVerdictOf(
+        ConsultRerunBaseline baseline,
+        IReadOnlyList<ConsultNodeDescriptor>? nodes,
+        IReadOnlyDictionary<string, ConsultNodeOutputState>? nodeOutputs,
+        string? effectiveInputHash,
+        int? effectiveInputHashVersion)
+    {
+        if (!string.Equals(effectiveInputHash, baseline.EffectiveInputHash, StringComparison.Ordinal)
+            || effectiveInputHashVersion != baseline.EffectiveInputHashVersion)
+        {
+            return (RerunVerdicts.Fail, RerunVerdicts.EffectiveInputsDivergence, 0);
+        }
+
+        var counted = 0;
+
+        foreach (var descriptor in nodes ?? Enumerable.Empty<ConsultNodeDescriptor>())
+        {
+            if (descriptor.Reproducible != true)
+            {
+                continue;
+            }
+
+            foreach (var key in StageKeysOf(descriptor.Id, nodeOutputs))
+            {
+                var entry = nodeOutputs![key];
+                if (!baseline.NodeHashes.TryGetValue(key, out var sourceEntry)
+                    || entry.OutputHash == null
+                    || sourceEntry.OutputHash == null
+                    || entry.HashVersion != sourceEntry.HashVersion
+                    || !string.Equals(entry.InputHash, sourceEntry.InputHash, StringComparison.Ordinal))
+                {
+                    // Shown, not counted: the table names which precondition
+                    // failed; the verdict holds only what is comparable.
+                    continue;
+                }
+
+                counted++;
+
+                if (!string.Equals(entry.OutputHash, sourceEntry.OutputHash, StringComparison.Ordinal))
+                {
+                    return (RerunVerdicts.Fail, key, counted);
+                }
+            }
+        }
+
+        return counted == 0
+            ? (RerunVerdicts.NoReproducibleStages, null, 0)
+            : (RerunVerdicts.Pass, null, counted);
+    }
+
+    private static IEnumerable<string> StageKeysOf(string nodeId, IReadOnlyDictionary<string, ConsultNodeOutputState>? outputs)
+    {
+        if (outputs == null)
+        {
+            yield break;
+        }
+
+        if (outputs.ContainsKey(nodeId))
+        {
+            yield return nodeId;
+        }
+
+        foreach (var key in outputs.Keys
+            .Where(k => k.StartsWith(nodeId + ":", StringComparison.Ordinal))
+            .OrderBy(k => k, StringComparer.Ordinal))
+        {
+            yield return key;
+        }
+    }
+
     public async Task FinalizeJob(ConsultGenerationJobFinalize input)
     {
         var state = EnsureState();
@@ -585,6 +668,29 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         {
             state.History.Add(new JobHistoryEvent("success", "Done", null, DateTimeOffset.UtcNow));
             state.StampOutputHashes();
+
+            // #582: the rerun's judgment, computed here where both sides'
+            // hashes are final, and stamped once — the record's own claim.
+            // Only a Completed rerun is judged: a failed replay proves
+            // nothing about reproducibility.
+            if (state.RerunBaseline != null && state.RerunVerdict == null)
+            {
+                var (verdict, divergence, counted) = RerunVerdictOf(
+                    state.RerunBaseline, state.Nodes, state.NodeOutputs,
+                    state.EffectiveInputHash, state.EffectiveInputHashVersion);
+                state.RerunVerdict = verdict;
+                state.RerunDivergence = divergence;
+                state.History.Add(new JobHistoryEvent(
+                    "rerun",
+                    verdict switch
+                    {
+                        RerunVerdicts.Pass => $"Rerun verdict: pass — {counted} reproducible stage(s) matched the source",
+                        RerunVerdicts.Fail => "Rerun verdict: fail",
+                        _ => "Rerun verdict: no reproducible stages to hold"
+                    },
+                    divergence,
+                    DateTimeOffset.UtcNow));
+            }
 
             // #557: the outputs blob, written after the hashes are stamped so
             // the payload carries them. A write failure is caught HERE — an
@@ -809,7 +915,10 @@ public sealed record ConsultGenerationJobInitialize(
     // #547: where the starter held this job's inputs; null when unheld
     // (v5/v6, or the write failed). Appended last — the engine calls
     // Initialize positionally.
-    ConsultInputsBlobPointer? InputsBlob = null);
+    ConsultInputsBlobPointer? InputsBlob = null,
+    // #582: the source's hashes when this job is a rerun; null otherwise.
+    // Appended last, same positional-call rule.
+    ConsultRerunBaseline? RerunBaseline = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -871,6 +980,43 @@ public sealed record ConsultGenerationTextDrop(DateTimeOffset DroppedAtUtc);
 
 /// <summary>#548: the shorter inputs clock's signal — the held inputs alone are deleted.</summary>
 public sealed record ConsultGenerationInputsDrop(DateTimeOffset DroppedAtUtc);
+
+/// <summary>
+/// #582: the source run's hashes, captured by the rerun door at start from
+/// the source's own entity state — immutable once Completed — so the verdict
+/// at this job's completion compares two records and reads nothing else.
+/// Hashes only, never text. Keys are the NodeOutputs keys (nodeId, or
+/// nodeId:itemId for fanned items).
+/// </summary>
+public sealed record ConsultRerunBaseline(
+    string SourceJobId,
+    string? EffectiveInputHash,
+    int? EffectiveInputHashVersion,
+    IReadOnlyDictionary<string, ConsultRerunBaselineNode> NodeHashes);
+
+public sealed record ConsultRerunBaselineNode(
+    string? InputHash,
+    string? OutputHash,
+    int? HashVersion);
+
+/// <summary>
+/// #582: what a rerun's record says about the replay, judged over the
+/// package's own claims (nodes[].reproducible, #550). Never a vacuous pass:
+/// a rerun with nothing comparable says so by name.
+/// </summary>
+public static class RerunVerdicts
+{
+    public const string Pass = "pass";
+    public const string Fail = "fail";
+    public const string NoReproducibleStages = "no-reproducible-stages";
+
+    /// <summary>
+    /// The RerunDivergence value for the by-construction breach: the two
+    /// records' effective-input hashes disagree, which means the replay
+    /// itself is wrong — a bug, not a model difference.
+    /// </summary>
+    public const string EffectiveInputsDivergence = "effective-inputs";
+}
 
 /// <summary>
 /// #486: what happened to the completion email, written once when the job
@@ -1092,6 +1238,14 @@ public sealed class ConsultGenerationJobState
     // InputsDroppedAtUtc gates every read of it. Null on unheld jobs.
     public ConsultInputsBlobPointer? InputsBlob { get; set; }
     public DateTimeOffset? InputsDroppedAtUtc { get; set; }
+
+    // #582: a rerun's evidence and its judgment. The baseline is the source's
+    // hashes, seeded at Initialize; the verdict and the first divergence are
+    // stamped once at completion (RerunVerdicts). All null on non-reruns, and
+    // on #549-era reruns from before the baseline existed.
+    public ConsultRerunBaseline? RerunBaseline { get; set; }
+    public string? RerunVerdict { get; set; }
+    public string? RerunDivergence { get; set; }
 
     // #486: what happened to the completion email (DeliveryOutcomes); null
     // on records from before, or while the job is still running.
@@ -1353,6 +1507,11 @@ public sealed class ConsultGenerationJobState
             OutputsBlob: OutputsBlob,
             InputsBlob: InputsBlob,
             InputsDroppedAtUtc: InputsDroppedAtUtc,
+            // #582: the rerun's lineage and judgment; the baseline itself is
+            // working state and stays on the entity.
+            RerunOf: RerunBaseline?.SourceJobId,
+            RerunVerdict: RerunVerdict,
+            RerunDivergence: RerunDivergence,
             PackageSpecVersion: PackageSpecVersion,
             PackageTitle: PackageTitle,
             StartFailure: StartFailure,
