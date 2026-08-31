@@ -18,10 +18,10 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     private const string ContainerName = WorkflowPackageBlobContainerFactory.ContainerName;
 
     /// <summary>A manifest declares the rule set it was validated under (package-format-v6-design.md § 9).</summary>
-    // v10 (#500): the engine runs ten — the last rung of the v10 ladder
-    // (package-format-v10-design.md § 14), after the format registry
-    // published the v10 document, schema and conformance suite.
-    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10 };
+    // v11 (#566): the engine runs eleven — the last rung of the v11 ladder
+    // (package-format-v11-design.md § 12), after the format registry
+    // published the v11 document, schema and conformance suite.
+    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11 };
     private static readonly TimeSpan LatestPointerCacheDuration = TimeSpan.FromSeconds(60);
 
     private static readonly JsonSerializerOptions JsonOptions = new()

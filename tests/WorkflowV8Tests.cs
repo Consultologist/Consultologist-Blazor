@@ -428,7 +428,7 @@ public class WorkflowV8ValidationTests
         // and the unmigrated example-two-documents package is the standing
         // evidence that v7 still runs.
         // #500 moved it to ten with the v10 ladder's last rung.
-        Assert.Equal(new[] { 5, 6, 7, 8, 9, 10 }, WorkflowPackageStore.SupportedSpecVersions);
+        Assert.Equal(new[] { 5, 6, 7, 8, 9, 10, 11 }, WorkflowPackageStore.SupportedSpecVersions);
     }
 
     [Fact]
