@@ -167,4 +167,105 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         Assert.True(Result(sent!).GetProperty("signature").GetBoolean());
         Assert.False(Node(sent!, "scope").TryGetProperty("reproducible", out _));
     }
+
+    // ----- the Macros pane -----
+
+    [Fact]
+    public void TheMacrosGroup_OffersAdd_At11AndNotBelow()
+    {
+        var eleven = RenderEditor(EditorFixtures.V11());
+        Assert.Contains(eleven.FindAll("button.editor-nav__item"), b => b.TextContent.Contains("+ Macro"));
+
+        var ten = RenderEditor(EditorFixtures.V10Classifier());
+        Assert.DoesNotContain(ten.FindAll("button.editor-nav__item"), b => b.TextContent.Contains("+ Macro"));
+        Assert.DoesNotContain("Macros", ten.FindAll(".editor-nav__group").Select(g => g.TextContent.Trim()));
+    }
+
+    [Fact]
+    public void ADashedId_IsRefused_MacroIdsAreSnakeCase()
+    {
+        var page = RenderEditor(EditorFixtures.V11());
+        Navigate(page, "+ Macro");
+
+        page.Find("fluent-text-field[placeholder='closing_paragraph']").Change("closing-paragraph");
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Create macro")).Click();
+
+        Assert.Contains("Macro ids are snake_case", page.Markup);
+    }
+
+    [Fact]
+    public void AddingAMacro_CreatesTheArray_TheDeclaration_AndTheFile()
+    {
+        // The bare fixture has no macros key at all — the writer creates it.
+        var package = EditorFixtures.V11();
+        CapturePublish();
+        var page = RenderEditor(package);
+
+        Navigate(page, "+ Macro");
+        page.Find("fluent-text-field[placeholder='closing_paragraph']").Change("closing_paragraph");
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Create macro")).Click();
+        // Landed on the new macro's pane; write its text.
+        page.Find("fluent-text-area").Change("Thank you for this referral.");
+        Publish(page);
+
+        Assert.NotNull(sent);
+        var declared = JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement.GetProperty("macros")[0];
+        Assert.Equal("closing_paragraph", declared.GetProperty("id").GetString());
+        Assert.Equal("Closing paragraph", declared.GetProperty("label").GetString());
+        Assert.Equal("macros/closing_paragraph.md", declared.GetProperty("file").GetString());
+        Assert.Equal("Thank you for this referral.", sent.Files["macros/closing_paragraph.md"]);
+    }
+
+    [Fact]
+    public void ADeclaredMacrosText_EditsLikeAnyFile()
+    {
+        var package = EditorFixtures.V11Macro();
+        CapturePublish();
+        var page = RenderEditor(package);
+
+        Navigate(page, "disclaimer");
+        page.Find("fluent-text-area").Change("Rewritten disclaimer, no placeholders.");
+        Publish(page);
+
+        Assert.Equal("Rewritten disclaimer, no placeholders.", sent!.Files["macros/disclaimer.md"]);
+    }
+
+    [Fact]
+    public void TheHelpPanel_ListsOneTokenOfEachSense()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+        Navigate(page, "disclaimer");
+
+        var help = page.Find(".macro-placeholders").TextContent;
+        Assert.Contains("{{input:consult_draft}}", help);
+        Assert.Contains("{{data:intro}}", help);
+        Assert.Contains("{{classification:scope}}", help);
+        Assert.Contains("{{run:date}}", help);
+        Assert.Contains("{{profile:name}}", help);
+        // consult_draft is required — no optional annotation anywhere here.
+        Assert.DoesNotContain("optional — renders as empty", help);
+    }
+
+    [Fact]
+    public void AnOptionalInput_IsAnnotated_InTheHelp()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macros_WithOptionalInput());
+        Navigate(page, "disclaimer");
+
+        Assert.Contains("(optional — renders as empty when not supplied)", page.Find(".macro-placeholders").TextContent);
+    }
+
+    [Fact]
+    public void RemovingAPendingMacro_ClearsIt()
+    {
+        var page = RenderEditor(EditorFixtures.V11());
+        Navigate(page, "+ Macro");
+        page.Find("fluent-text-field[placeholder='closing_paragraph']").Change("closing_paragraph");
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Create macro")).Click();
+        Assert.Contains(page.FindAll("button.editor-nav__item"), b => b.TextContent.Contains("closing_paragraph"));
+
+        page.Find(".editor-nav__restore").Click();
+
+        Assert.DoesNotContain(page.FindAll("button.editor-nav__item"), b => b.TextContent.Contains("closing_paragraph"));
+    }
 }

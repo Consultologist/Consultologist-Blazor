@@ -281,6 +281,38 @@
                         <span class="editor-nav__dot"></span>
                         <span>+ Prompt</span>
                     </button>
+                    @* v11 #564: package-owned macro templates (§ 4/§ 9). The
+                       group shows whenever macros exist so a carried one is
+                       reachable below 11; authoring is offered only at 11. *@
+                    @if (EffectiveMacros.Count > 0 || EffectiveSpecVersion >= 11)
+                    {
+                        <span class="editor-nav__group">Macros</span>
+                        @foreach (var navMacro in EffectiveMacros)
+                        {
+                            <button type="button"
+                                    class="editor-nav__item @(selectedKey == navMacro.File ? "editor-nav__item--selected" : "")"
+                                    @onclick="() => Select(navMacro.File)">
+                                <span class="editor-nav__dot">@(edits.ContainsKey(navMacro.File) || AddedMacroForFile(navMacro.File) != null ? "●" : "")</span>
+                                <span>@navMacro.Id</span>
+                            </button>
+                            @if (AddedMacroForFile(navMacro.File) is { } pendingMacro)
+                            {
+                                <div class="editor-nav__item editor-nav__item--nested">
+                                    <span class="editor-nav__dot"></span>
+                                    <button type="button" class="editor-nav__restore" @onclick="() => RemoveAddedMacroAsync(pendingMacro)">(remove)</button>
+                                </div>
+                            }
+                        }
+                        @if (EffectiveSpecVersion >= 11)
+                        {
+                            <button type="button"
+                                    class="editor-nav__item editor-nav__add @(selectedKey == AddMacroKey ? "editor-nav__item--selected" : "")"
+                                    @onclick="() => Select(AddMacroKey)">
+                                <span class="editor-nav__dot"></span>
+                                <span>+ Macro</span>
+                            </button>
+                        }
+                    }
                     <span class="editor-nav__group">Data</span>
                     @foreach (var collection in EffectiveCollections)
                     {
@@ -1018,6 +1050,38 @@
                             </FluentButton>
                         </div>
                     }
+                    else if (selectedKey == AddMacroKey && EffectiveSpecVersion >= 11)
+                    {
+                        <div class="pane-header">
+                            <div>
+                                <h3 class="panel-title">New macro</h3>
+                                <p class="muted-text">
+                                    A named text the package owns, appended after a document's aggregated
+                                    sections when that document lists it (Documents pane). Publish stays
+                                    blocked until some document uses it.
+                                </p>
+                            </div>
+                        </div>
+                        @if (newMacroError != null)
+                        {
+                            <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false">@newMacroError</FluentMessageBar>
+                        }
+                        <div class="new-item-fields">
+                            <label class="input-field">
+                                <span>id (snake_case)</span>
+                                <FluentTextField @bind-Value="newMacroId" Placeholder="closing_paragraph" />
+                            </label>
+                            <label class="input-field">
+                                <span>label (optional — defaults from the id)</span>
+                                <FluentTextField @bind-Value="newMacroLabel" Placeholder="Closing paragraph" />
+                            </label>
+                        </div>
+                        <div class="action-row">
+                            <FluentButton Appearance="Appearance.Accent" @onclick="AddMacroAsync">
+                                Create macro
+                            </FluentButton>
+                        </div>
+                    }
                     else if (selectedKey == AddNodeKey)
                     {
                         <div class="pane-header">
@@ -1235,6 +1299,43 @@
                                     <span> · shared prelude: @prompt.Prelude (read-only)</span>
                                 }
                             </p>
+                        </WorkflowEditorPane>
+                    }
+                    else if (SelectedMacro() is { } macro)
+                    {
+                        <WorkflowEditorPane Title="@macro.Id"
+                                            Subtitle="@macro.File"
+                                            EditLabel="Macro text"
+                                            Text="@GetText(macro.File)"
+                                            Modified="@(edits.ContainsKey(macro.File) || AddedMacroForFile(macro.File) != null)"
+                                            TextChanged="@(value => OnTextChangedAsync(macro.File, value))">
+                            <div class="macro-placeholders">
+                                <span class="muted-text">
+                                    Placeholders — substituted at assembly, verbatim; an unknown token blocks publish
+                                </span>
+                                <ul class="macro-placeholders__list">
+                                    @foreach (var helpInput in EffectiveInputs)
+                                    {
+                                        <li><code>{{input:@helpInput.Id}}</code>@(helpInput.Required ? "" : " (optional — renders as empty when not supplied)")</li>
+                                    }
+                                    @foreach (var scalarId in ScalarIds)
+                                    {
+                                        <li><code>{{data:@scalarId}}</code></li>
+                                    }
+                                    @foreach (var classifier in EffectiveNodes.Where(n => n.IsClassifier))
+                                    {
+                                        <li><code>{{classification:@classifier.Id}}</code></li>
+                                    }
+                                    @foreach (var runWord in PF.WorkflowMacroPlaceholders.RunFacts)
+                                    {
+                                        <li><code>{{run:@runWord}}</code></li>
+                                    }
+                                    @foreach (var profileWord in PF.WorkflowMacroPlaceholders.ProfileFacts)
+                                    {
+                                        <li><code>{{profile:@profileWord}}</code></li>
+                                    }
+                                </ul>
+                            </div>
                         </WorkflowEditorPane>
                     }
                     else
@@ -1881,6 +1982,9 @@
                 () => $"{aggregateEdits.Count} aggregate", () => aggregateEdits.Count > 0),
             new("addedPrompts", () => addedPrompts.Count, addedPrompts.Clear,
                 () => $"+{addedPrompts.Count} {Plural(addedPrompts.Count, "prompt")}", () => addedPrompts.Count > 0),
+            // v11 #564: pending macro templates.
+            new("addedMacros", () => addedMacros.Count, addedMacros.Clear,
+                () => $"+{addedMacros.Count} {Plural(addedMacros.Count, "macro")}", () => addedMacros.Count > 0),
 
             new("resultEdit", () => resultEdit != null ? 1 : 0, () => resultEdit = null,
                 () => "deliverable", () => resultEdit != null),
@@ -1953,6 +2057,10 @@
         || content!.Files.ContainsKey(key)
         || EffectiveScalars.Any(scalar => scalar.Path == key)
         || EffectivePrompts.Any(prompt => prompt.File == key)
+        // v11 #564: the macro panes; the add form only where it renders —
+        // a remembered pane on a v10 package must not restore blank.
+        || (key == AddMacroKey && EffectiveSpecVersion >= 11)
+        || EffectiveMacros.Any(m => m.File == key)
         || addedItems.Any(added => added.Key == key);
 
     private string AddedPath(AddedItem item) => $"data/{item.Collection}/{item.Id}.md";
@@ -2287,6 +2395,87 @@
 
     private AddedPrompt? AddedPromptForFile(string path) =>
         addedPrompts.FirstOrDefault(p => AddedStandalonePromptFile(p.Id) == path);
+
+    // v11 #564: pending macro templates (§ 9) — the standalone-prompt shape.
+    // Publishable only once some document lists them (the orphan rule).
+    private sealed class AddedMacro
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Label { get; set; } = string.Empty;
+        public string Text { get; set; } = string.Empty;
+    }
+
+    private readonly List<AddedMacro> addedMacros = new();
+    private string? newMacroId;
+    private string? newMacroLabel;
+    private string? newMacroError;
+
+    private const string AddMacroKey = "add-macro";
+
+    private static string AddedMacroFile(string macroId) => $"macros/{macroId}.md";
+
+    private AddedMacro? AddedMacroForFile(string path) =>
+        addedMacros.FirstOrDefault(m => AddedMacroFile(m.Id) == path);
+
+    // The declared macros plus a synthesized view per pending one — the nav,
+    // the panes, the Documents pane and the desk all read this one list.
+    private IReadOnlyList<WorkflowManifestReader.MacroView> EffectiveMacros =>
+        (content == null
+            ? Array.Empty<WorkflowManifestReader.MacroView>()
+            : WorkflowManifestReader.ReadMacros(content.Manifest))
+        .Concat(addedMacros.Select(m => new WorkflowManifestReader.MacroView(m.Id, m.Label, AddedMacroFile(m.Id))))
+        .ToList();
+
+    private WorkflowManifestReader.MacroView? SelectedMacro() =>
+        EffectiveMacros.FirstOrDefault(m => m.File == selectedKey);
+
+    private async Task AddMacroAsync()
+    {
+        var id = newMacroId?.Trim() ?? string.Empty;
+
+        if (!DeclaredIdPattern.IsMatch(id))
+        {
+            newMacroError = "Macro ids are snake_case: a lowercase letter, then lowercase letters, digits, or underscores.";
+            return;
+        }
+
+        if (EffectiveMacros.Any(m => m.Id == id))
+        {
+            newMacroError = $"A macro named '{id}' already exists.";
+            return;
+        }
+
+        if (content!.Files.ContainsKey(AddedMacroFile(id)))
+        {
+            newMacroError = $"The package already has a file at '{AddedMacroFile(id)}'.";
+            return;
+        }
+
+        // A blank label defaults from the id, humanized — the validator's
+        // no-label refusal never fires from editor-authored macros.
+        var label = string.IsNullOrWhiteSpace(newMacroLabel)
+            ? char.ToUpperInvariant(id[0]) + id[1..].Replace('_', ' ')
+            : newMacroLabel!.Trim();
+        addedMacros.Add(new AddedMacro { Id = id, Label = label });
+        newMacroId = null;
+        newMacroLabel = null;
+        newMacroError = null;
+        // Land on the new macro's pane — writing its text is the next step.
+        selectedKey = AddedMacroFile(id);
+        await PendingChangedAsync();
+    }
+
+    private async Task RemoveAddedMacroAsync(AddedMacro pending)
+    {
+        addedMacros.Remove(pending);
+
+        if (selectedKey == AddedMacroFile(pending.Id))
+        {
+            selectedKey = prompts.FirstOrDefault()?.File ?? GraphKey;
+        }
+
+        await PendingChangedAsync();
+    }
 
     // Pending aggregator source lists (#117), keyed by node id — the full
     // ordered list; one equal to the manifest removes itself.
@@ -5225,6 +5414,7 @@
     private string GetText(string path) =>
         AddedNodeForPromptFile(path) is { } addedNode ? addedNode.PromptText
         : AddedPromptForFile(path) is { } addedPrompt ? addedPrompt.Text
+        : AddedMacroForFile(path) is { } addedMacro ? addedMacro.Text
         : AddedScalarIdForPath(path) is { } pendingScalar ? addedScalars[pendingScalar]
         : edits.TryGetValue(path, out var edited) ? edited : content!.Files.GetValueOrDefault(path, string.Empty);
 
@@ -5313,6 +5503,8 @@
 
     private sealed record DraftAddedPrompt(string Id, string Text);
 
+    private sealed record DraftAddedMacro(string Id, string Label, string Text);
+
     private sealed record DraftPayload(
         int Version,
         Dictionary<string, string>? Edits,
@@ -5342,7 +5534,9 @@
         string? Title = null,
         string? Description = null,
         // #453: the tags as edited; an empty list is the stated empty set.
-        List<string>? Tags = null);
+        List<string>? Tags = null,
+        // v11 #564: pending macro templates. Trailing optional, as ever.
+        List<DraftAddedMacro>? AddedMacros = null);
 
     // #316: Type and Values ride here or a typed input is silently untyped on
     // reload. Trailing optionals — a draft written before v8 restores with null.
@@ -5399,6 +5593,7 @@
         Dictionary<string, List<string>>? draftAggregateEdits = null;
         string? draftResultEdit = null;
         List<DraftAddedPrompt>? draftAddedPrompts = null;
+        List<DraftAddedMacro>? draftAddedMacros = null;
         int? draftSpecVersionBump = null;
         string? draftTitle = null;
         string? draftDescription = null;
@@ -5426,6 +5621,7 @@
                 draftAggregateEdits = payload?.AggregateEdits;
                 draftResultEdit = payload?.ResultEdit;
                 draftAddedPrompts = payload?.AddedPrompts;
+                draftAddedMacros = payload?.AddedMacros;
                 draftInputs = payload?.Inputs;
                 draftResults = payload?.Results;
                 draftAddedScalars = payload?.AddedScalars;
@@ -5547,6 +5743,14 @@
                 && addedPrompts.All(p => p.Id != draftAddedPrompt.Id))
             {
                 addedPrompts.Add(new AddedPrompt { Id = draftAddedPrompt.Id, Text = draftAddedPrompt.Text });
+            }
+        }
+
+        foreach (var draftAddedMacro in draftAddedMacros ?? new List<DraftAddedMacro>())
+        {
+            if (EffectiveMacros.All(m => m.Id != draftAddedMacro.Id))
+            {
+                addedMacros.Add(new AddedMacro { Id = draftAddedMacro.Id, Label = draftAddedMacro.Label, Text = draftAddedMacro.Text });
             }
         }
 
@@ -5757,7 +5961,8 @@
             specVersionBump,
             titleEdit,
             descriptionEdit,
-            tagsEdit);
+            tagsEdit,
+            addedMacros.Select(m => new DraftAddedMacro(m.Id, m.Label, m.Text)).ToList());
         await JS.InvokeVoidAsync("localStorage.setItem", DraftKey, JsonSerializer.Serialize(payload));
     }
 
@@ -5776,6 +5981,13 @@
         if (AddedPromptForFile(path) is { } addedPrompt)
         {
             addedPrompt.Text = value;
+            await PendingChangedAsync();
+            return;
+        }
+
+        if (AddedMacroForFile(path) is { } addedMacroDraft)
+        {
+            addedMacroDraft.Text = value;
             await PendingChangedAsync();
             return;
         }
@@ -5995,6 +6207,12 @@
                 files[AddedStandalonePromptFile(pending.Id)] = pending.Text;
             }
 
+            // v11 #564: each pending macro's template file.
+            foreach (var pendingMacro in addedMacros)
+            {
+                files[AddedMacroFile(pendingMacro.Id)] = pendingMacro.Text;
+            }
+
             foreach (var removedNodeId in removedNodeIds)
             {
                 var promptId = nodes.FirstOrDefault(n => n.Id == removedNodeId)?.Prompt;
@@ -6105,6 +6323,9 @@
     /// </summary>
     private void ResetFormScratch()
     {
+        newMacroId = null;
+        newMacroLabel = null;
+        newMacroError = null;
         declaredError = null;
         newPromptId = newPromptError = null;
         newVariableName = newVariableError = null;
@@ -6473,6 +6694,29 @@
                         return (System.Text.Json.Nodes.JsonNode?)node;
                     })
                     .ToArray());
+        }
+
+        // v11 #564: pending macros — create the array when the manifest has
+        // none yet (the data-block pattern), then append each declaration.
+        if (addedMacros.Count > 0)
+        {
+            var macrosKey = root["Macros"] is not null ? "Macros" : "macros";
+
+            if (root[macrosKey] is not System.Text.Json.Nodes.JsonArray macrosArray)
+            {
+                macrosArray = new System.Text.Json.Nodes.JsonArray();
+                root[macrosKey] = macrosArray;
+            }
+
+            foreach (var pendingMacro in addedMacros)
+            {
+                macrosArray.Add(new System.Text.Json.Nodes.JsonObject
+                {
+                    ["id"] = pendingMacro.Id,
+                    ["label"] = pendingMacro.Label,
+                    ["file"] = AddedMacroFile(pendingMacro.Id)
+                });
+            }
         }
 
         if (resultsEdit != null)

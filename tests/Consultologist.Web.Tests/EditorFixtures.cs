@@ -381,6 +381,21 @@ public static class EditorFixtures
         return package with { SpecVersion = 11, Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
     }
 
+    /// <summary>v11 (#564): the macro package with one optional input added — the help panel's annotation case.</summary>
+    public static WorkflowPackageContentResponse V11Macros_WithOptionalInput()
+    {
+        var package = V11Macro();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["inputs"]!.AsArray().Add(new System.Text.Json.Nodes.JsonObject
+        {
+            ["id"] = "length_of_stay",
+            ["label"] = "Length of stay",
+            ["required"] = false
+        });
+
+        return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
+
     /// <summary>#453: the same package carrying these tags.</summary>
     public static WorkflowPackageContentResponse WithTags(WorkflowPackageContentResponse package, params string[] tags)
     {
