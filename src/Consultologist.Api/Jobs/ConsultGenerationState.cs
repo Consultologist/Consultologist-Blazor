@@ -443,6 +443,17 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             return;
         }
 
+        // #557: the outputs blob goes first — a failure here fails the whole
+        // op with nothing persisted, the index still says text present, and
+        // the sweep re-signals on its next run; the purge and events legs it
+        // already ran are idempotent, and the account's 30-day lifecycle
+        // policy is the backstop. The pointer itself stays on the record:
+        // TextDroppedAtUtc gates every read of it.
+        if (state.OutputsBlob != null)
+        {
+            await _outputsStore.DeleteAsync(state.OutputsBlob, CancellationToken.None);
+        }
+
         state.StampOutputHashes();
         state.AssembledDocument = null;
         foreach (var document in state.AssembledDocuments ?? new List<ConsultGenerationResultDocumentState>())
@@ -550,6 +561,29 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             {
                 state.History.Add(new JobHistoryEvent(
                     "storage", "Outputs blob not written; the text stays on the record", ex.Message, DateTimeOffset.UtcNow));
+            }
+
+            // #557: with the pointer recorded, the entity sheds the four text
+            // species — the blob is the copy now. Gated on the pointer: the
+            // only copy is never shed after a failed write, and every reader
+            // then sees a pre-#557-shaped record.
+            if (state.OutputsBlob != null)
+            {
+                state.AssembledDocument = null;
+                foreach (var document in state.AssembledDocuments ?? Enumerable.Empty<ConsultGenerationResultDocumentState>())
+                {
+                    document.Text = null;
+                }
+
+                foreach (var block in state.Blocks.Values)
+                {
+                    block.GeneratedText = null;
+                }
+
+                foreach (var node in state.NodeOutputs?.Values ?? Enumerable.Empty<ConsultNodeOutputState>())
+                {
+                    node.Concepts = null;
+                }
             }
         }
         else if (input.Status == ConsultGenerationJobStatuses.Failed)

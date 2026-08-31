@@ -30,6 +30,11 @@ public class TextRetentionTests
         return (entity, () => (ConsultGenerationJobState)StateProperty.GetValue(entity)!, index);
     }
 
+    // #557: these tests run with a bare (unconfigured) outputs store whose
+    // WriteAsync returns a null pointer — the finalize then deliberately
+    // keeps the entity text, so every test below models a pre-#557 record,
+    // which is exactly the shape they always asserted. The migrated shape is
+    // JobOutputsWriteTests' subject.
     private static async Task RunToCompletionAsync(ConsultGenerationJobEntity entity)
     {
         await entity.CompleteBlock(new BlockGenerationResult("note:draft", "Consultation note", true, "Consultation note", null));

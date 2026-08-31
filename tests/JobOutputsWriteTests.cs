@@ -54,6 +54,50 @@ public class JobOutputsWriteTests
         Assert.Equal("Consultation note", written.BlockTexts!["note:draft"]);
         Assert.Equal(pointer, state().OutputsBlob);
         Assert.Equal(pointer, state().ToResponse().OutputsBlob);
+        // With the pointer recorded, the entity shed the four text species.
+        Assert.Null(state().AssembledDocuments!.Single().Text);
+        Assert.Null(state().Blocks["note:draft"].GeneratedText);
+        // What it keeps: the stamped hashes, names and flags.
+        Assert.NotNull(state().AssembledDocuments!.Single().DocumentHash);
+        Assert.NotNull(state().WorkflowOutputHash);
+    }
+
+    [Fact]
+    public async Task DropText_DeletesTheBlobFirst_AndKeepsThePointer()
+    {
+        var (entity, state, store) = Job();
+        var pointer = new ConsultOutputsBlobPointer("org-job-outputs", "user-1/job-1.json");
+        store.WriteAsync(Arg.Any<string?>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<JobOutputsPayload>(), Arg.Any<CancellationToken>())
+            .Returns(pointer);
+        await ProduceAsync(entity);
+        await entity.FinalizeJob(new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Completed, AccountKind: "organisation"));
+
+        await entity.DropText(new ConsultGenerationTextDrop(new DateTimeOffset(2026, 9, 8, 3, 0, 0, TimeSpan.Zero)));
+
+        await store.Received(1).DeleteAsync(pointer, Arg.Any<CancellationToken>());
+        Assert.NotNull(state().TextDroppedAtUtc);
+        // The pointer is part of the record; TextDroppedAtUtc gates it.
+        Assert.Equal(pointer, state().OutputsBlob);
+    }
+
+    [Fact]
+    public async Task AFailedBlobDelete_PersistsNothing_SoTheSweepRetries()
+    {
+        var (entity, state, store) = Job();
+        var pointer = new ConsultOutputsBlobPointer("org-job-outputs", "user-1/job-1.json");
+        store.WriteAsync(Arg.Any<string?>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<JobOutputsPayload>(), Arg.Any<CancellationToken>())
+            .Returns(pointer);
+        await ProduceAsync(entity);
+        await entity.FinalizeJob(new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Completed, AccountKind: "organisation"));
+        store.DeleteAsync(pointer, Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("storage blip"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => entity.DropText(new ConsultGenerationTextDrop(DateTimeOffset.UtcNow)));
+
+        // Nothing persisted: the record still says text present, so IsDue
+        // keeps the job on the sweep's list and the next run re-signals.
+        Assert.Null(state().TextDroppedAtUtc);
     }
 
     [Fact]
