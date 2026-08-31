@@ -186,6 +186,34 @@ public class RerunComparisonTests
         Assert.Equal(new[] { true, false }, rows.Select(row => row.Reproducible));
     }
 
+    [Theory]
+    [InlineData(1234, 567, "1,234/567")]
+    [InlineData(0, 0, "0/0")] // a recorded zero is a real count, not an absence
+    public void RecordedCounts_RenderAsInputSlashOutput(int input, int output, string expected) =>
+        Assert.Equal(expected, RerunComparison.DescribeTokens(new ConsultTokenUsage(input, output)));
+
+    [Fact]
+    public void AnAbsentCount_IsADash_NeverZero() =>
+        Assert.Equal("—", RerunComparison.DescribeTokens(null));
+
+    [Fact]
+    public void StageRows_CarryBothRunsCounts()
+    {
+        var source = Job(nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+        {
+            ["extract"] = new("extract", "Extract", "Completed", "in1", "outA", null, null, 5, null, new ConsultTokenUsage(1234, 567))
+        });
+        var rerun = Job(nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+        {
+            ["extract"] = new("extract", "Extract", "Completed", "in1", "outA", null, null, 5, null, new ConsultTokenUsage(1300, 580))
+        });
+
+        var row = Assert.Single(RerunComparison.Stages(rerun, source));
+
+        Assert.Equal(new ConsultTokenUsage(1234, 567), row.SourceTokens);
+        Assert.Equal(new ConsultTokenUsage(1300, 580), row.RerunTokens);
+    }
+
     [Fact]
     public void EffectiveInputs_AgreeOnlyOnHashAndVersion()
     {

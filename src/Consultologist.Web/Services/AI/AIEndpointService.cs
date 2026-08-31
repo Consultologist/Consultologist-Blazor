@@ -496,6 +496,9 @@ public record RerunConsultResponse(string JobId, string SourceJobId);
 /// <summary>#546: one "used by" edge — mirrors the Api's ConsultJobLinkResponse.</summary>
 public sealed record ConsultJobLinkResponse(string JobId, string Kind, string? InputId = null, string? ResultId = null);
 
+/// <summary>#551: mirrors the Api's ConsultTokenUsage — counts, never text; absent is not recorded, never zero.</summary>
+public sealed record ConsultTokenUsage(int Input, int Output);
+
 public sealed record ConsultJobLinksResponse(IReadOnlyList<ConsultJobLinkResponse>? UsedBy);
 public record ConsultGenerationJobSseEvent(string EventName, string Json, string? EventId = null);
 public record ConsultGenerationJobResponse(
@@ -594,7 +597,9 @@ public record ConsultGenerationJobResponse(
     // #582: a rerun's lineage and judgment — mirrors the Api's trailing trio.
     string? RerunOf = null,
     string? RerunVerdict = null,
-    string? RerunDivergence = null);
+    string? RerunDivergence = null,
+    // #551: the job's token totals, stamped once at completion.
+    ConsultTokenUsage? Tokens = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.TerminologySnapshot (#403).</summary>
 public record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);
@@ -652,7 +657,9 @@ public record ConsultGenerationNodeStatus(
     // #375: the definition the pair was computed under; null before the ladder.
     int? HashVersion = null,
     // v10 (#496): a classifier's answer.
-    string? Classification = null);
+    string? Classification = null,
+    // #551: what this instance's call cost; null is not recorded, never 0.
+    ConsultTokenUsage? Tokens = null);
 
 public record ConsultGenerationJobHistoryEvent(string Kind, string Label, string? Detail, DateTimeOffset OccurredAt);
 

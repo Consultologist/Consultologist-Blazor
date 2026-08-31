@@ -20,10 +20,19 @@ public class ProvenanceMirrorTests
     [InlineData(typeof(ApiModels.InputFilePayload), typeof(WebAI.InputFilePayload))]
     [InlineData(typeof(ApiModels.ConsultGenerationNodeStatusResponse), typeof(WebAI.ConsultGenerationNodeStatus))]
     [InlineData(typeof(Consultologist.Api.Workflow.TerminologySnapshot), typeof(WebAI.TerminologySnapshot))]
+    // #551: the token counts, nested inside the node status on both sides.
+    [InlineData(typeof(ApiModels.ConsultTokenUsage), typeof(WebAI.ConsultTokenUsage))]
     public void TheMirroredRecords_ExposeTheSameProperties(Type api, Type web)
     {
+        // #551: a mirrored record may itself carry a mirrored record — the
+        // namespaces differ by construction (the duplication idiom), so the
+        // shape comparison strips exactly those two prefixes. The nested
+        // type's own row above keeps its fields honest.
+        static string Normalize(string type) =>
+            type.Replace("Consultologist.Api.Models.", "").Replace("Consultologist.Web.Services.AI.", "");
+
         static IEnumerable<string> Shape(Type type) =>
-            type.GetProperties().Select(p => $"{p.Name}:{p.PropertyType}").Order();
+            type.GetProperties().Select(p => $"{p.Name}:{Normalize(p.PropertyType.ToString())}").Order();
 
         Assert.Equal(Shape(api), Shape(web));
     }

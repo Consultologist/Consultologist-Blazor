@@ -21,7 +21,8 @@ public class ConsultsResultTests : ClientRenderTestContext
         IReadOnlyList<ConsultGenerationResultDocumentResponse>? documents = null,
         IReadOnlyList<ConsultSkippedDocumentResponse>? skipped = null,
         IReadOnlyDictionary<string, string>? heldInputs = null,
-        DateTimeOffset? inputsDroppedAtUtc = null)
+        DateTimeOffset? inputsDroppedAtUtc = null,
+        ConsultTokenUsage? tokens = null)
     {
         WithPinnedPackage(blocks: new[] { Block("section-instructions:hpi", "History of Present Illness") });
 
@@ -41,7 +42,30 @@ public class ConsultsResultTests : ClientRenderTestContext
             AssembledDocuments: documents,
             SkippedDocuments: skipped,
             HeldInputs: heldInputs,
-            InputsDroppedAtUtc: inputsDroppedAtUtc));
+            InputsDroppedAtUtc: inputsDroppedAtUtc,
+            Tokens: tokens));
+    }
+
+    // ----- #551: the run's total on the completed view -----
+
+    [Fact]
+    public void ACompletedRun_SaysWhatItSpent()
+    {
+        WithCompletedJob(documents: OneNote, tokens: new ConsultTokenUsage(2100, 650));
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Equal("2,100 input · 650 output tokens", page.Find(".tokens-line").TextContent.Trim());
+    }
+
+    [Fact]
+    public void ARecordFromBefore_SaysNothing_NeverZero()
+    {
+        WithCompletedJob(documents: OneNote);
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Empty(page.FindAll(".tokens-line"));
     }
 
     private static readonly ConsultGenerationResultDocumentResponse[] OneNote =
