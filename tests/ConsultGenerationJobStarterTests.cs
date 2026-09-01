@@ -2265,6 +2265,13 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
+    public void TheFormsSource_IsTheRegistrysWord()
+    {
+        // #543: the registry grammar's third source value (provenance@v2026.09.2).
+        Assert.Equal("forms", ConsultGenerationJobSources.Forms);
+    }
+
+    [Fact]
     public async Task TypedInput_RecordsNoOrigin()
     {
         // Absence means "not recorded", never "typed" — email jobs supply text
@@ -2455,9 +2462,13 @@ public class ConsultGenerationJobStarterTests
             new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App));
         var email = ConsultGenerationJobStarter.GateWaitFor(
             new ConsultGenerationJobOrigin(ConsultGenerationJobSources.Email, "doc@example.com"));
+        // #543: the forms door has no retry branch either — background-shaped.
+        var forms = ConsultGenerationJobStarter.GateWaitFor(
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.Forms));
 
         Assert.Equal(DocumentExtraction.InteractiveGateWait, app);
         Assert.Equal(DocumentExtraction.BackgroundGateWait, email);
+        Assert.Equal(DocumentExtraction.BackgroundGateWait, forms);
         Assert.True(email > app * 10, "the email budget must not be a rounding difference from the app's");
     }
 

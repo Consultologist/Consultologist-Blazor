@@ -18,6 +18,10 @@ public static class ConsultGenerationJobSources
 {
     public const string App = "app";
     public const string Email = "email";
+
+    // #543 (provenance@v2026.09.2): a held form response the account chose
+    // to run at once — the response is the consult, the way an email is.
+    public const string Forms = "forms";
 }
 
 public sealed record ConsultGenerationJobOrigin(
@@ -1134,9 +1138,13 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// that door would permanently reject a referral and tell a clinician
     /// their document could not be read, which would be false. A background
     /// poller can afford to wait; it cannot afford to be wrong.
+    ///
+    /// #543: the forms door is the same shape — the held row is its
+    /// exactly-once claim, so there is no retry branch there either (a form
+    /// carries no files today, but the predicate should say what it means).
     /// </summary>
     internal static TimeSpan GateWaitFor(ConsultGenerationJobOrigin origin) =>
-        string.Equals(origin.Source, ConsultGenerationJobSources.Email, StringComparison.Ordinal)
+        origin.Source is ConsultGenerationJobSources.Email or ConsultGenerationJobSources.Forms
             ? DocumentExtraction.BackgroundGateWait
             : DocumentExtraction.InteractiveGateWait;
 
