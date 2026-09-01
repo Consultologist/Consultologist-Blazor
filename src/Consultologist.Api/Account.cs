@@ -630,7 +630,9 @@ public sealed class Account
         return response;
     }
 
-    private static (string? From, string? To) ParseUsageQueryParams(Uri url)
+    // Internal, not private: the Operator panel (#553) serves the same
+    // window and must not fork the parse.
+    internal static (string? From, string? To) ParseUsageQueryParams(Uri url)
     {
         string? from = null;
         string? to = null;
