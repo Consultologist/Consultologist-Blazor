@@ -90,6 +90,26 @@ public class FormsIntakeTests
     }
 
     [Fact]
+    public void TheDoorRefuses_ByWord()
+    {
+        var identity = new Consultologist.Api.Auth.AccountIdentity(
+            "entra-external-id", "https://login.microsoftonline.com/x", "sub-1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        Consultologist.Api.Auth.AppAccount Account(string status) =>
+            new("user-1", "A Clinician", "c@example.com", status, identity, new[] { identity });
+        Consultologist.Api.Auth.AuthenticatedUser User(string? tenantId) =>
+            new("entra-external-id", "https://login.microsoftonline.com/x", "sub-1", "A Clinician", "c@example.com",
+                Array.Empty<string>(), tenantId);
+
+        // An organisation token on an active account holds.
+        Assert.Null(FormsIntake.RefusalWordFor(Account("Active"), User("11112222-3333-4444-5555-666677778888")));
+        // #517's rule, by its word.
+        Assert.Equal("personal-account", FormsIntake.RefusalWordFor(Account("Active"), User("9188040d-6c67-4c5b-b112-36a304b66dad")));
+        Assert.Equal("personal-account", FormsIntake.RefusalWordFor(Account("Active"), User(null)));
+        // A pending account cannot use the app at all.
+        Assert.Equal("account-not-active", FormsIntake.RefusalWordFor(Account("Pending"), User("11112222-3333-4444-5555-666677778888")));
+    }
+
+    [Fact]
     public void TheListRow_CarriesIdsAndDays_NeverAValue()
     {
         var row = new FormResponseRow(

@@ -309,20 +309,24 @@ public sealed class FormsIntake
             return (null, unauthorized);
         }
 
-        if (!AccountAuthorizer.CanUseApp(authorized.Account))
+        if (RefusalWordFor(authorized.Account, authorized.User) is { } word)
         {
-            return (null, await ErrorAsync(req, HttpStatusCode.Forbidden, "account-not-active", cancellationToken));
-        }
-
-        // #517's rule: an organisation's sign-in vouches for the mailbox the
-        // flow runs as; a personal token is refused by name.
-        if (!DeliveryAddress.IsOrganisation(authorized.User))
-        {
-            return (null, await ErrorAsync(req, HttpStatusCode.Forbidden, "personal-account", cancellationToken));
+            return (null, await ErrorAsync(req, HttpStatusCode.Forbidden, word, cancellationToken));
         }
 
         return (authorized.Account, null);
     }
+
+    /// <summary>
+    /// The door's 403 word, or null when the caller may hold. #517's rule:
+    /// an organisation's sign-in vouches for the mailbox the flow runs as;
+    /// a personal token is refused by its word. Extracted so it can be
+    /// asserted directly.
+    /// </summary>
+    internal static string? RefusalWordFor(AppAccount account, AuthenticatedUser user) =>
+        !AccountAuthorizer.CanUseApp(account) ? "account-not-active"
+        : !DeliveryAddress.IsOrganisation(user) ? "personal-account"
+        : null;
 
     private static HttpResponseData NoContent(HttpRequestData req)
     {
