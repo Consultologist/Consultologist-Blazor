@@ -68,4 +68,35 @@ public class StorageAccountsTests
         Assert.Equal("https://consulttextcaeast.table.core.windows.net",
             StorageAccounts.DerivedUriForSection(config, "TextStorage", "table"));
     }
+
+    [Fact]
+    public void TheEnvironmentRung_MirrorsTheConfigurationOne()
+    {
+        // The two raw env-var sites (Program's catalog pin, agent
+        // attestation) resolve identically.
+        try
+        {
+            Environment.SetEnvironmentVariable("Storage__Region", "caeast");
+            Assert.Equal("https://consultpubcaeast.blob.core.windows.net",
+                StorageAccounts.DerivedUriFromEnvironment(StorageAccounts.PublicRole, "blob"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("Storage__Region", null);
+        }
+
+        Assert.Null(StorageAccounts.DerivedUriFromEnvironment(StorageAccounts.PublicRole, "blob"));
+    }
+
+    [Fact]
+    public void ThePublicRegistryReader_IsConfiguredByTheRegionAlone()
+    {
+        // The blob side's proof by construction: the reader lights up from
+        // Storage__Region with no explicit URI, and an explicit URI still
+        // wins; neither set leaves it unconfigured as before.
+        Assert.True(new Workflow.PublicRegistryReader(Config(("Storage:Region", "caeast"))).IsConfigured);
+        Assert.True(new Workflow.PublicRegistryReader(
+            Config(("WorkflowPackages:PublicBlobServiceUri", "https://explicitoverride.blob.core.windows.net"))).IsConfigured);
+        Assert.False(new Workflow.PublicRegistryReader(Config()).IsConfigured);
+    }
 }
