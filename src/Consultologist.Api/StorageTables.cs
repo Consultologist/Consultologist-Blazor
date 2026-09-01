@@ -28,6 +28,20 @@ public static class StorageTables
             }
         }
 
+        // #596: the middle rung — no explicit URI anywhere in the chain, but
+        // the geography names the account (Storage__Region + the section→role
+        // map). Explicit settings above stay the override; local dev without
+        // a region falls through to the connection string below unchanged.
+        foreach (var section in configSections)
+        {
+            var derivedUri = StorageAccounts.DerivedUriForSection(configuration, section, "table");
+
+            if (derivedUri != null)
+            {
+                return new TableClient(new Uri(derivedUri), tableName, credential);
+            }
+        }
+
         var connectionStringName = configSections
             .Select(section => configuration[$"{section}:ConnectionStringName"])
             .FirstOrDefault(name => !string.IsNullOrWhiteSpace(name))
