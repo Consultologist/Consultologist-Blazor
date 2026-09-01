@@ -146,6 +146,65 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void AValuesEdit_SurvivesALaterLabelEdit()
+    {
+        // #572: NodeChange.Values was null-means-unchanged and the label
+        // emitter omitted it, so a later label edit silently clobbered a
+        // pending values edit — both in the chips and in the published
+        // manifest. The effective list now rides every emission.
+        var page = RenderEditor(EditorFixtures.V10Classifier());
+        CapturePublish();
+        Navigate(page, "Graph");
+
+        page.Find("input[aria-label='Add a value to node scope']").Change("unsure");
+        var card = page.Find("[data-values-for='scope']").Closest(".node-fields")!;
+        card.QuerySelector("input[aria-label='Node label']")!.Change("Scope check");
+
+        // The chips already carry all three before publish — the fold half.
+        Assert.Equal(new[] { "in_scope", "out_of_scope", "unsure" }, page.FindAll("[data-node-value]").Select(chip => chip.GetAttribute("data-node-value")));
+
+        Publish(page);
+
+        Assert.NotNull(sent);
+        var scope = Node(sent!, "scope");
+        Assert.Equal("Scope check", scope.GetProperty("label").GetString());
+        Assert.Equal(new[] { "in_scope", "out_of_scope", "unsure" }, scope.GetProperty("values").EnumerateArray().Select(v => v.GetString()));
+        var result = Validated();
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AnOlderDraft_WithNullValues_RestoresTheOriginals_NotAnEmptyList()
+    {
+        // #572's migration hazard: a draft persisted before the fix carries
+        // "Values": null for a label-edited classifier. Restoring that as an
+        // empty list would be destructive; it must coalesce to the loaded
+        // package's own values.
+        var package = EditorFixtures.V10Classifier();
+        JSInterop.Setup<string?>("localStorage.getItem", $"workflow-editor-draft:{package.Ref}")
+            .SetResult("""
+                {
+                  "Version": 14,
+                  "NodeEdits": [ { "NodeId": "scope", "Label": "Scope check", "ForEach": null, "OutputSchema": null, "FailIfEmpty": null, "Prompt": "classify", "Values": null, "Reproducible": false } ]
+                }
+                """);
+        CapturePublish();
+        var page = RenderEditor(package);
+        Navigate(page, "Graph");
+
+        Assert.Equal(new[] { "in_scope", "out_of_scope" }, page.FindAll("[data-node-value]").Select(chip => chip.GetAttribute("data-node-value")));
+
+        Publish(page);
+
+        Assert.NotNull(sent);
+        var scope = Node(sent!, "scope");
+        Assert.Equal("Scope check", scope.GetProperty("label").GetString());
+        Assert.Equal(new[] { "in_scope", "out_of_scope" }, scope.GetProperty("values").EnumerateArray().Select(v => v.GetString()));
+        var result = Validated();
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
     public async Task Below10_ALoadedClassifier_IsRefusedByName()
     {
         // A v10 draft node onto a v9 package: refused with the rung it needs.

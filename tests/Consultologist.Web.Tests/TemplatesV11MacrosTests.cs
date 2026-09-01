@@ -368,9 +368,11 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
     [Fact]
     public void RemovingTheLastReference_LeavesAnOrphan_AndTheDeskSaysSo()
     {
-        // Declared-macro removal is deferred (follow-up issue), so dropping
-        // the only reference orphans the declaration — refused by name, the
-        // validator's sentence, before any version is minted.
+        // Removing only the reference (not the declaration) orphans the
+        // declared macro — refused by name, the validator's sentence, before
+        // any version is minted. Removing the macro itself is the nav's
+        // "(remove)" (#571, below), which strips references in the same
+        // publish and so never meets this refusal.
         var package = EditorFixtures.V11Macro();
         CapturePublish();
         var page = RenderEditor(package);
@@ -381,6 +383,77 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
 
         Assert.Contains("Macro 'disclaimer' is not referenced by any result.", Refusals(page));
         Assert.Null(sent);
+    }
+
+    // ----- declared-macro removal (#571) -----
+
+    [Fact]
+    public void RemovingADeclaredMacro_StripsItsReferences_InTheSamePublish()
+    {
+        var package = EditorFixtures.V11Macro();
+        CapturePublish();
+        var page = RenderEditor(package);
+
+        page.FindAll(".editor-nav__restore").First(b => b.TextContent == "(remove)").Click();
+        Publish(page);
+
+        // The declaration, the reference and the template file leave in one
+        // publish — the validator sees neither an orphan nor an undeclared
+        // reference, so nothing is refused.
+        Assert.NotNull(sent);
+        var root = JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement;
+        Assert.False(root.TryGetProperty("macros", out _));
+        Assert.False(Result(sent!).TryGetProperty("macros", out _));
+        Assert.False(sent!.Files.ContainsKey("macros/disclaimer.md"));
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join(" | ", validated.Errors));
+    }
+
+    [Fact]
+    public void ARemovedDeclaredMacro_IsStruckThrough_AndRestoreReturnsItIntact()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+
+        page.FindAll(".editor-nav__restore").First(b => b.TextContent == "(remove)").Click();
+
+        // Struck through with restore offered; the pane itself is withdrawn.
+        Assert.Equal(new[] { "disclaimer" }, page.FindAll(".editor-nav__strike").Select(s => s.TextContent.Trim()));
+        Assert.DoesNotContain(page.FindAll("button.editor-nav__item"), b => b.TextContent.Contains("disclaimer"));
+
+        page.FindAll(".editor-nav__restore").First(b => b.TextContent == "(restore)").Click();
+
+        // Nothing was stripped eagerly, so restore returns the whole state:
+        // the declaration in the nav and the deliverable's reference row.
+        Assert.Empty(page.FindAll(".editor-nav__strike"));
+        Assert.Contains(page.FindAll("button.editor-nav__item"), b => b.TextContent.Contains("disclaimer"));
+        Navigate(page, "Documents");
+        Assert.NotEmpty(page.FindAll(".result-macro-remove"));
+    }
+
+    [Fact]
+    public void ADraftedMacroRemoval_IsRestored_AndAStaleIdIsDropped()
+    {
+        var package = EditorFixtures.V11Macro();
+        WithDraft(package, """
+            {
+              "Version": 15,
+              "RemovedMacros": [ "disclaimer", "vanished" ]
+            }
+            """);
+        CapturePublish();
+        var page = RenderEditor(package);
+
+        // The drafted removal is back; the id no longer declared is dropped.
+        Assert.Equal(new[] { "disclaimer" }, page.FindAll(".editor-nav__strike").Select(s => s.TextContent.Trim()));
+
+        Publish(page);
+
+        Assert.NotNull(sent);
+        var root = JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement;
+        Assert.False(root.TryGetProperty("macros", out _));
+        Assert.False(sent!.Files.ContainsKey("macros/disclaimer.md"));
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join(" | ", validated.Errors));
     }
 
     // ----- the reproducible toggle -----

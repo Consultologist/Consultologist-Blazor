@@ -302,6 +302,25 @@
                                     <button type="button" class="editor-nav__restore" @onclick="() => RemoveAddedMacroAsync(pendingMacro)">(remove)</button>
                                 </div>
                             }
+                            else if (EffectiveSpecVersion >= 11)
+                            {
+                                @* #571: a declared macro can be removed; its
+                                   references strip in the same publish. *@
+                                var declaredMacro = navMacro;
+                                <div class="editor-nav__item editor-nav__item--nested">
+                                    <span class="editor-nav__dot"></span>
+                                    <button type="button" class="editor-nav__restore" @onclick="() => RemoveDeclaredMacroAsync(declaredMacro)">(remove)</button>
+                                </div>
+                            }
+                        }
+                        @foreach (var removedMacro in RemovedMacros)
+                        {
+                            var removedMacroId = removedMacro.Id;
+                            <div class="editor-nav__item editor-nav__item--removed">
+                                <span class="editor-nav__dot"></span>
+                                <span class="editor-nav__strike">@removedMacroId</span>
+                                <button type="button" class="editor-nav__restore" @onclick="() => RestoreDeclaredMacroAsync(removedMacroId)">(restore)</button>
+                            </div>
                         }
                         @if (EffectiveSpecVersion >= 11)
                         {
@@ -2032,6 +2051,9 @@
             // v11 #564: pending macro templates.
             new("addedMacros", () => addedMacros.Count, addedMacros.Clear,
                 () => $"+{addedMacros.Count} {Plural(addedMacros.Count, "macro")}", () => addedMacros.Count > 0),
+            // #571: declared macros marked for removal.
+            new("removedMacroIds", () => removedMacroIds.Count, removedMacroIds.Clear,
+                () => $"−{removedMacroIds.Count} {Plural(removedMacroIds.Count, "macro")}", () => removedMacroIds.Count > 0),
 
             new("resultEdit", () => resultEdit != null ? 1 : 0, () => resultEdit = null,
                 () => "deliverable", () => resultEdit != null),
@@ -2101,7 +2123,10 @@
             && EffectiveCollections.Any(c => NewKeyFor(c.Id) == key))
         || (key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)
             && EffectiveNodes.Any(n => NodeKeyFor(n.Id) == key))
-        || content!.Files.ContainsKey(key)
+        // #571: a removed declared macro's file is still published, so the
+        // Files clause would keep its pane alive despite the EffectiveMacros
+        // filter below — exclude it explicitly.
+        || (content!.Files.ContainsKey(key) && RemovedMacros.All(m => m.File != key))
         || EffectiveScalars.Any(scalar => scalar.Path == key)
         || EffectivePrompts.Any(prompt => prompt.File == key)
         // v11 #564: the macro panes; the add form only where it renders —
@@ -2470,6 +2495,9 @@
         (content == null
             ? Array.Empty<WorkflowManifestReader.MacroView>()
             : WorkflowManifestReader.ReadMacros(content.Manifest))
+        // #571: a pending removal is effective everywhere this list is read —
+        // the nav, the panes, the Documents dropdown and the desk's rules.
+        .Where(m => !removedMacroIds.Contains(m.Id))
         .Concat(addedMacros.Select(m => new WorkflowManifestReader.MacroView(m.Id, m.Label, AddedMacroFile(m.Id))))
         .ToList();
 
@@ -2521,6 +2549,34 @@
             selectedKey = prompts.FirstOrDefault()?.File ?? GraphKey;
         }
 
+        await PendingChangedAsync();
+    }
+
+    // #571: declared macros marked for removal. References strip at compose,
+    // never eagerly, so "(restore)" returns a fully intact state — the
+    // declaration, the file, and every deliverable's reference.
+    private readonly HashSet<string> removedMacroIds = new(StringComparer.Ordinal);
+
+    private IEnumerable<WorkflowManifestReader.MacroView> RemovedMacros =>
+        content == null
+            ? Enumerable.Empty<WorkflowManifestReader.MacroView>()
+            : WorkflowManifestReader.ReadMacros(content.Manifest).Where(m => removedMacroIds.Contains(m.Id));
+
+    private async Task RemoveDeclaredMacroAsync(WorkflowManifestReader.MacroView macroView)
+    {
+        removedMacroIds.Add(macroView.Id);
+
+        if (selectedKey == macroView.File)
+        {
+            selectedKey = GraphKey;
+        }
+
+        await PendingChangedAsync();
+    }
+
+    private async Task RestoreDeclaredMacroAsync(string macroId)
+    {
+        removedMacroIds.Remove(macroId);
         await PendingChangedAsync();
     }
 
@@ -4568,7 +4624,9 @@
                         FailIfEmpty = edit.FailIfEmpty,
                         HasOutput = edit.OutputSchema != null,
                         Prompt = edit.Prompt ?? n.Prompt,
-                        Values = edit.Values ?? n.Values,
+                        // #572: no coalescing — the edit carries the effective
+                        // values on every emission, as Reproducible below.
+                        Values = edit.Values,
                         Reproducible = edit.Reproducible
                     };
                 }
@@ -4922,7 +4980,9 @@
             && change.FailIfEmpty == original.FailIfEmpty
             && change.Reproducible == original.Reproducible
             && (change.Prompt == null || change.Prompt == original.Prompt)
-            && (change.Values == null || change.Values.SequenceEqual(original.Values ?? Array.Empty<string>(), StringComparer.Ordinal)))
+            // #572: null-tolerant on BOTH sides — a non-classifier is null
+            // everywhere, and null no longer means "unchanged".
+            && (change.Values ?? Array.Empty<string>()).SequenceEqual(original.Values ?? Array.Empty<string>(), StringComparer.Ordinal))
         {
             nodeEdits.Remove(change.NodeId);
         }
@@ -5740,7 +5800,9 @@
         // #453: the tags as edited; an empty list is the stated empty set.
         List<string>? Tags = null,
         // v11 #564: pending macro templates. Trailing optional, as ever.
-        List<DraftAddedMacro>? AddedMacros = null);
+        List<DraftAddedMacro>? AddedMacros = null,
+        // #571: declared macros marked for removal.
+        List<string>? RemovedMacros = null);
 
     // #316: Type and Values ride here or a typed input is silently untyped on
     // reload. Trailing optionals — a draft written before v8 restores with null.
@@ -5798,6 +5860,7 @@
         string? draftResultEdit = null;
         List<DraftAddedPrompt>? draftAddedPrompts = null;
         List<DraftAddedMacro>? draftAddedMacros = null;
+        List<string>? draftRemovedMacros = null;
         int? draftSpecVersionBump = null;
         string? draftTitle = null;
         string? draftDescription = null;
@@ -5826,6 +5889,7 @@
                 draftResultEdit = payload?.ResultEdit;
                 draftAddedPrompts = payload?.AddedPrompts;
                 draftAddedMacros = payload?.AddedMacros;
+                draftRemovedMacros = payload?.RemovedMacros;
                 draftInputs = payload?.Inputs;
                 draftResults = payload?.Results;
                 draftAddedScalars = payload?.AddedScalars;
@@ -5958,6 +6022,16 @@
             }
         }
 
+        // #571: a drafted removal is kept only while the loaded package still
+        // declares the macro — a stale id is dropped, the removedNodeIds idiom.
+        foreach (var draftRemovedMacro in draftRemovedMacros ?? new List<string>())
+        {
+            if (WorkflowManifestReader.ReadMacros(content!.Manifest).Any(m => m.Id == draftRemovedMacro))
+            {
+                removedMacroIds.Add(draftRemovedMacro);
+            }
+        }
+
         foreach (var draftAddedNode in draftAddedNodes ?? new List<DraftAddedNode>())
         {
             if (!string.IsNullOrWhiteSpace(draftAddedNode.Id)
@@ -6085,13 +6159,17 @@
                     && draftNodeEdit.FailIfEmpty == original.FailIfEmpty
                     && draftNodeEdit.Reproducible == original.Reproducible
                     && (draftNodeEdit.Prompt == null || draftNodeEdit.Prompt == original.Prompt)
-                    && (draftNodeEdit.Values == null || draftNodeEdit.Values.SequenceEqual(original.Values ?? Array.Empty<string>(), StringComparer.Ordinal))))
+                    && ((IEnumerable<string>?)draftNodeEdit.Values ?? Array.Empty<string>()).SequenceEqual(original.Values ?? Array.Empty<string>(), StringComparer.Ordinal)))
             {
                 continue;
             }
 
+            // #572: a pre-fix (version 14) draft can carry Values: null for a
+            // label-edited classifier; with the fold's coalescing gone that
+            // would restore as a DESTRUCTIVE empty list — coalesce against
+            // the original here, the one place null can still enter nodeEdits.
             nodeEdits[draftNodeEdit.NodeId] = new WorkflowNodeSummary.NodeChange(
-                draftNodeEdit.NodeId, draftNodeEdit.Label, draftNodeEdit.ForEach, draftNodeEdit.OutputSchema, draftNodeEdit.FailIfEmpty, draftNodeEdit.Prompt, draftNodeEdit.Values, draftNodeEdit.Reproducible);
+                draftNodeEdit.NodeId, draftNodeEdit.Label, draftNodeEdit.ForEach, draftNodeEdit.OutputSchema, draftNodeEdit.FailIfEmpty, draftNodeEdit.Prompt, draftNodeEdit.Values ?? original.Values?.ToList(), draftNodeEdit.Reproducible);
         }
 
         foreach (var draftBinding in bindings ?? new List<DraftBinding>())
@@ -6137,7 +6215,7 @@
         }
 
         var payload = new DraftPayload(
-            14,
+            15,
             edits,
             addedItems.Select(a => new DraftAdded(a.Collection, a.Id, a.Name, a.Content)).ToList(),
             removedFiles.ToList(),
@@ -6166,7 +6244,8 @@
             titleEdit,
             descriptionEdit,
             tagsEdit,
-            addedMacros.Select(m => new DraftAddedMacro(m.Id, m.Label, m.Text)).ToList());
+            addedMacros.Select(m => new DraftAddedMacro(m.Id, m.Label, m.Text)).ToList(),
+            removedMacroIds.ToList());
         await JS.InvokeVoidAsync("localStorage.setItem", DraftKey, JsonSerializer.Serialize(payload));
     }
 
@@ -6415,6 +6494,12 @@
             foreach (var pendingMacro in addedMacros)
             {
                 files[AddedMacroFile(pendingMacro.Id)] = pendingMacro.Text;
+            }
+
+            // #571: a removed declared macro takes its template file with it.
+            foreach (var removedMacro in RemovedMacros)
+            {
+                files.Remove(removedMacro.File);
             }
 
             foreach (var removedNodeId in removedNodeIds)
@@ -6902,7 +6987,9 @@
 
         // v11 #564: pending macros — create the array when the manifest has
         // none yet (the data-block pattern), then append each declaration.
-        if (addedMacros.Count > 0)
+        // #571: a removal drops its declaration here, and the array itself
+        // when nothing remains.
+        if (addedMacros.Count > 0 || removedMacroIds.Count > 0)
         {
             var macrosKey = root["Macros"] is not null ? "Macros" : "macros";
 
@@ -6910,6 +6997,16 @@
             {
                 macrosArray = new System.Text.Json.Nodes.JsonArray();
                 root[macrosKey] = macrosArray;
+            }
+
+            foreach (var removedMacroId in removedMacroIds)
+            {
+                if (macrosArray
+                    .OfType<System.Text.Json.Nodes.JsonObject>()
+                    .FirstOrDefault(m => (m["id"] ?? m["Id"])?.GetValue<string>() == removedMacroId) is { } removedMacroObject)
+                {
+                    macrosArray.Remove(removedMacroObject);
+                }
             }
 
             foreach (var pendingMacro in addedMacros)
@@ -6921,14 +7018,35 @@
                     ["file"] = AddedMacroFile(pendingMacro.Id)
                 });
             }
+
+            if (macrosArray.Count == 0)
+            {
+                root.AsObject().Remove(macrosKey);
+            }
         }
 
-        if (resultsEdit != null)
+        // #571: stripping a removed macro's references rides the same compose
+        // as its declaration's removal — the validator refuses an orphan and an
+        // undeclared reference alike, so neither half may publish alone. A
+        // local list, not resultsEdit: pending state is untouched and
+        // "(restore)" stays honest.
+        var resultsToWrite = resultsEdit;
+
+        if (removedMacroIds.Count > 0)
+        {
+            resultsToWrite = (resultsToWrite ?? EffectiveResults.ToList())
+                .Select(result => result.Macros == null
+                    ? result
+                    : result with { Macros = result.Macros.Where(id => !removedMacroIds.Contains(id)).ToList() })
+                .ToList();
+        }
+
+        if (resultsToWrite != null)
         {
             root.AsObject().Remove("result");
             root.AsObject().Remove("Result");
             root[root["Results"] is not null ? "Results" : "results"] = new System.Text.Json.Nodes.JsonArray(
-                resultsEdit
+                resultsToWrite
                     .Select(result =>
                     {
                         var node = new System.Text.Json.Nodes.JsonObject

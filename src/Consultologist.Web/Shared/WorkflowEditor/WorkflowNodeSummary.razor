@@ -438,7 +438,9 @@
             effectiveFailIfEmpty = null;
         }
 
-        await OnNodeChanged.InvokeAsync(new NodeChange(node.Id, effectiveLabel, effectiveForEach, effectiveSchema, effectiveFailIfEmpty, effectivePrompt, Reproducible: node.Reproducible));
+        // #572: the effective values ride every emission, the Reproducible
+        // rule — a null here let a label edit clobber a pending values edit.
+        await OnNodeChanged.InvokeAsync(new NodeChange(node.Id, effectiveLabel, effectiveForEach, effectiveSchema, effectiveFailIfEmpty, effectivePrompt, node.Values, Reproducible: node.Reproducible));
     }
 
     private sealed class AddForm
