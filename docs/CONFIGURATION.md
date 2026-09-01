@@ -40,7 +40,8 @@ them lives in this repo's deployment surface:
    combined prompt. Manifest-only — there is no portal blade for it. Do not
    confuse it with the *Expose an API* blade's "Authorized client
    applications" (`preAuthorizedApplications`), which *skips* consent rather
-   than bundling it.
+   than bundling it — the Power Automate connector legitimately uses that
+   second mechanism since #542 (the sub-section below).
 3. **`Auth__Authority`** on the Function App set to the `common` authority
    (table above), and the client's `AzureAd:Authority`
    (`src/Consultologist.Web/wwwroot/appsettings.json`) set to
@@ -71,6 +72,36 @@ A first sign-in from a foreign tenant creates an app account like any other,
 and it lands **`Pending`** (since #191) — the activation flip in the
 `AppUsers` table is the admission control for self-provisioned sign-ups (see
 "Account Statuses and Activation" in `docs/ACCOUNTS.md` for the runbook).
+
+### The Power Automate connector (forms intake, #542)
+
+The forms door's flows authenticate through the *HTTP with Microsoft
+Entra ID* connector, which sends the same delegated `access_as_user`
+bearer the SPA does — so the API resolves the flow owner's own account
+and stores nothing. Three operator steps make that work, **once per
+tenant, never per location** (done 2026-08-28 for `consultologist.ai`;
+the fenced `az` block with verification and reversal is the spike
+record's § 2.5, `docs/customizable-workflow/forms-intake-spike.md`):
+
+1. **Create the connector's service principal** — the connector client
+   (`d2ebd3a9-1ada-4480-8b2d-eac162716601`,
+   *PowerPlatform-webcontentsv2-Connector*) has none in a tenant until
+   one is created; without it the connection fails `AADSTS650057`.
+2. **Grant it the API's delegated `access_as_user` scope** — a
+   tenant-wide `oauth2PermissionGrant`, so no clinician is ever
+   prompted for consent.
+3. **Preauthorize it on the API registration** — an entry in
+   `api.preAuthorizedApplications`, **merged with the existing entries
+   (the SPA), never replacing them**: a PATCH that overwrites the array
+   would silently break every SPA sign-in.
+
+Verify with `az ad sp show`, the `oauth2PermissionGrants` filter, and
+`az ad app show --query api.preAuthorizedApplications[].appId` listing
+both apps; reverse with `az ad sp delete` (which drops the grant) and a
+PATCH omitting the entry. One API registration serves every location
+(#515), so a second location changes only the connection's Base
+Resource URL — the clinician-facing side of all this is
+`docs/customizable-workflow/forms-intake.md`.
 
 ## LinkedIn identity linking (`Auth/LinkedInLink*`, #133)
 
