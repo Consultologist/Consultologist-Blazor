@@ -175,7 +175,8 @@ store can move without rewriting records) and the second dropped-at
 state. The provenance registry's "three kinds of field"
 (`provenance.md` 34–54) is untouched: the pointers are operational
 snapshots. The links index (#546, built) is a records-account table keyed
-by the source job, ids only, never deleted. Its row key refines the
+by the source job, ids only, never deleted while the account exists
+(account closure, #559). Its row key refines the
 consumer id with the slot and element for a previous-run copy
 (`{consumerJobId}_{inputId}_{i}` — one consumer may copy twice from one
 source) and is the bare consumer id for a rerun — one row per replay,
@@ -237,7 +238,7 @@ region would double the operator surface for no separation the container
 does not already give. An organisation that later needs its own store set
 is a new location in #515's sense, not a new container.
 
-### 2.6 Account closure — the one deleter of what is never deleted
+### 2.6 Account closure — the one deleter of what is never deleted (built, #559)
 
 Three classes above say *never*: the record, the links, and — added here —
 the account's package forks. Each is never deleted **while the account
@@ -336,7 +337,7 @@ be checked against it once the text is gone; the record says when.
 | M4 | Per-account retention drives the sweep over both classes | #548 |
 | M5 | `AccountUsage` on the records account, after the numbers exist — **built** | #551 → #552, both built |
 | M6 | Cleanup — **done** (2026-09-01): the sweep's counter legs built (#592); the stale hub artifacts and the six residue accounts deleted as operator steps (§ 1.1). One tail remains: `LegacyJobEventDelete` goes once the old events table empties (`docs/STORAGE.md`) | #558 |
-| M7 | Account forks into `org-`/`personal-account-packages` (writer and reader by `AccountKind`; the existing `workflow-packages` forks moved once); account closure (§ 2.6) | #559 (after #556) |
+| M7 | Account closure (§ 2.6) — **built** (#559, `POST Operator/Accounts/{id}/Close`, the `ClosedAccounts` audit). The fork-container move (`org-`/`personal-account-packages`, writer and readers by `AccountKind`, the one-time move) split into its own issue | #559 built; the move is #602 |
 
 M2 before M3 so the read path, the pointer fields and the new `DropText`
 exist before inputs — the class with the shorter clock — arrive. #546's

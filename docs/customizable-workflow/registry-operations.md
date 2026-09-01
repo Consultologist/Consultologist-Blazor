@@ -188,7 +188,7 @@ server assigns name, version, and `derivedFrom` (the fork's concrete source ref)
 the manifest is uploaded last under a conditional create, so a version is
 invisible until it commits and can never be overwritten. `acct-*` names are
 usable only by their owning account (enforced in the pin resolver and at job
-start); account versions are never deleted. The first fork was published on
+start); account versions are never deleted while the account exists (account closure, #559, removes them with the account). The first fork was published on
 2026-07-16, derived from `general/v2026.07.6`.
 
 Publishing is the app's registry writer acting as the app's own identity; no

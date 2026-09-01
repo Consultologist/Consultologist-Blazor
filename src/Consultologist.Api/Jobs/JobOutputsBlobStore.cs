@@ -38,6 +38,9 @@ public interface IJobOutputsBlobStore
     Task<JobOutputsPayload?> ReadAsync(ConsultOutputsBlobPointer pointer, CancellationToken cancellationToken);
 
     Task DeleteAsync(ConsultOutputsBlobPointer pointer, CancellationToken cancellationToken);
+
+    /// <summary>#559: every blob under {appUserId}/ in BOTH kind containers — kind-blind, safer than trusting the stamp.</summary>
+    Task<int> DeleteAccountAsync(string appUserId, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -119,6 +122,31 @@ internal sealed class TextBlobClientFactory
 
     public Task DeleteAsync(string container, string name, CancellationToken cancellationToken) =>
         _containerFor(container).GetBlobClient(name).DeleteIfExistsAsync(cancellationToken: cancellationToken);
+
+    /// <summary>
+    /// #559: every blob under a prefix — the closure's per-container sweep.
+    /// A missing container (local dev) reads as nothing to delete. Returns
+    /// how many blobs went.
+    /// </summary>
+    public async Task<int> DeleteByPrefixAsync(string container, string prefix, CancellationToken cancellationToken)
+    {
+        var client = _containerFor(container);
+        var deleted = 0;
+
+        try
+        {
+            await foreach (var blob in client.GetBlobsAsync(prefix: prefix, cancellationToken: cancellationToken))
+            {
+                await client.GetBlobClient(blob.Name).DeleteIfExistsAsync(cancellationToken: cancellationToken);
+                deleted++;
+            }
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+        }
+
+        return deleted;
+    }
 }
 
 /// <summary>
@@ -165,6 +193,10 @@ public sealed class JobOutputsBlobStore : IJobOutputsBlobStore
 
     public Task DeleteAsync(ConsultOutputsBlobPointer pointer, CancellationToken cancellationToken) =>
         _blobs.DeleteAsync(pointer.Container, pointer.Name, cancellationToken);
+
+    public async Task<int> DeleteAccountAsync(string appUserId, CancellationToken cancellationToken) =>
+        await _blobs.DeleteByPrefixAsync(OrganisationContainer, $"{appUserId}/", cancellationToken)
+        + await _blobs.DeleteByPrefixAsync(PersonalContainer, $"{appUserId}/", cancellationToken);
 }
 
 /// <summary>
@@ -193,6 +225,9 @@ public interface IJobInputsBlobStore
     Task<JobInputsPayload?> ReadAsync(ConsultInputsBlobPointer pointer, CancellationToken cancellationToken);
 
     Task DeleteAsync(ConsultInputsBlobPointer pointer, CancellationToken cancellationToken);
+
+    /// <summary>#559: every blob under {appUserId}/ in BOTH kind containers — kind-blind, safer than trusting the stamp.</summary>
+    Task<int> DeleteAccountAsync(string appUserId, CancellationToken cancellationToken);
 }
 
 public sealed class JobInputsBlobStore : IJobInputsBlobStore
@@ -224,4 +259,8 @@ public sealed class JobInputsBlobStore : IJobInputsBlobStore
 
     public Task DeleteAsync(ConsultInputsBlobPointer pointer, CancellationToken cancellationToken) =>
         _blobs.DeleteAsync(pointer.Container, pointer.Name, cancellationToken);
+
+    public async Task<int> DeleteAccountAsync(string appUserId, CancellationToken cancellationToken) =>
+        await _blobs.DeleteByPrefixAsync(OrganisationContainer, $"{appUserId}/", cancellationToken)
+        + await _blobs.DeleteByPrefixAsync(PersonalContainer, $"{appUserId}/", cancellationToken);
 }

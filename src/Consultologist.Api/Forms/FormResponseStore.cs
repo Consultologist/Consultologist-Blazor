@@ -38,6 +38,9 @@ public interface IFormResponseBlobStore
     Task<FormResponsePayload?> ReadAsync(FormResponseBlobPointer pointer, CancellationToken cancellationToken);
 
     Task DeleteAsync(FormResponseBlobPointer pointer, CancellationToken cancellationToken);
+
+    /// <summary>#559: every blob under {appUserId}/ in BOTH kind containers — kind-blind, safer than trusting the stamp.</summary>
+    Task<int> DeleteAccountAsync(string appUserId, CancellationToken cancellationToken);
 }
 
 public sealed class FormResponseBlobStore : IFormResponseBlobStore
@@ -70,6 +73,10 @@ public sealed class FormResponseBlobStore : IFormResponseBlobStore
 
     public Task DeleteAsync(FormResponseBlobPointer pointer, CancellationToken cancellationToken) =>
         _blobs.DeleteAsync(pointer.Container, pointer.Name, cancellationToken);
+
+    public async Task<int> DeleteAccountAsync(string appUserId, CancellationToken cancellationToken) =>
+        await _blobs.DeleteByPrefixAsync(OrganisationContainer, $"{appUserId}/", cancellationToken)
+        + await _blobs.DeleteByPrefixAsync(PersonalContainer, $"{appUserId}/", cancellationToken);
 }
 
 /// <summary>
@@ -104,6 +111,13 @@ public interface IFormResponseStore
 
     /// <summary>The stamp, after the blob is gone — Merge, so no other column is clobbered.</summary>
     Task MarkDeletedAsync(string appUserId, string formId, string responseId, DateTimeOffset deletedAtUtc, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #559: the hard delete — the account's whole partition, tombstones and
+    /// all (MarkDeleted only stamps; closure removes the list itself).
+    /// Returns how many rows went.
+    /// </summary>
+    Task<int> DeleteAllAsync(string appUserId, CancellationToken cancellationToken);
 }
 
 public sealed class TableFormResponseStore : IFormResponseStore
@@ -181,6 +195,33 @@ public sealed class TableFormResponseStore : IFormResponseStore
         }
 
         return due;
+    }
+
+    public async Task<int> DeleteAllAsync(string appUserId, CancellationToken cancellationToken)
+    {
+        await EnsureTableAsync(cancellationToken);
+
+        var deleted = 0;
+        var filter = TableClient.CreateQueryFilter($"PartitionKey eq {appUserId}");
+        var batch = new List<TableTransactionAction>();
+        await foreach (var entity in _responses.QueryAsync<TableEntity>(filter, select: new[] { "PartitionKey", "RowKey" }, cancellationToken: cancellationToken))
+        {
+            batch.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, ETag.All));
+            if (batch.Count == 100)
+            {
+                await _responses.SubmitTransactionAsync(batch, cancellationToken);
+                deleted += batch.Count;
+                batch.Clear();
+            }
+        }
+
+        if (batch.Count > 0)
+        {
+            await _responses.SubmitTransactionAsync(batch, cancellationToken);
+            deleted += batch.Count;
+        }
+
+        return deleted;
     }
 
     public async Task MarkDeletedAsync(string appUserId, string formId, string responseId, DateTimeOffset deletedAtUtc, CancellationToken cancellationToken)

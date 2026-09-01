@@ -80,9 +80,10 @@ New accounts land **`Pending`** (since #191; before that they were created
 |---|---|
 | `Pending` | Created on first sign-in; every protected endpoint returns 403 |
 | `Active` | Activated by the operator; full access |
-| `Disabled` | Deliberately turned off by the operator; 403 everywhere |
+| `Unverified` | #195: was Active, unlinked its LinkedIn — may use the app, may not start consults |
+| `Disabled` | Deliberately turned off by the operator; 403 everywhere — and the precondition for closure (#559) |
 
-Comparison is ordinal and case-sensitive (`AccountAuthorizer.IsActive`), so
+Comparison is ordinal and case-sensitive (`AccountAuthorizer.CanUseApp`), so
 the exact strings above are the vocabulary. The one exception to the 403
 gate is `GET /api/Account/Me`, which returns the caller's own profile
 (including `Status`) for any authenticated account so the client can show an
@@ -97,11 +98,24 @@ created before #191 keep their `Active` status — no migration.
 
 There is no admin role. An **operator** is an ordinary account whose AppUserId
 is listed in `Operators__AppUserIds` (see CONFIGURATION.md); the list is empty
-by default, so no surface is reachable until it is set. Operator surfaces are
-read-only reports — today `GET /api/Operator/PinHealth` — and are gated like
-every other function (bearer token, `CanUseApp`) plus the list. Everything
-that changes an account is still done with `az`, by an operator, from the
-operations repository's recipes.
+by default, so no surface is reachable until it is set. Operator surfaces
+were read-only reports until #559 — `GET /api/Operator/PinHealth`,
+`GET /api/Operator/Usage`, `GET /api/Operator/CatalogStrands` — gated like
+every other function (bearer token, `CanUseApp`) plus the list. Status
+changes are still done with `az`, by an operator, from the operations
+repository's recipes.
+
+**Account closure (#559)** is the one mutating operator surface:
+`POST /api/Operator/Accounts/{appUserId}/Close` removes everything the
+account owns — text, package forks, records and links, the index, settings,
+identities, the `AppUsers` row — in the order storage-separation § 2.6
+records, and writes one `ClosedAccounts` audit row (ids and counts only).
+Two steps by design: the account must already be `Disabled` (the az write
+above), or the call answers 409 naming its status — a slip is never final.
+Idempotent: closing a closed account answers 200 with `alreadyClosed` and
+deletes nothing. What stays: usage counts, rate-limit rows, the email claim
+ledger. The sign-in that created the account starts a new, Pending account
+if it returns.
 
 ## Account Settings
 

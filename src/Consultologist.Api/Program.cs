@@ -89,6 +89,10 @@ builder.Services.AddSingleton<IConsultGenerationJobEventStore, TableConsultGener
 builder.Services.AddSingleton<IConsultGenerationJobIndexStore, TableConsultGenerationJobIndexStore>();
 // #546: the links index — the lineage graph, ids only, records account.
 builder.Services.AddSingleton<IConsultGenerationLinkStore, TableConsultGenerationLinkStore>();
+// #559: the closure audit — one row per closed account, counts only.
+builder.Services.AddSingleton<Consultologist.Api.Auth.IClosedAccountsStore, Consultologist.Api.Auth.TableClosedAccountsStore>();
+builder.Services.AddSingleton<Consultologist.Api.Auth.AccountClosure>();
+builder.Services.AddScoped<Consultologist.Api.Auth.OperatorAccounts>();
 // #552: the derived usage store — day counts, written once at completion.
 builder.Services.AddSingleton<IAccountUsageStore, TableAccountUsageStore>();
 // #539: held form responses — values on the text account, the list row on records.

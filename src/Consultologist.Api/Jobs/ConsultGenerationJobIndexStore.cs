@@ -28,6 +28,16 @@ public interface IConsultGenerationJobIndexStore
         string appUserId,
         DateTimeOffset completedBefore,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #559: every job of the account, whatever its status — the paged list
+    /// and the retention variants all exclude non-terminal jobs, and closure
+    /// must see the Queued, Scheduled and Running ones too.
+    /// </summary>
+    Task<IReadOnlyList<ConsultGenerationJobIndexEntry>> ListAllAsync(string appUserId, CancellationToken cancellationToken);
+
+    /// <summary>#559: drops the account's whole index partition. Returns how many rows went.</summary>
+    Task<int> DeleteAllAsync(string appUserId, CancellationToken cancellationToken);
 }
 
 internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJobIndexStore
@@ -100,6 +110,48 @@ internal sealed class TableConsultGenerationJobIndexStore : IConsultGenerationJo
         }
 
         return due;
+    }
+
+    public async Task<IReadOnlyList<ConsultGenerationJobIndexEntry>> ListAllAsync(string appUserId, CancellationToken cancellationToken)
+    {
+        await EnsureTableAsync(cancellationToken);
+
+        var jobs = new List<ConsultGenerationJobIndexEntry>();
+        var filter = TableClient.CreateQueryFilter($"PartitionKey eq {appUserId}");
+        await foreach (var entity in _index.QueryAsync<ConsultGenerationJobIndexEntity>(filter, cancellationToken: cancellationToken))
+        {
+            jobs.Add(ToEntry(entity));
+        }
+
+        return jobs;
+    }
+
+    public async Task<int> DeleteAllAsync(string appUserId, CancellationToken cancellationToken)
+    {
+        await EnsureTableAsync(cancellationToken);
+
+        // The events store's same-partition transaction idiom.
+        var deleted = 0;
+        var filter = TableClient.CreateQueryFilter($"PartitionKey eq {appUserId}");
+        var batch = new List<TableTransactionAction>();
+        await foreach (var entity in _index.QueryAsync<TableEntity>(filter, select: new[] { "PartitionKey", "RowKey" }, cancellationToken: cancellationToken))
+        {
+            batch.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, ETag.All));
+            if (batch.Count == 100)
+            {
+                await _index.SubmitTransactionAsync(batch, cancellationToken);
+                deleted += batch.Count;
+                batch.Clear();
+            }
+        }
+
+        if (batch.Count > 0)
+        {
+            await _index.SubmitTransactionAsync(batch, cancellationToken);
+            deleted += batch.Count;
+        }
+
+        return deleted;
     }
 
     public async Task<IReadOnlyList<ConsultGenerationJobIndexEntry>> ListDueForInputsDropAsync(

@@ -35,6 +35,14 @@ public interface IWorkflowPackageRegistryWriter
     Task CreateManifestAsync(string name, string version, string manifestJson, CancellationToken cancellationToken);
 
     Task SetLatestPointerAsync(string name, string version, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #559: every blob of one package — every version, the latest pointer,
+    /// the folder — from the private container. The immutability rule is
+    /// about republishing, not existence: account closure is the one caller.
+    /// Returns how many blobs went.
+    /// </summary>
+    Task<int> DeletePackageAsync(string name, CancellationToken cancellationToken);
 }
 
 public sealed class WorkflowPackageRegistryWriter : IWorkflowPackageRegistryWriter
@@ -95,6 +103,18 @@ public sealed class WorkflowPackageRegistryWriter : IWorkflowPackageRegistryWrit
         {
             throw new WorkflowPackageVersionConflictException($"{name}@{version}", ex);
         }
+    }
+
+    public async Task<int> DeletePackageAsync(string name, CancellationToken cancellationToken)
+    {
+        var deleted = 0;
+        await foreach (var blob in _container.GetBlobsAsync(prefix: $"{name}/", cancellationToken: cancellationToken))
+        {
+            await _container.GetBlobClient(blob.Name).DeleteIfExistsAsync(cancellationToken: cancellationToken);
+            deleted++;
+        }
+
+        return deleted;
     }
 
     public async Task SetLatestPointerAsync(string name, string version, CancellationToken cancellationToken)

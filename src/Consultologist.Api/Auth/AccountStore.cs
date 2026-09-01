@@ -50,6 +50,18 @@ public interface IAccountStore
     /// <summary>#557: the account's stored kind, for the outputs container choice at job start.</summary>
     Task<string?> GetAccountKindAsync(string appUserId, CancellationToken cancellationToken);
 
+    /// <summary>#559: one account's status, or null when it does not exist — the closure gate reads it fresh.</summary>
+    Task<string?> TryGetStatusAsync(string appUserId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #559: the closure's final steps — every identity pair (walked from
+    /// UserIdentityLinks, the only place the IdentityLinks keys are
+    /// recoverable; no provider guard, unlike #195's unlink) and then the
+    /// AppUsers row, so the sign-in that created the account starts a new,
+    /// Pending one if it returns. Returns how many identity links went.
+    /// </summary>
+    Task<int> DeleteAccountAsync(string appUserId, CancellationToken cancellationToken);
+
     /// <summary>
     /// #553: every account with the display name it already carries — the
     /// same AppUsers partition scan as ListAsync, projection widened. The
@@ -404,6 +416,53 @@ public sealed class AccountStore : IAccountStore
             "app-user", appUserId, cancellationToken: cancellationToken);
 
         return response.HasValue ? response.Value!.AccountKind : null;
+    }
+
+    public async Task<string?> TryGetStatusAsync(string appUserId, CancellationToken cancellationToken)
+    {
+        var response = await _appUsers.GetEntityIfExistsAsync<AppUserEntity>(
+            "app-user", appUserId, cancellationToken: cancellationToken);
+
+        return response.HasValue ? response.Value!.Status : null;
+    }
+
+    public async Task<int> DeleteAccountAsync(string appUserId, CancellationToken cancellationToken)
+    {
+        // Both link rows per identity, no provider filter: closure deletes
+        // the sign-in identity deliberately — the one thing #195's unlink
+        // exists to prevent.
+        var deleted = 0;
+        var filter = TableClient.CreateQueryFilter($"PartitionKey eq {appUserId}");
+        await foreach (var link in _userIdentityLinks.QueryAsync<UserIdentityLinkEntity>(filter, cancellationToken: cancellationToken))
+        {
+            try
+            {
+                await _identityLinks.DeleteEntityAsync(link.Provider, link.SubjectHash, cancellationToken: cancellationToken);
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+            }
+
+            try
+            {
+                await _userIdentityLinks.DeleteEntityAsync(link.PartitionKey, link.RowKey, cancellationToken: cancellationToken);
+                deleted++;
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+            }
+        }
+
+        try
+        {
+            await _appUsers.DeleteEntityAsync("app-user", appUserId, cancellationToken: cancellationToken);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+        }
+
+        _logger.LogInformation("Account row and identities deleted. AppUserId={AppUserId}, IdentityLinks={Count}", appUserId, deleted);
+        return deleted;
     }
 
     internal static string StatusAfterUnlink(string current) =>
