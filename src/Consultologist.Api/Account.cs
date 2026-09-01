@@ -109,7 +109,9 @@ public sealed class Account
                 SignInEmail: signedIn.Address,
                 SignInKind: DeliveryAddress.SignInKindOf(authorized.User),
                 // #556: the account's stored kind — null until back-filled.
-                AccountKind: account.AccountKind),
+                AccountKind: account.AccountKind,
+                // #553: the allowlist fact about the caller.
+                IsOperator: Operators.IsOperator(account)),
             cancellationToken);
 
         return response;

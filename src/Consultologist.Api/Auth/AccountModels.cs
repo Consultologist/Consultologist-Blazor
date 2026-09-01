@@ -211,7 +211,11 @@ public sealed record AccountMeResponse(
     // and stored, where SignInKind above is this token's. The two agree by
     // construction for a single-identity account, and the account's kind is
     // what the store keys on. Null on a pre-#556 row not yet back-filled.
-    string? AccountKind = null);
+    string? AccountKind = null,
+    // #553: whether this account is on Operators__AppUserIds — a fact about
+    // the caller, computed at the endpoint, leaking nothing. The nav shows
+    // the Operators link on it; the server gate stays the real one.
+    bool IsOperator = false);
 
 /// <summary>#517: what kind of account signed the token — an organisation's, or a personal Microsoft account.</summary>
 public static class SignInKinds

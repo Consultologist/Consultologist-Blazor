@@ -18,7 +18,9 @@ public sealed record AccountMeResponse(
     string? SignInKind = null,
     // #556: the account's stored kind ("organisation" | "personal");
     // SignInKind above is this token's. Null until back-filled.
-    string? AccountKind = null);
+    string? AccountKind = null,
+    // #553: mirrors the Api's IsOperator — the nav's fact, never the gate.
+    bool IsOperator = false);
 
 public sealed record SaveDeliveryPasswordRequest(string Password);
 
