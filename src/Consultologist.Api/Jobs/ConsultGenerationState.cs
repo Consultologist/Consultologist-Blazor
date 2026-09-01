@@ -25,12 +25,14 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     private readonly IConsultGenerationJobIndexStore _indexStore;
     private readonly IJobOutputsBlobStore _outputsStore;
     private readonly IJobInputsBlobStore _inputsStore;
+    private readonly IAccountUsageStore _usageStore;
 
-    public ConsultGenerationJobEntity(IConsultGenerationJobIndexStore indexStore, IJobOutputsBlobStore outputsStore, IJobInputsBlobStore inputsStore)
+    public ConsultGenerationJobEntity(IConsultGenerationJobIndexStore indexStore, IJobOutputsBlobStore outputsStore, IJobInputsBlobStore inputsStore, IAccountUsageStore usageStore)
     {
         _indexStore = indexStore;
         _outputsStore = outputsStore;
         _inputsStore = inputsStore;
+        _usageStore = usageStore;
     }
 
     public async Task Initialize(ConsultGenerationJobInitialize input)
@@ -754,6 +756,31 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         // too. Nothing recorded stamps nothing, never zero.
         state.Tokens ??= TokensOf(state.NodeOutputs);
 
+        // #552: the derived usage row — the account's day takes this job's
+        // numbers exactly once (FinalizeJob can run twice: a reply-leg
+        // failure re-finalizes as Failed, and the stamp is the guard the
+        // method itself lacks). A storage blip never fails the finalize; the
+        // record says what happened, and the numbers stay on the record for
+        // an operator to reconcile — the store is derived, never the truth.
+        if (state.UsageRecordedAtUtc == null)
+        {
+            try
+            {
+                await _usageStore.AddAsync(
+                    state.AppUserId,
+                    TableAccountUsageStore.DayKey(DateTimeOffset.UtcNow),
+                    input.Status == ConsultGenerationJobStatuses.Completed ? 1 : 0,
+                    state.Tokens,
+                    CancellationToken.None);
+                state.UsageRecordedAtUtc = DateTimeOffset.UtcNow;
+            }
+            catch (Exception ex)
+            {
+                state.History.Add(new JobHistoryEvent(
+                    "storage", "Usage row not written; the record keeps the numbers", ex.Message, DateTimeOffset.UtcNow));
+            }
+        }
+
         State = state;
 
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
@@ -1287,6 +1314,11 @@ public sealed class ConsultGenerationJobState
     // recorded, never zero. Numbers survive DropText and the blob shed —
     // which is what #552's usage store reads at completion.
     public ConsultTokenUsage? Tokens { get; set; }
+
+    // #552: when the derived usage row took this job's numbers. The guard
+    // FinalizeJob itself lacks: the reply leg can re-finalize a job (the
+    // orchestrator's catch), and the day row must never count one job twice.
+    public DateTimeOffset? UsageRecordedAtUtc { get; set; }
 
     // #486: what happened to the completion email (DeliveryOutcomes); null
     // on records from before, or while the job is still running.

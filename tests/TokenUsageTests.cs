@@ -67,7 +67,8 @@ public class TokenUsageTests
         var entity = new Consultologist.Api.Jobs.ConsultGenerationJobEntity(
             NSubstitute.Substitute.For<Consultologist.Api.Jobs.IConsultGenerationJobIndexStore>(),
             NSubstitute.Substitute.For<Consultologist.Api.Jobs.IJobOutputsBlobStore>(),
-            NSubstitute.Substitute.For<Consultologist.Api.Jobs.IJobInputsBlobStore>());
+            NSubstitute.Substitute.For<Consultologist.Api.Jobs.IJobInputsBlobStore>(),
+            NSubstitute.Substitute.For<Consultologist.Api.Jobs.IAccountUsageStore>());
         StateProperty.SetValue(entity, Consultologist.Api.Jobs.ConsultGenerationJobState.Create("job-1", "user-1", new[]
         {
             new Dictionary<string, string> { ["id"] = "note:draft", ["name"] = "Consultation note" }

@@ -159,8 +159,10 @@ are absent, not back-filled.
 
 A fourth thing, deliberately outside the provenance record: a **derived
 store**. Written once at completion from the numbers the record carries
-(#551, **built**: per-stage and per-job `tokens` on the record — M5/#552
-is unblocked), read by the profile (#552) and the admin page (#553), never
+(#551, built), read by the profile (#552, **built**: the `AccountUsage`
+table incremented under the ETag at FinalizeJob with an on-state stamp
+guarding the reply-leg re-finalize, and `GET Account/Usage` serving the
+day rows) and the admin page (#553), never
 recomputed from job records — which the sweep may purge and which a
 region may one day retire. `AccountRateLimits` is its older cousin: one
 row per account per hour, the same shape of store, and the cleanup rule
@@ -296,7 +298,7 @@ be checked against it once the text is gone; the record says when.
 | M2 | Outputs to blobs: write `job-outputs` at completion beside the entity fields; read from the blob; then stop writing text on the entity; `DropText` as § 2.2; the events table on the text account | to file (M22) |
 | M3 | Inputs on `job-inputs`; held form responses on `form-responses` | #547; #539 amended |
 | M4 | Per-account retention drives the sweep over both classes | #548 |
-| M5 | `AccountUsage` on the records account, after the numbers exist | #551 → #552 |
+| M5 | `AccountUsage` on the records account, after the numbers exist — **built** | #551 → #552, both built |
 | M6 | Cleanup: the stale hub tables in `consultologistgroup8cbf`; the AML/training accounts (shared key off, or deleted); the `AccountRateLimits` / `LinkedInLinkStates` cleanup rule | #558 |
 | M7 | Account forks into `org-`/`personal-account-packages` (writer and reader by `AccountKind`; the existing `workflow-packages` forks moved once); account closure (§ 2.6) | #559 (after #556) |
 

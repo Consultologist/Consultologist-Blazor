@@ -625,7 +625,7 @@ public class ConsultGenerationNodeEntityTests
 
     private static (ConsultGenerationJobEntity Entity, Func<ConsultGenerationJobState> State) CreateEntity()
     {
-        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>(), Substitute.For<IJobInputsBlobStore>());
+        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>(), Substitute.For<IJobInputsBlobStore>(), Substitute.For<IAccountUsageStore>());
         var state = ConsultGenerationJobState.Create(
             "job-1", "user-1", new[] { Item("hpi", "History of Present Illness") });
         StateProperty.SetValue(entity, state);

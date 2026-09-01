@@ -116,6 +116,15 @@ PUT    /api/Account/Settings/{key}
 DELETE /api/Account/Settings/{key}
 ```
 
+`GET /api/Account/Usage?from=YYYY-MM-DD&to=YYYY-MM-DD` (#552) serves the
+account's own usage days from the derived `AccountUsage` store — consults
+completed and token counts per UTC day, numbers only, nothing naming a
+consult's content. Written once at each run's completion from the numbers
+#551 stamps on the record and never re-derived; empty until the first
+completed run after 2026-08-31. Defaults to the last 30 days; an
+oversized window clamps to 92 days; unparseable dates and an inverted
+range refuse by name.
+
 The current setting keys are:
 
 ```text

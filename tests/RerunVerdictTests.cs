@@ -20,7 +20,7 @@ public class RerunVerdictTests
         var entity = new ConsultGenerationJobEntity(
             Substitute.For<IConsultGenerationJobIndexStore>(),
             Substitute.For<IJobOutputsBlobStore>(),
-            Substitute.For<IJobInputsBlobStore>());
+            Substitute.For<IJobInputsBlobStore>(), Substitute.For<IAccountUsageStore>());
         return (entity, () => (ConsultGenerationJobState)StateProperty.GetValue(entity)!);
     }
 

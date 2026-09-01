@@ -1,0 +1,28 @@
+
+/* #552: the usage card's per-day table and figures. */
+.usage__scroll {
+    overflow-x: auto;
+}
+
+.usage__table {
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    width: 100%;
+}
+
+.usage__table th {
+    text-align: left;
+    padding: 0.2rem 0.75rem 0.2rem 0.25rem;
+    color: var(--consultologist-text-muted);
+    font-weight: 600;
+}
+
+.usage__table td {
+    padding: 0.2rem 0.75rem 0.2rem 0.25rem;
+    white-space: nowrap;
+}
+
+.usage-empty,
+.usage-history-line {
+    font-size: 0.85rem;
+}

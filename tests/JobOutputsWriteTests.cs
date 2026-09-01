@@ -20,7 +20,7 @@ public class JobOutputsWriteTests
     private static (ConsultGenerationJobEntity Entity, Func<ConsultGenerationJobState> State, IJobOutputsBlobStore Store) Job()
     {
         var store = Substitute.For<IJobOutputsBlobStore>();
-        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>(), store, Substitute.For<IJobInputsBlobStore>());
+        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>(), store, Substitute.For<IJobInputsBlobStore>(), Substitute.For<IAccountUsageStore>());
         StateProperty.SetValue(entity, ConsultGenerationJobState.Create("job-1", "user-1", new[]
         {
             new Dictionary<string, string> { ["id"] = "note:draft", ["name"] = "Consultation note" }
@@ -134,7 +134,7 @@ public class JobOutputsWriteTests
     {
         var outputs = Substitute.For<IJobOutputsBlobStore>();
         var inputs = Substitute.For<IJobInputsBlobStore>();
-        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>(), outputs, inputs);
+        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>(), outputs, inputs, Substitute.For<IAccountUsageStore>());
         StateProperty.SetValue(entity, ConsultGenerationJobState.Create("job-1", "user-1", new[]
         {
             new Dictionary<string, string> { ["id"] = "note:draft", ["name"] = "Consultation note" }

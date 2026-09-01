@@ -506,6 +506,99 @@
                 </div>
             </section>
 
+            @* #552: what the account has spent — the derived usage store,
+               numbers only. Empty until the first completed run after it
+               shipped, and says so; per-consult figures live in History. *@
+            <section class="content-card usage-card">
+                <div class="form-stack">
+                    <h2 class="panel-title">
+                        Usage
+                    </h2>
+
+                    <p class="panel-description">
+                        Consults and tokens per day, from a store written once at each run's
+                        completion. Numbers only — nothing here names a consult's content.
+                    </p>
+
+                    @if (usageError != null)
+                    {
+                        <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false" Class="usage-message">@usageError</FluentMessageBar>
+                    }
+
+                    <div class="action-row">
+                        <select class="node-field__input usage-window"
+                                value="@usageWindow"
+                                @onchange="OnUsageWindowChangedAsync"
+                                aria-label="Usage window">
+                            <option value="7">Last 7 days</option>
+                            <option value="30">Last 30 days</option>
+                            <option value="90">Last 90 days</option>
+                            <option value="custom">Custom range</option>
+                        </select>
+                        @if (usageWindow == "custom")
+                        {
+                            <input type="date"
+                                   class="node-field__input usage-from"
+                                   value="@usageFromInput"
+                                   @onchange="args => usageFromInput = args.Value?.ToString() ?? string.Empty"
+                                   aria-label="Usage from" />
+                            <input type="date"
+                                   class="node-field__input usage-to"
+                                   value="@usageToInput"
+                                   @onchange="args => usageToInput = args.Value?.ToString() ?? string.Empty"
+                                   aria-label="Usage to" />
+                            <FluentButton Appearance="Appearance.Accent"
+                                          Class="usage-apply"
+                                          Disabled="@(string.IsNullOrWhiteSpace(usageFromInput) || string.IsNullOrWhiteSpace(usageToInput))"
+                                          @onclick="LoadUsageAsync">
+                                Apply
+                            </FluentButton>
+                        }
+                    </div>
+
+                    @if (usage is { } usageData)
+                    {
+                        @if (usageData.Days.Count == 0)
+                        {
+                            <p class="usage-empty muted-text">No usage yet — counts begin with the first completed run after 2026-08-31; older runs have no counts.</p>
+                        }
+                        else
+                        {
+                            var usageFigures = UsageSummary.Of(usageData.Days, UsageSummary.WindowDaysOf(usageData.From, usageData.To));
+                            <div class="state-panel usage-figures">
+                                <span class="muted-text">Consults</span>
+                                <strong class="usage-consults">@usageFigures.Consults.ToString("N0")</strong>
+                                <span class="muted-text">Tokens</span>
+                                <strong class="usage-tokens">@($"{usageFigures.TokensIn:N0} in · {usageFigures.TokensOut:N0} out · {usageFigures.TokensTotal:N0} total")</strong>
+                                <span class="muted-text">Per day</span>
+                                <strong class="usage-per-day">@($"{usageFigures.ConsultsPerDay:0.##} consults · {usageFigures.TokensPerDay:N0} tokens")</strong>
+                                <span class="muted-text">Average tokens per consult</span>
+                                <strong class="usage-average">@UsageSummary.DescribeAverage(usageFigures.AverageTokensPerConsult)</strong>
+                            </div>
+                            <div class="usage__scroll">
+                                <table class="usage__table">
+                                    <thead>
+                                        <tr><th>Day</th><th>Consults</th><th>Tokens in</th><th>Tokens out</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var usageDay in usageData.Days)
+                                        {
+                                            <tr class="usage__row">
+                                                <td>@usageDay.Day</td>
+                                                <td>@usageDay.ConsultsCompleted.ToString("N0")</td>
+                                                <td>@usageDay.TokensIn.ToString("N0")</td>
+                                                <td>@usageDay.TokensOut.ToString("N0")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p class="usage-history-line muted-text">Per-consult figures are on each run in <a href="/history">History</a>.</p>
+                        }
+                    }
+                </div>
+            </section>
+
             @* #516: the profile's signature blocks — appended to deliverables a
                v11 package marks signed. Explicit initialisation: a new account
                has none, and nothing is appended until a block exists and is
@@ -765,6 +858,7 @@
             await LoadScheduleTimeAsync();
         await LoadEmailPdfAsync();
         await LoadRetentionAsync();
+        await LoadUsageAsync();
         await LoadSignaturesAsync();
         await LoadEngineHostAsync();
         }
@@ -1198,6 +1292,62 @@
         finally
         {
             retentionRequestInProgress = false;
+        }
+    }
+
+    // #552: the usage window. The store serves rows; the page summarizes over
+    // the window length. A card that cannot load names the error; before the
+    // first row exists the empty sentence renders, never zeros.
+    private AccountUsageResponse? usage;
+    private string usageWindow = "30";
+    private string usageFromInput = string.Empty;
+    private string usageToInput = string.Empty;
+    private string? usageError;
+
+    private async Task LoadUsageAsync()
+    {
+        usageError = null;
+
+        string from, to;
+        if (usageWindow == "custom")
+        {
+            if (string.IsNullOrWhiteSpace(usageFromInput) || string.IsNullOrWhiteSpace(usageToInput))
+            {
+                return;
+            }
+
+            from = usageFromInput;
+            to = usageToInput;
+        }
+        else
+        {
+            var windowDays = int.Parse(usageWindow, System.Globalization.CultureInfo.InvariantCulture);
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            to = today.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            from = today.AddDays(-(windowDays - 1)).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        try
+        {
+            usage = await AccountService.GetUsageAsync(from, to);
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            usageError = ex.Message;
+        }
+    }
+
+    private async Task OnUsageWindowChangedAsync(ChangeEventArgs args)
+    {
+        usageWindow = args.Value?.ToString() ?? "30";
+
+        if (usageWindow != "custom")
+        {
+            await LoadUsageAsync();
         }
     }
 

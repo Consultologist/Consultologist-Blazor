@@ -49,7 +49,7 @@ public class ScheduledRunTests
     };
 
     private static ConsultGenerationJobEntity CreateEntity() =>
-        new(Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>(), Substitute.For<IJobInputsBlobStore>());
+        new(Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>(), Substitute.For<IJobInputsBlobStore>(), Substitute.For<IAccountUsageStore>());
 
     [Fact]
     public async Task Cancel_WritesATerminalRecordThatIsNotAFailure()
