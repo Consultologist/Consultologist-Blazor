@@ -27,7 +27,7 @@ Value: <storage account connection string>
 > `__credential=managedidentity`, and `__clientId` (the user-assigned
 > identity). The identity needs Storage Blob Data Owner, Storage Queue Data
 > Contributor, and Storage Table Data Contributor on the account; shared-key
-> access is disabled on `consultologistjobqueue`. The connection-string form
+> access is disabled on `consultologistjobrecords`. The connection-string form
 > below remains for local development (Azurite).
 
 4. For non-Flex Consumption Function Apps, also confirm this setting exists:
@@ -82,13 +82,13 @@ table holds a job's inputs, its outputs, the permanent record and the usage
 counts — and what deletes each, when — is the design record
 [storage separation](customizable-workflow/storage-separation.md) (#545): a
 *text* account for what is PHI and short-lived, a *records* account (this
-one, `consultologistjobqueue`) for what is permanent and PHI-free.
+one, `consultologistjobrecords`) for what is permanent and PHI-free.
 
-## The text account (PHI) — consultologisteastcatext (#556)
+## The text account (PHI) — consultologisttextcaeast (#556)
 
 The [storage separation](customizable-workflow/storage-separation.md) record's
-§ 3 text account for Canada East, named by the host rule
-(`consultologist<region>text`). It holds the six org/personal text containers
+§ 3 text account for Canada East, named by the naming rule
+(`consultologist<role><region>` since the 2026-09-01 rename). It holds the six org/personal text containers
 (`org-`/`personal-` × `job-inputs`, `job-outputs`, `form-responses`) and, from
 M2, the `ConsultGenerationJobEvents` table. Its axes differ from this records
 account on purpose:
@@ -113,29 +113,29 @@ PRINCIPAL_ID=$(az identity list --resource-group consultologist_group --query "[
 
 # 1. The account. CLI-created accounts start with soft delete and versioning
 #    disabled; the show command below is the proof, not an assumption.
-az storage account create --name consultologisteastcatext --resource-group consultologist_group   --location canadaeast --sku Standard_LRS --kind StorageV2   --allow-shared-key-access false --min-tls-version TLS1_2 --allow-blob-public-access false
+az storage account create --name consultologisttextcaeast --resource-group consultologist_group   --location canadaeast --sku Standard_LRS --kind StorageV2   --allow-shared-key-access false --min-tls-version TLS1_2 --allow-blob-public-access false
 
-az storage account blob-service-properties show --account-name consultologisteastcatext   --resource-group consultologist_group   --query "{softDelete:deleteRetentionPolicy.enabled, containerSoftDelete:containerDeleteRetentionPolicy.enabled, versioning:isVersioningEnabled}"
+az storage account blob-service-properties show --account-name consultologisttextcaeast   --resource-group consultologist_group   --query "{softDelete:deleteRetentionPolicy.enabled, containerSoftDelete:containerDeleteRetentionPolicy.enabled, versioning:isVersioningEnabled}"
 
 # 2. The six containers — control-plane creates, so shared-key-off never bites.
 for c in org-job-inputs personal-job-inputs org-job-outputs personal-job-outputs org-form-responses personal-form-responses; do
-  az storage container-rm create --storage-account consultologisteastcatext --resource-group consultologist_group --name "$c"
+  az storage container-rm create --storage-account consultologisttextcaeast --resource-group consultologist_group --name "$c"
 done
 
 # 3. The 30-day ceiling, every container (the sweeps delete earlier; this
 #    deletes what a bug or an outage left behind).
-az storage account management-policy create --account-name consultologisteastcatext --resource-group consultologist_group --policy '{
+az storage account management-policy create --account-name consultologisttextcaeast --resource-group consultologist_group --policy '{
   "rules": [ { "enabled": true, "name": "text-30-day-ceiling", "type": "Lifecycle",
     "definition": { "actions": { "baseBlob": { "delete": { "daysAfterCreationGreaterThan": 30 } } },
                     "filters": { "blobTypes": [ "blockBlob" ] } } } ] }'
 
 # 4. The identity's two roles, scoped to this account only.
-SCOPE=$(az storage account show --name consultologisteastcatext --resource-group consultologist_group --query id -o tsv)
+SCOPE=$(az storage account show --name consultologisttextcaeast --resource-group consultologist_group --query id -o tsv)
 az role assignment create --assignee-object-id "$PRINCIPAL_ID" --assignee-principal-type ServicePrincipal --role "Storage Blob Data Contributor" --scope "$SCOPE"
 az role assignment create --assignee-object-id "$PRINCIPAL_ID" --assignee-principal-type ServicePrincipal --role "Storage Table Data Contributor" --scope "$SCOPE"
 
 # 5. The settings (CONFIGURATION.md; nothing reads them until M2/#557).
-az functionapp config appsettings set --name canada-east-ai-function --resource-group consultologist_group --settings   TextStorage__BlobServiceUri=https://consultologisteastcatext.blob.core.windows.net   TextStorage__TableServiceUri=https://consultologisteastcatext.table.core.windows.net   TextStorage__credential=managedidentity   "TextStorage__clientId=$CLIENT_ID"
+az functionapp config appsettings set --name canada-east-ai-function --resource-group consultologist_group --settings   TextStorage__BlobServiceUri=https://consultologisttextcaeast.blob.core.windows.net   TextStorage__TableServiceUri=https://consultologisttextcaeast.table.core.windows.net   TextStorage__credential=managedidentity   "TextStorage__clientId=$CLIENT_ID"
 ```
 
 The one-shot `AccountKind` back-fill (#556's code half stamps new accounts and
@@ -146,10 +146,10 @@ any other is `organisation` — and merge it, idempotently (a stamped kind is
 never changed; the account cannot change tenant):
 
 ```azurecli
-az storage entity query --account-name consultologistjobqueue --table-name UserIdentityLinks   --auth-mode login --query "items[].{account:PartitionKey, issuer:Issuer}" -o table
+az storage entity query --account-name consultologistjobrecords --table-name UserIdentityLinks   --auth-mode login --query "items[].{account:PartitionKey, issuer:Issuer}" -o table
 
 # Per account, once:
-az storage entity merge --account-name consultologistjobqueue --table-name AppUsers --auth-mode login   --entity PartitionKey=app-user RowKey=<appUserId> AccountKind=<organisation|personal>
+az storage entity merge --account-name consultologistjobrecords --table-name AppUsers --auth-mode login   --entity PartitionKey=app-user RowKey=<appUserId> AccountKind=<organisation|personal>
 ```
 
 Verification, read-only: `az storage container-rm list`, `az storage account

@@ -18,13 +18,13 @@ specVersion-2 package with prompts).
 **Ownership split (Milestone 6, #92)** — two storage accounts, one home per
 artifact:
 
-- **Public**: `consultologistpublic` (resource group `consultologist_group`),
+- **Public**: `consultologistpubcaeast` (resource group `consultologist_group`),
   container `workflow-packages`, **container-level anonymous read** (anonymous
   listing included — a public registry is browsable by design; blob-level
   access alone breaks enumeration, as #95's verification found) — the one and
   only home of repo-owned packages (`general`, future specialty bundles).
   Anyone can fetch
-  `https://consultologistpublic.blob.core.windows.net/workflow-packages/general/v2026.07.6/manifest.json`
+  `https://consultologistpubcaeast.blob.core.windows.net/workflow-packages/general/v2026.07.6/manifest.json`
   with no token. The clinical account never enables public blob access —
   isolation by construction. (This account also hosts the `output-contracts`
   and `agent-definitions` registries, #93/#94, the `package-format` registry,
@@ -83,18 +83,18 @@ No credential is needed for any public registry: fetch or list by URL.
 
 ```bash
 # List everything in a registry (container-level anonymous listing)
-curl -s "https://consultologistpublic.blob.core.windows.net/workflow-packages?restype=container&comp=list"
+curl -s "https://consultologistpubcaeast.blob.core.windows.net/workflow-packages?restype=container&comp=list"
 
 # Read any single file
-curl -s https://consultologistpublic.blob.core.windows.net/workflow-packages/general/v2026.07.3/prompts/extract-patient-concepts.md
+curl -s https://consultologistpubcaeast.blob.core.windows.net/workflow-packages/general/v2026.07.3/prompts/extract-patient-concepts.md
 
 # Check where 'latest' points
-curl -s https://consultologistpublic.blob.core.windows.net/workflow-packages/general/latest.json
+curl -s https://consultologistpubcaeast.blob.core.windows.net/workflow-packages/general/latest.json
 ```
 
 Every published version carries its `LICENSE` beside its index from the
 first publish after 2026-08-25 (#399); the registry's README states the
-terms and their scope. `az storage blob …` against `consultologistpublic` works too (`--auth-mode
+terms and their scope. `az storage blob …` against `consultologistpubcaeast` works too (`--auth-mode
 login` with a Storage Blob Data Reader role). Published versions are
 immutable by refusal (registry-layout.md § 4): a published version is never
 edited in place; changes are a new CalVer version.

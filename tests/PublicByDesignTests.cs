@@ -28,7 +28,7 @@ public class PublicByDesignTests
 
     [Fact]
     public void ThePrivateAccount_IsNamedOnlyAsASettingValue() =>
-        Assert.Empty(Hits("consultologistjobqueue", PrivateAccountAllowed));
+        Assert.Empty(Hits("consultologistjobrecords", PrivateAccountAllowed));
 
     // #556: the text account joins the same discipline — a setting value and
     // an operator runbook, never a recipe scattered anywhere else.
@@ -39,7 +39,7 @@ public class PublicByDesignTests
 
     [Fact]
     public void TheTextAccount_IsNamedOnlyAsASettingValue() =>
-        Assert.Empty(Hits("consultologisteastcatext", TextAccountAllowed));
+        Assert.Empty(Hits("consultologisttextcaeast", TextAccountAllowed));
 
     private static IReadOnlyList<string> Hits(string needle, string[] allowed)
     {

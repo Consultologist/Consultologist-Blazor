@@ -212,5 +212,5 @@ if [ "$successes" -lt "$LIMIT" ]; then
 fi
 
 printf '\nthe counter row this left behind:\n'
-printf '  az storage entity query --account-name consultologistjobqueue --auth-mode login \\\n'
+printf '  az storage entity query --account-name consultologistjobrecords --auth-mode login \\\n'
 printf '      --table-name AccountRateLimits --query "items[].{account:PartitionKey,window:RowKey,count:Count}"\n'

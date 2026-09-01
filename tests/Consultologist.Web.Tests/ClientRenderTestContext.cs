@@ -80,7 +80,7 @@ public abstract class ClientRenderTestContext : BunitContext
         // History resolves a record's version numbers against the public
         // registry; the base is what production's appsettings carries.
         Services.AddSingleton<IConfiguration>(new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["AzureFunction:PublicRegistryBaseUrl"] = "https://consultologistpublic.blob.core.windows.net" })
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["AzureFunction:PublicRegistryBaseUrl"] = "https://consultologistpubcaeast.blob.core.windows.net" })
             .Build());
         WorkflowService.GetMyPackagesAsync().Returns((IReadOnlyList<PublicPackageView>?)null);
     }
