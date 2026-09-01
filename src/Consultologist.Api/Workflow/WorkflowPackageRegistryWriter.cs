@@ -21,10 +21,13 @@ public sealed class WorkflowPackageVersionConflictException : Exception
 
 public interface IWorkflowPackageRegistryWriter
 {
-    /// <summary>The version the name's latest pointer holds, or null when the name has never been published.</summary>
-    Task<string?> ReadLatestVersionAsync(string name, CancellationToken cancellationToken);
+    // #602: writes name the account's kind — it picks which of the private
+    // pair the fork lives in. Null falls to personal (TextBlobNaming's rule).
 
-    Task UploadFileAsync(string name, string version, string path, string content, CancellationToken cancellationToken);
+    /// <summary>The version the name's latest pointer holds, or null when the name has never been published.</summary>
+    Task<string?> ReadLatestVersionAsync(string? accountKind, string name, CancellationToken cancellationToken);
+
+    Task UploadFileAsync(string? accountKind, string name, string version, string path, string content, CancellationToken cancellationToken);
 
     /// <summary>
     /// Uploads the manifest with a conditional create (If-None-Match: *) — the
@@ -32,13 +35,15 @@ public interface IWorkflowPackageRegistryWriter
     /// invisible until this succeeds; an existing manifest throws
     /// <see cref="WorkflowPackageVersionConflictException"/>.
     /// </summary>
-    Task CreateManifestAsync(string name, string version, string manifestJson, CancellationToken cancellationToken);
+    Task CreateManifestAsync(string? accountKind, string name, string version, string manifestJson, CancellationToken cancellationToken);
 
-    Task SetLatestPointerAsync(string name, string version, CancellationToken cancellationToken);
+    Task SetLatestPointerAsync(string? accountKind, string name, string version, CancellationToken cancellationToken);
 
     /// <summary>
     /// #559: every blob of one package — every version, the latest pointer,
-    /// the folder — from the private container. The immutability rule is
+    /// the folder — from the private registry. Kind-BLIND on purpose (#602):
+    /// destruction never trusts a derived attribute (#462's rule), so the
+    /// sweep covers both private containers. The immutability rule is
     /// about republishing, not existence: account closure is the one caller.
     /// Returns how many blobs went.
     /// </summary>
@@ -57,18 +62,20 @@ public sealed class WorkflowPackageRegistryWriter : IWorkflowPackageRegistryWrit
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    private readonly BlobContainerClient _container;
+    private readonly WorkflowPackageBlobContainerFactory _containers;
 
     public WorkflowPackageRegistryWriter(WorkflowPackageBlobContainerFactory containerFactory)
     {
-        _container = containerFactory.GetContainer();
+        // #602: the container is resolved per call by the account's kind — a
+        // singleton cannot bind one container when the target varies by user.
+        _containers = containerFactory;
     }
 
-    public async Task<string?> ReadLatestVersionAsync(string name, CancellationToken cancellationToken)
+    public async Task<string?> ReadLatestVersionAsync(string? accountKind, string name, CancellationToken cancellationToken)
     {
         try
         {
-            var blob = _container.GetBlobClient($"{name}/latest.json");
+            var blob = _containers.GetContainer(accountKind).GetBlobClient($"{name}/latest.json");
             var response = await blob.DownloadContentAsync(cancellationToken);
             var pointer = JsonSerializer.Deserialize<LatestPointer>(response.Value.Content.ToString(), JsonOptions);
             return pointer?.Version;
@@ -79,15 +86,15 @@ public sealed class WorkflowPackageRegistryWriter : IWorkflowPackageRegistryWrit
         }
     }
 
-    public async Task UploadFileAsync(string name, string version, string path, string content, CancellationToken cancellationToken)
+    public async Task UploadFileAsync(string? accountKind, string name, string version, string path, string content, CancellationToken cancellationToken)
     {
-        var blob = _container.GetBlobClient($"{name}/{version}/{path}");
+        var blob = _containers.GetContainer(accountKind).GetBlobClient($"{name}/{version}/{path}");
         await blob.UploadAsync(BinaryData.FromString(content), overwrite: true, cancellationToken);
     }
 
-    public async Task CreateManifestAsync(string name, string version, string manifestJson, CancellationToken cancellationToken)
+    public async Task CreateManifestAsync(string? accountKind, string name, string version, string manifestJson, CancellationToken cancellationToken)
     {
-        var blob = _container.GetBlobClient($"{name}/{version}/manifest.json");
+        var blob = _containers.GetContainer(accountKind).GetBlobClient($"{name}/{version}/manifest.json");
 
         try
         {
@@ -108,18 +115,21 @@ public sealed class WorkflowPackageRegistryWriter : IWorkflowPackageRegistryWrit
     public async Task<int> DeletePackageAsync(string name, CancellationToken cancellationToken)
     {
         var deleted = 0;
-        await foreach (var blob in _container.GetBlobsAsync(prefix: $"{name}/", cancellationToken: cancellationToken))
+        foreach (var container in _containers.GetPrivateContainers())
         {
-            await _container.GetBlobClient(blob.Name).DeleteIfExistsAsync(cancellationToken: cancellationToken);
-            deleted++;
+            await foreach (var blob in container.GetBlobsAsync(prefix: $"{name}/", cancellationToken: cancellationToken))
+            {
+                await container.GetBlobClient(blob.Name).DeleteIfExistsAsync(cancellationToken: cancellationToken);
+                deleted++;
+            }
         }
 
         return deleted;
     }
 
-    public async Task SetLatestPointerAsync(string name, string version, CancellationToken cancellationToken)
+    public async Task SetLatestPointerAsync(string? accountKind, string name, string version, CancellationToken cancellationToken)
     {
-        var blob = _container.GetBlobClient($"{name}/latest.json");
+        var blob = _containers.GetContainer(accountKind).GetBlobClient($"{name}/latest.json");
         var pointerJson = JsonSerializer.Serialize(new LatestPointer(version), JsonOptions);
         await blob.UploadAsync(BinaryData.FromString(pointerJson), overwrite: true, cancellationToken);
     }

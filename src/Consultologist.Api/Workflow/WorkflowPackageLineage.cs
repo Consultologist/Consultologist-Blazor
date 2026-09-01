@@ -99,17 +99,28 @@ public sealed class WorkflowPackageLineageResolver
             return cached;
         }
 
-        string manifestJson;
-        try
+        // #602: forks resolve from the private pair — try in order, first hit
+        // is the only hit.
+        string? manifestJson = null;
+        RequestFailedException? lastMiss = null;
+        foreach (var container in _containers.GetContainersFor(reference.Name))
         {
-            var blob = _containers.GetContainerFor(reference.Name)
-                .GetBlobClient($"{reference.Name}/{reference.Version}/manifest.json");
-            var response = await blob.DownloadContentAsync(cancellationToken);
-            manifestJson = response.Value.Content.ToString();
+            try
+            {
+                var blob = container.GetBlobClient($"{reference.Name}/{reference.Version}/manifest.json");
+                var response = await blob.DownloadContentAsync(cancellationToken);
+                manifestJson = response.Value.Content.ToString();
+                break;
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                lastMiss = ex;
+            }
         }
-        catch (RequestFailedException ex) when (ex.Status == 404)
+
+        if (manifestJson == null)
         {
-            throw new InvalidOperationException($"Workflow package '{cacheKey}' was not found in the registry.", ex);
+            throw new InvalidOperationException($"Workflow package '{cacheKey}' was not found in the registry.", lastMiss);
         }
 
         var manifest = JsonSerializer.Deserialize<WorkflowPackageManifest>(manifestJson, JsonOptions)

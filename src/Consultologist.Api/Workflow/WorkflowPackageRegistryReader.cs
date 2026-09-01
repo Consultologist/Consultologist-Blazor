@@ -33,16 +33,28 @@ public sealed class WorkflowPackageRegistryReader : IWorkflowPackageRegistryRead
 
     public async Task<IReadOnlyList<string>> ListBlobNamesAsync(bool privateRegistry, CancellationToken cancellationToken)
     {
-        var container = privateRegistry ? _containers.GetContainer() : _containers.GetPublicContainer();
-        if (container == null)
-        {
-            return Array.Empty<string>();
-        }
+        // #602: "the private registry" is the org/personal pair — the union is
+        // still one registry to every caller.
+        var containers = privateRegistry
+            ? _containers.GetPrivateContainers()
+            : _containers.GetPublicContainer() is { } publicContainer
+                ? new[] { publicContainer }
+                : Array.Empty<BlobContainerClient>();
 
         var names = new List<string>();
-        await foreach (var blob in container.GetBlobsAsync(cancellationToken: cancellationToken))
+        foreach (var container in containers)
         {
-            names.Add(blob.Name);
+            try
+            {
+                await foreach (var blob in container.GetBlobsAsync(cancellationToken: cancellationToken))
+                {
+                    names.Add(blob.Name);
+                }
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                // A missing container (local dev) is an empty one.
+            }
         }
 
         return names;
@@ -50,14 +62,20 @@ public sealed class WorkflowPackageRegistryReader : IWorkflowPackageRegistryRead
 
     public async Task<string?> TryDownloadAsync(string packageName, string blobPath, CancellationToken cancellationToken)
     {
-        try
+        foreach (var container in _containers.GetContainersFor(packageName))
         {
-            var response = await _containers.GetContainerFor(packageName).GetBlobClient(blobPath).DownloadContentAsync(cancellationToken);
-            return response.Value.Content.ToString();
+            try
+            {
+                var response = await container.GetBlobClient(blobPath).DownloadContentAsync(cancellationToken);
+                return response.Value.Content.ToString();
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                // Not in this candidate — a fork lives in exactly one of the
+                // private pair (#602), so keep trying.
+            }
         }
-        catch (RequestFailedException ex) when (ex.Status == 404)
-        {
-            return null;
-        }
+
+        return null;
     }
 }

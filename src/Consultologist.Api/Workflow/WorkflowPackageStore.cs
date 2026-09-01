@@ -15,8 +15,6 @@ public interface IWorkflowPackageStore
 
 public sealed class WorkflowPackageStore : IWorkflowPackageStore
 {
-    private const string ContainerName = WorkflowPackageBlobContainerFactory.ContainerName;
-
     /// <summary>A manifest declares the rule set it was validated under (package-format-v6-design.md § 9).</summary>
     // v11 (#566): the engine runs eleven — the last rung of the v11 ladder
     // (package-format-v11-design.md § 12), after the format registry
@@ -355,18 +353,27 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
 
     private async Task<string> DownloadTextAsync(string packageName, string blobPath, CancellationToken cancellationToken)
     {
-        try
+        // Ownership split: repo-owned names resolve from the public container,
+        // acct-* forks from the private pair (#92, #602) — a fork lives in
+        // exactly one of the pair, so the first hit is the only hit.
+        var candidates = _containers.GetContainersFor(packageName);
+        RequestFailedException? lastMiss = null;
+
+        foreach (var container in candidates)
         {
-            // Ownership split: repo-owned names resolve from the public container,
-            // acct-* forks from the private one (#92).
-            var blob = _containers.GetContainerFor(packageName).GetBlobClient(blobPath);
-            var response = await blob.DownloadContentAsync(cancellationToken);
-            return response.Value.Content.ToString();
+            try
+            {
+                var response = await container.GetBlobClient(blobPath).DownloadContentAsync(cancellationToken);
+                return response.Value.Content.ToString();
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                lastMiss = ex;
+            }
         }
-        catch (RequestFailedException ex) when (ex.Status == 404)
-        {
-            throw new InvalidOperationException($"Workflow package blob '{blobPath}' was not found in container '{ContainerName}'.", ex);
-        }
+
+        throw new InvalidOperationException(
+            $"Workflow package blob '{blobPath}' was not found in {string.Join(", ", candidates.Select(c => $"container '{c.Name}'"))}.", lastMiss);
     }
 
     private sealed record LatestPointer(string Version);

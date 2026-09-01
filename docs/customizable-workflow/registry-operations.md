@@ -30,22 +30,26 @@ artifact:
   and `agent-definitions` registries, #93/#94, the `package-format` registry,
   #376, and the `provenance` registry, #400 — the record contract a verifier
   reads and the hash definitions they recompute with.)
-- **Private**: the account registry, container `workflow-packages` on the
-  app's private storage account — the one and only home of `acct-*`
-  packages, written exclusively by the app's registry writer and readable
-  only by their owning account. It is never publicly readable.
+- **Private**: the account registry, containers `org-account-packages` /
+  `personal-account-packages` on the app's private storage account (#602 —
+  the account's `AccountKind` chooses; null falls to personal, text's own
+  rule) — the one and only home of `acct-*` packages, written exclusively
+  by the app's registry writer and readable only by their owning account.
+  Never publicly readable.
 
 The engine's store routes by name (`WorkflowPackageNaming.IsAccountPackage`):
 repo-owned refs resolve from the public container, `acct-*` from the private
-one. When `WorkflowPackages__PublicBlobServiceUri` is unset (local dev),
-everything routes private, as before the split.
+pair — a fork derives from one account and so lives in exactly one of the
+two, which is what makes a context-free try-both read safe. When
+`WorkflowPackages__PublicBlobServiceUri` is unset (local dev), repo-owned
+names also fall to the private pair, as before the split.
 
 Both accounts are **RBAC-only** — shared-key access is disabled (#10 on the
 private account, #16 on the public one once publishing moved to CI OIDC), so
 every path — the app's identity, CI, `az` with `--auth-mode login` —
 authenticates through Entra ID data-plane roles. Account keys work nowhere.
 
-- **Layout** (one package shown; identical in both containers):
+- **Layout** (one package shown; identical in all three containers):
 
 ```
 workflow-packages/

@@ -163,7 +163,7 @@ public class CatalogStrandsTests
     }
 }
 
-/// <summary>Blobs keyed name/version/path, as FakeRegistryWriter keys them; acct-* names are the private registry.</summary>
+/// <summary>Blobs keyed name/version/path, as FakeRegistryWriter keys them; acct-* names are the private registry — since #602 the union of the org/personal pair, whose membership is exactly the acct-* names, so the prefix model stays truthful.</summary>
 internal sealed class FakeRegistryReader : IWorkflowPackageRegistryReader
 {
     public Dictionary<string, string> Blobs { get; } = new(StringComparer.Ordinal);
