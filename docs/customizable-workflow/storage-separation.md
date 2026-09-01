@@ -162,7 +162,7 @@ store**. Written once at completion from the numbers the record carries
 (#551, built), read by the profile (#552, **built**: the `AccountUsage`
 table incremented under the ETag at FinalizeJob with an on-state stamp
 guarding the reply-leg re-finalize, and `GET Account/Usage` serving the
-day rows) and the admin page (#553), never
+day rows) and the admin page (#553, **built**: `GET Operator/Usage` behind the allowlist, per-user totals grouped by issuer tenant on /operators), never
 recomputed from job records — which the sweep may purge and which a
 region may one day retire. `AccountRateLimits` is its older cousin: one
 row per account per hour, the same shape of store, and the cleanup rule

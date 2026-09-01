@@ -123,6 +123,8 @@ builder.Services.AddSingleton<IWorkflowPackageRegistryReader, WorkflowPackageReg
 builder.Services.AddSingleton<CatalogStrandSweeper>();
 builder.Services.AddSingleton<OperatorCatalogStrands>();
 builder.Services.AddSingleton<OperatorPinHealth>();
+// #553: the operator usage panel — reads only the derived store.
+builder.Services.AddSingleton<OperatorUsage>();
 builder.Services.AddHostedService<PinHealthStartupService>();
 builder.Services.AddTransient<ConsultGenerationJobEntity>();
 builder.Services.AddSingleton<ILinkedInLinkStateStore, LinkedInLinkStateStore>();

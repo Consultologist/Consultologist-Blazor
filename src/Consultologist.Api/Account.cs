@@ -109,7 +109,9 @@ public sealed class Account
                 SignInEmail: signedIn.Address,
                 SignInKind: DeliveryAddress.SignInKindOf(authorized.User),
                 // #556: the account's stored kind — null until back-filled.
-                AccountKind: account.AccountKind),
+                AccountKind: account.AccountKind,
+                // #553: the allowlist fact about the caller.
+                IsOperator: Operators.IsOperator(account)),
             cancellationToken);
 
         return response;
@@ -630,7 +632,9 @@ public sealed class Account
         return response;
     }
 
-    private static (string? From, string? To) ParseUsageQueryParams(Uri url)
+    // Internal, not private: the Operator panel (#553) serves the same
+    // window and must not fork the parse.
+    internal static (string? From, string? To) ParseUsageQueryParams(Uri url)
     {
         string? from = null;
         string? to = null;

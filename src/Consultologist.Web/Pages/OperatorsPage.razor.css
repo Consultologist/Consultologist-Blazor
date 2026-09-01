@@ -1,0 +1,48 @@
+/* #553: the operator usage panel. */
+.operators-denied {
+    font-weight: 600;
+}
+
+.operators-org {
+    margin-top: 0.75rem;
+}
+
+.operators-org__totals {
+    margin: 0.1rem 0 0.4rem;
+}
+
+.operators__scroll {
+    overflow-x: auto;
+}
+
+.operators__table {
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    width: 100%;
+}
+
+.operators__table th,
+.operators__table td {
+    text-align: left;
+    padding: 0.2rem 0.75rem 0.2rem 0.25rem;
+    white-space: nowrap;
+}
+
+.operators-sort {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    color: var(--consultologist-text-muted);
+    cursor: pointer;
+}
+
+.operators__id {
+    font-size: 0.7rem;
+    margin-left: 0.3rem;
+}
+
+.operators-empty {
+    font-size: 0.85rem;
+}

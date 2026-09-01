@@ -29,6 +29,15 @@ public interface IAccountUsageStore
     Task AddAsync(string appUserId, string day, int consultsCompleted, ConsultTokenUsage? tokens, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<AccountUsageDay>> ListAsync(string appUserId, string fromDay, string toDay, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #553: the operator panel's read — every account's rows for the window.
+    /// A cross-partition RowKey-range scan, the repo's first: the table has
+    /// one partition per account, so the AppUsers argument restated — fine at
+    /// current account counts, and the noted follow-up if that changes is a
+    /// day-keyed index. Reads only the derived store, never job records.
+    /// </summary>
+    Task<IReadOnlyList<AccountUsageDay>> ListAllAsync(string fromDay, string toDay, CancellationToken cancellationToken);
 }
 
 public sealed class TableAccountUsageStore : IAccountUsageStore
@@ -119,6 +128,24 @@ public sealed class TableAccountUsageStore : IAccountUsageStore
         }
 
         return days.OrderBy(day => day.Day, StringComparer.Ordinal).ToList();
+    }
+
+    public async Task<IReadOnlyList<AccountUsageDay>> ListAllAsync(string fromDay, string toDay, CancellationToken cancellationToken)
+    {
+        await EnsureTableAsync(cancellationToken);
+
+        var days = new List<AccountUsageDay>();
+        var filter = TableClient.CreateQueryFilter($"RowKey ge {fromDay} and RowKey le {toDay}");
+        await foreach (var entity in _table.QueryAsync<AccountUsageEntity>(filter, cancellationToken: cancellationToken))
+        {
+            days.Add(new AccountUsageDay(
+                entity.PartitionKey, entity.RowKey, entity.ConsultsCompleted, entity.TokensIn, entity.TokensOut));
+        }
+
+        return days
+            .OrderBy(day => day.AppUserId, StringComparer.Ordinal)
+            .ThenBy(day => day.Day, StringComparer.Ordinal)
+            .ToList();
     }
 
     private async Task<AccountUsageEntity?> TryGetAsync(string appUserId, string day, CancellationToken cancellationToken)

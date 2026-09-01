@@ -79,6 +79,56 @@ public class AccountUsageTests
         Assert.Equal("2026-06-16", from); // 92 days inclusive
     }
 
+    // ----- #553: the operator join, pure -----
+
+    [Fact]
+    public void TheOperatorRows_SumPerUser_AndJoinWhatTheRecordCarries()
+    {
+        var usage = new[]
+        {
+            new AccountUsageDay("user-1", "2026-09-01", 2, 2000, 600),
+            new AccountUsageDay("user-1", "2026-09-02", 1, 1000, 300),
+            new AccountUsageDay("user-2", "2026-09-01", 5, 9000, 2500)
+        };
+        var directory = new[]
+        {
+            new Consultologist.Api.Auth.AccountDirectoryEntry("user-1", "Dr One", "Active", "organisation"),
+            new Consultologist.Api.Auth.AccountDirectoryEntry("user-2", "Dr Two", "Active", "personal"),
+            new Consultologist.Api.Auth.AccountDirectoryEntry("user-3", "Dr Idle", "Active", null)
+        };
+        var tenants = new Dictionary<string, string?>
+        {
+            ["user-1"] = "tenant-a",
+            ["user-2"] = "9188040d-6c67-4c5b-b112-36a304b66dad"
+        };
+
+        var rows = Consultologist.Api.Workflow.OperatorUsage.RowsOf(usage, directory, tenants);
+
+        Assert.Equal(2, rows.Count);
+        // One user's numbers never bleed into another's.
+        Assert.Equal(
+            new Consultologist.Api.Workflow.OperatorUsageRowResponse("user-1", "Dr One", "organisation", "tenant-a", 3, 3000, 900),
+            rows[0]);
+        Assert.Equal(
+            new Consultologist.Api.Workflow.OperatorUsageRowResponse("user-2", "Dr Two", "personal", "9188040d-6c67-4c5b-b112-36a304b66dad", 5, 9000, 2500),
+            rows[1]);
+        // An account with no usage in the window does not appear.
+        Assert.DoesNotContain(rows, row => row.AppUserId == "user-3");
+    }
+
+    [Fact]
+    public void ARowWithoutDirectoryOrTenant_StaysHonest()
+    {
+        var usage = new[] { new AccountUsageDay("ghost", "2026-09-01", 1, 100, 50) };
+
+        var row = Assert.Single(Consultologist.Api.Workflow.OperatorUsage.RowsOf(
+            usage, Array.Empty<Consultologist.Api.Auth.AccountDirectoryEntry>(), new Dictionary<string, string?>()));
+
+        Assert.Equal(string.Empty, row.DisplayName);
+        Assert.Null(row.TenantId);
+        Assert.Equal((1, 100, 50), (row.ConsultsCompleted, row.TokensIn, row.TokensOut));
+    }
+
     // ----- the write at finalize: exactly once, never failing the job -----
 
     private static readonly PropertyInfo StateProperty =
