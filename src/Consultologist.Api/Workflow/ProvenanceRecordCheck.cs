@@ -92,6 +92,12 @@ public static class ProvenanceRecordCheck
         {
             switch (definition)
             {
+                // #574: the arm #499 forgot — the one definition every v10+
+                // job stamps. Definition 6 is 5 recursed; the writer is the
+                // same, the number names the wider value set.
+                case 6 when inputs != null:
+                    recomputed = ConsultGenerationProvenance.ComputeNestedInputsHash(inputs);
+                    break;
                 case 5 when inputs != null:
                     recomputed = ConsultGenerationProvenance.ComputeStructuredInputsHash(inputs);
                     break;
