@@ -1,3 +1,7 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Consultologist.Web.Services.Accounts
+@inject IAccountEndpointService AccountService
+
 <FluentDesignTheme @ref="@_theme" Mode="@_themeMode" StorageName="consultologist-clinical-theme" />
 
 <FluentHeader Class="app-header">
@@ -17,6 +21,13 @@
                     <FluentNavLink Href="history">History</FluentNavLink>
                     <FluentNavLink Href="templates">Workflow</FluentNavLink>
                     <FluentNavLink Href="profile">Profile</FluentNavLink>
+                    @* #553: shown on Account/Me's IsOperator — the nav's
+                       fact; the server gate is the real one, and any failure
+                       here just means no link. *@
+                    @if (_isOperator)
+                    {
+                        <FluentNavLink Href="operators">Operators</FluentNavLink>
+                    }
                 </Authorized>
             </AuthorizeView>
         </nav>
@@ -37,6 +48,37 @@
 @code {
     private FluentDesignTheme? _theme;
     private DesignThemeModes _themeMode = DesignThemeModes.System;
+    private bool _isOperator;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // #553: one Me read to decide the Operators link. Deliberately no
+        // redirect on a token problem — the header must never bounce the
+        // whole app; a failure just means no link.
+        if (AuthenticationStateTask == null)
+        {
+            return;
+        }
+
+        var state = await AuthenticationStateTask;
+        if (state.User.Identity?.IsAuthenticated != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var me = await AccountService.GetCurrentAccountAsync();
+            _isOperator = me.IsOperator;
+        }
+        catch
+        {
+            _isOperator = false;
+        }
+    }
 
     private Icon _themeIcon => _themeMode == DesignThemeModes.Dark
         ? new Icons.Regular.Size20.WeatherSunny()

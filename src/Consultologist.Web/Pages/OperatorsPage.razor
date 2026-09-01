@@ -1,0 +1,188 @@
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using Consultologist.Web.Services.Accounts
+@using Consultologist.Web.Services.Operators
+@inject IOperatorEndpointService OperatorService
+@attribute [Authorize]
+
+@page "/operators"
+<PageTitle>Operators - Consultologist</PageTitle>
+
+@* #553: a first slice, not a console — usage per user and per
+   organisation from the derived store, for accounts on the operator
+   allowlist. The server gate is the real one; a signed-in non-operator
+   meets the named state, never a broken page. Numbers, ids and stored
+   display names only; rows link nowhere. *@
+<section class="page-header">
+    <div class="section-eyebrow">Operators</div>
+    <h1 class="page-title">Usage</h1>
+    <p class="page-description">
+        Consults and tokens per user and per organisation, from the derived
+        usage store — never job records. This deployment's figures only.
+    </p>
+</section>
+
+<section class="content-card operators-usage-card">
+    <div class="form-stack">
+        @if (accessDenied)
+        {
+            <p class="operators-denied">This page is for operators — your account is not on the allowlist.</p>
+        }
+        else
+        {
+            @if (usageError != null)
+            {
+                <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false" Class="operators-message">@usageError</FluentMessageBar>
+            }
+
+            <div class="action-row">
+                <select class="node-field__input operators-window"
+                        value="@window"
+                        @onchange="OnWindowChangedAsync"
+                        aria-label="Usage window">
+                    <option value="7">Last 7 days</option>
+                    <option value="30">Last 30 days</option>
+                    <option value="90">Last 90 days</option>
+                    <option value="custom">Custom range</option>
+                </select>
+                @if (window == "custom")
+                {
+                    <input type="date" class="node-field__input operators-from" value="@fromInput"
+                           @onchange="args => fromInput = args.Value?.ToString() ?? string.Empty" aria-label="From" />
+                    <input type="date" class="node-field__input operators-to" value="@toInput"
+                           @onchange="args => toInput = args.Value?.ToString() ?? string.Empty" aria-label="To" />
+                    <FluentButton Appearance="Appearance.Accent" Class="operators-apply"
+                                  Disabled="@(string.IsNullOrWhiteSpace(fromInput) || string.IsNullOrWhiteSpace(toInput))"
+                                  @onclick="LoadAsync">
+                        Apply
+                    </FluentButton>
+                }
+            </div>
+
+            @if (usage is { } usageData)
+            {
+                @if (usageData.Rows.Count == 0)
+                {
+                    <p class="operators-empty muted-text">No usage in this window.</p>
+                }
+                else
+                {
+                    @foreach (var group in OperatorUsageRollup.Groups(usageData.Rows, sortKey, sortDescending))
+                    {
+                        <div class="operators-org">
+                            <h2 class="panel-title operators-org__label">@group.Label</h2>
+                            <p class="operators-org__totals muted-text">
+                                @($"{group.ConsultsCompleted:N0} consults · {group.TokensIn:N0} in · {group.TokensOut:N0} out tokens")
+                            </p>
+                            <div class="operators__scroll">
+                                <table class="operators__table">
+                                    <thead>
+                                        <tr>
+                                            <th><button type="button" class="operators-sort operators-sort--name" @onclick='() => ToggleSort(OperatorUsageRollup.SortByName)'>Account@(SortMark(OperatorUsageRollup.SortByName))</button></th>
+                                            <th><button type="button" class="operators-sort operators-sort--consults" @onclick='() => ToggleSort(OperatorUsageRollup.SortByConsults)'>Consults@(SortMark(OperatorUsageRollup.SortByConsults))</button></th>
+                                            <th><button type="button" class="operators-sort operators-sort--tokens" @onclick='() => ToggleSort(OperatorUsageRollup.SortByTokens)'>Tokens@(SortMark(OperatorUsageRollup.SortByTokens))</button></th>
+                                            <th>In</th>
+                                            <th>Out</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in group.Rows)
+                                        {
+                                            <tr class="operators__row">
+                                                <td>@(string.IsNullOrEmpty(row.DisplayName) ? row.AppUserId : row.DisplayName) <span class="muted-text operators__id">@row.AppUserId[..Math.Min(8, row.AppUserId.Length)]…</span></td>
+                                                <td>@row.ConsultsCompleted.ToString("N0")</td>
+                                                <td>@(((long)row.TokensIn + row.TokensOut).ToString("N0"))</td>
+                                                <td>@row.TokensIn.ToString("N0")</td>
+                                                <td>@row.TokensOut.ToString("N0")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }
+                }
+            }
+        }
+    </div>
+</section>
+
+@code {
+    private OperatorUsageResponse? usage;
+    private string window = "30";
+    private string fromInput = string.Empty;
+    private string toInput = string.Empty;
+    private string? usageError;
+    private bool accessDenied;
+    private string sortKey = OperatorUsageRollup.SortByConsults;
+    private bool sortDescending = true;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        usageError = null;
+
+        string from, to;
+        if (window == "custom")
+        {
+            if (string.IsNullOrWhiteSpace(fromInput) || string.IsNullOrWhiteSpace(toInput))
+            {
+                return;
+            }
+
+            from = fromInput;
+            to = toInput;
+        }
+        else
+        {
+            var windowDays = int.Parse(window, System.Globalization.CultureInfo.InvariantCulture);
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            to = today.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            from = today.AddDays(-(windowDays - 1)).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        try
+        {
+            usage = await OperatorService.GetUsageAsync(from, to);
+        }
+        catch (OperatorAccessException)
+        {
+            accessDenied = true;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            usageError = ex.Message;
+        }
+    }
+
+    private async Task OnWindowChangedAsync(ChangeEventArgs args)
+    {
+        window = args.Value?.ToString() ?? "30";
+
+        if (window != "custom")
+        {
+            await LoadAsync();
+        }
+    }
+
+    private void ToggleSort(string key)
+    {
+        if (sortKey == key)
+        {
+            sortDescending = !sortDescending;
+        }
+        else
+        {
+            sortKey = key;
+            sortDescending = key != OperatorUsageRollup.SortByName;
+        }
+    }
+
+    private string SortMark(string key) =>
+        sortKey == key ? (sortDescending ? " ↓" : " ↑") : string.Empty;
+}

@@ -38,6 +38,8 @@ builder.Services.AddHttpClient<IAccountEndpointService, AccountEndpointService>(
 builder.Services.AddHttpClient<ISseDiagnosticsService, SseDiagnosticsService>();
 builder.Services.AddHttpClient<IWorkflowEndpointService, WorkflowEndpointService>();
 builder.Services.AddHttpClient<IDocumentEndpointService, DocumentEndpointService>();
+// #553: the operator panel — server-gated; the client only asks.
+builder.Services.AddHttpClient<Consultologist.Web.Services.Operators.IOperatorEndpointService, Consultologist.Web.Services.Operators.OperatorEndpointService>();
 builder.Services.AddScoped<Consultologist.Web.Services.AI.ConsultJobSession>();
 // #412: one watcher per tab; UpdateBanner in MainLayout starts it.
 builder.Services.AddScoped<IAppUpdateService, AppUpdateService>();

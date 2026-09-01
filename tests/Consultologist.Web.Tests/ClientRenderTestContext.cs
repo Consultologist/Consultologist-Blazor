@@ -28,6 +28,9 @@ public abstract class ClientRenderTestContext : BunitContext
 
     protected IDocumentEndpointService DocumentService { get; } = Substitute.For<IDocumentEndpointService>();
 
+    // #553: the operator panel.
+    protected Consultologist.Web.Services.Operators.IOperatorEndpointService OperatorService { get; } = Substitute.For<Consultologist.Web.Services.Operators.IOperatorEndpointService>();
+
     // #412: the layout's UpdateBanner asks this whether a newer build waits.
     protected IAppUpdateService AppUpdate { get; } = Substitute.For<IAppUpdateService>();
 
@@ -58,6 +61,7 @@ public abstract class ClientRenderTestContext : BunitContext
         Services.AddSingleton(WorkflowService);
         Services.AddSingleton(AccountService);
         Services.AddSingleton(DocumentService);
+        Services.AddSingleton(OperatorService);
         Services.AddSingleton(AppUpdate);
         Services.AddSingleton(Substitute.For<ISseDiagnosticsService>());
         Services.AddSingleton(JobSession);
