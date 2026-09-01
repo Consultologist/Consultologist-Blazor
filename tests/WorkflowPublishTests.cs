@@ -1110,32 +1110,64 @@ public class ContainerRoutingTests
         Assert.Equal(isPrivate, WorkflowPackageNaming.IsAccountPackage(name));
     }
 
+    // #602: the account's kind names the private container — TextBlobNaming's
+    // rule, null and "" falling to personal (the JobOutputsBlobStore table).
+    [Theory]
+    [InlineData(SignInKinds.Organisation, WorkflowPackageBlobContainerFactory.OrganisationContainerName)]
+    [InlineData(SignInKinds.Personal, WorkflowPackageBlobContainerFactory.PersonalContainerName)]
+    [InlineData(null, WorkflowPackageBlobContainerFactory.PersonalContainerName)]
+    [InlineData("", WorkflowPackageBlobContainerFactory.PersonalContainerName)]
+    public void TheKind_NamesThePrivateContainer(string? accountKind, string container)
+    {
+        Assert.Equal(container, WorkflowPackageBlobContainerFactory.ContainerFor(accountKind));
+        Assert.Equal(container, CreateFactory(withPublicUri: true).GetContainer(accountKind).Name);
+    }
+
     [Fact]
     public void RepoOwnedName_RoutesToThePublicContainer()
     {
         var factory = CreateFactory(withPublicUri: true);
-        Assert.Equal("public.example.net", factory.GetContainerFor("general").Uri.Host);
+        var candidate = Assert.Single(factory.GetContainersFor("general"));
+        Assert.Equal("public.example.net", candidate.Uri.Host);
     }
 
     [Fact]
-    public void AccountName_RoutesToThePrivateContainer_EvenWithPublicConfigured()
+    public void AccountName_RoutesToThePrivatePair_EvenWithPublicConfigured()
     {
+        // #602: a fork's candidates are the org/personal pair, in that order —
+        // a fork lives in exactly one, so the first hit is the only hit.
         var factory = CreateFactory(withPublicUri: true);
-        Assert.NotEqual("public.example.net", factory.GetContainerFor("acct-0123456789ab").Uri.Host);
+        var candidates = factory.GetContainersFor("acct-0123456789ab");
+        Assert.Equal(
+            new[] { WorkflowPackageBlobContainerFactory.OrganisationContainerName, WorkflowPackageBlobContainerFactory.PersonalContainerName },
+            candidates.Select(container => container.Name));
+        Assert.DoesNotContain(candidates, container => container.Uri.Host == "public.example.net");
     }
 
     [Fact]
-    public void NoPublicUri_EverythingRoutesPrivate()
+    public void NoPublicUri_RepoNamesFallToThePrivatePair()
     {
         var factory = CreateFactory(withPublicUri: false);
-        Assert.Equal(factory.GetContainer().Uri, factory.GetContainerFor("general").Uri);
+        Assert.Equal(
+            factory.GetPrivateContainers().Select(container => container.Uri),
+            factory.GetContainersFor("general").Select(container => container.Uri));
     }
 
     [Fact]
-    public void TheWriterTarget_IsAlwaysThePrivateContainer()
+    public void TheWriterTarget_IsNeverThePublicContainer()
     {
         var factory = CreateFactory(withPublicUri: true);
-        Assert.NotEqual("public.example.net", factory.GetContainer().Uri.Host);
+        Assert.NotEqual("public.example.net", factory.GetContainer(SignInKinds.Organisation).Uri.Host);
+        Assert.NotEqual("public.example.net", factory.GetContainer(SignInKinds.Personal).Uri.Host);
+    }
+
+    [Fact]
+    public void ThePrivatePair_IsOrgThenPersonal()
+    {
+        var factory = CreateFactory(withPublicUri: false);
+        Assert.Equal(
+            new[] { WorkflowPackageBlobContainerFactory.OrganisationContainerName, WorkflowPackageBlobContainerFactory.PersonalContainerName },
+            factory.GetPrivateContainers().Select(container => container.Name));
     }
 }
 

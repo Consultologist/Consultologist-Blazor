@@ -61,7 +61,7 @@ public sealed class WorkflowPackageRegistryWriter : IWorkflowPackageRegistryWrit
 
     public WorkflowPackageRegistryWriter(WorkflowPackageBlobContainerFactory containerFactory)
     {
-        _container = containerFactory.GetContainer();
+        _container = containerFactory.GetContainer(null);
     }
 
     public async Task<string?> ReadLatestVersionAsync(string name, CancellationToken cancellationToken)

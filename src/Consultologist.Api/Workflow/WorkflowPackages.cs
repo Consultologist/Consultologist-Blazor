@@ -239,7 +239,7 @@ public sealed class WorkflowPackages
         IReadOnlySet<string> ownedNames,
         CancellationToken cancellationToken)
     {
-        var container = _containerFactory.GetContainer();
+        var container = _containerFactory.GetContainer(null);
         var blobNames = new List<string>();
         var packages = new List<PublicPackageSummary>();
 
