@@ -63,7 +63,12 @@ refs and labels stay forever, and the record says when each went
 > values as sent, on the text account, swept by the account's
 > `retention.inputDays` from `submittedAtUtc`; the list row is on the
 > records account and never holds a value. Organisation sign-in only;
-> JSON on every status. Turning a held response into a run is #543.
+> JSON on every status. Since #543 the account may choose *run at once*
+> (`forms.responseMode`; unset holds): the push then also starts a job
+> on the pinned package (`source: forms`, `form-response` origins),
+> delivery follows the account's #518 choice like an app run, and the
+> respondent is never replied to. A misfit refuses the start by name;
+> the response stays held for the picker either way.
 
 Submit consults by email; results announced by reply; runs recorded in
 History like any other. Implementation decisions (settled 2026-07-25;

@@ -2,8 +2,13 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using Consultologist.Api.Auth;
+using Consultologist.Api.Jobs;
+using Consultologist.Api.Models;
+using Consultologist.Api.Workflow;
+using Consultologist.PackageFormat;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.DurableTask.Client;
 using Microsoft.Extensions.Logging;
 
 namespace Consultologist.Api.Forms;
@@ -29,6 +34,10 @@ public sealed class FormsIntake
     private readonly IAccountStore _accounts;
     private readonly IFormResponseBlobStore _blobs;
     private readonly IFormResponseStore _rows;
+    private readonly IAccountSettingsStore _settings;
+    private readonly IConsultGenerationJobStarter _starter;
+    private readonly IWorkflowPackagePinResolver _pinResolver;
+    private readonly IWorkflowPackageStore _packageStore;
     private readonly ILogger<FormsIntake> _logger;
 
     public FormsIntake(
@@ -36,12 +45,20 @@ public sealed class FormsIntake
         IAccountStore accounts,
         IFormResponseBlobStore blobs,
         IFormResponseStore rows,
+        IAccountSettingsStore settings,
+        IConsultGenerationJobStarter starter,
+        IWorkflowPackagePinResolver pinResolver,
+        IWorkflowPackageStore packageStore,
         ILogger<FormsIntake> logger)
     {
         _authorizer = authorizer;
         _accounts = accounts;
         _blobs = blobs;
         _rows = rows;
+        _settings = settings;
+        _starter = starter;
+        _pinResolver = pinResolver;
+        _packageStore = packageStore;
         _logger = logger;
     }
 
@@ -59,7 +76,8 @@ public sealed class FormsIntake
     /// </summary>
     [Function("FormsIntakeResponses")]
     public async Task<HttpResponseData> ResponsesAsync(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", "get", "options", Route = "Intake/Forms/Responses")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", "get", "options", Route = "Intake/Forms/Responses")] HttpRequestData req,
+        [DurableClient] DurableTaskClient client)
     {
         var cancellationToken = req.FunctionContext.CancellationToken;
 
@@ -143,10 +161,154 @@ public sealed class FormsIntake
             "Form response held. FormId={FormId}, ResponseId={ResponseId}, InputCount={InputCount}, TotalLength={TotalLength}",
             formId, responseId, submission.Inputs!.Count, submission.Inputs.Values.Sum(v => (long)v.Length));
 
+        // #543: the account's word decides — only runAtOnce starts anything,
+        // strictly AFTER the row (the exactly-once claim: a retried push hit
+        // the 204 branch above and never gets here). A start failure of any
+        // kind never fails the hold: the response stays held for the picker
+        // and the flow's run shows the refusal.
+        object? run = null;
+        var mode = FormResponseModes.Of(
+            (await _settings.GetAsync(account.AppUserId, AccountSettingKeys.FormResponseMode, cancellationToken))?.Value);
+        if (mode == FormResponseModes.RunAtOnce)
+        {
+            try
+            {
+                run = await StartRunAsync(client, account.AppUserId, formId, responseId!, submission.Inputs!, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "Forms run-at-once start faulted; the response stays held. FormId={FormId}, ResponseId={ResponseId}", formId, responseId);
+                run = new { error = "The run could not be started; the response is held for the picker." };
+            }
+        }
+
         var created = req.CreateResponse(HttpStatusCode.Created);
         FunctionCors.Apply(req, created);
-        await created.WriteAsJsonAsync(new { formId, responseId, submittedAtUtc = submission.SubmittedAtUtc.Value }, cancellationToken);
+        await created.WriteAsJsonAsync(
+            run == null
+                ? new { formId, responseId, submittedAtUtc = submission.SubmittedAtUtc.Value }
+                : (object)new { formId, responseId, submittedAtUtc = submission.SubmittedAtUtc.Value, run },
+            cancellationToken);
         return created;
+    }
+
+    /// <summary>
+    /// #543: hold-and-run. The pinned package's declarations are the email
+    /// door's convenience read — the starter re-resolves and stays the
+    /// authority, and the store caches, so it is a cache hit by the time the
+    /// starter asks again. The request carries Inputs (coerced) beside
+    /// InputFormRefs, so the starter's #540 verification records the
+    /// form-response origins; the origin is APP-shaped — the account's
+    /// confirmed address and its #518 choice, never the respondent.
+    /// </summary>
+    // Internal for the tests: there is no HttpRequestData harness in this
+    // repo, so the run half is tested here directly and the HTTP shell above
+    // stays the named gap every door has.
+    internal async Task<object> StartRunAsync(
+        DurableTaskClient client,
+        string appUserId,
+        string formId,
+        string responseId,
+        IReadOnlyDictionary<string, string> heldInputs,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<WorkflowInputSpec>? declarations;
+        try
+        {
+            var pin = await _pinResolver.ResolvePinAsync(appUserId, cancellationToken);
+            var package = await _packageStore.ResolveAsync(pin, cancellationToken);
+            declarations = package.Manifest.Inputs;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Forms run-at-once: the pinned package could not be read; the response stays held.");
+            return new { error = "The pinned package could not be read; the response is held for the picker." };
+        }
+
+        var (request, refusal) = BuildRunRequest(declarations ?? new List<WorkflowInputSpec>(), heldInputs, formId, responseId);
+        if (request == null)
+        {
+            _logger.LogInformation(
+                "Forms run-at-once refused before start. FormId={FormId}, ResponseId={ResponseId}", formId, responseId);
+            return new { error = refusal };
+        }
+
+        var deliveryAddress = (await _settings.GetAsync(appUserId, AccountSettingKeys.DeliveryAddress, cancellationToken))?.Value;
+        var emailPdf = (await _settings.GetAsync(appUserId, AccountSettingKeys.EmailPdf, cancellationToken))?.Value;
+
+        var outcome = await _starter.StartAsync(
+            client,
+            request,
+            appUserId,
+            new ConsultGenerationJobOrigin(
+                ConsultGenerationJobSources.Forms,
+                ConsultGenerationJobs.ReplyAddressFor(deliveryAddress),
+                // The default-true trap: forgetting this would email every
+                // run regardless of the account's #518 choice.
+                EmailRequested: ConsultGenerationJobs.EmailRequestedFor(emailPdf)),
+            cancellationToken);
+
+        if (outcome.Error != null)
+        {
+            _logger.LogWarning(
+                "Forms run-at-once start refused. FormId={FormId}, ResponseId={ResponseId}, Kind={Kind}",
+                formId, responseId, outcome.Error);
+            // The account's own authenticated flow — the app door's
+            // disclosure rule, not email's sender-safe one.
+            return outcome.JobId == null
+                ? new { error = outcome.ErrorDetail ?? outcome.Error.ToString() }
+                : (object)new { error = outcome.ErrorDetail ?? outcome.Error.ToString(), jobId = outcome.JobId };
+        }
+
+        _logger.LogInformation(
+            "Forms run-at-once started. FormId={FormId}, ResponseId={ResponseId}, JobId={JobId}",
+            formId, responseId, outcome.JobId);
+        return new { jobId = outcome.JobId };
+    }
+
+    /// <summary>
+    /// #543 (spike § 4.5): every declared input the response carries, coerced
+    /// by its declaration — a misfit refuses the WHOLE start by name (no
+    /// partial fill), a blank answer is omitted, undeclared answer ids are
+    /// ignored (the picker's converse). InputFormRefs covers every included
+    /// id, so the starter's verification records the origins. A response
+    /// answering none of the declared inputs is refused by name too — the
+    /// starter would only say "no inputs" less usefully.
+    /// </summary>
+    internal static (ConsultGenerationRequest? Request, string? Refusal) BuildRunRequest(
+        IReadOnlyList<WorkflowInputSpec> declarations,
+        IReadOnlyDictionary<string, string> heldInputs,
+        string formId,
+        string responseId)
+    {
+        var inputs = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal);
+        var refs = new Dictionary<string, ConsultInputFormRef>(StringComparer.Ordinal);
+
+        foreach (var declaration in declarations)
+        {
+            if (!heldInputs.TryGetValue(declaration.Id, out var held))
+            {
+                continue;
+            }
+
+            var (value, misfit) = FormResponseCoercion.Coerce(WorkflowDeclarationNode.Of(declaration), held);
+            if (misfit != null)
+            {
+                return (null, $"The response's answer for input '{declaration.Id}' {misfit}.");
+            }
+
+            if (value == null)
+            {
+                continue;
+            }
+
+            inputs[declaration.Id] = value;
+            refs[declaration.Id] = new ConsultInputFormRef(formId, responseId);
+        }
+
+        return inputs.Count == 0
+            ? (null, "The response answers none of the package's declared inputs.")
+            : (new ConsultGenerationRequest(null, Inputs: inputs, InputFormRefs: refs), null);
     }
 
     // #540: GET joined DELETE on this template — the host routes by template

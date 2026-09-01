@@ -818,6 +818,14 @@ public sealed class Account
             }
         }
 
+        // #543: the forms mode is two words; anything else is refused by name
+        // so a typo never silently means "hold" while reading as chosen.
+        if (string.Equals(key, AccountSettingKeys.FormResponseMode, StringComparison.Ordinal)
+            && FormResponseModes.Validate(request.Value) is { } modeError)
+        {
+            return await CreateTextResponseAsync(req, HttpStatusCode.BadRequest, modeError, cancellationToken);
+        }
+
         await _settingsStore.SaveAsync(account.AppUserId, key, request.Value, contentType, cancellationToken);
 
         var response = req.CreateResponse(HttpStatusCode.NoContent);
