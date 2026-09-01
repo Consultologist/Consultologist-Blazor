@@ -81,6 +81,15 @@ public static class AccountSettingKeys
     /// outputs clock — inputs are the more sensitive class.
     /// </summary>
     public const string RetentionInputDays = "retention.inputDays";
+
+    /// <summary>
+    /// #543: what the intake door does with a pushed form response —
+    /// <see cref="FormResponseModes"/>' two words; absent = not chosen,
+    /// which holds for review (the #518 rule: nothing but the user's own
+    /// word changes behaviour). Rides the generic routes; saves refuse any
+    /// other value by name; read at the door per push.
+    /// </summary>
+    public const string FormResponseMode = "forms.responseMode";
 }
 
 /// <summary>#517: the two ways a delivery address gets verified.</summary>
@@ -88,6 +97,31 @@ public static class DeliveryAddressVerifiedBy
 {
     public const string Code = "code";
     public const string Tenant = "tenant";
+}
+
+/// <summary>
+/// #543: the two answers to "how does a form response become a consult".
+/// Hold is what unset means; ONLY the exact run-at-once word ever starts a
+/// job — the tolerant read's whole point.
+/// </summary>
+public static class FormResponseModes
+{
+    public const string Hold = "hold";
+    public const string RunAtOnce = "runAtOnce";
+
+    /// <summary>The stored word (trimmed, case-insensitive), or null — which behaves as Hold.</summary>
+    public static string? Of(string? value) => value?.Trim() switch
+    {
+        { } word when string.Equals(word, Hold, StringComparison.OrdinalIgnoreCase) => Hold,
+        { } word when string.Equals(word, RunAtOnce, StringComparison.OrdinalIgnoreCase) => RunAtOnce,
+        _ => null,
+    };
+
+    /// <summary>The save-side refusal, by name; null when the value is one of the two words.</summary>
+    public static string? Validate(string? value) =>
+        Of(value) == null
+            ? $"forms.responseMode must be '{Hold}' or '{RunAtOnce}'."
+            : null;
 }
 
 public static class IdentityProviders
