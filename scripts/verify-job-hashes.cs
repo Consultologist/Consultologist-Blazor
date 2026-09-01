@@ -17,8 +17,8 @@
 //   curl -sS -H "Authorization: Bearer $TOKEN" \
 //     https://<function-host>/api/ConsultGenerationJobs/<job-id> > job.json
 // <inputs.json> is the inputs as they were submitted — {"id": value, ...} in
-// the request's own form (text, true/false, numbers, one-level objects and
-// arrays) — for a record whose effectiveInputHashVersion is 3, 4 or 5;
+// the request's own form (text, true/false, numbers, objects and arrays,
+// nested since v10) — for a record whose effectiveInputHashVersion is 3–6;
 // <draft.txt> is the consult draft for version 2.
 //
 // WHY THIS EXISTS. The other registries let somebody re-run a consult from

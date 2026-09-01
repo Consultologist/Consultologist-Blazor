@@ -116,4 +116,53 @@ public class ProvenanceRecordCheckTests
         Assert.Null(refused.Matches);
         Assert.Contains("definition 5", refused.Note);
     }
+
+    // ----- #574: definition 6, the arm #499 forgot -----
+
+    /// <summary>
+    /// A v10 map with a NESTED value — what distinguishes the right primitive
+    /// from every wrong dispatch: definition 4 refuses structure outright,
+    /// and 5 agrees with 6 only on flat maps.
+    /// </summary>
+    private static Dictionary<string, ConsultInputValue> NestedInputs() => new(StringComparer.Ordinal)
+    {
+        ["consult_draft"] = ConsultInputValue.OfText("The referral text."),
+        ["context"] = ConsultInputValue.OfObject(new[]
+        {
+            new ConsultInputEntry("site", ConsultInputValue.OfText("clinic-a")),
+            new ConsultInputEntry("billable", ConsultInputValue.OfBoolean(true))
+        })
+    };
+
+    [Fact]
+    public void ADefinition6Record_RecomputesFromSuppliedNestedInputs_AndMatches()
+    {
+        var inputs = NestedInputs();
+        var record = Record(inputVersion: 6, inputHash: ConsultGenerationProvenance.ComputeNestedInputsHash(inputs));
+
+        var check = ProvenanceRecordCheck.InputHash(record, inputs, null);
+
+        Assert.Equal(6, check.Definition);
+        Assert.True(check.Matches);
+        Assert.Null(check.Note);
+    }
+
+    [Fact]
+    public void ADefinition6Record_WithDifferentInputs_SaysMismatch()
+    {
+        var record = Record(inputVersion: 6, inputHash: "not-the-digest");
+
+        var check = ProvenanceRecordCheck.InputHash(record, NestedInputs(), null);
+
+        Assert.False(check.Matches);
+    }
+
+    [Fact]
+    public void ADefinition6Record_WithoutInputs_AsksForThem_NeverAFalseVerdict()
+    {
+        var check = ProvenanceRecordCheck.InputHash(Record(inputVersion: 6, inputHash: "x"), null, null);
+
+        Assert.Null(check.Matches);
+        Assert.Contains("--inputs", check.Note);
+    }
 }
