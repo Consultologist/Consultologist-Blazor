@@ -33,7 +33,9 @@ public interface IJobTextPurger
 /// account, and rows written before the move sit on the records account
 /// until their jobs purge. This deletes a job's old-table partition; it
 /// never creates the old table (M6/#558 wants it empty and removable) and a
-/// missing table reads as nothing to delete. Removed by #558 once empty.
+/// missing table reads as nothing to delete. Removed once empty — #558
+/// checked live (2026-08-31): pre-#557 rows remained, so the removal is
+/// deferred until their jobs purge.
 /// No dual-READ on purpose: the SSE loop exits on terminal status whatever
 /// the sequence says, events re-derive from the response into the new
 /// table, and the GET path never depends on this table — the loss is

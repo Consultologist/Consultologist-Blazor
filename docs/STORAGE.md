@@ -168,7 +168,9 @@ before the migration keep serving their entity fields. The
 `ConsultGenerationJobEvents` table lives here too; rows written before the
 move sit on the records account until their jobs purge — the retention
 sweep deletes from both tables during the transition (`LegacyJobEventDelete`,
-removed by #558 once the old table is empty). `DropText` deletes the blob
+removed once the old table is empty; #558 checked on 2026-08-31 and the
+table still held pre-#557 rows for jobs not yet past retention, so the
+removal is deferred to a small follow-up once they purge). `DropText` deletes the blob
 first, then stamps the record; the 30-day lifecycle policy above is the
 backstop for anything a failure leaves behind.
 
