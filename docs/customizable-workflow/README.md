@@ -78,7 +78,11 @@ another (#400); what stays here is why each was chosen. Public by design, like t
   a Microsoft Forms response as an intake source — no supported API, so the
   clinician's Power Automate flow pushes responses with the clinician's own
   token into a held list the setup form picks from; organisation sign-ins
-  only; experiments E1–E4 pending
+  only; experiments E1–E4 run 2026-08-29; the split (A–E) all built
+- [forms-intake.md](forms-intake.md) — the flow recipe (#542, 2026-09-01):
+  the clinician's once-per-form wiring — the flow step by step, the
+  connection lesson, hold vs run-at-once, the licence gate and the
+  email-bridge fallback, the second-location checklist
 - [storage-separation.md](storage-separation.md) — design record (#545,
   2026-08-30): the four classes of state — inputs, outputs, history/record,
   usage — each with its store, key, retention, deleter and residency; a text

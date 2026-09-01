@@ -1,5 +1,10 @@
 # Microsoft Forms as an intake source — spike record (#511)
 
+> **Promoted 2026-09-01 (#542):** the clinician-facing recipe — the flow,
+> the connection lesson, licensing and the email bridge — now lives in
+> [forms-intake.md](forms-intake.md); this record keeps the design and
+> the experiments.
+
 **Status: spike record for Milestone 21 (research settled 2026-08-28;
 experiments E1–E4 run 2026-08-29, § 6; split filed, § 7).** #511 asked whether a Microsoft Forms
 questionnaire response can fill a package's declared inputs the way an
@@ -471,7 +476,7 @@ design; issue D documents it beside the recipe.
 | A | #539 — § 4.1 held responses: endpoint, table, retention sweep, list/discard — **built** | first |
 | B | #540 — § 4.2 picker, coercion, `InputFormRefs`, origin at start — **built** | after A |
 | C | #541 — § 4.3 provenance `form-response` kind (registry, version bump) — **built** (provenance@v2026.09.1) | before B lands |
-| D | #542 — § 4.4 flow recipe, tenant setup, licensing, the email bridge | after A |
+| D | #542 — § 4.4 flow recipe, tenant setup, licensing, the email bridge — **built** (promoted to [forms-intake.md](forms-intake.md)) | after A |
 | E | #543 — § 4.5 the account option: hold for review or run at once; `source: forms` — **built** (provenance@v2026.09.2) | after A and B |
 
 #511 closed 2026-08-29 with E1–E4 recorded and A–D filed.
