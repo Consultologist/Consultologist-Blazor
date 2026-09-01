@@ -51,7 +51,7 @@ jobs:
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_446D6ACA8E9B4280AB0466590D8DEE0A }}
 
       - name: "Run Azure Functions Action"
-        uses: Azure/functions-action@bc63708cc6539760eea18d8a7de4ce8ef5fdf593 # v1
+        uses: Azure/functions-action@c5060b3b8bb1ebbcb531abd00c822ecbaa8ea656 # v1
         id: fa
         with:
           app-name: "canada-east-ai-function"
