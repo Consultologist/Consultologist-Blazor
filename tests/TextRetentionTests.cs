@@ -1,6 +1,7 @@
 using System.Reflection;
 using Consultologist.Api.Auth;
 using Consultologist.Api.Jobs;
+using Consultologist.Api.RateLimiting;
 using Consultologist.Api.Models;
 using Consultologist.Api.Workflow;
 using Microsoft.DurableTask.Client;
@@ -185,6 +186,11 @@ public class TextRetentionTests
         return responses;
     }
 
+    // #558: quiet counter stores — an unstubbed substitute answers 0 rows.
+    private static IAccountRateLimiter NoRateLimiter() => Substitute.For<IAccountRateLimiter>();
+    private static IAccountUsageStore NoUsage() => Substitute.For<IAccountUsageStore>();
+    private static ILinkedInLinkStateStore NoLinkStates() => Substitute.For<ILinkedInLinkStateStore>();
+
     [Fact]
     public async Task TheSweep_PurgesEveryDueJob_AndKeepsGoingPastAFailure()
     {
@@ -201,7 +207,7 @@ public class TextRetentionTests
         purger.PurgeAsync(Arg.Any<DurableTaskClient>(), "j1", now, Arg.Any<CancellationToken>()).Returns(Task.FromException(new InvalidOperationException("storage")));
         var client = Substitute.For<DurableTaskClient>("test");
 
-        var (a, due, dropped, inputsDropped, _) = await new TextRetentionSweep(accounts, index, purger, Settings(), NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NullLogger<TextRetentionSweep>.Instance)
+        var (a, due, dropped, inputsDropped, _, _) = await new TextRetentionSweep(accounts, index, purger, Settings(), NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NoRateLimiter(), NoUsage(), NoLinkStates(), NullLogger<TextRetentionSweep>.Instance)
             .RunOnceAsync(client, now, 7, CancellationToken.None);
 
         Assert.Equal((2, 2, 1, 0), (a, due, dropped, inputsDropped));
@@ -241,7 +247,7 @@ public class TextRetentionTests
         index.ListDueForInputsDropAsync(Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns(NoJobs);
         var client = Substitute.For<DurableTaskClient>("test");
 
-        await new TextRetentionSweep(accounts, index, Substitute.For<IJobTextPurger>(), settings, NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NullLogger<TextRetentionSweep>.Instance)
+        await new TextRetentionSweep(accounts, index, Substitute.For<IJobTextPurger>(), settings, NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NoRateLimiter(), NoUsage(), NoLinkStates(), NullLogger<TextRetentionSweep>.Instance)
             .RunOnceAsync(client, now, 7, CancellationToken.None);
 
         // The chosen clock for a, the deployment default for b — exact cutoffs.
@@ -264,7 +270,7 @@ public class TextRetentionTests
         var purger = Substitute.For<IJobTextPurger>();
         var client = Substitute.For<DurableTaskClient>("test");
 
-        var (_, due, dropped, inputsDropped, _) = await new TextRetentionSweep(accounts, index, purger, settings, NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NullLogger<TextRetentionSweep>.Instance)
+        var (_, due, dropped, inputsDropped, _, _) = await new TextRetentionSweep(accounts, index, purger, settings, NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NoRateLimiter(), NoUsage(), NoLinkStates(), NullLogger<TextRetentionSweep>.Instance)
             .RunOnceAsync(client, now, 7, CancellationToken.None);
 
         Assert.Equal((0, 0, 1), (due, dropped, inputsDropped));
@@ -290,7 +296,7 @@ public class TextRetentionTests
         var purger = Substitute.For<IJobTextPurger>();
         var client = Substitute.For<DurableTaskClient>("test");
 
-        var (_, due, dropped, inputsDropped, _) = await new TextRetentionSweep(accounts, index, purger, settings, NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NullLogger<TextRetentionSweep>.Instance)
+        var (_, due, dropped, inputsDropped, _, _) = await new TextRetentionSweep(accounts, index, purger, settings, NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NoRateLimiter(), NoUsage(), NoLinkStates(), NullLogger<TextRetentionSweep>.Instance)
             .RunOnceAsync(client, now, 7, CancellationToken.None);
 
         Assert.Equal((1, 1, 0), (due, dropped, inputsDropped));
@@ -315,7 +321,7 @@ public class TextRetentionTests
         index.ListDueForTextDropAsync("a", now.AddDays(-7), Arg.Any<CancellationToken>()).Returns(NoJobs);
         var client = Substitute.For<DurableTaskClient>("test");
 
-        await new TextRetentionSweep(accounts, index, Substitute.For<IJobTextPurger>(), settings, NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NullLogger<TextRetentionSweep>.Instance)
+        await new TextRetentionSweep(accounts, index, Substitute.For<IJobTextPurger>(), settings, NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NoRateLimiter(), NoUsage(), NoLinkStates(), NullLogger<TextRetentionSweep>.Instance)
             .RunOnceAsync(client, now, 7, CancellationToken.None);
 
         await index.Received(1).ListDueForTextDropAsync("a", now.AddDays(-7), Arg.Any<CancellationToken>());
@@ -338,7 +344,7 @@ public class TextRetentionTests
         purger.DropInputsAsync(Arg.Any<DurableTaskClient>(), "j1", now, Arg.Any<CancellationToken>()).Returns(Task.FromException(new InvalidOperationException("storage")));
         var client = Substitute.For<DurableTaskClient>("test");
 
-        var (_, _, _, inputsDropped, _) = await new TextRetentionSweep(accounts, index, purger, settings, NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NullLogger<TextRetentionSweep>.Instance)
+        var (_, _, _, inputsDropped, _, _) = await new TextRetentionSweep(accounts, index, purger, settings, NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NoRateLimiter(), NoUsage(), NoLinkStates(), NullLogger<TextRetentionSweep>.Instance)
             .RunOnceAsync(client, now, 7, CancellationToken.None);
 
         Assert.Equal(1, inputsDropped);
@@ -409,8 +415,8 @@ public class TextRetentionTests
         var responsePurger = Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>();
         var client = Substitute.For<DurableTaskClient>("test");
 
-        var (_, _, _, _, responsesDropped) = await new TextRetentionSweep(
-                accounts, index, Substitute.For<IJobTextPurger>(), Settings(), responses, responsePurger, NullLogger<TextRetentionSweep>.Instance)
+        var (_, _, _, _, responsesDropped, _) = await new TextRetentionSweep(
+                accounts, index, Substitute.For<IJobTextPurger>(), Settings(), responses, responsePurger, NoRateLimiter(), NoUsage(), NoLinkStates(), NullLogger<TextRetentionSweep>.Instance)
             .RunOnceAsync(client, now, 7, CancellationToken.None);
 
         Assert.Equal(1, responsesDropped);
@@ -432,7 +438,7 @@ public class TextRetentionTests
         var client = Substitute.For<DurableTaskClient>("test");
 
         await new TextRetentionSweep(
-                accounts, index, Substitute.For<IJobTextPurger>(), settings, responses, Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NullLogger<TextRetentionSweep>.Instance)
+                accounts, index, Substitute.For<IJobTextPurger>(), settings, responses, Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NoRateLimiter(), NoUsage(), NoLinkStates(), NullLogger<TextRetentionSweep>.Instance)
             .RunOnceAsync(client, now, 7, CancellationToken.None);
 
         // The exact per-account cutoff — the chosen 2-day inputs clock.
@@ -462,8 +468,8 @@ public class TextRetentionTests
         var purger = Substitute.For<IJobTextPurger>();
         var client = Substitute.For<DurableTaskClient>("test");
 
-        var (_, _, dropped, _, responsesDropped) = await new TextRetentionSweep(
-                accounts, index, purger, Settings(), responses, responsePurger, NullLogger<TextRetentionSweep>.Instance)
+        var (_, _, dropped, _, responsesDropped, _) = await new TextRetentionSweep(
+                accounts, index, purger, Settings(), responses, responsePurger, NoRateLimiter(), NoUsage(), NoLinkStates(), NullLogger<TextRetentionSweep>.Instance)
             .RunOnceAsync(client, now, 7, CancellationToken.None);
 
         // The second response still dropped, and the jobs legs still ran.
@@ -472,6 +478,104 @@ public class TextRetentionTests
         await responsePurger.Received(1).DropAsync(
             Arg.Is<Consultologist.Api.Forms.FormResponseRow>(row => row.ResponseId == "18"), now, Arg.Any<CancellationToken>());
         await purger.Received(1).PurgeAsync(client, "j1", now, Arg.Any<CancellationToken>());
+    }
+
+    // ----- #558: the counter cleanup legs -----
+
+    [Fact]
+    public async Task TheCounterLeg_CallsEachStore_WithTheExactDerivedCutoffs_AndAggregatesTheCount()
+    {
+        var accounts = Accounts("a");
+        var index = Substitute.For<IConsultGenerationJobIndexStore>();
+        index.ListDueForTextDropAsync(Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns(NoJobs);
+        var now = new DateTimeOffset(2026, 9, 10, 3, 0, 0, TimeSpan.Zero);
+        var rateLimiter = NoRateLimiter();
+        rateLimiter.DeleteWindowsBeforeAsync("a", "2026-06-10T03", Arg.Any<CancellationToken>()).Returns(2);
+        var usage = NoUsage();
+        usage.DeleteDaysBeforeAsync("a", "2026-06-10", Arg.Any<CancellationToken>()).Returns(3);
+        var linkStates = NoLinkStates();
+        linkStates.DeleteExpiredAsync(now, Arg.Any<CancellationToken>()).Returns(4);
+        var client = Substitute.For<DurableTaskClient>("test");
+
+        var (_, _, _, _, _, countersCleaned) = await new TextRetentionSweep(
+                accounts, index, Substitute.For<IJobTextPurger>(), Settings(), NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), rateLimiter, usage, linkStates, NullLogger<TextRetentionSweep>.Instance)
+            .RunOnceAsync(client, now, 7, CancellationToken.None);
+
+        // The literal cutoffs — 92 days (the read clamp) before the run,
+        // each in ITS OWN key format: the hour window and the day. A usage
+        // cutoff in the window format would match nothing.
+        await rateLimiter.Received(1).DeleteWindowsBeforeAsync("a", "2026-06-10T03", Arg.Any<CancellationToken>());
+        await usage.Received(1).DeleteDaysBeforeAsync("a", "2026-06-10", Arg.Any<CancellationToken>());
+        Assert.Equal(9, countersCleaned);
+    }
+
+    [Fact]
+    public async Task ACounterCleanupFailure_StopsNeitherTheOtherCounters_NorTheRetentionLegs()
+    {
+        var accounts = Accounts("a");
+        var index = Substitute.For<IConsultGenerationJobIndexStore>();
+        var now = new DateTimeOffset(2026, 9, 10, 3, 0, 0, TimeSpan.Zero);
+        index.ListDueForTextDropAsync("a", now.AddDays(-7), Arg.Any<CancellationToken>()).Returns(new List<ConsultGenerationJobIndexEntry>
+        {
+            new("j1", "a", "Completed", now.AddDays(-9), null, now.AddDays(-8), 1, 1, 0)
+        });
+        var rateLimiter = NoRateLimiter();
+        rateLimiter.DeleteWindowsBeforeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<int>(new InvalidOperationException("storage")));
+        var usage = NoUsage();
+        usage.DeleteDaysBeforeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(3);
+        var purger = Substitute.For<IJobTextPurger>();
+        var client = Substitute.For<DurableTaskClient>("test");
+
+        var (_, _, dropped, _, _, countersCleaned) = await new TextRetentionSweep(
+                accounts, index, purger, Settings(), NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), rateLimiter, usage, NoLinkStates(), NullLogger<TextRetentionSweep>.Instance)
+            .RunOnceAsync(client, now, 7, CancellationToken.None);
+
+        // The usage cleanup still ran, and the due job still purged — a
+        // counter fault never costs a clinician's retention promise.
+        Assert.Equal(3, countersCleaned);
+        Assert.Equal(1, dropped);
+        await purger.Received(1).PurgeAsync(client, "j1", now, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TheLinkStateStep_RunsOncePerRun_NotPerAccount()
+    {
+        var accounts = Accounts("a", "b", "c");
+        var index = Substitute.For<IConsultGenerationJobIndexStore>();
+        index.ListDueForTextDropAsync(Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns(NoJobs);
+        var now = new DateTimeOffset(2026, 9, 10, 3, 0, 0, TimeSpan.Zero);
+        var linkStates = NoLinkStates();
+        var client = Substitute.For<DurableTaskClient>("test");
+
+        await new TextRetentionSweep(
+                accounts, index, Substitute.For<IJobTextPurger>(), Settings(), NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NoRateLimiter(), NoUsage(), linkStates, NullLogger<TextRetentionSweep>.Instance)
+            .RunOnceAsync(client, now, 7, CancellationToken.None);
+
+        // ONE partition, one pass — three accounts, one call.
+        await linkStates.Received(1).DeleteExpiredAsync(now, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AFailedJobsListing_DoesNotCostTheAccountItsCounterCleanup()
+    {
+        // The jobs legs `continue` the loop on a listing failure; the counter
+        // leg sits before them so the cleanup happens either way.
+        var accounts = Accounts("a");
+        var index = Substitute.For<IConsultGenerationJobIndexStore>();
+        index.ListDueForTextDropAsync(Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IReadOnlyList<ConsultGenerationJobIndexEntry>>(new InvalidOperationException("storage")));
+        var now = new DateTimeOffset(2026, 9, 10, 3, 0, 0, TimeSpan.Zero);
+        var rateLimiter = NoRateLimiter();
+        var usage = NoUsage();
+        var client = Substitute.For<DurableTaskClient>("test");
+
+        await new TextRetentionSweep(
+                accounts, index, Substitute.For<IJobTextPurger>(), Settings(), NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), rateLimiter, usage, NoLinkStates(), NullLogger<TextRetentionSweep>.Instance)
+            .RunOnceAsync(client, now, 7, CancellationToken.None);
+
+        await rateLimiter.Received(1).DeleteWindowsBeforeAsync("a", Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await usage.Received(1).DeleteDaysBeforeAsync("a", Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
