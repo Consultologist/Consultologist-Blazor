@@ -134,7 +134,8 @@ SCOPE=$(az storage account show --name consulttextcaeast --resource-group consul
 az role assignment create --assignee-object-id "$PRINCIPAL_ID" --assignee-principal-type ServicePrincipal --role "Storage Blob Data Contributor" --scope "$SCOPE"
 az role assignment create --assignee-object-id "$PRINCIPAL_ID" --assignee-principal-type ServicePrincipal --role "Storage Table Data Contributor" --scope "$SCOPE"
 
-# 5. The settings (CONFIGURATION.md; nothing reads them until M2/#557).
+# 5. The settings (CONFIGURATION.md). Since #596 the two URIs are optional:
+#    Storage__Region=caeast derives them; set them only as overrides.
 az functionapp config appsettings set --name canada-east-ai-function --resource-group consultologist_group --settings   TextStorage__BlobServiceUri=https://consulttextcaeast.blob.core.windows.net   TextStorage__TableServiceUri=https://consulttextcaeast.table.core.windows.net   TextStorage__credential=managedidentity   "TextStorage__clientId=$CLIENT_ID"
 ```
 
