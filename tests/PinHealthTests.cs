@@ -81,7 +81,7 @@ public class PinHealthTests
     [Fact]
     public void Classify_AnythingElse_IsUnreadableNamedByTypeOnly()
     {
-        var exception = new RequestFailedException(403, "https://consultologistjobqueue.blob.core.windows.net/secret-path");
+        var exception = new RequestFailedException(403, "https://consultologistjobrecords.blob.core.windows.net/secret-path");
         var (status, reason) = PinHealth.Classify(exception);
 
         Assert.Equal(PinHealthStatuses.Unreadable, status);

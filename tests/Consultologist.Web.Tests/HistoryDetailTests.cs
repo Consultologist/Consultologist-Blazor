@@ -156,7 +156,7 @@ public class HistoryDetailTests : ClientRenderTestContext
     private void WithEngine() =>
         WorkflowService.GetEngineAsync().Returns(new EngineView("9c1ca4ac9373f1dc01e1fec68772304ef7d23ca6", "v2026.08.6", "v2026.08.3"));
 
-    private const string Registry = "https://consultologistpublic.blob.core.windows.net";
+    private const string Registry = "https://consultologistpubcaeast.blob.core.windows.net";
 
     [Fact]
     public void TheDefinitionNumbers_LinkToThePublishedDocument_AtTheEngineAttestedVersion()

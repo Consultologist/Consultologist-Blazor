@@ -59,7 +59,7 @@ using Consultologist.Api.Workflow;
 using Microsoft.Extensions.Configuration;
 
 using Consultologist.PackageFormat;
-const string DefaultRegistry = "https://consultologistpublic.blob.core.windows.net";
+const string DefaultRegistry = "https://consultologistpubcaeast.blob.core.windows.net";
 const string PackagesContainer = "workflow-packages";
 
 var positional = args.Where(argument => !argument.StartsWith("--", StringComparison.Ordinal)).ToList();

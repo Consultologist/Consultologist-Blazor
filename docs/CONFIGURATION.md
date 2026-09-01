@@ -234,7 +234,7 @@ disagreement, not transient.
 | Variable | Accepted values | Default | Required |
 |---|---|---|---|
 | `WorkflowPackages__BlobServiceUri` | Blob service URI of the **private** registry (acct-* forks), e.g. `https://<account>.blob.core.windows.net` — enables Entra ID auth via the managed identity (reading needs Storage Blob Data Reader; the in-app editor's publish endpoint needs Storage Blob Data **Contributor**) | none (falls back to connection string) | recommended in Azure |
-| `WorkflowPackages__PublicBlobServiceUri` | Blob service URI of the **public** registry (repo-owned packages; anonymous read, no credential) — e.g. `https://consultologistpublic.blob.core.windows.net`. Unset → repo-owned packages resolve from the private container AND the output-contract catalog loads from the bundled `agents/` directory (local dev) | none | yes in Azure since #92 |
+| `WorkflowPackages__PublicBlobServiceUri` | Blob service URI of the **public** registry (repo-owned packages; anonymous read, no credential) — e.g. `https://consultologistpubcaeast.blob.core.windows.net`. Unset → repo-owned packages resolve from the private container AND the output-contract catalog loads from the bundled `agents/` directory (local dev) | none | yes in Azure since #92 |
 | `OutputContracts__Pin` | Catalog registry ref: `output-contracts@latest` or `output-contracts@vYYYY.MM.N` — the version loaded at startup and stamped into job records as `catalogRef` (#93). Activating a new catalog = publish + bump the concrete pin + restart; production pins explicitly (set 2026-07-23) so catalog releases never activate implicitly | `output-contracts@latest` | no |
 
 `GET /api/Public/Chain` (#95) is anonymous with open CORS and requires only `WorkflowPackages__PublicBlobServiceUri`; it 503s when the public registry is unconfigured.
@@ -362,7 +362,7 @@ deserialize, the limiter fails open, and the submission sails through
 looking like a bug in the limiter:
 
 ```azurecli
-az storage entity insert --account-name consultologistjobqueue --auth-mode login \
+az storage entity insert --account-name consultologistjobrecords --auth-mode login \
     --table-name AccountRateLimits --if-exists replace \
     --entity PartitionKey=<APP_USER_ID> RowKey=2026-08-01T23 \
              Count=2 Count@odata.type=Edm.Int32 \
@@ -374,7 +374,7 @@ surface; expect `queued` → (row released) → re-claimed, about two polls per
 retry cycle at the 2-minute cadence:
 
 ```azurecli
-az storage entity query --account-name consultologistjobqueue --auth-mode login \
+az storage entity query --account-name consultologistjobrecords --auth-mode login \
     --table-name EmailIntakeProcessed --query "items[].{c:ClaimedAtUtc,o:Outcome,j:JobId}"
 ```
 
@@ -387,7 +387,7 @@ real ones and will refuse that account's genuine traffic for the rest of the
 hour:
 
 ```azurecli
-az storage entity delete --account-name consultologistjobqueue --auth-mode login \
+az storage entity delete --account-name consultologistjobrecords --auth-mode login \
     --table-name AccountRateLimits --partition-key <APP_USER_ID> --row-key <WINDOW>
 ```
 
@@ -401,19 +401,19 @@ string remains only as the local-dev (Azurite) fallback.
 
 | Variable | Read in |
 |---|---|
-| `AccountStorage__TableServiceUri` | `Auth/AccountStore.cs`, `Auth/AccountSettingsStore.cs` (also the fallback URI for the two below). Production: `https://consultologistjobqueue.table.core.windows.net` |
+| `AccountStorage__TableServiceUri` | `Auth/AccountStore.cs`, `Auth/AccountSettingsStore.cs` (also the fallback URI for the two below). Production: `https://consultologistjobrecords.table.core.windows.net` |
 | `ConsultGenerationJobEventStorage__TableServiceUri` | `Jobs/ConsultGenerationJobEventStore.cs` (optional override) |
 | `ConsultGenerationJobIndexStorage__TableServiceUri` | `Jobs/ConsultGenerationJobIndexStore.cs` (optional override) |
 | `AccountStorage__ConnectionStringName` | Local-dev fallback name (default `AzureWebJobsStorage`); same chain as before for the two job stores |
-| `TextStorage__BlobServiceUri` | #556/#557 (storage-separation.md § 3): the PHI text account's blobs — `Jobs/JobOutputsBlobStore.cs` writes a completed job's outputs there and reads them back on GET. Production: `https://consultologisteastcatext.blob.core.windows.net` |
-| `TextStorage__TableServiceUri` | Production: `https://consultologisteastcatext.table.core.windows.net`. `ConsultGenerationJobEvents` resolves through it (#557); the `ConsultGenerationJobEventStorage__TableServiceUri` override still wins when set |
+| `TextStorage__BlobServiceUri` | #556/#557 (storage-separation.md § 3): the PHI text account's blobs — `Jobs/JobOutputsBlobStore.cs` writes a completed job's outputs there and reads them back on GET. Production: `https://consultologisttextcaeast.blob.core.windows.net` |
+| `TextStorage__TableServiceUri` | Production: `https://consultologisttextcaeast.table.core.windows.net`. `ConsultGenerationJobEvents` resolves through it (#557); the `ConsultGenerationJobEventStorage__TableServiceUri` override still wins when set |
 | `TextStorage__credential` / `TextStorage__clientId` | `managedidentity` + the user-assigned identity's client id — the identity-form pair, as `AzureWebJobsStorage__*` uses |
 
 ## Platform / runtime (not set by application code)
 
 | Variable | Notes |
 |---|---|
-| `AzureWebJobsStorage` | Local-dev only (`UseDevelopmentStorage=true`, Azurite). In production the host and Durable Functions use the identity-based form instead: `AzureWebJobsStorage__accountName` + `__blobServiceUri`/`__queueServiceUri`/`__tableServiceUri` + `__credential=managedidentity` + `__clientId` (the user-assigned identity, which needs Storage Blob Data Owner, Queue Data Contributor, and Table Data Contributor on the account). Shared-key access is disabled on `consultologistjobqueue` (#10). |
+| `AzureWebJobsStorage` | Local-dev only (`UseDevelopmentStorage=true`, Azurite). In production the host and Durable Functions use the identity-based form instead: `AzureWebJobsStorage__accountName` + `__blobServiceUri`/`__queueServiceUri`/`__tableServiceUri` + `__credential=managedidentity` + `__clientId` (the user-assigned identity, which needs Storage Blob Data Owner, Queue Data Contributor, and Table Data Contributor on the account). Shared-key access is disabled on `consultologistjobrecords` (#10). |
 | `FUNCTIONS_WORKER_RUNTIME` | Must be `dotnet-isolated`. |
 | `WEBSITE_INSTANCE_ID` | Provided by Azure; the code only reads it to detect "running in Azure". Never set manually. |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Telemetry destination. |
