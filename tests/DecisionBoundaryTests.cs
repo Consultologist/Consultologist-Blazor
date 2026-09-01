@@ -23,7 +23,7 @@ public class DecisionBoundaryEntityTests
     private static (ConsultGenerationJobEntity Entity, Func<ConsultGenerationJobState> State, IConsultGenerationJobIndexStore Index) Fresh()
     {
         var index = Substitute.For<IConsultGenerationJobIndexStore>();
-        var entity = new ConsultGenerationJobEntity(index, Substitute.For<IJobOutputsBlobStore>(), Substitute.For<IJobInputsBlobStore>());
+        var entity = new ConsultGenerationJobEntity(index, Substitute.For<IJobOutputsBlobStore>(), Substitute.For<IJobInputsBlobStore>(), Substitute.For<IAccountUsageStore>());
         return (entity, () => (ConsultGenerationJobState)StateProperty.GetValue(entity)!, index);
     }
 
