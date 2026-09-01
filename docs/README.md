@@ -79,6 +79,9 @@ would otherwise have carried it (#397).
   [Forms intake spike](customizable-workflow/forms-intake-spike.md)
   (#511: what the documentation and the engine establish about a Microsoft
   Forms door, the staged design, and the operator-run experiments),
+  [Forms intake recipe](customizable-workflow/forms-intake.md)
+  (#542: the clinician's once-per-form wiring — the flow, the connection,
+  licensing and the email bridge),
   [storage separation](customizable-workflow/storage-separation.md)
   (#545: four classes of state, two private accounts per region, the
   migration order)

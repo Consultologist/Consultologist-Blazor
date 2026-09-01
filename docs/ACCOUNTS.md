@@ -28,6 +28,12 @@ requestedAccessTokenVersion: 2
 ```
 
 The SPA app registration must have delegated permission to the API scope.
+Since #542 the Power Automate *HTTP with Microsoft Entra ID* connector
+(`d2ebd3a9-1ada-4480-8b2d-eac162716601`) is likewise granted
+`access_as_user` and preauthorized on the API registration — the forms
+door's flows authenticate as their owner with no consent prompt
+(CONFIGURATION.md has the operator paragraph; the spike record § 2.5 the
+runbook).
 
 Since 2026-07-18 sign-in is **multi-tenant**, and since 2026-07-23 (#132) it
 also accepts **personal Microsoft accounts**: both registrations use

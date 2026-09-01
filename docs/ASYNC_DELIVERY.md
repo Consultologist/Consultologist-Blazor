@@ -68,7 +68,10 @@ refs and labels stay forever, and the record says when each went
 > on the pinned package (`source: forms`, `form-response` origins),
 > delivery follows the account's #518 choice like an app run, and the
 > respondent is never replied to. A misfit refuses the start by name;
-> the response stays held for the picker either way.
+> the response stays held for the picker either way. The flow recipe,
+> the licence gate, and the licence-free Forms → email bridge (this
+> door, sender-matched, at email's price) are
+> `docs/customizable-workflow/forms-intake.md` (#542).
 
 Submit consults by email; results announced by reply; runs recorded in
 History like any other. Implementation decisions (settled 2026-07-25;
