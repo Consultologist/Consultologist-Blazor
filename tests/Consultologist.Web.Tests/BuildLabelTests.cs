@@ -23,7 +23,7 @@ public class BuildLabelTests : ClientRenderTestContext
         Services.AddSingleton<IConfiguration>(new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["AzureFunction:PublicRegistryBaseUrl"] = "https://consultologistpubcaeast.blob.core.windows.net",
+                ["AzureFunction:PublicRegistryBaseUrl"] = "https://consultpubcaeast.blob.core.windows.net",
                 ["Build:Commit"] = commit
             })
             .Build());

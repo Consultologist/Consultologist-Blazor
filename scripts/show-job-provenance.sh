@@ -34,7 +34,7 @@ API="${API:-https://canada-east-ai-function-gmenbbe9erewh4bj.canadaeast-01.azure
 # origins alone cannot show what is missing — and what is missing is the
 # whole point. The package manifest has the declaration, and repo-owned
 # packages are anonymously readable, so the ref in the response is enough.
-REGISTRY="${REGISTRY:-https://consultologistpubcaeast.blob.core.windows.net/workflow-packages}"
+REGISTRY="${REGISTRY:-https://consultpubcaeast.blob.core.windows.net/workflow-packages}"
 
 case "${1:-}" in
     -h|--help)
