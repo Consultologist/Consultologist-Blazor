@@ -36,6 +36,18 @@ public class StaticAssetLinksTests
     }
 
     [Fact]
+    public void TheHeaderLogo_IsAFileThatShips()
+    {
+        // The header rendered a 1024px, 712 KB icon.png at 28px until the
+        // swap to icon-192.png; this pins both that the referenced file
+        // exists and that the oversized original stays gone.
+        var header = File.ReadAllText(Path.Combine(WwwRoot(), "..", "Shared", "Header.razor"));
+        var src = System.Text.RegularExpressions.Regex.Match(header, "<img src=\"([^\"]+)\"").Groups[1].Value;
+        Assert.True(File.Exists(Path.Combine(WwwRoot(), src)), $"Header.razor's logo '{src}' must exist in wwwroot.");
+        Assert.False(File.Exists(Path.Combine(WwwRoot(), "icon.png")), "wwwroot/icon.png was the 712 KB original — it must not return.");
+    }
+
+    [Fact]
     public void AppCss_HasNoPackageImport()
     {
         // An @import of a _content path inside /css/app.css resolves under
