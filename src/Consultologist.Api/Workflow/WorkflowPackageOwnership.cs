@@ -23,6 +23,9 @@ public interface IWorkflowPackageOwnership
 
     /// <summary>Idempotent: recording twice is one record.</summary>
     Task RecordAsync(string appUserId, string name, CancellationToken cancellationToken);
+
+    /// <summary>#559: drops the account's ownership rows. Returns how many went.</summary>
+    Task<int> DeleteAllAsync(string appUserId, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -94,6 +97,27 @@ public sealed class WorkflowPackageOwnership : IWorkflowPackageOwnership
 
         names.Sort(StringComparer.Ordinal);
         return names;
+    }
+
+    public async Task<int> DeleteAllAsync(string appUserId, CancellationToken cancellationToken)
+    {
+        await _owners.CreateIfNotExistsAsync(cancellationToken);
+
+        var deleted = 0;
+        var filter = TableClient.CreateQueryFilter($"PartitionKey eq {appUserId}");
+        await foreach (var entity in _owners.QueryAsync<TableEntity>(filter, select: new[] { "PartitionKey", "RowKey" }, cancellationToken: cancellationToken))
+        {
+            try
+            {
+                await _owners.DeleteEntityAsync(entity.PartitionKey, entity.RowKey, cancellationToken: cancellationToken);
+                deleted++;
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+            }
+        }
+
+        return deleted;
     }
 
     public async Task RecordAsync(string appUserId, string name, CancellationToken cancellationToken)

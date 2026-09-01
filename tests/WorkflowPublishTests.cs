@@ -1047,6 +1047,17 @@ internal sealed class FakeSettingsStore : IAccountSettingsStore
         _settings.Remove((appUserId, key));
         return Task.CompletedTask;
     }
+
+    public Task<int> DeleteAllAsync(string appUserId, CancellationToken cancellationToken)
+    {
+        var keys = _settings.Keys.Where(k => k.AppUserId == appUserId).ToList();
+        foreach (var key in keys)
+        {
+            _settings.Remove(key);
+        }
+
+        return Task.FromResult(keys.Count);
+    }
 }
 
 public class ContainerRoutingTests
@@ -1448,5 +1459,11 @@ public sealed class FakeOwnership : IWorkflowPackageOwnership
     {
         Records.Add((appUserId, name));
         return Task.CompletedTask;
+    }
+
+    public Task<int> DeleteAllAsync(string appUserId, CancellationToken cancellationToken)
+    {
+        var removed = Records.RemoveWhere(r => r.AppUserId == appUserId);
+        return Task.FromResult(removed);
     }
 }

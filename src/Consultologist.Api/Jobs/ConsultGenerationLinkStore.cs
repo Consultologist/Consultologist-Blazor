@@ -36,6 +36,14 @@ public interface IConsultGenerationLinkStore
     Task WriteAsync(IReadOnlyList<ConsultGenerationLink> links, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ConsultGenerationLink>> ListConsumersAsync(string sourceJobId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #559: drops one source job's partition. Cross-account edges cannot
+    /// exist (the starter nulls foreign sources), so deleting every account
+    /// job's partition removes both the source and the consumer sides.
+    /// Returns how many rows went.
+    /// </summary>
+    Task<int> DeleteForJobAsync(string sourceJobId, CancellationToken cancellationToken);
 }
 
 internal sealed class TableConsultGenerationLinkStore : IConsultGenerationLinkStore
@@ -78,6 +86,33 @@ internal sealed class TableConsultGenerationLinkStore : IConsultGenerationLinkSt
         {
             await _links.UpsertEntityAsync(ToEntity(link), TableUpdateMode.Replace, cancellationToken);
         }
+    }
+
+    public async Task<int> DeleteForJobAsync(string sourceJobId, CancellationToken cancellationToken)
+    {
+        await EnsureTableAsync(cancellationToken);
+
+        var deleted = 0;
+        var filter = TableClient.CreateQueryFilter($"PartitionKey eq {sourceJobId}");
+        var batch = new List<TableTransactionAction>();
+        await foreach (var entity in _links.QueryAsync<TableEntity>(filter, select: new[] { "PartitionKey", "RowKey" }, cancellationToken: cancellationToken))
+        {
+            batch.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, ETag.All));
+            if (batch.Count == 100)
+            {
+                await _links.SubmitTransactionAsync(batch, cancellationToken);
+                deleted += batch.Count;
+                batch.Clear();
+            }
+        }
+
+        if (batch.Count > 0)
+        {
+            await _links.SubmitTransactionAsync(batch, cancellationToken);
+            deleted += batch.Count;
+        }
+
+        return deleted;
     }
 
     public async Task<IReadOnlyList<ConsultGenerationLink>> ListConsumersAsync(string sourceJobId, CancellationToken cancellationToken)
