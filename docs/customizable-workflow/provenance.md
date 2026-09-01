@@ -172,6 +172,17 @@ each has, or needs, its own work:
 > inputs existed; the origin stands after they are deleted. The rerun's
 > History shows the per-stage table against the source.
 >
+> Since #541 (provenance `v2026.09.1`) an origin may be `form-response`:
+> the element was filled at start from the same account's held form
+> response (#539's staged questionnaire answers) — `sourceFormId` and
+> `sourceResponseId` name the response, `textSha256` is over the value as
+> it entered the effective-input map (the held answer coerced by the
+> input's declaration). Observed at start like `previous-run`: the server
+> verified the held response still held that value; an edited value is
+> typed text and carries no origin. The reference resolves through the
+> account's own held responses, never a registry, and only while the
+> values are held. History reads it as *from form … response …*.
+>
 > Since #582 (provenance `v2026.08.13`) a rerun's record also carries the
 > judgment: `rerunOf` lifts the source id to the job level, and
 > `rerunVerdict`/`rerunDivergence` are derived once at the rerun's

@@ -107,6 +107,13 @@ public static class ConsultInputOriginKinds
     // (equal to the source's by construction, so the two records'
     // effectiveInputHash agree or one of them is wrong).
     public const string Rerun = "rerun";
+
+    // #541 (provenance@v2026.09.1): filled at start from one of the account's
+    // held form responses — SourceFormId/SourceResponseId name the response,
+    // TextSha256 digests the value as it entered the effective map (the held
+    // answer coerced by the declaration). Observed like PreviousRun; an
+    // edited value is typed text and carries no origin. #540 records it.
+    public const string FormResponse = "form-response";
 }
 
 public record ConsultGenerationJobStartResponse(

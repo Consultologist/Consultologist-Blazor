@@ -2154,6 +2154,13 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
+    public void TheFormResponseKind_IsTheKebabWord()
+    {
+        // #541: the registry grammar's word (provenance@v2026.09.1), verbatim.
+        Assert.Equal("form-response", ConsultInputOriginKinds.FormResponse);
+    }
+
+    [Fact]
     public async Task TypedInput_RecordsNoOrigin()
     {
         // Absence means "not recorded", never "typed" — email jobs supply text
