@@ -125,6 +125,16 @@ completed run after 2026-08-31. Defaults to the last 30 days; an
 oversized window clamps to 92 days; unparseable dates and an inverted
 range refuse by name.
 
+`GET /api/Operator/Usage?from&to` (#553) is the same window over every
+account, for callers on `Operators__AppUserIds` only (the bare-403 gate
+every operator surface uses): one row per account with usage in the
+window — its id, the display name the account already carries, its kind,
+and its issuer tenant parsed from the stored Entra identity (personal
+accounts carry the consumers tenant there). Reads only the derived
+store, never job records; the /operators page groups rows by tenant.
+`Account/Me` reports the caller's own `IsOperator` so the nav can show
+the link — a fact about the caller, never the gate.
+
 The current setting keys are:
 
 ```text
