@@ -27,26 +27,30 @@ everywhere, as since M11.
 
 ### 1.1 The accounts (as listed on 2026-09-01, after the M6 deletions and the rename)
 
-> **Renamed 2026-09-01** (pre-release, operator-driven): Azure cannot
-> rename storage accounts, so each was recreated and migrated —
-> `consultologisteastcatext` → `consultologisttextcaeast`,
-> `consultologistgroup8cbf` → `consultologisthostcaeast`,
-> `consultologistjobqueue` → `consultologistjobrecords`,
-> `consultologistpublic` → `consultologistpubcaeast`. The scheme is
-> `consultologist<role><region>` (the records account drops the region
-> suffix — the 24-character limit). Historical statements in this record
-> use the new names for the same four roles.
+> **Renamed 2026-09-01** (pre-release, operator-driven; two rounds the
+> same day): Azure cannot rename storage accounts, so each was recreated
+> and migrated. Original → final:
+> `consultologisteastcatext` → `consulttextcaeast`,
+> `consultologistgroup8cbf` → `consulthostcaeast`,
+> `consultologistjobqueue` → `consultjobrecscaeast`,
+> `consultologistpublic` → `consultpubcaeast` (an intermediate
+> `consultologist<role>`-prefixed round existed for hours between them).
+> The scheme is `consult<role><region>` — the short prefix chosen so
+> every role fits every region direction within the 24-character limit,
+> including a digit (`consultjobrecsuscentral2` = 24, the worst
+> fictitious case). Historical statements in this record use the final
+> names for the same four roles.
 
 | Account | Region | Shared key | Holds |
 |---|---|---|---|
-| `consultologistjobrecords` | canadaeast | off | the ten application tables (§ 1.2), the private `workflow-packages` container |
-| `consultologisthostcaeast` | canadaeast | off | the function host's own account (`azure-webjobs-*`, the deployed package) and the **live** Durable task hub `consultologistjobs` — it rides `AzureWebJobsStorage`, which points here (`AzureWebJobsStorage__accountName`), the #558 recon's decisive finding |
-| `consultologistpubcaeast` | canadaeast | off | the public registries only: `workflow-packages`, `output-contracts`, `agent-definitions`, `package-format`, `provenance` — anonymous read by design |
+| `consultjobrecscaeast` | canadaeast | off | the ten application tables (§ 1.2), the private `workflow-packages` container |
+| `consulthostcaeast` | canadaeast | off | the function host's own account (`azure-webjobs-*`, the deployed package) and the **live** Durable task hub `consultologistjobs` — it rides `AzureWebJobsStorage`, which points here (`AzureWebJobsStorage__accountName`), the #558 recon's decisive finding |
+| `consultpubcaeast` | canadaeast | off | the public registries only: `workflow-packages`, `output-contracts`, `agent-definitions`, `package-format`, `provenance` — anonymous read by design |
 
 These four (with the text account, § 2) are the whole resource group:
 M6's deletions (2026-09-01, operator steps on the operator's go) removed
 the stale `canadaeastaifunction` hub from the host account, the dead
-`consultologistjobs` hub copy from `consultologistjobrecords` (frozen at
+`consultologistjobs` hub copy from `consultjobrecscaeast` (frozen at
 the 2026-07-22 identity move — tables, queues and containers, all
 verified dead by Instances recency first), and the six AML/training/
 tutorial residue accounts — so "identity-only" is now a true claim about
@@ -248,16 +252,16 @@ repository, not to an account.
 Account forks therefore get the same org/personal pairing as text
 (§ 2.5): `org-account-packages` and `personal-account-packages` on the
 records account, the writer and the reader choosing by `AccountKind`; the
-public container on `consultologistpubcaeast` is untouched. Nothing in the
+public container on `consultpubcaeast` is untouched. Nothing in the
 package format changes — a container name in the writer and the reader.
 
 ## 3. Two accounts per region
 
 Named from the host rule (`docs/CONFIGURATION.md` 142–152): the region
 part of the host, then the class — `consultologist<region>text` and
-`consultologist<region>records`, e.g. `consultologisttextcaeast`. For
+`consultologist<region>records`, e.g. `consulttextcaeast`. For
 Canada East the **records** account is the existing
-`consultologistjobrecords`, renamed only in the documents (a storage
+`consultjobrecscaeast`, renamed only in the documents (a storage
 account cannot be renamed; the name is a setting value, and the tests
 already forbid it in code). The **text** account is new (§ 7 M1).
 
@@ -286,7 +290,7 @@ second region (`east.us.api…`) gets `consultologisteastustext` and
 data between regions: `consult.location` is the device's choice of *which*
 API to call (#515), and an account that calls two regions has two accounts
 of state, each where it was made. Shared across regions: the public
-registries (`consultologistpubcaeast`) and the terminology server — neither
+registries (`consultpubcaeast`) and the terminology server — neither
 holds patient data.
 
 ## 5. What a purge leaves behind
@@ -308,9 +312,9 @@ be checked against it once the text is gone; the record says when.
 - A second region's creation — the naming and the settings are here; the
   deployment is #515's follow-up.
 - Moving the Durable hub — the live hub follows `AzureWebJobsStorage` to
-  the host account `consultologisthostcaeast` (the #558 recon corrected an
+  the host account `consulthostcaeast` (the #558 recon corrected an
   earlier version of this record that placed it on
-  `consultologistjobrecords`); the hub holds no text once M2 and M3 land
+  `consultjobrecscaeast`); the hub holds no text once M2 and M3 land
   (the payload still carries inputs until purged; `docs/STORAGE.md` 51–76
   has the dedicated-account form if ever wanted).
 - Encryption keys — platform-managed keys stay.

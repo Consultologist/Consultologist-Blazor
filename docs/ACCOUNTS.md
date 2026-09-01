@@ -44,7 +44,7 @@ The Function App settings should be:
 Auth__Authority=https://login.microsoftonline.com/common/v2.0
 Auth__Audience=b3866040-8bae-4c01-88ba-ecff646df451
 Auth__RequiredScope=access_as_user
-AccountStorage__TableServiceUri=https://consultologistjobrecords.table.core.windows.net
+AccountStorage__TableServiceUri=https://consultjobrecscaeast.table.core.windows.net
 ```
 
 Expected access-token claims (the issuer varies per signing tenant; the

@@ -63,7 +63,7 @@ The registry is only a git-controlled channel if **CI is the only writer**:
   its identity holds Storage Blob Data Contributor scoped to the registry containers,
   and (agents repo) the Foundry role needed to publish agent versions.
 - Humans and the app hold **Storage Blob Data Reader** only. The current
-  laptop-publishing flow (user's Contributor role on `consultologistjobrecords`) is
+  laptop-publishing flow (user's Contributor role on `consultjobrecscaeast`) is
   retired at migration.
 - Shared-key access on the storage account is disabled once nothing depends on it
   (overlaps with the identity-based-connections migration, issue #10).
