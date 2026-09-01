@@ -323,6 +323,31 @@ public sealed class AccountEndpointService : IAccountEndpointService
             ?? throw new InvalidOperationException("Failed to deserialize account jobs response.");
     }
 
+    public async Task<AccountUsageResponse> GetUsageAsync(string from, string to)
+    {
+        var usageUrl = GetAccountBaseUrl() + "/Usage"
+            + $"?from={Uri.EscapeDataString(from)}&to={Uri.EscapeDataString(to)}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, usageUrl);
+        await AddAuthorizationAsync(request);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync();
+            _logger.LogError(
+                "Account usage endpoint failed with status {StatusCode}: {Error}",
+                response.StatusCode,
+                errorContent);
+
+            throw new HttpRequestException($"Account usage endpoint failed: {response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<AccountUsageResponse>()
+            ?? throw new InvalidOperationException("Failed to deserialize account usage response.");
+    }
+
     private async Task AddAuthorizationAsync(HttpRequestMessage request)
     {
         var apiScope = _configuration["AzureFunction:ApiScope"];

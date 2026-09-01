@@ -74,3 +74,16 @@ public sealed record AccountJobSummaryResponse(
 public sealed record AccountJobsResponse(
     IReadOnlyList<AccountJobSummaryResponse> Jobs,
     string? ContinuationToken);
+
+// #552: mirrors the Api's AccountUsageDayResponse — counts only, never text.
+public sealed record AccountUsageDayResponse(
+    string Day,
+    int ConsultsCompleted,
+    int TokensIn,
+    int TokensOut);
+
+// #552: mirrors the Api's AccountUsageResponse; days without activity are absent.
+public sealed record AccountUsageResponse(
+    string From,
+    string To,
+    IReadOnlyList<AccountUsageDayResponse> Days);

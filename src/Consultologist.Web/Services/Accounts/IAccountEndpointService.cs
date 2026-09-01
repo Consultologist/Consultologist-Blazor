@@ -25,4 +25,7 @@ public interface IAccountEndpointService
     Task SaveSettingAsync(string key, string value, string contentType);
     Task DeleteSettingAsync(string key);
     Task<AccountJobsResponse> GetJobsAsync(int limit = 20, string? continuationToken = null);
+
+    /// <summary>#552: the account's usage day rows for an inclusive yyyy-MM-dd window.</summary>
+    Task<AccountUsageResponse> GetUsageAsync(string from, string to);
 }
