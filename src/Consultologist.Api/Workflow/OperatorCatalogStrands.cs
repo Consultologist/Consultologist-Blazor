@@ -49,7 +49,10 @@ public sealed class OperatorCatalogStrands
             return await ProblemAsync(req, HttpStatusCode.BadRequest, problem, cancellationToken);
         }
 
-        var publicUri = _configuration["WorkflowPackages:PublicBlobServiceUri"];
+        var publicUri = _configuration["WorkflowPackages:PublicBlobServiceUri"]
+            is { Length: > 0 } explicitUri
+                ? explicitUri
+                : StorageAccounts.DerivedUri(_configuration, StorageAccounts.PublicRole, "blob"); // #596
         if (string.IsNullOrWhiteSpace(publicUri))
         {
             return await ProblemAsync(req, HttpStatusCode.UnprocessableEntity, "The public registry is not configured, so no candidate catalog can be loaded.", cancellationToken);

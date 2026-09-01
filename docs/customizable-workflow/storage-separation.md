@@ -39,7 +39,13 @@ everywhere, as since M11.
 > every role fits every region direction within the 24-character limit,
 > including a digit (`consultjobrecsuscentral2` = 24, the worst
 > fictitious case). Historical statements in this record use the final
-> names for the same four roles.
+> names for the same four roles. **#596 makes the rule executable**:
+> `Storage__Region` derives the five app-level store URIs in the API
+> (`StorageAccounts.cs`; explicit `…ServiceUri` settings stay as
+> overrides), so a second region's deployment is: create the four
+> accounts by the rule, set one region value, deploy. The host's own
+> storage (`AzureWebJobsStorage__*`, the deployment container) is read
+> before app code runs and stays explicit.
 
 | Account | Region | Shared key | Holds |
 |---|---|---|---|
@@ -309,8 +315,9 @@ be checked against it once the text is gone; the record says when.
 
 - Private endpoints themselves — `docs/NETWORK_HARDENING.md` owns them;
   this record only says which account goes first.
-- A second region's creation — the naming and the settings are here; the
-  deployment is #515's follow-up.
+- A second region's creation — the naming rule is executable (#596:
+  `Storage__Region` names the app-level stores) and the settings are
+  here; the deployment is #515's follow-up.
 - Moving the Durable hub — the live hub follows `AzureWebJobsStorage` to
   the host account `consulthostcaeast` (the #558 recon corrected an
   earlier version of this record that placed it on

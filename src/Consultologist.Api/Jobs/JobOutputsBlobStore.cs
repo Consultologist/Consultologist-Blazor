@@ -61,13 +61,20 @@ internal sealed class TextBlobClientFactory
 
     public TextBlobClientFactory(IConfiguration configuration, TokenCredential credential, ILogger logger, string storeName)
     {
-        var serviceUri = configuration["TextStorage:BlobServiceUri"];
+        var explicitUri = configuration["TextStorage:BlobServiceUri"];
+        var serviceUri = !string.IsNullOrWhiteSpace(explicitUri)
+            ? explicitUri
+            : StorageAccounts.DerivedUri(configuration, StorageAccounts.TextRole, "blob"); // #596
         if (!string.IsNullOrWhiteSpace(serviceUri))
         {
             var service = new BlobServiceClient(new Uri(serviceUri), credential);
             _containerFor = service.GetBlobContainerClient;
             _createContainers = false;
-            logger.LogInformation("{Store} using Entra ID auth. BlobServiceUri={BlobServiceUri}", storeName, serviceUri);
+            logger.LogInformation(
+                "{Store} using Entra ID auth ({Rung}). BlobServiceUri={BlobServiceUri}",
+                storeName,
+                string.IsNullOrWhiteSpace(explicitUri) ? "derived from Storage__Region" : "explicit setting",
+                serviceUri);
             return;
         }
 

@@ -80,7 +80,8 @@ public sealed class AgentAttestationService : IHostedService
     {
         var endpoint = Environment.GetEnvironmentVariable("AzureAI__Endpoint");
         var apiVersion = Environment.GetEnvironmentVariable("AzureAI__ApiVersion") ?? "v1";
-        var publicRegistryUri = Environment.GetEnvironmentVariable("WorkflowPackages__PublicBlobServiceUri");
+        var publicRegistryUri = Environment.GetEnvironmentVariable("WorkflowPackages__PublicBlobServiceUri")
+            ?? StorageAccounts.DerivedUriFromEnvironment(StorageAccounts.PublicRole, "blob"); // #596
 
         if (string.IsNullOrWhiteSpace(endpoint))
         {

@@ -70,6 +70,11 @@ builder.Services.AddSingleton(_ =>
     // the bundled agents/ directory. Both fail loud — no coherent catalog, no
     // jobs (#93).
     var publicUri = Environment.GetEnvironmentVariable("WorkflowPackages__PublicBlobServiceUri");
+    if (string.IsNullOrWhiteSpace(publicUri))
+    {
+        publicUri = StorageAccounts.DerivedUriFromEnvironment(StorageAccounts.PublicRole, "blob"); // #596
+    }
+
     var pin = Environment.GetEnvironmentVariable("OutputContracts__Pin") ?? $"{OutputContractCatalog.RegistryName}@latest";
 
     return string.IsNullOrWhiteSpace(publicUri)

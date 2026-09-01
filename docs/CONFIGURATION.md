@@ -233,8 +233,8 @@ disagreement, not transient.
 
 | Variable | Accepted values | Default | Required |
 |---|---|---|---|
-| `WorkflowPackages__BlobServiceUri` | Blob service URI of the **private** registry (acct-* forks), e.g. `https://<account>.blob.core.windows.net` — enables Entra ID auth via the managed identity (reading needs Storage Blob Data Reader; the in-app editor's publish endpoint needs Storage Blob Data **Contributor**) | none (falls back to connection string) | recommended in Azure |
-| `WorkflowPackages__PublicBlobServiceUri` | Blob service URI of the **public** registry (repo-owned packages; anonymous read, no credential) — e.g. `https://consultpubcaeast.blob.core.windows.net`. Unset → repo-owned packages resolve from the private container AND the output-contract catalog loads from the bundled `agents/` directory (local dev) | none | yes in Azure since #92 |
+| `WorkflowPackages__BlobServiceUri` | Blob service URI of the **private** registry (acct-* forks) — enables Entra ID auth via the managed identity (reading needs Storage Blob Data Reader; the in-app editor's publish endpoint needs Storage Blob Data **Contributor**). Override — derived from `Storage__Region` when unset (#596; the records account) | none (derives, then falls back to connection string) | recommended in Azure |
+| `WorkflowPackages__PublicBlobServiceUri` | Blob service URI of the **public** registry (repo-owned packages; anonymous read, no credential). Override — derived from `Storage__Region` when unset (#596; `https://consultpubcaeast.blob.core.windows.net`). Neither set → repo-owned packages resolve from the private container AND the output-contract catalog loads from the bundled `agents/` directory (local dev) | none | yes in Azure since #92 (the region setting satisfies it) |
 | `OutputContracts__Pin` | Catalog registry ref: `output-contracts@latest` or `output-contracts@vYYYY.MM.N` — the version loaded at startup and stamped into job records as `catalogRef` (#93). Activating a new catalog = publish + bump the concrete pin + restart; production pins explicitly (set 2026-07-23) so catalog releases never activate implicitly | `output-contracts@latest` | no |
 
 `GET /api/Public/Chain` (#95) is anonymous with open CORS and requires only `WorkflowPackages__PublicBlobServiceUri`; it 503s when the public registry is unconfigured.
@@ -399,14 +399,24 @@ managed identity (the `AZURE_CLIENT_ID` user-assigned identity needs
 **Storage Table Data Contributor** on the account). The named connection
 string remains only as the local-dev (Azurite) fallback.
 
+**Since #596 the app-level URIs derive from the geography**: set
+`Storage__Region` (e.g. `caeast`) and every store below computes its URI by
+the naming rule (`consult<role><region>`, storage-separation § 1.1,
+`StorageAccounts.cs`) — the way one location entry names the client's API.
+The chain per store: explicit `…ServiceUri` setting (wins, now an override)
+→ derived from `Storage__Region` → named connection string (local dev). The
+**exception**: `AzureWebJobsStorage__*` and the deployment container are
+read by the Functions host before app code runs and stay explicit forever.
+
 | Variable | Read in |
 |---|---|
-| `AccountStorage__TableServiceUri` | `Auth/AccountStore.cs`, `Auth/AccountSettingsStore.cs` (also the fallback URI for the two below). Production: `https://consultjobrecscaeast.table.core.windows.net` |
+| `Storage__Region` | `StorageAccounts.cs` (#596): the region whose accounts the app-level stores derive when their explicit URI is unset. Production: `caeast` |
+| `AccountStorage__TableServiceUri` | `Auth/AccountStore.cs`, `Auth/AccountSettingsStore.cs` (also the fallback URI for the two below). Override — derived from `Storage__Region` when unset (`https://consultjobrecscaeast.table.core.windows.net`) |
 | `ConsultGenerationJobEventStorage__TableServiceUri` | `Jobs/ConsultGenerationJobEventStore.cs` (optional override) |
 | `ConsultGenerationJobIndexStorage__TableServiceUri` | `Jobs/ConsultGenerationJobIndexStore.cs` (optional override) |
 | `AccountStorage__ConnectionStringName` | Local-dev fallback name (default `AzureWebJobsStorage`); same chain as before for the two job stores |
-| `TextStorage__BlobServiceUri` | #556/#557 (storage-separation.md § 3): the PHI text account's blobs — `Jobs/JobOutputsBlobStore.cs` writes a completed job's outputs there and reads them back on GET. Production: `https://consulttextcaeast.blob.core.windows.net` |
-| `TextStorage__TableServiceUri` | Production: `https://consulttextcaeast.table.core.windows.net`. `ConsultGenerationJobEvents` resolves through it (#557); the `ConsultGenerationJobEventStorage__TableServiceUri` override still wins when set |
+| `TextStorage__BlobServiceUri` | #556/#557 (storage-separation.md § 3): the PHI text account's blobs — `Jobs/JobOutputsBlobStore.cs` writes a completed job's outputs there and reads them back on GET. Override — derived from `Storage__Region` when unset (`https://consulttextcaeast.blob.core.windows.net`) |
+| `TextStorage__TableServiceUri` | Override — derived from `Storage__Region` when unset (`https://consulttextcaeast.table.core.windows.net`). `ConsultGenerationJobEvents` resolves through it (#557); the `ConsultGenerationJobEventStorage__TableServiceUri` override still wins when set |
 | `TextStorage__credential` / `TextStorage__clientId` | `managedidentity` + the user-assigned identity's client id — the identity-form pair, as `AzureWebJobsStorage__*` uses |
 
 ## Platform / runtime (not set by application code)

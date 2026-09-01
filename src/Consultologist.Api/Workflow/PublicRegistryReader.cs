@@ -60,6 +60,11 @@ public sealed class PublicRegistryReader
     public PublicRegistryReader(IConfiguration configuration)
     {
         var publicUri = configuration["WorkflowPackages:PublicBlobServiceUri"];
+        if (string.IsNullOrWhiteSpace(publicUri))
+        {
+            publicUri = StorageAccounts.DerivedUri(configuration, StorageAccounts.PublicRole, "blob"); // #596
+        }
+
         _service = string.IsNullOrWhiteSpace(publicUri) ? null : new BlobServiceClient(new Uri(publicUri));
     }
 

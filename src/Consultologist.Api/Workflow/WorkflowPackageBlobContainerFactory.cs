@@ -30,23 +30,35 @@ public sealed class WorkflowPackageBlobContainerFactory
         TokenCredential credential,
         ILogger<WorkflowPackageBlobContainerFactory> logger)
     {
-        var publicUri = configuration["WorkflowPackages:PublicBlobServiceUri"];
+        var explicitPublicUri = configuration["WorkflowPackages:PublicBlobServiceUri"];
+        var publicUri = !string.IsNullOrWhiteSpace(explicitPublicUri)
+            ? explicitPublicUri
+            : StorageAccounts.DerivedUri(configuration, StorageAccounts.PublicRole, "blob"); // #596
         if (!string.IsNullOrWhiteSpace(publicUri))
         {
             // Public containers are anonymous-read by design; no credential.
             _publicContainer = new BlobServiceClient(new Uri(publicUri)).GetBlobContainerClient(ContainerName);
-            logger.LogInformation("Workflow package registry public side configured. PublicBlobServiceUri={PublicBlobServiceUri}", publicUri);
+            logger.LogInformation(
+                "Workflow package registry public side configured ({Rung}). PublicBlobServiceUri={PublicBlobServiceUri}",
+                string.IsNullOrWhiteSpace(explicitPublicUri) ? "derived from Storage__Region" : "explicit setting",
+                publicUri);
         }
         else
         {
-            logger.LogWarning("Workflow package registry has no public side (WorkflowPackages__PublicBlobServiceUri unset); repo-owned packages resolve from the private container.");
+            logger.LogWarning("Workflow package registry has no public side (WorkflowPackages__PublicBlobServiceUri and Storage__Region unset); repo-owned packages resolve from the private container.");
         }
 
-        var serviceUri = configuration["WorkflowPackages:BlobServiceUri"];
+        var explicitUri = configuration["WorkflowPackages:BlobServiceUri"];
+        var serviceUri = !string.IsNullOrWhiteSpace(explicitUri)
+            ? explicitUri
+            : StorageAccounts.DerivedUri(configuration, StorageAccounts.RecordsRole, "blob"); // #596
         if (!string.IsNullOrWhiteSpace(serviceUri))
         {
             _privateContainer = new BlobServiceClient(new Uri(serviceUri), credential).GetBlobContainerClient(ContainerName);
-            logger.LogInformation("Workflow package registry using Entra ID auth. BlobServiceUri={BlobServiceUri}", serviceUri);
+            logger.LogInformation(
+                "Workflow package registry using Entra ID auth ({Rung}). BlobServiceUri={BlobServiceUri}",
+                string.IsNullOrWhiteSpace(explicitUri) ? "derived from Storage__Region" : "explicit setting",
+                serviceUri);
             return;
         }
 
