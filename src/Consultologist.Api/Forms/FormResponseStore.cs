@@ -233,6 +233,35 @@ public sealed class TableFormResponseStore : IFormResponseStore
         entity.DeletedAtUtc);
 }
 
+/// <summary>
+/// #539: the sweep's drop for one held response. No entity owns this state,
+/// so the purger reaches the stores directly (the JobTextPurger precedent
+/// for its table legs): blob first, then the Merge stamp — a failure
+/// persists nothing and the next sweep re-lists the row.
+/// </summary>
+public interface IFormResponsePurger
+{
+    Task DropAsync(FormResponseRow row, DateTimeOffset now, CancellationToken cancellationToken);
+}
+
+public sealed class FormResponsePurger : IFormResponsePurger
+{
+    private readonly IFormResponseBlobStore _blobs;
+    private readonly IFormResponseStore _rows;
+
+    public FormResponsePurger(IFormResponseBlobStore blobs, IFormResponseStore rows)
+    {
+        _blobs = blobs;
+        _rows = rows;
+    }
+
+    public async Task DropAsync(FormResponseRow row, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await _blobs.DeleteAsync(new FormResponseBlobPointer(row.BlobContainer, row.BlobName), cancellationToken);
+        await _rows.MarkDeletedAsync(row.AppUserId, row.FormId, row.ResponseId, now, cancellationToken);
+    }
+}
+
 internal sealed class FormResponseEntity : ITableEntity
 {
     public string PartitionKey { get; set; } = string.Empty;

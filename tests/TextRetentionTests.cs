@@ -176,6 +176,15 @@ public class TextRetentionTests
 
     private static readonly IReadOnlyList<ConsultGenerationJobIndexEntry> NoJobs = new List<ConsultGenerationJobIndexEntry>();
 
+    // #539: a store with no held responses — the third leg's quiet default.
+    private static Consultologist.Api.Forms.IFormResponseStore NoResponses()
+    {
+        var responses = Substitute.For<Consultologist.Api.Forms.IFormResponseStore>();
+        responses.ListDueAsync(Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Consultologist.Api.Forms.FormResponseRow>());
+        return responses;
+    }
+
     [Fact]
     public async Task TheSweep_PurgesEveryDueJob_AndKeepsGoingPastAFailure()
     {
@@ -192,7 +201,7 @@ public class TextRetentionTests
         purger.PurgeAsync(Arg.Any<DurableTaskClient>(), "j1", now, Arg.Any<CancellationToken>()).Returns(Task.FromException(new InvalidOperationException("storage")));
         var client = Substitute.For<DurableTaskClient>("test");
 
-        var (a, due, dropped, inputsDropped) = await new TextRetentionSweep(accounts, index, purger, Settings(), NullLogger<TextRetentionSweep>.Instance)
+        var (a, due, dropped, inputsDropped, _) = await new TextRetentionSweep(accounts, index, purger, Settings(), NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NullLogger<TextRetentionSweep>.Instance)
             .RunOnceAsync(client, now, 7, CancellationToken.None);
 
         Assert.Equal((2, 2, 1, 0), (a, due, dropped, inputsDropped));
@@ -232,7 +241,7 @@ public class TextRetentionTests
         index.ListDueForInputsDropAsync(Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns(NoJobs);
         var client = Substitute.For<DurableTaskClient>("test");
 
-        await new TextRetentionSweep(accounts, index, Substitute.For<IJobTextPurger>(), settings, NullLogger<TextRetentionSweep>.Instance)
+        await new TextRetentionSweep(accounts, index, Substitute.For<IJobTextPurger>(), settings, NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NullLogger<TextRetentionSweep>.Instance)
             .RunOnceAsync(client, now, 7, CancellationToken.None);
 
         // The chosen clock for a, the deployment default for b — exact cutoffs.
@@ -255,7 +264,7 @@ public class TextRetentionTests
         var purger = Substitute.For<IJobTextPurger>();
         var client = Substitute.For<DurableTaskClient>("test");
 
-        var (_, due, dropped, inputsDropped) = await new TextRetentionSweep(accounts, index, purger, settings, NullLogger<TextRetentionSweep>.Instance)
+        var (_, due, dropped, inputsDropped, _) = await new TextRetentionSweep(accounts, index, purger, settings, NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NullLogger<TextRetentionSweep>.Instance)
             .RunOnceAsync(client, now, 7, CancellationToken.None);
 
         Assert.Equal((0, 0, 1), (due, dropped, inputsDropped));
@@ -281,7 +290,7 @@ public class TextRetentionTests
         var purger = Substitute.For<IJobTextPurger>();
         var client = Substitute.For<DurableTaskClient>("test");
 
-        var (_, due, dropped, inputsDropped) = await new TextRetentionSweep(accounts, index, purger, settings, NullLogger<TextRetentionSweep>.Instance)
+        var (_, due, dropped, inputsDropped, _) = await new TextRetentionSweep(accounts, index, purger, settings, NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NullLogger<TextRetentionSweep>.Instance)
             .RunOnceAsync(client, now, 7, CancellationToken.None);
 
         Assert.Equal((1, 1, 0), (due, dropped, inputsDropped));
@@ -306,7 +315,7 @@ public class TextRetentionTests
         index.ListDueForTextDropAsync("a", now.AddDays(-7), Arg.Any<CancellationToken>()).Returns(NoJobs);
         var client = Substitute.For<DurableTaskClient>("test");
 
-        await new TextRetentionSweep(accounts, index, Substitute.For<IJobTextPurger>(), settings, NullLogger<TextRetentionSweep>.Instance)
+        await new TextRetentionSweep(accounts, index, Substitute.For<IJobTextPurger>(), settings, NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NullLogger<TextRetentionSweep>.Instance)
             .RunOnceAsync(client, now, 7, CancellationToken.None);
 
         await index.Received(1).ListDueForTextDropAsync("a", now.AddDays(-7), Arg.Any<CancellationToken>());
@@ -329,7 +338,7 @@ public class TextRetentionTests
         purger.DropInputsAsync(Arg.Any<DurableTaskClient>(), "j1", now, Arg.Any<CancellationToken>()).Returns(Task.FromException(new InvalidOperationException("storage")));
         var client = Substitute.For<DurableTaskClient>("test");
 
-        var (_, _, _, inputsDropped) = await new TextRetentionSweep(accounts, index, purger, settings, NullLogger<TextRetentionSweep>.Instance)
+        var (_, _, _, inputsDropped, _) = await new TextRetentionSweep(accounts, index, purger, settings, NoResponses(), Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NullLogger<TextRetentionSweep>.Instance)
             .RunOnceAsync(client, now, 7, CancellationToken.None);
 
         Assert.Equal(1, inputsDropped);
@@ -375,5 +384,128 @@ public class TextRetentionTests
         Assert.All(checks, c => Assert.Null(c.Matches));
         Assert.All(checks, c => Assert.Contains("text deleted on 2026-09-01", c.Note));
         Assert.Equal(2, checks.Count);
+    }
+
+    // ----- #539: the third leg — held form responses -----
+
+    private static Consultologist.Api.Forms.FormResponseRow Response(string user, string formId, string responseId, DateTimeOffset submitted) =>
+        new(user, formId, responseId, submitted, new[] { "consult_draft" },
+            "org-form-responses", $"{user}/{formId}-{responseId}.json", DeletedAtUtc: null);
+
+    [Fact]
+    public async Task DueResponses_AreDropped_OnTheInputsClock_EvenWhenTheClocksAreEqual()
+    {
+        // The jobs' inputs leg is gated on inputDays < outputDays; the form
+        // leg must not be — responses are not job-coupled.
+        var accounts = Accounts("a");
+        var index = Substitute.For<IConsultGenerationJobIndexStore>();
+        var now = new DateTimeOffset(2026, 9, 10, 3, 0, 0, TimeSpan.Zero);
+        index.ListDueForTextDropAsync("a", now.AddDays(-7), Arg.Any<CancellationToken>()).Returns(NoJobs);
+        var responses = Substitute.For<Consultologist.Api.Forms.IFormResponseStore>();
+        responses.ListDueAsync("a", now.AddDays(-7), Arg.Any<CancellationToken>()).Returns(new List<Consultologist.Api.Forms.FormResponseRow>
+        {
+            Response("a", "triage-intake", "17", now.AddDays(-9))
+        });
+        var responsePurger = Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>();
+        var client = Substitute.For<DurableTaskClient>("test");
+
+        var (_, _, _, _, responsesDropped) = await new TextRetentionSweep(
+                accounts, index, Substitute.For<IJobTextPurger>(), Settings(), responses, responsePurger, NullLogger<TextRetentionSweep>.Instance)
+            .RunOnceAsync(client, now, 7, CancellationToken.None);
+
+        Assert.Equal(1, responsesDropped);
+        await responsePurger.Received(1).DropAsync(
+            Arg.Is<Consultologist.Api.Forms.FormResponseRow>(row => row.FormId == "triage-intake" && row.ResponseId == "17"),
+            now, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TheFormLeg_UsesTheAccountsInputsClock()
+    {
+        var accounts = Accounts("a");
+        var settings = Settings(("a", AccountSettingKeys.RetentionInputDays, "2"));
+        var index = Substitute.For<IConsultGenerationJobIndexStore>();
+        var now = new DateTimeOffset(2026, 9, 10, 3, 0, 0, TimeSpan.Zero);
+        index.ListDueForTextDropAsync(Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns(NoJobs);
+        index.ListDueForInputsDropAsync(Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns(NoJobs);
+        var responses = NoResponses();
+        var client = Substitute.For<DurableTaskClient>("test");
+
+        await new TextRetentionSweep(
+                accounts, index, Substitute.For<IJobTextPurger>(), settings, responses, Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>(), NullLogger<TextRetentionSweep>.Instance)
+            .RunOnceAsync(client, now, 7, CancellationToken.None);
+
+        // The exact per-account cutoff — the chosen 2-day inputs clock.
+        await responses.Received(1).ListDueAsync("a", now.AddDays(-2), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AFailedResponseDrop_DoesNotStopTheRun_OrTheJobsLegs()
+    {
+        var accounts = Accounts("a");
+        var index = Substitute.For<IConsultGenerationJobIndexStore>();
+        var now = new DateTimeOffset(2026, 9, 10, 3, 0, 0, TimeSpan.Zero);
+        index.ListDueForTextDropAsync("a", now.AddDays(-7), Arg.Any<CancellationToken>()).Returns(new List<ConsultGenerationJobIndexEntry>
+        {
+            new("j1", "a", "Completed", now.AddDays(-9), null, now.AddDays(-8), 1, 1, 0)
+        });
+        var responses = Substitute.For<Consultologist.Api.Forms.IFormResponseStore>();
+        responses.ListDueAsync("a", Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns(new List<Consultologist.Api.Forms.FormResponseRow>
+        {
+            Response("a", "triage-intake", "17", now.AddDays(-9)),
+            Response("a", "triage-intake", "18", now.AddDays(-9))
+        });
+        var responsePurger = Substitute.For<Consultologist.Api.Forms.IFormResponsePurger>();
+        responsePurger.DropAsync(
+                Arg.Is<Consultologist.Api.Forms.FormResponseRow>(row => row.ResponseId == "17"), now, Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("storage")));
+        var purger = Substitute.For<IJobTextPurger>();
+        var client = Substitute.For<DurableTaskClient>("test");
+
+        var (_, _, dropped, _, responsesDropped) = await new TextRetentionSweep(
+                accounts, index, purger, Settings(), responses, responsePurger, NullLogger<TextRetentionSweep>.Instance)
+            .RunOnceAsync(client, now, 7, CancellationToken.None);
+
+        // The second response still dropped, and the jobs legs still ran.
+        Assert.Equal(1, responsesDropped);
+        Assert.Equal(1, dropped);
+        await responsePurger.Received(1).DropAsync(
+            Arg.Is<Consultologist.Api.Forms.FormResponseRow>(row => row.ResponseId == "18"), now, Arg.Any<CancellationToken>());
+        await purger.Received(1).PurgeAsync(client, "j1", now, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ThePurger_DeletesTheBlobFirst_SoAFailureStampsNothing()
+    {
+        var blobs = Substitute.For<Consultologist.Api.Forms.IFormResponseBlobStore>();
+        var rows = Substitute.For<Consultologist.Api.Forms.IFormResponseStore>();
+        blobs.DeleteAsync(Arg.Any<Consultologist.Api.Forms.FormResponseBlobPointer>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("storage blip")));
+        var now = DateTimeOffset.UtcNow;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new Consultologist.Api.Forms.FormResponsePurger(blobs, rows)
+                .DropAsync(Response("a", "triage-intake", "17", now.AddDays(-9)), now, CancellationToken.None));
+
+        await rows.DidNotReceiveWithAnyArgs().MarkDeletedAsync(default!, default!, default!, default, default);
+    }
+
+    [Fact]
+    public async Task ThePurger_StampsTheRow_AfterTheBlobIsGone()
+    {
+        var blobs = Substitute.For<Consultologist.Api.Forms.IFormResponseBlobStore>();
+        var rows = Substitute.For<Consultologist.Api.Forms.IFormResponseStore>();
+        var now = DateTimeOffset.UtcNow;
+
+        await new Consultologist.Api.Forms.FormResponsePurger(blobs, rows)
+            .DropAsync(Response("a", "triage-intake", "17", now.AddDays(-9)), now, CancellationToken.None);
+
+        Received.InOrder(() =>
+        {
+            blobs.DeleteAsync(
+                Arg.Is<Consultologist.Api.Forms.FormResponseBlobPointer>(p => p.Name == "a/triage-intake-17.json"),
+                Arg.Any<CancellationToken>());
+            rows.MarkDeletedAsync("a", "triage-intake", "17", now, Arg.Any<CancellationToken>());
+        });
     }
 }

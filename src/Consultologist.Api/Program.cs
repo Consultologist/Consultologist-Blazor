@@ -89,6 +89,7 @@ builder.Services.AddSingleton<IAccountUsageStore, TableAccountUsageStore>();
 // #539: held form responses — values on the text account, the list row on records.
 builder.Services.AddSingleton<Consultologist.Api.Forms.IFormResponseBlobStore, Consultologist.Api.Forms.FormResponseBlobStore>();
 builder.Services.AddSingleton<Consultologist.Api.Forms.IFormResponseStore, Consultologist.Api.Forms.TableFormResponseStore>();
+builder.Services.AddSingleton<Consultologist.Api.Forms.IFormResponsePurger, Consultologist.Api.Forms.FormResponsePurger>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<WorkflowPackageBlobContainerFactory>();
 builder.Services.AddSingleton<IWorkflowPackageStore, WorkflowPackageStore>();
