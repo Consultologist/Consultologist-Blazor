@@ -146,6 +146,7 @@ builder.Services.AddSingleton<IEmailSenderResolver, TableEmailSenderResolver>();
 builder.Services.AddSingleton<IEmailIntakeClaimStore, TableEmailIntakeClaimStore>();
 builder.Services.AddSingleton<EmailIntakeProcessor>();
 builder.Services.AddScoped<EmailIntakeFunctions>();
+builder.Services.AddScoped<Consultologist.Api.Forms.FormsIntake>();
 builder.Services.AddScoped<SendEmailIntakeReplyActivity>();
 builder.Services.AddScoped<ConsultGenerationJobs>();
 // #235: the parser itself is static and needs no configuration; only its
