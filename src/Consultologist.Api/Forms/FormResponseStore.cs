@@ -31,6 +31,12 @@ public interface IFormResponseBlobStore
 {
     Task<FormResponseBlobPointer> WriteAsync(string? accountKind, string appUserId, FormResponsePayload payload, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// #540: the held values behind a pointer, or null when the blob is
+    /// gone (the sweep or a discard between the row read and this one).
+    /// </summary>
+    Task<FormResponsePayload?> ReadAsync(FormResponseBlobPointer pointer, CancellationToken cancellationToken);
+
     Task DeleteAsync(FormResponseBlobPointer pointer, CancellationToken cancellationToken);
 }
 
@@ -58,6 +64,9 @@ public sealed class FormResponseBlobStore : IFormResponseBlobStore
         await _blobs.WriteJsonAsync(pointer.Container, pointer.Name, payload, cancellationToken);
         return pointer;
     }
+
+    public Task<FormResponsePayload?> ReadAsync(FormResponseBlobPointer pointer, CancellationToken cancellationToken) =>
+        _blobs.ReadJsonAsync<FormResponsePayload>(pointer.Container, pointer.Name, cancellationToken);
 
     public Task DeleteAsync(FormResponseBlobPointer pointer, CancellationToken cancellationToken) =>
         _blobs.DeleteAsync(pointer.Container, pointer.Name, cancellationToken);

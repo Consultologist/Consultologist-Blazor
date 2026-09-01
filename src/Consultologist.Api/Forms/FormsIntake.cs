@@ -149,9 +149,12 @@ public sealed class FormsIntake
         return created;
     }
 
-    [Function("FormsIntakeDiscard")]
-    public async Task<HttpResponseData> DiscardAsync(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", "options", Route = "Intake/Forms/Responses/{formId}/{responseId}")] HttpRequestData req,
+    // #540: GET joined DELETE on this template — the host routes by template
+    // alone (the #539 collision lesson above), so the one-resource reads and
+    // the discard share one function branching on method, as AccountMe does.
+    [Function("FormsIntakeResponse")]
+    public async Task<HttpResponseData> ResponseAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", "delete", "options", Route = "Intake/Forms/Responses/{formId}/{responseId}")] HttpRequestData req,
         string formId,
         string responseId)
     {
@@ -174,6 +177,34 @@ public sealed class FormsIntake
         if (row == null)
         {
             return await ErrorAsync(req, HttpStatusCode.NotFound, "No such held response.", cancellationToken);
+        }
+
+        if (string.Equals(req.Method, "GET", StringComparison.OrdinalIgnoreCase))
+        {
+            // The picker's read (#540): the values, for the account that
+            // holds them. A discarded response answers by the day its
+            // values went — the wording the picker shows.
+            if (row.DeletedAtUtc is { } deleted)
+            {
+                return await ErrorAsync(req, HttpStatusCode.Gone, ValuesDeletedComplaint(deleted), cancellationToken);
+            }
+
+            var payload = await _blobs.ReadAsync(new FormResponseBlobPointer(row.BlobContainer, row.BlobName), cancellationToken);
+            if (payload == null)
+            {
+                // The sweep between the row read and this one; the row will
+                // say so shortly. Named, never an empty fill.
+                return await ErrorAsync(req, HttpStatusCode.Gone, ValuesDeletedComplaint(DateTimeOffset.UtcNow), cancellationToken);
+            }
+
+            _logger.LogInformation(
+                "Form response values read. FormId={FormId}, ResponseId={ResponseId}, InputCount={InputCount}",
+                formId, responseId, payload.Inputs.Count);
+
+            var ok = req.CreateResponse(HttpStatusCode.OK);
+            FunctionCors.Apply(req, ok);
+            await ok.WriteAsJsonAsync(ValuesOf(row, payload), cancellationToken);
+            return ok;
         }
 
         if (row.DeletedAtUtc != null)
@@ -199,6 +230,22 @@ public sealed class FormsIntake
         inputIds = row.InputIds,
         deletedAtUtc = row.DeletedAtUtc
     };
+
+    /// <summary>
+    /// #540: the one-response read — the held values as sent, beside the ids;
+    /// the pointer and the account never reach the wire (the list's rule).
+    /// </summary>
+    internal static object ValuesOf(FormResponseRow row, FormResponsePayload payload) => new
+    {
+        formId = row.FormId,
+        responseId = row.ResponseId,
+        submittedAtUtc = row.SubmittedAtUtc,
+        inputs = payload.Inputs
+    };
+
+    /// <summary>The picker's wording, spike § 4.2: "values deleted Sep 8, 2026".</summary>
+    internal static string ValuesDeletedComplaint(DateTimeOffset deletedAtUtc) =>
+        $"values deleted {deletedAtUtc.UtcDateTime.ToString("MMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture)}";
 
     /// <summary>17 and "17" both land; anything else is null and refused by name.</summary>
     internal static string? NormalizeResponseId(JsonElement? responseId) => responseId switch
