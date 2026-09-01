@@ -86,6 +86,10 @@ builder.Services.AddSingleton<IConsultGenerationJobIndexStore, TableConsultGener
 builder.Services.AddSingleton<IConsultGenerationLinkStore, TableConsultGenerationLinkStore>();
 // #552: the derived usage store — day counts, written once at completion.
 builder.Services.AddSingleton<IAccountUsageStore, TableAccountUsageStore>();
+// #539: held form responses — values on the text account, the list row on records.
+builder.Services.AddSingleton<Consultologist.Api.Forms.IFormResponseBlobStore, Consultologist.Api.Forms.FormResponseBlobStore>();
+builder.Services.AddSingleton<Consultologist.Api.Forms.IFormResponseStore, Consultologist.Api.Forms.TableFormResponseStore>();
+builder.Services.AddSingleton<Consultologist.Api.Forms.IFormResponsePurger, Consultologist.Api.Forms.FormResponsePurger>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<WorkflowPackageBlobContainerFactory>();
 builder.Services.AddSingleton<IWorkflowPackageStore, WorkflowPackageStore>();
@@ -143,6 +147,7 @@ builder.Services.AddSingleton<IEmailSenderResolver, TableEmailSenderResolver>();
 builder.Services.AddSingleton<IEmailIntakeClaimStore, TableEmailIntakeClaimStore>();
 builder.Services.AddSingleton<EmailIntakeProcessor>();
 builder.Services.AddScoped<EmailIntakeFunctions>();
+builder.Services.AddScoped<Consultologist.Api.Forms.FormsIntake>();
 builder.Services.AddScoped<SendEmailIntakeReplyActivity>();
 builder.Services.AddScoped<ConsultGenerationJobs>();
 // #235: the parser itself is static and needs no configuration; only its

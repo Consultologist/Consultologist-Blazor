@@ -120,14 +120,25 @@ public sealed class TextRetentionSweep
     private readonly IConsultGenerationJobIndexStore _index;
     private readonly IJobTextPurger _purger;
     private readonly IAccountSettingsStore _settings;
+    private readonly Forms.IFormResponseStore _formResponses;
+    private readonly Forms.IFormResponsePurger _formResponsePurger;
     private readonly ILogger<TextRetentionSweep> _logger;
 
-    public TextRetentionSweep(IAccountStore accounts, IConsultGenerationJobIndexStore index, IJobTextPurger purger, IAccountSettingsStore settings, ILogger<TextRetentionSweep> logger)
+    public TextRetentionSweep(
+        IAccountStore accounts,
+        IConsultGenerationJobIndexStore index,
+        IJobTextPurger purger,
+        IAccountSettingsStore settings,
+        Forms.IFormResponseStore formResponses,
+        Forms.IFormResponsePurger formResponsePurger,
+        ILogger<TextRetentionSweep> logger)
     {
         _accounts = accounts;
         _index = index;
         _purger = purger;
         _settings = settings;
+        _formResponses = formResponses;
+        _formResponsePurger = formResponsePurger;
         _logger = logger;
     }
 
@@ -151,14 +162,48 @@ public sealed class TextRetentionSweep
         && entry.InputsHeld
         && entry.InputsDroppedAtUtc == null;
 
-    public async Task<(int Accounts, int Due, int Dropped, int InputsDropped)> RunOnceAsync(DurableTaskClient client, DateTimeOffset now, int defaultDays, CancellationToken cancellationToken)
+    /// <summary>
+    /// #539: the form-responses leg's rule — submitted before the inputs
+    /// cutoff, values still resting. No status: a held response has no
+    /// terminal concept, only the two conditions.
+    /// </summary>
+    public static bool IsResponseDue(Forms.FormResponseRow row, DateTimeOffset submittedBefore) =>
+        row.SubmittedAtUtc < submittedBefore
+        && row.DeletedAtUtc == null;
+
+    public async Task<(int Accounts, int Due, int Dropped, int InputsDropped, int ResponsesDropped)> RunOnceAsync(DurableTaskClient client, DateTimeOffset now, int defaultDays, CancellationToken cancellationToken)
     {
-        int accounts = 0, due = 0, dropped = 0, inputsDropped = 0;
+        int accounts = 0, due = 0, dropped = 0, inputsDropped = 0, responsesDropped = 0;
 
         foreach (var account in await _accounts.ListAsync(cancellationToken))
         {
             accounts++;
             var (outputDays, inputDays) = await EffectiveDaysAsync(account.AppUserId, defaultDays, cancellationToken);
+
+            // #539: held form responses, FIRST — they are not job-coupled,
+            // so they run for every account on the inputs clock (from
+            // submittedAtUtc) regardless of the jobs legs' gate below, and
+            // never share those legs' failure fate.
+            try
+            {
+                foreach (var response in await _formResponses.ListDueAsync(account.AppUserId, now.AddDays(-inputDays), cancellationToken))
+                {
+                    try
+                    {
+                        await _formResponsePurger.DropAsync(response, now, cancellationToken);
+                        responsesDropped++;
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        // Next run retries: the row still says the values rest.
+                        _logger.LogWarning(ex, "Text retention: could not drop form response {FormId}:{ResponseId}.", response.FormId, response.ResponseId);
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Text retention: could not list an account's held form responses.");
+            }
 
             IReadOnlyList<ConsultGenerationJobIndexEntry> jobs;
             try
@@ -221,10 +266,10 @@ public sealed class TextRetentionSweep
             }
         }
 
-        var summary = $"{accounts} accounts, {due} jobs past the outputs clock, {dropped} dropped, {inputsDropped} inputs-only drops";
+        var summary = $"{accounts} accounts, {due} jobs past the outputs clock, {dropped} dropped, {inputsDropped} inputs-only drops, {responsesDropped} form responses dropped";
         _logger.LogInformation("Text retention: {Summary}", summary);
         Console.Error.WriteLine($"[TextRetention] {summary}");
-        return (accounts, due, dropped, inputsDropped);
+        return (accounts, due, dropped, inputsDropped, responsesDropped);
     }
 
     /// <summary>

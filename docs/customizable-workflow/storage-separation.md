@@ -121,7 +121,7 @@ carries the map (the engine reads it there), but the payload is purged
 with the instance as today; the blob is the copy that History shows and
 the rerun door (#549, built) reads — the Supplied half back through its
 typed wire form, reproducing the source's `effectiveInputHash` by
-construction. Held form responses (#539) are inputs before any job:
+construction. Held form responses (#539, **built**) are inputs before any job:
 one blob per response, the same container family, the same clock from
 `submittedAtUtc`, and a row in the records account's `FormResponses`
 table for the list (form id, response id, submitted, input ids present,
@@ -296,7 +296,7 @@ be checked against it once the text is gone; the record says when.
 |---|---|---|
 | M1 | The Canada East text account: create, shared key off, soft delete off, the six containers with their lifecycle policy, RBAC on the user-assigned identity, the `TextStorage__*` settings — operator steps, on the operator's go; and `AccountKind` on `AppUsers`, stamped at creation and back-filled once | to file (M22) |
 | M2 | Outputs to blobs: write `job-outputs` at completion beside the entity fields; read from the blob; then stop writing text on the entity; `DropText` as § 2.2; the events table on the text account | to file (M22) |
-| M3 | Inputs on `job-inputs`; held form responses on `form-responses` | #547; #539 amended |
+| M3 | Inputs on `job-inputs`; held form responses on `form-responses` | #547 built; #539 built |
 | M4 | Per-account retention drives the sweep over both classes | #548 |
 | M5 | `AccountUsage` on the records account, after the numbers exist — **built** | #551 → #552, both built |
 | M6 | Cleanup: the stale hub tables in `consultologistgroup8cbf`; the AML/training accounts (shared key off, or deleted); the `AccountRateLimits` / `LinkedInLinkStates` cleanup rule | #558 |
