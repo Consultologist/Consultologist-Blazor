@@ -135,6 +135,19 @@ store, never job records; the /operators page groups rows by tenant.
 `Account/Me` reports the caller's own `IsOperator` so the nav can show
 the link — a fact about the caller, never the gate.
 
+The forms-intake door (#539): `POST /api/Intake/Forms/Responses` holds a
+form response for the token's account — organisation sign-in required
+(a personal token is 403 `personal-account`, the #517 rule), every
+status answering JSON (the Power Automate connector treats any non-JSON
+body as an error). The values live in one blob on the text account
+(`org-`/`personal-form-responses`); the `FormResponses` row on the
+records account carries form id, response id, submitted, the input ids
+present, the blob pointer and the deleted stamp — never a value. A
+second push of the same response is 204 and rewrites nothing, including
+one the sweep already deleted. `GET .../Responses` lists; `DELETE
+.../{formId}/{responseId}` discards (blob deleted, row stamped — the
+list says deleted). Logs carry ids, counts, lengths and outcomes only.
+
 The current setting keys are:
 
 ```text

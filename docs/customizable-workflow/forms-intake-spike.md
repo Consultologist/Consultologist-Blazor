@@ -213,6 +213,12 @@ flow's owner.
 
 ### 4.1 Held responses (API)
 
+> **As built (#539):** the values live in one blob per response on the
+> text account (storage-separation.md § 2.1 amended this section); the
+> table row is the list only and carries the blob pointer; the clock is
+> the account's `retention.inputDays` (#548), not the raw
+> `TextRetention__Days`; a discard stamps the row like the sweep does.
+
 `POST Intake/Forms/Responses` — bearer; **organisation sign-in required**
 (`DeliveryAddress.IsOrganisation`; a personal token → 403
 `personal-account`, the #517 rule). Body:

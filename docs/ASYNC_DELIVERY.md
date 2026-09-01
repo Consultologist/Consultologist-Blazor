@@ -58,6 +58,13 @@ refs and labels stay forever, and the record says when each went
 
 ## 2. Email intake (#158) — IMPLEMENTED 2026-07-25
 
+> **The second intake door (#539, forms):** `POST Intake/Forms/Responses`
+> holds a Microsoft Forms response pushed by a Power Automate flow — the
+> values as sent, on the text account, swept by the account's
+> `retention.inputDays` from `submittedAtUtc`; the list row is on the
+> records account and never holds a value. Organisation sign-in only;
+> JSON on every status. Turning a held response into a run is #543.
+
 Submit consults by email; results announced by reply; runs recorded in
 History like any other. Implementation decisions (settled 2026-07-25;
 files: `src/Consultologist.Api/Email/*`, settings in
