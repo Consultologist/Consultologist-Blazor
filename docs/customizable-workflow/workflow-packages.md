@@ -53,7 +53,9 @@ keeps its native scheme.
 > publisher). Connection strings remain only as the local-dev/Azurite fallback.
 
 - **Registry**: packages live in storage — Azure Blob is the natural fit
-  (`workflow-packages` container, `{name}/{version}/...`), published **immutably**: a new version never
+  (the public `workflow-packages` container and the private
+  `org-`/`personal-account-packages` pair since #602, `{name}/{version}/...`),
+  published **immutably**: a new version never
   mutates an old one, exactly like model weights or agent versions.
 - **Authoring**: keep package sources in their own git repo with CI publishing to blob
   on tag — code-style review and history, weights-style pinning at runtime. (Mirrors

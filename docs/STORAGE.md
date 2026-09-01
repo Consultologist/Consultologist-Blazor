@@ -158,6 +158,38 @@ management-policy show`, `az role assignment list --scope "$SCOPE"`,
 `az storage account show --query allowSharedKeyAccess`, and `Account/Me`
 returning `accountKind` after the back-fill.
 
+## The fork-container move (#602, one-time)
+
+Account forks moved from the records account's single private
+`workflow-packages` container into the `org-account-packages` /
+`personal-account-packages` pair, chosen by `AccountKind` (the same pairing
+as text). Operator steps, on the operator's go:
+
+```azurecli
+# 1. The pair — control-plane creates, so shared-key-off never bites. No new
+#    RBAC: the identity holds Blob Data Owner at account scope.
+for c in org-account-packages personal-account-packages; do
+  az storage container-rm create --storage-account consultjobrecscaeast --resource-group consultologist_group --name "$c"
+done
+```
+
+2. The routing table: `PackageOwners` rows are the authoritative fork set
+   (#462 — the name prefix is never trusted alone), joined to
+   `AppUsers.AccountKind` (absent → `personal`, the code's own rule).
+3. Copy each owned name's `{name}/` blobs into the kind's container —
+   download/upload with `--auth-mode login` (shared key is off, so
+   server-side copy-batch has no source to authenticate). A blob matching no
+   ownership row is reported, not copied. Idempotent: versions are immutable,
+   so a re-copy is byte-identical.
+4. Deploy the #602 code, delta-check the old container, run the live smoke
+   (a fork resolve, a publish, `Operator/PinHealth`), then delete the old
+   container: `az storage container-rm delete --storage-account
+   consultjobrecscaeast --resource-group consultologist_group --name
+   workflow-packages`.
+
+(Executed 2026-09: pre-release, a quiet window; no code-side fallback to the
+old container was kept.)
+
 ### What lives there since M2 (#557) and M3 (#547)
 
 At completion the engine writes one JSON blob per job — the deliverables

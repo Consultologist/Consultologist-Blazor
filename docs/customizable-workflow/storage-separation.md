@@ -49,7 +49,7 @@ everywhere, as since M11.
 
 | Account | Region | Shared key | Holds |
 |---|---|---|---|
-| `consultjobrecscaeast` | canadaeast | off | the ten application tables (§ 1.2), the private `workflow-packages` container |
+| `consultjobrecscaeast` | canadaeast | off | the ten application tables (§ 1.2), the account forks in `org-account-packages` / `personal-account-packages` (§ 2.6, #602) |
 | `consulthostcaeast` | canadaeast | off | the function host's own account (`azure-webjobs-*`, the deployed package) and the **live** Durable task hub `consultologistjobs` — it rides `AzureWebJobsStorage`, which points here (`AzureWebJobsStorage__accountName`), the #558 recon's decisive finding |
 | `consultpubcaeast` | canadaeast | off | the public registries only: `workflow-packages`, `output-contracts`, `agent-definitions`, `package-format`, `provenance` — anonymous read by design |
 
@@ -274,7 +274,7 @@ already forbid it in code). The **text** account is new (§ 7 M1).
 
 | | text account | records account |
 |---|---|---|
-| Holds | the six text containers of § 2.5 (`org-`/`personal-` × `job-inputs`, `job-outputs`, `form-responses`); `ConsultGenerationJobEvents` | the Durable hub; the account, settings, claim, ownership, index, links, usage and closure tables; the account forks in `org-account-packages` / `personal-account-packages` (§ 2.6; today one `workflow-packages`) |
+| Holds | the six text containers of § 2.5 (`org-`/`personal-` × `job-inputs`, `job-outputs`, `form-responses`); `ConsultGenerationJobEvents` | the Durable hub; the account, settings, claim, ownership, index, links, usage and closure tables; the account forks in `org-account-packages` / `personal-account-packages` (§ 2.6, #602) |
 | Shared key | off | off |
 | Identity's roles | Storage Blob Data Contributor, Storage Table Data Contributor | as today: Blob Data Owner, Queue Data Contributor, Table Data Contributor |
 | Lifecycle policy | delete blobs 30 days after creation, every container — the ceiling of #548, never the rule | none |
@@ -337,7 +337,7 @@ be checked against it once the text is gone; the record says when.
 | M4 | Per-account retention drives the sweep over both classes | #548 |
 | M5 | `AccountUsage` on the records account, after the numbers exist — **built** | #551 → #552, both built |
 | M6 | Cleanup — **done** (2026-09-01): the sweep's counter legs built (#592); the stale hub artifacts and the six residue accounts deleted as operator steps (§ 1.1). One tail remains: `LegacyJobEventDelete` goes once the old events table empties (`docs/STORAGE.md`) | #558 |
-| M7 | Account closure (§ 2.6) — **built** (#559, `POST Operator/Accounts/{id}/Close`, the `ClosedAccounts` audit). The fork-container move (`org-`/`personal-account-packages`, writer and readers by `AccountKind`, the one-time move) split into its own issue | #559 built; the move is #602 |
+| M7 | Account closure (§ 2.6) — **built** (#559, `POST Operator/Accounts/{id}/Close`, the `ClosedAccounts` audit). The fork-container move (`org-`/`personal-account-packages`, the writer by `AccountKind`, context-free readers trying the pair, the one-time move) — **built** (#602) | #559 and #602 built |
 
 M2 before M3 so the read path, the pointer fields and the new `DropText`
 exist before inputs — the class with the shorter clock — arrive. #546's
