@@ -29,8 +29,8 @@ everywhere, as since M11.
 
 | Account | Region | Shared key | Holds |
 |---|---|---|---|
-| `consultologistjobqueue` | canadaeast | off | the ten application tables (§ 1.2), the Durable task hub `consultologistjobs` (History/Instances/Partitions tables, control and work-item queues, `-largemessages` container), the private `workflow-packages` container |
-| `consultologistgroup8cbf` | canadaeast | off | the function host's own account (`azure-webjobs-*`, the deployed package) — **and** a stale hub `canadaeastaifunction` plus a second copy of the `consultologistjobs` hub tables, residue from before the identity move (§ 7, M6) |
+| `consultologistjobqueue` | canadaeast | off | the ten application tables (§ 1.2), the private `workflow-packages` container — **and** a stale copy of the `consultologistjobs` hub tables, frozen at the 2026-07-22 identity move (§ 7, M6; the #558 recon proved it dead: its Instances stop that day) |
+| `consultologistgroup8cbf` | canadaeast | off | the function host's own account (`azure-webjobs-*`, the deployed package), the **live** Durable task hub `consultologistjobs` — it rides `AzureWebJobsStorage`, which points here (`AzureWebJobsStorage__accountName`), Instances current through the present — and the stale `canadaeastaifunction` hub tables (empty; § 7, M6) |
 | `consultologistpublic` | canadaeast | off | the public registries only: `workflow-packages`, `output-contracts`, `agent-definitions`, `package-format`, `provenance` — anonymous read by design |
 | six others (`train…`, `tutorial…`, `consultologist0733…`/`9579…`, `canadaeastlangstorage`) | eastus2 / canadacentral | three at the default (on) | Azure ML, training and tutorial residue — **not app stores**; named here so "identity-only" is read as a claim about the app's accounts, not the resource group (§ 7, M6) |
 
@@ -51,8 +51,8 @@ The identity's roles and the shared-key posture are in
 | `IdentityLinks` | provider / subject hash | issuer, subject, claims | PII | the user's unlink (#195) | `Auth/AccountStore.cs:49` |
 | `UserIdentityLinks` | appUserId / provider-hash | the reverse index | PII | the user's unlink | `Auth/AccountStore.cs:50` |
 | `AccountSettings` | appUserId / key | preferences; `delivery.documentPassword` (secret, write-only); the address keys | PII + one secret | the user's DELETE | `Auth/AccountSettingsStore.cs:17` |
-| `AccountRateLimits` | appUserId / UTC hour | a count | no | **none** ("worth having eventually", #266) | `RateLimiting/AccountRateLimiter.cs:80` |
-| `LinkedInLinkStates` | `linkedin-state` / token | nonce, return origin, expiry (10 min) | no | single-use take; abandoned rows linger | `Auth/LinkedInLinkStateStore.cs:25` |
+| `AccountRateLimits` | appUserId / UTC hour | a count | no | the sweep, windows past 92 days — the read clamp (#558, closing #266's deferral) | `RateLimiting/AccountRateLimiter.cs:80` |
+| `LinkedInLinkStates` | `linkedin-state` / token | nonce, return origin, expiry (10 min) | no | single-use take; the sweep deletes expired rows once per run (#558) | `Auth/LinkedInLinkStateStore.cs:25` |
 | `PackageOwners` | appUserId / package name | a timestamp | no | none | `Workflow/WorkflowPackageOwnership.cs:53` |
 | `ConsultGenerationJobIndex` | appUserId / reverse-ticks_jobId | status, counts, timestamps, `Source`, `TextDroppedAtUtc`, delivery | no | **none — the permanent pointer** | `Jobs/ConsultGenerationJobIndexStore.cs:29` |
 | `ConsultGenerationJobEvents` | jobId / sequence (+ dedupe, counter rows) | `PayloadJson`: streamed snapshots **with the generated prose** | **yes** | the retention sweep, whole partition | `Jobs/ConsultGenerationJobEventStore.cs:32` |
@@ -105,12 +105,13 @@ purge leaves behind, and its residency.
 | **Outputs** | assembled deliverables, node outputs and concepts, the SSE snapshots | text | `org-job-outputs` / `personal-job-outputs`; `ConsultGenerationJobEvents` table (moved) | `{appUserId}/{jobId}.json`; jobId partition | `retention.outputDays`, default `TextRetention__Days`, ≤ 30 | the sweep (blob delete + `textDroppedAtUtc`, events partition delete); same backstop |
 | **History / record** | the entity minus its text; the index row; the links index (#546); the origins with digests | records | Durable entity state; `ConsultGenerationJobIndex`; `ConsultGenerationLinks` table | jobId; appUserId / reverse-ticks_jobId; sourceJobId / consumerJobId | **never** while the account exists | account closure only (§ 2.6) — hashes are stamped at completion and outlive everything else |
 | **Packages** (account forks) | `acct-*` versions: manifest and files, immutable | records | `org-account-packages` / `personal-account-packages` (§ 2.5); `PackageOwners` | `{name}/{version}/…`, `{name}/latest.json`; appUserId / name | **never** while the account exists | account closure only (§ 2.6) |
-| **Usage** | per-account, per-day counts (#552): consults completed, input and output tokens; per-run numbers on the record (#551) | records | `AccountUsage` table | appUserId / `yyyy-MM-dd` | indefinite — the store that survives every purge | none; numbers only, derived at completion, **never re-derived from records** |
+| **Usage** | per-account, per-day counts (#552): consults completed, input and output tokens; per-run numbers on the record (#551) | records | `AccountUsage` table | appUserId / `yyyy-MM-dd` | the read window — days past 92 go (#558); still the store that survives every text purge | the sweep drops days past the read clamp; numbers only, derived at completion, **never re-derived from records** |
 
 The account, identity, settings, claim and ownership tables of § 1.2 stay
 on the records account, and their deleters above are now the written
-rule: a user's unlink and DELETE, a claim's release, and — new, § 7 M6 —
-a cleanup for `AccountRateLimits` and abandoned `LinkedInLinkStates`.
+rule: a user's unlink and DELETE, a claim's release, and — built by #558 —
+the sweep's cleanup for `AccountRateLimits` windows, `AccountUsage` days
+and abandoned `LinkedInLinkStates`.
 
 ### 2.1 Inputs
 
@@ -166,8 +167,11 @@ day rows) and the admin page (#553, **built**: `GET Operator/Usage` behind the a
 recomputed from job records — which the sweep may purge and which a
 region may one day retire. `AccountRateLimits` is its older cousin: one
 row per account per hour, the same shape of store, and the cleanup rule
-(§ 7 M6) applies to both — rows older than the longest window anyone
-reads (90 days) go.
+(§ 7 M6, built by #558) applies to both — rows older than the longest
+window anyone reads go. That window is 92 days
+(`Account.MaxUsageWindowDays`, the #552 read clamp): the cleanup horizon
+derives from the constant the reads are clamped to, so the two can never
+drift.
 
 ### 2.5 Enterprise and personal accounts, apart
 
@@ -285,9 +289,12 @@ be checked against it once the text is gone; the record says when.
   this record only says which account goes first.
 - A second region's creation — the naming and the settings are here; the
   deployment is #515's follow-up.
-- Moving the Durable hub off `consultologistjobqueue` — the hub holds no
-  text once M2 and M3 land (the payload still carries inputs until purged;
-  `docs/STORAGE.md` 51–76 has the dedicated-account form if ever wanted).
+- Moving the Durable hub — the live hub follows `AzureWebJobsStorage` to
+  the host account `consultologistgroup8cbf` (the #558 recon corrected an
+  earlier version of this record that placed it on
+  `consultologistjobqueue`); the hub holds no text once M2 and M3 land
+  (the payload still carries inputs until purged; `docs/STORAGE.md` 51–76
+  has the dedicated-account form if ever wanted).
 - Encryption keys — platform-managed keys stay.
 
 ## 7. Migration order
@@ -299,7 +306,7 @@ be checked against it once the text is gone; the record says when.
 | M3 | Inputs on `job-inputs`; held form responses on `form-responses` | #547 built; #539 built |
 | M4 | Per-account retention drives the sweep over both classes | #548 |
 | M5 | `AccountUsage` on the records account, after the numbers exist — **built** | #551 → #552, both built |
-| M6 | Cleanup: the stale hub tables in `consultologistgroup8cbf`; the AML/training accounts (shared key off, or deleted); the `AccountRateLimits` / `LinkedInLinkStates` cleanup rule | #558 |
+| M6 | Cleanup: the stale hub artifacts (`canadaeastaifunction` on the host account; the dead `consultologistjobs` copy on `consultologistjobqueue` — § 1.1); the AML/training accounts (shared key off, or deleted); the `AccountRateLimits` / `AccountUsage` / `LinkedInLinkStates` cleanup rule — **code half built** (the sweep's legs); the deletions are operator steps on the operator's go | #558 |
 | M7 | Account forks into `org-`/`personal-account-packages` (writer and reader by `AccountKind`; the existing `workflow-packages` forks moved once); account closure (§ 2.6) | #559 (after #556) |
 
 M2 before M3 so the read path, the pointer fields and the new `DropText`
