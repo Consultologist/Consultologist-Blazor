@@ -982,6 +982,20 @@ internal sealed class FakeRegistryWriter : IWorkflowPackageRegistryWriter
         return Task.CompletedTask;
     }
 
+    public Task<int> DeletePackageAsync(string name, CancellationToken cancellationToken)
+    {
+        // #559: every blob under {name}/, the latest pointer included.
+        var keys = Blobs.Keys.Where(k => k.StartsWith($"{name}/", StringComparison.Ordinal)).ToList();
+        foreach (var key in keys)
+        {
+            Blobs.Remove(key);
+            _manifests.Remove(key);
+        }
+
+        LatestPointers.Remove(name);
+        return Task.FromResult(keys.Count);
+    }
+
     public Task SetLatestPointerAsync(string name, string version, CancellationToken cancellationToken)
     {
         LatestPointers[name] = version;
