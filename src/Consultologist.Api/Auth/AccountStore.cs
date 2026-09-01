@@ -49,9 +49,28 @@ public interface IAccountStore
 
     /// <summary>#557: the account's stored kind, for the outputs container choice at job start.</summary>
     Task<string?> GetAccountKindAsync(string appUserId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #553: every account with the display name it already carries — the
+    /// same AppUsers partition scan as ListAsync, projection widened. The
+    /// operator panel's join; numbers and ids elsewhere, names only from
+    /// here.
+    /// </summary>
+    Task<IReadOnlyList<AccountDirectoryEntry>> ListDirectoryAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #553: the tenant of the account's Entra identity, parsed from the
+    /// stored issuer — null when no identity row resolves to one. One
+    /// identity-partition read per account; fine at current counts, the
+    /// ListAsync argument.
+    /// </summary>
+    Task<string?> GetTenantIdAsync(string appUserId, CancellationToken cancellationToken);
 }
 
 public sealed record AccountSummary(string AppUserId, string Status);
+
+/// <summary>#553: an account as the operator panel joins it — id, the stored display name, status, kind.</summary>
+public sealed record AccountDirectoryEntry(string AppUserId, string DisplayName, string Status, string? AccountKind);
 
 public sealed class AccountStore : IAccountStore
 {
@@ -85,6 +104,40 @@ public sealed class AccountStore : IAccountStore
         }
 
         return accounts;
+    }
+
+    public async Task<IReadOnlyList<AccountDirectoryEntry>> ListDirectoryAsync(CancellationToken cancellationToken)
+    {
+        await EnsureTablesAsync(cancellationToken);
+
+        var accounts = new List<AccountDirectoryEntry>();
+        await foreach (var entity in _appUsers.QueryAsync<AppUserEntity>(
+                           user => user.PartitionKey == "app-user",
+                           select: new[] { "RowKey", "DisplayName", "Status", "AccountKind" },
+                           cancellationToken: cancellationToken))
+        {
+            accounts.Add(new AccountDirectoryEntry(entity.RowKey, entity.DisplayName, entity.Status, entity.AccountKind));
+        }
+
+        return accounts;
+    }
+
+    public async Task<string?> GetTenantIdAsync(string appUserId, CancellationToken cancellationToken)
+    {
+        await EnsureTablesAsync(cancellationToken);
+
+        await foreach (var link in _userIdentityLinks.QueryAsync<UserIdentityLinkEntity>(
+                           row => row.PartitionKey == appUserId,
+                           cancellationToken: cancellationToken))
+        {
+            if (string.Equals(link.Provider, IdentityProviders.EntraExternalId, StringComparison.Ordinal)
+                && TenantIds.TenantIdOf(link.Issuer) is { } tenantId)
+            {
+                return tenantId;
+            }
+        }
+
+        return null;
     }
 
     public async Task<AppAccount> ResolveOrCreateAsync(AuthenticatedUser user, CancellationToken cancellationToken)
