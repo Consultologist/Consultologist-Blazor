@@ -243,6 +243,11 @@ is required.
 - A **Macros pane**: macro files listed and edited like prompts
   (`addedPrompts`' shape: add by id, `macros/<id>.md`, a text pane), a new
   pending kind in the registry `BuildPendingKinds` and the draft payload.
+  Removing a declared macro (#571, built after the pane) strips its
+  references from every deliverable in the same publish — the validator
+  refuses an orphan and an undeclared reference alike, so neither half
+  may land alone; until publish the removal is pending state with
+  restore, and nothing is stripped eagerly.
 - The **Documents pane** gains, per deliverable, its macro list (ordered,
   from the declared macros) and the **signed** toggle; both mutate
   `resultsEdit` as `when` does.
