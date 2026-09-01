@@ -30,6 +30,8 @@ public class ConsultGenerationJobStarterTests
     private readonly IJobOutputsBlobStore _outputsBlobs = Substitute.For<IJobOutputsBlobStore>();
     private readonly IJobInputsBlobStore _inputsBlobs = Substitute.For<IJobInputsBlobStore>();
     private readonly IConsultGenerationLinkStore _links = Substitute.For<IConsultGenerationLinkStore>();
+    private readonly Consultologist.Api.Forms.IFormResponseStore _formResponses = Substitute.For<Consultologist.Api.Forms.IFormResponseStore>();
+    private readonly Consultologist.Api.Forms.IFormResponseBlobStore _formResponseBlobs = Substitute.For<Consultologist.Api.Forms.IFormResponseBlobStore>();
 
     // #290: a terse but genuine referral. These fixtures used to say
     // "draft", which is not a referral and which the content floor
@@ -61,7 +63,9 @@ public class ConsultGenerationJobStarterTests
             _settings,
             _outputsBlobs,
             _inputsBlobs,
-            _links);
+            _links,
+            _formResponses,
+            _formResponseBlobs);
     }
 
     private readonly FakeTerminologySource _terminology = new();
@@ -2151,6 +2155,106 @@ public class ConsultGenerationJobStarterTests
     public void ThePreviousRunKind_IsTheKebabWord()
     {
         Assert.Equal("previous-run", ConsultInputOriginKinds.PreviousRun);
+    }
+
+    // ----- #540: an input filled from a held form response -----
+
+    private void WithHeldResponse(string? held, DateTimeOffset? deletedAt = null, bool rowExists = true, bool blobExists = true)
+    {
+        var row = new Consultologist.Api.Forms.FormResponseRow(
+            "user-1", "triage-intake", "17", new DateTimeOffset(2026, 9, 1, 14, 2, 11, TimeSpan.Zero),
+            new[] { "consult_draft" }, "org-form-responses", "user-1/triage-intake-17.json", deletedAt);
+        _formResponses.TryGetAsync("user-1", "triage-intake", "17", Arg.Any<CancellationToken>())
+            .Returns(rowExists ? row : null);
+        _formResponseBlobs.ReadAsync(Arg.Any<Consultologist.Api.Forms.FormResponseBlobPointer>(), Arg.Any<CancellationToken>())
+            .Returns(blobExists
+                ? new Consultologist.Api.Forms.FormResponsePayload(
+                    1, "triage-intake", "17", new DateTimeOffset(2026, 9, 1, 14, 2, 11, TimeSpan.Zero),
+                    held == null
+                        ? new Dictionary<string, string>()
+                        : new Dictionary<string, string> { ["consult_draft"] = held })
+                : null);
+    }
+
+    private static ConsultGenerationRequest FormFilledRequest(string value) => new(
+        null,
+        Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = ConsultInputValue.OfText(value) },
+        InputFormRefs: new Dictionary<string, ConsultInputFormRef> { ["consult_draft"] = new("triage-intake", "17") });
+
+    [Fact]
+    public async Task AVerifiedFormFill_RecordsItsOrigin_AndTheReferenceLeavesTheRequest()
+    {
+        WithHeldResponse(Referral);
+
+        var captured = await StartV7AndCaptureAsync(FormFilledRequest(Referral));
+
+        Assert.Null(captured.Outcome.Error);
+        var input = captured.OrchestrationInput!;
+        Assert.Null(input.Request.InputFormRefs);
+        var origin = Assert.Single(input.InputDocumentOrigins!["consult_draft"]);
+        Assert.Equal(ConsultInputOriginKinds.FormResponse, origin.Kind);
+        Assert.Equal("triage-intake", origin.SourceFormId);
+        Assert.Equal("17", origin.SourceResponseId);
+        // Over the value as it entered the effective map — the rerun
+        // origin's own convention.
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(input.Inputs!["consult_draft"]), origin.TextSha256);
+        Assert.Null(origin.SourceJobId);
+    }
+
+    [Fact]
+    public async Task AnEditedValue_StillClaimingTheResponse_IsRefusedByName()
+    {
+        // The origin lie: the submitted value differs from the held answer.
+        WithHeldResponse(Referral);
+
+        var outcome = (await StartV7AndCaptureAsync(FormFilledRequest(Referral + " Edited."))).Outcome;
+
+        Assert.Equal(ConsultGenerationJobStartError.InputFormRefMismatch, outcome.Error);
+        Assert.Contains("does not equal the held response's value", outcome.ErrorDetail);
+    }
+
+    [Fact]
+    public async Task ADiscardedResponse_RefusesTheStart_NamingTheDay()
+    {
+        WithHeldResponse(Referral, deletedAt: new DateTimeOffset(2026, 9, 8, 3, 0, 0, TimeSpan.Zero));
+
+        var outcome = (await StartV7AndCaptureAsync(FormFilledRequest(Referral))).Outcome;
+
+        Assert.Equal(ConsultGenerationJobStartError.InputFormRefValuesDeleted, outcome.Error);
+        Assert.Contains("values deleted Sep 8, 2026", outcome.ErrorDetail);
+    }
+
+    [Fact]
+    public async Task AMissingResponse_IsOneAnswer_NeverAForbidden()
+    {
+        WithHeldResponse(Referral, rowExists: false);
+
+        var outcome = (await StartV7AndCaptureAsync(FormFilledRequest(Referral))).Outcome;
+
+        Assert.Equal(ConsultGenerationJobStartError.InputFormRefNotFound, outcome.Error);
+    }
+
+    [Fact]
+    public async Task AResponseWithoutTheInput_IsRefusedByName()
+    {
+        WithHeldResponse(held: null);
+
+        var outcome = (await StartV7AndCaptureAsync(FormFilledRequest(Referral))).Outcome;
+
+        Assert.Equal(ConsultGenerationJobStartError.InputFormRefMismatch, outcome.Error);
+        Assert.Contains("does not carry input 'consult_draft'", outcome.ErrorDetail);
+    }
+
+    [Fact]
+    public void TheFormRefShape_IsCheckedAtTheDoor()
+    {
+        Assert.Contains("carries a form reference but no value", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null,
+            InputFormRefs: new Dictionary<string, ConsultInputFormRef> { ["consult_draft"] = new("triage-intake", "17") })));
+        Assert.Contains("without a form id and response id", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = ConsultInputValue.OfText(Referral) },
+            InputFormRefs: new Dictionary<string, ConsultInputFormRef> { ["consult_draft"] = new("", "17") })));
     }
 
     [Fact]

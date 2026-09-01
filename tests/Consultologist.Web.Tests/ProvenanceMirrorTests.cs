@@ -22,6 +22,8 @@ public class ProvenanceMirrorTests
     [InlineData(typeof(Consultologist.Api.Workflow.TerminologySnapshot), typeof(WebAI.TerminologySnapshot))]
     // #551: the token counts, nested inside the node status on both sides.
     [InlineData(typeof(ApiModels.ConsultTokenUsage), typeof(WebAI.ConsultTokenUsage))]
+    // #540: the form-response reference the picker sends beside the value.
+    [InlineData(typeof(ApiModels.ConsultInputFormRef), typeof(WebAI.ConsultInputFormRef))]
     public void TheMirroredRecords_ExposeTheSameProperties(Type api, Type web)
     {
         // #551: a mirrored record may itself carry a mirrored record — the

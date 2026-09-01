@@ -81,7 +81,16 @@ public enum ConsultGenerationJobStartError
     // so the job would produce nothing. Knowable at start because conditions
     // read declared inputs only — refused rather than run. #434: refused AND
     // recorded — the outcome carries a job id born Failed.
-    NoApplicableDeliverable
+    NoApplicableDeliverable,
+
+    // #540: a slot's form-response reference names a response that is not
+    // this account's (or does not exist — one answer, never a 403), one
+    // whose values the discard or the sweep deleted (named by the day), or
+    // one whose held answer, coerced by the declaration, does not equal the
+    // submitted value. Well-formed, unsatisfiable: 422.
+    InputFormRefNotFound,
+    InputFormRefValuesDeleted,
+    InputFormRefMismatch
 }
 
 /// <summary>
@@ -153,6 +162,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly IJobOutputsBlobStore _outputsBlobs;
     private readonly IJobInputsBlobStore _inputsBlobs;
     private readonly IConsultGenerationLinkStore _links;
+    private readonly Forms.IFormResponseStore _formResponses;
+    private readonly Forms.IFormResponseBlobStore _formResponseBlobs;
 
     public ConsultGenerationJobStarter(
         ILogger<ConsultGenerationJobStarter> logger,
@@ -167,7 +178,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IAccountSettingsStore settingsStore,
         IJobOutputsBlobStore outputsBlobs,
         IJobInputsBlobStore inputsBlobs,
-        IConsultGenerationLinkStore links)
+        IConsultGenerationLinkStore links,
+        Forms.IFormResponseStore formResponses,
+        Forms.IFormResponseBlobStore formResponseBlobs)
     {
         _logger = logger;
         _packageStore = packageStore;
@@ -182,6 +195,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         _outputsBlobs = outputsBlobs;
         _inputsBlobs = inputsBlobs;
         _links = links;
+        _formResponses = formResponses;
+        _formResponseBlobs = formResponseBlobs;
     }
 
     public async Task<ConsultGenerationJobStartOutcome> StartAsync(
@@ -309,6 +324,21 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         request = resolution.Request;
 
+        // #540: form-response references are the other observed origin — the
+        // caller asserts a source BESIDE the value, and the server verifies
+        // the held response still holds that value coerced by the
+        // declaration. The origin itself is recorded after the effective map
+        // exists, over exactly what entered it.
+        var formVerification = await VerifyInputFormRefsAsync(request, package.Manifest, appUserId, cancellationToken);
+        if (formVerification.Error != null)
+        {
+            _logger.LogWarning("Rejected job start: a form-response reference was refused. Kind={Kind}", formVerification.ErrorKind);
+            return new ConsultGenerationJobStartOutcome(null, formVerification.ErrorKind, formVerification.Error);
+        }
+
+        var formRefs = formVerification.Refs;
+        request = request with { InputFormRefs = null };
+
         var extraction = await ExtractInputFilesAsync(request, package.Manifest, GateWaitFor(origin), cancellationToken);
         if (extraction.Error != null)
         {
@@ -342,6 +372,26 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // Set for some mismatches and not others — the single clearest
                 // reason this cannot be an allowlist over error kinds.
                 SenderSafeDetail: inputs.SenderSafeError);
+        }
+
+        // #540: the verified form fills, each naming its held response; the
+        // digest is over the value as it entered the effective map, the
+        // rerun origin's own convention.
+        if (formRefs is { Count: > 0 } && inputs.Effective != null)
+        {
+            inputOrigins = MergeOrigins(inputOrigins, formRefs
+                .Where(pair => inputs.Effective.ContainsKey(pair.Key))
+                .ToDictionary(
+                    pair => pair.Key,
+                    pair => (IReadOnlyList<ConsultInputOrigin>)new[]
+                    {
+                        new ConsultInputOrigin(
+                            ConsultInputOriginKinds.FormResponse,
+                            TextSha256: ConsultGenerationProvenance.Sha256Hex(inputs.Effective[pair.Key]),
+                            SourceFormId: pair.Value.FormId,
+                            SourceResponseId: pair.Value.ResponseId)
+                    },
+                    StringComparer.Ordinal));
         }
 
         // #549: a rerun replays the source's held inputs, so every effective
@@ -1207,6 +1257,120 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     }
 
     private static string ShortRunId(string jobId) => jobId.Length > 8 ? jobId[..8] + "…" : jobId;
+
+    /// <summary>
+    /// #540: the verified references, or the refusal. Refs come back for the
+    /// origin block to record once the effective map exists.
+    /// </summary>
+    internal sealed record FormRefVerification(
+        Dictionary<string, ConsultInputFormRef>? Refs,
+        ConsultGenerationJobStartError? ErrorKind = null,
+        string? Error = null);
+
+    /// <summary>
+    /// #540: a form reference is an assertion beside a value — the server
+    /// reads the held response itself and the submitted value must equal the
+    /// held answer coerced by the declaration (the same table the picker
+    /// filled with; FormResponseCoercion). Anything else refuses the start
+    /// by name: an unverifiable origin is worse than none, because recorded
+    /// provenance would then be a claim nobody checked. An edited input
+    /// simply carries no reference and no origin.
+    /// </summary>
+    internal async Task<FormRefVerification> VerifyInputFormRefsAsync(
+        ConsultGenerationRequest request,
+        WorkflowPackageManifest manifest,
+        string appUserId,
+        CancellationToken cancellationToken)
+    {
+        if (request.InputFormRefs is not { Count: > 0 })
+        {
+            return new FormRefVerification(null);
+        }
+
+        // Every declared input, not WorkflowVariableDeclarations.For — that
+        // helper filters to the typed slots, and a text slot fills too.
+        var declarations = (manifest.Inputs ?? new List<WorkflowInputSpec>())
+            .ToDictionary(input => input.Id, StringComparer.Ordinal);
+        var payloads = new Dictionary<(string FormId, string ResponseId), Forms.FormResponsePayload?>();
+        var verified = new Dictionary<string, ConsultInputFormRef>(StringComparer.Ordinal);
+
+        foreach (var (inputId, reference) in request.InputFormRefs)
+        {
+            if (request.Inputs is null || !request.Inputs.TryGetValue(inputId, out var submitted))
+            {
+                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch,
+                    $"Input '{inputId}' carries a form reference but no value.");
+            }
+
+            if (!declarations.TryGetValue(inputId, out var declaration))
+            {
+                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch,
+                    $"Input '{inputId}' is not declared by the package.");
+            }
+
+            var row = await _formResponses.TryGetAsync(appUserId, reference.FormId, reference.ResponseId, cancellationToken);
+            if (row == null)
+            {
+                // Foreign and absent are one answer, never a 403 — the
+                // store is keyed by this account, so a foreign response
+                // simply is not found.
+                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefNotFound,
+                    $"Input '{inputId}' refers to a held response that does not exist.");
+            }
+
+            if (row.DeletedAtUtc is { } deleted)
+            {
+                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefValuesDeleted,
+                    $"Input '{inputId}' refers to a response whose {Forms.FormsIntake.ValuesDeletedComplaint(deleted)}.");
+            }
+
+            var key = (reference.FormId, reference.ResponseId);
+            if (!payloads.TryGetValue(key, out var payload))
+            {
+                payload = await _formResponseBlobs.ReadAsync(
+                    new Forms.FormResponseBlobPointer(row.BlobContainer, row.BlobName), cancellationToken);
+                payloads[key] = payload;
+            }
+
+            if (payload == null)
+            {
+                // The sweep between the row read and this one.
+                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefValuesDeleted,
+                    $"Input '{inputId}' refers to a response whose values were deleted.");
+            }
+
+            if (!payload.Inputs.TryGetValue(inputId, out var held))
+            {
+                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch,
+                    $"The response does not carry input '{inputId}'.");
+            }
+
+            var (coerced, misfit) = FormResponseCoercion.Coerce(WorkflowDeclarationNode.Of(declaration), held);
+            if (misfit != null)
+            {
+                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch,
+                    $"The response's answer for input '{inputId}' {misfit}.");
+            }
+
+            if (coerced == null)
+            {
+                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch,
+                    $"The response holds no value for input '{inputId}'.");
+            }
+
+            // The wire form is the arbiter of equality, as the mirror tests'
+            // own convention: each value serialized through the converter.
+            if (System.Text.Json.JsonSerializer.Serialize(coerced) != System.Text.Json.JsonSerializer.Serialize(submitted))
+            {
+                return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch,
+                    $"Input '{inputId}' does not equal the held response's value.");
+            }
+
+            verified[inputId] = reference;
+        }
+
+        return new FormRefVerification(verified);
+    }
 
     private static IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? MergeOrigins(
         IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? first,

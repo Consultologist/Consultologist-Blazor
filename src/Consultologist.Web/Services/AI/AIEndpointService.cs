@@ -24,7 +24,10 @@ public interface IAIEndpointService
         DateTimeOffset? scheduledAtUtc = null,
         IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>? files = null,
         // #510: slots filled from previous runs — references the server resolves.
-        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputRef>>? refs = null);
+        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputRef>>? refs = null,
+        // #540: per filled input, the held form response its value came from —
+        // an assertion beside the value, verified by the server at start.
+        IReadOnlyDictionary<string, ConsultInputFormRef>? formRefs = null);
 
     Task<ConsultGenerationJobResponse> GetConsultGenerationJobAsync(string jobId);
 
@@ -157,7 +160,8 @@ public class AIEndpointService : IAIEndpointService
         string? workflowPackage = null,
         DateTimeOffset? scheduledAtUtc = null,
         IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>? files = null,
-        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputRef>>? refs = null)
+        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputRef>>? refs = null,
+        IReadOnlyDictionary<string, ConsultInputFormRef>? formRefs = null)
     {
         var stopwatch = Stopwatch.StartNew();
 
@@ -174,6 +178,9 @@ public class AIEndpointService : IAIEndpointService
                     : null,
                 refs is { Count: > 0 }
                     ? refs.ToDictionary(pair => pair.Key, pair => pair.Value.ToList(), StringComparer.Ordinal)
+                    : null,
+                formRefs is { Count: > 0 }
+                    ? formRefs.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
                     : null);
 
             _logger.LogInformation(
@@ -462,10 +469,17 @@ public record ConsultGenerationRequest(
     // #510: a slot filled from the account's own previous runs — one
     // deliverable per element; the server copies the text at start and
     // records the origin. A slot appears in one map only.
-    Dictionary<string, List<ConsultInputRef>>? InputRefs = null);
+    Dictionary<string, List<ConsultInputRef>>? InputRefs = null,
+    // #540: mirrors the Api's InputFormRefs — per filled input, the held
+    // form response its value was loaded from, an assertion BESIDE the
+    // value in Inputs, verified by the server at start.
+    Dictionary<string, ConsultInputFormRef>? InputFormRefs = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultInputRef.</summary>
 public sealed record ConsultInputRef(string JobId, string ResultId);
+
+/// <summary>Mirrors Consultologist.Api.Models.ConsultInputFormRef.</summary>
+public sealed record ConsultInputFormRef(string FormId, string ResponseId);
 
 /// <summary>Mirrors Consultologist.Api.Models.InputFilePayload. byte[] rides
 /// the JSON body as base64; no filename is sent.</summary>
@@ -484,7 +498,10 @@ public sealed record ConsultInputOrigin(
     string? TextSha256 = null,
     // #510: mirrors the Api's SourceJobId / SourceResultId — a previous-run element's source.
     string? SourceJobId = null,
-    string? SourceResultId = null);
+    string? SourceResultId = null,
+    // #540: mirrors the Api's SourceFormId / SourceResponseId — a form-response element's source.
+    string? SourceFormId = null,
+    string? SourceResponseId = null);
 public record ConsultGenerationJobStartResponse(string JobId, string StatusUrl);
 
 /// <summary>#390: the new job a reschedule created, and the one it replaced.</summary>
