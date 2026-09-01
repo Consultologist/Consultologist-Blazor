@@ -428,6 +428,67 @@
                 </div>
             </section>
 
+            @* #543: how a pushed form response becomes a consult — empty until
+               chosen, the unset line saying what unset means (the #518 rule). *@
+            <section class="content-card forms-mode-card">
+                <div class="form-stack">
+                    <h2 class="panel-title">
+                        Form responses
+                    </h2>
+
+                    <p class="panel-description">
+                        What happens when your Power Automate flow pushes a form response.
+                        Held responses wait for the setup form's <em>Load from a form
+                        response…</em> picker; with <em>run at once</em> each response starts
+                        a consult on your pinned package immediately — an answer that does
+                        not fit its input is refused by name, and the response stays held
+                        for the picker either way.
+                    </p>
+
+                    @if (formsModeMessage != null)
+                    {
+                        <FluentMessageBar Intent="@formsModeMessageIntent" AllowDismiss="false" Class="forms-mode-message">
+                            @formsModeMessage
+                        </FluentMessageBar>
+                    }
+
+                    <div class="state-panel">
+                        <span class="muted-text">Form responses</span>
+                        <strong class="forms-mode-state">@FormResponsePreference.Describe(formsModeChoice)</strong>
+                    </div>
+
+                    <div class="action-row">
+                        @if (formsModeChoice != FormResponsePreference.RunAtOnce)
+                        {
+                            <FluentButton Appearance="Appearance.Accent"
+                                          Class="forms-mode-run"
+                                          Disabled="@formsModeRequestInProgress"
+                                          @onclick="() => SaveFormsModeAsync(FormResponsePreference.RunAtOnce)">
+                                Run each response at once
+                            </FluentButton>
+                        }
+                        @if (formsModeChoice != FormResponsePreference.Hold)
+                        {
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Class="forms-mode-hold"
+                                          Disabled="@formsModeRequestInProgress"
+                                          @onclick="() => SaveFormsModeAsync(FormResponsePreference.Hold)">
+                                Hold for review
+                            </FluentButton>
+                        }
+                        @if (formsModeChoice != null)
+                        {
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Class="forms-mode-clear"
+                                          Disabled="@formsModeRequestInProgress"
+                                          @onclick="ClearFormsModeAsync">
+                                Back to not chosen
+                            </FluentButton>
+                        }
+                    </div>
+                </div>
+            </section>
+
             @* #548: how long a run's text is kept. Empty until chosen; each
                unset line says what unset means, and a change is refused by
                name rather than silently reordered. *@
@@ -857,6 +918,7 @@
             account = await AccountService.GetCurrentAccountAsync();
             await LoadScheduleTimeAsync();
         await LoadEmailPdfAsync();
+        await LoadFormsModeAsync();
         await LoadRetentionAsync();
         await LoadUsageAsync();
         await LoadSignaturesAsync();
@@ -1145,6 +1207,84 @@
         finally
         {
             emailPdfRequestInProgress = false;
+        }
+    }
+
+    // #543: how a pushed form response becomes a consult. null = not chosen.
+    private string? formsModeChoice;
+    private bool formsModeRequestInProgress;
+    private string? formsModeMessage;
+    private MessageIntent formsModeMessageIntent = MessageIntent.Info;
+
+    private async Task LoadFormsModeAsync()
+    {
+        try
+        {
+            var setting = await AccountService.GetSettingAsync(FormResponsePreference.SettingKey);
+            formsModeChoice = FormResponsePreference.Parse(setting?.Value);
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch
+        {
+            formsModeChoice = null;
+        }
+    }
+
+    private async Task SaveFormsModeAsync(string choice)
+    {
+        formsModeRequestInProgress = true;
+
+        try
+        {
+            await AccountService.SaveSettingAsync(
+                FormResponsePreference.SettingKey, choice, FormResponsePreference.ContentType);
+            formsModeChoice = choice;
+            formsModeMessage = choice == FormResponsePreference.RunAtOnce
+                ? "Each pushed response now starts a consult at once. An answer that does not fit is refused by name, and the response stays held for the picker."
+                : "Pushed responses are held for review on the setup form's picker.";
+            formsModeMessageIntent = MessageIntent.Success;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            formsModeMessage = ex.Message;
+            formsModeMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            formsModeRequestInProgress = false;
+        }
+    }
+
+    private async Task ClearFormsModeAsync()
+    {
+        formsModeRequestInProgress = true;
+
+        try
+        {
+            await AccountService.DeleteSettingAsync(FormResponsePreference.SettingKey);
+            formsModeChoice = null;
+            formsModeMessage = "Back to not chosen: responses are held for review, as before.";
+            formsModeMessageIntent = MessageIntent.Success;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            formsModeMessage = ex.Message;
+            formsModeMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            formsModeRequestInProgress = false;
         }
     }
 
