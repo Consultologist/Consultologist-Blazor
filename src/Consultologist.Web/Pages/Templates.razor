@@ -4568,7 +4568,9 @@
                         FailIfEmpty = edit.FailIfEmpty,
                         HasOutput = edit.OutputSchema != null,
                         Prompt = edit.Prompt ?? n.Prompt,
-                        Values = edit.Values ?? n.Values,
+                        // #572: no coalescing — the edit carries the effective
+                        // values on every emission, as Reproducible below.
+                        Values = edit.Values,
                         Reproducible = edit.Reproducible
                     };
                 }
@@ -4922,7 +4924,9 @@
             && change.FailIfEmpty == original.FailIfEmpty
             && change.Reproducible == original.Reproducible
             && (change.Prompt == null || change.Prompt == original.Prompt)
-            && (change.Values == null || change.Values.SequenceEqual(original.Values ?? Array.Empty<string>(), StringComparer.Ordinal)))
+            // #572: null-tolerant on BOTH sides — a non-classifier is null
+            // everywhere, and null no longer means "unchanged".
+            && (change.Values ?? Array.Empty<string>()).SequenceEqual(original.Values ?? Array.Empty<string>(), StringComparer.Ordinal))
         {
             nodeEdits.Remove(change.NodeId);
         }
@@ -6085,13 +6089,17 @@
                     && draftNodeEdit.FailIfEmpty == original.FailIfEmpty
                     && draftNodeEdit.Reproducible == original.Reproducible
                     && (draftNodeEdit.Prompt == null || draftNodeEdit.Prompt == original.Prompt)
-                    && (draftNodeEdit.Values == null || draftNodeEdit.Values.SequenceEqual(original.Values ?? Array.Empty<string>(), StringComparer.Ordinal))))
+                    && ((IEnumerable<string>?)draftNodeEdit.Values ?? Array.Empty<string>()).SequenceEqual(original.Values ?? Array.Empty<string>(), StringComparer.Ordinal)))
             {
                 continue;
             }
 
+            // #572: a pre-fix (version 14) draft can carry Values: null for a
+            // label-edited classifier; with the fold's coalescing gone that
+            // would restore as a DESTRUCTIVE empty list — coalesce against
+            // the original here, the one place null can still enter nodeEdits.
             nodeEdits[draftNodeEdit.NodeId] = new WorkflowNodeSummary.NodeChange(
-                draftNodeEdit.NodeId, draftNodeEdit.Label, draftNodeEdit.ForEach, draftNodeEdit.OutputSchema, draftNodeEdit.FailIfEmpty, draftNodeEdit.Prompt, draftNodeEdit.Values, draftNodeEdit.Reproducible);
+                draftNodeEdit.NodeId, draftNodeEdit.Label, draftNodeEdit.ForEach, draftNodeEdit.OutputSchema, draftNodeEdit.FailIfEmpty, draftNodeEdit.Prompt, draftNodeEdit.Values ?? original.Values?.ToList(), draftNodeEdit.Reproducible);
         }
 
         foreach (var draftBinding in bindings ?? new List<DraftBinding>())
