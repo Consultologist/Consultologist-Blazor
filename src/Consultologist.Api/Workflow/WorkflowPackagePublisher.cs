@@ -97,6 +97,7 @@ public sealed class WorkflowPackagePublisher
 
     public async Task<WorkflowPackagePublishResult> PublishAsync(
         string appUserId,
+        string? accountKind,
         WorkflowPackagePublishRequest request,
         CancellationToken cancellationToken)
     {
@@ -136,7 +137,7 @@ public sealed class WorkflowPackagePublisher
         }
 
         // #447: where it goes, decided before anything is read or written.
-        var target = await ResolveTargetNameAsync(appUserId, request, cancellationToken);
+        var target = await ResolveTargetNameAsync(appUserId, accountKind, request, cancellationToken);
         if (target.Result != null)
         {
             return target.Result;
@@ -176,7 +177,7 @@ public sealed class WorkflowPackagePublisher
         // blobs), while a package with no record is unreachable.
         await _ownership.RecordAsync(appUserId, name, cancellationToken);
         var nowUtc = _timeProvider.GetUtcNow();
-        var version = CalVerVersion.AssignNext(await ReadLatestAsync(name, cancellationToken), nowUtc);
+        var version = CalVerVersion.AssignNext(await ReadLatestAsync(accountKind, name, cancellationToken), nowUtc);
 
         // Server stamp: name, version, and lineage are asserted by the registry
         // writer, never by the client.
@@ -231,12 +232,12 @@ public sealed class WorkflowPackagePublisher
         {
             foreach (var (path, content) in files)
             {
-                await _writer.UploadFileAsync(name, stamped.Version, path, content, cancellationToken);
+                await _writer.UploadFileAsync(accountKind, name, stamped.Version, path, content, cancellationToken);
             }
 
             // The stamp before the manifest, so no version is ever reachable
             // without it; per attempt, since a conflict moves the version.
-            await _writer.UploadFileAsync(name, stamped.Version, WorkflowPackageStamp.FileName, stampJson, cancellationToken);
+            await _writer.UploadFileAsync(accountKind, name, stamped.Version, WorkflowPackageStamp.FileName, stampJson, cancellationToken);
 
             try
             {
@@ -244,6 +245,7 @@ public sealed class WorkflowPackagePublisher
                 // this commits, so files under a conflicted candidate stay orphaned
                 // but unreachable.
                 await _writer.CreateManifestAsync(
+                    accountKind,
                     name,
                     stamped.Version,
                     JsonSerializer.Serialize(stamped, ManifestJsonOptions),
@@ -252,7 +254,7 @@ public sealed class WorkflowPackagePublisher
             }
             catch (WorkflowPackageVersionConflictException) when (attempt < MaxPublishAttempts)
             {
-                var next = CalVerVersion.AssignNext(await ReadLatestAsync(name, cancellationToken), nowUtc);
+                var next = CalVerVersion.AssignNext(await ReadLatestAsync(accountKind, name, cancellationToken), nowUtc);
 
                 // A stale latest pointer can lag the conflicted manifest; never
                 // retry at or below the version that just collided.
@@ -270,7 +272,7 @@ public sealed class WorkflowPackagePublisher
             }
         }
 
-        await _writer.SetLatestPointerAsync(name, stamped.Version, cancellationToken);
+        await _writer.SetLatestPointerAsync(accountKind, name, stamped.Version, cancellationToken);
 
         // Publish activates, always: the pin flips to the concrete new version.
         var concreteRef = $"{name}@{stamped.Version}";
@@ -292,9 +294,9 @@ public sealed class WorkflowPackagePublisher
             Array.Empty<string>());
     }
 
-    private async Task<CalVerVersion?> ReadLatestAsync(string name, CancellationToken cancellationToken)
+    private async Task<CalVerVersion?> ReadLatestAsync(string? accountKind, string name, CancellationToken cancellationToken)
     {
-        var latestText = await _writer.ReadLatestVersionAsync(name, cancellationToken);
+        var latestText = await _writer.ReadLatestVersionAsync(accountKind, name, cancellationToken);
         return latestText != null && CalVerVersion.TryParse(latestText, out var latest) ? latest : null;
     }
 
@@ -504,6 +506,7 @@ public sealed class WorkflowPackagePublisher
     /// </summary>
     private async Task<TargetName> ResolveTargetNameAsync(
         string appUserId,
+        string? accountKind,
         WorkflowPackagePublishRequest request,
         CancellationToken cancellationToken)
     {
@@ -524,7 +527,7 @@ public sealed class WorkflowPackagePublisher
 
             var name = WorkflowPackageNaming.ForAccount(appUserId, request.NewPackageSlug);
 
-            if (await _writer.ReadLatestVersionAsync(name, cancellationToken) != null
+            if (await _writer.ReadLatestVersionAsync(accountKind, name, cancellationToken) != null
                 || await _ownership.OwnsAsync(appUserId, name, cancellationToken))
             {
                 return new(null, new WorkflowPackagePublishResult(null, new[] { $"A package named {name} already exists; choose another slug, or publish a new version of it." }));

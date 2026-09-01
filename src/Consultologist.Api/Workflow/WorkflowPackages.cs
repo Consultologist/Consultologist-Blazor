@@ -169,7 +169,7 @@ public sealed class WorkflowPackages
         // the account's FIRST package — the derived name — and its versions.
         // MinePackages below is the set; this stays until that client retires.
         var name = WorkflowPackageNaming.ForAccount(account.AppUserId);
-        var listed = await ListAccountPackagesAsync(name, new HashSet<string>(StringComparer.Ordinal) { name }, cancellationToken);
+        var listed = await ListAccountPackagesAsync(account.AccountKind, name, new HashSet<string>(StringComparer.Ordinal) { name }, cancellationToken);
 
         if (listed.Error != null)
         {
@@ -216,7 +216,7 @@ public sealed class WorkflowPackages
 
         var root = WorkflowPackageNaming.ForAccount(account.AppUserId);
         var owned = new HashSet<string>(await _ownership.ListAsync(account.AppUserId, cancellationToken), StringComparer.Ordinal) { root };
-        var listed = await ListAccountPackagesAsync(root, owned, cancellationToken);
+        var listed = await ListAccountPackagesAsync(account.AccountKind, root, owned, cancellationToken);
 
         if (listed.Error != null)
         {
@@ -235,11 +235,13 @@ public sealed class WorkflowPackages
     /// process lifetime (versions are immutable).
     /// </summary>
     private async Task<AccountListing> ListAccountPackagesAsync(
+        string? accountKind,
         string prefix,
         IReadOnlySet<string> ownedNames,
         CancellationToken cancellationToken)
     {
-        var container = _containerFactory.GetContainer(null);
+        // #602: the account's forks live in its kind's container.
+        var container = _containerFactory.GetContainer(accountKind);
         var blobNames = new List<string>();
         var packages = new List<PublicPackageSummary>();
 
@@ -662,7 +664,9 @@ public sealed class WorkflowPackages
         WorkflowPackagePublishResult result;
         try
         {
-            result = await _publisher.PublishAsync(account.AppUserId, publishRequest, cancellationToken);
+            // #602: the kind picks the fork's private container; AppAccount
+            // already carries it — no extra read.
+            result = await _publisher.PublishAsync(account.AppUserId, account.AccountKind, publishRequest, cancellationToken);
         }
         catch (Azure.RequestFailedException ex)
         {

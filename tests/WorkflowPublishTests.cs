@@ -163,13 +163,32 @@ public class WorkflowPackagePublisherTests
     }
 
     [Fact]
+    public async Task Publish_CarriesTheAccountKind_OnEveryWrite()
+    {
+        // #602: the kind picks which of the private pair the fork lives in, so
+        // every write — files, stamp, manifest, and the latest pointer — must
+        // carry it; one kindless write would strand a blob in the wrong
+        // container. Where the kind maps to a container is the factory
+        // theory's job (TheKind_NamesThePrivateContainer).
+        var (publisher, writer, _) = CreatePublisher();
+        var manifest = V5Fixtures.Manifest();
+
+        var result = await publisher.PublishAsync(OwnerId, SignInKinds.Organisation, Request(manifest: manifest, files: V5Fixtures.Files(manifest)), CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        Assert.NotEmpty(writer.KindByPath);
+        Assert.All(writer.KindByPath, pair => Assert.Equal(SignInKinds.Organisation, pair.Value));
+        Assert.Contains($"{AccountName}/latest.json", writer.KindByPath.Keys);
+    }
+
+    [Fact]
     public async Task Publish_StampsNameVersionAndLineage_UploadsAndActivates()
     {
         var (publisher, writer, settings) = CreatePublisher();
         // The client's name/version/derivedFrom are hostile on purpose.
         var manifest = V5Fixtures.Manifest() with { Name = "general", Version = "v9999.01.1", DerivedFrom = "evil@v2020.01.1" };
 
-        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: V5Fixtures.Files(manifest)), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: V5Fixtures.Files(manifest)), CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
         Assert.Equal(AccountName, result.Response!.Name);
@@ -193,7 +212,7 @@ public class WorkflowPackagePublisherTests
         var manifest = V5Fixtures.Manifest();
         var files = V5Fixtures.Files(manifest);
 
-        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: files), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: files), CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
 
@@ -225,7 +244,7 @@ public class WorkflowPackagePublisherTests
         }).ToList();
         manifest = manifest with { Nodes = nodes };
 
-        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: V5Fixtures.Files(manifest)), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: V5Fixtures.Files(manifest)), CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
         var stored = writer.ReadManifest(AccountName, "v2026.07.1");
@@ -250,7 +269,7 @@ public class WorkflowPackagePublisherTests
             Result = "node:assemble-alt"
         };
 
-        var result = await publisher.PublishAsync(OwnerId, new WorkflowPackagePublishRequest(SourceRef, manifest, V6Fixtures.Files(manifest)), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, new WorkflowPackagePublishRequest(SourceRef, manifest, V6Fixtures.Files(manifest)), CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
         var stored = writer.ReadManifest(AccountName, "v2026.07.1");
@@ -285,7 +304,7 @@ public class WorkflowPackagePublisherTests
                 .ToList()
         };
 
-        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: V5Fixtures.Files(manifest)), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: V5Fixtures.Files(manifest)), CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
         var stored = writer.ReadManifest(AccountName, "v2026.07.1");
@@ -317,7 +336,7 @@ public class WorkflowPackagePublisherTests
             """;
         files["data/guidelines/neutropenic-fever.md"] = "Assess for neutropenic fever risk.";
 
-        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: files), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: files), CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
         Assert.Equal("data/guidelines/", writer.ReadManifest(AccountName, "v2026.07.1").Data!["guidelines"]);
@@ -358,7 +377,7 @@ public class WorkflowPackagePublisherTests
         var (publisher, _, _) = CreatePublisher(parentManifest: parentManifest, parentFiles: parentFiles);
 
         var result = await publisher.PublishAsync(
-            OwnerId, Request(manifest: childManifest, files: childFiles), CancellationToken.None);
+            OwnerId, null, Request(manifest: childManifest, files: childFiles), CancellationToken.None);
 
         // A warning, never a rejection.
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
@@ -377,7 +396,7 @@ public class WorkflowPackagePublisherTests
             parentManifest: parentManifest, parentFiles: V5Fixtures.Files(parentManifest));
 
         var result = await publisher.PublishAsync(
-            OwnerId, Request(manifest: childManifest, files: childFiles), CancellationToken.None);
+            OwnerId, null, Request(manifest: childManifest, files: childFiles), CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
         Assert.DoesNotContain(result.Response!.Warnings ?? new List<string>(), w => w.Contains("no data collection did"));
@@ -393,7 +412,7 @@ public class WorkflowPackagePublisherTests
         var (publisher, _, _) = CreatePublisher(parentManifest: parentManifest, parentFiles: parentFiles);
 
         var result = await publisher.PublishAsync(
-            OwnerId, Request(manifest: childManifest, files: childFiles), CancellationToken.None);
+            OwnerId, null, Request(manifest: childManifest, files: childFiles), CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
         Assert.DoesNotContain(result.Response!.Warnings ?? new List<string>(), w => w.Contains("no data collection did"));
@@ -411,7 +430,7 @@ public class WorkflowPackagePublisherTests
         var (publisher, _, _) = CreatePublisher(parentManifest: parentManifest, parentFiles: parentFiles);
 
         var result = await publisher.PublishAsync(
-            OwnerId, Request(manifest: childManifest, files: childFiles), CancellationToken.None);
+            OwnerId, null, Request(manifest: childManifest, files: childFiles), CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
         Assert.DoesNotContain(result.Response!.Warnings ?? new List<string>(), w => w.Contains("no data collection did"));
@@ -435,7 +454,7 @@ public class WorkflowPackagePublisherTests
         var files = V5Fixtures.Files(manifest);
         files["data/note_type.txt"] = "consult note";
 
-        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: files), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: files), CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
 
@@ -449,9 +468,9 @@ public class WorkflowPackagePublisherTests
     public async Task Publish_SecondVersion_IncrementsFromLatest()
     {
         var (publisher, writer, _) = CreatePublisher();
-        Assert.True((await publisher.PublishAsync(OwnerId, Request(), CancellationToken.None)).Succeeded);
+        Assert.True((await publisher.PublishAsync(OwnerId, null, Request(), CancellationToken.None)).Succeeded);
 
-        var second = await publisher.PublishAsync(OwnerId, Request(), CancellationToken.None);
+        var second = await publisher.PublishAsync(OwnerId, null, Request(), CancellationToken.None);
 
         Assert.True(second.Succeeded);
         Assert.Equal("v2026.07.2", second.Response!.Version);
@@ -477,7 +496,7 @@ public class WorkflowPackagePublisherTests
         var manifest = Titled();
 
         var result = await publisher.PublishAsync(
-            OwnerId, Request(manifest: manifest, files: V5Fixtures.Files(manifest)), CancellationToken.None);
+            OwnerId, null, Request(manifest: manifest, files: V5Fixtures.Files(manifest)), CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
         var stored = writer.ReadManifest(AccountName, "v2026.07.1");
@@ -503,7 +522,7 @@ public class WorkflowPackagePublisherTests
         var manifest = V8Fixtures.Typed();
 
         var result = await publisher.PublishAsync(
-            OwnerId, Request(manifest: manifest, files: V5Fixtures.Files(manifest)), CancellationToken.None);
+            OwnerId, null, Request(manifest: manifest, files: V5Fixtures.Files(manifest)), CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
         Assert.Null(writer.ReadManifest(AccountName, "v2026.07.1").Tags);
@@ -515,7 +534,7 @@ public class WorkflowPackagePublisherTests
     {
         // The source is the account's own package: no name is crossed.
         var writer = new FakeRegistryWriter();
-        await writer.CreateManifestAsync(AccountName, "v2026.07.1", "{}", CancellationToken.None);
+        await writer.CreateManifestAsync(null, AccountName, "v2026.07.1", "{}", CancellationToken.None);
         var ownership = new FakeOwnership();
         ownership.Records.Add((OwnerId, AccountName));
         var (publisher, _, _) = CreatePublisher(writer: writer, sourceRef: $"{AccountName}@v2026.07.1", ownership: ownership);
@@ -523,6 +542,7 @@ public class WorkflowPackagePublisherTests
 
         var result = await publisher.PublishAsync(
             OwnerId,
+            null,
             Request(source: $"{AccountName}@v2026.07.1", manifest: manifest, files: V5Fixtures.Files(manifest)),
             CancellationToken.None);
 
@@ -542,7 +562,7 @@ public class WorkflowPackagePublisherTests
         var ownership = new FakeOwnership();
         var (publisher, _, _) = CreatePublisher(ownership: ownership);
 
-        var result = await publisher.PublishAsync(OwnerId, Request(), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(), CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
         Assert.Equal(AccountName, result.Response!.Name);
@@ -558,6 +578,7 @@ public class WorkflowPackagePublisherTests
 
         var result = await publisher.PublishAsync(
             OwnerId,
+            null,
             Request(manifest: manifest, files: V5Fixtures.Files(manifest)) with { NewPackageSlug = "breast-oncology" },
             CancellationToken.None);
 
@@ -583,7 +604,7 @@ public class WorkflowPackagePublisherTests
         var ownership = new FakeOwnership();
         var (publisher, writer, settings) = CreatePublisher(ownership: ownership);
 
-        var result = await publisher.PublishAsync(OwnerId, Request() with { NewPackageSlug = "oncology/breast" }, CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request() with { NewPackageSlug = "oncology/breast" }, CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
         Assert.Equal("acct-0123456789ab/oncology/breast@v2026.07.1", result.Response!.Ref);
@@ -599,12 +620,13 @@ public class WorkflowPackagePublisherTests
         var ownership = new FakeOwnership();
         ownership.Records.Add((OwnerId, "acct-0123456789ab-breast-oncology"));
         var writer = new FakeRegistryWriter();
-        await writer.CreateManifestAsync("acct-0123456789ab-breast-oncology", "v2026.07.1", "{}", CancellationToken.None);
+        await writer.CreateManifestAsync(null, "acct-0123456789ab-breast-oncology", "v2026.07.1", "{}", CancellationToken.None);
         var (publisher, _, _) = CreatePublisher(writer: writer, ownership: ownership, sourceRef: "acct-0123456789ab-breast-oncology@v2026.07.1");
         var manifest = Titled();
 
         var result = await publisher.PublishAsync(
             OwnerId,
+            null,
             Request(source: "acct-0123456789ab-breast-oncology@v2026.07.1", manifest: manifest, files: V5Fixtures.Files(manifest))
                 with { Target = "acct-0123456789ab-breast-oncology" },
             CancellationToken.None);
@@ -620,13 +642,13 @@ public class WorkflowPackagePublisherTests
     {
         var (publisher, _, _) = CreatePublisher();
 
-        var result = await publisher.PublishAsync(OwnerId, Request() with { Target = "acct-999999999999" }, CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request() with { Target = "acct-999999999999" }, CancellationToken.None);
 
         Assert.True(result.Forbidden);
         Assert.Contains("Target package is not owned by this account.", result.Errors);
 
         // And a slugged name of one's own root with no record is nobody's yet.
-        var unrecorded = await publisher.PublishAsync(OwnerId, Request() with { Target = "acct-0123456789ab-breast-oncology" }, CancellationToken.None);
+        var unrecorded = await publisher.PublishAsync(OwnerId, null, Request() with { Target = "acct-0123456789ab-breast-oncology" }, CancellationToken.None);
         Assert.True(unrecorded.Forbidden);
     }
 
@@ -637,7 +659,7 @@ public class WorkflowPackagePublisherTests
     {
         var (publisher, _, _) = CreatePublisher();
 
-        var result = await publisher.PublishAsync(OwnerId, Request() with { Target = target }, CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request() with { Target = target }, CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains(expected, result.Errors);
@@ -651,7 +673,7 @@ public class WorkflowPackagePublisherTests
     {
         var (publisher, _, _) = CreatePublisher();
 
-        var result = await publisher.PublishAsync(OwnerId, Request() with { NewPackageSlug = slug }, CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request() with { NewPackageSlug = slug }, CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains(result.Errors, error => error.StartsWith("NewPackageSlug must be", StringComparison.Ordinal));
@@ -661,11 +683,11 @@ public class WorkflowPackagePublisherTests
     public async Task Publish_AsANewPackage_WhoseNameExists_IsRefused()
     {
         var writer = new FakeRegistryWriter();
-        await writer.CreateManifestAsync("acct-0123456789ab/breast-oncology", "v2026.07.1", "{}", CancellationToken.None);
-        await writer.SetLatestPointerAsync("acct-0123456789ab/breast-oncology", "v2026.07.1", CancellationToken.None);
+        await writer.CreateManifestAsync(null, "acct-0123456789ab/breast-oncology", "v2026.07.1", "{}", CancellationToken.None);
+        await writer.SetLatestPointerAsync(null, "acct-0123456789ab/breast-oncology", "v2026.07.1", CancellationToken.None);
         var (publisher, _, _) = CreatePublisher(writer: writer);
 
-        var result = await publisher.PublishAsync(OwnerId, Request() with { NewPackageSlug = "breast-oncology" }, CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request() with { NewPackageSlug = "breast-oncology" }, CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains("A package named acct-0123456789ab/breast-oncology already exists; choose another slug, or publish a new version of it.", result.Errors);
@@ -677,7 +699,7 @@ public class WorkflowPackagePublisherTests
         var (publisher, _, _) = CreatePublisher();
 
         var result = await publisher.PublishAsync(
-            OwnerId, Request() with { Target = AccountName, NewPackageSlug = "x" }, CancellationToken.None);
+            OwnerId, null, Request() with { Target = AccountName, NewPackageSlug = "x" }, CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains(result.Errors, error => error.StartsWith("Target and NewPackageSlug are exclusive", StringComparison.Ordinal));
@@ -694,7 +716,7 @@ public class WorkflowPackagePublisherTests
         var manifest = V5Fixtures.Manifest();
         var files = V5Fixtures.Files(manifest);
 
-        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: files), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: files), CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
         var expected = WorkflowPackageStamp.Compute(manifest, files, Catalog, new List<string>());
@@ -731,7 +753,7 @@ public class WorkflowPackagePublisherTests
         var files = V5Fixtures.Files(manifest).Where(pair => !pair.Key.StartsWith("schemas/", StringComparison.Ordinal))
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
 
-        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: files), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: files), CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
         var stamp = WorkflowPackageStamp.Read(writer.Blobs[StampBlob("v2026.07.1")], "x@v1");
@@ -746,7 +768,7 @@ public class WorkflowPackagePublisherTests
         // without its stamp.
         var (publisher, writer, _) = CreatePublisher();
 
-        await publisher.PublishAsync(OwnerId, Request(), CancellationToken.None);
+        await publisher.PublishAsync(OwnerId, null, Request(), CancellationToken.None);
 
         var stampAt = writer.Writes.IndexOf(StampBlob("v2026.07.1"));
         var manifestAt = writer.Writes.IndexOf($"{AccountName}/v2026.07.1/manifest.json");
@@ -758,10 +780,10 @@ public class WorkflowPackagePublisherTests
     public async Task Publish_VersionConflict_StampsTheFinalVersion()
     {
         var writer = new FakeRegistryWriter();
-        await writer.CreateManifestAsync(AccountName, "v2026.07.1", "{}", CancellationToken.None);
+        await writer.CreateManifestAsync(null, AccountName, "v2026.07.1", "{}", CancellationToken.None);
         var (publisher, _, _) = CreatePublisher(writer: writer);
 
-        var result = await publisher.PublishAsync(OwnerId, Request(), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(), CancellationToken.None);
 
         Assert.Equal("v2026.07.2", result.Response!.Version);
         Assert.Contains(StampBlob("v2026.07.2"), writer.Blobs.Keys);
@@ -780,7 +802,7 @@ public class WorkflowPackagePublisherTests
         var files = V5Fixtures.Files(manifest);
         files[WorkflowPackageStamp.FileName] = "{}";
 
-        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: files), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: files), CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains(
@@ -800,7 +822,7 @@ public class WorkflowPackagePublisherTests
         var files = V5Fixtures.Files(manifest);
         files["schemas/extra.json"] = TestOutputContracts.ConceptListSchema.TrimEnd().TrimEnd('}') + ", \"x-drift\": true }";
 
-        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: files), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: files), CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains($"Schema 'extra' matches no contract in {Catalog.ResolvedRef}.", result.Errors);
@@ -814,10 +836,10 @@ public class WorkflowPackagePublisherTests
         // pointer lags behind (stale pointer) — the retry must bump past the
         // collision, not re-collide.
         var writer = new FakeRegistryWriter();
-        await writer.CreateManifestAsync(AccountName, "v2026.07.1", "{}", CancellationToken.None);
+        await writer.CreateManifestAsync(null, AccountName, "v2026.07.1", "{}", CancellationToken.None);
         var (publisher, _, _) = CreatePublisher(writer: writer);
 
-        var result = await publisher.PublishAsync(OwnerId, Request(), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(), CancellationToken.None);
 
         Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
         Assert.Equal("v2026.07.2", result.Response!.Version);
@@ -829,7 +851,7 @@ public class WorkflowPackagePublisherTests
     {
         var (publisher, _, _) = CreatePublisher();
 
-        var result = await publisher.PublishAsync(OwnerId, Request(source: "acct-999999999999@v2026.07.1"), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(source: "acct-999999999999@v2026.07.1"), CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.True(result.Forbidden);
@@ -843,7 +865,7 @@ public class WorkflowPackagePublisherTests
     {
         var (publisher, _, _) = CreatePublisher();
 
-        var result = await publisher.PublishAsync(OwnerId, Request(source: source), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(source: source), CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.False(result.Forbidden);
@@ -855,7 +877,7 @@ public class WorkflowPackagePublisherTests
     {
         var (publisher, _, _) = CreatePublisher();
 
-        var result = await publisher.PublishAsync(OwnerId, Request(source: "general@v2020.01.1"), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(source: "general@v2020.01.1"), CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains(result.Errors, error => error.Contains("could not be resolved", StringComparison.Ordinal));
@@ -884,7 +906,7 @@ public class WorkflowPackagePublisherTests
         var files = V5Fixtures.Files(manifest);
         files[path] = "content";
 
-        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: files), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: files), CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains(result.Errors, error => error.Contains(path, StringComparison.Ordinal) && error.Contains("not allowed", StringComparison.Ordinal));
@@ -898,7 +920,7 @@ public class WorkflowPackagePublisherTests
         var files = V5Fixtures.Files(manifest);
         files["prompts/unreferenced.md"] = "not in the manifest";
 
-        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: files), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: files), CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains(result.Errors, error => error.Contains("prompts/unreferenced.md", StringComparison.Ordinal) && error.Contains("not referenced", StringComparison.Ordinal));
@@ -912,7 +934,7 @@ public class WorkflowPackagePublisherTests
         var files = V5Fixtures.Files(manifest);
         files[V5Fixtures.StandardsDir + "hpi.md"] = new string('x', 300 * 1024);
 
-        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: files), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: files), CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains(result.Errors, error => error.Contains("per-file limit", StringComparison.Ordinal));
@@ -926,7 +948,7 @@ public class WorkflowPackagePublisherTests
         var files = V5Fixtures.Files(manifest);
         files.Remove("prompts/identify-problem.md");
 
-        var result = await publisher.PublishAsync(OwnerId, Request(manifest: manifest, files: files), CancellationToken.None);
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: files), CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.NotEmpty(result.Errors);
@@ -956,17 +978,21 @@ internal sealed class FakeRegistryWriter : IWorkflowPackageRegistryWriter
     /// <summary>#433: every blob path in the order it was written — the stamp must precede the manifest.</summary>
     public List<string> Writes { get; } = new();
 
-    public Task<string?> ReadLatestVersionAsync(string name, CancellationToken cancellationToken) =>
+    /// <summary>#602: the kind each write carried, by blob path (the latest pointer under "{name}/latest.json"). A recorder — the kind→container mapping is the factory theory's job.</summary>
+    public Dictionary<string, string?> KindByPath { get; } = new(StringComparer.Ordinal);
+
+    public Task<string?> ReadLatestVersionAsync(string? accountKind, string name, CancellationToken cancellationToken) =>
         Task.FromResult(LatestPointers.TryGetValue(name, out var version) ? version : null);
 
-    public Task UploadFileAsync(string name, string version, string path, string content, CancellationToken cancellationToken)
+    public Task UploadFileAsync(string? accountKind, string name, string version, string path, string content, CancellationToken cancellationToken)
     {
         Blobs[$"{name}/{version}/{path}"] = content;
         Writes.Add($"{name}/{version}/{path}");
+        KindByPath[$"{name}/{version}/{path}"] = accountKind;
         return Task.CompletedTask;
     }
 
-    public Task CreateManifestAsync(string name, string version, string manifestJson, CancellationToken cancellationToken)
+    public Task CreateManifestAsync(string? accountKind, string name, string version, string manifestJson, CancellationToken cancellationToken)
     {
         var key = $"{name}/{version}/manifest.json";
 
@@ -979,6 +1005,7 @@ internal sealed class FakeRegistryWriter : IWorkflowPackageRegistryWriter
 
         Blobs[key] = manifestJson;
         Writes.Add(key);
+        KindByPath[key] = accountKind;
         return Task.CompletedTask;
     }
 
@@ -996,9 +1023,10 @@ internal sealed class FakeRegistryWriter : IWorkflowPackageRegistryWriter
         return Task.FromResult(keys.Count);
     }
 
-    public Task SetLatestPointerAsync(string name, string version, CancellationToken cancellationToken)
+    public Task SetLatestPointerAsync(string? accountKind, string name, string version, CancellationToken cancellationToken)
     {
         LatestPointers[name] = version;
+        KindByPath[$"{name}/latest.json"] = accountKind;
         return Task.CompletedTask;
     }
 
