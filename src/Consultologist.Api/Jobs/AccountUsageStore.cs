@@ -19,8 +19,9 @@ public sealed record AccountUsageDay(
 /// #552: the derived usage store — the #545 record's class 4. A records-account
 /// table (PK appUserId, RK yyyy-MM-dd UTC), written once per job at its
 /// completion from the numbers #551 stamped on the record, NEVER re-derived
-/// from job records (which the sweep purges), kept indefinitely (M6's 90-day
-/// cleanup rule is #558's). AccountRateLimits is its older cousin and this
+/// from job records (which the sweep purges), kept for the read window —
+/// the sweep drops days past <see cref="Account.MaxUsageWindowDays"/>
+/// (#558). AccountRateLimits is its older cousin and this
 /// copies its increment: Azure Tables has no atomic add, so read-modify-write
 /// under the ETag with a bounded retry on the create/update races.
 /// </summary>
@@ -38,6 +39,14 @@ public interface IAccountUsageStore
     /// day-keyed index. Reads only the derived store, never job records.
     /// </summary>
     Task<IReadOnlyList<AccountUsageDay>> ListAllAsync(string fromDay, string toDay, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #558: drops the account's days strictly older than the cutoff and
+    /// returns how many went. The cutoff comes from
+    /// <see cref="TableAccountUsageStore.CleanupCutoffDay"/> — derived from
+    /// the read clamp, so no day anyone can still read is ever dropped.
+    /// </summary>
+    Task<int> DeleteDaysBeforeAsync(string appUserId, string cutoffDay, CancellationToken cancellationToken);
 }
 
 public sealed class TableAccountUsageStore : IAccountUsageStore
@@ -62,6 +71,38 @@ public sealed class TableAccountUsageStore : IAccountUsageStore
     /// </summary>
     internal static string DayKey(DateTimeOffset now) =>
         now.UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// #558's cutoff: the read clamp ago, as a day key — the same
+    /// <see cref="Account.MaxUsageWindowDays"/> the reads are clamped to, so
+    /// read and cleanup can never drift.
+    /// </summary>
+    internal static string CleanupCutoffDay(DateTimeOffset now) =>
+        DayKey(now.AddDays(-Account.MaxUsageWindowDays));
+
+    public async Task<int> DeleteDaysBeforeAsync(string appUserId, string cutoffDay, CancellationToken cancellationToken)
+    {
+        await EnsureTableAsync(cancellationToken);
+
+        var deleted = 0;
+        var filter = TableClient.CreateQueryFilter(
+            $"PartitionKey eq {appUserId} and RowKey lt {cutoffDay}");
+        await foreach (var entity in _table.QueryAsync<AccountUsageEntity>(
+            filter, select: new[] { "PartitionKey", "RowKey" }, cancellationToken: cancellationToken))
+        {
+            try
+            {
+                await _table.DeleteEntityAsync(entity.PartitionKey, entity.RowKey, cancellationToken: cancellationToken);
+                deleted++;
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                // A concurrent run got there first.
+            }
+        }
+
+        return deleted;
+    }
 
     public async Task AddAsync(string appUserId, string day, int consultsCompleted, ConsultTokenUsage? tokens, CancellationToken cancellationToken)
     {

@@ -22,6 +22,15 @@ public interface IAccountRateLimiter
     /// on every retry and starve the account permanently.
     /// </summary>
     Task<RateLimitDecision> TryAcquireAsync(string appUserId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #558: drops the account's windows strictly older than the cutoff and
+    /// returns how many went. The cutoff is itself a window key
+    /// (<see cref="TableAccountRateLimiter.CleanupCutoffWindow"/>) — the keys
+    /// are ordinal-comparable, so <c>RowKey lt</c> IS the date comparison.
+    /// A row deleted underneath by a concurrent run is tolerated, not a fault.
+    /// </summary>
+    Task<int> DeleteWindowsBeforeAsync(string appUserId, string cutoffWindow, CancellationToken cancellationToken);
 }
 
 public static class AccountRateLimiterExtensions
@@ -206,6 +215,44 @@ public sealed class TableAccountRateLimiter : IAccountRateLimiter
         now.UtcDateTime.ToString("yyyy-MM-ddTHH", CultureInfo.InvariantCulture);
 
     /// <summary>
+    /// #558's cleanup horizon: rows older than the longest window anyone
+    /// reads go. Defined FROM the read clamp so read and cleanup can never
+    /// drift — a wider read window would widen retention with it.
+    /// </summary>
+    internal const int CleanupHorizonDays = Account.MaxUsageWindowDays;
+
+    /// <summary>
+    /// The cutoff <see cref="IAccountRateLimiter.DeleteWindowsBeforeAsync"/>
+    /// takes: the horizon ago, as a window key.
+    /// </summary>
+    internal static string CleanupCutoffWindow(DateTimeOffset now) =>
+        WindowKey(now.AddDays(-CleanupHorizonDays));
+
+    public async Task<int> DeleteWindowsBeforeAsync(string appUserId, string cutoffWindow, CancellationToken cancellationToken)
+    {
+        await EnsureTableAsync(cancellationToken);
+
+        var deleted = 0;
+        var filter = TableClient.CreateQueryFilter(
+            $"PartitionKey eq {appUserId} and RowKey lt {cutoffWindow}");
+        await foreach (var entity in _table.QueryAsync<AccountRateLimitEntity>(
+            filter, select: new[] { "PartitionKey", "RowKey" }, cancellationToken: cancellationToken))
+        {
+            try
+            {
+                await _table.DeleteEntityAsync(entity.PartitionKey, entity.RowKey, cancellationToken: cancellationToken);
+                deleted++;
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                // A concurrent run (or the CONFIGURATION.md recipe) got there first.
+            }
+        }
+
+        return deleted;
+    }
+
+    /// <summary>
     /// What is left, and how long until it resets. Pure, because this is the
     /// part worth testing — the table plumbing around it cannot be, there
     /// being no Azurite in CI.
@@ -272,9 +319,9 @@ public sealed class TableAccountRateLimiter : IAccountRateLimiter
 }
 
 /// <summary>
-/// One account's spend in one window. Rows are never deleted: at one row per
-/// account per hour the volume is trivial, and a cleanup is worth having
-/// eventually rather than now (#266).
+/// One account's spend in one window. The retention sweep drops rows older
+/// than <see cref="TableAccountRateLimiter.CleanupHorizonDays"/> (#558 —
+/// closing #266's "eventually rather than now" deferral).
 /// </summary>
 public sealed class AccountRateLimitEntity : ITableEntity
 {

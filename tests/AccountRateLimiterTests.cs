@@ -44,6 +44,38 @@ public class AccountRateLimiterTests
             TableAccountRateLimiter.WindowKey(DateTimeOffset.Parse("2026-08-01T09:23:07-05:00")));
     }
 
+    // ----- #558: the cleanup cutoff -----
+
+    [Fact]
+    public void TheCleanupHorizon_IsTheReadClamp()
+    {
+        // Derived FROM Account.MaxUsageWindowDays, so read and cleanup can
+        // never drift; the figure the docs state.
+        Assert.Equal(Consultologist.Api.Account.MaxUsageWindowDays, TableAccountRateLimiter.CleanupHorizonDays);
+        Assert.Equal(92, TableAccountRateLimiter.CleanupHorizonDays);
+    }
+
+    [Fact]
+    public void TheCleanupCutoff_IsTheHorizonAgo_AsAWindowKey()
+    {
+        // 92 days before 2026-08-01 is 2026-05-01 — and it is in the PAST: a
+        // sign slip would delete every live window and none of the old ones.
+        Assert.Equal("2026-05-01T14", TableAccountRateLimiter.CleanupCutoffWindow(Now));
+    }
+
+    [Fact]
+    public void RowKeyLtTheCutoff_KeepsTheBoundaryWindow_AndDropsTheOneBefore()
+    {
+        var cutoff = TableAccountRateLimiter.CleanupCutoffWindow(Now);
+        var boundary = TableAccountRateLimiter.WindowKey(Now.AddDays(-TableAccountRateLimiter.CleanupHorizonDays));
+        var older = TableAccountRateLimiter.WindowKey(Now.AddDays(-TableAccountRateLimiter.CleanupHorizonDays).AddHours(-1));
+
+        // `RowKey lt cutoff` is the whole date comparison, so the boundary
+        // window survives (not lt itself) and anything older goes.
+        Assert.False(string.CompareOrdinal(boundary, cutoff) < 0);
+        Assert.True(string.CompareOrdinal(older, cutoff) < 0);
+    }
+
     [Fact]
     public void Decide_AllowsUpToTheLimit()
     {
