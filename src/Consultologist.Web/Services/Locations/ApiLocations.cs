@@ -147,6 +147,7 @@ public static class ApiRoutes
     public const string WorkflowPackageDiagramPreview = "WorkflowPackages/Diagram";
     public const string WorkflowPackageLineage = "WorkflowPackages/Lineage";
     public const string OperatorUsage = "Operator/Usage";
+    public const string IntakeFormsResponses = "Intake/Forms/Responses";
     public const string PublicChain = "Public/Chain";
     public const string PublicEngine = "Public/Engine";
 }
