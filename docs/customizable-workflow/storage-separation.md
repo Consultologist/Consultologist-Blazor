@@ -25,14 +25,22 @@ everywhere, as since M11.
 
 ## 1. What exists
 
-### 1.1 The accounts (as listed on 2026-08-30)
+### 1.1 The accounts (as listed on 2026-09-01, after the M6 deletions)
 
 | Account | Region | Shared key | Holds |
 |---|---|---|---|
-| `consultologistjobqueue` | canadaeast | off | the ten application tables (§ 1.2), the private `workflow-packages` container — **and** a stale copy of the `consultologistjobs` hub tables, frozen at the 2026-07-22 identity move (§ 7, M6; the #558 recon proved it dead: its Instances stop that day) |
-| `consultologistgroup8cbf` | canadaeast | off | the function host's own account (`azure-webjobs-*`, the deployed package), the **live** Durable task hub `consultologistjobs` — it rides `AzureWebJobsStorage`, which points here (`AzureWebJobsStorage__accountName`), Instances current through the present — and the stale `canadaeastaifunction` hub tables (empty; § 7, M6) |
+| `consultologistjobqueue` | canadaeast | off | the ten application tables (§ 1.2), the private `workflow-packages` container |
+| `consultologistgroup8cbf` | canadaeast | off | the function host's own account (`azure-webjobs-*`, the deployed package) and the **live** Durable task hub `consultologistjobs` — it rides `AzureWebJobsStorage`, which points here (`AzureWebJobsStorage__accountName`), the #558 recon's decisive finding |
 | `consultologistpublic` | canadaeast | off | the public registries only: `workflow-packages`, `output-contracts`, `agent-definitions`, `package-format`, `provenance` — anonymous read by design |
-| six others (`train…`, `tutorial…`, `consultologist0733…`/`9579…`, `canadaeastlangstorage`) | eastus2 / canadacentral | three at the default (on) | Azure ML, training and tutorial residue — **not app stores**; named here so "identity-only" is read as a claim about the app's accounts, not the resource group (§ 7, M6) |
+
+These four (with the text account, § 2) are the whole resource group:
+M6's deletions (2026-09-01, operator steps on the operator's go) removed
+the stale `canadaeastaifunction` hub from the host account, the dead
+`consultologistjobs` hub copy from `consultologistjobqueue` (frozen at
+the 2026-07-22 identity move — tables, queues and containers, all
+verified dead by Instances recency first), and the six AML/training/
+tutorial residue accounts — so "identity-only" is now a true claim about
+the resource group, not just the app's accounts.
 
 No storage account name appears in `src/` — `tests/PublicByDesignTests.cs`
 enforces it; every store is a `…ServiceUri` setting chaining to
@@ -306,7 +314,7 @@ be checked against it once the text is gone; the record says when.
 | M3 | Inputs on `job-inputs`; held form responses on `form-responses` | #547 built; #539 built |
 | M4 | Per-account retention drives the sweep over both classes | #548 |
 | M5 | `AccountUsage` on the records account, after the numbers exist — **built** | #551 → #552, both built |
-| M6 | Cleanup: the stale hub artifacts (`canadaeastaifunction` on the host account; the dead `consultologistjobs` copy on `consultologistjobqueue` — § 1.1); the AML/training accounts (shared key off, or deleted); the `AccountRateLimits` / `AccountUsage` / `LinkedInLinkStates` cleanup rule — **code half built** (the sweep's legs); the deletions are operator steps on the operator's go | #558 |
+| M6 | Cleanup — **done** (2026-09-01): the sweep's counter legs built (#592); the stale hub artifacts and the six residue accounts deleted as operator steps (§ 1.1). One tail remains: `LegacyJobEventDelete` goes once the old events table empties (`docs/STORAGE.md`) | #558 |
 | M7 | Account forks into `org-`/`personal-account-packages` (writer and reader by `AccountKind`; the existing `workflow-packages` forks moved once); account closure (§ 2.6) | #559 (after #556) |
 
 M2 before M3 so the read path, the pointer fields and the new `DropText`
