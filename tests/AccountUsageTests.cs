@@ -34,6 +34,51 @@ public class AccountUsageTests
         Assert.True(string.CompareOrdinal("2026-01-31", "2026-02-01") < 0);
     }
 
+    // ----- the served window: defaults, refusals by name, the read-side clamp -----
+
+    private static readonly DateTimeOffset Now = new(2026, 9, 15, 14, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void NothingAsked_ServesTheLastThirtyDays_EndingToday()
+    {
+        var (from, to, error) = Consultologist.Api.Account.ResolveUsageWindow(null, null, Now);
+
+        Assert.Null(error);
+        Assert.Equal(("2026-08-17", "2026-09-15"), (from, to));
+    }
+
+    [Fact]
+    public void AChosenRange_IsServedAsAsked()
+    {
+        var (from, to, error) = Consultologist.Api.Account.ResolveUsageWindow("2026-09-01", "2026-09-07", Now);
+
+        Assert.Null(error);
+        Assert.Equal(("2026-09-01", "2026-09-07"), (from, to));
+    }
+
+    [Theory]
+    [InlineData("not-a-date", null, "from must be a date as yyyy-MM-dd.")]
+    [InlineData(null, "01/09/2026", "to must be a date as yyyy-MM-dd.")]
+    [InlineData("2026-09-07", "2026-09-01", "from must not be after to.")]
+    public void ABadWindow_RefusesByName(string? from, string? to, string expected)
+    {
+        var (_, _, error) = Consultologist.Api.Account.ResolveUsageWindow(from, to, Now);
+
+        Assert.Equal(expected, error);
+    }
+
+    [Fact]
+    public void AnOversizedWindow_ClampsInsteadOfRefusing()
+    {
+        // Reads never refuse for asking too much history — the window pulls
+        // its start up to the 92-day ceiling (M6's cleanup rule horizon).
+        var (from, to, error) = Consultologist.Api.Account.ResolveUsageWindow("2026-01-01", "2026-09-15", Now);
+
+        Assert.Null(error);
+        Assert.Equal("2026-09-15", to);
+        Assert.Equal("2026-06-16", from); // 92 days inclusive
+    }
+
     // ----- the write at finalize: exactly once, never failing the job -----
 
     private static readonly PropertyInfo StateProperty =

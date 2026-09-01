@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using Consultologist.Api.Auth;
@@ -28,6 +29,7 @@ public sealed class Account
     private readonly IConfiguration _configuration;
     private readonly TimeProvider _time;
     private readonly ILogger<Account> _logger;
+    private readonly IAccountUsageStore _usageStore;
 
     public Account(
         IAccountAuthorizer authorizer,
@@ -36,7 +38,8 @@ public sealed class Account
         IGraphMailClient mail,
         IConfiguration configuration,
         TimeProvider time,
-        ILogger<Account> logger)
+        ILogger<Account> logger,
+        IAccountUsageStore usageStore)
     {
         _authorizer = authorizer;
         _settingsStore = settingsStore;
@@ -45,6 +48,7 @@ public sealed class Account
         _configuration = configuration;
         _time = time;
         _logger = logger;
+        _usageStore = usageStore;
     }
 
     [Function("AccountMe")]
@@ -577,6 +581,131 @@ public sealed class Account
         return response;
     }
 
+    /// <summary>
+    /// #552: the account's own usage — day rows from the derived store,
+    /// numbers only, nothing naming a consult's content. The client
+    /// summarizes; days without activity are simply absent.
+    /// </summary>
+    [Function("AccountUsageList")]
+    public async Task<HttpResponseData> GetUsageAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", "options", Route = "Account/Usage")] HttpRequestData req)
+    {
+        var cancellationToken = req.FunctionContext.CancellationToken;
+
+        if (string.Equals(req.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        {
+            return CreateOptionsResponse(req);
+        }
+
+        var account = await _authorizer.AuthorizeAsync(req, cancellationToken);
+
+        if (account == null)
+        {
+            return AccountAuthorizer.CreateUnauthorizedResponse(req);
+        }
+
+        if (!AccountAuthorizer.CanUseApp(account))
+        {
+            return AccountAuthorizer.CreateForbiddenResponse(req);
+        }
+
+        var (fromRaw, toRaw) = ParseUsageQueryParams(req.Url);
+        var (from, to, windowError) = ResolveUsageWindow(fromRaw, toRaw, _time.GetUtcNow());
+
+        if (windowError != null)
+        {
+            return await CreateTextResponseAsync(req, HttpStatusCode.BadRequest, windowError, cancellationToken);
+        }
+
+        var days = await _usageStore.ListAsync(account.AppUserId, from, to, cancellationToken);
+
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        FunctionCors.Apply(req, response);
+        await response.WriteAsJsonAsync(
+            new AccountUsageResponse(
+                from,
+                to,
+                days.Select(day => new AccountUsageDayResponse(day.Day, day.ConsultsCompleted, day.TokensIn, day.TokensOut)).ToList()),
+            cancellationToken);
+        return response;
+    }
+
+    private static (string? From, string? To) ParseUsageQueryParams(Uri url)
+    {
+        string? from = null;
+        string? to = null;
+
+        foreach (var segment in url.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = segment.IndexOf('=');
+            if (eq < 0) continue;
+
+            var key = Uri.UnescapeDataString(segment[..eq]);
+            var value = Uri.UnescapeDataString(segment[(eq + 1)..]);
+
+            if (string.Equals(key, "from", StringComparison.OrdinalIgnoreCase))
+            {
+                from = value;
+            }
+            else if (string.Equals(key, "to", StringComparison.OrdinalIgnoreCase))
+            {
+                to = value;
+            }
+        }
+
+        return (from, to);
+    }
+
+    /// <summary>
+    /// #552: the served window. Defaults: to = today UTC, from = to − 29.
+    /// Unparseable dates and an inverted range refuse by name; an oversized
+    /// window clamps to 92 days (the longest anyone reads, M6's rule) by
+    /// pulling from up — reads never refuse for asking too much history.
+    /// Extracted so it can be asserted directly.
+    /// </summary>
+    internal const int MaxUsageWindowDays = 92;
+    internal const int DefaultUsageWindowDays = 30;
+
+    internal static (string From, string To, string? Error) ResolveUsageWindow(string? from, string? to, DateTimeOffset nowUtc)
+    {
+        var today = DateOnly.FromDateTime(nowUtc.UtcDateTime);
+
+        DateOnly toDay;
+        if (to == null)
+        {
+            toDay = today;
+        }
+        else if (!DateOnly.TryParseExact(to, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out toDay))
+        {
+            return (string.Empty, string.Empty, "to must be a date as yyyy-MM-dd.");
+        }
+
+        DateOnly fromDay;
+        if (from == null)
+        {
+            fromDay = toDay.AddDays(-(DefaultUsageWindowDays - 1));
+        }
+        else if (!DateOnly.TryParseExact(from, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out fromDay))
+        {
+            return (string.Empty, string.Empty, "from must be a date as yyyy-MM-dd.");
+        }
+
+        if (fromDay > toDay)
+        {
+            return (string.Empty, string.Empty, "from must not be after to.");
+        }
+
+        if (toDay.DayNumber - fromDay.DayNumber + 1 > MaxUsageWindowDays)
+        {
+            fromDay = toDay.AddDays(-(MaxUsageWindowDays - 1));
+        }
+
+        return (
+            fromDay.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            toDay.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            null);
+    }
+
     [Function("AccountSettingGet")]
     public async Task<HttpResponseData> GetSettingAsync(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "Account/Settings/{key}")] HttpRequestData req,
@@ -845,3 +974,16 @@ public sealed record AccountJobSummaryResponse(
 public sealed record AccountJobsResponse(
     IReadOnlyList<AccountJobSummaryResponse> Jobs,
     string? ContinuationToken);
+
+/// <summary>#552: one served usage day — counts only, never text.</summary>
+public sealed record AccountUsageDayResponse(
+    string Day,
+    int ConsultsCompleted,
+    int TokensIn,
+    int TokensOut);
+
+/// <summary>#552: the served window and its day rows; days without activity are absent.</summary>
+public sealed record AccountUsageResponse(
+    string From,
+    string To,
+    IReadOnlyList<AccountUsageDayResponse> Days);
