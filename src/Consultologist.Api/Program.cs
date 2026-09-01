@@ -84,6 +84,8 @@ builder.Services.AddSingleton<IConsultGenerationJobEventStore, TableConsultGener
 builder.Services.AddSingleton<IConsultGenerationJobIndexStore, TableConsultGenerationJobIndexStore>();
 // #546: the links index — the lineage graph, ids only, records account.
 builder.Services.AddSingleton<IConsultGenerationLinkStore, TableConsultGenerationLinkStore>();
+// #552: the derived usage store — day counts, written once at completion.
+builder.Services.AddSingleton<IAccountUsageStore, TableAccountUsageStore>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<WorkflowPackageBlobContainerFactory>();
 builder.Services.AddSingleton<IWorkflowPackageStore, WorkflowPackageStore>();
