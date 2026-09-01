@@ -57,7 +57,7 @@ before resolution. Repo-owned names (`general`) remain open to all.
   (`acct-…@vN`) — the store's immutable forever-cache serves it instantly, and the
   60s latest-pointer cache never delays activation; `@latest` semantics remain for
   `general` only. "Revert to default" deletes the pin setting (resolver falls back
-  to `general@latest`); account versions are never deleted.
+  to `general@latest`); account versions are never deleted while the account exists (account closure, #559).
 - **Manifest as commit marker**: prompt, schema, and data files upload first;
   manifest last with a conditional create (`If-None-Match: *`) as the atomic
   immutability guard (the store resolves manifest-first, so partial uploads are
