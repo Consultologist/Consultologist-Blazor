@@ -7,6 +7,7 @@
 @using Consultologist.Web.Services.Accounts
 @using Consultologist.Web.Services.Diagnostics
 @using Consultologist.Web.Services.Documents
+@using Consultologist.Web.Services.Forms
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject IAIEndpointService AIService
@@ -305,6 +306,21 @@
                                                            OnPinned="OnPackagePinnedAsync" />
                                     <span class="muted-text">· @SectionSummary</span>
                                 </span>
+                                @* #540: fill the whole form from a held response —
+                                   form-level, unlike the per-slot run picker, because
+                                   a response answers every declared input it carries. *@
+                                <span class="setup-context__line">
+                                    <FormResponsePicker Disabled="@isAiRequestLoading" OnChosen="ApplyFormResponse" />
+                                    @if (formFillNote != null)
+                                    {
+                                        <span class="muted-text">@formFillNote</span>
+                                    }
+                                </span>
+                                @if (formFillMisfits.Count > 0)
+                                {
+                                    @* Spike § 4.2: named, not filled. *@
+                                    <FluentMessageBar Intent="MessageIntent.Warning">Not filled: @string.Join("; ", formFillMisfits)</FluentMessageBar>
+                                }
                                 <details class="setup-sections">
                                     <summary>Sections it will generate</summary>
                                     @if (IsMultiDeliverable)
@@ -1384,7 +1400,7 @@
         var scheduledAtUtc = ScheduleDefault.FromLocalInputValue(scheduledAtLocal)
           ?? ScheduleDefault.NextOccurrenceUtc(accountScheduleTime, DateTime.Now);
         var job = await AIService.StartConsultGenerationJobAsync(
-          SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles(), SuppliedRefs());
+          SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles(), SuppliedRefs(), SuppliedFormRefs());
         scheduleConfirmation = ScheduleConfirmationFor(scheduledAtUtc, accountDeliveryAddress, accountEmailPdf);
         runOvernight = false;
         scheduledAtLocal = string.Empty;
@@ -1425,7 +1441,7 @@
       // Sections are package data resolved server-side; the request carries only
       // the declared inputs (and the resolved package ref).
       var job = await AIService.StartConsultGenerationJobAsync(
-        inputSnapshot, currentPackageRef, files: fileSnapshot, refs: SuppliedRefs());
+        inputSnapshot, currentPackageRef, files: fileSnapshot, refs: SuppliedRefs(), formRefs: SuppliedFormRefs());
 
       // #207: remember the job per-tab so navigating away and back re-attaches.
       JobSession.Current = new ConsultJobMemento(
@@ -2179,6 +2195,73 @@
   // #510: a previous run's deliverable into the slot. A text slot takes one
   // (replacing what was there); an array of text takes one per entry. Typed
   // rows and documents give way: a slot is text, files or references.
+  // #540: the form fills — per input, the reference and the exact value the
+  // fill produced. At submit an input still equal to its fill carries the
+  // reference; an edited one is typed text and carries none (the server
+  // would refuse the origin lie anyway — this just never tells it).
+  private readonly Dictionary<string, (ConsultInputFormRef Reference, ConsultInputValue Value)> formFills = new(StringComparer.Ordinal);
+  private List<string> formFillMisfits = new();
+  private string? formFillNote;
+
+  private void ApplyFormResponse(FormResponseValues values)
+  {
+    formFills.Clear();
+    formFillMisfits = new List<string>();
+    var filled = 0;
+
+    foreach (var field in inputFields)
+    {
+      if (!values.Inputs.TryGetValue(field.Id, out var held))
+      {
+        // Inputs the response does not carry stay as they are (§ 4.2).
+        continue;
+      }
+
+      var (value, misfit) = FormResponseCoercion.Coerce(
+        field.Type,
+        field.Type == WorkflowInputTypes.Enum ? field.Scalar.Values : null,
+        field.Type == WorkflowInputTypes.Array ? field.Items : null,
+        held);
+
+      if (misfit != null)
+      {
+        formFillMisfits.Add($"{field.Label} {misfit}");
+        continue;
+      }
+
+      if (value == null)
+      {
+        // "" — the flow's unanswered question; nothing to fill.
+        continue;
+      }
+
+      field.Restore(value);
+      formFills[field.Id] = (new ConsultInputFormRef(values.FormId, values.ResponseId), value);
+      filled++;
+    }
+
+    formFillNote = $"filled {filled} from {values.FormId} · {values.ResponseId}";
+    scheduleConfirmation = null;
+  }
+
+  // #540: the references that still tell the truth — the wire form is the
+  // arbiter, the coercion mirror tests' own convention.
+  private Dictionary<string, ConsultInputFormRef>? SuppliedFormRefs()
+  {
+    var refs = new Dictionary<string, ConsultInputFormRef>(StringComparer.Ordinal);
+    foreach (var (id, fill) in formFills)
+    {
+      var field = inputFields.FirstOrDefault(candidate => candidate.Id == id);
+      if (field is { HasFile: false, HasLoaded: false, Supplied: { } supplied }
+          && System.Text.Json.JsonSerializer.Serialize(supplied) == System.Text.Json.JsonSerializer.Serialize(fill.Value))
+      {
+        refs[id] = fill.Reference;
+      }
+    }
+
+    return refs.Count > 0 ? refs : null;
+  }
+
   private void LoadDeliverable(ConsultInputField field, LoadedDeliverable loaded)
   {
     if (!field.TakesSeveralDocuments)

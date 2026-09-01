@@ -39,10 +39,22 @@ public record ConsultGenerationRequest(
     // start and records the origin, so a reference is resolved, never
     // trusted: the caller names a run and a deliverable, not what they said.
     // A slot appears in one map only.
-    Dictionary<string, List<ConsultInputRef>>? InputRefs = null);
+    Dictionary<string, List<ConsultInputRef>>? InputRefs = null,
+    // #540: per filled input, the held form response its value was loaded
+    // from — InputRefs' sibling, but an assertion BESIDE the value rather
+    // than instead of it: the value rides Inputs (typed, reviewed, maybe
+    // edited), and the reference claims its source. The server verifies the
+    // held response still holds that value coerced by the declaration and
+    // records the origin; an unverifiable claim refuses the start. An
+    // edited input simply carries no reference. Appended last: this is the
+    // payload a sleeping instance re-reads.
+    Dictionary<string, ConsultInputFormRef>? InputFormRefs = null);
 
 /// <summary>#510: one deliverable of one of the account's completed runs.</summary>
 public sealed record ConsultInputRef(string JobId, string ResultId);
+
+/// <summary>#540: one of the account's held form responses.</summary>
+public sealed record ConsultInputFormRef(string FormId, string ResponseId);
 
 /// <summary>
 /// A document supplied for an input slot. System.Text.Json serialises byte[]
@@ -88,7 +100,14 @@ public sealed record ConsultInputOrigin(
     // copy's TextSha256 is over the canonical text as it entered the
     // effective-input map. Null on every other kind.
     string? SourceJobId = null,
-    string? SourceResultId = null);
+    string? SourceResultId = null,
+    // #540: for a form-response element, the held response it was filled
+    // from — the same account's, verified by the server at start (the
+    // submitted value equals the held answer coerced by the declaration).
+    // TextSha256 is over the value as it entered the effective-input map.
+    // Null on every other kind. Appended last: replay reads this record.
+    string? SourceFormId = null,
+    string? SourceResponseId = null);
 
 public static class ConsultInputOriginKinds
 {

@@ -468,9 +468,9 @@ design; issue D documents it beside the recipe.
 
 | Issue | Builds | Order |
 |---|---|---|
-| A | #539 — § 4.1 held responses: endpoint, table, retention sweep, list/discard | first |
-| B | #540 — § 4.2 picker, coercion, `InputFormRefs`, origin at start | after A |
-| C | #541 — § 4.3 provenance `form-response` kind (registry, version bump) | before B lands |
+| A | #539 — § 4.1 held responses: endpoint, table, retention sweep, list/discard — **built** | first |
+| B | #540 — § 4.2 picker, coercion, `InputFormRefs`, origin at start — **built** | after A |
+| C | #541 — § 4.3 provenance `form-response` kind (registry, version bump) — **built** (provenance@v2026.09.1) | before B lands |
 | D | #542 — § 4.4 flow recipe, tenant setup, licensing, the email bridge | after A |
 | E | #543 — § 4.5 the account option: hold for review or run at once; `source: forms` | after A and B |
 

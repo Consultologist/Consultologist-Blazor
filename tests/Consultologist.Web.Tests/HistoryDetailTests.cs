@@ -568,6 +568,33 @@ public class HistoryDetailTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void AFormResponseOrigin_NamesTheFormAndTheResponse_WithNoRunLink()
+    {
+        // #540: the registry prose's wording, "from form … response …"; a
+        // response is not a run, so no source link — the digest chip rides
+        // the shared path.
+        WithJob(3, inputOrigins: new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
+        {
+            ["consult_draft"] = new[]
+            {
+                new ConsultInputOrigin(
+                    Consultologist.Api.Models.ConsultInputOriginKinds.FormResponse,
+                    TextSha256: "52593837" + new string('0', 56),
+                    SourceFormId: "triage-intake",
+                    SourceResponseId: "17")
+            }
+        });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var row = page.Find(".provenance-list__nested + dd");
+        Assert.StartsWith("from form 'triage-intake' response 17", row.TextContent.Trim());
+        Assert.Contains("text 52593837…", row.TextContent);
+        Assert.DoesNotContain("read from a document", row.TextContent);
+        Assert.Null(row.QuerySelector(".provenance-source-link"));
+    }
+
+    [Fact]
     public void ASlotReadFromOneDocument_KeepsTheSentence()
     {
         // #428 changed the shape, not the words: one document is the plain

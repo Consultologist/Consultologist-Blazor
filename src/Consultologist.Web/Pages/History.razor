@@ -776,6 +776,10 @@
         // #549: the whole run replays the source; the comparison section
         // below carries the detail, this row just says the slot's part.
         "rerun" => $"replayed from run {ShortRun(origin.SourceJobId)}",
+        // #540: filled at start from a held form response, verified by the
+        // server. No source link — a response is not a run; the digest chip
+        // renders through the shared path.
+        "form-response" => $"from form '{origin.SourceFormId}' response {origin.SourceResponseId}",
         _ => $"read from a document by {origin.Extractor ?? "—"}"
             + (origin.PageCount is { } pages ? $" · {pages} page{(pages == 1 ? "" : "s")}" : "")
             + (origin.TrackedChangesResolved ? " · tracked changes resolved to the accepted view" : "")

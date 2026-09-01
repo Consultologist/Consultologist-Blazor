@@ -101,7 +101,7 @@ public class DurablePayloadReplayTests
         // v11 #513: each stored result descriptor re-serialises with its own
         // trailing null too — Macros, appended last on the record it rides.
         var withRefs = stored
-            .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null}", StringComparison.Ordinal)
+            .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null}", StringComparison.Ordinal)
             .Replace("\"Label\":\"Consultation note\"}", "\"Label\":\"Consultation note\",\"Macros\":null,\"Signature\":null}", StringComparison.Ordinal);
         Assert.Equal(withRefs[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null}", JsonSerializer.Serialize(input, Durable));
         // v11 #513/#516: the macro and signature slots and the descriptor's
@@ -151,9 +151,9 @@ public class DurablePayloadReplayTests
         // #512 appended two digests to the origin record itself, so each
         // stored origin re-serialises with its own two trailing nulls too.
         var expected = stored
-            .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null}", StringComparison.Ordinal)
-            .Replace("\"TrackedChangesResolved\":false}", "\"TrackedChangesResolved\":false,\"FileSha256\":null,\"TextSha256\":null,\"SourceJobId\":null,\"SourceResultId\":null}", StringComparison.Ordinal)
-            .Replace("\"TrackedChangesResolved\":true}", "\"TrackedChangesResolved\":true,\"FileSha256\":null,\"TextSha256\":null,\"SourceJobId\":null,\"SourceResultId\":null}", StringComparison.Ordinal);
+            .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null}", StringComparison.Ordinal)
+            .Replace("\"TrackedChangesResolved\":false}", "\"TrackedChangesResolved\":false,\"FileSha256\":null,\"TextSha256\":null,\"SourceJobId\":null,\"SourceResultId\":null,\"SourceFormId\":null,\"SourceResponseId\":null}", StringComparison.Ordinal)
+            .Replace("\"TrackedChangesResolved\":true}", "\"TrackedChangesResolved\":true,\"FileSha256\":null,\"TextSha256\":null,\"SourceJobId\":null,\"SourceResultId\":null,\"SourceFormId\":null,\"SourceResponseId\":null}", StringComparison.Ordinal);
         Assert.Equal(expected[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null}", JsonSerializer.Serialize(input, Durable));
         var origins = Assert.Contains("prior_notes", input.InputDocumentOrigins!);
         Assert.Equal(2, origins.Count);

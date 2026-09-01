@@ -1,0 +1,130 @@
+@* #540: "Load from a form response…" — the form-level sibling of the
+   per-slot PreviousRunPicker (#510's inline-disclosure idiom; no dialog
+   infrastructure exists). Held responses newest first; a discarded one is
+   listed and not choosable, saying "values deleted MMM d, yyyy" (spike
+   § 4.2's exact wording). Choosing fetches the values and hands them to
+   the page, which coerces by each declaration and fills the editable
+   controls — misfits are named there, not filled. *@
+@using Consultologist.Web.Services.Forms
+@inject IFormsIntakeEndpointService FormsService
+
+<span class="form-picker" @onclick:stopPropagation="true">
+    <button type="button"
+            class="form-picker__trigger"
+            aria-expanded="@(open ? "true" : "false")"
+            disabled="@Disabled"
+            @onclick:preventDefault="true"
+            @onclick="ToggleAsync">
+        Load from a form response…
+    </button>
+
+    @if (open)
+    {
+        <div class="form-picker__panel" role="group" aria-label="Held form responses">
+            @if (loading)
+            {
+                <span class="muted-text">Loading…</span>
+            }
+            else if (error != null)
+            {
+                <span class="form-picker__error">@error</span>
+            }
+            else if (rows.Count == 0)
+            {
+                <span class="muted-text">No held responses.</span>
+            }
+            else
+            {
+                <ul class="form-picker__responses">
+                    @foreach (var row in rows)
+                    {
+                        <li class="form-picker__response @(row.DeletedAtUtc != null ? "form-picker__response--deleted" : null)">
+                            <button type="button"
+                                    class="form-picker__choose"
+                                    disabled="@(row.DeletedAtUtc != null || choosing)"
+                                    @onclick:preventDefault="true"
+                                    @onclick="() => ChooseAsync(row)">
+                                <span class="form-picker__ids">@row.FormId · @row.ResponseId</span>
+                                <span class="muted-text">
+                                    @row.SubmittedAtUtc.ToString("MMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture)
+                                    @if (row.DeletedAtUtc is { } deleted)
+                                    {
+                                        <text> · values deleted @deleted.ToString("MMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture)</text>
+                                    }
+                                </span>
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    }
+</span>
+
+@code {
+    [Parameter] public bool Disabled { get; set; }
+
+    [Parameter] public EventCallback<FormResponseValues> OnChosen { get; set; }
+
+    private bool open;
+    private bool loading;
+    private bool choosing;
+    private string? error;
+    private IReadOnlyList<FormResponseListRow> rows = Array.Empty<FormResponseListRow>();
+
+    private async Task ToggleAsync()
+    {
+        open = !open;
+        if (open)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        error = null;
+        try
+        {
+            var listed = await FormsService.ListResponsesAsync();
+            rows = listed.OrderByDescending(row => row.SubmittedAtUtc).ToList();
+        }
+        catch (Microsoft.AspNetCore.Components.WebAssembly.Authentication.AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            error = $"Could not list your form responses: {ex.Message}";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task ChooseAsync(FormResponseListRow row)
+    {
+        choosing = true;
+        error = null;
+        try
+        {
+            var values = await FormsService.GetResponseAsync(row.FormId, row.ResponseId);
+            open = false;
+            await OnChosen.InvokeAsync(values);
+        }
+        catch (Microsoft.AspNetCore.Components.WebAssembly.Authentication.AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            error = $"Could not load that response: {ex.Message}";
+        }
+        finally
+        {
+            choosing = false;
+        }
+    }
+}

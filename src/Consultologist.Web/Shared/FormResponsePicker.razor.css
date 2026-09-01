@@ -1,0 +1,73 @@
+.form-picker {
+	position: relative;
+	display: inline-flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	font-weight: 400;
+}
+
+.form-picker__trigger {
+	align-self: flex-start;
+	padding: 0.2rem 0.6rem;
+	border: 1px solid var(--consultologist-border);
+	border-radius: var(--consultologist-radius-sm);
+	background: var(--consultologist-surface-muted);
+	font: inherit;
+	font-size: 0.85rem;
+	cursor: pointer;
+}
+
+.form-picker__trigger:disabled {
+	cursor: default;
+	opacity: 0.6;
+}
+
+.form-picker__panel {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	padding: 0.5rem 0.75rem;
+	border: 1px solid var(--consultologist-border);
+	border-radius: var(--consultologist-radius-sm);
+	background: var(--consultologist-surface);
+	font-size: 0.85rem;
+	max-height: 18rem;
+	overflow: auto;
+}
+
+.form-picker__responses {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+
+.form-picker__choose {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 0.1rem;
+	width: 100%;
+	padding: 0.25rem 0.4rem;
+	border: none;
+	border-radius: var(--consultologist-radius-sm);
+	background: transparent;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.form-picker__choose:hover:not(:disabled) {
+	background: var(--consultologist-surface-muted);
+}
+
+.form-picker__response--deleted .form-picker__choose {
+	cursor: default;
+	opacity: 0.6;
+}
+
+.form-picker__error {
+	color: var(--consultologist-danger, #b3261e);
+}

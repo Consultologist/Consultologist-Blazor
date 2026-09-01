@@ -110,6 +110,35 @@ public class FormsIntakeTests
     }
 
     [Fact]
+    public void TheOneResponseRead_CarriesTheValues_NeverThePointer()
+    {
+        // #540: the picker's read — values beside the ids; the pointer and
+        // the account stay off the wire, the list's own rule.
+        var row = new FormResponseRow(
+            "user-1", "triage-intake", "17", new DateTimeOffset(2026, 9, 1, 14, 2, 11, TimeSpan.Zero),
+            new[] { "consult_draft" }, "org-form-responses", "user-1/triage-intake-17.json", DeletedAtUtc: null);
+        var payload = new FormResponsePayload(
+            FormResponsePayload.CurrentVersion, "triage-intake", "17",
+            row.SubmittedAtUtc, new Dictionary<string, string> { ["consult_draft"] = "The referral text." });
+
+        var serialized = JsonSerializer.Serialize(FormsIntake.ValuesOf(row, payload));
+
+        Assert.Contains("\"The referral text.\"", serialized);
+        Assert.Contains("\"triage-intake\"", serialized);
+        Assert.DoesNotContain("org-form-responses", serialized);
+        Assert.DoesNotContain("user-1", serialized);
+    }
+
+    [Fact]
+    public void TheDeletedComplaint_NamesTheDay_InTheRecordedWording()
+    {
+        // Spike § 4.2's exact phrase, invariant whatever the server culture.
+        Assert.Equal(
+            "values deleted Sep 8, 2026",
+            FormsIntake.ValuesDeletedComplaint(new DateTimeOffset(2026, 9, 8, 3, 0, 0, TimeSpan.Zero)));
+    }
+
+    [Fact]
     public void TheListRow_CarriesIdsAndDays_NeverAValue()
     {
         var row = new FormResponseRow(

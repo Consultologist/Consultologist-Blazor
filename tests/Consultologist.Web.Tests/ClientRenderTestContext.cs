@@ -30,6 +30,7 @@ public abstract class ClientRenderTestContext : BunitContext
 
     // #553: the operator panel.
     protected Consultologist.Web.Services.Operators.IOperatorEndpointService OperatorService { get; } = Substitute.For<Consultologist.Web.Services.Operators.IOperatorEndpointService>();
+    protected Consultologist.Web.Services.Forms.IFormsIntakeEndpointService FormsService { get; } = Substitute.For<Consultologist.Web.Services.Forms.IFormsIntakeEndpointService>();
 
     // #412: the layout's UpdateBanner asks this whether a newer build waits.
     protected IAppUpdateService AppUpdate { get; } = Substitute.For<IAppUpdateService>();
@@ -62,6 +63,7 @@ public abstract class ClientRenderTestContext : BunitContext
         Services.AddSingleton(AccountService);
         Services.AddSingleton(DocumentService);
         Services.AddSingleton(OperatorService);
+        Services.AddSingleton(FormsService);
         Services.AddSingleton(AppUpdate);
         Services.AddSingleton(Substitute.For<ISseDiagnosticsService>());
         Services.AddSingleton(JobSession);

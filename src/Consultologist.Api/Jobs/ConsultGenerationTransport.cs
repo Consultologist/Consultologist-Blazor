@@ -1284,6 +1284,30 @@ public sealed class ConsultGenerationJobs
             }
         }
 
+        // #540: a form reference is an assertion BESIDE a value in Inputs,
+        // never a fill request — only its shape is checked here; the starter
+        // verifies it against the held response.
+        if (request.InputFormRefs is { Count: > 0 })
+        {
+            foreach (var (id, reference) in request.InputFormRefs)
+            {
+                if (string.IsNullOrWhiteSpace(id))
+                {
+                    return "InputFormRefs contains a blank id.";
+                }
+
+                if (request.Inputs?.ContainsKey(id) != true)
+                {
+                    return $"Input '{id}' carries a form reference but no value.";
+                }
+
+                if (reference == null || string.IsNullOrWhiteSpace(reference.FormId) || string.IsNullOrWhiteSpace(reference.ResponseId))
+                {
+                    return $"Input '{id}' refers to a form response without a form id and response id.";
+                }
+            }
+        }
+
         // Exactly one of the two forms: silently preferring one would drop
         // caller data (package-format-v7.md request contract).
         if (hasDraft && hasInputs)
@@ -2230,6 +2254,9 @@ public sealed class ConsultGenerationJobs
             ConsultGenerationJobStartError.InputRefNotFound => HttpStatusCode.UnprocessableEntity,
             ConsultGenerationJobStartError.InputRefNotCompleted => HttpStatusCode.UnprocessableEntity,
             ConsultGenerationJobStartError.InputRefTextDeleted => HttpStatusCode.UnprocessableEntity,
+            ConsultGenerationJobStartError.InputFormRefNotFound => HttpStatusCode.UnprocessableEntity,
+            ConsultGenerationJobStartError.InputFormRefValuesDeleted => HttpStatusCode.UnprocessableEntity,
+            ConsultGenerationJobStartError.InputFormRefMismatch => HttpStatusCode.UnprocessableEntity,
             // #266: nothing is wrong with the request at all — the
             // account has spent its window. 429 is the one status
             // that says "the same request will work later".
