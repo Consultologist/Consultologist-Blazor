@@ -144,6 +144,18 @@ public class HistoryDetailTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".provenance-chip--source"));
     }
 
+    [Fact]
+    public void AFormsJob_SaysSo()
+    {
+        // #543: the third source value — a response the account chose to run
+        // at once.
+        WithJob(3, source: "forms");
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Equal("via forms", page.Find(".provenance-chip--source").TextContent.Trim());
+        Assert.Contains("form response", page.Find(".provenance-chip--source").GetAttribute("title"));
+    }
+
     private const string CatalogVersion = "v2026.07.2";
 
     private void WithCatalog() =>

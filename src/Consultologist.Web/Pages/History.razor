@@ -75,6 +75,10 @@
                                         {
                                             <span class="job-source-badge" title="Submitted by email">email</span>
                                         }
+                                        @if (job.Source == "forms")
+                                        {
+                                            <span class="job-source-badge" title="Submitted by a form response">forms</span>
+                                        }
                                         @if (job.TextDroppedAtUtc != null)
                                         {
                                             <span class="job-source-badge job-source-badge--retention" title="The produced text was deleted under the retention policy; the record is kept">text deleted</span>
@@ -255,9 +259,9 @@
                                             @* #158/#514: how the job was initiated — both values, since a
                                                record that says "app" is saying something too. No chip on
                                                a record from before the field. *@
-                                            @if (detail.Source is "email" or "app")
+                                            @if (detail.Source is "email" or "app" or "forms")
                                             {
-                                                <span class="provenance-chip provenance-chip--source" title="@(detail.Source == "email" ? "This job was submitted by email intake" : "This job was submitted from the app")">
+                                                <span class="provenance-chip provenance-chip--source" title="@(detail.Source switch { "email" => "This job was submitted by email intake", "forms" => "This job was submitted by a form response the account chose to run at once", _ => "This job was submitted from the app" })">
                                                     via @detail.Source
                                                 </span>
                                             }
