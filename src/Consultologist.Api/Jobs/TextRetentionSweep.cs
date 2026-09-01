@@ -151,6 +151,15 @@ public sealed class TextRetentionSweep
         && entry.InputsHeld
         && entry.InputsDroppedAtUtc == null;
 
+    /// <summary>
+    /// #539: the form-responses leg's rule — submitted before the inputs
+    /// cutoff, values still resting. No status: a held response has no
+    /// terminal concept, only the two conditions.
+    /// </summary>
+    public static bool IsResponseDue(Forms.FormResponseRow row, DateTimeOffset submittedBefore) =>
+        row.SubmittedAtUtc < submittedBefore
+        && row.DeletedAtUtc == null;
+
     public async Task<(int Accounts, int Due, int Dropped, int InputsDropped)> RunOnceAsync(DurableTaskClient client, DateTimeOffset now, int defaultDays, CancellationToken cancellationToken)
     {
         int accounts = 0, due = 0, dropped = 0, inputsDropped = 0;
