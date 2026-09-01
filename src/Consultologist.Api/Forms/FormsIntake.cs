@@ -52,9 +52,14 @@ public sealed class FormsIntake
         DateTimeOffset? SubmittedAtUtc,
         Dictionary<string, string>? Inputs);
 
-    [Function("FormsIntakeHold")]
-    public async Task<HttpResponseData> HoldAsync(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", "options", Route = "Intake/Forms/Responses")] HttpRequestData req)
+    /// <summary>
+    /// One function for both verbs: the Functions host does not route two
+    /// functions sharing a template by method — the second silently loses
+    /// and answers the host's bare 404, the exact E4 failure. Found live.
+    /// </summary>
+    [Function("FormsIntakeResponses")]
+    public async Task<HttpResponseData> ResponsesAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", "get", "options", Route = "Intake/Forms/Responses")] HttpRequestData req)
     {
         var cancellationToken = req.FunctionContext.CancellationToken;
 
@@ -69,6 +74,15 @@ public sealed class FormsIntake
         if (refusal != null)
         {
             return refusal;
+        }
+
+        if (string.Equals(req.Method, "GET", StringComparison.OrdinalIgnoreCase))
+        {
+            var rows = await _rows.ListAsync(account!.AppUserId, cancellationToken);
+            var list = req.CreateResponse(HttpStatusCode.OK);
+            FunctionCors.Apply(req, list);
+            await list.WriteAsJsonAsync(new { responses = rows.Select(ResponseOf).ToList() }, cancellationToken);
+            return list;
         }
 
         FormResponseSubmission? submission;
@@ -133,33 +147,6 @@ public sealed class FormsIntake
         FunctionCors.Apply(req, created);
         await created.WriteAsJsonAsync(new { formId, responseId, submittedAtUtc = submission.SubmittedAtUtc.Value }, cancellationToken);
         return created;
-    }
-
-    [Function("FormsIntakeList")]
-    public async Task<HttpResponseData> ListAsync(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", "options", Route = "Intake/Forms/Responses")] HttpRequestData req)
-    {
-        var cancellationToken = req.FunctionContext.CancellationToken;
-
-        if (string.Equals(req.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
-        {
-            var options = req.CreateResponse(HttpStatusCode.OK);
-            FunctionCors.Apply(req, options);
-            return options;
-        }
-
-        var (account, refusal) = await AuthorizeOrganisationAsync(req, cancellationToken);
-        if (refusal != null)
-        {
-            return refusal;
-        }
-
-        var rows = await _rows.ListAsync(account!.AppUserId, cancellationToken);
-
-        var response = req.CreateResponse(HttpStatusCode.OK);
-        FunctionCors.Apply(req, response);
-        await response.WriteAsJsonAsync(new { responses = rows.Select(ResponseOf).ToList() }, cancellationToken);
-        return response;
     }
 
     [Function("FormsIntakeDiscard")]
