@@ -1,4 +1,5 @@
 using Consultologist.Api.Auth;
+using Consultologist.Api.RateLimiting;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.DurableTask.Client;
 using Microsoft.DurableTask.Entities;
@@ -32,7 +33,9 @@ public interface IJobTextPurger
 /// account, and rows written before the move sit on the records account
 /// until their jobs purge. This deletes a job's old-table partition; it
 /// never creates the old table (M6/#558 wants it empty and removable) and a
-/// missing table reads as nothing to delete. Removed by #558 once empty.
+/// missing table reads as nothing to delete. Removed once empty — #558
+/// checked live (2026-08-31): pre-#557 rows remained, so the removal is
+/// deferred until their jobs purge.
 /// No dual-READ on purpose: the SSE loop exits on terminal status whatever
 /// the sequence says, events re-derive from the response into the new
 /// table, and the GET path never depends on this table — the loss is
@@ -122,6 +125,9 @@ public sealed class TextRetentionSweep
     private readonly IAccountSettingsStore _settings;
     private readonly Forms.IFormResponseStore _formResponses;
     private readonly Forms.IFormResponsePurger _formResponsePurger;
+    private readonly IAccountRateLimiter _rateLimiter;
+    private readonly IAccountUsageStore _usage;
+    private readonly ILinkedInLinkStateStore _linkStates;
     private readonly ILogger<TextRetentionSweep> _logger;
 
     public TextRetentionSweep(
@@ -131,6 +137,9 @@ public sealed class TextRetentionSweep
         IAccountSettingsStore settings,
         Forms.IFormResponseStore formResponses,
         Forms.IFormResponsePurger formResponsePurger,
+        IAccountRateLimiter rateLimiter,
+        IAccountUsageStore usage,
+        ILinkedInLinkStateStore linkStates,
         ILogger<TextRetentionSweep> logger)
     {
         _accounts = accounts;
@@ -139,6 +148,9 @@ public sealed class TextRetentionSweep
         _settings = settings;
         _formResponses = formResponses;
         _formResponsePurger = formResponsePurger;
+        _rateLimiter = rateLimiter;
+        _usage = usage;
+        _linkStates = linkStates;
         _logger = logger;
     }
 
@@ -171,9 +183,9 @@ public sealed class TextRetentionSweep
         row.SubmittedAtUtc < submittedBefore
         && row.DeletedAtUtc == null;
 
-    public async Task<(int Accounts, int Due, int Dropped, int InputsDropped, int ResponsesDropped)> RunOnceAsync(DurableTaskClient client, DateTimeOffset now, int defaultDays, CancellationToken cancellationToken)
+    public async Task<(int Accounts, int Due, int Dropped, int InputsDropped, int ResponsesDropped, int CountersCleaned)> RunOnceAsync(DurableTaskClient client, DateTimeOffset now, int defaultDays, CancellationToken cancellationToken)
     {
-        int accounts = 0, due = 0, dropped = 0, inputsDropped = 0, responsesDropped = 0;
+        int accounts = 0, due = 0, dropped = 0, inputsDropped = 0, responsesDropped = 0, countersCleaned = 0;
 
         foreach (var account in await _accounts.ListAsync(cancellationToken))
         {
@@ -203,6 +215,31 @@ public sealed class TextRetentionSweep
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _logger.LogWarning(ex, "Text retention: could not list an account's held form responses.");
+            }
+
+            // #558: the counter cleanup — rate-limit windows and usage days
+            // past the read clamp. Sits BEFORE the jobs legs on purpose:
+            // their listing failures `continue` the loop, and a counter
+            // cleanup must neither be skipped by that nor ever stop the
+            // retention legs — each store isolated in its own try.
+            try
+            {
+                countersCleaned += await _rateLimiter.DeleteWindowsBeforeAsync(
+                    account.AppUserId, TableAccountRateLimiter.CleanupCutoffWindow(now), cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Text retention: could not clean an account's rate-limit windows.");
+            }
+
+            try
+            {
+                countersCleaned += await _usage.DeleteDaysBeforeAsync(
+                    account.AppUserId, TableAccountUsageStore.CleanupCutoffDay(now), cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Text retention: could not clean an account's usage days.");
             }
 
             IReadOnlyList<ConsultGenerationJobIndexEntry> jobs;
@@ -266,10 +303,21 @@ public sealed class TextRetentionSweep
             }
         }
 
-        var summary = $"{accounts} accounts, {due} jobs past the outputs clock, {dropped} dropped, {inputsDropped} inputs-only drops, {responsesDropped} form responses dropped";
+        // #558: the abandoned LinkedIn handshakes — ONE partition, so one
+        // pass after the loop, never per account.
+        try
+        {
+            countersCleaned += await _linkStates.DeleteExpiredAsync(now, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Text retention: could not clean expired link states.");
+        }
+
+        var summary = $"{accounts} accounts, {due} jobs past the outputs clock, {dropped} dropped, {inputsDropped} inputs-only drops, {responsesDropped} form responses dropped, {countersCleaned} counter rows cleaned";
         _logger.LogInformation("Text retention: {Summary}", summary);
         Console.Error.WriteLine($"[TextRetention] {summary}");
-        return (accounts, due, dropped, inputsDropped, responsesDropped);
+        return (accounts, due, dropped, inputsDropped, responsesDropped, countersCleaned);
     }
 
     /// <summary>

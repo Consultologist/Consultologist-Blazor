@@ -34,6 +34,20 @@ public class AccountUsageTests
         Assert.True(string.CompareOrdinal("2026-01-31", "2026-02-01") < 0);
     }
 
+    [Fact]
+    public void TheCleanupCutoff_IsTheReadClampAgo_AsADayKey()
+    {
+        // #558: the same 92 the reads are clamped to — no day anyone can
+        // still read is ever dropped. A DAY key, not the rate limiter's
+        // hour-window format: "2026-05-01T14" would match nothing.
+        var now = new DateTimeOffset(2026, 8, 1, 14, 23, 7, TimeSpan.Zero);
+
+        Assert.Equal("2026-05-01", TableAccountUsageStore.CleanupCutoffDay(now));
+        Assert.Equal(
+            TableAccountUsageStore.DayKey(now.AddDays(-Consultologist.Api.Account.MaxUsageWindowDays)),
+            TableAccountUsageStore.CleanupCutoffDay(now));
+    }
+
     // ----- the served window: defaults, refusals by name, the read-side clamp -----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 15, 14, 0, 0, TimeSpan.Zero);

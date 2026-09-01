@@ -212,7 +212,7 @@ settings are retired — delete them from the Function App.
 | Variable | Accepted values | Default | Required |
 |---|---|---|---|
 | `AgentAttestation__Enforce` | `true` (case-insensitive) = drift fails host startup; any other value = drift logs an error only. Since #16 the production baseline is the registry's published definition (CI-only channel); the submodule-pinned copy (`external/consultologist-agents/agents`, bundled into the build output) is the baseline only in local dev | warn-only | no |
-| `TextRetentionSweepSchedule` | NCRONTAB for the retention sweep (#368), e.g. `0 0 3 * * *` (daily 03:00 UTC). Flat name — a `%…%` binding cannot resolve a `__` key. Unset: the sweep function is disabled and **no text is ever deleted** | unset — set it in every environment that holds real jobs | yes, in production |
+| `TextRetentionSweepSchedule` | NCRONTAB for the retention sweep (#368), e.g. `0 0 3 * * *` (daily 03:00 UTC). Flat name — a `%…%` binding cannot resolve a `__` key. Since #558 the same run also cleans the counters: rate-limit windows and usage days older than 92 days (the read clamp), and expired LinkedIn link states. Unset: the sweep function is disabled, **no text is ever deleted** and no counter is cleaned | unset — set it in every environment that holds real jobs | yes, in production |
 | `TextRetention__Days` | The **default** retention: days after a job completes (or fails, or is cancelled) before its produced text — the assembled documents, sections and extracted concepts — is deleted from the record, the Durable orchestration history and the streamed-event rows. Since #548 an account may choose its own clocks (`retention.outputDays` / `retention.inputDays`, 1..30); this governs accounts that chose nothing, and the sweep clamps every clock to 30. The inputs clock also deletes held form responses (#539) from their `submittedAtUtc`. Provenance stays. The policy: PHI at rest for this long and no longer | 7 | no |
 | `Terminology__InfoUrl` | The terminology server's attestation endpoint (`https://mcp.snomed.consultologist.ai/api/Public/Terminology`, #403). Read once per cache window; the edition and the server build it reports are stamped on every job record. Unset: nothing is recorded | unset (nothing recorded) | no |
 | `Terminology__CacheMinutes` | How long one answer serves; an outage keeps the last answer | 60 | no |
@@ -296,9 +296,9 @@ the UTC hour, so a burst straddling a boundary can reach twice the limit.
 proceeds and the fault is logged: losing the limit during an outage costs
 CPU, while refusing during one costs a clinician their referral.
 
-Rows are one per account per hour in the `AccountRateLimits` table and are
-never deleted; at that volume a cleanup is worth having eventually rather
-than now.
+Rows are one per account per hour in the `AccountRateLimits` table; the
+retention sweep deletes rows older than 92 days — the longest window any
+read serves, the same clamp the usage reads take (#558).
 
 ### Where to look when investigating a job
 
