@@ -245,7 +245,8 @@ public sealed class ConsultGenerationOrchestrator
                     node.OutputContract,
                     node.ConceptSource,
                     variableTypes,
-                    node.Values),
+                    node.Values,
+                    node.Template),
                 AgentActivityRetryOptions)] = (node.Id, item?["id"]);
         }
 

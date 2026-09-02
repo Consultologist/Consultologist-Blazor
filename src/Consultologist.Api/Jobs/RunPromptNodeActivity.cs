@@ -26,7 +26,11 @@ public sealed record ConsultPromptNodeActivityInput(
     Dictionary<string, string>? VariableTypes = null,
     // v10 (#495): a classifier's declared values, appended to the prompt and
     // the set the answer must come from. Trailing optional.
-    IReadOnlyList<string>? Values = null);
+    IReadOnlyList<string>? Values = null,
+    // v12 #634 (design § 15): the template discriminator — the render is
+    // returned as the answer; no agent runs. Trailing optional; a stored
+    // payload replays with null and the activity behaves exactly as it did.
+    bool? Template = null);
 
 /// <summary>
 /// One node run. Deserialized concepts ride the recorded activity result so Durable

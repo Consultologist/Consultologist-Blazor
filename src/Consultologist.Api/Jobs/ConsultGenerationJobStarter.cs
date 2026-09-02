@@ -2186,6 +2186,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // discriminator downstream.
             Check: WorkflowNodeKinds.IsCheck(node)
                 ? new ConsultCheckDescriptor(node.Op!, node.Of!, node.In!, node.FailWith!)
-                : null);
+                : null,
+            // v12 #634: only true or null — every other node writes the
+            // bytes it always wrote.
+            Template: WorkflowNodeKinds.IsTemplate(node) ? true : null);
     }
 }

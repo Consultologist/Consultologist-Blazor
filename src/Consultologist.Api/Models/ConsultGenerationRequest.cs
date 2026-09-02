@@ -425,7 +425,11 @@ public sealed record ConsultNodeDescriptor(
     // nested slot (the TerminologySnapshot precedent) and the EXPLICIT
     // discriminator: a node is a check exactly when this is non-null, never
     // by the absence of a prompt. Appended last, same reason.
-    ConsultCheckDescriptor? Check = null);
+    ConsultCheckDescriptor? Check = null,
+    // v12 #634 (design § 15): the template kind's explicit discriminator —
+    // the render IS the output, no model runs. Only true or null, never
+    // false (the Reproducible shape). Appended last, same reason.
+    bool? Template = null);
 
 /// <summary>
 /// v12 #624 (design § 13): a check node's snapshotted declaration — the

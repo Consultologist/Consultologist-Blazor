@@ -1553,3 +1553,44 @@ public class WorkflowV12TemplateNodeTests
         Assert.Contains(errors, e => e.Contains("header", StringComparison.Ordinal) && e.Contains("undeclared_var", StringComparison.Ordinal));
     }
 }
+
+/// <summary>
+/// v12 rung (j) (#634, design § 15): the discriminator on the wire — only a
+/// template node earns Template: true; every other kind writes the bytes it
+/// always wrote.
+/// </summary>
+public class WorkflowV12TemplateDescriptorTests
+{
+    [Fact]
+    public void DescribeNode_StampsTheKindMatrix()
+    {
+        var bindings = new Dictionary<string, WorkflowBindingValue> { ["seen_on"] = new("input:seen_on") };
+
+        var template = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DescribeNode(
+            new WorkflowNodeSpec("header", "Header", Prompt: "header", Bindings: bindings, Kind: WorkflowNodeKinds.Template), null);
+        Assert.True(template.Template);
+        Assert.Null(template.OutputContract);
+
+        var prompt = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DescribeNode(
+            new WorkflowNodeSpec("draft", "Draft", Prompt: "draft", Bindings: bindings), null);
+        Assert.Null(prompt.Template);
+
+        var classifier = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DescribeNode(
+            new WorkflowNodeSpec("scope", "Scope", Prompt: "classify", Bindings: bindings,
+                Kind: WorkflowNodeKinds.Classifier, Values: new List<string> { "a", "b" }), null);
+        Assert.Null(classifier.Template);
+
+        var check = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DescribeNode(
+            new WorkflowNodeSpec("coverage", "Coverage", Kind: WorkflowNodeKinds.Check,
+                Op: WorkflowCheckOps.TermsSubset, Of: "node:a", In: "node:b", FailWith: "no"), null);
+        Assert.Null(check.Template);
+
+        // A schema'd template carries its contract like a prompt node would.
+        var schemad = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DescribeNode(
+            new WorkflowNodeSpec("fixed-terms", "Fixed terms", Prompt: "header", Bindings: bindings,
+                Output: new WorkflowNodeOutputSpec("concept-list"), Kind: WorkflowNodeKinds.Template),
+            new Dictionary<string, string> { ["concept-list"] = "concept-list" });
+        Assert.True(schemad.Template);
+        Assert.Equal("concept-list", schemad.OutputContract);
+    }
+}
