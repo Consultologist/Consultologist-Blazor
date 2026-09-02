@@ -1594,3 +1594,55 @@ public class WorkflowV12TemplateDescriptorTests
         Assert.Equal("concept-list", schemad.OutputContract);
     }
 }
+
+/// <summary>
+/// v12 rung (j) (#634, design § 15): the template's whole answer at the pure
+/// seam — one hash twice, tokens null, contract application against the
+/// rendered bytes, and the deterministic fail-fast wrap.
+/// </summary>
+public class WorkflowV12TemplateResultTests
+{
+    [Fact]
+    public void TheRender_IsTheAnswer_OneHashTwice_NoTokens()
+    {
+        var result = Consultologist.Api.Jobs.RunPromptNodeActivity.TemplateResult(
+            "Seen on 2026-08-10.", null, null, "patient-header");
+
+        Assert.Equal("Seen on 2026-08-10.", result.RawOutput);
+        Assert.Null(result.Concepts);
+        Assert.Equal("1c3ee9bd2152fab39b31aa9188bc33ad35bda7e07e793c415e9210e8bd56cb24", result.InputHash);
+        Assert.Equal(result.InputHash, result.OutputHash);
+        Assert.Equal(Consultologist.Api.Workflow.ConsultGenerationProvenance.NodeHashVersion, result.HashVersion);
+        Assert.Null(result.Classification);
+        // Not recorded, never zero: no model ran.
+        Assert.Null(result.Tokens);
+    }
+
+    [Fact]
+    public void ASchemadRender_GoesThroughTheContract_AndHonorsTheSource()
+    {
+        const string json = """{"concepts": [{"term": "breast cancer", "type": "disorder", "id": "254837009", "isSnomedConcept": true, "isActive": true}]}""";
+
+        var result = Consultologist.Api.Jobs.RunPromptNodeActivity.TemplateResult(
+            json, Consultologist.Api.Agents.OutputContracts.ConceptList, "fixed-terms", "fixed-terms-node");
+
+        var concept = Assert.Single(result.Concepts!);
+        Assert.Equal(("breast cancer", "254837009", "fixed-terms"), (concept.Term, concept.Id, concept.Source));
+        Assert.Equal(result.InputHash, result.OutputHash);
+        Assert.Null(result.Tokens);
+    }
+
+    [Fact]
+    public void AMalformedSchemadRender_FailsFast_NeverRetries()
+    {
+        // The same bytes re-render, so the retryable contract exception is
+        // re-thrown as the renderer's own fail-fast type — excluded from the
+        // activity retry policy by construction.
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            Consultologist.Api.Jobs.RunPromptNodeActivity.TemplateResult(
+                "not json at all", Consultologist.Api.Agents.OutputContracts.ConceptList, null, "fixed-terms-node"));
+
+        Assert.StartsWith("Template 'fixed-terms-node' rendered output that is not valid concept-list JSON", exception.Message);
+        Assert.IsType<Consultologist.Api.Workflow.ConceptOutputContractException>(exception.InnerException);
+    }
+}

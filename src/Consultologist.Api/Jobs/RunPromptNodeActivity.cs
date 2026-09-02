@@ -80,6 +80,40 @@ public sealed class RunPromptNodeActivity
     }
 
     [Function(ConsultGenerationActivityNames.RunPromptNode)]
+    /// <summary>
+    /// v12 #634 (design § 15): the template's whole answer, pure — one hash,
+    /// twice: nothing is sent, and the message-that-would-have-been IS the
+    /// output. Tokens null (not recorded, never zero). A malformed schema'd
+    /// render is re-thrown as the renderer's own fail-fast type: the same
+    /// bytes re-render, so retrying is burning money on a proof that already
+    /// failed.
+    /// </summary>
+    internal static NodeRunResult TemplateResult(
+        string rendered,
+        string? outputContract,
+        string? conceptSource,
+        string nodeId)
+    {
+        var hash = ConsultGenerationProvenance.Sha256Hex(rendered);
+
+        IReadOnlyList<ClinicalConcept>? concepts = null;
+
+        if (string.Equals(outputContract, OutputContracts.ConceptList, StringComparison.Ordinal))
+        {
+            try
+            {
+                concepts = ConceptOutputContract.Deserialize(rendered, conceptSource ?? nodeId);
+            }
+            catch (ConceptOutputContractException ex)
+            {
+                throw new InvalidOperationException(
+                    $"Template '{nodeId}' rendered output that is not valid {OutputContracts.ConceptList} JSON: {ex.Message}", ex);
+            }
+        }
+
+        return new NodeRunResult(rendered, concepts, hash, hash, ConsultGenerationProvenance.NodeHashVersion, null, null);
+    }
+
     public async Task<NodeRunResult> RunAsync(
         [ActivityTrigger] ConsultPromptNodeActivityInput input,
         CancellationToken cancellationToken)
@@ -117,6 +151,24 @@ public sealed class RunPromptNodeActivity
                 input.Variables,
                 input.VariableTypes,
                 WorkflowVariableDeclarations.For(package.Manifest));
+            // v12 #634 (design § 15): the first early return — the render IS
+            // the answer. The catalog, the agent and the classifier trailer
+            // are never touched; the validator guarantees a template never
+            // carries the classification contract.
+            if (input.Template == true)
+            {
+                var templateResult = TemplateResult(rendered, input.OutputContract, input.ConceptSource, input.NodeId);
+
+                _logger.LogInformation(
+                    "Template node completed. NodeId={NodeId}, ConceptCount={ConceptCount}, Hash={Hash}, ElapsedMs={ElapsedMs}",
+                    input.NodeId,
+                    templateResult.Concepts?.Count,
+                    templateResult.OutputHash,
+                    stopwatch.ElapsedMilliseconds);
+
+                return templateResult;
+            }
+
             // v10 (#495): a classifier's prompt ends with the values it may
             // answer, in one deterministic form; the message sent is what is
             // hashed. The values reach here on the activity input.
