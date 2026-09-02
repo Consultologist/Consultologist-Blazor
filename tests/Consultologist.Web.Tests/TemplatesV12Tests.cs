@@ -597,3 +597,165 @@ public class TemplatesV12DocumentsPaneTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".result-check"));
     }
 }
+
+/// <summary>
+/// v12 § 13/§ 15 (#621): the two deterministic kinds are born and edited —
+/// a check with no prompt family at all, a template riding the prompt
+/// family whole, and neither offered the reproducible claim.
+/// </summary>
+public class TemplatesV12NodeKindsTests : ClientRenderTestContext
+{
+    private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse fixture)
+    {
+        WorkflowService.GetCurrentPackageContentAsync().Returns(fixture);
+        return Render<Templates>();
+    }
+
+    private static void Navigate(IRenderedComponent<Templates> page, string label) =>
+        page.FindAll("button.editor-nav__item")
+            .First(button => button.TextContent.Replace("●", string.Empty).Trim() == label)
+            .Click();
+
+    private static void Publish(IRenderedComponent<Templates> page) =>
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Publish")).Click();
+
+    private static IReadOnlyList<string> Refusals(IRenderedComponent<Templates> page) =>
+        page.FindAll(".fluent-messagebar-message li").Select(item => item.TextContent.Trim()).ToList();
+
+    private WorkflowPackagePublishRequest? sent;
+
+    private void CapturePublish() =>
+        WorkflowService.PublishPackageAsync(Arg.Do<WorkflowPackagePublishRequest>(request => sent = request))
+            .Returns(new WorkflowPublishOutcome(
+                new WorkflowPackagePublishResponse("acct-1234567890ab", "v2026.08.2", "acct-1234567890ab@v2026.08.2"),
+                Array.Empty<string>()));
+
+    private Consultologist.PackageFormat.WorkflowPackageValidator.ValidationResult Validated()
+    {
+        var manifest = JsonSerializer.Deserialize<Consultologist.PackageFormat.WorkflowPackageManifest>(
+            sent!.Manifest.GetRawText(), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        return Consultologist.PackageFormat.WorkflowPackageValidator.Validate(
+            manifest,
+            sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+            EditorCatalogSchemas.CatalogSchemas.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal));
+    }
+
+    /// <summary>V12Full without the coverage node or the result's check — room to author them.</summary>
+    private static WorkflowPackageContentResponse WithoutTheCheck()
+    {
+        var package = EditorFixtures.V12Full();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["results"]![0]!.AsObject().Remove("check");
+        var nodes = root["nodes"]!.AsArray();
+        nodes.Remove(nodes.Single(n => n!["id"]!.GetValue<string>() == "coverage"));
+        return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
+
+    [Fact]
+    public void ACheckIsBorn_Finished_Named_AndValidates()
+    {
+        var page = RenderEditor(WithoutTheCheck());
+        CapturePublish();
+
+        Navigate(page, "+ Node");
+        page.Find(".new-item-fields select").Change("check");
+        page.Find(".new-node-check-of").Change("node:extract-input-terms");
+        page.Find(".new-node-check-in").Change("node:extract-note-terms");
+        page.Find(".new-node-failwith").Change("The note does not cover the referral.");
+        page.Find("fluent-text-field[placeholder='summarize-guidelines']").Change("coverage");
+        page.Find("fluent-text-field[placeholder='Summarizing guidelines']").Change("Coverage check");
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Create")).Click();
+
+        Navigate(page, "Documents");
+        page.Find(".result-check").Change("node:coverage");
+        Publish(page);
+
+        Assert.NotNull(sent);
+        var node = JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement.GetProperty("nodes").EnumerateArray()
+            .Single(n => n.GetProperty("id").GetString() == "coverage");
+        Assert.Equal("check", node.GetProperty("kind").GetString());
+        Assert.Equal("terms-subset", node.GetProperty("op").GetString());
+        Assert.Equal("node:extract-input-terms", node.GetProperty("of").GetString());
+        Assert.False(node.TryGetProperty("prompt", out _));
+        Assert.False(node.TryGetProperty("bindings", out _));
+        // No prompt entry was minted for it.
+        Assert.DoesNotContain(
+            JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement.GetProperty("prompts").EnumerateArray(),
+            p => p.GetProperty("id").GetString() == "coverage");
+
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join(" | ", validated.Errors));
+    }
+
+    [Fact]
+    public void AnUnfinishedCheck_IsRefused_WithTheValidatorsSentences()
+    {
+        var page = RenderEditor(WithoutTheCheck());
+        CapturePublish();
+
+        Navigate(page, "+ Node");
+        page.Find(".new-item-fields select").Change("check");
+        page.Find("fluent-text-field[placeholder='summarize-guidelines']").Change("coverage");
+        page.Find("fluent-text-field[placeholder='Summarizing guidelines']").Change("Coverage check");
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Create")).Click();
+
+        Navigate(page, "Documents");
+        page.Find(".result-check").Change("node:coverage");
+        Publish(page);
+
+        var refusals = Refusals(page);
+        Assert.Contains("Check 'coverage' declares no of; a check names its two concept-list operands as node:<id> references.", refusals);
+        Assert.Contains("Check 'coverage' declares no failWith; a failed check must speak the package's own sentence.", refusals);
+        Assert.Null(sent);
+    }
+
+    [Fact]
+    public void ATemplateIsBorn_OnThePromptFamily_AndValidates()
+    {
+        var page = RenderEditor(EditorFixtures.V12());
+        CapturePublish();
+
+        Navigate(page, "+ Node");
+        page.Find(".new-item-fields select").Change("template");
+        page.Find("fluent-text-field[placeholder='summarize-guidelines']").Change("patient-header");
+        page.Find("fluent-text-field[placeholder='Summarizing guidelines']").Change("Patient header");
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Create")).Click();
+        // The editor lands on the new prompt's text — a template IS its render.
+        page.Find("fluent-text-area").Change("Prepared by the clinic.");
+
+        // Feed the deliverable so the reachability rule holds.
+        Navigate(page, "Assembling note");
+        page.Find("select[aria-label='Add aggregate source']").Change("node:patient-header");
+
+        Publish(page);
+
+        Assert.NotNull(sent);
+        var node = JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement.GetProperty("nodes").EnumerateArray()
+            .Single(n => n.GetProperty("id").GetString() == "patient-header");
+        Assert.Equal("template", node.GetProperty("kind").GetString());
+        Assert.Equal("patient-header", node.GetProperty("prompt").GetString());
+
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join(" | ", validated.Errors));
+    }
+
+    [Fact]
+    public void TheDeterministicKinds_AreNeverOfferedTheClaim_AndTheKindsAreGated()
+    {
+        // The check card offers of/in/failWith and no reproducible checkbox.
+        var page = RenderEditor(EditorFixtures.V12Full());
+        Navigate(page, "Coverage check");
+        Assert.NotEmpty(page.FindAll(".node-check-of"));
+        Assert.Empty(page.FindAll("input[aria-label='Reproducible for node coverage']"));
+
+        Navigate(page, "Patient header");
+        Assert.Empty(page.FindAll("input[aria-label='Reproducible for node patient-header']"));
+
+        // Below 12 the kinds are not offered at all.
+        var eleven = RenderEditor(EditorFixtures.V11Macro());
+        Navigate(eleven, "+ Node");
+        var kinds = eleven.Find(".new-item-fields select").Children.Select(o => o.GetAttribute("value")).ToList();
+        Assert.DoesNotContain("check", kinds);
+        Assert.DoesNotContain("template", kinds);
+    }
+}

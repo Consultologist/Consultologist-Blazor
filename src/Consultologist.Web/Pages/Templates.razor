@@ -1114,6 +1114,7 @@
                                              PromptOptions="@EffectivePrompts.Select(p => p.Id).ToList()"
                                              AllowPromptChange="@(EffectiveSpecVersion >= 6)"
                                              OfferReproducible="@(EffectiveSpecVersion >= 11)"
+                                             CheckOperandOptions="@CheckOperandChoices"
                                              NodeModified="@(id => nodeEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id))"
                                              RemovedNodes="@RemovedNodes"
                                              RowsFor="@RowsFor"
@@ -1195,7 +1196,11 @@
                                         ? "A deterministic aggregator: collects other nodes' outputs in order, no prompt."
                                         : newNodeKind == ClassifierKind
                                             ? "A classifier: a prompt that answers one of the values it declares, which a document's condition may test as node:<id>. Its values are declared on the node's card."
-                                            : "Creates the node and its prompt together (they are one-to-one). The prompt's text is written under Prompts; variables and bindings follow on the node's card.")
+                                            : newNodeKind == CheckKind
+                                                ? "A check: a deterministic gate on a deliverable — terms-subset over two concept-list operands; no prompt, no model. A document names it as its check."
+                                                : newNodeKind == TemplateKind
+                                                    ? "A template: its prompt renders deterministically and the render IS the output — no model. Everything else works as a prompt node."
+                                                    : "Creates the node and its prompt together (they are one-to-one). The prompt's text is written under Prompts; variables and bindings follow on the node's card.")
                                 </p>
                             </div>
                         </div>
@@ -1217,6 +1222,12 @@
                                         @* v10 (#498): offered at 10 only — absence, the editor's gating pattern. *@
                                         <option value="@ClassifierKind">classifier</option>
                                     }
+                                    @if (EffectiveSpecVersion >= 12)
+                                    {
+                                        @* v12 § 13/§ 15 (#621): the deterministic kinds, offered at 12 alone. *@
+                                        <option value="@CheckKind">check node</option>
+                                        <option value="@TemplateKind">template node</option>
+                                    }
                                 </select>
                             </label>
                             <label class="input-field">
@@ -1227,7 +1238,46 @@
                                 <span>label@(newNodePrompt.Length > 0 ? " — optional, defaults to the prompt's name" : "")</span>
                                 <FluentTextField @bind-Value="newNodeLabel" Placeholder="Summarizing guidelines" />
                             </label>
-                            @if (newNodeKind != "aggregator")
+                            @if (newNodeKind == CheckKind)
+                            {
+                                @* Explicit init: of and in start unchosen; the desk
+                                   refuses publish with the validator's sentences
+                                   until the check is finished. *@
+                                <label class="input-field">
+                                    <span>op</span>
+                                    <select class="binding-row__select new-node-check-op" @bind="newNodeCheckOp">
+                                        @foreach (var checkOp in PF.WorkflowCheckOps.All)
+                                        {
+                                            <option value="@checkOp">@checkOp</option>
+                                        }
+                                    </select>
+                                </label>
+                                <label class="input-field">
+                                    <span>of — the terms that must be covered</span>
+                                    <select class="binding-row__select new-node-check-of" @bind="newNodeCheckOf">
+                                        <option value="">choose…</option>
+                                        @foreach (var (operandRef, operandLabel) in CheckOperandChoices)
+                                        {
+                                            <option value="@operandRef">@operandLabel</option>
+                                        }
+                                    </select>
+                                </label>
+                                <label class="input-field">
+                                    <span>in — the terms that must cover them</span>
+                                    <select class="binding-row__select new-node-check-in" @bind="newNodeCheckIn">
+                                        <option value="">choose…</option>
+                                        @foreach (var (operandRef, operandLabel) in CheckOperandChoices)
+                                        {
+                                            <option value="@operandRef">@operandLabel</option>
+                                        }
+                                    </select>
+                                </label>
+                                <label class="input-field">
+                                    <span>fail with — the sentence a refused document carries</span>
+                                    <FluentTextField Class="new-node-failwith" @bind-Value="newNodeFailWith" Placeholder="The note does not cover every clinical term found in the referral." />
+                                </label>
+                            }
+                            @if (newNodeKind != "aggregator" && newNodeKind != CheckKind)
                             {
                                 @if (EffectiveSpecVersion >= 6)
                                 {
@@ -1292,6 +1342,7 @@
                                              PromptOptions="@EffectivePrompts.Select(p => p.Id).ToList()"
                                              AllowPromptChange="@(EffectiveSpecVersion >= 6)"
                                              OfferReproducible="@(EffectiveSpecVersion >= 11)"
+                                             CheckOperandOptions="@CheckOperandChoices"
                                              NodeModified="@(id => nodeEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id))"
                                              RowsFor="@RowsFor"
                                              ValidateVariableName="@ValidateVariableNameForNode"
@@ -2522,11 +2573,40 @@
         // v11 #564: the reproducibility claim on a node born in the editor.
         public bool Reproducible { get; set; }
 
+        // v12 § 13 (#621): a check's four members; § 15: the template kind
+        // rides Kind with the prompt family untouched.
+        public string? Op { get; set; }
+        public string? Of { get; set; }
+        public string? In { get; set; }
+        public string? FailWith { get; set; }
+
         public bool IsClassifier => Kind == ClassifierKind;
+
+        public bool IsCheck => Kind == CheckKind;
+
+        public bool IsTemplate => Kind == TemplateKind;
     }
 
     /// <summary>The one node kind a manifest spells (v10): prompt is the default and aggregator a property.</summary>
     private const string ClassifierKind = "classifier";
+
+    // v12 (#621): the deterministic kinds, the format's own words.
+    private const string CheckKind = PF.WorkflowNodeKinds.Check;
+    private const string TemplateKind = PF.WorkflowNodeKinds.Template;
+
+    private string newNodeCheckOp = PF.WorkflowCheckOps.All[0];
+    private string newNodeCheckOf = string.Empty;
+    private string newNodeCheckIn = string.Empty;
+    private string? newNodeFailWith;
+
+    // v12 § 13 (#621): what a check's of/in may name — output-declaring
+    // nodes, labeled with their schema so the author sees the contract. The
+    // concept-list rule itself is the server's word (the catalog lives there).
+    private IReadOnlyList<(string Ref, string Label)> CheckOperandChoices =>
+        EffectiveNodes
+            .Where(n => n.HasOutput && n.Aggregate == null && !n.IsCheck)
+            .Select(n => ($"node:{n.Id}", $"{n.Id} — {n.OutputSchema}"))
+            .ToList();
 
     // Standalone pending prompts (#170): publishable only once some node
     // points at them (the orphan rule).
@@ -2755,7 +2835,8 @@
     private WorkflowManifestReader.NodeView AddedNodeView(AddedNode added) => new(
         added.Id,
         added.Label,
-        added.Aggregate != null ? null : added.PromptRef ?? added.Id,
+        // v12 § 13 (#621): a check has no prompt family at all.
+        added.Aggregate != null || added.IsCheck ? null : added.PromptRef ?? added.Id,
         added.ForEach,
         Array.Empty<WorkflowManifestReader.BindingView>(),
         IsResult: DeliverableRootIds.Contains(added.Id),
@@ -2765,7 +2846,11 @@
         FailIfEmpty: added.FailIfEmpty,
         Kind: added.Kind,
         Values: added.Values,
-        Reproducible: added.Reproducible);
+        Reproducible: added.Reproducible,
+        Op: added.Op,
+        Of: added.Of,
+        In: added.In,
+        FailWith: added.FailWith);
 
     // Pending v7 declarations, each the whole list when dirty (the
     // aggregate-source idiom) and null when unchanged.
@@ -5133,7 +5218,11 @@
                         // #572: no coalescing — the edit carries the effective
                         // values on every emission, as Reproducible below.
                         Values = edit.Values,
-                        Reproducible = edit.Reproducible
+                        Reproducible = edit.Reproducible,
+                        // v12 § 13: the check's editable members ride too.
+                        Of = edit.Of,
+                        In = edit.In,
+                        FailWith = edit.FailWith
                     };
                 }
 
@@ -5268,6 +5357,17 @@
                 }
             }
 
+            // v12 § 13 (#621): a check's operands feed the check — the chain
+            // serves the deliverable's existence, not its text, and must not
+            // draw the not-feeding warning.
+            foreach (var operandRef in new[] { node.Of, node.In })
+            {
+                if (operandRef is { } reference && reference.StartsWith("node:", StringComparison.Ordinal))
+                {
+                    sources.Add(reference["node:".Length..]);
+                }
+            }
+
             incoming[node.Id] = sources;
         }
 
@@ -5279,6 +5379,18 @@
             if (byId.ContainsKey(rootId) && reached.Add(rootId))
             {
                 queue.Enqueue(rootId);
+            }
+        }
+
+        // v12 § 13 (#621): a check named by an effective result roots its
+        // own chain — the validator's classifier-style exemption, mirrored.
+        foreach (var namedCheck in EffectiveResults
+            .Where(r => r.Check is { } c && c.StartsWith("node:", StringComparison.Ordinal))
+            .Select(r => r.Check!["node:".Length..]))
+        {
+            if (byId.ContainsKey(namedCheck) && reached.Add(namedCheck))
+            {
+                queue.Enqueue(namedCheck);
             }
         }
 
@@ -5330,7 +5442,9 @@
     {
         var aggregator = newNodeKind == "aggregator";
         var classifier = newNodeKind == ClassifierKind;
-        var promptRef = aggregator || newNodePrompt.Length == 0 ? null : newNodePrompt;
+        var check = newNodeKind == CheckKind;
+        var template = newNodeKind == TemplateKind;
+        var promptRef = aggregator || check || newNodePrompt.Length == 0 ? null : newNodePrompt;
 
         // With an existing prompt chosen, the node defaults to the prompt's
         // own name — the house convention (node and prompt sharing an id is
@@ -5361,7 +5475,7 @@
 
         // Only a freshly minted prompt (named after the node) can collide
         // with an existing prompt id.
-        if (promptRef == null && !aggregator && EffectivePrompts.Any(p => p.Id == id))
+        if (promptRef == null && !aggregator && !check && EffectivePrompts.Any(p => p.Id == id))
         {
             newNodeError = $"A prompt named '{id}' already exists — choose it in the prompt field, or pick another node id.";
             return;
@@ -5376,22 +5490,33 @@
         {
             Id = id,
             Label = label,
-            ForEach = aggregator || classifier || newNodeForEach.Length == 0 ? null : newNodeForEach,
-            OutputSchema = aggregator || classifier || newNodeOutput.Length == 0 ? null : newNodeOutput,
+            ForEach = aggregator || classifier || check || newNodeForEach.Length == 0 ? null : newNodeForEach,
+            OutputSchema = aggregator || classifier || check || newNodeOutput.Length == 0 ? null : newNodeOutput,
             Aggregate = aggregator ? new List<string>() : null,
             PromptRef = promptRef,
-            Kind = classifier ? ClassifierKind : null,
-            Values = classifier ? new List<string>() : null
+            Kind = classifier ? ClassifierKind : check ? CheckKind : template ? TemplateKind : null,
+            Values = classifier ? new List<string>() : null,
+            // v12 § 13: born with what the pane chose — of/in may still be
+            // empty (explicit init; the desk refuses until finished).
+            Op = check ? newNodeCheckOp : null,
+            Of = check && newNodeCheckOf.Length > 0 ? newNodeCheckOf : null,
+            In = check && newNodeCheckIn.Length > 0 ? newNodeCheckIn : null,
+            FailWith = check ? newNodeFailWith?.Trim() : null
         });
         newNodeId = newNodeLabel = null;
         newNodeForEach = string.Empty;
         newNodeOutput = string.Empty;
         newNodeKind = "prompt";
         newNodePrompt = string.Empty;
+        newNodeCheckOp = PF.WorkflowCheckOps.All[0];
+        newNodeCheckOf = string.Empty;
+        newNodeCheckIn = string.Empty;
+        newNodeFailWith = null;
         newNodeError = null;
         // Land on the next step: the aggregator's source list or an existing
-        // prompt's bindings on the node card, or the new prompt's text.
-        selectedKey = aggregator || promptRef != null ? NodeKeyFor(id) : AddedPromptFile(id);
+        // prompt's bindings on the node card, or the new prompt's text —
+        // a check has no prompt, so its card is the destination.
+        selectedKey = aggregator || check || promptRef != null ? NodeKeyFor(id) : AddedPromptFile(id);
         await PendingChangedAsync();
     }
 
@@ -5459,6 +5584,13 @@
             addedNode.OutputSchema = change.OutputSchema;
             addedNode.FailIfEmpty = change.FailIfEmpty;
             addedNode.Reproducible = change.Reproducible;
+            if (addedNode.IsCheck)
+            {
+                addedNode.Of = change.Of;
+                addedNode.In = change.In;
+                addedNode.FailWith = change.FailWith;
+            }
+
             if (addedNode.IsClassifier && change.Values != null)
             {
                 addedNode.Values = change.Values.ToList();
@@ -5485,6 +5617,9 @@
             && change.OutputSchema == original.OutputSchema
             && change.FailIfEmpty == original.FailIfEmpty
             && change.Reproducible == original.Reproducible
+            && change.Of == original.Of
+            && change.In == original.In
+            && change.FailWith == original.FailWith
             && (change.Prompt == null || change.Prompt == original.Prompt)
             // #572: null-tolerant on BOTH sides — a non-classifier is null
             // everywhere, and null no longer means "unchanged".
@@ -6267,9 +6402,9 @@
 
     private sealed record DraftBinding(string NodeId, string Variable, string From, string? As);
 
-    private sealed record DraftNodeEdit(string NodeId, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string? Prompt = null, List<string>? Values = null, bool Reproducible = false);
+    private sealed record DraftNodeEdit(string NodeId, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string? Prompt = null, List<string>? Values = null, bool Reproducible = false, string? Of = null, string? In = null, string? FailWith = null);
 
-    private sealed record DraftAddedNode(string Id, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string PromptText, List<string>? Aggregate = null, string? PromptRef = null, string? Kind = null, List<string>? Values = null, bool Reproducible = false);
+    private sealed record DraftAddedNode(string Id, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string PromptText, List<string>? Aggregate = null, string? PromptRef = null, string? Kind = null, List<string>? Values = null, bool Reproducible = false, string? Op = null, string? Of = null, string? In = null, string? FailWith = null);
 
     private sealed record DraftAddedPrompt(string Id, string Text);
 
@@ -6593,7 +6728,11 @@
                     PromptRef = promptRef,
                     Kind = draftAddedNode.Kind,
                     Values = draftAddedNode.Kind == ClassifierKind ? draftAddedNode.Values ?? new List<string>() : null,
-                    Reproducible = draftAddedNode.Reproducible
+                    Reproducible = draftAddedNode.Reproducible,
+                    Op = draftAddedNode.Op,
+                    Of = draftAddedNode.Of,
+                    In = draftAddedNode.In,
+                    FailWith = draftAddedNode.FailWith
                 });
             }
         }
@@ -6708,7 +6847,8 @@
             // would restore as a DESTRUCTIVE empty list — coalesce against
             // the original here, the one place null can still enter nodeEdits.
             nodeEdits[draftNodeEdit.NodeId] = new WorkflowNodeSummary.NodeChange(
-                draftNodeEdit.NodeId, draftNodeEdit.Label, draftNodeEdit.ForEach, draftNodeEdit.OutputSchema, draftNodeEdit.FailIfEmpty, draftNodeEdit.Prompt, draftNodeEdit.Values ?? original.Values?.ToList(), draftNodeEdit.Reproducible);
+                draftNodeEdit.NodeId, draftNodeEdit.Label, draftNodeEdit.ForEach, draftNodeEdit.OutputSchema, draftNodeEdit.FailIfEmpty, draftNodeEdit.Prompt, draftNodeEdit.Values ?? original.Values?.ToList(), draftNodeEdit.Reproducible,
+                draftNodeEdit.Of, draftNodeEdit.In, draftNodeEdit.FailWith);
         }
 
         foreach (var draftBinding in bindings ?? new List<DraftBinding>())
@@ -6766,8 +6906,8 @@
             variableAdds.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             variableRemovals.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             addedCollections.ToList(),
-            nodeEdits.Values.Select(edit => new DraftNodeEdit(edit.NodeId, edit.Label, edit.ForEach, edit.OutputSchema, edit.FailIfEmpty, edit.Prompt, edit.Values?.ToList(), edit.Reproducible)).ToList(),
-            addedNodes.Select(a => new DraftAddedNode(a.Id, a.Label, a.ForEach, a.OutputSchema, a.FailIfEmpty, a.PromptText, a.Aggregate, a.PromptRef, a.Kind, a.Values, a.Reproducible)).ToList(),
+            nodeEdits.Values.Select(edit => new DraftNodeEdit(edit.NodeId, edit.Label, edit.ForEach, edit.OutputSchema, edit.FailIfEmpty, edit.Prompt, edit.Values?.ToList(), edit.Reproducible, edit.Of, edit.In, edit.FailWith)).ToList(),
+            addedNodes.Select(a => new DraftAddedNode(a.Id, a.Label, a.ForEach, a.OutputSchema, a.FailIfEmpty, a.PromptText, a.Aggregate, a.PromptRef, a.Kind, a.Values, a.Reproducible, a.Op, a.Of, a.In, a.FailWith)).ToList(),
             removedNodeIds.ToList(),
             aggregateEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             resultEdit,
@@ -6941,7 +7081,7 @@
                         unbound.Add($"Aggregator '{addedNode.Id}' has no sources yet — add at least one on its card.");
                     }
                 }
-                else if (addedNode.PromptRef == null && string.IsNullOrWhiteSpace(addedNode.PromptText))
+                else if (addedNode.PromptRef == null && !addedNode.IsCheck && string.IsNullOrWhiteSpace(addedNode.PromptText))
                 {
                     unbound.Add($"Node '{addedNode.Id}' has no prompt text yet — write it under Prompts.");
                 }
@@ -7413,6 +7553,24 @@
                 continue;
             }
 
+            // v12 § 13 (#621): a check is the aggregator's sibling — no
+            // prompt entry, no bindings; its four members and nothing else.
+            if (addedNode.IsCheck)
+            {
+                var checkObject = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["id"] = addedNode.Id,
+                    ["label"] = addedNode.Label,
+                    ["kind"] = CheckKind
+                };
+                if (addedNode.Op != null) { checkObject["op"] = addedNode.Op; }
+                if (addedNode.Of != null) { checkObject["of"] = addedNode.Of; }
+                if (addedNode.In != null) { checkObject["in"] = addedNode.In; }
+                if (addedNode.FailWith != null) { checkObject["failWith"] = addedNode.FailWith; }
+                nodesArray.Add(checkObject);
+                continue;
+            }
+
             if (addedNode.PromptRef == null
                 && (root["prompts"] ?? root["Prompts"]) is System.Text.Json.Nodes.JsonArray promptsArrayForAdd)
             {
@@ -7450,6 +7608,12 @@
                 }
 
                 newNodeObject["output"] = newOutputObject;
+            }
+
+            // v12 § 15 (#621): the template kind rides the prompt family.
+            if (addedNode.IsTemplate)
+            {
+                newNodeObject["kind"] = TemplateKind;
             }
 
             // v10 (#498): a classifier spells its kind and the values it may answer.
@@ -7812,6 +7976,24 @@
             {
                 nodeObject.Remove("reproducible");
                 nodeObject.Remove("Reproducible");
+            }
+
+            // v12 § 13 (#621): the check's editable members — write-or-remove,
+            // guarded to check nodes so every other kind composes today's
+            // bytes (op is the closed set's one entry and never edited).
+            if (nodes.FirstOrDefault(n => n.Id == pair.Key)?.IsCheck == true)
+            {
+                foreach (var (memberKey, memberValue) in new[] { ("of", pair.Value.Of), ("in", pair.Value.In), ("failWith", pair.Value.FailWith) })
+                {
+                    if (memberValue is null)
+                    {
+                        nodeObject.Remove(memberKey);
+                    }
+                    else
+                    {
+                        nodeObject[memberKey] = memberValue;
+                    }
+                }
             }
         }
 
