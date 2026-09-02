@@ -221,3 +221,181 @@ public class TemplatesV12SignatureTokenDeskTests : ClientRenderTestContext
         Assert.DoesNotContain("{{profile:signature}}", eleven.Find(".macro-placeholders").TextContent);
     }
 }
+
+/// <summary>
+/// v12 (#621): the desk mirrors every v12 sentence — carried shapes below 12
+/// are refused by name with the upgrade pointer (NewestSpecVersion, never
+/// the runnable rung), and at 12 the rule mirrors speak the validator's
+/// sentences verbatim. One fresh page per fixture.
+/// </summary>
+public class TemplatesV12DeskMirrorTests : ClientRenderTestContext
+{
+    private static WorkflowPackageContentResponse Modify(
+        WorkflowPackageContentResponse package,
+        Action<System.Text.Json.Nodes.JsonObject> mutate)
+    {
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        mutate(root);
+        return package with { Manifest = System.Text.Json.JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
+
+    /// <summary>Publish needs a pending change; a whitespace nudge on the standing prompt file is the least one.</summary>
+    private void Nudge(WorkflowPackageContentResponse package) =>
+        JSInterop.Setup<string?>("localStorage.getItem", $"workflow-editor-draft:{package.Ref}")
+            .SetResult("{ \"Version\": 14, \"Edits\": { \"prompts/draft-section.md\": \"Draft {{ section_name }} from {{ consult_draft }}. \" } }");
+
+    private IReadOnlyList<string> PublishAndRead(WorkflowPackageContentResponse package)
+    {
+        Nudge(package);
+        WorkflowService.GetCurrentPackageContentAsync().Returns(package);
+        var page = Render<Templates>();
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Publish")).Click();
+        return page.FindAll(".fluent-messagebar-message li").Select(item => item.TextContent.Trim()).ToList();
+    }
+
+    [Fact]
+    public void BelowTwelve_EveryCarriedShape_IsRefusedByName_WithThePointer()
+    {
+        // One v11 manifest carrying the twelve: each key answers with its
+        // version requirement and the upgrade pointer — NewestSpecVersion,
+        // never the runnable rung.
+        var package = Modify(EditorFixtures.V11Macro(), root =>
+        {
+            root["macros"]![0]!["optional"] = true;
+            root["macros"]![0]!["default"] = true;
+            root["results"]![0]!["check"] = "node:coverage";
+            root["results"]![0]!["macros"] = new System.Text.Json.Nodes.JsonArray(
+                new System.Text.Json.Nodes.JsonObject { ["id"] = "disclaimer", ["after"] = "node:draft-section", ["when"] = "node:scope == in_scope" });
+            root["nodes"]!.AsArray().Add(new System.Text.Json.Nodes.JsonObject
+            {
+                ["id"] = "coverage", ["label"] = "Coverage", ["kind"] = "check", ["op"] = "terms-subset",
+                ["of"] = "node:scope", ["in"] = "node:scope", ["failWith"] = "No."
+            });
+        });
+
+        var refusals = PublishAndRead(package);
+
+        const string pointer = " Use \"Upgrade to specVersion 12\" and publish.";
+        Assert.Contains($"Macro 'disclaimer' declares optional, which requires specVersion 12.{pointer}", refusals);
+        Assert.Contains($"Macro 'disclaimer' declares default, which requires specVersion 12.{pointer}", refusals);
+        Assert.Contains($"Result 'consult_note' places macro 'disclaimer', which requires specVersion 12.{pointer}", refusals);
+        Assert.Contains($"Result 'consult_note' gates macro 'disclaimer' with when, which requires specVersion 12.{pointer}", refusals);
+        Assert.Contains($"Result 'consult_note' declares check, which requires specVersion 12.{pointer}", refusals);
+        Assert.Contains($"Node 'coverage' declares kind 'check', which requires specVersion 12.{pointer}", refusals);
+        Assert.Contains($"Node 'coverage' declares op, which requires specVersion 12.{pointer}", refusals);
+    }
+
+    [Fact]
+    public void AtTwelve_TheOptionalPair_AndThePlacement_SpeakTheValidatorsSentences()
+    {
+        var noDefault = Modify(EditorFixtures.V12Full(), root =>
+        {
+            root["macros"]![1]!.AsObject().Remove("default");
+        });
+        Assert.Contains(
+            "Macro 'closing' is optional and declares no default; an optional macro must say what a run that makes no choice does.",
+            PublishAndRead(noDefault));
+
+        var bothAnchors = Modify(EditorFixtures.V12Full(), root =>
+        {
+            root["results"]![0]!["macros"]![0]!["before"] = "node:draft-section";
+        });
+        Assert.Contains(
+            "Result 'consult_note' places macro 'disclaimer' with both before and after; a placement names exactly one.",
+            PublishAndRead(bothAnchors));
+
+        var badAnchor = Modify(EditorFixtures.V12Full(), root =>
+        {
+            root["results"]![0]!["macros"]![0]!["after"] = "node:scope";
+        });
+        Assert.Contains(
+            "Result 'consult_note' places macro 'disclaimer' after 'node:scope', which its aggregator 'assemble-note' does not aggregate.",
+            PublishAndRead(badAnchor));
+    }
+
+    [Fact]
+    public void AtTwelve_TheCheckShape_AndTheOrphan_SpeakTheValidatorsSentences()
+    {
+        var broken = Modify(EditorFixtures.V12Full(), root =>
+        {
+            var coverage = root["nodes"]!.AsArray().Single(n => n!["id"]!.GetValue<string>() == "coverage")!.AsObject();
+            coverage.Remove("op");
+            coverage["failWith"] = " ";
+            coverage["of"] = "extract-input-terms";
+            coverage["in"] = "node:missing-node";
+        });
+        var refusals = PublishAndRead(broken);
+        Assert.Contains("Check 'coverage' declares no op; the operations are terms-subset.", refusals);
+        Assert.Contains("Check 'coverage' declares no failWith; a failed check must speak the package's own sentence.", refusals);
+        Assert.Contains("Check 'coverage' of 'extract-input-terms' must be a node:<id> reference.", refusals);
+        Assert.Contains("Check 'coverage' in references undeclared node 'missing-node'.", refusals);
+
+        var orphan = Modify(EditorFixtures.V12Full(), root =>
+        {
+            root["results"]![0]!.AsObject().Remove("check");
+        });
+        Assert.Contains(
+            "Check 'coverage' is not named by any result; a check gates a deliverable, or it is dead weight.",
+            PublishAndRead(orphan));
+
+        var notACheck = Modify(EditorFixtures.V12Full(), root =>
+        {
+            root["results"]![0]!["check"] = "node:scope";
+        });
+        Assert.Contains(
+            "Result 'consult_note' check names 'scope', which is not a check node.",
+            PublishAndRead(notACheck));
+    }
+
+    [Fact]
+    public void AtTwelve_TheEntrysWhen_IsJudgedByTheOneGrammar_UnderTheLongerPrefix()
+    {
+        var badValue = Modify(EditorFixtures.V12Full(), root =>
+        {
+            root["results"]![0]!["macros"]![0]!["when"] = "node:scope == maybe";
+        });
+        Assert.Contains(PublishAndRead(badValue), refusal =>
+            refusal.StartsWith("Result 'consult_note' macro 'disclaimer' condition compares 'node:scope' to 'maybe'", StringComparison.Ordinal));
+
+        var undeclared = Modify(EditorFixtures.V12Full(), root =>
+        {
+            root["results"]![0]!["macros"]![0]!["when"] = "include_counseling";
+        });
+        Assert.Contains(
+            "Result 'consult_note' macro 'disclaimer' condition reads undeclared input 'include_counseling'.",
+            PublishAndRead(undeclared));
+    }
+
+    [Fact]
+    public void AtTwelve_TheSignatureInterplay_IsRefusedAtTheDesk()
+    {
+        // The gated entry's macro carries the token → the conditional-
+        // signature sentence; and the signed result carrying a token macro →
+        // signed once. The fixture's disclaimer entry is already gated.
+        var gatedToken = Modify(EditorFixtures.V12Full(), root =>
+        {
+            root["results"]![0]!["signature"] = false;
+        });
+        gatedToken.Files["macros/disclaimer.md"] = "Sincerely, {{profile:signature}}";
+        var refusals = PublishAndRead(gatedToken);
+        Assert.Contains(
+            "Result 'consult_note' gates macro 'disclaimer' with when, and the macro carries {{profile:signature}}; a conditional signature was rejected (#516) and stays rejected.",
+            refusals);
+
+        var signedToken = EditorFixtures.V12Full();
+        signedToken.Files["macros/closing.md"] = "Yours, {{profile:signature}}";
+        // closing is optional in the fixture — the optional-token sentence
+        // fires too; the signed-once one is the assertion here.
+        Assert.Contains(
+            "Result 'consult_note' declares signature and references macro 'closing', which contains {{profile:signature}}; a deliverable is signed once.",
+            PublishAndRead(signedToken));
+
+        var templateClaim = Modify(EditorFixtures.V12Full(), root =>
+        {
+            root["nodes"]!.AsArray().Single(n => n!["id"]!.GetValue<string>() == "patient-header")!["reproducible"] = true;
+        });
+        Assert.Contains(
+            "Template 'patient-header' declares reproducible; a template is deterministic by construction, and the claim is not its to make.",
+            PublishAndRead(templateClaim));
+    }
+}

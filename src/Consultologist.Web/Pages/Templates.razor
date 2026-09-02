@@ -2870,7 +2870,7 @@
             {
                 if (clause.IsNodeValue)
                 {
-                    if (NodeClauseComplaint(conditioned.Id, clause) is { Length: > 0 } nodeComplaint)
+                    if (NodeClauseComplaint($"Result '{conditioned.Id}' condition", clause) is { Length: > 0 } nodeComplaint)
                     {
                         errors.Add(nodeComplaint);
                     }
@@ -2903,7 +2903,7 @@
                     continue;
                 }
 
-                if (V9ConditionComplaint(conditioned.Id, clause, tested) is { } complaint)
+                if (V9ConditionComplaint($"Result '{conditioned.Id}' condition", clause, tested) is { } complaint)
                 {
                     errors.Add(complaint);
                 }
@@ -2995,7 +2995,282 @@
             }
         }
 
+        // ----- v12 (#621): the desk's mirror of the validator's twelve -----
+
+        if (EffectiveSpecVersion < 12)
+        {
+            var upgradeTwelve = $" Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.";
+
+            foreach (var macro in EffectiveMacros)
+            {
+                if (macro.Optional != null)
+                {
+                    errors.Add($"Macro '{macro.Id}' declares optional, which requires specVersion 12.{upgradeTwelve}");
+                }
+
+                if (macro.Default != null)
+                {
+                    errors.Add($"Macro '{macro.Id}' declares default, which requires specVersion 12.{upgradeTwelve}");
+                }
+            }
+
+            foreach (var result in results)
+            {
+                foreach (var entry in result.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>())
+                {
+                    if ((entry.Before ?? entry.After) != null)
+                    {
+                        errors.Add($"Result '{result.Id}' places macro '{entry.Id}', which requires specVersion 12.{upgradeTwelve}");
+                    }
+
+                    if (entry.When != null)
+                    {
+                        errors.Add($"Result '{result.Id}' gates macro '{entry.Id}' with when, which requires specVersion 12.{upgradeTwelve}");
+                    }
+                }
+
+                if (result.Check != null)
+                {
+                    errors.Add($"Result '{result.Id}' declares check, which requires specVersion 12.{upgradeTwelve}");
+                }
+            }
+
+            foreach (var node in EffectiveNodes)
+            {
+                if (node.IsCheck)
+                {
+                    errors.Add($"Node '{node.Id}' declares kind 'check', which requires specVersion 12.{upgradeTwelve}");
+                }
+
+                if (node.IsTemplate)
+                {
+                    errors.Add($"Node '{node.Id}' declares kind 'template', which requires specVersion 12.{upgradeTwelve}");
+                }
+
+                foreach (var (member, value) in new[] { ("op", node.Op), ("of", node.Of), ("in", node.In), ("failWith", node.FailWith) })
+                {
+                    if (value != null)
+                    {
+                        errors.Add($"Node '{node.Id}' declares {member}, which requires specVersion 12.{upgradeTwelve}");
+                    }
+                }
+            }
+        }
+        else
+        {
+            // The optional/default pair — the validator's sentences verbatim,
+            // and the explicit-init rule they enforce: no silent default.
+            foreach (var macro in EffectiveMacros)
+            {
+                if (macro.Optional == true && macro.Default == null)
+                {
+                    errors.Add($"Macro '{macro.Id}' is optional and declares no default; an optional macro must say what a run that makes no choice does.");
+                }
+                else if (macro.Default != null && macro.Optional != true)
+                {
+                    errors.Add($"Macro '{macro.Id}' declares default but is not optional; only optional: true takes a per-run choice.");
+                }
+
+                if (macro.Optional == true && SignatureTokenCount(macro) > 0)
+                {
+                    errors.Add($"Macro '{macro.Id}' is optional and carries {{{{profile:signature}}}}; a per-run signature choice was rejected (#516) and stays rejected.");
+                }
+            }
+
+            foreach (var result in results)
+            {
+                var aggregator = EffectiveNodes.FirstOrDefault(n => $"node:{n.Id}" == result.Node);
+                var entries = result.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>();
+
+                foreach (var entry in entries)
+                {
+                    if (entry.Before != null && entry.After != null)
+                    {
+                        errors.Add($"Result '{result.Id}' places macro '{entry.Id}' with both before and after; a placement names exactly one.");
+                    }
+                    else if ((entry.Before ?? entry.After) is { } anchor)
+                    {
+                        if (aggregator?.Aggregate is not { Count: > 0 } sources)
+                        {
+                            errors.Add($"Result '{result.Id}' places macro '{entry.Id}', but its node declares no aggregate; placement is between sections, and there are none.");
+                        }
+                        else if (!sources.Contains(anchor, StringComparer.Ordinal))
+                        {
+                            errors.Add($"Result '{result.Id}' places macro '{entry.Id}' {(entry.Before != null ? "before" : "after")} '{anchor}', which its aggregator '{aggregator.Id}' does not aggregate.");
+                        }
+                    }
+
+                    if (entry.When != null)
+                    {
+                        var gatedMacro = EffectiveMacros.FirstOrDefault(m => m.Id == entry.Id);
+
+                        if (gatedMacro != null && SignatureTokenCount(gatedMacro) > 0)
+                        {
+                            errors.Add($"Result '{result.Id}' gates macro '{entry.Id}' with when, and the macro carries {{{{profile:signature}}}}; a conditional signature was rejected (#516) and stays rejected.");
+                        }
+
+                        errors.AddRange(MacroWhenErrors(result.Id, entry));
+                    }
+                }
+
+                // The signed-once pair, per result.
+                var carrying = entries.Select(e => e.Id).Distinct(StringComparer.Ordinal)
+                    .Where(id => EffectiveMacros.FirstOrDefault(m => m.Id == id) is { } m && SignatureTokenCount(m) > 0)
+                    .ToList();
+                var tokensOnResult = carrying.Sum(id => SignatureTokenCount(EffectiveMacros.First(m => m.Id == id)));
+
+                if (result.Signature == true && carrying.Count > 0)
+                {
+                    errors.Add($"Result '{result.Id}' declares signature and references macro '{carrying[0]}', which contains {{{{profile:signature}}}}; a deliverable is signed once.");
+                }
+                else if (tokensOnResult > 1)
+                {
+                    errors.Add($"Result '{result.Id}' references {{{{profile:signature}}}} more than once across its macros; a deliverable is signed once.");
+                }
+
+                // The result's check shape.
+                if (result.Check is { } check)
+                {
+                    if (!check.StartsWith("node:", StringComparison.Ordinal))
+                    {
+                        errors.Add($"Result '{result.Id}' check '{check}' must be a node:<id> reference.");
+                    }
+                    else if (EffectiveNodes.FirstOrDefault(n => n.Id == check["node:".Length..]) is not { IsCheck: true })
+                    {
+                        errors.Add($"Result '{result.Id}' check names '{check["node:".Length..]}', which is not a check node.");
+                    }
+                }
+            }
+
+            // The check node's own shape — every rule but the concept-list
+            // contract one, which needs the server's catalog and stays the
+            // server's word alone.
+            foreach (var node in EffectiveNodes.Where(n => n.IsCheck))
+            {
+                var subject = $"Check '{node.Id}'";
+
+                if (node.Prompt != null || node.Bindings.Count > 0 || node.HasOutput || node.ForEach != null || node.Values != null)
+                {
+                    errors.Add($"{subject} must declare only op, of, in and failWith (no prompt, bindings, output, forEach, or values).");
+                }
+
+                if (node.Reproducible)
+                {
+                    errors.Add($"{subject} declares reproducible; a check is deterministic by construction, and the claim is not its to make.");
+                }
+
+                if (node.Op is null)
+                {
+                    errors.Add($"{subject} declares no op; the operations are {string.Join(", ", PF.WorkflowCheckOps.All)}.");
+                }
+                else if (!PF.WorkflowCheckOps.All.Contains(node.Op, StringComparer.Ordinal))
+                {
+                    errors.Add($"{subject} declares unknown op '{node.Op}' (accepted: {string.Join(", ", PF.WorkflowCheckOps.All)}).");
+                }
+
+                if (string.IsNullOrWhiteSpace(node.FailWith))
+                {
+                    errors.Add($"{subject} declares no failWith; a failed check must speak the package's own sentence.");
+                }
+
+                foreach (var (member, operand) in new[] { ("of", node.Of), ("in", node.In) })
+                {
+                    if (operand is null)
+                    {
+                        errors.Add($"{subject} declares no {member}; a check names its two concept-list operands as node:<id> references.");
+                    }
+                    else if (!operand.StartsWith("node:", StringComparison.Ordinal))
+                    {
+                        errors.Add($"{subject} {member} '{operand}' must be a node:<id> reference.");
+                    }
+                    else if (EffectiveNodes.All(n => n.Id != operand["node:".Length..]))
+                    {
+                        errors.Add($"{subject} {member} references undeclared node '{operand["node:".Length..]}'.");
+                    }
+                }
+            }
+
+            // The check orphan rule.
+            var namedChecks = results
+                .Where(r => r.Check is { } c && c.StartsWith("node:", StringComparison.Ordinal))
+                .Select(r => r.Check!["node:".Length..])
+                .ToHashSet(StringComparer.Ordinal);
+            errors.AddRange(EffectiveNodes
+                .Where(n => n.IsCheck && !namedChecks.Contains(n.Id))
+                .Select(n => $"Check '{n.Id}' is not named by any result; a check gates a deliverable, or it is dead weight."));
+
+            // The template's one desk rule.
+            errors.AddRange(EffectiveNodes
+                .Where(n => n.IsTemplate && n.Reproducible)
+                .Select(n => $"Template '{n.Id}' declares reproducible; a template is deterministic by construction, and the claim is not its to make."));
+        }
+
         return errors;
+    }
+
+    /// <summary>
+    /// v12 § 5 (#621): how many signature tokens a macro's effective text
+    /// carries — the desk's twin of the validator's per-macro count.
+    /// </summary>
+    private int SignatureTokenCount(WorkflowManifestReader.MacroView macro)
+    {
+        var text = GetText(macro.File);
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return 0;
+        }
+
+        return PF.WorkflowMacroPlaceholders.Pattern.Matches(text)
+            .Count(match => PF.WorkflowMacroPlaceholders.TryParse(PF.WorkflowMacroPlaceholders.TokenOf(match), out var ns, out var id)
+                && ns == "profile" && id == "signature");
+    }
+
+    /// <summary>
+    /// v12 § 14 (#621): a macro entry's when at the desk — one grammar, two
+    /// doors: the same parse and the same clause complaints the document's
+    /// condition gets, under the validator's longer prefix.
+    /// </summary>
+    private IEnumerable<string> MacroWhenErrors(string resultId, WorkflowManifestReader.ResultMacroView entry)
+    {
+        var prefix = $"Result '{resultId}' macro '{entry.Id}' condition";
+
+        if (!PF.WorkflowResultConditions.TryParseExpression(entry.When, out var expression, out var parseError) || expression is null)
+        {
+            yield return $"{prefix} {parseError}";
+            yield break;
+        }
+
+        foreach (var clause in expression.Leaves)
+        {
+            if (clause.IsNodeValue)
+            {
+                if (NodeClauseComplaint(prefix, clause) is { Length: > 0 } nodeComplaint)
+                {
+                    yield return nodeComplaint;
+                }
+
+                continue;
+            }
+
+            if (clause.IsArithmetic || clause.PathDepth >= 2)
+            {
+                continue;
+            }
+
+            var tested = EffectiveInputs.FirstOrDefault(input => input.Id == clause.InputId);
+
+            if (tested == null)
+            {
+                yield return $"{prefix} reads undeclared input '{clause.InputId}'.";
+                continue;
+            }
+
+            if (V9ConditionComplaint(prefix, clause, tested) is { } complaint)
+            {
+                yield return complaint;
+            }
+        }
     }
 
     /// <summary>
@@ -3047,11 +3322,10 @@
     /// Null when the condition is sound.
     /// </summary>
     private static string? V9ConditionComplaint(
-        string resultId,
+        string prefix,
         PF.WorkflowResultCondition clause,
         WorkflowManifestReader.InputView tested)
     {
-        var prefix = $"Result '{resultId}' condition";
         var operand = clause.Operand;
         var op = clause.Operator;
         var literal = clause.Literal;
@@ -3144,10 +3418,9 @@
     /// v10 (#498): the desk's check of one clause reading node:&lt;id&gt; — the
     /// server's sentences (WorkflowPackageValidator). Empty when sound.
     /// </summary>
-    private string? NodeClauseComplaint(string resultId, PF.WorkflowResultCondition clause)
+    private string? NodeClauseComplaint(string prefix, PF.WorkflowResultCondition clause)
     {
         var operand = clause.Operand;
-        var prefix = $"Result '{resultId}' condition";
         var classifiers = EffectiveNodes.Where(node => node.IsClassifier).ToDictionary(node => node.Id, StringComparer.Ordinal);
         if (clause.NodeId is null || !classifiers.TryGetValue(clause.NodeId, out var classifier))
         {
