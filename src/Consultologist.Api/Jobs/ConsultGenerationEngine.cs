@@ -473,9 +473,16 @@ public sealed class ConsultGenerationOrchestrator
                             // Render's bytes above. A deliverable with no
                             // macros passes rendered through untouched — the
                             // control's bytes.
-                            var (text, appended) = ConsultMacroExpander.Append(
-                                rendered,
+                            // v12 #619 (§ 4): the composer interleaves placed
+                            // macros between the sources and appends the rest
+                            // — with nothing placed its bytes equal the v11
+                            // append exactly (pinned). `rendered` above stays
+                            // the hash and the bindable output.
+                            var (text, appended) = ConsultMacroExpander.Compose(
+                                aggregator.Aggregate!,
+                                parts,
                                 deliverable.MacroIds,
+                                deliverable.MacroPlacements,
                                 input.MacroTexts,
                                 effectiveInputs,
                                 input.DataScalars,
@@ -1067,7 +1074,9 @@ internal static class ConsultDeliverables
         // v11 #513: the macro ids this deliverable appends, in declared order.
         IReadOnlyList<string>? MacroIds = null,
         // v11 #516: the package marks this deliverable signed.
-        bool? Signature = null);
+        bool? Signature = null,
+        // v12 #619: the placed macros' anchors, from the descriptor.
+        IReadOnlyList<ConsultMacroPlacement>? MacroPlacements = null);
 
     public static IReadOnlyList<Deliverable> Resolve(
         IReadOnlyList<ConsultResultDescriptor>? results,
@@ -1093,7 +1102,8 @@ internal static class ConsultDeliverables
                     SourcesOf(nodesById.GetValueOrDefault(result.NodeId)),
                     ordinal,
                     result.Macros,
-                    result.Signature))
+                    result.Signature,
+                    result.MacroPlacements))
                 .ToList();
         }
 

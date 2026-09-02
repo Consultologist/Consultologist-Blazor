@@ -440,3 +440,216 @@ public class WorkflowV12CheckNodeTests
         Assert.Contains(V12Fixtures.Validate(manifest).Errors, e => e.Contains("cycle", StringComparison.OrdinalIgnoreCase));
     }
 }
+
+/// <summary>
+/// v12 rung (c) (#619, design § 4/§ 6/§ 7): the placement composer — per
+/// source, before-macros, the part, after-macros; then the unplaced; the
+/// appended entries in document order; and the aggregator's hash input
+/// (Render's bytes) untouched by any of it.
+/// </summary>
+public class WorkflowV12PlacementRuntimeTests
+{
+    private static readonly Dictionary<string, string> NoValues = new(StringComparer.Ordinal);
+
+    private static readonly Dictionary<string, string> Texts = new(StringComparer.Ordinal)
+    {
+        ["disclaimer"] = "This disclaimer is fixed.",
+        ["closing"] = "Signed on {{run:date}}."
+    };
+
+    private static Consultologist.Api.Jobs.ConsultMacroExpander.RunFacts Facts() =>
+        new(new DateTime(2026, 9, 2, 12, 0, 0, DateTimeKind.Utc), "0123456789abcdef", "general@v2026.09.1", "east.ca.api.consultologist.ai", "Taylor Reyes");
+
+    private static readonly string[] SourceRefs = { "node:intro", "node:findings" };
+
+    private static readonly IReadOnlyList<Consultologist.Api.Jobs.ConsultAggregateRenderer.Part> Parts = new Consultologist.Api.Jobs.ConsultAggregateRenderer.Part[]
+    {
+        new Consultologist.Api.Jobs.ConsultAggregateRenderer.ScalarPart("Intro."),
+        new Consultologist.Api.Jobs.ConsultAggregateRenderer.ForEachPart(new[] { ("History", "Unremarkable."), ("Exam", "Benign.") })
+    };
+
+    private static (string Text, IReadOnlyList<Consultologist.Api.Models.ConsultAppendedEntry>? Appended) Compose(
+        IReadOnlyList<string>? macroIds,
+        IReadOnlyList<Consultologist.Api.Models.ConsultMacroPlacement>? placements,
+        IReadOnlyList<string>? sourceRefs = null,
+        IReadOnlyList<Consultologist.Api.Jobs.ConsultAggregateRenderer.Part>? parts = null) =>
+        Consultologist.Api.Jobs.ConsultMacroExpander.Compose(
+            sourceRefs ?? SourceRefs, parts ?? Parts, macroIds, placements, Texts, NoValues, null, NoValues, Facts());
+
+    [Fact]
+    public void NothingPlaced_ComposesTheAppendBytesExactly()
+    {
+        // The v11 control: the composer with no placements is byte-identical
+        // to Render-then-Append — the join is associative, and this pin is
+        // what lets the engine route every deliverable through Compose.
+        var rendered = Consultologist.Api.Jobs.ConsultAggregateRenderer.Render(Parts);
+        var (appendText, appendEntries) = Consultologist.Api.Jobs.ConsultMacroExpander.Append(
+            rendered, new[] { "disclaimer", "closing" }, Texts, NoValues, null, NoValues, Facts());
+
+        var (composed, composedEntries) = Compose(new[] { "disclaimer", "closing" }, placements: null);
+
+        Assert.Equal(appendText, composed);
+        Assert.Equal(
+            appendEntries!.Select(e => (e.Kind, e.Id)),
+            composedEntries!.Select(e => (e.Kind, e.Id)));
+
+        // And with no macros at all, Render's own bytes.
+        var (bare, none) = Compose(null, null);
+        Assert.Equal(rendered, bare);
+        Assert.Null(none);
+    }
+
+    [Fact]
+    public void APlacedMacro_SitsBeforeItsSection()
+    {
+        var (text, _) = Compose(
+            new[] { "disclaimer" },
+            new[] { new Consultologist.Api.Models.ConsultMacroPlacement("disclaimer", Before: "node:findings") });
+
+        Assert.Equal(
+            "Intro.\n\nThis disclaimer is fixed.\n\n## History\n\nUnremarkable.\n\n## Exam\n\nBenign.",
+            text);
+    }
+
+    [Fact]
+    public void AFannedSource_IsOneBlock_NeverSplitByAPlacement()
+    {
+        // § 11 assumption 1, held: after the fanned source means after the
+        // WHOLE block — never between History and Exam.
+        var (text, _) = Compose(
+            new[] { "disclaimer" },
+            new[] { new Consultologist.Api.Models.ConsultMacroPlacement("disclaimer", After: "node:findings") });
+
+        Assert.Equal(
+            "Intro.\n\n## History\n\nUnremarkable.\n\n## Exam\n\nBenign.\n\nThis disclaimer is fixed.",
+            text);
+    }
+
+    [Fact]
+    public void PlacedAndUnplaced_ComposeInDocumentOrder_AndAppendedSaysSo()
+    {
+        // 'closing' is DECLARED first but placed nowhere; 'disclaimer' is
+        // declared second and placed before the first section. Document
+        // order wins in the text and in appended[] alike (§ 6).
+        var (text, appended) = Compose(
+            new[] { "closing", "disclaimer" },
+            new[] { new Consultologist.Api.Models.ConsultMacroPlacement("disclaimer", Before: "node:intro") });
+
+        Assert.Equal(
+            "This disclaimer is fixed.\n\nIntro.\n\n## History\n\nUnremarkable.\n\n## Exam\n\nBenign.\n\nSigned on 2026-09-02.",
+            text);
+        Assert.Equal(new[] { "disclaimer", "closing" }, appended!.Select(e => e.Id));
+    }
+
+    [Fact]
+    public void BeforeAndAfterTheSameSection_BothLand()
+    {
+        var (text, appended) = Compose(
+            new[] { "disclaimer", "closing" },
+            new[]
+            {
+                new Consultologist.Api.Models.ConsultMacroPlacement("disclaimer", Before: "node:intro"),
+                new Consultologist.Api.Models.ConsultMacroPlacement("closing", After: "node:intro")
+            });
+
+        Assert.Equal(
+            "This disclaimer is fixed.\n\nIntro.\n\nSigned on 2026-09-02.\n\n## History\n\nUnremarkable.\n\n## Exam\n\nBenign.",
+            text);
+        Assert.Equal(new[] { "disclaimer", "closing" }, appended!.Select(e => e.Id));
+    }
+
+    [Fact]
+    public void TheSignature_StillFollowsEveryPlacedMacro()
+    {
+        var (text, appended) = Compose(
+            new[] { "disclaimer" },
+            new[] { new Consultologist.Api.Models.ConsultMacroPlacement("disclaimer", Before: "node:intro") });
+        var snapshot = new Consultologist.Api.Jobs.ConsultSignatureSnapshot("s1", "Dr. Reyes", "2026-09-01");
+
+        var (finalText, finalAppended, unsigned) = Consultologist.Api.Jobs.ConsultSignatureAppend.Apply(
+            text, appended, signed: true, snapshot);
+
+        Assert.EndsWith("Dr. Reyes", finalText);
+        Assert.Equal(new[] { "disclaimer", "signature" }, finalAppended!.Select(e => e.Id == "disclaimer" ? e.Id : e.Kind));
+        Assert.Null(unsigned);
+    }
+
+    [Fact]
+    public void TheAggregatorsHashInput_NeverLearnsAboutPlacement()
+    {
+        // § 7 pinned at the unit the engine stamps from: Render's bytes — and
+        // so Sha256Hex(Render) — are identical across no-macros, appended and
+        // placed, while the composed document differs each time.
+        var hash = Consultologist.Api.Workflow.ConsultGenerationProvenance.Sha256Hex(
+            Consultologist.Api.Jobs.ConsultAggregateRenderer.Render(Parts));
+
+        var (bare, _) = Compose(null, null);
+        var (appendedText, _) = Compose(new[] { "disclaimer" }, null);
+        var (placedText, _) = Compose(
+            new[] { "disclaimer" },
+            new[] { new Consultologist.Api.Models.ConsultMacroPlacement("disclaimer", Before: "node:intro") });
+
+        Assert.Equal(hash, Consultologist.Api.Workflow.ConsultGenerationProvenance.Sha256Hex(
+            Consultologist.Api.Jobs.ConsultAggregateRenderer.Render(Parts)));
+        Assert.NotEqual(bare, appendedText);
+        Assert.NotEqual(appendedText, placedText);
+        Assert.NotEqual(bare, placedText);
+    }
+
+    [Fact]
+    public void MismatchedPartsAndSources_FailLoud()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => Compose(
+            new[] { "disclaimer" }, null,
+            sourceRefs: new[] { "node:intro" }));
+        Assert.Equal("Aggregate composition received 2 parts for 1 sources.", exception.Message);
+    }
+
+    [Fact]
+    public void APlacementForAMissingMacro_PlacesNothing()
+    {
+        // The filters keep ids and placements in lockstep; this is the belt
+        // to that suspender — a stray placement never mis-places or throws.
+        var (text, _) = Compose(
+            new[] { "disclaimer" },
+            new[] { new Consultologist.Api.Models.ConsultMacroPlacement("ghost", Before: "node:intro") });
+
+        Assert.StartsWith("Intro.", text);
+        Assert.EndsWith("This disclaimer is fixed.", text);
+    }
+
+    [Fact]
+    public void TheFilters_DropAPlacement_WithItsDeclinedMacro()
+    {
+        var descriptors = new List<Consultologist.Api.Models.ConsultResultDescriptor>
+        {
+            new("consult", "assemble-note", "Consultation note",
+                new[] { "disclaimer", "closing" },
+                Signature: null,
+                MacroPlacements: new[] { new Consultologist.Api.Models.ConsultMacroPlacement("closing", After: "node:intro") })
+        };
+
+        var filtered = Consultologist.Api.Jobs.ConsultGenerationJobStarter.FilterDescriptorMacros(
+            descriptors, new Dictionary<string, bool> { ["closing"] = false });
+
+        Assert.Equal(new[] { "disclaimer" }, filtered[0].Macros);
+        Assert.Null(filtered[0].MacroPlacements);
+    }
+
+    [Fact]
+    public void TheDeliverableTable_CarriesThePlacements()
+    {
+        var deliverable = Consultologist.Api.Jobs.ConsultDeliverables.Resolve(
+            new[]
+            {
+                new Consultologist.Api.Models.ConsultResultDescriptor("consult", "assemble-note", "Consultation note",
+                    new[] { "closing" },
+                    MacroPlacements: new[] { new Consultologist.Api.Models.ConsultMacroPlacement("closing", Before: "node:intro") })
+            },
+            null,
+            new Dictionary<string, Consultologist.Api.Models.ConsultNodeDescriptor>(StringComparer.Ordinal)).Single();
+
+        var placement = Assert.Single(deliverable.MacroPlacements!);
+        Assert.Equal(("closing", "node:intro"), (placement.Id, placement.Before));
+    }
+}

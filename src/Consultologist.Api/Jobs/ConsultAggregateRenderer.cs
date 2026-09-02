@@ -20,13 +20,23 @@ internal static class ConsultAggregateRenderer
 
     public static string Render(IReadOnlyList<Part> parts)
     {
-        return string.Join("\n\n", parts.Select(part => part switch
-        {
-            ScalarPart scalar => scalar.Text,
-            ForEachPart forEach => string.Join(
-                "\n\n",
-                forEach.Blocks.Select(block => $"## {block.Name}\n\n{block.Text}")),
-            _ => throw new InvalidOperationException($"Unknown aggregate part '{part.GetType().Name}'.")
-        }));
+        return string.Join("\n\n", parts.Select(RenderPart));
     }
+
+    /// <summary>
+    /// One source's bytes (v12 #619): the per-part half of Render, so the
+    /// placement composer interleaves macros between sources while joining
+    /// with the same separator — the join is associative, so a composition
+    /// with nothing placed is byte-identical to Render (pinned). A
+    /// ForEachPart renders as ONE string: an anchor on a fanned source
+    /// places around the whole block, never between items (design § 4).
+    /// </summary>
+    public static string RenderPart(Part part) => part switch
+    {
+        ScalarPart scalar => scalar.Text,
+        ForEachPart forEach => string.Join(
+            "\n\n",
+            forEach.Blocks.Select(block => $"## {block.Name}\n\n{block.Text}")),
+        _ => throw new InvalidOperationException($"Unknown aggregate part '{part.GetType().Name}'.")
+    };
 }

@@ -23,7 +23,10 @@ public sealed record WorkflowResolvedResult(
     IReadOnlyList<string>? Macros = null,
     // v11 #516: the package says this deliverable is signed — the profile's
     // chosen block is appended at completion. Null below 11 and when unset.
-    bool? Signature = null);
+    bool? Signature = null,
+    // v12 #619: the placed macros' anchors, resolved from the manifest's
+    // entry objects; null when every entry is the bare v11 form.
+    IReadOnlyList<Consultologist.Api.Models.ConsultMacroPlacement>? MacroPlacements = null);
 
 public sealed record WorkflowPackage(
     WorkflowPackageManifest Manifest,

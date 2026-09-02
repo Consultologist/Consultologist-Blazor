@@ -431,7 +431,21 @@ public sealed record ConsultResultDescriptor(
     IReadOnlyList<string>? Macros = null,
     // v11 #516: the package marks this deliverable signed. Null on every
     // pre-v11 job — appended last, same reason.
-    bool? Signature = null);
+    bool? Signature = null,
+    // v12 #619 (design § 4): where placed macros sit — entries exist ONLY
+    // for placed macros (Before/After naming an aggregate source, prefix
+    // intact); unplaced ids ride Macros alone, so every earlier payload
+    // writes the bytes it always wrote. A parallel slot on purpose: the
+    // Macros element type is stored state and may never reshape. Appended
+    // last, this is a durable payload.
+    IReadOnlyList<ConsultMacroPlacement>? MacroPlacements = null);
+
+/// <summary>
+/// v12 #619 (design § 4): one placed macro on one deliverable — the id and
+/// exactly one anchor, the aggregate source it sits before or after (the raw
+/// node:&lt;id&gt; string, as the manifest and the validator spell it).
+/// </summary>
+public sealed record ConsultMacroPlacement(string Id, string? Before = null, string? After = null);
 
 /// <summary>
 /// A deliverable the package declared and this job did not produce, because its

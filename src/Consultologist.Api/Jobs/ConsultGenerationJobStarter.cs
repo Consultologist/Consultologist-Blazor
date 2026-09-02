@@ -693,15 +693,22 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         }
 
         var resultDescriptors = package.Results?
-            .Select(result => new ConsultResultDescriptor(
-                result.Id,
-                result.NodeId,
-                result.Label,
+            .Select(result =>
+            {
                 // v12 #618: a declined optional macro leaves the list here,
                 // at the descriptor's birth — the engine appends exactly what
-                // the descriptor carries, as it always has.
-                FilterMacros(result.Macros, macroChoices.Resolved),
-                result.Signature))
+                // the descriptor carries, as it always has. v12 #619: its
+                // placement entry leaves in the same motion (lockstep — a
+                // placement without its macro would mis-place the composer).
+                var kept = FilterMacros(result.Macros, macroChoices.Resolved);
+                return new ConsultResultDescriptor(
+                    result.Id,
+                    result.NodeId,
+                    result.Label,
+                    kept,
+                    result.Signature,
+                    FilterPlacements(result.MacroPlacements, kept));
+            })
             .ToList();
 
         // v11 #513: the macro templates and the account's display name,
@@ -1399,9 +1406,29 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     }
 
     /// <summary>
+    /// v12 #619: placements follow their macros — an entry whose id is not in
+    /// the kept list goes with it. Null (never empty) when nothing survives.
+    /// </summary>
+    internal static IReadOnlyList<ConsultMacroPlacement>? FilterPlacements(
+        IReadOnlyList<ConsultMacroPlacement>? placements,
+        IReadOnlyList<string>? keptIds)
+    {
+        if (placements is null)
+        {
+            return null;
+        }
+
+        var kept = placements
+            .Where(placement => keptIds?.Contains(placement.Id, StringComparer.Ordinal) == true)
+            .ToList();
+        return kept.Count == 0 ? null : kept;
+    }
+
+    /// <summary>
     /// v12 #618: the boundary's twin of the starter's descriptor filter —
     /// DecideActivity never sees the request, so the engine applies the
-    /// start-resolved map to the descriptors the boundary births.
+    /// start-resolved map to the descriptors the boundary births. v12 #619:
+    /// placements filter in lockstep.
     /// </summary>
     internal static IReadOnlyList<ConsultResultDescriptor> FilterDescriptorMacros(
         IReadOnlyList<ConsultResultDescriptor> results,
@@ -1413,7 +1440,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         }
 
         return results
-            .Select(result => result with { Macros = FilterMacros(result.Macros, resolved) })
+            .Select(result =>
+            {
+                var kept = FilterMacros(result.Macros, resolved);
+                return result with { Macros = kept, MacroPlacements = FilterPlacements(result.MacroPlacements, kept) };
+            })
             .ToList();
     }
 

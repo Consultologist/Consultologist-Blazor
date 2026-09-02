@@ -3,6 +3,7 @@ using System.Text.Json;
 using Azure;
 using Azure.Storage.Blobs;
 using Consultologist.Api.Agents;
+using Consultologist.Api.Models;
 using Microsoft.Extensions.Logging;
 
 using Consultologist.PackageFormat;
@@ -113,11 +114,12 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
                     WorkflowResultConditions.TryParseExpression(result.When, out var condition, out _)
                         ? condition
                         : null,
-                    // v12 rung (a): placement rides the manifest only — the
-                    // engine's resolved view stays ids until rung (c) executes
-                    // placement.
+                    // v12 #619: ids in declared order for the append set, and
+                    // the placed entries' anchors beside them — null when
+                    // every entry is the bare v11 form, the control's bytes.
                     result.Macros?.Select(entry => entry.Id).ToList(),
-                    result.Signature))
+                    result.Signature,
+                    PlacementsOf(result.Macros)))
                 .ToList();
         }
 
@@ -352,6 +354,19 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
 
         _latestCache[name] = (pointer.Version, DateTimeOffset.UtcNow);
         return pointer.Version;
+    }
+
+    /// <summary>
+    /// v12 #619: the placed entries only — a bare id carries no anchor and no
+    /// entry here. Null (never empty) when nothing is placed.
+    /// </summary>
+    private static IReadOnlyList<ConsultMacroPlacement>? PlacementsOf(IReadOnlyList<WorkflowResultMacroSpec>? entries)
+    {
+        var placed = entries?
+            .Where(entry => !entry.IsBare)
+            .Select(entry => new ConsultMacroPlacement(entry.Id, entry.Before, entry.After))
+            .ToList();
+        return placed is { Count: > 0 } ? placed : null;
     }
 
     private async Task<string> DownloadTextAsync(string packageName, string blobPath, CancellationToken cancellationToken)

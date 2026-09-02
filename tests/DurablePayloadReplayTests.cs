@@ -102,7 +102,7 @@ public class DurablePayloadReplayTests
         // trailing null too — Macros, appended last on the record it rides.
         var withRefs = stored
             .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null,\"MacroChoices\":null}", StringComparison.Ordinal)
-            .Replace("\"Label\":\"Consultation note\"}", "\"Label\":\"Consultation note\",\"Macros\":null,\"Signature\":null}", StringComparison.Ordinal);
+            .Replace("\"Label\":\"Consultation note\"}", "\"Label\":\"Consultation note\",\"Macros\":null,\"Signature\":null,\"MacroPlacements\":null}", StringComparison.Ordinal);
         Assert.Equal(withRefs[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null}", JsonSerializer.Serialize(input, Durable));
         // v11 #513/#516: the macro and signature slots and the descriptor's
         // trailing fields bind null.
@@ -209,6 +209,23 @@ public class DurablePayloadReplayTests
 
         Assert.Null(initialize.MacroChoices);
         Assert.Equal(current, JsonSerializer.Serialize(initialize, Durable));
+    }
+
+    [Fact]
+    public void AStoredDescriptor_WithoutPlacements_BindsNull()
+    {
+        // v12 #619: a rung-b descriptor with a non-null macro list re-reads
+        // with placements null and re-serialises with exactly one more
+        // trailing null — the parallel slot, never a reshape of Macros.
+        const string stored = """
+            {"Id":"consult","NodeId":"assemble-note","Label":"Consultation note","Macros":["closing"],"Signature":true}
+            """;
+
+        var descriptor = JsonSerializer.Deserialize<ConsultResultDescriptor>(stored, Durable)!;
+
+        Assert.Null(descriptor.MacroPlacements);
+        Assert.Equal(new[] { "closing" }, descriptor.Macros);
+        Assert.Equal(stored[..^1] + ",\"MacroPlacements\":null}", JsonSerializer.Serialize(descriptor, Durable));
     }
 
     [Fact]
