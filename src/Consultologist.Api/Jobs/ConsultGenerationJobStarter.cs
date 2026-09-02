@@ -707,7 +707,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     result.Label,
                     kept,
                     result.Signature,
-                    FilterPlacements(result.MacroPlacements, kept));
+                    FilterPlacements(result.MacroPlacements, kept),
+                    result.Check);
             })
             .ToList();
 
@@ -2110,6 +2111,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             Values: WorkflowNodeKinds.IsClassifier(node) ? node.Values : null,
             // v11 #550: only true or null — an indifferent or pre-v11 node
             // writes the bytes it always wrote.
-            Reproducible: node.Reproducible == true ? true : null);
+            Reproducible: node.Reproducible == true ? true : null,
+            // v12 #624: the check's whole declaration — the explicit
+            // discriminator downstream.
+            Check: WorkflowNodeKinds.IsCheck(node)
+                ? new ConsultCheckDescriptor(node.Op!, node.Of!, node.In!, node.FailWith!)
+                : null);
     }
 }

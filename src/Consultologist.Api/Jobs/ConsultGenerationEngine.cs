@@ -1079,7 +1079,9 @@ internal static class ConsultDeliverables
         // v11 #516: the package marks this deliverable signed.
         bool? Signature = null,
         // v12 #619: the placed macros' anchors, from the descriptor.
-        IReadOnlyList<ConsultMacroPlacement>? MacroPlacements = null);
+        IReadOnlyList<ConsultMacroPlacement>? MacroPlacements = null,
+        // v12 #624: the check gating this deliverable — bare node id.
+        string? CheckNodeId = null);
 
     public static IReadOnlyList<Deliverable> Resolve(
         IReadOnlyList<ConsultResultDescriptor>? results,
@@ -1106,7 +1108,10 @@ internal static class ConsultDeliverables
                     ordinal,
                     result.Macros,
                     result.Signature,
-                    result.MacroPlacements))
+                    result.MacroPlacements,
+                    result.Check is { } check && check.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
+                        ? check[WorkflowNodeBindingSources.NodePrefix.Length..]
+                        : result.Check))
                 .ToList();
         }
 

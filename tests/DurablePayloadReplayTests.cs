@@ -102,7 +102,7 @@ public class DurablePayloadReplayTests
         // trailing null too — Macros, appended last on the record it rides.
         var withRefs = stored
             .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null,\"MacroChoices\":null}", StringComparison.Ordinal)
-            .Replace("\"Label\":\"Consultation note\"}", "\"Label\":\"Consultation note\",\"Macros\":null,\"Signature\":null,\"MacroPlacements\":null}", StringComparison.Ordinal);
+            .Replace("\"Label\":\"Consultation note\"}", "\"Label\":\"Consultation note\",\"Macros\":null,\"Signature\":null,\"MacroPlacements\":null,\"Check\":null}", StringComparison.Ordinal);
         Assert.Equal(withRefs[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null}", JsonSerializer.Serialize(input, Durable));
         // v11 #513/#516: the macro and signature slots and the descriptor's
         // trailing fields bind null.
@@ -225,7 +225,7 @@ public class DurablePayloadReplayTests
 
         Assert.Null(descriptor.MacroPlacements);
         Assert.Equal(new[] { "closing" }, descriptor.Macros);
-        Assert.Equal(stored[..^1] + ",\"MacroPlacements\":null}", JsonSerializer.Serialize(descriptor, Durable));
+        Assert.Equal(stored[..^1] + ",\"MacroPlacements\":null,\"Check\":null}", JsonSerializer.Serialize(descriptor, Durable));
     }
 
     [Fact]
@@ -294,7 +294,7 @@ public class DurablePayloadReplayTests
 
         Assert.Null(node.Reproducible);
         Assert.Equal(new[] { "in_scope", "out_of_scope" }, node.Values);
-        Assert.Equal(stored[..^1] + ",\"Reproducible\":null}", JsonSerializer.Serialize(node, Durable));
+        Assert.Equal(stored[..^1] + ",\"Reproducible\":null,\"Check\":null}", JsonSerializer.Serialize(node, Durable));
     }
 
     [Fact]

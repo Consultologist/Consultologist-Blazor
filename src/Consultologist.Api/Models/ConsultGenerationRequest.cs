@@ -413,7 +413,19 @@ public sealed record ConsultNodeDescriptor(
     // the same for the same input — carried for #549's rerun verdict, never
     // enforced at run time. Only true or null, never false. Appended last,
     // same reason as Values.
-    bool? Reproducible = null);
+    bool? Reproducible = null,
+    // v12 #624 (design § 13): the check node's declaration, whole — one
+    // nested slot (the TerminologySnapshot precedent) and the EXPLICIT
+    // discriminator: a node is a check exactly when this is non-null, never
+    // by the absence of a prompt. Appended last, same reason.
+    ConsultCheckDescriptor? Check = null);
+
+/// <summary>
+/// v12 #624 (design § 13): a check node's snapshotted declaration — the
+/// operation, its two concept-list operands (node:&lt;id&gt; refs, prefix
+/// intact), and the sentence a failed check speaks.
+/// </summary>
+public sealed record ConsultCheckDescriptor(string Op, string Of, string In, string FailWith);
 
 public sealed record ConsultNodeBindingDescriptor(string From, string? As = null);
 
@@ -438,7 +450,11 @@ public sealed record ConsultResultDescriptor(
     // writes the bytes it always wrote. A parallel slot on purpose: the
     // Macros element type is stored state and may never reshape. Appended
     // last, this is a durable payload.
-    IReadOnlyList<ConsultMacroPlacement>? MacroPlacements = null);
+    IReadOnlyList<ConsultMacroPlacement>? MacroPlacements = null,
+    // v12 #624 (design § 13): the check node gating this deliverable
+    // (node:<id>, prefix intact) — the post-production mirror of when.
+    // Appended last, same rule.
+    string? Check = null);
 
 /// <summary>
 /// v12 #619 (design § 4): one placed macro on one deliverable — the id and
@@ -460,6 +476,22 @@ public sealed record ConsultMacroPlacement(string Id, string? Before = null, str
 /// a boolean is true or false, and none of it is free text.
 /// </summary>
 public sealed record ConsultSkippedDocument(string ResultId, string Label, string Reason);
+
+/// <summary>
+/// v12 #624 (design § 13): a deliverable the package declared and this job
+/// REFUSED to produce, because its check failed — the third state beside
+/// produced and skipped, and deliberately not the skip channel: skip means
+/// "these inputs excluded it", decided before production; this is a refusal
+/// over produced content. Reason is the package's own failWith sentence;
+/// Uncovered names the input terms the document did not cover, Untested the
+/// concepts the comparison could not code (never silently dropped).
+/// </summary>
+public sealed record ConsultFailedDocument(
+    string ResultId,
+    string Label,
+    string Reason,
+    IReadOnlyList<string>? Uncovered = null,
+    IReadOnlyList<string>? Untested = null);
 
 /// <summary>
 /// Per-node run status and provenance exposed on the job response — the hashes form
