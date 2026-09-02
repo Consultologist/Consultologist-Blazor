@@ -482,3 +482,118 @@ public class TemplatesV12OptionalMacroTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".macro-optional"));
     }
 }
+
+/// <summary>
+/// v12 § 4/§ 13/§ 14 (#621): the Documents pane authors the entry's
+/// placement and when, and the deliverable's check — all offered at 12
+/// alone, all landing as the object forms the carriage preserves.
+/// </summary>
+public class TemplatesV12DocumentsPaneTests : ClientRenderTestContext
+{
+    private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse fixture)
+    {
+        WorkflowService.GetCurrentPackageContentAsync().Returns(fixture);
+        return Render<Templates>();
+    }
+
+    private static void Navigate(IRenderedComponent<Templates> page, string label) =>
+        page.FindAll("button.editor-nav__item")
+            .First(button => button.TextContent.Replace("●", string.Empty).Trim() == label)
+            .Click();
+
+    private static void Publish(IRenderedComponent<Templates> page) =>
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Publish")).Click();
+
+    private WorkflowPackagePublishRequest? sent;
+
+    private void CapturePublish() =>
+        WorkflowService.PublishPackageAsync(Arg.Do<WorkflowPackagePublishRequest>(request => sent = request))
+            .Returns(new WorkflowPublishOutcome(
+                new WorkflowPackagePublishResponse("acct-1234567890ab", "v2026.08.2", "acct-1234567890ab@v2026.08.2"),
+                Array.Empty<string>()));
+
+    private static JsonElement Result(WorkflowPackagePublishRequest request) =>
+        JsonDocument.Parse(request.Manifest.GetRawText()).RootElement.GetProperty("results")[0];
+
+    [Fact]
+    public void ThePlacementSelect_WritesTheObjectEntry_AndAppendedReturnsItToBare()
+    {
+        var page = RenderEditor(EditorFixtures.V12());
+        CapturePublish();
+        Navigate(page, "Documents");
+
+        // The fixture's entry is the bare v11 string; placing it adorns it.
+        page.Find(".result-macro-placement").Change("after|node:draft-section");
+        Publish(page);
+        var placed = Result(sent!).GetProperty("macros").EnumerateArray().Single();
+        Assert.Equal(JsonValueKind.Object, placed.ValueKind);
+        Assert.Equal("node:draft-section", placed.GetProperty("after").GetString());
+
+        // Back to appended with no when: the bare string again.
+        page.Find(".result-macro-placement").Change("");
+        Publish(page);
+        Assert.Equal(JsonValueKind.String, Result(sent!).GetProperty("macros").EnumerateArray().Single().ValueKind);
+    }
+
+    [Fact]
+    public void ThePlacementOptions_AreTheDeliverablesOwnSources()
+    {
+        var page = RenderEditor(EditorFixtures.V12Full());
+        Navigate(page, "Documents");
+
+        var options = page.FindAll(".result-macro-placement option").Select(o => o.GetAttribute("value")).ToList();
+        Assert.Contains("before|node:patient-header", options);
+        Assert.Contains("after|node:draft-section", options);
+        // The classifier and the extraction nodes are not aggregate sources.
+        Assert.DoesNotContain(options, value => value!.Contains("node:scope"));
+        Assert.DoesNotContain(options, value => value!.Contains("extract-input-terms"));
+    }
+
+    [Fact]
+    public void TheBuilder_AuthorsTheEntrysWhen_AndTheComposedEntryCarriesIt()
+    {
+        var page = RenderEditor(EditorFixtures.V12());
+        CapturePublish();
+        Navigate(page, "Documents");
+
+        // The entry's own builder, addressed by the macro target's subject.
+        page.Find("select[aria-label^='Condition operand for consult_note macro disclaimer']").Change("node:scope");
+        page.Find("select[aria-label^='Condition value for consult_note macro disclaimer']").Change("in_scope");
+        Publish(page);
+
+        var entry = Result(sent!).GetProperty("macros").EnumerateArray().Single();
+        Assert.Equal(JsonValueKind.Object, entry.ValueKind);
+        Assert.Equal("node:scope == in_scope", entry.GetProperty("when").GetString());
+    }
+
+    [Fact]
+    public void TheCheckSelect_NamesTheGate_AndOffersOnlyCheckNodes()
+    {
+        var package = EditorFixtures.V12Full();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["results"]![0]!.AsObject().Remove("check");
+        package = package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+
+        var page = RenderEditor(package);
+        CapturePublish();
+        Navigate(page, "Documents");
+
+        var options = page.FindAll(".result-check option").Select(o => o.GetAttribute("value")).ToList();
+        Assert.Equal(new[] { "", "node:coverage" }, options);
+
+        page.Find(".result-check").Change("node:coverage");
+        Publish(page);
+        Assert.Equal("node:coverage", Result(sent!).GetProperty("check").GetString());
+    }
+
+    [Fact]
+    public void BelowTwelve_NoneOfTheControlsAreOffered()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+        Navigate(page, "Documents");
+
+        Assert.Empty(page.FindAll(".result-macro-placement"));
+        Assert.Empty(page.FindAll(".result-macro-when"));
+        Assert.Empty(page.FindAll(".result-check"));
+    }
+}

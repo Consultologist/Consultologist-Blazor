@@ -950,7 +950,7 @@
                                             @* v10 (#498): the expression builder — one clause is
                                                the v9 editor exactly; at 10 clauses join, group and
                                                negate, and a number may carry one arithmetic term. *@
-                                            @ConditionEditor(deliverable)
+                                            @ConditionEditor(DocumentConditionTarget(deliverable))
                                         }
                                     </li>
 
@@ -967,6 +967,24 @@
                                                 var macroId = macroEntry.Id;
                                                 <span class="result-macro-row">
                                                     <code>@macroId</code>
+                                                    @if (EffectiveSpecVersion >= 12)
+                                                    {
+                                                        @* v12 § 4: where the entry lands — this deliverable's
+                                                           aggregator's sources; appended is the bare v11 form. *@
+                                                        <select class="binding-row__select result-macro-placement"
+                                                                @onchange="args => SetMacroPlacementAsync(deliverable, macroId, args.Value?.ToString())"
+                                                                aria-label="@($"Placement for macro {macroId} in document {deliverable.Id}")">
+                                                            <option value="" selected="@(macroEntry.Before == null && macroEntry.After == null)">appended</option>
+                                                            @foreach (var placementSource in DeliverableAggregateSources(deliverable))
+                                                            {
+                                                                <option value="@($"before|{placementSource}")" selected="@(macroEntry.Before == placementSource)">before @placementSource</option>
+                                                                <option value="@($"after|{placementSource}")" selected="@(macroEntry.After == placementSource)">after @placementSource</option>
+                                                            }
+                                                        </select>
+                                                        <span class="result-macro-when">
+                                                            @ConditionEditor(MacroWhenTarget(deliverable, macroEntry))
+                                                        </span>
+                                                    }
                                                     <button type="button" class="aggregate-row__button result-macro-up" title="Move up"
                                                             disabled="@(macroIndex == 0)"
                                                             @onclick="() => MoveResultMacroAsync(deliverable, macroId, -1)">↑</button>
@@ -996,6 +1014,26 @@
                                                        aria-label="@($"Signed for document {deliverable.Id}")" />
                                                 <span>signed</span>
                                             </label>
+                                            @if (EffectiveSpecVersion >= 12)
+                                            {
+                                                @* v12 § 13: the deliverable's gate. An authored value not
+                                                   offered shows as itself, never rewritten. *@
+                                                <select class="binding-row__select result-check"
+                                                        @onchange="args => SetResultCheckAsync(deliverable, args.Value?.ToString())"
+                                                        aria-label="@($"Check for document {deliverable.Id}")">
+                                                    <option value="" selected="@(deliverable.Check == null)">— no check —</option>
+                                                    @foreach (var checkNode in EffectiveNodes.Where(n => n.IsCheck))
+                                                    {
+                                                        <option value="@($"node:{checkNode.Id}")" selected="@(deliverable.Check == $"node:{checkNode.Id}")">@checkNode.Id</option>
+                                                    }
+                                                    @if (deliverable.Check is { } authoredCheck
+                                                        && (!authoredCheck.StartsWith("node:", StringComparison.Ordinal)
+                                                            || EffectiveNodes.All(n => !n.IsCheck || $"node:{n.Id}" != authoredCheck)))
+                                                    {
+                                                        <option value="@authoredCheck" selected>@authoredCheck</option>
+                                                    }
+                                                </select>
+                                            }
                                         </li>
                                     }
                                 }
@@ -1445,26 +1483,34 @@
   // ----- v10 (#498): the condition expression builder ----------------------
 
   /// <summary>Where a condition fragment draws: the document, its tree, and the index path to the node.</summary>
-  private sealed record ConditionScope(WorkflowManifestReader.ResultView Result, ConditionGroup Root, IReadOnlyList<int> Path);
+  /// <summary>
+  /// v12 (#621): what a condition edits — the document's own when, or a macro
+  /// entry's. Key addresses the draft store ('\n' joins result and entry ids,
+  /// impossible in either grammar); Subject is what the labels say; Write
+  /// lands the composed text where this condition lives.
+  /// </summary>
+  private sealed record ConditionTarget(string Key, string Subject, string? When, Action<string?> Write);
+
+  private sealed record ConditionScope(ConditionTarget Target, ConditionGroup Root, IReadOnlyList<int> Path);
 
   /// <summary>
   /// A document's condition: the tree, or — for an expression the tree cannot
   /// hold — the text as itself, clearable and never rewritten (the v9 path).
   /// </summary>
-  private RenderFragment<WorkflowManifestReader.ResultView> ConditionEditor => deliverable =>
+  private RenderFragment<ConditionTarget> ConditionEditor => target =>
     @<text>
       @{
-        var state = ConditionState(deliverable);
+        var state = ConditionState(target);
       }
       @if (state.Verbatim is { } verbatim)
       {
-        <code class="declared-row__verbatim" aria-label="@($"Condition for {deliverable.Id}")">@verbatim</code>
-        <button type="button" class="aggregate-row__button" aria-label="@($"Clear condition for {deliverable.Id}")"
-                @onclick="() => ClearConditionAsync(deliverable)">clear</button>
+        <code class="declared-row__verbatim" aria-label="@($"Condition for {target.Subject}")">@verbatim</code>
+        <button type="button" class="aggregate-row__button" aria-label="@($"Clear condition for {target.Subject}")"
+                @onclick="() => ClearConditionAsync(target)">clear</button>
       }
       else
       {
-        @ConditionGroupView(new ConditionScope(deliverable, state.Root, Array.Empty<int>()))
+        @ConditionGroupView(new ConditionScope(target, state.Root, Array.Empty<int>()))
       }
     </text>;
 
@@ -1477,7 +1523,7 @@
     @<text>
       @{
         var group = (ConditionGroup)ConditionBuilderModel.At(scope.Root, scope.Path)!;
-        var documentId = scope.Result.Id;
+        var documentId = scope.Target.Subject;
         var suffix = scope.Path.Count == 0 ? string.Empty : " " + string.Join(".", scope.Path);
         var v10 = EffectiveSpecVersion >= 10;
         var single = scope.Path.Count == 0 && group.Items.Count == 1 && group.Items[0] is ConditionClause;
@@ -1488,13 +1534,13 @@
           <span class="condition-group__head">
             <label class="condition-group__not">
               <input type="checkbox" checked="@group.Not"
-                     @onchange="args => SetGroupNegatedAsync(scope.Result, scope.Path, args.Value is true)"
+                     @onchange="args => SetGroupNegatedAsync(scope.Target, scope.Path, args.Value is true)"
                      aria-label="@($"Negate condition group for {documentId}{suffix}")" /> not
             </label>
             @if (group.Items.Count > 1)
             {
               <select class="node-field__input condition-group__join" value="@group.Join"
-                      @onchange="args => SetGroupJoinAsync(scope.Result, scope.Path, args.Value?.ToString())"
+                      @onchange="args => SetGroupJoinAsync(scope.Target, scope.Path, args.Value?.ToString())"
                       aria-label="@($"Condition join for {documentId}{suffix}")">
                 <option value="and">all of</option>
                 <option value="or">any of</option>
@@ -1518,13 +1564,13 @@
         {
           <span class="condition-group__buttons">
             <button type="button" class="input-field__add" aria-label="@($"Add condition clause to {documentId}{suffix}")"
-                    @onclick="() => AddClauseAsync(scope.Result, scope.Path)">+ clause</button>
+                    @onclick="() => AddClauseAsync(scope.Target, scope.Path)">+ clause</button>
             <button type="button" class="input-field__add" aria-label="@($"Add condition group to {documentId}{suffix}")"
-                    @onclick="() => AddGroupAsync(scope.Result, scope.Path)">+ group</button>
+                    @onclick="() => AddGroupAsync(scope.Target, scope.Path)">+ group</button>
             @if (scope.Path.Count > 0)
             {
               <button type="button" class="aggregate-row__button" aria-label="@($"Remove condition group for {documentId}{suffix}")"
-                      @onclick="() => RemoveConditionNodeAsync(scope.Result, scope.Path)">remove group</button>
+                      @onclick="() => RemoveConditionNodeAsync(scope.Target, scope.Path)">remove group</button>
             }
           </span>
         }
@@ -1541,7 +1587,7 @@
     @<text>
       @{
         var clause = (ConditionClause)ConditionBuilderModel.At(scope.Root, scope.Path)!;
-        var documentId = scope.Result.Id;
+        var documentId = scope.Target.Subject;
         var ordinal = ClauseOrdinal(scope.Root, scope.Path);
         var suffix = ordinal == 1 ? string.Empty : $" clause {ordinal}";
         var v10 = EffectiveSpecVersion >= 10;
@@ -1554,13 +1600,13 @@
         {
           <label class="condition-clause__not">
             <input type="checkbox" checked="@clause.Not"
-                   @onchange="args => SetClauseNegatedAsync(scope.Result, scope.Path, args.Value is true)"
+                   @onchange="args => SetClauseNegatedAsync(scope.Target, scope.Path, args.Value is true)"
                    aria-label="@($"Negate condition for {documentId}{suffix}")" /> not
           </label>
         }
         <select class="node-field__input"
                 value="@clause.Operand"
-                @onchange="args => SetClauseOperandAsync(scope.Result, scope.Path, args.Value?.ToString())"
+                @onchange="args => SetClauseOperandAsync(scope.Target, scope.Path, args.Value?.ToString())"
                 aria-label="@($"Condition operand for {documentId}{suffix}")">
           @* The sole clause's empty choice is the null condition; a clause
              beside others has no meaning until chosen — never a default. *@
@@ -1583,7 +1629,7 @@
           {
             <select class="node-field__input condition-clause__arithmetic"
                     value="@(clause.Arithmetic?.Op.ToString() ?? string.Empty)"
-                    @onchange="args => SetClauseArithmeticAsync(scope.Result, scope.Path, args.Value?.ToString())"
+                    @onchange="args => SetClauseArithmeticAsync(scope.Target, scope.Path, args.Value?.ToString())"
                     aria-label="@($"Condition arithmetic for {documentId}{suffix}")">
               <option value="">as is</option>
               <option value="+">plus</option>
@@ -1595,7 +1641,7 @@
             {
               <select class="node-field__input"
                       value="@(arithmetic.RightIsLiteral ? string.Empty : arithmetic.Right)"
-                      @onchange="args => SetClauseArithmeticRightAsync(scope.Result, scope.Path, args.Value?.ToString(), literal: null)"
+                      @onchange="args => SetClauseArithmeticRightAsync(scope.Target, scope.Path, args.Value?.ToString(), literal: null)"
                       aria-label="@($"Condition arithmetic operand for {documentId}{suffix}")">
                 <option value="">a number…</option>
                 @foreach (var candidate in arithmeticOperands)
@@ -1607,7 +1653,7 @@
               {
                 <input type="text" inputmode="decimal" class="node-field__input declared-row__literal"
                        value="@arithmetic.Right"
-                       @onchange="args => SetClauseArithmeticRightAsync(scope.Result, scope.Path, null, literal: args.Value?.ToString())"
+                       @onchange="args => SetClauseArithmeticRightAsync(scope.Target, scope.Path, null, literal: args.Value?.ToString())"
                        aria-label="@($"Condition arithmetic value for {documentId}{suffix}")" />
               }
             }
@@ -1620,7 +1666,7 @@
           {
             <select class="node-field__input"
                     value="@(clause.Operator ?? "==")"
-                    @onchange="args => SetClauseOperatorAsync(scope.Result, scope.Path, args.Value?.ToString())"
+                    @onchange="args => SetClauseOperatorAsync(scope.Target, scope.Path, args.Value?.ToString())"
                     aria-label="@($"Condition operator for {documentId}{suffix}")">
               @foreach (var symbol in OperatorsFor(tested.Type))
               {
@@ -1631,7 +1677,7 @@
             {
               <select class="node-field__input declared-row__literal"
                       value="@clause.Literal"
-                      @onchange="args => SetClauseLiteralAsync(scope.Result, scope.Path, args.Value?.ToString())"
+                      @onchange="args => SetClauseLiteralAsync(scope.Target, scope.Path, args.Value?.ToString())"
                       aria-label="@($"Condition value for {documentId}{suffix}")">
                 <option value="true">true</option>
                 <option value="false">false</option>
@@ -1641,7 +1687,7 @@
             {
               <select class="node-field__input declared-row__literal"
                       value="@clause.Literal"
-                      @onchange="args => SetClauseLiteralAsync(scope.Result, scope.Path, args.Value?.ToString())"
+                      @onchange="args => SetClauseLiteralAsync(scope.Target, scope.Path, args.Value?.ToString())"
                       aria-label="@($"Condition value for {documentId}{suffix}")">
                 @foreach (var option in tested.Values ?? Array.Empty<string>())
                 {
@@ -1654,7 +1700,7 @@
               <input type="date"
                      class="node-field__input declared-row__literal"
                      value="@clause.Literal"
-                     @onchange="args => SetClauseLiteralAsync(scope.Result, scope.Path, args.Value?.ToString())"
+                     @onchange="args => SetClauseLiteralAsync(scope.Target, scope.Path, args.Value?.ToString())"
                      aria-label="@($"Condition value for {documentId}{suffix}")" />
             }
             else
@@ -1664,7 +1710,7 @@
                      inputmode="@(tested.Type == CountType ? "numeric" : "decimal")"
                      class="node-field__input declared-row__literal"
                      value="@clause.Literal"
-                     @onchange="args => SetClauseLiteralAsync(scope.Result, scope.Path, args.Value?.ToString())"
+                     @onchange="args => SetClauseLiteralAsync(scope.Target, scope.Path, args.Value?.ToString())"
                      aria-label="@($"Condition value for {documentId}{suffix}")" />
             }
           }
@@ -1672,7 +1718,7 @@
         @if (v10 && !single)
         {
           <button type="button" class="aggregate-row__button" aria-label="@($"Remove condition clause for {documentId}{suffix}")"
-                  @onclick="() => RemoveConditionNodeAsync(scope.Result, scope.Path)">×</button>
+                  @onclick="() => RemoveConditionNodeAsync(scope.Target, scope.Path)">×</button>
         }
       </span>
     </text>;
@@ -3201,6 +3247,13 @@
                         }
                     }
 
+                    if (conditionDrafts.TryGetValue($"{result.Id}\n{entry.Id}", out var entryDraft) && IsUnwritable(entryDraft))
+                    {
+                        errors.Add(ConditionBuilderModel.IsComplete(entryDraft)
+                            ? $"Document '{result.Id}' macro '{entry.Id}' condition has a clause the format cannot read; finish it or remove it."
+                            : $"Document '{result.Id}' macro '{entry.Id}' condition has a clause with no operand chosen.");
+                    }
+
                     if (entry.When != null)
                     {
                         var gatedMacro = EffectiveMacros.FirstOrDefault(m => m.Id == entry.Id);
@@ -4529,15 +4582,42 @@
     /// </summary>
     private readonly Dictionary<string, ConditionGroup> conditionDrafts = new(StringComparer.Ordinal);
 
-    private (ConditionGroup Root, string? Verbatim) ConditionState(WorkflowManifestReader.ResultView result)
+    private (ConditionGroup Root, string? Verbatim) ConditionState(ConditionTarget target)
     {
-        if (conditionDrafts.TryGetValue(result.Id, out var draft))
+        if (conditionDrafts.TryGetValue(target.Key, out var draft))
         {
             return (draft, null);
         }
 
-        return ConditionBuilderModel.TryFromText(result.When, out var root, out var verbatim) ? (root, null) : (root, verbatim);
+        return ConditionBuilderModel.TryFromText(target.When, out var root, out var verbatim) ? (root, null) : (root, verbatim);
     }
+
+    /// <summary>The document's own condition — key and subject are the result id; writes land on the result's When.</summary>
+    private ConditionTarget DocumentConditionTarget(WorkflowManifestReader.ResultView result) =>
+        new(result.Id, result.Id, result.When, text =>
+        {
+            var results = MutableResults();
+            var index = results.FindIndex(existing => existing.Id == result.Id);
+            if (index >= 0)
+            {
+                results[index] = results[index] with { When = text };
+            }
+        });
+
+    /// <summary>v12 § 14 (#621): a macro entry's when — the longer key, the entry's own write.</summary>
+    private ConditionTarget MacroWhenTarget(WorkflowManifestReader.ResultView result, WorkflowManifestReader.ResultMacroView entry) =>
+        new($"{result.Id}\n{entry.Id}", $"{result.Id} macro {entry.Id}", entry.When, text =>
+        {
+            var results = MutableResults();
+            var index = results.FindIndex(existing => existing.Id == result.Id);
+            if (index >= 0 && results[index].Macros is { } entries)
+            {
+                results[index] = results[index] with
+                {
+                    Macros = entries.Select(e => e.Id == entry.Id ? e with { When = text } : e).ToList()
+                };
+            }
+        });
 
     /// <summary>1-based position of the clause at the path among every clause in document order.</summary>
     private static int ClauseOrdinal(ConditionGroup root, IReadOnlyList<int> path)
@@ -4579,15 +4659,15 @@
     /// document when whole — through the format's writer — or held as a
     /// draft when a clause is not yet chosen or cannot be read.
     /// </summary>
-    private async Task EditConditionAsync(WorkflowManifestReader.ResultView result, Func<ConditionGroup, ConditionGroup> edit)
+    private async Task EditConditionAsync(ConditionTarget target, Func<ConditionGroup, ConditionGroup> edit)
     {
-        var root = edit(ConditionState(result).Root);
+        var root = edit(ConditionState(target).Root);
         var isNull = root.Items.Count == 1 && root.Items[0] is ConditionClause { IsEmpty: true } && !root.Not;
         var text = ConditionBuilderModel.ToText(root);
 
         if (!isNull && (!ConditionBuilderModel.IsComplete(root) || text is null))
         {
-            conditionDrafts[result.Id] = root;
+            conditionDrafts[target.Key] = root;
             await CommitDeclarationAsync();
             return;
         }
@@ -4598,19 +4678,14 @@
         // would show the author something other than what they built.
         if (!ConditionBuilderModel.TryFromText(text, out var reread, out _) || ConditionBuilderModel.Describe(reread) != ConditionBuilderModel.Describe(root))
         {
-            conditionDrafts[result.Id] = root;
+            conditionDrafts[target.Key] = root;
         }
         else
         {
-            conditionDrafts.Remove(result.Id);
+            conditionDrafts.Remove(target.Key);
         }
 
-        var results = MutableResults();
-        var index = results.FindIndex(existing => existing.Id == result.Id);
-        if (index >= 0)
-        {
-            results[index] = results[index] with { When = text };
-        }
+        target.Write(text);
 
         await CommitDeclarationAsync();
     }
@@ -4619,16 +4694,16 @@
     private static bool IsUnwritable(ConditionGroup draft) =>
         !ConditionBuilderModel.IsComplete(draft) || ConditionBuilderModel.ToText(draft) is null;
 
-    private Task ClearConditionAsync(WorkflowManifestReader.ResultView result) =>
-        EditConditionAsync(result, _ => ConditionGroup.Fresh);
+    private Task ClearConditionAsync(ConditionTarget target) =>
+        EditConditionAsync(target, _ => ConditionGroup.Fresh);
 
-    private Task EditClauseAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, Func<ConditionClause, ConditionClause> edit) =>
-        EditConditionAsync(result, root => ConditionBuilderModel.At(root, path) is ConditionClause clause
+    private Task EditClauseAsync(ConditionTarget target, IReadOnlyList<int> path, Func<ConditionClause, ConditionClause> edit) =>
+        EditConditionAsync(target, root => ConditionBuilderModel.At(root, path) is ConditionClause clause
             ? ConditionBuilderModel.Replace(root, path, edit(clause))
             : root);
 
-    private Task EditGroupAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, Func<ConditionGroup, ConditionGroup> edit) =>
-        EditConditionAsync(result, root => ConditionBuilderModel.At(root, path) is ConditionGroup group
+    private Task EditGroupAsync(ConditionTarget target, IReadOnlyList<int> path, Func<ConditionGroup, ConditionGroup> edit) =>
+        EditConditionAsync(target, root => ConditionBuilderModel.At(root, path) is ConditionGroup group
             ? ConditionBuilderModel.Replace(root, path, edit(group))
             : root);
 
@@ -4639,12 +4714,12 @@
     /// the literal coerced or dropped, arithmetic dropped unless the operand
     /// is a number or a count.
     /// </summary>
-    private Task SetClauseOperandAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, string? operandKey)
+    private Task SetClauseOperandAsync(ConditionTarget target, IReadOnlyList<int> path, string? operandKey)
     {
         var key = operandKey?.Trim() ?? string.Empty;
         if (key.Length == 0)
         {
-            return EditClauseAsync(result, path, clause => ConditionClause.Empty with { Not = clause.Not });
+            return EditClauseAsync(target, path, clause => ConditionClause.Empty with { Not = clause.Not });
         }
 
         var operand = ConditionOperands.FirstOrDefault(candidate => candidate.Key == key);
@@ -4653,7 +4728,7 @@
             return Task.CompletedTask;
         }
 
-        return EditClauseAsync(result, path, clause =>
+        return EditClauseAsync(target, path, clause =>
         {
             if (operand.Type == WorkflowInputTypes.Array)
             {
@@ -4666,30 +4741,30 @@
         });
     }
 
-    private Task SetClauseOperatorAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, string? symbol) =>
-        EditClauseAsync(result, path, clause => clause with { Operator = string.IsNullOrEmpty(symbol) ? "==" : symbol });
+    private Task SetClauseOperatorAsync(ConditionTarget target, IReadOnlyList<int> path, string? symbol) =>
+        EditClauseAsync(target, path, clause => clause with { Operator = string.IsNullOrEmpty(symbol) ? "==" : symbol });
 
-    private Task SetClauseLiteralAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, string? literal) =>
-        EditClauseAsync(result, path, clause =>
+    private Task SetClauseLiteralAsync(ConditionTarget target, IReadOnlyList<int> path, string? literal) =>
+        EditClauseAsync(target, path, clause =>
         {
             var operand = ConditionOperands.FirstOrDefault(candidate => candidate.Key == clause.Operand);
             return clause with { Literal = operand is null ? literal ?? string.Empty : CoerceLiteral(operand, literal ?? string.Empty) };
         });
 
-    private Task SetClauseNegatedAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, bool negated) =>
-        EditClauseAsync(result, path, clause => clause with { Not = negated });
+    private Task SetClauseNegatedAsync(ConditionTarget target, IReadOnlyList<int> path, bool negated) =>
+        EditClauseAsync(target, path, clause => clause with { Not = negated });
 
     /// <summary>The arithmetic term: none, or an operator with a right side not yet chosen (explicit initialisation).</summary>
-    private Task SetClauseArithmeticAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, string? op) =>
-        EditClauseAsync(result, path, clause => clause with
+    private Task SetClauseArithmeticAsync(ConditionTarget target, IReadOnlyList<int> path, string? op) =>
+        EditClauseAsync(target, path, clause => clause with
         {
             Arithmetic = string.IsNullOrEmpty(op)
                 ? null
                 : clause.Arithmetic is { } existing ? existing with { Op = op[0] } : new ConditionArithmetic(op[0], string.Empty, RightIsLiteral: true)
         });
 
-    private Task SetClauseArithmeticRightAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, string? operandKey, string? literal) =>
-        EditClauseAsync(result, path, clause => clause.Arithmetic is not { } arithmetic
+    private Task SetClauseArithmeticRightAsync(ConditionTarget target, IReadOnlyList<int> path, string? operandKey, string? literal) =>
+        EditClauseAsync(target, path, clause => clause.Arithmetic is not { } arithmetic
             ? clause
             : clause with
             {
@@ -4700,22 +4775,22 @@
                         : arithmetic with { Right = operandKey, RightIsLiteral = false }
             });
 
-    private Task SetGroupJoinAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, string? join) =>
-        EditGroupAsync(result, path, group => group with { Join = join == ConditionGroup.Or ? ConditionGroup.Or : ConditionGroup.And });
+    private Task SetGroupJoinAsync(ConditionTarget target, IReadOnlyList<int> path, string? join) =>
+        EditGroupAsync(target, path, group => group with { Join = join == ConditionGroup.Or ? ConditionGroup.Or : ConditionGroup.And });
 
-    private Task SetGroupNegatedAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path, bool negated) =>
-        EditGroupAsync(result, path, group => group with { Not = negated });
+    private Task SetGroupNegatedAsync(ConditionTarget target, IReadOnlyList<int> path, bool negated) =>
+        EditGroupAsync(target, path, group => group with { Not = negated });
 
     /// <summary>A new clause or group starts empty — chosen by the author, never defaulted.</summary>
-    private Task AddClauseAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path) =>
-        EditConditionAsync(result, root => ConditionBuilderModel.Append(root, path, ConditionClause.Empty));
+    private Task AddClauseAsync(ConditionTarget target, IReadOnlyList<int> path) =>
+        EditConditionAsync(target, root => ConditionBuilderModel.Append(root, path, ConditionClause.Empty));
 
-    private Task AddGroupAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path) =>
-        EditConditionAsync(result, root => ConditionBuilderModel.Append(root, path, ConditionGroup.Fresh));
+    private Task AddGroupAsync(ConditionTarget target, IReadOnlyList<int> path) =>
+        EditConditionAsync(target, root => ConditionBuilderModel.Append(root, path, ConditionGroup.Fresh));
 
     /// <summary>Removes a clause or a nested group; a group emptied by it goes too, and the last clause of all clears the condition.</summary>
-    private Task RemoveConditionNodeAsync(WorkflowManifestReader.ResultView result, IReadOnlyList<int> path) =>
-        EditConditionAsync(result, root =>
+    private Task RemoveConditionNodeAsync(ConditionTarget target, IReadOnlyList<int> path) =>
+        EditConditionAsync(target, root =>
         {
             var removed = ConditionBuilderModel.Replace(root, path, null);
             return removed.Items.Count == 0 ? ConditionGroup.Fresh : removed;
@@ -4923,6 +4998,50 @@
             var list = (results[index].Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).ToList();
             list.Add(new WorkflowManifestReader.ResultMacroView(macroId));
             results[index] = results[index] with { Macros = list };
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    /// <summary>This deliverable's aggregator's effective sources — the only legal placement anchors (§ 4).</summary>
+    private IReadOnlyList<string> DeliverableAggregateSources(WorkflowManifestReader.ResultView result) =>
+        EffectiveNodes.FirstOrDefault(n => $"node:{n.Id}" == result.Node)?.Aggregate ?? Array.Empty<string>();
+
+    // v12 § 4 (#621): the placement rides the entry; choosing 'appended'
+    // with no when returns the entry to the bare v11 form.
+    private async Task SetMacroPlacementAsync(WorkflowManifestReader.ResultView result, string macroId, string? raw)
+    {
+        var results = MutableResults();
+        var index = results.FindIndex(existing => existing.Id == result.Id);
+
+        if (index >= 0 && results[index].Macros is { } entries)
+        {
+            string? before = null, after = null;
+
+            if (!string.IsNullOrEmpty(raw) && raw.Split('|', 2) is [var side, var anchor])
+            {
+                before = side == "before" ? anchor : null;
+                after = side == "after" ? anchor : null;
+            }
+
+            results[index] = results[index] with
+            {
+                Macros = entries.Select(e => e.Id == macroId ? e with { Before = before, After = after } : e).ToList()
+            };
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    // v12 § 13 (#621): the deliverable's check gate.
+    private async Task SetResultCheckAsync(WorkflowManifestReader.ResultView result, string? raw)
+    {
+        var results = MutableResults();
+        var index = results.FindIndex(existing => existing.Id == result.Id);
+
+        if (index >= 0)
+        {
+            results[index] = results[index] with { Check = string.IsNullOrEmpty(raw) ? null : raw };
         }
 
         await CommitDeclarationAsync();
