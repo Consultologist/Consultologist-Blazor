@@ -80,8 +80,10 @@ another (#400); what stays here is why each was chosen. Public by design, like t
   placement on the result (`before`/`after` a source; the aggregator's hash
   and binds stay pure), and `profile:signature` version-keyed (placement
   demoted to default; unsigned and as-of kept; signed once, never
-  optional); the ladder of PRs; trigger audited unfired, owner override
-  said so
+  optional) — plus the check node (`kind: check`, `terms-subset` over two
+  package-declared concept-list operands; per-document fail, the third
+  state beside produced and skipped); the ladder of PRs; trigger audited
+  unfired, owner override said so
 - [forms-intake-spike.md](forms-intake-spike.md) — spike record (#511, 2026-08-28):
   a Microsoft Forms response as an intake source — no supported API, so the
   clinician's Power Automate flow pushes responses with the clinician's own
