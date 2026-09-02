@@ -1,14 +1,18 @@
 # Package format v12: the deferred grammar, taken — design
 
-**Status: design record for Milestone 23 (settled 2026-09-02),
-implementation tracked by the ladder in § 12.** v12 takes the three
-grammar changes v11 § 11 deferred: **optional per-run macros**
-(`macros[].optional` + `default`, `macroChoices` on the request),
-**section-level macro placement** (`results[].macros` entries widen to
-an object form with `before`/`after`), and **`profile:signature` as a
-placeholder** (the token joins the closed `profile:` namespace,
-version-keyed). No key retires; a v12 package using none of v12 is
-byte-identical to its v11 self.
+**Status: design record for Milestone 23 (settled 2026-09-02; the
+check node added the same day, § 13), implementation tracked by the
+ladder in § 12.** v12 takes the three grammar changes v11 § 11
+deferred: **optional per-run macros** (`macros[].optional` + `default`,
+`macroChoices` on the request), **section-level macro placement**
+(`results[].macros` entries widen to an object form with
+`before`/`after`), and **`profile:signature` as a placeholder** (the
+token joins the closed `profile:` namespace, version-keyed) — plus a
+fourth construct decided the same day: **the check node** (`kind:
+check`, § 13), the format's first deterministic executor beyond the
+aggregator, gating a deliverable on a provable condition. No key
+retires; a v12 package using none of v12 is byte-identical to its v11
+self.
 
 Decisions taken with the operator (2026-09-02): an optional macro
 **declares its default** — the package decides what a formless run
@@ -18,7 +22,12 @@ and its downstream binds stay pure); the signature's **strictly-last
 placement demotes from invariant to default** while the
 unsigned-although-requested state and the as-of date survive the fold
 (§ 5); per-run *signature* choice stays rejected — the token may not
-ride an optional macro.
+ride an optional macro. For the check node (2026-09-02): the
+right-hand operand is a **package-declared extraction node**, never an
+engine-side extractor (the engine stays model-free and the extraction
+stays visible and provenance'd); a failed check fails **the document,
+not the job** (`ConsultFailedDocument`, a third state beside produced
+and skipped — never the skip channel).
 
 ## 1. Motivation
 
@@ -292,9 +301,9 @@ the format registry's v12 publication (spec, schema, conformance,
 counts) lands as one registry version after the engine rungs, v11
 § 8's order.
 
-- **(a)** Validator accepts 12: the three grammar shapes, every § 8
-  refusal, the version-keyed profile set, schema generation.
-  *Publishable, not runnable.*
+- **(a)** Validator accepts 12: the four grammar shapes (§ 13's check
+  node included), every § 8 and § 13 refusal, the version-keyed
+  profile set, schema generation. *Publishable, not runnable.*
 - **(b)** Optional macros: `MacroChoices` on the request, starter
   resolution and descriptor filtering, the record's `macroChoices`.
 - **(c)** Placement in the engine: per-source composition, the
@@ -302,11 +311,184 @@ counts) lands as one registry version after the engine rungs, v11
 - **(d)** The signature token: widened snapshot gate, token
   resolution, the appender's embedded mode, unsigned and as-of
   preserved. *(After (c) — same append path.)*
-- **(e)** Editor: § 9, all of it, gated at 12.
+- **(e)** Editor: § 9, all of it, plus § 13's check-node authoring,
+  gated at 12.
 - **(f)** Provenance registry bump: `macroChoices`, the re-worded
-  `appended[]` sentence, the embedded-signature entry, a worked
-  example.
+  `appended[]` sentence, the embedded-signature entry, § 13's
+  `failedDocuments` and the check node's row, a worked example.
+- **(h)** The check node in the engine (§ 13): the inline executor,
+  the settle/record split with the deferred append chain, the
+  per-document failure state, record and UI. *(After (c)/(d) — it
+  moves the same completion path they touch.)*
 - **(g)** *The engine runs twelve*: the gate, the format registry's
   v12 publication, the submodule pin, a demo package exercising all
-  three constructs, `general` the control — a v12 package using none
+  four constructs, `general` the control — a v12 package using none
   of v12 hashes and renders byte-identically to its v11 self.
+
+## 13. The check node (added 2026-09-02)
+
+The format's second deterministic executor, and its first gate on
+produced content: a deliverable is refused when a provable condition
+fails. The first operation is **`terms-subset`** — the motivating case:
+*the clinical terms found in the input are a subset of the clinical
+terms in the document*. Grown on the **executor axis** the doctrine
+pre-authorizes (output-contract-catalog.md's deferred `function` kind);
+product-stages.md § stage 3 named this class of node — claim
+verification and completeness checks — as "just another DAG node type";
+this is that stage's first concrete instance.
+
+### Grammar
+
+```yaml
+nodes:
+  - id: extract-input-terms          # concept-list over the INPUT
+    prompt: extract-terms
+    bindings: { draft: input:consult_draft }
+    output: { schema: concept-list }
+    reproducible: true
+
+  - id: assemble-note                # the deliverable's aggregator
+    aggregate: [node:prose-a, node:prose-b]
+
+  - id: extract-document-terms       # concept-list over the DOCUMENT
+    prompt: extract-terms
+    bindings: { draft: node:assemble-note }   # v6: broadcasts like a scalar
+    output: { schema: concept-list }
+    reproducible: true
+
+  - id: coverage                     # the check — deterministic, no prompt
+    kind: check
+    op: terms-subset
+    of: node:extract-input-terms
+    in: node:extract-document-terms
+    failWith: "The note does not cover every clinical term found in the referral."
+
+results:
+  - id: consult_note
+    node: node:assemble-note
+    label: Consultation note
+    check: node:coverage
+```
+
+- `kind: check` declares `op`, `of`, `in`, `failWith` — and nothing
+  else: no `prompt`, `bindings`, `output`, `values`, `forEach`,
+  `aggregate` (the CheckAggregator discipline: the property is the
+  behaviour).
+- **Both operands are package-declared `concept-list` nodes.** The
+  engine never extracts terms itself — the decided answer to the
+  right-hand-side question: the check is a pure set operation over two
+  recorded, provenance'd model answers, the extraction visible in the
+  graph like every other stage. An engine-side extractor is a
+  candidate not taken (§ 13.6).
+- `results[].check` names the gate — the post-production mirror of
+  `when`, and like `when` it decides existence; unlike `when`, it
+  reads produced content, which is exactly why it is a separate
+  keyword on the other side of the deciding/producing boundary rather
+  than a widening of `when`'s closed vocabulary.
+
+### Semantics of `terms-subset`
+
+The comparison is over **SNOMED concept ids** of concepts with
+`IsSnomedConcept && IsActive` on both sides — deterministic,
+terminology-anchored, insensitive to surface wording. Concepts without
+a valid SNOMED id (free-text findings the extractor could not code)
+are excluded from the subset test and listed on the check's record row
+as *untested*, never silently dropped — the record-the-negative
+discipline. Pass: `of`'s id set ⊆ `in`'s id set. Fail: the uncovered
+ids and their terms are the check's recorded evidence.
+
+### Engine behaviour — the settle/record split
+
+Today a result aggregator's settlement and its document's recording
+are one step. For a result that declares `check:`, they split:
+
+1. The aggregator settles; `Render(parts)` and its `outputHash` are
+   computed and recorded exactly as today — the § 7 purity rule is
+   untouched (the check gates *recording the document*, never the
+   node's own output).
+2. Downstream nodes that bind the aggregator (the document-terms
+   extraction) schedule as they already do.
+3. The check executes **inline** when both operands have settled — no
+   activity, no model, no retries, the aggregator's own execution
+   discipline.
+4. **Pass** → the deferred completion chain runs: macros (§ 4
+   placement included), signature, `documentHash`, the document
+   recorded — byte-identical to the unchecked path.
+5. **Fail** → `ConsultFailedDocument(ResultId, Label, Reason)` — a
+   third state beside produced and skipped, carrying the package's
+   `failWith` sentence and the uncovered terms. Other deliverables
+   are unaffected (**per-document fail**, the decided granularity);
+   a package whose only deliverable fails its check ends with no
+   documents and says why.
+6. An operand node that *fails* (model failure, `failIfEmpty`) fails
+   the checked document too — an unverifiable document is not shipped
+   (fail-loud, the v6 aggregator's rule).
+
+Skip stays skip: a `when`-excluded deliverable never runs its check.
+
+### Validator rules (all refusals by name)
+
+Below 12: `kind: check` (and each of `op`/`of`/`in`/`failWith`/
+`results[].check`).
+
+At 12: an unknown `op`; a check missing any of `op`/`of`/`in`/
+`failWith` (blank `failWith` included — the failure must speak);
+prompt-family or aggregate fields on a check; `of`/`in` naming a node
+whose output contract is not `concept-list`; `results[].check` naming
+a non-check node; a check named by no result (the orphan rule's
+sibling); two results sharing one check is legal (each gates itself);
+cycles already covered — `of`/`in` are `node:` edges in the existing
+acyclicity walk. Reachability: check nodes and nodes that feed only a
+check chain gain the classifier-style exemption — they serve a
+deliverable's existence, not its text.
+
+### Record, UI, provenance
+
+The check lands as a node row with its boolean outcome, the uncovered
+ids/terms on fail, and the untested list (the RerunComparison row
+shape). `failedDocuments[]` joins `skippedDocuments[]` on the record —
+distinct states, distinct sentences; the UI gives the failed document
+its own glyph beside ⊘ Skipped and ○ not-started, and History renders
+"not produced — the check failed: <failWith>" with the uncovered
+terms. Provenance registry documents both (rung (f)).
+
+### The SaMD position, stated
+
+completeness.md attaches the clinical-decision-support caution to this
+class of check. The position taken: the check node is a **quality
+gate on the app's own output** — it refuses to ship a document that
+provably fails the package's stated condition; it never analyses the
+patient, never recommends clinical action, and never annotates the
+clinician's judgement. The distinction to keep as operations grow:
+flagging *our* unshipped draft's incompleteness is process control;
+flagging *clinical content for the clinician to act on* would be the
+SaMD line, and no `op` crossing it enters the closed set without its
+own regulatory position.
+
+### Candidates not taken (§ 10's family)
+
+- **Engine-side term extraction** — a clinical-text analyser inside
+  the engine: heavier build, the stronger SaMD exposure, and an
+  invisible extraction where the graph shows every other stage.
+- **Whole-job fail** — the failIfEmpty family's granularity: blunter
+  than the ask; one bad deliverable would kill its siblings.
+- **Widening `when`** — `when` reads the deciding stage by
+  construction (v10's reachable-boundary argument); a produced-content
+  gate is a different keyword on the other side of the boundary.
+- **Reusing the skip channel** — skip means "these inputs excluded
+  this deliverable"; a failed check is a refusal, and the History
+  sentence must not lie.
+
+### The assumptions a real letter would test (§ 11's family)
+
+1. **Concept-id subset is the right comparison** — surface-wording
+   differences are intended to pass; a letter where the *wording*
+   matters clinically would need a different `op`, not a loosened
+   `terms-subset`.
+2. **The operands' honesty is the extractor's** — the check is pure,
+   but both operand lists are model answers; a missed term on the
+   input side weakens the gate silently. `reproducible: true` on the
+   extraction nodes plus the rerun verdict is the existing mitigation.
+3. **Per-document is the right blast radius** — a multi-deliverable
+   package where one failed letter *should* hold back its siblings
+   would need an explicit grouping construct, not a quiet widening.
