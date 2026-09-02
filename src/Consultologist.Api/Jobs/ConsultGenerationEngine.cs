@@ -1067,7 +1067,9 @@ internal static class ConsultDeliverables
         // v11 #513: the macro ids this deliverable appends, in declared order.
         IReadOnlyList<string>? MacroIds = null,
         // v11 #516: the package marks this deliverable signed.
-        bool? Signature = null);
+        bool? Signature = null,
+        // v12 #619: the placed macros' anchors, from the descriptor.
+        IReadOnlyList<ConsultMacroPlacement>? MacroPlacements = null);
 
     public static IReadOnlyList<Deliverable> Resolve(
         IReadOnlyList<ConsultResultDescriptor>? results,
@@ -1093,7 +1095,8 @@ internal static class ConsultDeliverables
                     SourcesOf(nodesById.GetValueOrDefault(result.NodeId)),
                     ordinal,
                     result.Macros,
-                    result.Signature))
+                    result.Signature,
+                    result.MacroPlacements))
                 .ToList();
         }
 
