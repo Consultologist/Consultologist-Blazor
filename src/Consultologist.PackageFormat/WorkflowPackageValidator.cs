@@ -583,6 +583,57 @@ public static class WorkflowPackageValidator
             }
         }
 
+        // v12 (§ 15): whether a node's declared output is the classification
+        // contract — the same stamp-first, canonical-match-second dispatch as
+        // DeclaresConceptList, for the template refusal below.
+        bool DeclaresClassification(WorkflowNodeSpec target)
+        {
+            if (target.Output is null
+                || manifest.Schemas is null
+                || !manifest.Schemas.TryGetValue(target.Output.Schema, out var schemaPath))
+            {
+                return false;
+            }
+
+            if (stampedContracts != null && stampedContracts.TryGetValue(target.Output.Schema, out var contractId))
+            {
+                return contractId == WorkflowNodeDefaults.ClassificationSchemaId;
+            }
+
+            if (!files.TryGetValue(schemaPath, out var schemaText)
+                || !catalogSchemas.TryGetValue(WorkflowNodeDefaults.ClassificationSchemaId, out var classificationSchema))
+            {
+                return false;
+            }
+
+            try
+            {
+                return CanonicalizeSchema(JsonNode.Parse(schemaText)) == CanonicalizeSchema(JsonNode.Parse(classificationSchema));
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+        }
+
+        // v12 (§ 15): the template node — everything a prompt node declares
+        // is legal (the prompt/bindings/output rules run after this, no
+        // continue), minus the two claims that are not its to make.
+        void CheckTemplateNode(WorkflowNodeSpec node)
+        {
+            var subject = $"Template '{node.Id}'";
+
+            if (node.Reproducible != null)
+            {
+                errors.Add($"{subject} declares reproducible; a template is deterministic by construction, and the claim is not its to make.");
+            }
+
+            if (DeclaresClassification(node))
+            {
+                errors.Add($"{subject} output schema resolves to the classification contract; a classification is answered from a value set, and a template renders, it does not answer.");
+            }
+        }
+
         // v12 (§ 13): the check node — the CheckAggregator discipline (the
         // property is the behaviour; the prompt family must be absent), plus
         // typed operands: both must be concept-list nodes, because the check
@@ -669,6 +720,14 @@ public static class WorkflowPackageValidator
                 if (WorkflowNodeKinds.IsCheck(node))
                 {
                     errors.Add($"Node '{node.Id}' declares kind 'check', which requires specVersion 12.");
+                    gatedCheck = true;
+                }
+
+                // v12 (§ 15): the template kind, same posture — a version
+                // requirement, never an unknown word.
+                if (WorkflowNodeKinds.IsTemplate(node))
+                {
+                    errors.Add($"Node '{node.Id}' declares kind 'template', which requires specVersion 12.");
                     gatedCheck = true;
                 }
 
@@ -782,6 +841,14 @@ public static class WorkflowPackageValidator
             if (WorkflowNodeKinds.IsClassifier(node))
             {
                 CheckClassifier(node);
+            }
+
+            // v12 (§ 15): no continue — a template inherits the prompt,
+            // bindings and output rules whole; the kind only decides the
+            // executor.
+            if (WorkflowNodeKinds.IsTemplate(node))
+            {
+                CheckTemplateNode(node);
             }
 
             if (node.ForEach != null && !TryResolveForEachSource(manifest, node, data, inputsById, out var forEachError, out _, out _))

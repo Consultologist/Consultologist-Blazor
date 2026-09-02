@@ -71,7 +71,7 @@ public class DurablePayloadReplayTests
         // v10 (#495): the classifier's values are the one slot after it —
         // appended last, so the stored bytes bind unchanged and write back
         // with exactly one more trailing null.
-        Assert.Equal(stored[..^1] + ",\"Values\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(stored[..^1] + ",\"Values\":null,\"Template\":null}", JsonSerializer.Serialize(input, Durable));
         Assert.Null(input.Values);
         Assert.Equal(
             "Seen 2026-08-10. Bill it.",
@@ -337,7 +337,7 @@ public class DurablePayloadReplayTests
 
         Assert.Null(node.Reproducible);
         Assert.Equal(new[] { "in_scope", "out_of_scope" }, node.Values);
-        Assert.Equal(stored[..^1] + ",\"Reproducible\":null,\"Check\":null}", JsonSerializer.Serialize(node, Durable));
+        Assert.Equal(stored[..^1] + ",\"Reproducible\":null,\"Check\":null,\"Template\":null}", JsonSerializer.Serialize(node, Durable));
     }
 
     [Fact]

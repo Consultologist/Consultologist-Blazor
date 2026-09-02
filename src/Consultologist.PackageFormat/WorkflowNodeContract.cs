@@ -112,4 +112,8 @@ public static class WorkflowNodeDefaults
     };
 
     public const string ConceptListSchemaId = "concept-list";
+
+    // v12 (§ 15): the classification contract's catalog id — the template
+    // node's output-schema refusal matches against it.
+    public const string ClassificationSchemaId = "classification";
 }

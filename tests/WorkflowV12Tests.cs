@@ -1371,3 +1371,345 @@ public class WorkflowV12ConditionalMacroCompositionTests
             Consultologist.Api.Jobs.ConsultAggregateRenderer.Render(Parts)));
     }
 }
+
+/// <summary>
+/// v12 rung (j) (#634, design § 15): the template node's grammar — the kind
+/// joins the closed set at 12, reuses the prompts table whole, may declare a
+/// contract output, and is refused the two claims that are not its to make.
+/// </summary>
+public class WorkflowV12TemplateNodeTests
+{
+    /// <summary>The § 15 shape: a template over a declared input, feeding the deliverable's aggregator.</summary>
+    private static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) WithTemplate(
+        WorkflowNodeSpec? node = null,
+        string templateText = "Seen on {{ seen_on }}.",
+        List<string>? variables = null)
+    {
+        var manifest = V12Fixtures.Minimal();
+        var prompts = new List<WorkflowPromptSpec>(manifest.Prompts!)
+        {
+            new("header", "prompts/header.md", variables ?? new List<string> { "seen_on" })
+        };
+        var template = node ?? new WorkflowNodeSpec("patient-header", "Patient header",
+            Prompt: "header",
+            Bindings: new Dictionary<string, WorkflowBindingValue> { ["seen_on"] = new("input:seen_on") },
+            Kind: WorkflowNodeKinds.Template);
+        var nodes = new List<WorkflowNodeSpec>(manifest.Nodes!) { template };
+        nodes = nodes.Select(n => n.Aggregate != null
+            ? n with { Aggregate = new List<string>(n.Aggregate) { $"node:{template.Id}" } }
+            : n).ToList();
+        manifest = manifest with { Prompts = prompts, Nodes = nodes };
+        var files = V6Fixtures.Files(manifest);
+        files["prompts/header.md"] = templateText;
+        return (manifest, files);
+    }
+
+    [Fact]
+    public void AScalarTemplate_Publishes()
+    {
+        var result = V12Fixtures.Validate(WithTemplate());
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AForEachTemplate_PublishesAsAChainStep()
+    {
+        var result = V12Fixtures.Validate(WithTemplate(
+            new WorkflowNodeSpec("section-header", "Section header",
+                Prompt: "header",
+                Bindings: new Dictionary<string, WorkflowBindingValue> { ["section_name"] = new("item:name") },
+                ForEach: "data:standards",
+                Kind: WorkflowNodeKinds.Template),
+            templateText: "## {{ section_name }}",
+            variables: new List<string> { "section_name" }));
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void ASchemadTemplate_Publishes_WithFailIfEmpty()
+    {
+        var result = V12Fixtures.Validate(WithTemplate(
+            new WorkflowNodeSpec("fixed-terms", "Fixed terms",
+                Prompt: "header",
+                Bindings: new Dictionary<string, WorkflowBindingValue> { ["seen_on"] = new("input:seen_on") },
+                Output: new WorkflowNodeOutputSpec("concept-list", FailIfEmpty: "The fixed term list rendered empty."),
+                Kind: WorkflowNodeKinds.Template),
+            templateText: "{\"concepts\": []}"));
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AtEleven_TheKind_IsRefusedByName()
+    {
+        var (manifest, files) = WithTemplate();
+        manifest = manifest with { SpecVersion = 11 };
+
+        Assert.Contains(
+            "Node 'patient-header' declares kind 'template', which requires specVersion 12.",
+            WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas).Errors);
+    }
+
+    [Fact]
+    public void Reproducible_IsRefused_TheClaimIsNotItsToMake()
+    {
+        var (manifest, files) = WithTemplate();
+        manifest = manifest with
+        {
+            Nodes = manifest.Nodes!.Select(n => n.Id == "patient-header" ? n with { Reproducible = true } : n).ToList()
+        };
+
+        Assert.Contains(
+            "Template 'patient-header' declares reproducible; a template is deterministic by construction, and the claim is not its to make.",
+            WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas).Errors);
+    }
+
+    [Fact]
+    public void AClassificationOutput_IsRefused()
+    {
+        var (manifest, files) = WithTemplate(
+            new WorkflowNodeSpec("verdict", "Verdict",
+                Prompt: "header",
+                Bindings: new Dictionary<string, WorkflowBindingValue> { ["seen_on"] = new("input:seen_on") },
+                Output: new WorkflowNodeOutputSpec("verdict"),
+                Kind: WorkflowNodeKinds.Template),
+            templateText: "{\"value\": \"yes\"}");
+        manifest = manifest with
+        {
+            Schemas = new Dictionary<string, string>(manifest.Schemas ?? new Dictionary<string, string>())
+            {
+                ["verdict"] = "schemas/verdict.json"
+            }
+        };
+        files["schemas/verdict.json"] = TestOutputContracts.CatalogSchemas["classification"];
+
+        Assert.Contains(
+            "Template 'verdict' output schema resolves to the classification contract; a classification is answered from a value set, and a template renders, it does not answer.",
+            WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas).Errors);
+    }
+
+    [Fact]
+    public void TheInheritedRules_FireForATemplate()
+    {
+        // No continue after CheckTemplateNode: the prompt-family rules run.
+        var noPrompt = WithTemplate(new WorkflowNodeSpec("patient-header", "Patient header",
+            Kind: WorkflowNodeKinds.Template));
+        Assert.Contains("Node 'patient-header' declares no prompt.",
+            V12Fixtures.Validate(noPrompt).Errors);
+
+        var values = WithTemplate(new WorkflowNodeSpec("patient-header", "Patient header",
+            Prompt: "header",
+            Bindings: new Dictionary<string, WorkflowBindingValue> { ["seen_on"] = new("input:seen_on") },
+            Kind: WorkflowNodeKinds.Template,
+            Values: new List<string> { "a", "b" }));
+        Assert.Contains("Node 'patient-header' declares values but is not a classifier; only kind 'classifier' answers from a value set.",
+            V12Fixtures.Validate(values).Errors);
+
+        var mismatch = WithTemplate(new WorkflowNodeSpec("patient-header", "Patient header",
+            Prompt: "header",
+            Bindings: new Dictionary<string, WorkflowBindingValue> { ["wrong_name"] = new("input:seen_on") },
+            Kind: WorkflowNodeKinds.Template));
+        Assert.Contains(V12Fixtures.Validate(mismatch).Errors,
+            e => e.StartsWith("Node 'patient-header' bindings [wrong_name]", StringComparison.Ordinal));
+
+        var checkMember = WithTemplate(new WorkflowNodeSpec("patient-header", "Patient header",
+            Prompt: "header",
+            Bindings: new Dictionary<string, WorkflowBindingValue> { ["seen_on"] = new("input:seen_on") },
+            Kind: WorkflowNodeKinds.Template,
+            FailWith: "never"));
+        Assert.Contains("Node 'patient-header' declares failWith but is not a check node; only kind 'check' declares it.",
+            V12Fixtures.Validate(checkMember).Errors);
+    }
+
+    [Fact]
+    public void TheUnknownKindSentence_NamesFourKindsAtTwelve_AndTheOldSetsStand()
+    {
+        var (manifest, files) = WithTemplate();
+
+        // Ordinal: "Template" is an unknown word, not the template kind.
+        var cased = manifest with
+        {
+            Nodes = manifest.Nodes!.Select(n => n.Id == "patient-header" ? n with { Kind = "Template" } : n).ToList()
+        };
+        Assert.Contains(
+            "Node 'patient-header' declares unknown kind 'Template' (accepted: prompt, classifier, check, template).",
+            WorkflowPackageValidator.Validate(cased, files, TestOutputContracts.CatalogSchemas).Errors);
+
+        // The v10/v11 sentence does not move.
+        var eleven = V11Fixtures.Minimal() with
+        {
+            Nodes = V11Fixtures.Minimal().Nodes!.Select((n, i) => i == 0 ? n with { Kind = "router" } : n).ToList()
+        };
+        Assert.Contains(V11Fixtures.Validate(eleven).Errors,
+            e => e.Contains("declares unknown kind 'router' (accepted: prompt, classifier).", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TheProbeRender_RefusesABrokenTemplate_AtPublish()
+    {
+        // "What publishes is what runs" — for a template, the strict-mode
+        // probe renders the very artifact the run outputs: an undeclared
+        // variable refuses at publish, not at run time.
+        var errors = V12Fixtures.Validate(WithTemplate(templateText: "Seen on {{ undeclared_var }}.")).Errors;
+        Assert.Contains(errors, e => e.Contains("header", StringComparison.Ordinal) && e.Contains("undeclared_var", StringComparison.Ordinal));
+    }
+}
+
+/// <summary>
+/// v12 rung (j) (#634, design § 15): the discriminator on the wire — only a
+/// template node earns Template: true; every other kind writes the bytes it
+/// always wrote.
+/// </summary>
+public class WorkflowV12TemplateDescriptorTests
+{
+    [Fact]
+    public void DescribeNode_StampsTheKindMatrix()
+    {
+        var bindings = new Dictionary<string, WorkflowBindingValue> { ["seen_on"] = new("input:seen_on") };
+
+        var template = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DescribeNode(
+            new WorkflowNodeSpec("header", "Header", Prompt: "header", Bindings: bindings, Kind: WorkflowNodeKinds.Template), null);
+        Assert.True(template.Template);
+        Assert.Null(template.OutputContract);
+
+        var prompt = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DescribeNode(
+            new WorkflowNodeSpec("draft", "Draft", Prompt: "draft", Bindings: bindings), null);
+        Assert.Null(prompt.Template);
+
+        var classifier = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DescribeNode(
+            new WorkflowNodeSpec("scope", "Scope", Prompt: "classify", Bindings: bindings,
+                Kind: WorkflowNodeKinds.Classifier, Values: new List<string> { "a", "b" }), null);
+        Assert.Null(classifier.Template);
+
+        var check = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DescribeNode(
+            new WorkflowNodeSpec("coverage", "Coverage", Kind: WorkflowNodeKinds.Check,
+                Op: WorkflowCheckOps.TermsSubset, Of: "node:a", In: "node:b", FailWith: "no"), null);
+        Assert.Null(check.Template);
+
+        // Ordinal at every seam: "Template" is not the template kind here
+        // either — the validator's set already refuses it, and the stamp
+        // must agree.
+        var cased = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DescribeNode(
+            new WorkflowNodeSpec("cased", "Cased", Prompt: "header", Bindings: bindings, Kind: "Template"), null);
+        Assert.Null(cased.Template);
+
+        // A schema'd template carries its contract like a prompt node would.
+        var schemad = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DescribeNode(
+            new WorkflowNodeSpec("fixed-terms", "Fixed terms", Prompt: "header", Bindings: bindings,
+                Output: new WorkflowNodeOutputSpec("concept-list"), Kind: WorkflowNodeKinds.Template),
+            new Dictionary<string, string> { ["concept-list"] = "concept-list" });
+        Assert.True(schemad.Template);
+        Assert.Equal("concept-list", schemad.OutputContract);
+    }
+}
+
+/// <summary>
+/// v12 rung (j) (#634, design § 15): the template's whole answer at the pure
+/// seam — one hash twice, tokens null, contract application against the
+/// rendered bytes, and the deterministic fail-fast wrap.
+/// </summary>
+public class WorkflowV12TemplateResultTests
+{
+    [Fact]
+    public void TheRender_IsTheAnswer_OneHashTwice_NoTokens()
+    {
+        var result = Consultologist.Api.Jobs.RunPromptNodeActivity.TemplateResult(
+            "Seen on 2026-08-10.", null, null, "patient-header");
+
+        Assert.Equal("Seen on 2026-08-10.", result.RawOutput);
+        Assert.Null(result.Concepts);
+        Assert.Equal("1c3ee9bd2152fab39b31aa9188bc33ad35bda7e07e793c415e9210e8bd56cb24", result.InputHash);
+        Assert.Equal(result.InputHash, result.OutputHash);
+        Assert.Equal(Consultologist.Api.Workflow.ConsultGenerationProvenance.NodeHashVersion, result.HashVersion);
+        Assert.Null(result.Classification);
+        // Not recorded, never zero: no model ran.
+        Assert.Null(result.Tokens);
+    }
+
+    [Fact]
+    public void ASchemadRender_GoesThroughTheContract_AndHonorsTheSource()
+    {
+        const string json = """{"concepts": [{"term": "breast cancer", "type": "disorder", "id": "254837009", "isSnomedConcept": true, "isActive": true}]}""";
+
+        var result = Consultologist.Api.Jobs.RunPromptNodeActivity.TemplateResult(
+            json, Consultologist.Api.Agents.OutputContracts.ConceptList, "fixed-terms", "fixed-terms-node");
+
+        var concept = Assert.Single(result.Concepts!);
+        Assert.Equal(("breast cancer", "254837009", "fixed-terms"), (concept.Term, concept.Id, concept.Source));
+        Assert.Equal(result.InputHash, result.OutputHash);
+        Assert.Null(result.Tokens);
+    }
+
+    [Fact]
+    public void AMalformedSchemadRender_FailsFast_NeverRetries()
+    {
+        // The same bytes re-render, so the retryable contract exception is
+        // re-thrown as the renderer's own fail-fast type — excluded from the
+        // activity retry policy by construction.
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            Consultologist.Api.Jobs.RunPromptNodeActivity.TemplateResult(
+                "not json at all", Consultologist.Api.Agents.OutputContracts.ConceptList, null, "fixed-terms-node"));
+
+        Assert.StartsWith("Template 'fixed-terms-node' rendered output that is not valid concept-list JSON", exception.Message);
+        Assert.IsType<Consultologist.Api.Workflow.ConceptOutputContractException>(exception.InnerException);
+    }
+}
+
+/// <summary>
+/// v12 rung (j) (#634, design § 15): the proof at the surrounding seams — a
+/// template descriptor schedules and depends exactly as a prompt node's, and
+/// its equal-hash, token-less result rides the completion updates untouched.
+/// </summary>
+public class WorkflowV12TemplateSchedulingTests
+{
+    private static readonly Consultologist.Api.Models.ConsultNodeDescriptor Header = new(
+        "patient-header", "Patient header", "header",
+        Bindings: new Dictionary<string, Consultologist.Api.Models.ConsultNodeBindingDescriptor>
+        {
+            ["seen_on"] = new("input:seen_on")
+        },
+        Template: true);
+
+    private static readonly Consultologist.Api.Models.ConsultNodeDescriptor Draft = new(
+        "section-draft", "Drafting section", "draft-section",
+        Bindings: new Dictionary<string, Consultologist.Api.Models.ConsultNodeBindingDescriptor>
+        {
+            ["header"] = new("node:patient-header")
+        },
+        ForEach: "input:sections");
+
+    [Fact]
+    public void ATemplateUpstream_GatesItsReaders_LikeAnyNode()
+    {
+        var nodes = new[] { Header, Draft }.ToDictionary(n => n.Id, StringComparer.Ordinal);
+
+        Assert.Equal(new[] { "patient-header" }, Consultologist.Api.Jobs.ConsultNodeScheduler.NodeDependencies(Draft));
+        Assert.Empty(Consultologist.Api.Jobs.ConsultNodeScheduler.NodeDependencies(Header));
+
+        Assert.False(Consultologist.Api.Jobs.ConsultNodeScheduler.InstanceReady(
+            Draft, "hpi", nodes, new Dictionary<string, Consultologist.Api.Jobs.NodeRunResult>(StringComparer.Ordinal)));
+        Assert.True(Consultologist.Api.Jobs.ConsultNodeScheduler.InstanceReady(
+            Draft, "hpi", nodes, new Dictionary<string, Consultologist.Api.Jobs.NodeRunResult>(StringComparer.Ordinal)
+            {
+                ["patient-header"] = new("Seen on 2026-08-10.", null, "h", "h")
+            }));
+    }
+
+    [Fact]
+    public void TheCompletionUpdates_CarryTheEqualHashes_AndNoTokens()
+    {
+        var result = Consultologist.Api.Jobs.RunPromptNodeActivity.TemplateResult(
+            "Seen on 2026-08-10.", null, null, "patient-header");
+
+        var update = Consultologist.Api.Jobs.ConsultGenerationOrchestrator.NodeUpdateFrom(Header, result, 1, 3);
+        Assert.Equal(update.InputHash, update.OutputHash);
+        Assert.Equal("1c3ee9bd2152fab39b31aa9188bc33ad35bda7e07e793c415e9210e8bd56cb24", update.OutputHash);
+        Assert.Null(update.Tokens);
+        Assert.Null(update.Concepts);
+        Assert.Null(update.Classification);
+
+        var itemUpdate = Consultologist.Api.Jobs.ConsultGenerationOrchestrator.ItemUpdateFrom(
+            Header, "hpi", "History", result, 1, 2);
+        Assert.Equal(itemUpdate.InputHash, itemUpdate.OutputHash);
+        Assert.Null(itemUpdate.Tokens);
+    }
+}

@@ -423,8 +423,11 @@ public static class WorkflowNodeKinds
     // non-model executor after the aggregator. Below 12 the validator's
     // gate refuses it by name before the unknown-kind sentence can fire.
     public const string Check = "check";
+    // v12 (§ 15): the third deterministic executor and the first that
+    // renders — the strict-mode render IS the output; no model runs.
+    public const string Template = "template";
 
-    public static readonly IReadOnlyList<string> All = new[] { Prompt, Classifier, Check };
+    public static readonly IReadOnlyList<string> All = new[] { Prompt, Classifier, Check, Template };
 
     private static readonly IReadOnlyList<string> AllV10 = new[] { Prompt, Classifier };
 
@@ -437,6 +440,9 @@ public static class WorkflowNodeKinds
 
     public static bool IsCheck(WorkflowNodeSpec node) =>
         string.Equals(node.Kind, Check, StringComparison.Ordinal);
+
+    public static bool IsTemplate(WorkflowNodeSpec node) =>
+        string.Equals(node.Kind, Template, StringComparison.Ordinal);
 }
 
 /// <summary>The check operations a manifest may spell (v12 § 13) — a closed set, like every vocabulary here.</summary>
