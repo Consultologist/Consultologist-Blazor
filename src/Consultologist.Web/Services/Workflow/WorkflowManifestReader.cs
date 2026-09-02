@@ -31,9 +31,16 @@ public static class WorkflowManifestReader
         string? Kind = null, IReadOnlyList<string>? Values = null,
         // v11 #564: the package's reproducibility claim (record § 6) —
         // false when absent or not literally true.
-        bool Reproducible = false)
+        bool Reproducible = false,
+        // v12 § 13 (#621): the check node's members — carried whole so no
+        // editor pass can erase them; surfaced by rung (e)'s node card.
+        string? Op = null, string? Of = null, string? In = null, string? FailWith = null)
     {
         public bool IsClassifier => Kind == Consultologist.PackageFormat.WorkflowNodeKinds.Classifier;
+
+        public bool IsCheck => Kind == Consultologist.PackageFormat.WorkflowNodeKinds.Check;
+
+        public bool IsTemplate => Kind == Consultologist.PackageFormat.WorkflowNodeKinds.Template;
     }
 
     /// <summary>
@@ -98,15 +105,29 @@ public static class WorkflowManifestReader
         string Node,
         string Label,
         string? When = null,
-        // v11 #564: the deliverable's ordered macro list and the signed flag
-        // (§ 4/§ 5). Signature is tri-state on purpose: presence, not truth,
-        // is what the validator refuses below 11 — an authored false is
-        // carried as read.
-        IReadOnlyList<string>? Macros = null,
-        bool? Signature = null);
+        // v11 #564: the deliverable's ordered macro entries and the signed
+        // flag (§ 4/§ 5). Signature is tri-state on purpose: presence, not
+        // truth, is what the validator refuses below 11 — an authored false
+        // is carried as read. v12 (#621): entries carry placement and when —
+        // the whole object, so no editor pass can erase them.
+        IReadOnlyList<ResultMacroView>? Macros = null,
+        bool? Signature = null,
+        // v12 § 13 (#621): the deliverable's check gate (node:<id>).
+        string? Check = null);
 
-    /// <summary>One declared macro (v11 § 4): package-owned template text.</summary>
-    public sealed record MacroView(string Id, string Label, string File);
+    /// <summary>
+    /// One entry of a deliverable's macro list (v12 § 4/§ 14) — the mirror
+    /// of WorkflowResultMacroSpec, IsBare discipline included: a bare entry
+    /// writes the v11 string, an adorned one the object, and When counts.
+    /// </summary>
+    public sealed record ResultMacroView(string Id, string? Before = null, string? After = null, string? When = null)
+    {
+        public bool IsBare => Before is null && After is null && When is null;
+    }
+
+    /// <summary>One declared macro (v11 § 4): package-owned template text.
+    /// v12 § 3 (#621): optional and its default, carried as read.</summary>
+    public sealed record MacroView(string Id, string Label, string File, bool? Optional = null, bool? Default = null);
 
     public sealed record DataItemView(string Id, string Name, string File);
 
@@ -187,7 +208,11 @@ public static class WorkflowManifestReader
                 hasOutput ? ReadString(output, "failIfEmpty") : null,
                 ReadString(node, "kind"),
                 ReadStringArray(node, "values"),
-                ReadBool(node, "reproducible") == true));
+                ReadBool(node, "reproducible") == true,
+                ReadString(node, "op"),
+                ReadString(node, "of"),
+                ReadString(node, "in"),
+                ReadString(node, "failWith")));
         }
 
         return nodes;
@@ -444,8 +469,9 @@ public static class WorkflowManifestReader
                 ReadString(result, "node") ?? string.Empty,
                 ReadString(result, "label") ?? id,
                 ReadString(result, "when"),
-                ReadMacroIds(result),
-                ReadBool(result, "signature")));
+                ReadMacroEntries(result),
+                ReadBool(result, "signature"),
+                ReadString(result, "check")));
         }
 
         return results;
@@ -467,7 +493,9 @@ public static class WorkflowManifestReader
             macros.Add(new MacroView(
                 id,
                 ReadString(macro, "label") ?? id,
-                ReadString(macro, "file") ?? string.Empty));
+                ReadString(macro, "file") ?? string.Empty,
+                ReadBool(macro, "optional"),
+                ReadBool(macro, "default")));
         }
 
         return macros;
@@ -544,33 +572,36 @@ public static class WorkflowManifestReader
             : null;
 
     /// <summary>
-    /// A deliverable's macro ids. v12 (§ 4) widened entries to id-or-object;
-    /// reading the id from either keeps the round-trip non-lossy — a filtered
-    /// entry would vanish on the next publish and orphan the macro (#398's
-    /// bug class). Placement itself is not surfaced until the editor authors
-    /// it (v12 rung (e)).
+    /// A deliverable's macro entries, whole (v12 rung (e), #621). Reading the
+    /// id alone was #398's bug class waiting to happen: the composer rewrites
+    /// the results array from these views, so anything unread here —
+    /// before/after/when — vanished on the first Documents-pane edit.
     /// </summary>
-    private static IReadOnlyList<string>? ReadMacroIds(JsonElement result)
+    private static IReadOnlyList<ResultMacroView>? ReadMacroEntries(JsonElement result)
     {
         if (!TryGetProperty(result, "macros", out var array) || array.ValueKind != JsonValueKind.Array)
         {
             return null;
         }
 
-        var ids = new List<string>();
+        var entries = new List<ResultMacroView>();
         foreach (var item in array.EnumerateArray())
         {
             if (item.ValueKind == JsonValueKind.String)
             {
-                ids.Add(item.GetString()!);
+                entries.Add(new ResultMacroView(item.GetString()!));
             }
             else if (item.ValueKind == JsonValueKind.Object && TryGetProperty(item, "id", out var id) && id.ValueKind == JsonValueKind.String)
             {
-                ids.Add(id.GetString()!);
+                entries.Add(new ResultMacroView(
+                    id.GetString()!,
+                    ReadString(item, "before"),
+                    ReadString(item, "after"),
+                    ReadString(item, "when")));
             }
         }
 
-        return ids;
+        return entries;
     }
 
     /// <summary>An enum input's declared values; null when the property is absent.</summary>

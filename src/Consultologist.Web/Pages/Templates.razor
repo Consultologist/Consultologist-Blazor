@@ -961,9 +961,10 @@
                                     {
                                         <li class="declared-row__v11" data-v11-for="@deliverable.Id">
                                             <span class="muted-text">Appended:</span>
-                                            @{ var resultMacros = deliverable.Macros ?? Array.Empty<string>(); }
-                                            @foreach (var (macroId, macroIndex) in resultMacros.Select((m, i) => (m, i)))
+                                            @{ var resultMacros = deliverable.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>(); }
+                                            @foreach (var (macroEntry, macroIndex) in resultMacros.Select((m, i) => (m, i)))
                                             {
+                                                var macroId = macroEntry.Id;
                                                 <span class="result-macro-row">
                                                     <code>@macroId</code>
                                                     <button type="button" class="aggregate-row__button result-macro-up" title="Move up"
@@ -976,13 +977,13 @@
                                                             @onclick="() => RemoveResultMacroAsync(deliverable, macroId)">×</button>
                                                 </span>
                                             }
-                                            @if (EffectiveMacros.Any(m => !resultMacros.Contains(m.Id)))
+                                            @if (EffectiveMacros.Any(m => resultMacros.All(e => e.Id != m.Id)))
                                             {
                                                 <select class="binding-row__select result-macro-append"
                                                         @onchange="args => AppendResultMacroAsync(deliverable, args.Value?.ToString())"
                                                         aria-label="@($"Append macro to document {deliverable.Id}")">
                                                     <option value="">append macro…</option>
-                                                    @foreach (var candidateMacro in EffectiveMacros.Where(m => !resultMacros.Contains(m.Id)))
+                                                    @foreach (var candidateMacro in EffectiveMacros.Where(m => resultMacros.All(e => e.Id != m.Id)))
                                                     {
                                                         <option value="@candidateMacro.Id">@candidateMacro.Id</option>
                                                     }
@@ -2972,7 +2973,7 @@
         {
             // The orphan rule, the validator's sentence verbatim.
             var referencedMacroIds = results
-                .SelectMany(result => result.Macros ?? Array.Empty<string>())
+                .SelectMany(result => (result.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).Select(e => e.Id))
                 .ToHashSet(StringComparer.Ordinal);
             errors.AddRange(EffectiveMacros
                 .Where(m => !referencedMacroIds.Contains(m.Id))
@@ -4531,10 +4532,12 @@
         var results = MutableResults();
         var index = results.FindIndex(existing => existing.Id == result.Id);
 
-        if (index >= 0 && !(results[index].Macros ?? Array.Empty<string>()).Contains(macroId))
+        if (index >= 0 && (results[index].Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).All(e => e.Id != macroId))
         {
-            var list = (results[index].Macros ?? Array.Empty<string>()).ToList();
-            list.Add(macroId);
+            // Appending creates the bare v11 entry; placement and when are
+            // authored on the row afterwards.
+            var list = (results[index].Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).ToList();
+            list.Add(new WorkflowManifestReader.ResultMacroView(macroId));
             results[index] = results[index] with { Macros = list };
         }
 
@@ -4548,7 +4551,7 @@
 
         if (index >= 0)
         {
-            var list = (results[index].Macros ?? Array.Empty<string>()).Where(m => m != macroId).ToList();
+            var list = (results[index].Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).Where(e => e.Id != macroId).ToList();
             results[index] = results[index] with { Macros = list.Count == 0 ? null : list };
         }
 
@@ -4563,7 +4566,7 @@
         if (index >= 0 && results[index].Macros is { } current)
         {
             var list = current.ToList();
-            var from = list.IndexOf(macroId);
+            var from = list.FindIndex(e => e.Id == macroId);
             var to = from + delta;
 
             if (from >= 0 && to >= 0 && to < list.Count)
@@ -5835,7 +5838,14 @@
     private static List<WorkflowManifestReader.FieldView>? FromDraft(List<DraftField>? fields) =>
         fields?.Select(f => new WorkflowManifestReader.FieldView(f.Id, f.Label, f.Required, f.Type, f.Values, FromDraft(f.Element), FromDraft(f.Fields))).ToList();
 
-    private sealed record DraftResult(string Id, string Node, string Label, string? When = null, List<string>? Macros = null, bool? Signature = null);
+    private sealed record DraftResult(
+        string Id, string Node, string Label, string? When = null, List<string>? Macros = null, bool? Signature = null,
+        // v12 (#621): the whole entries and the check gate — trailing, so an
+        // old draft restores (its Macros ids become bare entries) and an old
+        // client reading a new draft degrades the same way.
+        List<DraftResultMacro>? MacroEntries = null, string? Check = null);
+
+    private sealed record DraftResultMacro(string Id, string? Before = null, string? After = null, string? When = null);
 
     private async Task RestoreDraftAsync()
     {
@@ -6141,7 +6151,12 @@
             && draftResults.All(result => EffectiveNodes.Any(node => $"node:{node.Id}" == result.Node)))
         {
             resultsEdit = draftResults
-                .Select(result => new WorkflowManifestReader.ResultView(result.Id, result.Node, result.Label, result.When, result.Macros, result.Signature))
+                .Select(result => new WorkflowManifestReader.ResultView(
+                    result.Id, result.Node, result.Label, result.When,
+                    result.MacroEntries?.Select(e => new WorkflowManifestReader.ResultMacroView(e.Id, e.Before, e.After, e.When)).ToList()
+                        ?? (IReadOnlyList<WorkflowManifestReader.ResultMacroView>?)result.Macros?.Select(id => new WorkflowManifestReader.ResultMacroView(id)).ToList(),
+                    result.Signature,
+                    result.Check))
                 .ToList();
         }
 
@@ -6238,7 +6253,12 @@
                 i.Items?.Type,
                 ToDraft(i.Fields),
                 i.Items is { IsBare: false } ? ToDraft(i.Items) : null)).ToList(),
-            resultsEdit?.Select(r => new DraftResult(r.Id, r.Node, r.Label, r.When, r.Macros?.ToList(), r.Signature)).ToList(),
+            resultsEdit?.Select(r => new DraftResult(
+                r.Id, r.Node, r.Label, r.When,
+                r.Macros?.Select(e => e.Id).ToList(),
+                r.Signature,
+                r.Macros?.Select(e => new DraftResultMacro(e.Id, e.Before, e.After, e.When)).ToList(),
+                r.Check)).ToList(),
             new Dictionary<string, string>(addedScalars, StringComparer.Ordinal),
             specVersionBump,
             titleEdit,
@@ -7037,7 +7057,7 @@
             resultsToWrite = (resultsToWrite ?? EffectiveResults.ToList())
                 .Select(result => result.Macros == null
                     ? result
-                    : result with { Macros = result.Macros.Where(id => !removedMacroIds.Contains(id)).ToList() })
+                    : result with { Macros = result.Macros.Where(e => !removedMacroIds.Contains(e.Id)).ToList() })
                 .ToList();
         }
 
@@ -7063,14 +7083,36 @@
                             node["when"] = result.When;
                         }
 
-                        // v11 #564: the deliverable's ordered macro list and
-                        // the signed flag — written here or the first results
-                        // edit would erase them. Signature is carried as read:
-                        // presence, not truth, is what's refused below 11.
+                        // v12 § 13 (#621): the deliverable's check gate —
+                        // written here or the first results edit would erase
+                        // it, the exact loss class the entries had.
+                        if (!string.IsNullOrWhiteSpace(result.Check))
+                        {
+                            node["check"] = result.Check;
+                        }
+
+                        // v11 #564 / v12 #621: the deliverable's ordered macro
+                        // entries and the signed flag — written here or the
+                        // first results edit would erase them. The IsBare
+                        // discipline mirrors WorkflowResultMacroSpecConverter:
+                        // a bare entry writes the v11 string (byte parity),
+                        // an adorned one the object in declared member order.
                         if (result.Macros is { Count: > 0 })
                         {
                             node["macros"] = new System.Text.Json.Nodes.JsonArray(
-                                result.Macros.Select(m => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(m)).ToArray());
+                                result.Macros.Select(entry =>
+                                {
+                                    if (entry.IsBare)
+                                    {
+                                        return (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(entry.Id);
+                                    }
+
+                                    var adorned = new System.Text.Json.Nodes.JsonObject { ["id"] = entry.Id };
+                                    if (entry.Before != null) { adorned["before"] = entry.Before; }
+                                    if (entry.After != null) { adorned["after"] = entry.After; }
+                                    if (entry.When != null) { adorned["when"] = entry.When; }
+                                    return (System.Text.Json.Nodes.JsonNode?)adorned;
+                                }).ToArray());
                         }
 
                         if (result.Signature is { } signature)
