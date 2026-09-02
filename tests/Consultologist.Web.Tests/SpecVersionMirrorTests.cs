@@ -156,3 +156,37 @@ public class SpecVersionMirrorTests
             Consultologist.Web.Services.Workflow.WorkflowInputFans.ItemFields);
     }
 }
+
+/// <summary>
+/// v12 rung (e) (#621): the vocabularies the editor's absence-gating and
+/// desk sentences assume, pinned so the next format change fails loudly
+/// here rather than drifting silently (the NewestSpecVersion precedent).
+/// </summary>
+public class V12VocabularyMirrorTests
+{
+    [Fact]
+    public void TheKindSet_AtTwelve_IsTheFourTheEditorOffers()
+    {
+        Assert.Equal(
+            new[] { "prompt", "classifier", "check", "template" },
+            Consultologist.PackageFormat.WorkflowNodeKinds.AllFor(12));
+        Assert.Equal(
+            new[] { "prompt", "classifier" },
+            Consultologist.PackageFormat.WorkflowNodeKinds.AllFor(11));
+    }
+
+    [Fact]
+    public void TheCheckOps_AreTheOneTheCardShows()
+    {
+        Assert.Equal(new[] { "terms-subset" }, Consultologist.PackageFormat.WorkflowCheckOps.All);
+    }
+
+    [Fact]
+    public void TheProfileWords_TurnAtTwelve()
+    {
+        // Commit 2's keying: the signature token resolves at 12 and not at
+        // 11 — the desk drift this rung fixed must never return.
+        Assert.Contains("signature", Consultologist.PackageFormat.WorkflowMacroPlaceholders.ProfileFactsFor(12));
+        Assert.DoesNotContain("signature", Consultologist.PackageFormat.WorkflowMacroPlaceholders.ProfileFactsFor(11));
+    }
+}
