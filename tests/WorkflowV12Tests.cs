@@ -468,7 +468,7 @@ public class WorkflowV12PlacementRuntimeTests
         new Consultologist.Api.Jobs.ConsultAggregateRenderer.ForEachPart(new[] { ("History", "Unremarkable."), ("Exam", "Benign.") })
     };
 
-    private static (string Text, IReadOnlyList<Consultologist.Api.Models.ConsultAppendedEntry>? Appended) Compose(
+    private static (string Text, IReadOnlyList<Consultologist.Api.Models.ConsultAppendedEntry>? Appended, bool TokenCarried) Compose(
         IReadOnlyList<string>? macroIds,
         IReadOnlyList<Consultologist.Api.Models.ConsultMacroPlacement>? placements,
         IReadOnlyList<string>? sourceRefs = null,
@@ -486,7 +486,7 @@ public class WorkflowV12PlacementRuntimeTests
         var (appendText, appendEntries) = Consultologist.Api.Jobs.ConsultMacroExpander.Append(
             rendered, new[] { "disclaimer", "closing" }, Texts, NoValues, null, NoValues, Facts());
 
-        var (composed, composedEntries) = Compose(new[] { "disclaimer", "closing" }, placements: null);
+        var (composed, composedEntries, _) = Compose(new[] { "disclaimer", "closing" }, placements: null);
 
         Assert.Equal(appendText, composed);
         Assert.Equal(
@@ -494,7 +494,7 @@ public class WorkflowV12PlacementRuntimeTests
             composedEntries!.Select(e => (e.Kind, e.Id)));
 
         // And with no macros at all, Render's own bytes.
-        var (bare, none) = Compose(null, null);
+        var (bare, none, _) = Compose(null, null);
         Assert.Equal(rendered, bare);
         Assert.Null(none);
     }
@@ -502,7 +502,7 @@ public class WorkflowV12PlacementRuntimeTests
     [Fact]
     public void APlacedMacro_SitsBeforeItsSection()
     {
-        var (text, _) = Compose(
+        var (text, _, _) = Compose(
             new[] { "disclaimer" },
             new[] { new Consultologist.Api.Models.ConsultMacroPlacement("disclaimer", Before: "node:findings") });
 
@@ -516,7 +516,7 @@ public class WorkflowV12PlacementRuntimeTests
     {
         // § 11 assumption 1, held: after the fanned source means after the
         // WHOLE block — never between History and Exam.
-        var (text, _) = Compose(
+        var (text, _, _) = Compose(
             new[] { "disclaimer" },
             new[] { new Consultologist.Api.Models.ConsultMacroPlacement("disclaimer", After: "node:findings") });
 
@@ -531,7 +531,7 @@ public class WorkflowV12PlacementRuntimeTests
         // 'closing' is DECLARED first but placed nowhere; 'disclaimer' is
         // declared second and placed before the first section. Document
         // order wins in the text and in appended[] alike (§ 6).
-        var (text, appended) = Compose(
+        var (text, appended, _) = Compose(
             new[] { "closing", "disclaimer" },
             new[] { new Consultologist.Api.Models.ConsultMacroPlacement("disclaimer", Before: "node:intro") });
 
@@ -544,7 +544,7 @@ public class WorkflowV12PlacementRuntimeTests
     [Fact]
     public void BeforeAndAfterTheSameSection_BothLand()
     {
-        var (text, appended) = Compose(
+        var (text, appended, _) = Compose(
             new[] { "disclaimer", "closing" },
             new[]
             {
@@ -561,7 +561,7 @@ public class WorkflowV12PlacementRuntimeTests
     [Fact]
     public void TheSignature_StillFollowsEveryPlacedMacro()
     {
-        var (text, appended) = Compose(
+        var (text, appended, _) = Compose(
             new[] { "disclaimer" },
             new[] { new Consultologist.Api.Models.ConsultMacroPlacement("disclaimer", Before: "node:intro") });
         var snapshot = new Consultologist.Api.Jobs.ConsultSignatureSnapshot("s1", "Dr. Reyes", "2026-09-01");
@@ -583,9 +583,9 @@ public class WorkflowV12PlacementRuntimeTests
         var hash = Consultologist.Api.Workflow.ConsultGenerationProvenance.Sha256Hex(
             Consultologist.Api.Jobs.ConsultAggregateRenderer.Render(Parts));
 
-        var (bare, _) = Compose(null, null);
-        var (appendedText, _) = Compose(new[] { "disclaimer" }, null);
-        var (placedText, _) = Compose(
+        var (bare, _, _) = Compose(null, null);
+        var (appendedText, _, _) = Compose(new[] { "disclaimer" }, null);
+        var (placedText, _, _) = Compose(
             new[] { "disclaimer" },
             new[] { new Consultologist.Api.Models.ConsultMacroPlacement("disclaimer", Before: "node:intro") });
 
@@ -610,7 +610,7 @@ public class WorkflowV12PlacementRuntimeTests
     {
         // The filters keep ids and placements in lockstep; this is the belt
         // to that suspender — a stray placement never mis-places or throws.
-        var (text, _) = Compose(
+        var (text, _, _) = Compose(
             new[] { "disclaimer" },
             new[] { new Consultologist.Api.Models.ConsultMacroPlacement("ghost", Before: "node:intro") });
 

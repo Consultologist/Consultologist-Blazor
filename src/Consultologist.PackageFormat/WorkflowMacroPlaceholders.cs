@@ -33,6 +33,14 @@ public static class WorkflowMacroPlaceholders
     public static IReadOnlySet<string> ProfileFactsFor(int specVersion) =>
         specVersion >= 12 ? ProfileFactsV12 : ProfileFacts;
 
+    /// <summary>The signature fact's id and full token (v12 § 5) — one spelling, shared by the validator's signed-once rules and the run-time expander.</summary>
+    public const string SignatureFact = "signature";
+    public const string SignatureToken = "profile:" + SignatureFact;
+
+    /// <summary>Whether a template carries the signature token (the shared scan both the validator and the starter's gate use).</summary>
+    public static bool CarriesSignatureToken(string template) =>
+        Pattern.Matches(template).Any(match => TokenOf(match) == SignatureToken);
+
     /// <summary>The token of one match, trimmed — the form every sentence names.</summary>
     public static string TokenOf(Match match) => match.Groups[1].Value.Trim();
 

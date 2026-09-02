@@ -478,7 +478,7 @@ public sealed class ConsultGenerationOrchestrator
                             // — with nothing placed its bytes equal the v11
                             // append exactly (pinned). `rendered` above stays
                             // the hash and the bindable output.
-                            var (text, appended) = ConsultMacroExpander.Compose(
+                            var (text, appended, tokenCarried) = ConsultMacroExpander.Compose(
                                 aggregator.Aggregate!,
                                 parts,
                                 deliverable.MacroIds,
