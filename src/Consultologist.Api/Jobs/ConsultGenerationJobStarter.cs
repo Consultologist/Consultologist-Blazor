@@ -94,7 +94,12 @@ public enum ConsultGenerationJobStartError
     // submitted value. Well-formed, unsatisfiable: 422.
     InputFormRefNotFound,
     InputFormRefValuesDeleted,
-    InputFormRefMismatch
+    InputFormRefMismatch,
+
+    // v12 #618 (design § 3): a MacroChoices key names a macro the package
+    // does not declare, or one that is not optional. Well-formed,
+    // unsatisfiable against this package: 422. Appended last.
+    MacroChoiceMismatch
 }
 
 /// <summary>
@@ -343,6 +348,24 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var formRefs = formVerification.Refs;
         request = request with { InputFormRefs = null };
 
+        // v12 #618 (design § 3): the optional macros resolve ONCE, here —
+        // the request's choice, else the declared default — for every door
+        // and both descriptor birthplaces (the boundary filters with the
+        // resolved map, since DecideActivity never sees the request). A
+        // choice naming the wrong macro refuses the start by name.
+        var macroChoices = ResolveMacroChoices(request, package.Manifest);
+        if (macroChoices.Error != null)
+        {
+            _logger.LogWarning("Rejected job start: a macro choice was refused. Kind={Kind}", ConsultGenerationJobStartError.MacroChoiceMismatch);
+            return new ConsultGenerationJobStartOutcome(
+                null,
+                ConsultGenerationJobStartError.MacroChoiceMismatch,
+                macroChoices.Error,
+                // Safety is a property of the sentence: it quotes macro ids,
+                // which are authored package content, never supplied values.
+                SenderSafeDetail: macroChoices.Error);
+        }
+
         var extraction = await ExtractInputFilesAsync(request, package.Manifest, GateWaitFor(origin), cancellationToken);
         if (extraction.Error != null)
         {
@@ -554,7 +577,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // is the patient's and is never printed; the sentence says
                 // what was needed and that it was not met.
                 return await RecordNoApplicableDeliverableAsync(
-                    client, entityId, jobId, appUserId, request, package, inputs, origin, inputOrigins, skipped, noneApplyDetail);
+                    client, entityId, jobId, appUserId, request, package, inputs, origin, inputOrigins, skipped, noneApplyDetail, macroChoices.Entries);
             }
 
             if (fireSet.Package.Nodes!.Count < package.Nodes.Count)
@@ -606,7 +629,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 var emptyFanDetail = EmptyFanDetail(skeleton.EmptyFanLabels);
 
                 return await RecordNoApplicableDeliverableAsync(
-                    client, entityId, jobId, appUserId, request, package, inputs, origin, inputOrigins, notProduced, emptyFanDetail);
+                    client, entityId, jobId, appUserId, request, package, inputs, origin, inputOrigins, notProduced, emptyFanDetail, macroChoices.Entries);
             }
 
             items = skeleton.Items;
@@ -670,7 +693,15 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         }
 
         var resultDescriptors = package.Results?
-            .Select(result => new ConsultResultDescriptor(result.Id, result.NodeId, result.Label, result.Macros, result.Signature))
+            .Select(result => new ConsultResultDescriptor(
+                result.Id,
+                result.NodeId,
+                result.Label,
+                // v12 #618: a declined optional macro leaves the list here,
+                // at the descriptor's birth — the engine appends exactly what
+                // the descriptor carries, as it always has.
+                FilterMacros(result.Macros, macroChoices.Resolved),
+                result.Signature))
             .ToList();
 
         // v11 #513: the macro templates and the account's display name,
@@ -782,7 +813,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // #547: where the held inputs live; null when unheld.
                 InputsBlob: inputsBlob,
                 // #582: the source's hashes when this is a rerun.
-                RerunBaseline: origin.RerunBaseline));
+                RerunBaseline: origin.RerunBaseline,
+                // v12 #618: the optional-macro resolutions, for the record.
+                MacroChoices: macroChoices.Entries));
 
         var terminology = await _terminology.GetAsync(cancellationToken);
         var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(
@@ -830,7 +863,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // package marks a deliverable signed.
                 Signature: signatureSnapshot,
                 // #557: the outputs container's kind.
-                AccountKind: accountKind),
+                AccountKind: accountKind,
+                // v12 #618: the resolved choices the deciding boundary
+                // filters descriptors with.
+                MacroChoices: macroChoices.Resolved),
             new StartOrchestrationOptions { InstanceId = jobId },
             cancellationToken);
 
@@ -1057,7 +1093,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         ConsultGenerationJobOrigin origin,
         IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? inputOrigins,
         IReadOnlyList<ConsultSkippedDocument> notProduced,
-        string detail)
+        string detail,
+        IReadOnlyDictionary<string, ConsultMacroChoice>? macroChoices = null)
     {
         var specVersion = package.Manifest.SpecVersion;
         var (effectiveInputHash, effectiveInputHashVersion) = EffectiveInputHashOf(specVersion, request, inputs);
@@ -1087,7 +1124,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     Terminology: terminology?.Terminology,
                     TerminologyServerRef: terminology?.ServerRef,
                     ApiHost: _engine.ApiHost,
-                    EngineCommit: _engine.Commit),
+                    EngineCommit: _engine.Commit,
+                    // v12 #618: the choices are submission provenance, like
+                    // the origins — a job born Failed still records them.
+                    MacroChoices: macroChoices),
                 detail));
 
         return new ConsultGenerationJobStartOutcome(
@@ -1274,6 +1314,108 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         Dictionary<string, ConsultInputFormRef>? Refs,
         ConsultGenerationJobStartError? ErrorKind = null,
         string? Error = null);
+
+    /// <summary>
+    /// v12 #618 (design § 3): the optional macros' resolutions, or the
+    /// refusal. Resolved is the id → final-value map both descriptor
+    /// birthplaces filter with; Entries is the record's richer form (value
+    /// plus chosen|default origin). Both null when the package declares no
+    /// optional macros — the byte-identical control.
+    /// </summary>
+    internal sealed record MacroChoiceResolution(
+        IReadOnlyDictionary<string, bool>? Resolved,
+        IReadOnlyDictionary<string, ConsultMacroChoice>? Entries,
+        string? Error = null);
+
+    internal static MacroChoiceResolution ResolveMacroChoices(ConsultGenerationRequest request, WorkflowPackageManifest manifest)
+    {
+        var declared = (manifest.Macros ?? new List<WorkflowMacroSpec>())
+            .ToDictionary(macro => macro.Id, StringComparer.Ordinal);
+
+        foreach (var key in (request.MacroChoices ?? new Dictionary<string, bool>()).Keys)
+        {
+            if (!declared.TryGetValue(key, out var named))
+            {
+                return new MacroChoiceResolution(null, null,
+                    $"MacroChoices names macro '{key}', which the package does not declare.");
+            }
+
+            if (named.Optional != true)
+            {
+                return new MacroChoiceResolution(null, null,
+                    $"MacroChoices names macro '{key}', which is not optional; only optional: true takes a per-run choice.");
+            }
+        }
+
+        var optional = declared.Values.Where(macro => macro.Optional == true).ToList();
+        if (optional.Count == 0)
+        {
+            return new MacroChoiceResolution(null, null);
+        }
+
+        var resolved = new Dictionary<string, bool>(StringComparer.Ordinal);
+        var entries = new Dictionary<string, ConsultMacroChoice>(StringComparer.Ordinal);
+
+        foreach (var macro in optional)
+        {
+            // The validator guarantees a default on every optional macro; the
+            // coalesce is for shapes it never passed, and false is the safe
+            // side (nothing appended that nobody asked for).
+            var value = macro.Default ?? false;
+            var chosen = false;
+
+            if (request.MacroChoices != null && request.MacroChoices.TryGetValue(macro.Id, out var choice))
+            {
+                value = choice;
+                chosen = true;
+            }
+
+            resolved[macro.Id] = value;
+            entries[macro.Id] = new ConsultMacroChoice(
+                value,
+                chosen ? ConsultMacroChoiceOrigins.Chosen : ConsultMacroChoiceOrigins.Default);
+        }
+
+        return new MacroChoiceResolution(resolved, entries);
+    }
+
+    /// <summary>
+    /// v12 #618: the keep-unless-declined rule at a descriptor's birth — a
+    /// macro id leaves only when the resolved map holds it false (required
+    /// macros are never in the map). Null map, or a list that empties, keeps
+    /// the pre-v12 bytes: null in, same out.
+    /// </summary>
+    internal static IReadOnlyList<string>? FilterMacros(
+        IReadOnlyList<string>? macros,
+        IReadOnlyDictionary<string, bool>? resolved)
+    {
+        if (macros is null || resolved is null)
+        {
+            return macros;
+        }
+
+        var kept = macros.Where(id => !resolved.TryGetValue(id, out var value) || value).ToList();
+        return kept.Count == 0 ? null : kept;
+    }
+
+    /// <summary>
+    /// v12 #618: the boundary's twin of the starter's descriptor filter —
+    /// DecideActivity never sees the request, so the engine applies the
+    /// start-resolved map to the descriptors the boundary births.
+    /// </summary>
+    internal static IReadOnlyList<ConsultResultDescriptor> FilterDescriptorMacros(
+        IReadOnlyList<ConsultResultDescriptor> results,
+        IReadOnlyDictionary<string, bool>? resolved)
+    {
+        if (resolved is null)
+        {
+            return results;
+        }
+
+        return results
+            .Select(result => result with { Macros = FilterMacros(result.Macros, resolved) })
+            .ToList();
+    }
 
     /// <summary>
     /// #540: a form reference is an assertion beside a value — the server

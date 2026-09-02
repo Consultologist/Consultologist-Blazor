@@ -48,7 +48,13 @@ public record ConsultGenerationRequest(
     // records the origin; an unverifiable claim refuses the start. An
     // edited input simply carries no reference. Appended last: this is the
     // payload a sleeping instance re-reads.
-    Dictionary<string, ConsultInputFormRef>? InputFormRefs = null);
+    Dictionary<string, ConsultInputFormRef>? InputFormRefs = null,
+    // v12 #618 (design § 3): the per-run choices for the package's OPTIONAL
+    // macros, macro id → chosen. Absent ids take the declared default — the
+    // package decides what a formless run does, every door. Never enters
+    // effectiveInputHash (the hash covers supplied inputs only — that is the
+    // construct's point). Appended last, same reason as everything above.
+    Dictionary<string, bool>? MacroChoices = null);
 
 /// <summary>#510: one deliverable of one of the account's completed runs.</summary>
 public sealed record ConsultInputRef(string JobId, string ResultId);
@@ -284,7 +290,13 @@ public record ConsultGenerationJobResponse(
     // #551: the job's token totals, stamped once at completion over the node
     // instances that recorded usage. Null when none did or the record
     // predates the field — not recorded, never zero.
-    ConsultTokenUsage? Tokens = null);
+    ConsultTokenUsage? Tokens = null,
+    // v12 #618 (design § 6): the optional-macro resolutions at start, macro
+    // id → { value, origin: chosen|default }. The negative is visible — a
+    // declined macro records value false rather than vanishing. Null when
+    // the package declares no optional macros (the control) or the record
+    // predates the field. Appended last.
+    IReadOnlyDictionary<string, ConsultMacroChoice>? MacroChoices = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
@@ -326,6 +338,23 @@ public static class ConsultAppendedKinds
     public const string Macro = "macro";
 
     public const string Signature = "signature";
+}
+
+/// <summary>
+/// v12 #618 (design § 6): one optional macro's resolution at start — the
+/// final value and where it came from. Required macros carry no entry; a
+/// package with no optional macros carries no map at all (null, never
+/// empty — the byte-identical control).
+/// </summary>
+public sealed record ConsultMacroChoice(bool Value, string Origin);
+
+public static class ConsultMacroChoiceOrigins
+{
+    /// <summary>The request named the macro — a person chose.</summary>
+    public const string Chosen = "chosen";
+
+    /// <summary>No choice arrived — the package's declared default applied.</summary>
+    public const string Default = "default";
 }
 
 /// <summary>

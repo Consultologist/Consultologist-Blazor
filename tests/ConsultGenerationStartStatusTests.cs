@@ -25,6 +25,7 @@ public class ConsultGenerationStartStatusTests
     [InlineData(ConsultGenerationJobStartError.RateLimited, HttpStatusCode.TooManyRequests)]
     [InlineData(ConsultGenerationJobStartError.InputsMismatch, HttpStatusCode.UnprocessableEntity)]
     [InlineData(ConsultGenerationJobStartError.NoApplicableDeliverable, HttpStatusCode.UnprocessableEntity)]
+    [InlineData(ConsultGenerationJobStartError.MacroChoiceMismatch, HttpStatusCode.UnprocessableEntity)]
     public void EachRefusal_AnswersItsOwnStatus(ConsultGenerationJobStartError error, HttpStatusCode expected)
     {
         Assert.Equal(expected, ConsultGenerationJobs.StatusFor(error));
