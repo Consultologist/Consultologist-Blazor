@@ -1371,3 +1371,185 @@ public class WorkflowV12ConditionalMacroCompositionTests
             Consultologist.Api.Jobs.ConsultAggregateRenderer.Render(Parts)));
     }
 }
+
+/// <summary>
+/// v12 rung (j) (#634, design § 15): the template node's grammar — the kind
+/// joins the closed set at 12, reuses the prompts table whole, may declare a
+/// contract output, and is refused the two claims that are not its to make.
+/// </summary>
+public class WorkflowV12TemplateNodeTests
+{
+    /// <summary>The § 15 shape: a template over a declared input, feeding the deliverable's aggregator.</summary>
+    private static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) WithTemplate(
+        WorkflowNodeSpec? node = null,
+        string templateText = "Seen on {{ seen_on }}.",
+        List<string>? variables = null)
+    {
+        var manifest = V12Fixtures.Minimal();
+        var prompts = new List<WorkflowPromptSpec>(manifest.Prompts!)
+        {
+            new("header", "prompts/header.md", variables ?? new List<string> { "seen_on" })
+        };
+        var template = node ?? new WorkflowNodeSpec("patient-header", "Patient header",
+            Prompt: "header",
+            Bindings: new Dictionary<string, WorkflowBindingValue> { ["seen_on"] = new("input:seen_on") },
+            Kind: WorkflowNodeKinds.Template);
+        var nodes = new List<WorkflowNodeSpec>(manifest.Nodes!) { template };
+        nodes = nodes.Select(n => n.Aggregate != null
+            ? n with { Aggregate = new List<string>(n.Aggregate) { $"node:{template.Id}" } }
+            : n).ToList();
+        manifest = manifest with { Prompts = prompts, Nodes = nodes };
+        var files = V6Fixtures.Files(manifest);
+        files["prompts/header.md"] = templateText;
+        return (manifest, files);
+    }
+
+    [Fact]
+    public void AScalarTemplate_Publishes()
+    {
+        var result = V12Fixtures.Validate(WithTemplate());
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AForEachTemplate_PublishesAsAChainStep()
+    {
+        var result = V12Fixtures.Validate(WithTemplate(
+            new WorkflowNodeSpec("section-header", "Section header",
+                Prompt: "header",
+                Bindings: new Dictionary<string, WorkflowBindingValue> { ["section_name"] = new("item:name") },
+                ForEach: "data:standards",
+                Kind: WorkflowNodeKinds.Template),
+            templateText: "## {{ section_name }}",
+            variables: new List<string> { "section_name" }));
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void ASchemadTemplate_Publishes_WithFailIfEmpty()
+    {
+        var result = V12Fixtures.Validate(WithTemplate(
+            new WorkflowNodeSpec("fixed-terms", "Fixed terms",
+                Prompt: "header",
+                Bindings: new Dictionary<string, WorkflowBindingValue> { ["seen_on"] = new("input:seen_on") },
+                Output: new WorkflowNodeOutputSpec("concept-list", FailIfEmpty: "The fixed term list rendered empty."),
+                Kind: WorkflowNodeKinds.Template),
+            templateText: "{\"concepts\": []}"));
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AtEleven_TheKind_IsRefusedByName()
+    {
+        var (manifest, files) = WithTemplate();
+        manifest = manifest with { SpecVersion = 11 };
+
+        Assert.Contains(
+            "Node 'patient-header' declares kind 'template', which requires specVersion 12.",
+            WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas).Errors);
+    }
+
+    [Fact]
+    public void Reproducible_IsRefused_TheClaimIsNotItsToMake()
+    {
+        var (manifest, files) = WithTemplate();
+        manifest = manifest with
+        {
+            Nodes = manifest.Nodes!.Select(n => n.Id == "patient-header" ? n with { Reproducible = true } : n).ToList()
+        };
+
+        Assert.Contains(
+            "Template 'patient-header' declares reproducible; a template is deterministic by construction, and the claim is not its to make.",
+            WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas).Errors);
+    }
+
+    [Fact]
+    public void AClassificationOutput_IsRefused()
+    {
+        var (manifest, files) = WithTemplate(
+            new WorkflowNodeSpec("verdict", "Verdict",
+                Prompt: "header",
+                Bindings: new Dictionary<string, WorkflowBindingValue> { ["seen_on"] = new("input:seen_on") },
+                Output: new WorkflowNodeOutputSpec("verdict"),
+                Kind: WorkflowNodeKinds.Template),
+            templateText: "{\"value\": \"yes\"}");
+        manifest = manifest with
+        {
+            Schemas = new Dictionary<string, string>(manifest.Schemas ?? new Dictionary<string, string>())
+            {
+                ["verdict"] = "schemas/verdict.json"
+            }
+        };
+        files["schemas/verdict.json"] = TestOutputContracts.CatalogSchemas["classification"];
+
+        Assert.Contains(
+            "Template 'verdict' output schema resolves to the classification contract; a classification is answered from a value set, and a template renders, it does not answer.",
+            WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas).Errors);
+    }
+
+    [Fact]
+    public void TheInheritedRules_FireForATemplate()
+    {
+        // No continue after CheckTemplateNode: the prompt-family rules run.
+        var noPrompt = WithTemplate(new WorkflowNodeSpec("patient-header", "Patient header",
+            Kind: WorkflowNodeKinds.Template));
+        Assert.Contains("Node 'patient-header' declares no prompt.",
+            V12Fixtures.Validate(noPrompt).Errors);
+
+        var values = WithTemplate(new WorkflowNodeSpec("patient-header", "Patient header",
+            Prompt: "header",
+            Bindings: new Dictionary<string, WorkflowBindingValue> { ["seen_on"] = new("input:seen_on") },
+            Kind: WorkflowNodeKinds.Template,
+            Values: new List<string> { "a", "b" }));
+        Assert.Contains("Node 'patient-header' declares values but is not a classifier; only kind 'classifier' answers from a value set.",
+            V12Fixtures.Validate(values).Errors);
+
+        var mismatch = WithTemplate(new WorkflowNodeSpec("patient-header", "Patient header",
+            Prompt: "header",
+            Bindings: new Dictionary<string, WorkflowBindingValue> { ["wrong_name"] = new("input:seen_on") },
+            Kind: WorkflowNodeKinds.Template));
+        Assert.Contains(V12Fixtures.Validate(mismatch).Errors,
+            e => e.StartsWith("Node 'patient-header' bindings [wrong_name]", StringComparison.Ordinal));
+
+        var checkMember = WithTemplate(new WorkflowNodeSpec("patient-header", "Patient header",
+            Prompt: "header",
+            Bindings: new Dictionary<string, WorkflowBindingValue> { ["seen_on"] = new("input:seen_on") },
+            Kind: WorkflowNodeKinds.Template,
+            FailWith: "never"));
+        Assert.Contains("Node 'patient-header' declares failWith but is not a check node; only kind 'check' declares it.",
+            V12Fixtures.Validate(checkMember).Errors);
+    }
+
+    [Fact]
+    public void TheUnknownKindSentence_NamesFourKindsAtTwelve_AndTheOldSetsStand()
+    {
+        var (manifest, files) = WithTemplate();
+
+        // Ordinal: "Template" is an unknown word, not the template kind.
+        var cased = manifest with
+        {
+            Nodes = manifest.Nodes!.Select(n => n.Id == "patient-header" ? n with { Kind = "Template" } : n).ToList()
+        };
+        Assert.Contains(
+            "Node 'patient-header' declares unknown kind 'Template' (accepted: prompt, classifier, check, template).",
+            WorkflowPackageValidator.Validate(cased, files, TestOutputContracts.CatalogSchemas).Errors);
+
+        // The v10/v11 sentence does not move.
+        var eleven = V11Fixtures.Minimal() with
+        {
+            Nodes = V11Fixtures.Minimal().Nodes!.Select((n, i) => i == 0 ? n with { Kind = "router" } : n).ToList()
+        };
+        Assert.Contains(V11Fixtures.Validate(eleven).Errors,
+            e => e.Contains("declares unknown kind 'router' (accepted: prompt, classifier).", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TheProbeRender_RefusesABrokenTemplate_AtPublish()
+    {
+        // "What publishes is what runs" — for a template, the strict-mode
+        // probe renders the very artifact the run outputs: an undeclared
+        // variable refuses at publish, not at run time.
+        var errors = V12Fixtures.Validate(WithTemplate(templateText: "Seen on {{ undeclared_var }}.")).Errors;
+        Assert.Contains(errors, e => e.Contains("header", StringComparison.Ordinal) && e.Contains("undeclared_var", StringComparison.Ordinal));
+    }
+}
