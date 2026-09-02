@@ -1585,6 +1585,13 @@ public class WorkflowV12TemplateDescriptorTests
                 Op: WorkflowCheckOps.TermsSubset, Of: "node:a", In: "node:b", FailWith: "no"), null);
         Assert.Null(check.Template);
 
+        // Ordinal at every seam: "Template" is not the template kind here
+        // either — the validator's set already refuses it, and the stamp
+        // must agree.
+        var cased = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DescribeNode(
+            new WorkflowNodeSpec("cased", "Cased", Prompt: "header", Bindings: bindings, Kind: "Template"), null);
+        Assert.Null(cased.Template);
+
         // A schema'd template carries its contract like a prompt node would.
         var schemad = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DescribeNode(
             new WorkflowNodeSpec("fixed-terms", "Fixed terms", Prompt: "header", Bindings: bindings,
@@ -1644,5 +1651,65 @@ public class WorkflowV12TemplateResultTests
 
         Assert.StartsWith("Template 'fixed-terms-node' rendered output that is not valid concept-list JSON", exception.Message);
         Assert.IsType<Consultologist.Api.Workflow.ConceptOutputContractException>(exception.InnerException);
+    }
+}
+
+/// <summary>
+/// v12 rung (j) (#634, design § 15): the proof at the surrounding seams — a
+/// template descriptor schedules and depends exactly as a prompt node's, and
+/// its equal-hash, token-less result rides the completion updates untouched.
+/// </summary>
+public class WorkflowV12TemplateSchedulingTests
+{
+    private static readonly Consultologist.Api.Models.ConsultNodeDescriptor Header = new(
+        "patient-header", "Patient header", "header",
+        Bindings: new Dictionary<string, Consultologist.Api.Models.ConsultNodeBindingDescriptor>
+        {
+            ["seen_on"] = new("input:seen_on")
+        },
+        Template: true);
+
+    private static readonly Consultologist.Api.Models.ConsultNodeDescriptor Draft = new(
+        "section-draft", "Drafting section", "draft-section",
+        Bindings: new Dictionary<string, Consultologist.Api.Models.ConsultNodeBindingDescriptor>
+        {
+            ["header"] = new("node:patient-header")
+        },
+        ForEach: "input:sections");
+
+    [Fact]
+    public void ATemplateUpstream_GatesItsReaders_LikeAnyNode()
+    {
+        var nodes = new[] { Header, Draft }.ToDictionary(n => n.Id, StringComparer.Ordinal);
+
+        Assert.Equal(new[] { "patient-header" }, Consultologist.Api.Jobs.ConsultNodeScheduler.NodeDependencies(Draft));
+        Assert.Empty(Consultologist.Api.Jobs.ConsultNodeScheduler.NodeDependencies(Header));
+
+        Assert.False(Consultologist.Api.Jobs.ConsultNodeScheduler.InstanceReady(
+            Draft, "hpi", nodes, new Dictionary<string, Consultologist.Api.Jobs.NodeRunResult>(StringComparer.Ordinal)));
+        Assert.True(Consultologist.Api.Jobs.ConsultNodeScheduler.InstanceReady(
+            Draft, "hpi", nodes, new Dictionary<string, Consultologist.Api.Jobs.NodeRunResult>(StringComparer.Ordinal)
+            {
+                ["patient-header"] = new("Seen on 2026-08-10.", null, "h", "h")
+            }));
+    }
+
+    [Fact]
+    public void TheCompletionUpdates_CarryTheEqualHashes_AndNoTokens()
+    {
+        var result = Consultologist.Api.Jobs.RunPromptNodeActivity.TemplateResult(
+            "Seen on 2026-08-10.", null, null, "patient-header");
+
+        var update = Consultologist.Api.Jobs.ConsultGenerationOrchestrator.NodeUpdateFrom(Header, result, 1, 3);
+        Assert.Equal(update.InputHash, update.OutputHash);
+        Assert.Equal("1c3ee9bd2152fab39b31aa9188bc33ad35bda7e07e793c415e9210e8bd56cb24", update.OutputHash);
+        Assert.Null(update.Tokens);
+        Assert.Null(update.Concepts);
+        Assert.Null(update.Classification);
+
+        var itemUpdate = Consultologist.Api.Jobs.ConsultGenerationOrchestrator.ItemUpdateFrom(
+            Header, "hpi", "History", result, 1, 2);
+        Assert.Equal(itemUpdate.InputHash, itemUpdate.OutputHash);
+        Assert.Null(itemUpdate.Tokens);
     }
 }
