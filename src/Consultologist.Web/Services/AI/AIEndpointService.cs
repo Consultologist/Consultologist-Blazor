@@ -620,7 +620,10 @@ public record ConsultGenerationJobResponse(
     // v12 #624: deliverables refused by their check — the third state
     // beside produced and skipped. Already serialized by the API, merely
     // undeclared here until now.
-    IReadOnlyList<ConsultFailedDocumentResponse>? FailedDocuments = null);
+    IReadOnlyList<ConsultFailedDocumentResponse>? FailedDocuments = null,
+    // v12 #631 (§ 14): macros a when-clause excluded from firing
+    // deliverables — recorded absence, the skipped-documents tradition.
+    IReadOnlyList<ConsultExcludedMacroResponse>? ExcludedMacros = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.TerminologySnapshot (#403).</summary>
 public record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);
@@ -633,6 +636,9 @@ public record ConsultCheckOutcome(
     bool Passed,
     IReadOnlyList<string>? Uncovered = null,
     IReadOnlyList<string>? Untested = null);
+
+/// <summary>Mirrors Consultologist.Api.Models.ConsultExcludedMacro (v12 #631).</summary>
+public record ConsultExcludedMacroResponse(string ResultId, string MacroId, string Reason);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultFailedDocument (v12 #624).</summary>
 public record ConsultFailedDocumentResponse(

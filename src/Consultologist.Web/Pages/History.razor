@@ -483,6 +483,15 @@
                                                     <dt class="provenance-list__nested">@failed.Label</dt>
                                                     <dd class="document-failed">not produced — the check failed: @failed.Reason@(failed.Uncovered is { Count: > 0 } uncovered ? $" (not covered: {string.Join(", ", uncovered)})" : "")</dd>
                                                 }
+                                                @* v12 #631 (§ 14): a paragraph the run's facts excluded —
+                                                   recorded absence beside the document evidence. The reason
+                                                   is the condition explainer's sentence: authored names and
+                                                   declared values only. *@
+                                                @foreach (var excludedMacro in detail.ExcludedMacros ?? Array.Empty<ConsultExcludedMacroResponse>())
+                                                {
+                                                    <dt class="provenance-list__nested">@excludedMacro.ResultId</dt>
+                                                    <dd class="macro-excluded">macro '@excludedMacro.MacroId' not appended — it @excludedMacro.Reason</dd>
+                                                }
                                                 @* #453: the package's tags as they were at the pinned
                                                    version — stamped on the record, shown for finding it. *@
                                                 @if (detail.PackageTags is { Count: > 0 } packageTags)
