@@ -585,11 +585,13 @@ public static class WorkflowPackageValidator
                     continue;
                 }
             }
-            else if (node.Kind != null && !WorkflowNodeKinds.All.Contains(node.Kind, StringComparer.Ordinal))
+            else if (node.Kind != null && !WorkflowNodeKinds.AllFor(manifest.SpecVersion).Contains(node.Kind, StringComparer.Ordinal))
             {
+                // Version-keyed (v12 § 13): the sentence names the kinds THIS
+                // manifest's version may spell, so a v10 record stays true.
                 errors.Add(node.Kind == "aggregator"
                     ? $"Node '{node.Id}' declares kind 'aggregator'; an aggregator is declared by aggregate, not by kind."
-                    : $"Node '{node.Id}' declares unknown kind '{node.Kind}' (accepted: {string.Join(", ", WorkflowNodeKinds.All)}).");
+                    : $"Node '{node.Id}' declares unknown kind '{node.Kind}' (accepted: {string.Join(", ", WorkflowNodeKinds.AllFor(manifest.SpecVersion))}).");
                 continue;
             }
             else if (node.Values != null && !WorkflowNodeKinds.IsClassifier(node))
@@ -1936,8 +1938,12 @@ public static class WorkflowPackageValidator
         {
             var seen = new HashSet<string>(StringComparer.Ordinal);
 
-            foreach (var macroId in result.Macros ?? new List<string>())
+            foreach (var entry in result.Macros ?? new List<WorkflowResultMacroSpec>())
             {
+                // v12 (§ 4): an entry is a bare id or a placed object; the id
+                // rules hold for both — a placed macro counts as referenced.
+                var macroId = entry.Id;
+
                 if (!macroIds.Contains(macroId))
                 {
                     errors.Add($"Result '{result.Id}' references undeclared macro '{macroId}'.");

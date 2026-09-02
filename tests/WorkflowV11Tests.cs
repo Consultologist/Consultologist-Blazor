@@ -39,7 +39,7 @@ public static class V11Fixtures
         manifest = manifest with
         {
             Macros = new List<WorkflowMacroSpec> { new(macroId, "Standing disclaimer", $"macros/{macroId}.md") },
-            Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<string> { macroId } } : r).ToList()
+            Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<WorkflowResultMacroSpec> { macroId } } : r).ToList()
         };
         var files = V6Fixtures.Files(manifest);
         files[$"macros/{macroId}.md"] = template;
@@ -87,7 +87,7 @@ public class WorkflowV11GateTests
         manifest = manifest with
         {
             Results = manifest.Results!.Select((r, i) => i == 0
-                ? r with { Macros = new List<string> { "closing" }, Signature = true }
+                ? r with { Macros = new List<WorkflowResultMacroSpec> { "closing" }, Signature = true }
                 : r).ToList(),
             Nodes = manifest.Nodes!.Select((n, i) => i == 0 ? n with { Reproducible = true } : n).ToList()
         };
@@ -201,7 +201,7 @@ public class WorkflowV11MacroTests
         var undeclared = V11Fixtures.Minimal();
         undeclared = undeclared with
         {
-            Results = undeclared.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<string> { "ghost" } } : r).ToList()
+            Results = undeclared.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<WorkflowResultMacroSpec> { "ghost" } } : r).ToList()
         };
         Assert.Contains("Result 'consult' references undeclared macro 'ghost'.", V11Fixtures.Validate(undeclared).Errors);
 
@@ -209,7 +209,7 @@ public class WorkflowV11MacroTests
         var (twice, twiceFiles) = V11Fixtures.WithMacro();
         twice = twice with
         {
-            Results = twice.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<string> { "disclaimer", "disclaimer" } } : r).ToList()
+            Results = twice.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<WorkflowResultMacroSpec> { "disclaimer", "disclaimer" } } : r).ToList()
         };
         Assert.Contains("Result 'consult' lists macro 'disclaimer' more than once.", Errors((twice, twiceFiles)));
     }

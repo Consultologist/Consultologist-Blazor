@@ -113,7 +113,10 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
                     WorkflowResultConditions.TryParseExpression(result.When, out var condition, out _)
                         ? condition
                         : null,
-                    result.Macros,
+                    // v12 rung (a): placement rides the manifest only — the
+                    // engine's resolved view stays ids until rung (c) executes
+                    // placement.
+                    result.Macros?.Select(entry => entry.Id).ToList(),
                     result.Signature))
                 .ToList();
         }

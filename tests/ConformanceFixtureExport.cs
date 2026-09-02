@@ -608,13 +608,13 @@ public class ConformanceFixtureExport
             var manifest = V11Fixtures.Minimal();
             Invalid("invalid-macro-reference-undeclared", 11,
                 "A result naming a macro the manifest does not declare.",
-                manifest with { Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<string> { "ghost" } } : r).ToList() });
+                manifest with { Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<WorkflowResultMacroSpec> { "ghost" } } : r).ToList() });
         }
         {
             var (manifest, files) = V11Fixtures.WithMacro();
             Bundle("invalid-macro-listed-twice", 11,
                 "The same macro twice on one deliverable.",
-                (manifest with { Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<string> { "disclaimer", "disclaimer" } } : r).ToList() }, files));
+                (manifest with { Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<WorkflowResultMacroSpec> { "disclaimer", "disclaimer" } } : r).ToList() }, files));
         }
         {
             var (manifest, files) = V11Fixtures.WithMacro();
@@ -658,7 +658,7 @@ public class ConformanceFixtureExport
             v10Minimal with { Macros = new List<WorkflowMacroSpec> { new("closing", "Closing", "macros/closing.md") } });
         Invalid("invalid-result-macros-at-v10", 10,
             "A deliverable's macro list on a v10 manifest.",
-            v10WithResults with { Results = v10WithResults.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<string> { "closing" } } : r).ToList() });
+            v10WithResults with { Results = v10WithResults.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<WorkflowResultMacroSpec> { "closing" } } : r).ToList() });
         Invalid("invalid-result-signature-at-v10", 10,
             "A deliverable's signature flag on a v10 manifest — presence, not truth, is the error.",
             v10WithResults with { Results = v10WithResults.Results!.Select((r, i) => i == 0 ? r with { Signature = false } : r).ToList() });

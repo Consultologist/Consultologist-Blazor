@@ -444,7 +444,7 @@ public static class WorkflowManifestReader
                 ReadString(result, "node") ?? string.Empty,
                 ReadString(result, "label") ?? id,
                 ReadString(result, "when"),
-                ReadStringArray(result, "macros"),
+                ReadMacroIds(result),
                 ReadBool(result, "signature")));
         }
 
@@ -542,6 +542,36 @@ public static class WorkflowManifestReader
         TryGetProperty(element, property, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
             ? value.ValueKind == JsonValueKind.True
             : null;
+
+    /// <summary>
+    /// A deliverable's macro ids. v12 (§ 4) widened entries to id-or-object;
+    /// reading the id from either keeps the round-trip non-lossy — a filtered
+    /// entry would vanish on the next publish and orphan the macro (#398's
+    /// bug class). Placement itself is not surfaced until the editor authors
+    /// it (v12 rung (e)).
+    /// </summary>
+    private static IReadOnlyList<string>? ReadMacroIds(JsonElement result)
+    {
+        if (!TryGetProperty(result, "macros", out var array) || array.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var ids = new List<string>();
+        foreach (var item in array.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String)
+            {
+                ids.Add(item.GetString()!);
+            }
+            else if (item.ValueKind == JsonValueKind.Object && TryGetProperty(item, "id", out var id) && id.ValueKind == JsonValueKind.String)
+            {
+                ids.Add(id.GetString()!);
+            }
+        }
+
+        return ids;
+    }
 
     /// <summary>An enum input's declared values; null when the property is absent.</summary>
     private static IReadOnlyList<string>? ReadStringArray(JsonElement element, string property)
