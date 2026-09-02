@@ -321,6 +321,22 @@
                                     @* Spike § 4.2: named, not filled. *@
                                     <FluentMessageBar Intent="MessageIntent.Warning">Not filled: @string.Join("; ", formFillMisfits)</FluentMessageBar>
                                 }
+                                @if (macroChoiceSlots.Count > 0)
+                                {
+                                    <fieldset class="macro-choices">
+                                        <legend class="muted-text">Optional additions</legend>
+                                        @foreach (var slot in macroChoiceSlots)
+                                        {
+                                            <label class="macro-choice" @key="slot.Id">
+                                                <input type="checkbox"
+                                                       checked="@slot.Value"
+                                                       @onchange="args => slot.Value = args.Value is bool isChecked && isChecked"
+                                                       aria-label="@slot.Label" />
+                                                <span>@slot.Label</span>
+                                            </label>
+                                        }
+                                    </fieldset>
+                                }
                                 <details class="setup-sections">
                                     <summary>Sections it will generate</summary>
                                     @if (IsMultiDeliverable)
@@ -1000,6 +1016,19 @@
     .Select(input => new ConsultInputField(input, textRows: 16))
     .ToList();
   private IReadOnlyList<WorkflowPackageResultResponse>? declaredResults;
+
+  // v12 § 3 (#621): one row per optional macro — pre-checked to the
+  // package's declared default; a checkbox, deliberately not the boolean
+  // slot's tri-state, because absence IS an answer here (the default).
+  private sealed class MacroChoiceSlot(string id, string label, bool defaultValue)
+  {
+    public string Id { get; } = id;
+    public string Label { get; } = label;
+    public bool Default { get; } = defaultValue;
+    public bool Value { get; set; }
+  }
+
+  private List<MacroChoiceSlot> macroChoiceSlots = new();
   private bool editingDraft;
   private bool runEventSeen;
   private string? runTerminalStatus;
@@ -1340,6 +1369,13 @@
       // consult_draft slot.
       declaredResults = package.Results;
       SyncInputFields(package.Inputs);
+
+      // v12 § 3 (#621): the optional-macro choices, offered at 12 alone and
+      // reset to the NEW package's declared defaults on every (re)load —
+      // unlike inputs, nothing carries across packages: the defaults win.
+      macroChoiceSlots = package.SpecVersion >= 12 && package.Macros is { Count: > 0 }
+        ? package.Macros.Select(m => new MacroChoiceSlot(m.Id, m.Label, m.Default) { Value = m.Default }).ToList()
+        : new List<MacroChoiceSlot>();
     }
     catch (AccessTokenNotAvailableException exception)
     {
@@ -1412,7 +1448,7 @@
         var scheduledAtUtc = ScheduleDefault.FromLocalInputValue(scheduledAtLocal)
           ?? ScheduleDefault.NextOccurrenceUtc(accountScheduleTime, DateTime.Now);
         var job = await AIService.StartConsultGenerationJobAsync(
-          SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles(), SuppliedRefs(), SuppliedFormRefs());
+          SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles(), SuppliedRefs(), SuppliedFormRefs(), SuppliedMacroChoices());
         scheduleConfirmation = ScheduleConfirmationFor(scheduledAtUtc, accountDeliveryAddress, accountEmailPdf);
         runOvernight = false;
         scheduledAtLocal = string.Empty;
@@ -1453,7 +1489,7 @@
       // Sections are package data resolved server-side; the request carries only
       // the declared inputs (and the resolved package ref).
       var job = await AIService.StartConsultGenerationJobAsync(
-        inputSnapshot, currentPackageRef, files: fileSnapshot, refs: SuppliedRefs(), formRefs: SuppliedFormRefs());
+        inputSnapshot, currentPackageRef, files: fileSnapshot, refs: SuppliedRefs(), formRefs: SuppliedFormRefs(), macroChoices: SuppliedMacroChoices());
 
       // #207: remember the job per-tab so navigating away and back re-attaches.
       JobSession.Current = new ConsultJobMemento(
@@ -2320,6 +2356,18 @@
       "false" => false,
       _ => null
     };
+
+  // v12 § 3 (#621): only the deviations travel — an untouched form sends
+  // null and the request is byte-identical to pre-v12; the record's Chosen
+  // origin then appears exactly when a run deviates from the package's
+  // stated default.
+  private Dictionary<string, bool>? SuppliedMacroChoices()
+  {
+    var deviations = macroChoiceSlots
+      .Where(slot => slot.Value != slot.Default)
+      .ToDictionary(slot => slot.Id, slot => slot.Value, StringComparer.Ordinal);
+    return deviations.Count > 0 ? deviations : null;
+  }
 
   private Dictionary<string, ConsultInputValue> SuppliedInputs() =>
     inputFields

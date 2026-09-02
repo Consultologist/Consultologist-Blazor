@@ -37,6 +37,14 @@
                     {
                         <span> · classifier</span>
                     }
+                    @if (node.IsCheck)
+                    {
+                        <span> · check</span>
+                    }
+                    @if (node.IsTemplate)
+                    {
+                        <span> · template</span>
+                    }
                     @if (NodeModified?.Invoke(node.Id) == true)
                     {
                         <span class="binding-row__pending" title="Pending change"> ●</span>
@@ -88,7 +96,50 @@
                         <span class="editor-warning">@valuesProblem</span>
                     }
                 }
-                @if (node.Aggregate == null && !node.IsClassifier)
+                @if (node.IsCheck)
+                {
+                    @* v12 § 13 (#621): the check's four members. The op is the
+                       closed set's one entry — shown, not edited; the operands
+                       are selects over the output-declaring nodes (the
+                       concept-list contract itself is the server's word). *@
+                    <label class="node-field">
+                        <span>op</span>
+                        <input class="binding-row__select node-field__input" value="@(node.Op ?? string.Empty)" disabled
+                               aria-label="@($"Op for check {node.Id}")" />
+                    </label>
+                    <label class="node-field">
+                        <span>of</span>
+                        <select class="binding-row__select node-check-of"
+                                @onchange="args => EmitNodeChangeAsync(node, checkOf: args.Value?.ToString())"
+                                aria-label="@($"Of for check {node.Id}")">
+                            <option value="" selected="@(node.Of == null)">choose…</option>
+                            @foreach (var (operandRef, operandLabel) in CheckOperandOptions)
+                            {
+                                <option value="@operandRef" selected="@(node.Of == operandRef)">@operandLabel</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="node-field">
+                        <span>in</span>
+                        <select class="binding-row__select node-check-in"
+                                @onchange="args => EmitNodeChangeAsync(node, checkIn: args.Value?.ToString())"
+                                aria-label="@($"In for check {node.Id}")">
+                            <option value="" selected="@(node.In == null)">choose…</option>
+                            @foreach (var (operandRef, operandLabel) in CheckOperandOptions)
+                            {
+                                <option value="@operandRef" selected="@(node.In == operandRef)">@operandLabel</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="node-field node-field--wide">
+                        <span>fail with</span>
+                        <input class="binding-row__select node-field__input node-check-failwith"
+                               value="@(node.FailWith ?? string.Empty)"
+                               @onchange="args => EmitNodeChangeAsync(node, failWith: args.Value?.ToString())"
+                               aria-label="@($"FailWith for check {node.Id}")" />
+                    </label>
+                }
+                @if (node.Aggregate == null && !node.IsClassifier && !node.IsCheck)
                 {
                     @if (AllowPromptChange)
                     {
@@ -155,7 +206,7 @@
                         </label>
                     }
                 }
-                @if (OfferReproducible)
+                @if (OfferReproducible && !node.IsCheck && !node.IsTemplate)
                 {
                     @* v11 #564 (record § 6): any node may claim it — the
                        classifier and extraction stages are the intended cases,
@@ -318,7 +369,10 @@
         // v11 #564: the reproducibility claim — the effective value always
         // rides the tuple (never null-means-unchanged), so later edits to
         // other fields can never clobber it.
-        bool Reproducible = false);
+        bool Reproducible = false,
+        // v12 § 13 (#621): the check's editable members — effective values on
+        // every emission, the Reproducible rule, so no edit clobbers another.
+        string? Of = null, string? In = null, string? FailWith = null);
 
     /// <summary>An aggregator's full effective ordered source list after one change (#117).</summary>
     public sealed record AggregateChange(string NodeId, List<string> Sources);
@@ -338,6 +392,10 @@
 
     /// <summary>v11 #564: whether the reproducible toggle renders — the page gates it at specVersion 11.</summary>
     [Parameter] public bool OfferReproducible { get; set; }
+
+    // v12 § 13 (#621): the operand choices a check's of/in may name —
+    // (node:<id>, "<id> — <schema>") pairs, built by the page.
+    [Parameter] public IReadOnlyList<(string Ref, string Label)> CheckOperandOptions { get; set; } = Array.Empty<(string, string)>();
     [Parameter] public bool AllowPromptChange { get; set; }
     [Parameter] public string? Only { get; set; }
     [Parameter] public Func<string, bool>? NodeModified { get; set; }
@@ -411,10 +469,10 @@
     }
 
     private Task EmitReproducibleAsync(WorkflowManifestReader.NodeView node, bool reproducible) =>
-        OnNodeChanged.InvokeAsync(new NodeChange(node.Id, node.Label, node.ForEach, node.OutputSchema, node.FailIfEmpty, node.Prompt, node.Values, reproducible));
+        OnNodeChanged.InvokeAsync(new NodeChange(node.Id, node.Label, node.ForEach, node.OutputSchema, node.FailIfEmpty, node.Prompt, node.Values, reproducible, node.Of, node.In, node.FailWith));
 
     private Task EmitValuesAsync(WorkflowManifestReader.NodeView node, List<string> values) =>
-        OnNodeChanged.InvokeAsync(new NodeChange(node.Id, node.Label, node.ForEach, node.OutputSchema, node.FailIfEmpty, node.Prompt, values, node.Reproducible));
+        OnNodeChanged.InvokeAsync(new NodeChange(node.Id, node.Label, node.ForEach, node.OutputSchema, node.FailIfEmpty, node.Prompt, values, node.Reproducible, node.Of, node.In, node.FailWith));
 
     private async Task EmitNodeChangeAsync(
         WorkflowManifestReader.NodeView node,
@@ -422,7 +480,10 @@
         string? forEach = null,
         string? outputSchema = null,
         string? failIfEmpty = null,
-        string? prompt = null)
+        string? prompt = null,
+        string? checkOf = null,
+        string? checkIn = null,
+        string? failWith = null)
     {
         var effectiveLabel = label ?? node.Label;
         var effectiveForEach = forEach != null ? (forEach.Length == 0 ? null : forEach) : node.ForEach;
@@ -438,9 +499,13 @@
             effectiveFailIfEmpty = null;
         }
 
+        var effectiveOf = checkOf != null ? (checkOf.Length == 0 ? null : checkOf) : node.Of;
+        var effectiveIn = checkIn != null ? (checkIn.Length == 0 ? null : checkIn) : node.In;
+        var effectiveFailWith = failWith != null ? (failWith.Length == 0 ? null : failWith) : node.FailWith;
+
         // #572: the effective values ride every emission, the Reproducible
         // rule — a null here let a label edit clobber a pending values edit.
-        await OnNodeChanged.InvokeAsync(new NodeChange(node.Id, effectiveLabel, effectiveForEach, effectiveSchema, effectiveFailIfEmpty, effectivePrompt, node.Values, Reproducible: node.Reproducible));
+        await OnNodeChanged.InvokeAsync(new NodeChange(node.Id, effectiveLabel, effectiveForEach, effectiveSchema, effectiveFailIfEmpty, effectivePrompt, node.Values, Reproducible: node.Reproducible, Of: effectiveOf, In: effectiveIn, FailWith: effectiveFailWith));
     }
 
     private sealed class AddForm

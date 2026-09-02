@@ -293,7 +293,7 @@ public class ManifestReaderTests
             ] }
             """));
 
-        Assert.Equal(new[] { "disclaimer", "closing" }, results[0].Macros);
+        Assert.Equal(new[] { "disclaimer", "closing" }, results[0].Macros!.Select(e => e.Id));
         Assert.True(results[0].Signature);
         // Presence, not truth, is refused below 11: an authored false reads
         // as false, and absence as null — the carried-as-read discipline.
@@ -327,7 +327,7 @@ public class ManifestReaderTests
         var results = WorkflowManifestReader.ReadResults(Parse("""
             { "Results": [ { "Id": "letter", "Node": "node:a", "Label": "L", "Macros": ["closing"], "Signature": true } ] }
             """));
-        Assert.Equal(new[] { "closing" }, results[0].Macros);
+        Assert.Equal(new[] { "closing" }, results[0].Macros!.Select(e => e.Id));
         Assert.True(results[0].Signature);
 
         var nodes = WorkflowManifestReader.ReadNodes(Parse("""

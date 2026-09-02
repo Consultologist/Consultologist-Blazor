@@ -1317,3 +1317,81 @@ public class ConsultsPackageRefTests : ClientRenderTestContext
         Assert.Equal(chosen, sentSchedule!.Value.ToLocalTime().DateTime);
     }
 }
+
+/// <summary>
+/// v12 § 3 (#621): the setup form offers one checkbox per optional macro,
+/// pre-checked to the package's declared default, and the request names only
+/// the deviations — an untouched form sends nothing at all.
+/// </summary>
+public class ConsultsMacroChoiceTests : ClientRenderTestContext
+{
+    private static readonly WorkflowPackageMacroResponse[] TwoChoices =
+    {
+        new("disclaimer", "Standing disclaimer", true),
+        new("counseling", "Counseling paragraph", false)
+    };
+
+    private void WithTwelvePackage(IReadOnlyList<WorkflowPackageMacroResponse>? macros = null, int specVersion = 12) =>
+        WithPinnedPackage(
+            blocks: new[] { Block("section-instructions:hpi", "History of Present Illness") },
+            inputs: new[] { new WorkflowPackageInputResponse("consult_draft", "Consult draft", true) },
+            specVersion: specVersion,
+            macros: macros);
+
+    [Fact]
+    public void OneCheckboxPerOptionalMacro_PreCheckedToTheDefault()
+    {
+        WithTwelvePackage(TwoChoices);
+
+        var page = Render<Consults>();
+
+        var boxes = page.FindAll(".macro-choice input[type=checkbox]");
+        Assert.Equal(2, boxes.Count);
+        Assert.True(boxes[0].HasAttribute("checked"));
+        Assert.False(boxes[1].HasAttribute("checked"));
+        Assert.Contains("Standing disclaimer", page.Find(".macro-choices").TextContent);
+    }
+
+    [Fact]
+    public void NoOptionalMacros_OffersNothing()
+    {
+        WithTwelvePackage();
+        Assert.Empty(Render<Consults>().FindAll(".macro-choices"));
+    }
+
+    [Fact]
+    public void BelowTwelve_OffersNothing_EvenIfMacrosArrive()
+    {
+        WithTwelvePackage(TwoChoices, specVersion: 11);
+        Assert.Empty(Render<Consults>().FindAll(".macro-choices"));
+    }
+
+    [Fact]
+    public async Task AnUntouchedForm_SendsNoChoices_AndADeviationSendsOnlyItself()
+    {
+        WithTwelvePackage(TwoChoices);
+        IReadOnlyDictionary<string, bool>? sentChoices = new Dictionary<string, bool> { ["sentinel"] = true };
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Any<IReadOnlyDictionary<string, ConsultInputValue>>(), Arg.Any<string?>(), Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>(),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<ConsultInputRef>>?>(),
+                Arg.Any<IReadOnlyDictionary<string, ConsultInputFormRef>?>(),
+                Arg.Do<IReadOnlyDictionary<string, bool>?>(choices => sentChoices = choices))
+            .Returns(new ConsultGenerationJobStartResponse("job-1", "Queued"));
+
+        var page = Render<Consults>();
+        page.Find("fluent-text-area").Change("65M, adenocarcinoma of the lung.");
+        await page.FindAll("fluent-button").Last().ClickAsync(new());
+        Assert.Null(sentChoices);
+
+        // One deviation on a fresh page (the first submit left the setup
+        // phase): the default-true macro unchecked → exactly that id.
+        var second = Render<Consults>();
+        second.Find("fluent-text-area").Change("65M, adenocarcinoma of the lung.");
+        second.FindAll(".macro-choice input[type=checkbox]")[0].Change(false);
+        await second.FindAll("fluent-button").Last().ClickAsync(new());
+        Assert.NotNull(sentChoices);
+        var choice = Assert.Single(sentChoices!);
+        Assert.Equal(("disclaimer", false), (choice.Key, choice.Value));
+    }
+}

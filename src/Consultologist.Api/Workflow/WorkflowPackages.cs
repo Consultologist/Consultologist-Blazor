@@ -124,7 +124,13 @@ public sealed class WorkflowPackages
             package.Results?
                 .Select(result => new WorkflowPackageResultResponse(result.Id, result.Label))
                 .ToList(),
-            package.Manifest.Title);
+            package.Manifest.Title,
+            // v12 § 3 (#621): only the optional macros travel — a
+            // non-optional macro is not a per-run choice, and the starter
+            // refuses one named in macroChoices by name.
+            package.Manifest.Macros?.Where(m => m.Optional == true)
+                .Select(m => new WorkflowPackageMacroResponse(m.Id, m.Label, m.Default ?? false))
+                .ToList() is { Count: > 0 } optionalMacros ? optionalMacros : null);
 
     private static WorkflowPackageElementResponse? ElementResponse(WorkflowDeclarationNode? element) =>
         element is null

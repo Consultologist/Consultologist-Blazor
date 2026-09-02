@@ -177,10 +177,15 @@ public record WorkflowPackageResponse(
     IReadOnlyList<WorkflowPackageInputResponse>? Inputs = null,
     IReadOnlyList<WorkflowPackageResultResponse>? Results = null,
     // v9 § 4 (#432): the title, or null — the ref is the stated fallback.
-    string? Title = null)
+    string? Title = null,
+    // v12 § 3 (#621): the optional macros — the setup form's choices.
+    IReadOnlyList<WorkflowPackageMacroResponse>? Macros = null)
 {
     public string Ref => $"{Name}@{Version}";
 }
+
+/// <summary>Mirrors Consultologist.Api.Workflow.WorkflowPackageMacroResponse (v12 § 3).</summary>
+public record WorkflowPackageMacroResponse(string Id, string Label, bool Default);
 
 /// <summary>
 /// The editor's load half. The manifest rides as an opaque JsonElement: the

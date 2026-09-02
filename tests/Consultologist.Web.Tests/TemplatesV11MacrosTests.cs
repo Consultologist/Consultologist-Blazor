@@ -594,7 +594,11 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
     [InlineData("{{data:missing}}", "data:missing")]
     [InlineData("{{classification:assemble-note}}", "classification:assemble-note")]
     [InlineData("{{run:time}}", "run:time")]
-    [InlineData("{{profile:signature}}", "profile:signature")]
+    // profile:signature retired from this theory with v12 rung (e) (#621):
+    // at 11 it is a version question, not a spelling one — the desk now
+    // answers with the requires-specVersion-12 sentence, pinned in
+    // TemplatesV12SignatureTokenDeskTests.
+    [InlineData("{{profile:handwriting}}", "profile:handwriting")]
     [InlineData("{{no_colon}}", "no_colon")]
     [InlineData("{{sql:drop}}", "sql:drop")]
     public void AnUnresolvableToken_BlocksPublish_WithTheValidatorsSentence(string token, string named)

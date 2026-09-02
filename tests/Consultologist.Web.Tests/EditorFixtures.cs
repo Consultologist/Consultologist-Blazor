@@ -396,6 +396,79 @@ public static class EditorFixtures
         return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
     }
 
+    /// <summary>
+    /// v12 rung (e) (#621): the macro package at 12 carrying every v12 shape
+    /// — an optional macro with its default, a placed-and-gated entry, a
+    /// check node named by the result, and a template node — so the carriage
+    /// tests can prove no editor pass erases any of it.
+    /// </summary>
+    public static WorkflowPackageContentResponse V12Full() => Package("""
+        {
+          "name": "acct-1234567890ab",
+          "version": "v2026.08.1",
+          "specVersion": 12,
+          "tags": [],
+          "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
+          "inputs": [
+            { "id": "consult_draft", "label": "Consult draft", "required": true }
+          ],
+          "data": { "standards": "data/standards/", "intro": "data/intro.md" },
+          "schemas": { "concept-list": "schemas/concept-list.json" },
+          "prompts": [
+            { "id": "classify", "file": "prompts/classify.md", "variables": ["referral"] },
+            { "id": "draft-section", "file": "prompts/draft-section.md",
+              "variables": ["section_name", "consult_draft"] },
+            { "id": "extract-terms", "file": "prompts/extract-terms.md", "variables": ["text"] },
+            { "id": "header", "file": "prompts/header.md", "variables": ["consult_draft"] }
+          ],
+          "macros": [
+            { "id": "disclaimer", "label": "Standing disclaimer", "file": "macros/disclaimer.md" },
+            { "id": "closing", "label": "Closing paragraph", "file": "macros/closing.md", "optional": true, "default": true }
+          ],
+          "results": [
+            { "id": "consult_note", "node": "node:assemble-note", "label": "Consultation note", "when": "node:scope == in_scope",
+              "macros": [ { "id": "disclaimer", "after": "node:draft-section", "when": "node:scope == in_scope" }, "closing" ],
+              "signature": true,
+              "check": "node:coverage" }
+          ],
+          "nodes": [
+            { "id": "scope", "label": "Is the referral in scope?", "prompt": "classify", "kind": "classifier",
+              "values": ["in_scope", "out_of_scope"],
+              "bindings": { "referral": "input:consult_draft" } },
+            { "id": "patient-header", "label": "Patient header", "prompt": "header", "kind": "template",
+              "bindings": { "consult_draft": "input:consult_draft" } },
+            { "id": "draft-section", "forEach": "data:standards", "label": "Drafting section",
+              "prompt": "draft-section",
+              "bindings": { "section_name": "item:name", "consult_draft": "input:consult_draft" } },
+            { "id": "extract-input-terms", "label": "Extracting input terms", "prompt": "extract-terms",
+              "bindings": { "text": "input:consult_draft" }, "output": { "schema": "concept-list" } },
+            { "id": "extract-note-terms", "label": "Extracting note terms", "prompt": "extract-terms",
+              "bindings": { "text": "node:assemble-note" }, "output": { "schema": "concept-list" } },
+            { "id": "coverage", "label": "Coverage check", "kind": "check", "op": "terms-subset",
+              "of": "node:extract-input-terms", "in": "node:extract-note-terms",
+              "failWith": "The note does not cover every clinical term found in the referral." },
+            { "id": "assemble-note", "label": "Assembling note", "aggregate": ["node:patient-header", "node:draft-section"] }
+          ]
+        }
+        """, 12,
+        ("prompts/classify.md", "Is this in scope? {{ referral }}"),
+        ("prompts/extract-terms.md", "Extract the clinical terms: {{ text }}"),
+        ("prompts/header.md", "Header for {{ consult_draft }}."),
+        ("macros/disclaimer.md", "By {{profile:name}} on {{run:date}}."),
+        ("macros/closing.md", "Thank you for this referral."),
+        ("data/intro.md", "A scalar."),
+        ("schemas/concept-list.json", EditorCatalogSchemas.ConceptListSchema));
+
+    /// <summary>v12 (#621): the macro package with only the version raised — no v12 shape used (the control).</summary>
+    public static WorkflowPackageContentResponse V12()
+    {
+        var package = V11Macro();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["specVersion"] = 12;
+
+        return package with { SpecVersion = 12, Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
+
     /// <summary>#453: the same package carrying these tags.</summary>
     public static WorkflowPackageContentResponse WithTags(WorkflowPackageContentResponse package, params string[] tags)
     {
