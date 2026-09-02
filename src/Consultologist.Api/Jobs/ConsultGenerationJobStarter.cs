@@ -972,8 +972,19 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // classifier reaches no result and is kept — its value was the decision.
         if (skipped.Count > 0)
         {
+            // v12 #624: a check chain hangs OFF the firing result rather than
+            // feeding it (of/in edges point check → operands), so the walk
+            // must also root at the checks the FIRING results name — and only
+            // those: skip stays skip, and a when-excluded deliverable never
+            // runs its check.
+            var checkRoots = firing
+                .Select(result => result.Check)
+                .Where(check => check != null)
+                .Select(check => check!.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
+                    ? check[WorkflowNodeBindingSources.NodePrefix.Length..]
+                    : check!);
             var reachable = WorkflowNodeClosure.Reachable(
-                firing.Select(result => result.NodeId),
+                firing.Select(result => result.NodeId).Concat(checkRoots),
                 WorkflowNodeClosure.Edges(narrowed.Nodes!));
             var live = narrowed.Nodes!.Where(node => reachable.Contains(node.Id) || WorkflowNodeKinds.IsClassifier(node)).ToList();
             narrowed = narrowed with { Nodes = live };

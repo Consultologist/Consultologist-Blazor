@@ -251,6 +251,11 @@ public sealed class ConsultGenerationOrchestrator
                     continue; // Aggregators compose inline, never as activities.
                 }
 
+                if (node.Check != null)
+                {
+                    continue; // v12 #624: checks settle inline too — no activity, no model.
+                }
+
                 if (node.ForEach is null)
                 {
                     if (!started.Contains(node.Id)
@@ -758,7 +763,7 @@ public sealed class ConsultGenerationOrchestrator
             .Where(pair => pair.Value.Classification != null)
             .ToDictionary(pair => pair.Key, pair => pair.Value.Classification!, StringComparer.Ordinal);
 
-        var expectedInstances = nodes.Where(node => node.Aggregate is null).Sum(node => node.ForEach is null
+        var expectedInstances = nodes.Where(node => node.Aggregate is null && node.Check is null).Sum(node => node.ForEach is null
             ? 1
             : FanItems(node).Count(item => !failedItems.Contains(FailedKey(node, item["id"]))));
         if (started.Count(key => outputs.ContainsKey(key)) < expectedInstances && failedItems.Count == 0)
