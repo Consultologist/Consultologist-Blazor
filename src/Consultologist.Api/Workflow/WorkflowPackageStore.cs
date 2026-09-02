@@ -119,7 +119,8 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
                     // every entry is the bare v11 form, the control's bytes.
                     result.Macros?.Select(entry => entry.Id).ToList(),
                     result.Signature,
-                    PlacementsOf(result.Macros)))
+                    PlacementsOf(result.Macros),
+                    result.Check))
                 .ToList();
         }
 

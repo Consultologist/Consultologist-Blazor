@@ -265,6 +265,71 @@ public class DecideActivityTests
         Assert.Contains(decision.Nodes, node => node.Id == "scope");
     }
 
+    private static WorkflowPackage WithCheckChain(WorkflowPackage package, bool onFiring)
+    {
+        // The § 13 chain: a document-terms extraction over the aggregator and
+        // a check gating one of the two results.
+        var nodes = new List<WorkflowNodeSpec>(package.Manifest.Nodes!)
+        {
+            new("extract-document-terms", "Extracting document terms",
+                Prompt: "extract-patient-concepts",
+                Bindings: new Dictionary<string, WorkflowBindingValue> { ["consult_draft"] = new("node:assemble-note") },
+                Output: new WorkflowNodeOutputSpec("concept-list")),
+            new("coverage", "Coverage check",
+                Kind: WorkflowNodeKinds.Check,
+                Op: WorkflowCheckOps.TermsSubset,
+                Of: "node:extract-patient-concepts",
+                In: "node:extract-document-terms",
+                FailWith: "The note does not cover every clinical term found in the referral.")
+        };
+        var manifest = package.Manifest with { Nodes = nodes };
+
+        return package with
+        {
+            Manifest = manifest,
+            Nodes = nodes,
+            Results = package.Results!
+                .Select(r => (onFiring ? r.Id == "consult" : r.Id == "letter") ? r with { Check = "node:coverage" } : r)
+                .ToList()
+        };
+    }
+
+    [Fact]
+    public void ThePrune_KeepsTheCheckChain_OfAFiringResult()
+    {
+        // v12 #624: the check hangs OFF the firing result (of/in edges point
+        // check → operands), so without its own roots the prune would drop
+        // the whole chain the moment anything is skipped — an ungated
+        // document, silently.
+        var package = WithCheckChain(
+            ClassifierPackage("node:scope == in_scope", "node:scope == out_of_scope"),
+            onFiring: true);
+
+        var decision = DecideActivity.Decide(package, Supplied, new Dictionary<string, string> { ["scope"] = "in_scope" });
+
+        Assert.Equal("consult", Assert.Single(decision.Results).Id);
+        Assert.Equal("node:coverage", decision.Results[0].Check);
+        Assert.Contains(decision.Nodes, node => node.Id == "coverage");
+        Assert.Contains(decision.Nodes, node => node.Id == "extract-document-terms");
+    }
+
+    [Fact]
+    public void ThePrune_DropsTheCheckChain_OfASkippedResult()
+    {
+        // Skip stays skip: a when-excluded deliverable never runs its check,
+        // and its private chain goes with it.
+        var package = WithCheckChain(
+            ClassifierPackage("node:scope == in_scope", "node:scope == out_of_scope"),
+            onFiring: false);
+
+        var decision = DecideActivity.Decide(package, Supplied, new Dictionary<string, string> { ["scope"] = "in_scope" });
+
+        Assert.Equal("consult", Assert.Single(decision.Results).Id);
+        Assert.Equal("letter", Assert.Single(decision.Skipped).ResultId);
+        Assert.DoesNotContain(decision.Nodes, node => node.Id == "coverage");
+        Assert.DoesNotContain(decision.Nodes, node => node.Id == "extract-document-terms");
+    }
+
     [Fact]
     public void TheDecision_IsTheStartersOwnFireSet()
     {

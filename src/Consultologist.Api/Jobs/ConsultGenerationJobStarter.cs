@@ -707,7 +707,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     result.Label,
                     kept,
                     result.Signature,
-                    FilterPlacements(result.MacroPlacements, kept));
+                    FilterPlacements(result.MacroPlacements, kept),
+                    result.Check);
             })
             .ToList();
 
@@ -971,8 +972,19 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // classifier reaches no result and is kept — its value was the decision.
         if (skipped.Count > 0)
         {
+            // v12 #624: a check chain hangs OFF the firing result rather than
+            // feeding it (of/in edges point check → operands), so the walk
+            // must also root at the checks the FIRING results name — and only
+            // those: skip stays skip, and a when-excluded deliverable never
+            // runs its check.
+            var checkRoots = firing
+                .Select(result => result.Check)
+                .Where(check => check != null)
+                .Select(check => check!.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
+                    ? check[WorkflowNodeBindingSources.NodePrefix.Length..]
+                    : check!);
             var reachable = WorkflowNodeClosure.Reachable(
-                firing.Select(result => result.NodeId),
+                firing.Select(result => result.NodeId).Concat(checkRoots),
                 WorkflowNodeClosure.Edges(narrowed.Nodes!));
             var live = narrowed.Nodes!.Where(node => reachable.Contains(node.Id) || WorkflowNodeKinds.IsClassifier(node)).ToList();
             narrowed = narrowed with { Nodes = live };
@@ -2110,6 +2122,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             Values: WorkflowNodeKinds.IsClassifier(node) ? node.Values : null,
             // v11 #550: only true or null — an indifferent or pre-v11 node
             // writes the bytes it always wrote.
-            Reproducible: node.Reproducible == true ? true : null);
+            Reproducible: node.Reproducible == true ? true : null,
+            // v12 #624: the check's whole declaration — the explicit
+            // discriminator downstream.
+            Check: WorkflowNodeKinds.IsCheck(node)
+                ? new ConsultCheckDescriptor(node.Op!, node.Of!, node.In!, node.FailWith!)
+                : null);
     }
 }

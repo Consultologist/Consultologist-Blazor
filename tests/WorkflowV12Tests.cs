@@ -1,5 +1,9 @@
+using System.Reflection;
 using System.Text.Json;
+using Consultologist.Api.Jobs;
+using Consultologist.Api.Models;
 using Consultologist.PackageFormat;
+using NSubstitute;
 
 namespace Consultologist.Api.Tests;
 
@@ -769,5 +773,210 @@ public class WorkflowV12SignatureTokenRuntimeTests
         Assert.Equal(viaApply.Text, viaFinish.Text);
         Assert.Equal(viaApply.Appended!.Select(e => (e.Kind, e.Id, e.AsOf)), viaFinish.Appended!.Select(e => (e.Kind, e.Id, e.AsOf)));
         Assert.Equal(viaApply.Unsigned, viaFinish.Unsigned);
+    }
+}
+
+/// <summary>
+/// v12 rung (h) (#624, design § 13): the check executor and the third state —
+/// pure set arithmetic by active SNOMED id, the untested named, the job
+/// outcome per-document, and the reply leg skipping what the check refused.
+/// </summary>
+public class WorkflowV12CheckRuntimeTests
+{
+    private static ClinicalConcept Coded(string term, string id) => new(term, "disorder", id, true, true, "test");
+    private static ClinicalConcept Uncoded(string term) => new(term, "finding", "", false, false, "test");
+
+    [Fact]
+    public void ASubset_Passes_AndWordingNeverMatters()
+    {
+        // Same ids, different surface wording — the comparison is by concept
+        // id, insensitive to how either model spelled the term.
+        var outcome = Consultologist.Api.Jobs.ConsultCheckExecutor.TermsSubset(
+            new[] { Coded("breast cancer", "254837009") },
+            new[] { Coded("Malignant neoplasm of breast", "254837009"), Coded("Hypertension", "38341003") });
+
+        Assert.True(outcome.Passed);
+        Assert.Null(outcome.Uncovered);
+        Assert.Null(outcome.Untested);
+    }
+
+    [Fact]
+    public void AnUncoveredTerm_Fails_AndIsNamed()
+    {
+        var outcome = Consultologist.Api.Jobs.ConsultCheckExecutor.TermsSubset(
+            new[] { Coded("breast cancer", "254837009"), Coded("diabetes", "44054006") },
+            new[] { Coded("breast cancer", "254837009") });
+
+        Assert.False(outcome.Passed);
+        Assert.Equal(new[] { "diabetes" }, outcome.Uncovered);
+    }
+
+    [Fact]
+    public void AnEmptyInputSide_Passes_Vacuously()
+    {
+        var outcome = Consultologist.Api.Jobs.ConsultCheckExecutor.TermsSubset(
+            Array.Empty<ClinicalConcept>(),
+            new[] { Coded("anything", "1") });
+
+        Assert.True(outcome.Passed);
+    }
+
+    [Fact]
+    public void Uncodables_NeverEnterTheTest_AndAreNamedUntested()
+    {
+        // The ""-id trap: ConceptOutputContract coalesces a null id to the
+        // empty string — an active "SNOMED" concept with an empty id is
+        // uncoded, and a mutant that lets it into the subset test would fail
+        // this pass (the empty of-side id is absent from the in-side).
+        var emptyIdButFlagged = new ClinicalConcept("mystery finding", "finding", "", true, true, "test");
+        var outcome = Consultologist.Api.Jobs.ConsultCheckExecutor.TermsSubset(
+            new[] { Coded("breast cancer", "254837009"), emptyIdButFlagged, Uncoded("family support strong") },
+            new[] { Coded("breast cancer", "254837009"), Uncoded("free-text impression") });
+
+        Assert.True(outcome.Passed);
+        Assert.Null(outcome.Uncovered);
+        Assert.Equal(new[] { "mystery finding", "family support strong", "free-text impression" }, outcome.Untested);
+    }
+
+    [Fact]
+    public void FinalOutcome_IsPerDocument_AndAllFailedSaysWhy()
+    {
+        var nodes = new Dictionary<string, Consultologist.Api.Models.ConsultNodeDescriptor>(StringComparer.Ordinal)
+        {
+            ["assemble-a"] = new("assemble-a", "A", Aggregate: new[] { "node:x" }),
+            ["assemble-b"] = new("assemble-b", "B", Aggregate: new[] { "node:x" })
+        };
+        var deliverables = Consultologist.Api.Jobs.ConsultDeliverables.Resolve(
+            new[]
+            {
+                new Consultologist.Api.Models.ConsultResultDescriptor("a", "assemble-a", "A"),
+                new Consultologist.Api.Models.ConsultResultDescriptor("b", "assemble-b", "B")
+            }, null, nodes);
+        var outputs = new Dictionary<string, Consultologist.Api.Jobs.NodeRunResult>(StringComparer.Ordinal)
+        {
+            ["assemble-a"] = new("text", null, "i", "o"),
+            ["assemble-b"] = new("text", null, "i", "o")
+        };
+        var none = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        // One failed of two: the siblings produce, the job completes.
+        var mixed = Consultologist.Api.Jobs.ConsultDeliverables.FinalOutcome(deliverables, outputs, none,
+            new[] { new Consultologist.Api.Models.ConsultFailedDocument("a", "A", "The note does not cover the referral.") });
+        Assert.Equal("Completed", mixed.Status);
+
+        // Every deliverable failed: no documents, and the record says why.
+        var all = Consultologist.Api.Jobs.ConsultDeliverables.FinalOutcome(deliverables, outputs, none,
+            new[]
+            {
+                new Consultologist.Api.Models.ConsultFailedDocument("a", "A", "The note does not cover the referral."),
+                new Consultologist.Api.Models.ConsultFailedDocument("b", "B", "Likewise.")
+            });
+        Assert.Equal("Failed", all.Status);
+        Assert.Equal("The note does not cover the referral.", all.Error);
+
+        // The missing-output rule is untouched.
+        var missing = Consultologist.Api.Jobs.ConsultDeliverables.FinalOutcome(
+            deliverables, new Dictionary<string, Consultologist.Api.Jobs.NodeRunResult>(StringComparer.Ordinal), none);
+        Assert.Equal("Failed", missing.Status);
+    }
+
+    [Fact]
+    public void TheReplyLeg_SkipsTheFailed_AndStaysStrictForTheProduced()
+    {
+        var nodes = new Dictionary<string, Consultologist.Api.Models.ConsultNodeDescriptor>(StringComparer.Ordinal)
+        {
+            ["assemble-a"] = new("assemble-a", "A", Aggregate: new[] { "node:x" }),
+            ["assemble-b"] = new("assemble-b", "B", Aggregate: new[] { "node:x" })
+        };
+        var deliverables = Consultologist.Api.Jobs.ConsultDeliverables.Resolve(
+            new[]
+            {
+                new Consultologist.Api.Models.ConsultResultDescriptor("a", "assemble-a", "A"),
+                new Consultologist.Api.Models.ConsultResultDescriptor("b", "assemble-b", "B")
+            }, null, nodes);
+        var texts = new Dictionary<string, string>(StringComparer.Ordinal) { ["b"] = "Produced text." };
+
+        var documents = Consultologist.Api.Jobs.ConsultDeliverables.ReplyDocumentsFor(
+            deliverables, texts, new HashSet<string>(StringComparer.Ordinal) { "a" });
+        Assert.Equal("b", Assert.Single(documents).ResultId);
+
+        // A produced deliverable with no recorded text is still a broken
+        // invariant, failing loud.
+        Assert.Throws<KeyNotFoundException>(() => Consultologist.Api.Jobs.ConsultDeliverables.ReplyDocumentsFor(
+            deliverables, new Dictionary<string, string>(StringComparer.Ordinal), new HashSet<string>(StringComparer.Ordinal) { "a" }));
+    }
+}
+
+/// <summary>
+/// v12 rung (h) (#624, design § 13): the record's third state — a refused
+/// document is upserted by ResultId with a "failure" history event naming
+/// the package's sentence, and a check's verdict lives in its own node
+/// slots (never Concepts, which FinalizeJob sheds) and round-trips through
+/// ToResponse.
+/// </summary>
+public class WorkflowV12CheckRecordTests
+{
+    private static readonly PropertyInfo StateProperty =
+        typeof(ConsultGenerationJobEntity).GetProperty("State", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!;
+
+    private static (ConsultGenerationJobEntity Entity, Func<ConsultGenerationJobState> State) Job()
+    {
+        var entity = new ConsultGenerationJobEntity(Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>(), Substitute.For<IJobInputsBlobStore>(), Substitute.For<IAccountUsageStore>());
+        StateProperty.SetValue(entity, ConsultGenerationJobState.Create("job-1", "user-1", new[]
+        {
+            new Dictionary<string, string> { ["id"] = "note:draft", ["name"] = "Consultation note" }
+        }));
+        return (entity, () => (ConsultGenerationJobState)StateProperty.GetValue(entity)!);
+    }
+
+    [Fact]
+    public void ARefusedDocument_IsRecorded_UpsertedByResultId_AndAnswered()
+    {
+        var (entity, state) = Job();
+
+        entity.RecordFailedDocument(new ConsultFailedDocument("a", "Consultation note", "The note does not cover the referral.", new[] { "diabetes" }));
+        entity.RecordFailedDocument(new ConsultFailedDocument("b", "Family letter", "Likewise."));
+
+        Assert.Equal(new[] { "a", "b" }, state().FailedDocuments!.Select(d => d.ResultId));
+
+        // A replay re-signals identically — and an upsert never duplicates.
+        entity.RecordFailedDocument(new ConsultFailedDocument("a", "Consultation note", "The note does not cover the referral.", new[] { "diabetes" }));
+        Assert.Equal(2, state().FailedDocuments!.Count);
+        var kept = state().FailedDocuments!.Single(d => d.ResultId == "a");
+        Assert.Equal(new[] { "diabetes" }, kept.Uncovered);
+
+        Assert.Contains(state().History, e =>
+            e.Kind == "failure" && e.Label == "Document refused by its check: Consultation note — The note does not cover the referral.");
+
+        var response = state().ToResponse();
+        Assert.Equal(2, response.FailedDocuments!.Count);
+        Assert.Equal("Likewise.", response.FailedDocuments.Single(d => d.ResultId == "b").Reason);
+    }
+
+    [Fact]
+    public void ACheckVerdict_LivesInItsOwnSlots_AndRoundTrips()
+    {
+        var (entity, state) = Job();
+
+        entity.MarkNodeCompleted(new ConsultGenerationNodeUpdate(
+            "coverage", "Coverage check", null, "in-hash", "out-hash", 1, 2,
+            Check: new ConsultCheckOutcome(false, new[] { "diabetes" }, new[] { "free-text impression" })));
+        entity.MarkNodeCompleted(new ConsultGenerationNodeUpdate(
+            "assemble-note", "Assemble the note", null, "in-hash", "out-hash", 2, 2));
+
+        var node = state().NodeOutputs!["coverage"];
+        Assert.False(node.CheckPassed);
+        Assert.Equal(new[] { "diabetes" }, node.CheckUncovered);
+        Assert.Equal(new[] { "free-text impression" }, node.CheckUntested);
+        Assert.Null(node.Concepts);
+
+        var projected = state().ToResponse().NodeOutputs!;
+        var check = projected["coverage"].Check!;
+        Assert.False(check.Passed);
+        Assert.Equal(new[] { "diabetes" }, check.Uncovered);
+        Assert.Equal(new[] { "free-text impression" }, check.Untested);
+
+        // The control: a node with no check projects the null of before.
+        Assert.Null(projected["assemble-note"].Check);
     }
 }

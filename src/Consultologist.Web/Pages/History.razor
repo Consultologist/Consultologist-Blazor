@@ -475,6 +475,14 @@
                                                     <dt class="provenance-list__nested">@skipped.Label</dt>
                                                     <dd>not produced — it @skipped.Reason</dd>
                                                 }
+                                                @* v12 #624: a deliverable refused by its check — the third
+                                                   state. The package's own sentence says why; the uncovered
+                                                   terms are the evidence. *@
+                                                @foreach (var failed in detail.FailedDocuments ?? Array.Empty<ConsultFailedDocumentResponse>())
+                                                {
+                                                    <dt class="provenance-list__nested">@failed.Label</dt>
+                                                    <dd class="document-failed">not produced — the check failed: @failed.Reason@(failed.Uncovered is { Count: > 0 } uncovered ? $" (not covered: {string.Join(", ", uncovered)})" : "")</dd>
+                                                }
                                                 @* #453: the package's tags as they were at the pinned
                                                    version — stamped on the record, shown for finding it. *@
                                                 @if (detail.PackageTags is { Count: > 0 } packageTags)

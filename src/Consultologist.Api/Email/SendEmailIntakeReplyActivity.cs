@@ -21,7 +21,10 @@ public sealed record EmailIntakeReplyInput(
     IReadOnlyList<EmailIntakeReplyDocument>? Documents = null,
     // #315: declared deliverables this job's inputs excluded. Trailing
     // optional — a job already in flight replies exactly as it did.
-    IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null);
+    IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null,
+    // v12 #624: deliverables refused by their check. Trailing optional,
+    // same rule.
+    IReadOnlyList<ConsultFailedDocument>? FailedDocuments = null);
 
 /// <summary>
 /// #486: what the reply leg did, for the job record. Null on replay of a run
@@ -90,7 +93,8 @@ public sealed class SendEmailIntakeReplyActivity
             input.FinalStatus,
             outcome.Labels,
             outcome.OmittedForSize,
-            input.SkippedDocuments);
+            input.SkippedDocuments,
+            input.FailedDocuments);
         await _mail.SendMailAsync(mailbox, input.ToAddress, subject, body, cancellationToken, outcome.Attachments);
 
         _logger.LogInformation(
@@ -223,7 +227,8 @@ internal static class EmailIntakeReply
         string finalStatus,
         IReadOnlyList<string>? attachedLabels = null,
         bool omittedForSize = false,
-        IReadOnlyList<ConsultSkippedDocument>? skippedDocuments = null)
+        IReadOnlyList<ConsultSkippedDocument>? skippedDocuments = null,
+        IReadOnlyList<ConsultFailedDocument>? failedDocuments = null)
     {
         var link = $"{appBaseUrl.TrimEnd('/')}/history/{jobId}";
         var labels = attachedLabels ?? Array.Empty<string>();
@@ -251,11 +256,19 @@ internal static class EmailIntakeReply
                     d => $"{d.Label} was not produced: it {d.Reason}.\n")) + "\n"
                 : string.Empty;
 
+            // v12 #624: the third state, said by name — the sentence is the
+            // package's own failWith, authored content.
+            var failedNote = failedDocuments is { Count: > 0 }
+                ? string.Join(string.Empty, failedDocuments.Select(
+                    d => $"{d.Label} was not produced: its check failed — {d.Reason}\n")) + "\n"
+                : string.Empty;
+
             return (
                 "Your consult is ready",
                 "Your consult has finished processing.\n\n"
                 + attachmentNote
                 + skippedNote
+                + failedNote
                 + "View the result in Consultologist History (sign-in required):\n"
                 + link + "\n\n"
                 + (includesAttachment

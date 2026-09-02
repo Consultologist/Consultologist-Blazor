@@ -296,7 +296,11 @@ public record ConsultGenerationJobResponse(
     // declined macro records value false rather than vanishing. Null when
     // the package declares no optional macros (the control) or the record
     // predates the field. Appended last.
-    IReadOnlyDictionary<string, ConsultMacroChoice>? MacroChoices = null);
+    IReadOnlyDictionary<string, ConsultMacroChoice>? MacroChoices = null,
+    // v12 #624: deliverables refused by their check — the third state beside
+    // produced and skipped. Null when none failed or the record predates the
+    // field. Appended last.
+    IReadOnlyList<ConsultFailedDocument>? FailedDocuments = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
@@ -413,7 +417,19 @@ public sealed record ConsultNodeDescriptor(
     // the same for the same input — carried for #549's rerun verdict, never
     // enforced at run time. Only true or null, never false. Appended last,
     // same reason as Values.
-    bool? Reproducible = null);
+    bool? Reproducible = null,
+    // v12 #624 (design § 13): the check node's declaration, whole — one
+    // nested slot (the TerminologySnapshot precedent) and the EXPLICIT
+    // discriminator: a node is a check exactly when this is non-null, never
+    // by the absence of a prompt. Appended last, same reason.
+    ConsultCheckDescriptor? Check = null);
+
+/// <summary>
+/// v12 #624 (design § 13): a check node's snapshotted declaration — the
+/// operation, its two concept-list operands (node:&lt;id&gt; refs, prefix
+/// intact), and the sentence a failed check speaks.
+/// </summary>
+public sealed record ConsultCheckDescriptor(string Op, string Of, string In, string FailWith);
 
 public sealed record ConsultNodeBindingDescriptor(string From, string? As = null);
 
@@ -438,7 +454,11 @@ public sealed record ConsultResultDescriptor(
     // writes the bytes it always wrote. A parallel slot on purpose: the
     // Macros element type is stored state and may never reshape. Appended
     // last, this is a durable payload.
-    IReadOnlyList<ConsultMacroPlacement>? MacroPlacements = null);
+    IReadOnlyList<ConsultMacroPlacement>? MacroPlacements = null,
+    // v12 #624 (design § 13): the check node gating this deliverable
+    // (node:<id>, prefix intact) — the post-production mirror of when.
+    // Appended last, same rule.
+    string? Check = null);
 
 /// <summary>
 /// v12 #619 (design § 4): one placed macro on one deliverable — the id and
@@ -462,6 +482,33 @@ public sealed record ConsultMacroPlacement(string Id, string? Before = null, str
 public sealed record ConsultSkippedDocument(string ResultId, string Label, string Reason);
 
 /// <summary>
+/// v12 #624 (design § 13): a deliverable the package declared and this job
+/// REFUSED to produce, because its check failed — the third state beside
+/// produced and skipped, and deliberately not the skip channel: skip means
+/// "these inputs excluded it", decided before production; this is a refusal
+/// over produced content. Reason is the package's own failWith sentence;
+/// Uncovered names the input terms the document did not cover, Untested the
+/// concepts the comparison could not code (never silently dropped).
+/// </summary>
+public sealed record ConsultFailedDocument(
+    string ResultId,
+    string Label,
+    string Reason,
+    IReadOnlyList<string>? Uncovered = null,
+    IReadOnlyList<string>? Untested = null);
+
+/// <summary>
+/// v12 #624 (design § 13): a check node's verdict — the boolean, the input
+/// terms the document did not cover, and the concepts the comparison could
+/// not code (the record-the-negative discipline: untested is named, never
+/// silently dropped).
+/// </summary>
+public sealed record ConsultCheckOutcome(
+    bool Passed,
+    IReadOnlyList<string>? Uncovered = null,
+    IReadOnlyList<string>? Untested = null);
+
+/// <summary>
 /// Per-node run status and provenance exposed on the job response — the hashes form
 /// the step-level verification chain (dag-improvements #6). Concepts stay off the
 /// wire; they live in entity state.
@@ -479,7 +526,9 @@ public sealed record ConsultGenerationNodeStatusResponse(
     // v10 (#496): a classifier's answer, a declared value.
     string? Classification = null,
     // #551: what this instance's call cost; null is not recorded, never 0.
-    ConsultTokenUsage? Tokens = null);
+    ConsultTokenUsage? Tokens = null,
+    // v12 #624: a check node's verdict and its evidence. Appended last.
+    ConsultCheckOutcome? Check = null);
 
 /// <summary>#390: the body of a reschedule — a job id in the route, a time here.</summary>
 public sealed record RescheduleConsultRequest(DateTimeOffset? ScheduledAtUtc);

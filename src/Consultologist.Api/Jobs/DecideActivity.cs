@@ -119,7 +119,7 @@ public sealed class DecideActivity
         }
 
         return new ConsultDecisionResult(
-            fireSet.Firing.Select(result => new ConsultResultDescriptor(result.Id, result.NodeId, result.Label, result.Macros, result.Signature, result.MacroPlacements)).ToList(),
+            fireSet.Firing.Select(result => new ConsultResultDescriptor(result.Id, result.NodeId, result.Label, result.Macros, result.Signature, result.MacroPlacements, result.Check)).ToList(),
             fireSet.Skipped,
             narrowed.Nodes!.Select(node => ConsultGenerationJobStarter.DescribeNode(node, narrowed.SchemaContracts)).ToList(),
             skeleton.Items,

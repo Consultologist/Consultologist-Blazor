@@ -315,6 +315,26 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
     }
 
+    /// <summary>
+    /// v12 #624 (design § 13): one deliverable refused by its check — the
+    /// third state beside produced and skipped. Upsert by ResultId (a replay
+    /// re-signals identically); the history names the package's sentence.
+    /// </summary>
+    public void RecordFailedDocument(ConsultFailedDocument input)
+    {
+        var state = EnsureState();
+        state.SchemaVersion = 7;
+        state.FailedDocuments ??= new List<ConsultFailedDocument>();
+        state.FailedDocuments.RemoveAll(d => d.ResultId == input.ResultId);
+        state.FailedDocuments.Add(input);
+        state.History.Add(new JobHistoryEvent(
+            "failure",
+            $"Document refused by its check: {input.Label} — {input.Reason}",
+            null,
+            DateTimeOffset.UtcNow));
+        State = state;
+    }
+
     public async Task FailBlock(BlockGenerationResult result)
     {
         var state = EnsureState();
@@ -370,6 +390,15 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         node.HashVersion = input.HashVersion;
         node.Tokens = input.Tokens;
         node.CompletedAtUtc = DateTimeOffset.UtcNow;
+
+        // v12 #624: a check's verdict and its evidence — its own slots, not
+        // Concepts, which FinalizeJob sheds to the outputs blob.
+        if (input.Check != null)
+        {
+            node.CheckPassed = input.Check.Passed;
+            node.CheckUncovered = input.Check.Uncovered?.ToList();
+            node.CheckUntested = input.Check.Untested?.ToList();
+        }
 
         // v10 (#496): a classifier's answer, a declared value — on the node
         // and in the job's classifications, which the boundary reads.
@@ -1003,7 +1032,10 @@ public sealed record ConsultGenerationNodeUpdate(
     string? Classification = null,
     // #551: what the node's call cost. Appended last, same reason; null on
     // roll-ups and aggregates (no model ran) and on payloads from before.
-    ConsultTokenUsage? Tokens = null);
+    ConsultTokenUsage? Tokens = null,
+    // v12 #624: a check node's verdict and evidence. Appended last, same
+    // positional-call rule.
+    ConsultCheckOutcome? Check = null);
 
 /// <summary>v10 (#496): what the boundary decided — the one Decide signal.</summary>
 public sealed record ConsultGenerationDecision(
@@ -1348,6 +1380,10 @@ public sealed class ConsultGenerationJobState
     // reader is never left inferring a missing document from a shorter list.
     public List<ConsultSkippedDocument>? SkippedDocuments { get; set; }
 
+    // v12 #624: the deliverables refused by their check — appended as each
+    // check settles, never seeded (a mid-run fact, unlike a skip).
+    public List<ConsultFailedDocument>? FailedDocuments { get; set; }
+
     // #158: how the job was submitted ("app" | "email"; null = pre-#158 record).
     public string? Source { get; set; }
 
@@ -1569,6 +1605,7 @@ public sealed class ConsultGenerationJobState
             EffectiveInputHash: EffectiveInputHash,
             InputOrigins: ProjectInputOrigins(),
             SkippedDocuments: SkippedDocuments,
+            FailedDocuments: FailedDocuments,
             Source: Source,
             ScheduledAtUtc: ScheduledAtUtc,
             ItemSteps: ItemSteps,
@@ -1586,7 +1623,10 @@ public sealed class ConsultGenerationJobState
                     pair.Value.Error,
                     pair.Value.HashVersion,
                     pair.Value.Classification,
-                    pair.Value.Tokens)),
+                    pair.Value.Tokens,
+                    pair.Value.CheckPassed is { } passed
+                        ? new ConsultCheckOutcome(passed, pair.Value.CheckUncovered, pair.Value.CheckUntested)
+                        : null)),
             AgentVersions: AgentVersions,
             EffectiveInputHashVersion: EffectiveInputHashVersion,
             CatalogRef: CatalogRef,
@@ -1719,6 +1759,12 @@ public sealed class ConsultNodeOutputState
     public string? Error { get; set; }
     // v10 (#496): a classifier's answer — a declared value.
     public string? Classification { get; set; }
+
+    // v12 #624: a check node's verdict and evidence; null on every other
+    // node and on records from before.
+    public bool? CheckPassed { get; set; }
+    public List<string>? CheckUncovered { get; set; }
+    public List<string>? CheckUntested { get; set; }
 }
 
 public static class ConsultGenerationNodeStatuses

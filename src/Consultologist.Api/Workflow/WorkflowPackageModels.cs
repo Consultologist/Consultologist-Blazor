@@ -26,7 +26,9 @@ public sealed record WorkflowResolvedResult(
     bool? Signature = null,
     // v12 #619: the placed macros' anchors, resolved from the manifest's
     // entry objects; null when every entry is the bare v11 form.
-    IReadOnlyList<Consultologist.Api.Models.ConsultMacroPlacement>? MacroPlacements = null);
+    IReadOnlyList<Consultologist.Api.Models.ConsultMacroPlacement>? MacroPlacements = null,
+    // v12 #624: the check node gating this deliverable (node:<id>).
+    string? Check = null);
 
 public sealed record WorkflowPackage(
     WorkflowPackageManifest Manifest,
