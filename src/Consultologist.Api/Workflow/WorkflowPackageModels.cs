@@ -28,7 +28,14 @@ public sealed record WorkflowResolvedResult(
     // entry objects; null when every entry is the bare v11 form.
     IReadOnlyList<Consultologist.Api.Models.ConsultMacroPlacement>? MacroPlacements = null,
     // v12 #624: the check node gating this deliverable (node:<id>).
-    string? Check = null);
+    string? Check = null,
+    // v12 #631 (§ 14): the when-gated entries' parsed clauses, by macro id —
+    // null when no entry carries when (the control). Parsed at load, like
+    // Condition, so the deciders evaluate a structure.
+    IReadOnlyList<WorkflowResolvedMacroCondition>? MacroConditions = null);
+
+/// <summary>One when-gated macro entry of a resolved result (v12 § 14).</summary>
+public sealed record WorkflowResolvedMacroCondition(string MacroId, WorkflowConditionExpression Condition);
 
 public sealed record WorkflowPackage(
     WorkflowPackageManifest Manifest,

@@ -203,6 +203,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             pair => pair.Key,
             pair => pair.Value,
             StringComparer.Ordinal);
+        State.ExcludedMacros ??= input.ExcludedMacros?.ToList();
 
         // v10 (#496): a job that starts deciding has no count yet — the
         // boundary stamps it. Every other job is decided at start, as it always
@@ -1015,7 +1016,11 @@ public sealed record ConsultGenerationJobInitialize(
     // v12 #618 (design § 6): the optional-macro resolutions for the record —
     // value and chosen|default origin per optional macro; null when the
     // package declares none (the control). Appended last, same rule.
-    IReadOnlyDictionary<string, ConsultMacroChoice>? MacroChoices = null);
+    IReadOnlyDictionary<string, ConsultMacroChoice>? MacroChoices = null,
+    // v12 #631 (design § 14): the when-excluded macros of a job decided at
+    // start; null when nothing was excluded (the control). Appended last,
+    // same positional-call rule.
+    IReadOnlyList<ConsultExcludedMacro>? ExcludedMacros = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -1297,6 +1302,10 @@ public sealed class ConsultGenerationJobState
     // when the package declares no optional macros and on records from
     // before.
     public Dictionary<string, ConsultMacroChoice>? MacroChoices { get; set; }
+
+    // v12 #631 (design § 14): macros a when-clause excluded from firing
+    // deliverables — recorded by name, the skipped-documents tradition.
+    public List<ConsultExcludedMacro>? ExcludedMacros { get; set; }
 
     // #403: the SNOMED CT edition the terminology server had loaded when the
     // job started (what every concept's flags were answered against) and the

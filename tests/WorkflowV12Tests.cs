@@ -1121,3 +1121,140 @@ public class WorkflowV12ConditionalMacroTests
             WorkflowPackageManifestJson.Read(placed, "v12", WorkflowPackageValidator.AcceptedSpecVersions)));
     }
 }
+
+/// <summary>
+/// v12 rung (i) (#631, design § 14): the starter's when judgment — the pure
+/// seam both evaluation moments call. Held keeps, not-held excludes with the
+/// explainer's sentence, absent is never held, the two gates are independent
+/// facts, and an emptied list becomes null (the byte control).
+/// </summary>
+public class WorkflowV12ConditionalMacroStarterTests
+{
+    private static Consultologist.Api.Workflow.WorkflowResolvedResult Gated(
+        params (string MacroId, string When)[] gates)
+    {
+        var macros = new[] { "opening", "letrozole_counseling", "tamoxifen_counseling" };
+        var conditions = gates
+            .Select(gate =>
+            {
+                Assert.True(WorkflowResultConditions.TryParseExpression(gate.When, out var condition, out var error), error);
+                return new Consultologist.Api.Workflow.WorkflowResolvedMacroCondition(gate.MacroId, condition!);
+            })
+            .ToList();
+        return new("consult", "assemble-note", "Consultation note",
+            Macros: macros, MacroConditions: conditions.Count > 0 ? conditions : null);
+    }
+
+    [Fact]
+    public void HeldKeeps_NotHeldExcludes_WithTheExplainersSentence()
+    {
+        var result = Gated(
+            ("letrozole_counseling", "node:hormone == letrozole"),
+            ("tamoxifen_counseling", "node:hormone == tamoxifen"));
+        var classifications = new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "letrozole" };
+
+        var (kept, excluded) = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DecideMacroWhens(
+            result, null, classifications);
+
+        Assert.Equal(new[] { "opening", "letrozole_counseling" }, kept);
+        var entry = Assert.Single(excluded);
+        Assert.Equal(("consult", "tamoxifen_counseling"), (entry.ResultId, entry.MacroId));
+        Assert.Equal("needs node:hormone to be 'tamoxifen'; it is 'letrozole'", entry.Reason);
+    }
+
+    [Fact]
+    public void AnAbsentOperand_IsNeverHeld_AndTheSentenceSaysSo()
+    {
+        var result = Gated(("letrozole_counseling", "include_counseling"));
+
+        var (kept, excluded) = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DecideMacroWhens(
+            result, new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal), null);
+
+        Assert.Equal(new[] { "opening", "tamoxifen_counseling" }, kept);
+        Assert.Contains("not supplied", Assert.Single(excluded).Reason);
+    }
+
+    [Fact]
+    public void TheTwoGates_AreIndependentFacts()
+    {
+        // A macro out by choice AND out by clause: the when judgment records
+        // its fact over the declared list (§ 14.4 — the boundary never sees
+        // the request), and the choice filter then drops what it drops.
+        var result = Gated(("letrozole_counseling", "node:hormone == letrozole"));
+        var classifications = new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "tamoxifen" };
+
+        var (whenKept, excluded) = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DecideMacroWhens(
+            result, null, classifications);
+        var kept = Consultologist.Api.Jobs.ConsultGenerationJobStarter.FilterMacros(
+            whenKept, new Dictionary<string, bool> { ["letrozole_counseling"] = false, ["opening"] = false });
+
+        Assert.Equal("letrozole_counseling", Assert.Single(excluded).MacroId);
+        Assert.Equal(new[] { "tamoxifen_counseling" }, kept);
+
+        // The other direction: declined by choice, held by when — no
+        // exclusion record; the record of that absence is the choice's.
+        var held = new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "letrozole" };
+        var (heldKept, heldExcluded) = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DecideMacroWhens(
+            result, null, held);
+        Assert.Empty(heldExcluded);
+        Assert.Contains("letrozole_counseling", heldKept!);
+    }
+
+    [Fact]
+    public void AnEmptiedList_BecomesNull_TheByteControl()
+    {
+        var result = new Consultologist.Api.Workflow.WorkflowResolvedResult(
+            "consult", "assemble-note", "Consultation note",
+            Macros: new[] { "letrozole_counseling" },
+            MacroConditions: new[]
+            {
+                new Consultologist.Api.Workflow.WorkflowResolvedMacroCondition(
+                    "letrozole_counseling",
+                    Parse("node:hormone == letrozole"))
+            });
+
+        var (kept, excluded) = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DecideMacroWhens(
+            result, null, new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "tamoxifen" });
+
+        Assert.Null(kept);
+        Assert.Single(excluded);
+    }
+
+    [Fact]
+    public void AResultWithoutGates_PassesThroughUntouched()
+    {
+        var result = Gated();
+
+        var (kept, excluded) = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DecideMacroWhens(result, null, null);
+
+        Assert.Same(result.Macros, kept);
+        Assert.Empty(excluded);
+    }
+
+    [Fact]
+    public async Task TheExclusions_RideTheInitializeSignal_IntoState()
+    {
+        var entity = new ConsultGenerationJobEntity(
+            Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>(),
+            Substitute.For<IJobInputsBlobStore>(), Substitute.For<IAccountUsageStore>());
+        var stateProperty = typeof(ConsultGenerationJobEntity).GetProperty(
+            "State", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!;
+
+        await entity.Initialize(new ConsultGenerationJobInitialize(
+            "job-1", "user-1", new List<IReadOnlyDictionary<string, string>>(),
+            ExcludedMacros: new[]
+            {
+                new ConsultExcludedMacro("consult", "tamoxifen_counseling", "needs node:hormone to be 'tamoxifen'; it is 'letrozole'")
+            }));
+
+        var state = (ConsultGenerationJobState)stateProperty.GetValue(entity)!;
+        var recorded = Assert.Single(state.ExcludedMacros!);
+        Assert.Equal("tamoxifen_counseling", recorded.MacroId);
+    }
+
+    private static WorkflowConditionExpression Parse(string when)
+    {
+        Assert.True(WorkflowResultConditions.TryParseExpression(when, out var condition, out var error), error);
+        return condition!;
+    }
+}

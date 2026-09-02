@@ -482,6 +482,13 @@ public sealed record ConsultMacroPlacement(string Id, string? Before = null, str
 public sealed record ConsultSkippedDocument(string ResultId, string Label, string Reason);
 
 /// <summary>
+/// v12 #631 (design § 14): one macro a when-clause excluded from a firing
+/// deliverable — recorded by name, never derived-only. Reason is the
+/// condition explainer's sentence: authored names and declared values only.
+/// </summary>
+public sealed record ConsultExcludedMacro(string ResultId, string MacroId, string Reason);
+
+/// <summary>
 /// v12 #624 (design § 13): a deliverable the package declared and this job
 /// REFUSED to produce, because its check failed — the third state beside
 /// produced and skipped, and deliberately not the skip channel: skip means
