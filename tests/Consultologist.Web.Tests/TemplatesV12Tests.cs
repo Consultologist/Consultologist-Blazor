@@ -141,3 +141,83 @@ public class TemplatesV12Tests : ClientRenderTestContext
         Assert.True(WorkflowManifestReader.ReadNodes(manifest).Single(n => n.Id == "patient-header").IsTemplate);
     }
 }
+
+/// <summary>
+/// v12 § 5 (#621): the desk speaks the placeholder set the staged version
+/// speaks — a legal v12 signature token publishes; below 12 it earns the
+/// version sentence, never a false "does not resolve"; and the help panel
+/// lists the token exactly when the version can spell it.
+/// </summary>
+public class TemplatesV12SignatureTokenDeskTests : ClientRenderTestContext
+{
+    /// <summary>The token arrives as a pending file edit — publish needs a
+    /// pending change, and the desk judges effective text either way.</summary>
+    private void WithTokenEdit(WorkflowPackageContentResponse package) =>
+        JSInterop.Setup<string?>("localStorage.getItem", $"workflow-editor-draft:{package.Ref}")
+            .SetResult("{ \"Version\": 14, \"Edits\": { \"macros/disclaimer.md\": \"Sincerely, {{profile:signature}}\" } }");
+
+    private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse fixture)
+    {
+        WorkflowService.GetCurrentPackageContentAsync().Returns(fixture);
+        return Render<Templates>();
+    }
+
+    private static void Publish(IRenderedComponent<Templates> page) =>
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Publish")).Click();
+
+    private static IReadOnlyList<string> Refusals(IRenderedComponent<Templates> page) =>
+        page.FindAll(".fluent-messagebar-message li").Select(item => item.TextContent.Trim()).ToList();
+
+    [Fact]
+    public void AtTwelve_TheToken_Publishes()
+    {
+        // The signed result would double-sign with a token-carrying macro
+        // (signed once), so the fixture's signature flag comes off.
+        var package = EditorFixtures.V12();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["results"]![0]!["signature"] = false;
+        package = package with { Manifest = System.Text.Json.JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+        WithTokenEdit(package);
+
+        WorkflowPackagePublishRequest? sent = null;
+        WorkflowService.PublishPackageAsync(Arg.Do<WorkflowPackagePublishRequest>(request => sent = request))
+            .Returns(new WorkflowPublishOutcome(
+                new WorkflowPackagePublishResponse("acct-1234567890ab", "v2026.08.2", "acct-1234567890ab@v2026.08.2"),
+                Array.Empty<string>()));
+        var page = RenderEditor(package);
+
+        Publish(page);
+
+        Assert.NotNull(sent);
+        Assert.Empty(Refusals(page));
+    }
+
+    [Fact]
+    public void AtEleven_TheToken_EarnsTheVersionSentence_NotASpellingOne()
+    {
+        var package = EditorFixtures.V11Macro();
+        WithTokenEdit(package);
+        var page = RenderEditor(package);
+
+        Publish(page);
+
+        Assert.Contains(
+            "Macro 'disclaimer' placeholder '{{profile:signature}}' requires specVersion 12. Use \"Upgrade to specVersion 12\" and publish.",
+            Refusals(page));
+        Assert.DoesNotContain(Refusals(page), refusal => refusal.Contains("does not resolve"));
+    }
+
+    [Fact]
+    public void TheHelpPanel_ListsTheToken_ExactlyWhenTheVersionCanSpellIt()
+    {
+        var twelve = RenderEditor(EditorFixtures.V12());
+        twelve.FindAll("button.editor-nav__item")
+            .First(button => button.TextContent.Replace("●", string.Empty).Trim() == "disclaimer").Click();
+        Assert.Contains("{{profile:signature}}", twelve.Find(".macro-placeholders").TextContent);
+
+        var eleven = RenderEditor(EditorFixtures.V11Macro());
+        eleven.FindAll("button.editor-nav__item")
+            .First(button => button.TextContent.Replace("●", string.Empty).Trim() == "disclaimer").Click();
+        Assert.DoesNotContain("{{profile:signature}}", eleven.Find(".macro-placeholders").TextContent);
+    }
+}

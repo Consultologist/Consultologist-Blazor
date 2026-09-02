@@ -1396,9 +1396,11 @@
                                     {
                                         <li><code>{{run:@runWord}}</code></li>
                                     }
-                                    @foreach (var profileWord in PF.WorkflowMacroPlaceholders.ProfileFacts)
+                                    @foreach (var profileWord in PF.WorkflowMacroPlaceholders.ProfileFactsFor(EffectiveSpecVersion))
                                     {
-                                        <li><code>{{profile:@profileWord}}</code></li>
+                                        @* v12 § 5 (#621): the signature token, with its two standing
+                                           rules in one breath — signed once, never per-run optional. *@
+                                        <li><code>{{profile:@profileWord}}</code>@(profileWord == "signature" ? " — embeds the profile's chosen signature block where it sits; a deliverable is signed once, and the token never rides an optional or when-gated macro." : "")</li>
                                     }
                                 </ul>
                             </div>
@@ -3019,13 +3021,21 @@
                 "data" => scalarIdSet.Contains(id),
                 "classification" => classifierIds.Contains(id),
                 "run" => PF.WorkflowMacroPlaceholders.RunFacts.Contains(id),
-                "profile" => PF.WorkflowMacroPlaceholders.ProfileFacts.Contains(id),
+                // v12 § 5 (#621): version-keyed — the desk speaks the set the
+                // staged version speaks, not v11's frozen one.
+                "profile" => PF.WorkflowMacroPlaceholders.ProfileFactsFor(EffectiveSpecVersion).Contains(id),
                 _ => false
             };
 
             if (!resolves)
             {
-                yield return $"Macro '{macroId}' placeholder '{{{{{token}}}}}' does not resolve.";
+                // A token the NEWEST set resolves is a version question, not
+                // a spelling one — the validator's three-way, mirrored.
+                yield return PF.WorkflowMacroPlaceholders.TryParse(token, out var ns12, out var id12)
+                    && ns12 == "profile"
+                    && PF.WorkflowMacroPlaceholders.ProfileFactsFor(NewestSpecVersion).Contains(id12)
+                    ? $"Macro '{macroId}' placeholder '{{{{{token}}}}}' requires specVersion 12. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish."
+                    : $"Macro '{macroId}' placeholder '{{{{{token}}}}}' does not resolve.";
             }
         }
     }
