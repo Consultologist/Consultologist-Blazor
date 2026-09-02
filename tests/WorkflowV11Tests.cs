@@ -68,10 +68,10 @@ public class WorkflowV11GateTests
     }
 
     [Fact]
-    public void TwelveIsRefused_NamingTheSet()
+    public void ThirteenIsRefused_NamingTheSet()
     {
-        Assert.Contains(V11Fixtures.Validate(V11Fixtures.Minimal() with { SpecVersion = 12 }).Errors,
-            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10 or 11"));
+        Assert.Contains(V11Fixtures.Validate(V11Fixtures.Minimal() with { SpecVersion = 13 }).Errors,
+            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10, 11 or 12"));
     }
 
     [Theory]
@@ -149,13 +149,22 @@ public class WorkflowV11MacroTests
     [InlineData("{{data:missing}}", "data:missing")]
     [InlineData("{{classification:assemble}}", "classification:assemble")]
     [InlineData("{{run:time}}", "run:time")]
-    [InlineData("{{profile:signature}}", "profile:signature")]
     [InlineData("{{no_namespace}}", "no_namespace")]
     [InlineData("{{sql:drop}}", "sql:drop")]
     public void APlaceholderThatDoesNotResolve_IsRefusedNamingTheToken(string template, string token)
     {
         Assert.Contains($"Macro 'disclaimer' placeholder '{{{{{token}}}}}' does not resolve.",
             Errors(V11Fixtures.WithMacro($"Text {template} text.")));
+    }
+
+    [Fact]
+    public void TheSignatureToken_OnAnElevenManifest_IsAVersionRequirement()
+    {
+        // v12 (§ 5) folded the signature into the profile vocabulary — so on
+        // an 11-manifest the token is a word the format knows, held behind
+        // its version: never the misleading "does not resolve".
+        Assert.Contains("Macro 'disclaimer' placeholder '{{profile:signature}}' requires specVersion 12.",
+            Errors(V11Fixtures.WithMacro("Text {{profile:signature}} text.")));
     }
 
     [Fact]

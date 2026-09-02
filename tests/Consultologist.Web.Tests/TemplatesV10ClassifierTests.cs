@@ -221,7 +221,7 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
         Publish(page);
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
-        Assert.Contains("Node 'scope' is a classifier, which requires specVersion 10. Use \"Upgrade to specVersion 11\" and publish.", Refusals(page));
+        Assert.Contains("Node 'scope' is a classifier, which requires specVersion 10. Use \"Upgrade to specVersion 12\" and publish.", Refusals(page));
     }
 
     [Fact]

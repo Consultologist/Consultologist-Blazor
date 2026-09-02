@@ -60,6 +60,17 @@ public static class WorkflowNodeClosure
                     ? sourceRef[WorkflowNodeBindingSources.NodePrefix.Length..]
                     : sourceRef);
             }
+
+            // v12 (§ 13): a check node's operands are its dependencies — the
+            // check settles only after both, so acyclicity, reachability and
+            // the starter's prune all see the same third edge kind.
+            foreach (var operand in new[] { node.Of, node.In })
+            {
+                if (operand != null && operand.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal))
+                {
+                    Add(node.Id, operand[WorkflowNodeBindingSources.NodePrefix.Length..]);
+                }
+            }
         }
 
         return edges;

@@ -28,7 +28,7 @@ public static class WorkflowPackageValidator
     /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
     /// are checked against the published spec-versions.json there too.
     /// </summary>
-    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11 };
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12 };
 
     /// <summary>
     /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
@@ -547,6 +547,101 @@ public static class WorkflowPackageValidator
             ValidateEnumValues(subject, node.Values, errors, noun: "value");
         }
 
+        // v12 (§ 13): whether a node's declared output is the concept-list
+        // contract. For a stamped package the stamp is the authority (#433 —
+        // re-matching under a later catalog is what stranded immutable
+        // packages); otherwise the canonical match ValidateNodeOutput also
+        // runs. Deliberately NOT conceptListNodeIds above, which despite its
+        // name means "declares any output".
+        bool DeclaresConceptList(WorkflowNodeSpec target)
+        {
+            if (target.Output is null
+                || manifest.Schemas is null
+                || !manifest.Schemas.TryGetValue(target.Output.Schema, out var schemaPath))
+            {
+                return false;
+            }
+
+            if (stampedContracts != null && stampedContracts.TryGetValue(target.Output.Schema, out var contractId))
+            {
+                return contractId == WorkflowNodeDefaults.ConceptListSchemaId;
+            }
+
+            if (!files.TryGetValue(schemaPath, out var schemaText)
+                || !catalogSchemas.TryGetValue(WorkflowNodeDefaults.ConceptListSchemaId, out var conceptListSchema))
+            {
+                return false;
+            }
+
+            try
+            {
+                return CanonicalizeSchema(JsonNode.Parse(schemaText)) == CanonicalizeSchema(JsonNode.Parse(conceptListSchema));
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+        }
+
+        // v12 (§ 13): the check node — the CheckAggregator discipline (the
+        // property is the behaviour; the prompt family must be absent), plus
+        // typed operands: both must be concept-list nodes, because the check
+        // is a pure set operation over two recorded model answers.
+        void CheckCheckNode(WorkflowNodeSpec node)
+        {
+            var subject = $"Check '{node.Id}'";
+
+            if (node.Prompt != null || node.Bindings is { Count: > 0 } || node.Output != null || node.ForEach != null || node.Values != null)
+            {
+                errors.Add($"{subject} must declare only op, of, in and failWith (no prompt, bindings, output, forEach, or values).");
+            }
+
+            if (node.Reproducible != null)
+            {
+                errors.Add($"{subject} declares reproducible; a check is deterministic by construction, and the claim is not its to make.");
+            }
+
+            if (node.Op is null)
+            {
+                errors.Add($"{subject} declares no op; the operations are {string.Join(", ", WorkflowCheckOps.All)}.");
+            }
+            else if (!WorkflowCheckOps.All.Contains(node.Op, StringComparer.Ordinal))
+            {
+                errors.Add($"{subject} declares unknown op '{node.Op}' (accepted: {string.Join(", ", WorkflowCheckOps.All)}).");
+            }
+
+            if (string.IsNullOrWhiteSpace(node.FailWith))
+            {
+                errors.Add($"{subject} declares no failWith; a failed check must speak the package's own sentence.");
+            }
+
+            foreach (var (member, operand) in new[] { ("of", node.Of), ("in", node.In) })
+            {
+                if (operand is null)
+                {
+                    errors.Add($"{subject} declares no {member}; a check names its two concept-list operands as node:<id> references.");
+                    continue;
+                }
+
+                if (!operand.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal))
+                {
+                    errors.Add($"{subject} {member} '{operand}' must be a node:<id> reference.");
+                    continue;
+                }
+
+                var targetId = operand[WorkflowNodeBindingSources.NodePrefix.Length..];
+
+                if (!nodesById.TryGetValue(targetId, out var target))
+                {
+                    errors.Add($"{subject} {member} references undeclared node '{targetId}'.");
+                }
+                else if (!DeclaresConceptList(target))
+                {
+                    errors.Add($"{subject} {member} names node '{targetId}', which does not declare the concept-list contract.");
+                }
+            }
+        }
+
         foreach (var node in nodes)
         {
             if (string.IsNullOrWhiteSpace(node.Label))
@@ -560,6 +655,63 @@ public static class WorkflowPackageValidator
             if (manifest.SpecVersion < 11 && node.Reproducible != null)
             {
                 errors.Add($"Node '{node.Id}' declares reproducible, which requires specVersion 11.");
+            }
+
+            // v12 (§ 13): the check node and its members arrive at 12 — below
+            // it each is refused by name, and nothing else about a check is
+            // meaningful, so the gate continues (the v10 shape). Sits before
+            // the unknown-kind branch so kind 'check' reads as a version
+            // requirement, never an unknown word.
+            if (manifest.SpecVersion < 12)
+            {
+                var gatedCheck = false;
+
+                if (WorkflowNodeKinds.IsCheck(node))
+                {
+                    errors.Add($"Node '{node.Id}' declares kind 'check', which requires specVersion 12.");
+                    gatedCheck = true;
+                }
+
+                if (node.Op != null)
+                {
+                    errors.Add($"Node '{node.Id}' declares op, which requires specVersion 12.");
+                    gatedCheck = true;
+                }
+
+                if (node.Of != null)
+                {
+                    errors.Add($"Node '{node.Id}' declares of, which requires specVersion 12.");
+                    gatedCheck = true;
+                }
+
+                if (node.In != null)
+                {
+                    errors.Add($"Node '{node.Id}' declares in, which requires specVersion 12.");
+                    gatedCheck = true;
+                }
+
+                if (node.FailWith != null)
+                {
+                    errors.Add($"Node '{node.Id}' declares failWith, which requires specVersion 12.");
+                    gatedCheck = true;
+                }
+
+                if (gatedCheck)
+                {
+                    continue;
+                }
+            }
+            else if (!WorkflowNodeKinds.IsCheck(node))
+            {
+                // At 12, the check members belong to the check kind alone —
+                // the closed-grammar posture.
+                foreach (var (member, value) in new[] { ("op", node.Op), ("of", node.Of), ("in", node.In), ("failWith", node.FailWith) })
+                {
+                    if (value != null)
+                    {
+                        errors.Add($"Node '{node.Id}' declares {member} but is not a check node; only kind 'check' declares it.");
+                    }
+                }
             }
 
             // v10 (§ 4): kind and values arrive at 10 — below it each is refused
@@ -615,6 +767,15 @@ public static class WorkflowPackageValidator
                 }
 
                 CheckAggregator(node);
+                continue;
+            }
+
+            if (WorkflowNodeKinds.IsCheck(node))
+            {
+                // v12 (§ 13): the second deterministic executor — like the
+                // aggregator it continues before the no-prompt rule, because
+                // a check by construction has none.
+                CheckCheckNode(node);
                 continue;
             }
 
@@ -1137,10 +1298,60 @@ public static class WorkflowPackageValidator
 
         var classifiers = nodesById.Values.Where(WorkflowNodeKinds.IsClassifier).ToDictionary(n => n.Id, StringComparer.Ordinal);
 
+        // v12 (§ 13): the checks, for the gate that names one — and the
+        // orphan rule's sibling: a check nobody names gates nothing.
+        var checks = nodesById.Values.Where(WorkflowNodeKinds.IsCheck).ToDictionary(n => n.Id, StringComparer.Ordinal);
+        var namedChecks = new HashSet<string>(StringComparer.Ordinal);
+
         foreach (var result in results)
         {
             ValidateResultCondition(manifest, result, declaredInputs, classifiers, errors);
+            ValidateResultCheck(manifest, result, checks, namedChecks, errors);
         }
+
+        foreach (var orphan in checks.Keys.Where(id => !namedChecks.Contains(id)).Order(StringComparer.Ordinal))
+        {
+            errors.Add($"Check '{orphan}' is not named by any result; a check gates a deliverable, or it is dead weight.");
+        }
+    }
+
+    /// <summary>
+    /// The deliverable's gate (v12 § 13): the post-production mirror of when.
+    /// The parser has nothing to settle — a check reference is one node: ref.
+    /// </summary>
+    private static void ValidateResultCheck(
+        WorkflowPackageManifest manifest,
+        WorkflowResultSpec result,
+        IReadOnlyDictionary<string, WorkflowNodeSpec> checks,
+        HashSet<string> namedChecks,
+        List<string> errors)
+    {
+        if (result.Check is null)
+        {
+            return;
+        }
+
+        if (manifest.SpecVersion < 12)
+        {
+            errors.Add($"Result '{result.Id}' declares check, which requires specVersion 12.");
+            return;
+        }
+
+        if (!result.Check.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal))
+        {
+            errors.Add($"Result '{result.Id}' check '{result.Check}' must be a node:<id> reference.");
+            return;
+        }
+
+        var checkId = result.Check[WorkflowNodeBindingSources.NodePrefix.Length..];
+
+        if (!checks.ContainsKey(checkId))
+        {
+            errors.Add($"Result '{result.Id}' check names '{checkId}', which is not a check node.");
+            return;
+        }
+
+        namedChecks.Add(checkId);
     }
 
     /// <summary>
@@ -1775,12 +1986,27 @@ public static class WorkflowPackageValidator
             }
         }
 
+        // v12 (§ 13): a check serves a deliverable's existence, not its text —
+        // it and every node it depends on are exempt from feeding a result,
+        // the classifier's own reasoning widened to a chain (the backward
+        // closure from the checks over the same edge map). A node in the
+        // chain that ALSO feeds a result was already reachable; the exemption
+        // only spares the ones that exist for the check alone.
+        var checkChain = WorkflowNodeClosure.Reachable(
+            nodes.Where(WorkflowNodeKinds.IsCheck).Select(n => n.Id),
+            edges);
+
         foreach (var node in nodes)
         {
             // v10 (§ 4): a classifier feeds the boundary, not a document — its
             // value is what the fire set reads, so it is consumed by the job
             // whether or not a prompt binds it.
             if (WorkflowNodeKinds.IsClassifier(node))
+            {
+                continue;
+            }
+
+            if (checkChain.Contains(node.Id))
             {
                 continue;
             }
@@ -1896,6 +2122,33 @@ public static class WorkflowPackageValidator
             return;
         }
 
+        // v12 (§ 3/§ 4): the optional pair and the placed entry arrive at 12 —
+        // below it each is refused by name. The v11 rules still apply, so no
+        // return (the ValidateNodes gate shape, not the block above).
+        if (manifest.SpecVersion < 12)
+        {
+            foreach (var macro in manifest.Macros ?? new List<WorkflowMacroSpec>())
+            {
+                if (macro.Optional != null)
+                {
+                    errors.Add($"Macro '{macro.Id}' declares optional, which requires specVersion 12.");
+                }
+
+                if (macro.Default != null)
+                {
+                    errors.Add($"Macro '{macro.Id}' declares default, which requires specVersion 12.");
+                }
+            }
+
+            foreach (var result in results)
+            {
+                foreach (var entry in (result.Macros ?? new List<WorkflowResultMacroSpec>()).Where(e => !e.IsBare))
+                {
+                    errors.Add($"Result '{result.Id}' places macro '{entry.Id}', which requires specVersion 12.");
+                }
+            }
+        }
+
         var macros = manifest.Macros ?? new List<WorkflowMacroSpec>();
         var macroIds = new HashSet<string>(StringComparer.Ordinal);
 
@@ -1915,6 +2168,21 @@ public static class WorkflowPackageValidator
                 errors.Add($"Macro '{macro.Id}' has no label.");
             }
 
+            // v12 (§ 3): an optional macro must say what a formless run does —
+            // the package decides, every door (#516 carried forward).
+            if (manifest.SpecVersion >= 12)
+            {
+                if (macro.Optional == true && macro.Default == null)
+                {
+                    errors.Add($"Macro '{macro.Id}' is optional and declares no default; an optional macro must say what a run that makes no choice does.");
+                }
+
+                if (macro.Default != null && macro.Optional != true)
+                {
+                    errors.Add($"Macro '{macro.Id}' declares default but is not optional; only optional: true takes a per-run choice.");
+                }
+            }
+
             if (!files.TryGetValue(macro.File, out var template))
             {
                 errors.Add($"Macro '{macro.Id}' file '{macro.File}' is missing from the package.");
@@ -1929,10 +2197,37 @@ public static class WorkflowPackageValidator
                 continue;
             }
 
-            ValidateMacroPlaceholders(macro, template, inputsById, data, classifierIds, errors, warnings);
+            ValidateMacroPlaceholders(manifest.SpecVersion, macro, template, inputsById, data, classifierIds, errors, warnings);
         }
 
         var referenced = new HashSet<string>(StringComparer.Ordinal);
+        var nodesById = (manifest.Nodes ?? new List<WorkflowNodeSpec>())
+            .GroupBy(n => n.Id, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+
+        // v12 (§ 5): which declared macros carry {{profile:signature}}, and
+        // how many times — the signed-once family reads templates, so the
+        // count is per macro file, summed per result below.
+        var tokenCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var macro in macros)
+        {
+            if (files.TryGetValue(macro.File, out var template))
+            {
+                tokenCounts[macro.Id] = WorkflowMacroPlaceholders.Pattern.Matches(template)
+                    .Count(match => WorkflowMacroPlaceholders.TokenOf(match) == "profile:signature");
+            }
+        }
+
+        if (manifest.SpecVersion >= 12)
+        {
+            foreach (var macro in macros)
+            {
+                if (macro.Optional == true && tokenCounts.GetValueOrDefault(macro.Id) > 0)
+                {
+                    errors.Add($"Macro '{macro.Id}' is optional and carries {{{{profile:signature}}}}; a per-run signature choice was rejected (#516) and stays rejected.");
+                }
+            }
+        }
 
         foreach (var result in results)
         {
@@ -1954,6 +2249,52 @@ public static class WorkflowPackageValidator
                 }
 
                 referenced.Add(macroId);
+
+                // v12 (§ 4): a placement names exactly one anchor, and the
+                // anchor must be a section of THIS deliverable's aggregator.
+                if (!entry.IsBare && manifest.SpecVersion >= 12)
+                {
+                    if (entry.Before != null && entry.After != null)
+                    {
+                        errors.Add($"Result '{result.Id}' places macro '{entry.Id}' with both before and after; a placement names exactly one.");
+                    }
+                    else if ((entry.Before ?? entry.After) is { } anchor)
+                    {
+                        var aggregatorId = result.Node.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
+                            ? result.Node[WorkflowNodeBindingSources.NodePrefix.Length..]
+                            : result.Node;
+
+                        if (nodesById.GetValueOrDefault(aggregatorId)?.Aggregate is not { Count: > 0 } aggregate)
+                        {
+                            errors.Add($"Result '{result.Id}' places macro '{entry.Id}', but its node declares no aggregate; placement is between sections, and there are none.");
+                        }
+                        else if (!aggregate.Contains(anchor, StringComparer.Ordinal))
+                        {
+                            errors.Add($"Result '{result.Id}' places macro '{entry.Id}' {(entry.Before != null ? "before" : "after")} '{anchor}', which its aggregator '{aggregatorId}' does not aggregate.");
+                        }
+                    }
+                }
+            }
+
+            // v12 (§ 5): a document is signed once — never by the flag AND an
+            // embedded token, and never by two tokens.
+            if (manifest.SpecVersion >= 12)
+            {
+                var carrying = (result.Macros ?? new List<WorkflowResultMacroSpec>())
+                    .Select(e => e.Id)
+                    .Distinct(StringComparer.Ordinal)
+                    .Where(id => tokenCounts.GetValueOrDefault(id) > 0)
+                    .ToList();
+                var tokensOnResult = carrying.Sum(id => tokenCounts[id]);
+
+                if (result.Signature == true && carrying.Count > 0)
+                {
+                    errors.Add($"Result '{result.Id}' declares signature and references macro '{carrying[0]}', which contains {{{{profile:signature}}}}; a deliverable is signed once.");
+                }
+                else if (tokensOnResult > 1)
+                {
+                    errors.Add($"Result '{result.Id}' references {{{{profile:signature}}}} more than once across its macros; a deliverable is signed once.");
+                }
             }
         }
 
@@ -1972,6 +2313,7 @@ public static class WorkflowPackageValidator
     /// shared with the run-time expander.
     /// </summary>
     private static void ValidateMacroPlaceholders(
+        int specVersion,
         WorkflowMacroSpec macro,
         string template,
         IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
@@ -1989,13 +2331,24 @@ public static class WorkflowPackageValidator
                 "data" => data.Scalars.ContainsKey(id),
                 "classification" => classifierIds.Contains(id),
                 "run" => WorkflowMacroPlaceholders.RunFacts.Contains(id),
-                "profile" => WorkflowMacroPlaceholders.ProfileFacts.Contains(id),
+                // v12 (§ 5): the profile vocabulary is version-keyed — the
+                // signature token resolves at 12 and up.
+                "profile" => WorkflowMacroPlaceholders.ProfileFactsFor(specVersion).Contains(id),
                 _ => false
             };
 
             if (!resolves)
             {
-                errors.Add($"Macro '{macro.Id}' placeholder '{{{{{token}}}}}' does not resolve.");
+                // v12 (§ 5): a token the format knows but this version does
+                // not is a version requirement, never an unknown word — the
+                // three-way the design mandates.
+                var resolvesAtNewest = WorkflowMacroPlaceholders.TryParse(token, out var lateNs, out var lateId)
+                    && lateNs == "profile"
+                    && WorkflowMacroPlaceholders.ProfileFactsFor(AcceptedSpecVersions.Max()).Contains(lateId);
+
+                errors.Add(resolvesAtNewest
+                    ? $"Macro '{macro.Id}' placeholder '{{{{{token}}}}}' requires specVersion 12."
+                    : $"Macro '{macro.Id}' placeholder '{{{{{token}}}}}' does not resolve.");
                 continue;
             }
 
