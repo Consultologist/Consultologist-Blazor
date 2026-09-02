@@ -199,6 +199,10 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             pair => pair.Value.ToList(),
             StringComparer.Ordinal);
         State.SkippedDocuments ??= input.SkippedDocuments?.ToList();
+        State.MacroChoices ??= input.MacroChoices?.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value,
+            StringComparer.Ordinal);
 
         // v10 (#496): a job that starts deciding has no count yet — the
         // boundary stamps it. Every other job is decided at start, as it always
@@ -906,7 +910,12 @@ public sealed record ConsultGenerationOrchestrationInput(
     // outputs blob lands in (storage-separation.md § 2.5). Null on payloads
     // from before; the writer's rule falls to personal. Appended last, same
     // reason as everything above.
-    string? AccountKind = null);
+    string? AccountKind = null,
+    // v12 #618 (design § 3): the OPTIONAL macros' resolved values at start
+    // (choice, else declared default) — what the deciding boundary filters
+    // descriptors with, since DecideActivity never sees the request. Null
+    // when the package declares no optional macros. Appended last.
+    IReadOnlyDictionary<string, bool>? MacroChoices = null);
 
 /// <summary>
 /// v11 #516: the chosen signature as it was at job start — the block's id,
@@ -973,7 +982,11 @@ public sealed record ConsultGenerationJobInitialize(
     ConsultInputsBlobPointer? InputsBlob = null,
     // #582: the source's hashes when this job is a rerun; null otherwise.
     // Appended last, same positional-call rule.
-    ConsultRerunBaseline? RerunBaseline = null);
+    ConsultRerunBaseline? RerunBaseline = null,
+    // v12 #618 (design § 6): the optional-macro resolutions for the record —
+    // value and chosen|default origin per optional macro; null when the
+    // package declares none (the control). Appended last, same rule.
+    IReadOnlyDictionary<string, ConsultMacroChoice>? MacroChoices = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -1247,6 +1260,11 @@ public sealed class ConsultGenerationJobState
     // the build's own, write-once like CatalogRef; null before 2026-08-25.
     public string? PackageFormatRef { get; set; }
     public string? ProvenanceRef { get; set; }
+
+    // v12 #618: the optional-macro resolutions at start; write-once; null
+    // when the package declares no optional macros and on records from
+    // before.
+    public Dictionary<string, ConsultMacroChoice>? MacroChoices { get; set; }
 
     // #403: the SNOMED CT edition the terminology server had loaded when the
     // job started (what every concept's flags were answered against) and the
@@ -1576,6 +1594,7 @@ public sealed class ConsultGenerationJobState
             ProvenanceRef: ProvenanceRef,
             Terminology: Terminology,
             TerminologyServerRef: TerminologyServerRef,
+            MacroChoices: MacroChoices,
             ApiHost: ApiHost,
             EngineCommit: EngineCommit,
             OutputsBlob: OutputsBlob,
