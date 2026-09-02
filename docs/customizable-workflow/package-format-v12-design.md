@@ -315,22 +315,31 @@ counts) lands as one registry version after the engine rungs, v11
   validator arms, the one helper at both evaluation moments, the
   `excludedMacros` record, History's line. *(After (b)/(h); before
   (e) — the editor authors against the final grammar.)*
-- **(e)** Editor: § 9, all of it, plus § 13's check-node authoring
-  and § 14's `when` on the Documents-pane macro rows, gated at 12.
+- **(e)** Editor: § 9, all of it, plus § 13's check-node authoring,
+  § 14's `when` on the Documents-pane macro rows, and § 15's
+  template-node authoring (the reader mirror's IsTemplate beside
+  IsClassifier), gated at 12.
 - **(f)** Provenance registry bump: `macroChoices`, the re-worded
   `appended[]` sentence, the embedded-signature entry, § 13's
   `failedDocuments` and the check node's row, § 14's
-  `excludedMacros` row, a worked example.
+  `excludedMacros` row, § 15's node-row sentence (the equal hashes,
+  the null tokens), a worked example.
 - **(h)** The check node in the engine (§ 13): the inline executor,
   the settle/record split with the deferred append chain, the
   per-document failure state, record and UI. *(After (c)/(d) — it
   moves the same completion path they touch.)*
+- **(j)** The template node (§ 15): the kind through validator,
+  descriptor and wire, the run activity's first early return, the
+  equal-hash row with null tokens. *(Before (e) — the editor
+  authors against the final kind set; before (g) — the four-kind
+  conformance sentence and the demo package inherit it.)*
 - **(g)** *The engine runs twelve*: the gate, the format registry's
-  v12 publication (§ 14's entry-object `when` and its conformance
-  sentences included), the submodule pin, a demo package exercising
-  all five constructs — a conditional macro among them — `general`
-  the control: a v12 package using none of v12 hashes and renders
-  byte-identically to its v11 self.
+  v12 publication (§ 14's entry-object `when`, § 15's fourth kind,
+  and their conformance sentences included), the submodule pin, a
+  demo package exercising all six constructs — a conditional macro
+  and a template node among them — `general` the control: a v12
+  package using none of v12 hashes and renders byte-identically to
+  its v11 self.
 
 ## 13. The check node (added 2026-09-02)
 
@@ -647,3 +656,161 @@ not turn on a classifier's answer.
 3. **No-fallback is what letters want** — an unmatched match/case
    appends nothing and records why; a package wanting a default arm
    declares an `otherwise`-shaped clause or an unconditional macro.
+
+## 15. The template node (added 2026-09-02)
+
+The format's third deterministic executor, and the first that
+*renders*: a node whose bound inputs go through the strict-mode
+Scriban renderer and whose output IS the rendered string — no model
+call, no agent, no tokens. Where the aggregator concatenates and the
+check judges, the template composes. Grown on the executor axis the
+doctrine pre-authorizes (output-contract-catalog.md's deferred
+`function` kind); filed as v12 on explicit owner decision — the third
+exercise of the § 2 override, recorded in #634.
+
+### Grammar
+
+```yaml
+prompts:
+  - id: header
+    file: prompts/header.md          # "{{ patient_name }}, seen {{ seen_on }}."
+    variables: [patient_name, seen_on]
+
+nodes:
+  - id: patient-header               # the template — deterministic, no model
+    kind: template
+    prompt: header
+    bindings: { patient_name: input:patient_name, seen_on: input:seen_on }
+
+  - id: section-draft                # a prompt node reads it like any upstream
+    prompt: draft-section
+    forEach: sections
+    bindings: { header: node:patient-header, section: item:name }
+```
+
+- The declaration REUSES the prompts table — `kind: template` plus
+  `prompt: <id>` naming an ordinary prompt entry (id, file, variables,
+  prelude); the kind alone decides render-and-stop against
+  render-and-ask-a-model. One table, two executors reading it; the
+  bindings-must-equal-variables rule, the publish-time probe render
+  and the orphan rule apply unchanged.
+- A template node may declare `output: { schema: concept-list }` with
+  `failIfEmpty`: the rendered string is then parsed and validated by
+  the same contract machinery a model answer goes through — the
+  rendered bytes must simply BE the contract JSON.
+- `forEach` from day one: a template node is a per-item chain step
+  exactly as a prompt node is; binding resolution — `input:`,
+  `item:`, `data:`, `node:` with the concept renderers — is inherited
+  whole.
+- What it may NOT declare, each refused by name: `values`, the check
+  members, `aggregate`, `reproducible`; and its output schema may not
+  resolve to the classification contract (§ 15.5).
+
+### Semantics
+
+Rendering is the publish-time probe's renderer, strict mode: exactly
+the declared variables, any other access throws. A render failure is
+deterministic — the same bytes re-render — so it is excluded from the
+activity retry policy and fails fast, never burning retries on a
+proof that already failed. A feature, stated.
+
+A template never enters the deciding stage: a classifier may bind
+inputs and classifiers only (v10 § 4), so no template output can feed
+a `when`. Templates are producing-stage nodes.
+
+The determinism claim is the construct's, not the author's:
+`reproducible` is refused — a template is deterministic by
+construction, and the claim is not its to make (§ 13's sentence, its
+second use).
+
+### Engine behaviour
+
+The node schedules as a prompt node: same ready loop, same activity,
+same forEach fan, same item-aligned dependencies — the scheduler
+gains no exclusion (contrast: aggregators and checks settle inline).
+Inside the run activity, the first early return: after the render,
+before the catalog lookup. The agent, the catalog, the classifier
+trailer are never touched. Contract application still runs against
+the rendered string when `output` is declared, `failIfEmpty` keys on
+the parsed concepts exactly as for a model answer — scalar and
+per-item both — and a malformed schema'd render (retryable when a
+model answered) is re-thrown as the renderer's own fail-fast type.
+
+### What the record says
+
+One node row through the existing completion seam, hashes and all;
+**tokens are null** — not recorded, never zero, the roll-up's and
+aggregate's and check's rows already say the same. The hash story,
+stated plainly: `inputHash == outputHash == sha256(rendered)`. For a
+prompt node the input hash covers the message sent to the model; a
+template sends nothing, and the message-that-would-have-been IS the
+output. Novel but correct: the rerun verdict treats the equal pair as
+any other, and a template rerun with identical resolved inputs is
+byte-identical by construction. The hash definition itself does not
+move; hashVersion stays.
+
+### Validator rules (all refusals by name)
+
+Below 12: `Node '{id}' declares kind 'template', which requires
+specVersion 12.` — fired in the version gate before the unknown-kind
+sentence can, the check kind's posture: a version requirement, never
+an unknown word.
+
+At 12:
+- `Template '{id}' declares reproducible; a template is deterministic
+  by construction, and the claim is not its to make.`
+- `Template '{id}' output schema resolves to the classification
+  contract; a classification is answered from a value set, and a
+  template renders, it does not answer.`
+- Inherited unchanged and asserted so: no `prompt` declared;
+  bindings must equal the prompt's variables; `values` without the
+  classifier kind; the check members on a non-check; `aggregate`
+  beside a kind; orphan prompts; reachability (a template must feed
+  something — no classifier-style exemption); the output rules; and
+  the probe render — which for a template is the strongest form of
+  "what publishes is what runs": the probe renders the very artifact
+  the run outputs.
+- The v12 unknown-kind sentence now names four kinds
+  (accepted: prompt, classifier, check, template); the v10/v11
+  sentence does not move.
+
+### Candidates not taken (§ 10's family)
+
+- **Inline settle in the orchestrator** (the aggregator/check
+  discipline) — the package is not orchestrator-side: prompt text
+  lives behind the activity's re-resolve of the pinned immutable
+  version, and hauling template text into Durable history would be a
+  new wire surface for no gain.
+- **A separate templates table** — the prompts table already carries
+  id, file, variables, prelude and the probe render; a second table
+  would be the same rows under a second name.
+- **Run facts in template bindings** (`run:`/`profile:`) — those are
+  the macro expander's namespaces (§ 5); a template renders its
+  bindings and nothing else, which is what keeps its hash story
+  trivial.
+- **A property instead of a kind** (`noModel: true` on a prompt
+  node) — the executor axis is the kind axis; aggregate-as-property
+  is the historical exception, not a pattern to grow.
+- **Allowing `reproducible: true` as a harmless truth** — true but
+  not its to say; the record derives it from the kind.
+
+### The assumptions a real letter would test (§ 11's family)
+
+1. **Strict-mode failure is the right posture** — a missing binding
+   fails the item (or the job) fast with the renderer's sentence; a
+   package wanting a tolerant header is asking an optional-input
+   design question, not for a lenient renderer.
+2. **Hand-authored contract JSON is authorable** — a schema'd
+   template's Scriban must emit valid contract JSON; the publish
+   probe proves the template *renders*, not that it renders *JSON*
+   (probe values are placeholders). The runtime contract application
+   plus `failIfEmpty` is the guard, the same one a model answer
+   gets. A package can publish and still fail at run time — named,
+   not hidden.
+3. **Equal hashes read correctly downstream** — the verification
+   chain treats the pair as any other; a reader wanting "what went
+   in vs what came out" for a template is asking a question the
+   construct defines away.
+4. **Per-item chain step suffices** — item-aligned dependency is
+   inherited whole; a template wanting cross-item composition is
+   describing an aggregator.
