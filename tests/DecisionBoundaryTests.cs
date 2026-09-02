@@ -343,3 +343,177 @@ public class DecideActivityTests
         Assert.Equal(ConsultGenerationJobStarter.ResolveSkeleton(atStart.Package, Supplied).Items.Select(i => i["id"]), atBoundary.Items.Select(i => i["id"]));
     }
 }
+
+/// <summary>
+/// v12 rung (i) (#631, design § 14): the boundary judges every macro when —
+/// classifier and input-only clauses alike — over the firing results, strips
+/// in lockstep, records what it excluded, and never judges a skipped
+/// result's entries.
+/// </summary>
+public class DecisionBoundaryMacroWhenTests
+{
+    private static readonly Dictionary<string, ConsultInputValue> Supplied = new(StringComparer.Ordinal)
+    {
+        ["consult_draft"] = "65M, adenocarcinoma of the lung, for chemoradiation.",
+        ["seen_on"] = "2026-08-10",
+        ["encounter_kind"] = "follow_up"
+    };
+
+    private static WorkflowPackage MatchCasePackage(
+        string? resultWhen = null,
+        string? letterWhen = null,
+        params (string MacroId, string When)[] gates)
+    {
+        var (manifest, files) = V10Fixtures.WithClassifier();
+        var errors = new List<string>();
+        var data = WorkflowDataResolver.Resolve(manifest, files, errors);
+        Assert.Empty(errors);
+
+        var conditions = gates
+            .Select(gate =>
+            {
+                Assert.True(WorkflowResultConditions.TryParseExpression(gate.When, out var condition, out var error), error);
+                return new WorkflowResolvedMacroCondition(gate.MacroId, condition!);
+            })
+            .ToList();
+        var results = new List<WorkflowResolvedResult>
+        {
+            new("consult", "assemble-note", "Consultation note",
+                Parse(resultWhen),
+                Macros: gates.Select(g => g.MacroId).ToList(),
+                MacroPlacements: gates.Select(g => new ConsultMacroPlacement(g.MacroId, Before: "node:section-instructions")).ToList(),
+                MacroConditions: conditions.Count > 0 ? conditions : null)
+        };
+
+        if (letterWhen != null)
+        {
+            results.Add(new("letter", "assemble-note", "Decline letter",
+                Parse(letterWhen),
+                Macros: new[] { "letter_closing" },
+                MacroConditions: new[] { new WorkflowResolvedMacroCondition("letter_closing", Parse("node:scope == in_scope")!) }));
+        }
+
+        return new WorkflowPackage(
+            manifest,
+            Nodes: manifest.Nodes,
+            SchemaContracts: TestOutputContracts.CatalogSchemas,
+            Data: data,
+            Results: results);
+    }
+
+    private static WorkflowConditionExpression? Parse(string? when)
+    {
+        if (when is null)
+        {
+            return null;
+        }
+
+        Assert.True(WorkflowResultConditions.TryParseExpression(when, out var condition, out var error), error);
+        return condition;
+    }
+
+    [Fact]
+    public void TheBoundary_PicksOneArm_NamesTheOther_AndStripsInLockstep()
+    {
+        var package = MatchCasePackage(gates: new[]
+        {
+            ("arm_in", "node:scope == in_scope"),
+            ("arm_out", "node:scope == out_of_scope")
+        });
+
+        var decision = DecideActivity.Decide(package, Supplied, new Dictionary<string, string> { ["scope"] = "in_scope" });
+
+        var descriptor = Assert.Single(decision.Results);
+        Assert.Equal(new[] { "arm_in" }, descriptor.Macros);
+        Assert.Equal("arm_in", Assert.Single(descriptor.MacroPlacements!).Id);
+        var excluded = Assert.Single(decision.ExcludedMacros!);
+        Assert.Equal(("consult", "arm_out"), (excluded.ResultId, excluded.MacroId));
+        Assert.Equal("needs node:scope to be 'out_of_scope'; it is 'in_scope'", excluded.Reason);
+    }
+
+    [Fact]
+    public void AnInputOnlyWhen_IsJudgedAtTheBoundary_Too()
+    {
+        // One construct, one evaluation moment: a deciding job's input-only
+        // clauses wait for the boundary with the classifier ones.
+        var package = MatchCasePackage(gates: new[]
+        {
+            ("follow_up_note", "encounter_kind == follow_up"),
+            ("new_patient_note", "encounter_kind == new_patient")
+        });
+
+        var decision = DecideActivity.Decide(package, Supplied, new Dictionary<string, string> { ["scope"] = "in_scope" });
+
+        Assert.Equal(new[] { "follow_up_note" }, Assert.Single(decision.Results).Macros);
+        var excluded = Assert.Single(decision.ExcludedMacros!);
+        Assert.Equal("new_patient_note", excluded.MacroId);
+        Assert.Equal("needs encounter_kind to be 'new_patient'; it is 'follow_up'", excluded.Reason);
+    }
+
+    [Fact]
+    public void ASkippedResult_NeverEvaluatesItsMacros_AndNothingIsRecorded()
+    {
+        // Skip stays skip: the letter leaves by its when, and its macro gate
+        // — which would fail — is never judged, never recorded.
+        var package = MatchCasePackage(
+            resultWhen: "node:scope == in_scope",
+            letterWhen: "node:scope == out_of_scope",
+            gates: ("opening", "node:scope == in_scope"));
+
+        var decision = DecideActivity.Decide(package, Supplied, new Dictionary<string, string> { ["scope"] = "in_scope" });
+
+        Assert.Equal("consult", Assert.Single(decision.Results).Id);
+        Assert.Equal("letter", Assert.Single(decision.Skipped).ResultId);
+        Assert.Null(decision.ExcludedMacros);
+    }
+
+    [Fact]
+    public void NothingGated_RecordsNothing_TheControl()
+    {
+        var package = MatchCasePackage();
+        var decision = DecideActivity.Decide(package, Supplied, new Dictionary<string, string> { ["scope"] = "in_scope" });
+
+        Assert.Null(decision.ExcludedMacros);
+    }
+
+    [Fact]
+    public void ThePrune_KeepsAClassifier_ReferencedOnlyByAMacroWhen()
+    {
+        // No result when reads node:scope — only a macro gate does. The
+        // classifier exemption keeps it through the prune all the same, and
+        // the § 14 pin is that this stays true.
+        var package = MatchCasePackage(gates: ("arm_in", "node:scope == in_scope"));
+
+        var decision = DecideActivity.Decide(package, Supplied, new Dictionary<string, string> { ["scope"] = "in_scope" });
+
+        Assert.Contains(decision.Nodes, node => node.Id == "scope" && node.OutputContract == OutputContracts.Classification);
+    }
+
+    [Fact]
+    public async Task TheExclusions_RideTheDecisionSignal_IntoStateAndResponse()
+    {
+        var stateProperty = typeof(ConsultGenerationJobEntity).GetProperty(
+            "State", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!;
+        var entity = new ConsultGenerationJobEntity(
+            Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>(),
+            Substitute.For<IJobInputsBlobStore>(), Substitute.For<IAccountUsageStore>());
+        await entity.Initialize(new ConsultGenerationJobInitialize(
+            "job-1", "user-1", Array.Empty<IReadOnlyDictionary<string, string>>(), "general@v2026.09.1", "hash",
+            Deciding: true));
+
+        await entity.Decide(new ConsultGenerationDecision(
+            new[] { (IReadOnlyDictionary<string, string>)new Dictionary<string, string> { ["id"] = "consult:s0", ["name"] = "Section 0" } },
+            null,
+            new[] { new ConsultResultDescriptor("consult", "assemble-note", "Consultation note") },
+            null,
+            null,
+            null,
+            new Dictionary<string, string> { ["scope"] = "in_scope" },
+            new DateTimeOffset(2026, 9, 2, 12, 0, 0, TimeSpan.Zero),
+            new[] { new ConsultExcludedMacro("consult", "arm_out", "needs node:scope to be 'out_of_scope'; it is 'in_scope'") }));
+
+        var state = (ConsultGenerationJobState)stateProperty.GetValue(entity)!;
+        Assert.Equal("arm_out", Assert.Single(state.ExcludedMacros!).MacroId);
+        Assert.Equal("arm_out", Assert.Single(state.ToResponse().ExcludedMacros!).MacroId);
+    }
+}

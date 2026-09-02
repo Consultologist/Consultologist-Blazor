@@ -29,7 +29,11 @@ public sealed record ConsultDecisionResult(
     IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>> CollectionSets,
     IReadOnlyList<ConsultCollectionRoster> CollectionRosters,
     IReadOnlyList<ConsultItemStepDescriptor> ItemSteps,
-    IReadOnlyList<string> EmptyFanLabels);
+    IReadOnlyList<string> EmptyFanLabels,
+    // v12 #631 (§ 14): macros the firing results' when-clauses excluded —
+    // null when nothing was gated out (the control's bytes). Trailing: the
+    // engine reads this positionally off the recorded activity result.
+    IReadOnlyList<ConsultExcludedMacro>? ExcludedMacros = null);
 
 /// <summary>
 /// The boundary as an activity: block expansion and the node closure need
@@ -118,8 +122,25 @@ public sealed class DecideActivity
                 skeleton.EmptyFanLabels);
         }
 
+        // v12 #631 (§ 14): the firing results' when-gated macros are judged
+        // here, with the classifier answers in hand — every clause, the
+        // input-only ones included, so one construct has one evaluation
+        // moment. A when-skipped result never reaches this loop: skip stays
+        // skip, and nothing is recorded for a document that does not exist.
+        var excludedMacros = new List<ConsultExcludedMacro>();
+        var firingDescriptors = fireSet.Firing
+            .Select(result =>
+            {
+                var judged = ConsultGenerationJobStarter.DecideMacroWhens(result, supplied, classifications);
+                excludedMacros.AddRange(judged.Excluded);
+                return new ConsultResultDescriptor(
+                    result.Id, result.NodeId, result.Label, judged.Macros, result.Signature,
+                    ConsultGenerationJobStarter.FilterPlacements(result.MacroPlacements, judged.Macros), result.Check);
+            })
+            .ToList();
+
         return new ConsultDecisionResult(
-            fireSet.Firing.Select(result => new ConsultResultDescriptor(result.Id, result.NodeId, result.Label, result.Macros, result.Signature, result.MacroPlacements, result.Check)).ToList(),
+            firingDescriptors,
             fireSet.Skipped,
             narrowed.Nodes!.Select(node => ConsultGenerationJobStarter.DescribeNode(node, narrowed.SchemaContracts)).ToList(),
             skeleton.Items,
@@ -129,6 +150,7 @@ public sealed class DecideActivity
                 .Where(node => node.ForEach != null)
                 .Select(node => new ConsultItemStepDescriptor(node.Id, node.Label))
                 .ToList(),
-            Array.Empty<string>());
+            Array.Empty<string>(),
+            excludedMacros.Count > 0 ? excludedMacros : null);
     }
 }

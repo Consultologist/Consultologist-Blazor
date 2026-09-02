@@ -300,7 +300,10 @@ public record ConsultGenerationJobResponse(
     // v12 #624: deliverables refused by their check — the third state beside
     // produced and skipped. Null when none failed or the record predates the
     // field. Appended last.
-    IReadOnlyList<ConsultFailedDocument>? FailedDocuments = null);
+    IReadOnlyList<ConsultFailedDocument>? FailedDocuments = null,
+    // v12 #631 (design § 14): macros a when-clause excluded from firing
+    // deliverables. Appended last, the positional-call rule.
+    IReadOnlyList<ConsultExcludedMacro>? ExcludedMacros = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and

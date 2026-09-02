@@ -69,6 +69,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         state.ItemSteps = input.ItemSteps?.ToList() ?? state.ItemSteps;
         state.Collections = input.Collections?.ToList() ?? state.Collections;
         state.SkippedDocuments = input.SkippedDocuments?.ToList();
+        state.ExcludedMacros = input.ExcludedMacros?.ToList() ?? state.ExcludedMacros;
         state.Classifications = input.Classifications?.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         state.DecidedAtUtc = input.DecidedAtUtc;
         state.History.Add(new JobHistoryEvent(
@@ -1051,7 +1052,10 @@ public sealed record ConsultGenerationDecision(
     IReadOnlyList<ConsultCollectionRoster>? Collections,
     IReadOnlyList<ConsultItemStepDescriptor>? ItemSteps,
     IReadOnlyDictionary<string, string>? Classifications,
-    DateTimeOffset DecidedAtUtc);
+    DateTimeOffset DecidedAtUtc,
+    // v12 #631 (§ 14): the boundary's when-excluded macros. Appended last —
+    // the engine calls Decide positionally.
+    IReadOnlyList<ConsultExcludedMacro>? ExcludedMacros = null);
 
 public static class ConsultGenerationDecisionFailureKinds
 {
@@ -1615,6 +1619,7 @@ public sealed class ConsultGenerationJobState
             InputOrigins: ProjectInputOrigins(),
             SkippedDocuments: SkippedDocuments,
             FailedDocuments: FailedDocuments,
+            ExcludedMacros: ExcludedMacros,
             Source: Source,
             ScheduledAtUtc: ScheduledAtUtc,
             ItemSteps: ItemSteps,

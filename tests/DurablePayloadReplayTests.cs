@@ -212,6 +212,49 @@ public class DurablePayloadReplayTests
     }
 
     [Fact]
+    public void AStoredDecision_WithoutExcludedMacros_BindsNull()
+    {
+        // v12 #631: the boundary's decision signal is a durable payload — a
+        // stored pre-(i) decision binds the exclusions null and re-serialises
+        // with exactly one more trailing null (which also proves the slot IS
+        // trailing).
+        var current = JsonSerializer.Serialize(
+            new ConsultGenerationDecision(
+                new List<IReadOnlyDictionary<string, string>>(), null, null, null, null, null, null,
+                new DateTimeOffset(2026, 9, 2, 12, 0, 0, TimeSpan.Zero)), Durable);
+        Assert.EndsWith(",\"ExcludedMacros\":null}", current);
+        var stored = current.Replace(",\"ExcludedMacros\":null}", "}", StringComparison.Ordinal);
+
+        var decision = JsonSerializer.Deserialize<ConsultGenerationDecision>(stored, Durable)!;
+
+        Assert.Null(decision.ExcludedMacros);
+        Assert.Equal(current, JsonSerializer.Serialize(decision, Durable));
+    }
+
+    [Fact]
+    public void AStoredDecisionResult_WithoutExcludedMacros_BindsNull()
+    {
+        // v12 #631: the activity's recorded result, same rule.
+        var current = JsonSerializer.Serialize(
+            new ConsultDecisionResult(
+                Array.Empty<Consultologist.Api.Models.ConsultResultDescriptor>(),
+                Array.Empty<Consultologist.Api.Models.ConsultSkippedDocument>(),
+                Array.Empty<Consultologist.Api.Models.ConsultNodeDescriptor>(),
+                Array.Empty<IReadOnlyDictionary<string, string>>(),
+                new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>(),
+                Array.Empty<Consultologist.Api.Models.ConsultCollectionRoster>(),
+                Array.Empty<Consultologist.Api.Models.ConsultItemStepDescriptor>(),
+                Array.Empty<string>()), Durable);
+        Assert.EndsWith(",\"ExcludedMacros\":null}", current);
+        var stored = current.Replace(",\"ExcludedMacros\":null}", "}", StringComparison.Ordinal);
+
+        var result = JsonSerializer.Deserialize<ConsultDecisionResult>(stored, Durable)!;
+
+        Assert.Null(result.ExcludedMacros);
+        Assert.Equal(current, JsonSerializer.Serialize(result, Durable));
+    }
+
+    [Fact]
     public void AStoredDescriptor_WithoutPlacements_BindsNull()
     {
         // v12 #619: a rung-b descriptor with a non-null macro list re-reads
