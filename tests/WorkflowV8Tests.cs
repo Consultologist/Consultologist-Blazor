@@ -439,11 +439,11 @@ public class WorkflowV8ValidationTests
         Assert.DoesNotContain(V8Fixtures.Validate(V8Fixtures.Minimal()).Errors,
             e => e.Contains("is not supported"));
 
-        // #424 moved the gate to 9, #492 to 10 and #563 to 11; the version
-        // after it is what the gate refuses now.
+        // #424 moved the gate to 9, #492 to 10, #563 to 11 and #617 to 12;
+        // the version after it is what the gate refuses now.
         Assert.Contains(
-            V8Fixtures.Validate(V8Fixtures.Minimal() with { SpecVersion = 12 }).Errors,
-            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10 or 11"));
+            V8Fixtures.Validate(V8Fixtures.Minimal() with { SpecVersion = 13 }).Errors,
+            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10, 11 or 12"));
     }
 }
 

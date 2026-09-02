@@ -588,41 +588,51 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
     [Fact]
     public void TheRungsOffered_AreThoseAboveTheLoadedVersion()
     {
-        // One rung again (#566): eleven publishes and eleven runs — the two
-        // ceilings met, as they did at #500. #429's pattern returns with the
-        // next format.
+        // Two rungs again (#617): twelve publishes while eleven runs — the
+        // ceilings part, as they did for ten (#492) and eleven (#563), and
+        // #429's second button returns until rung (g) closes the gap.
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
-        Assert.Equal(new[] { "Upgrade to specVersion 11" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 11", "Upgrade to specVersion 12" }, UpgradeButtons(Render<Templates>()));
 
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V8());
-        Assert.Equal(new[] { "Upgrade to specVersion 11" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 11", "Upgrade to specVersion 12" }, UpgradeButtons(Render<Templates>()));
 
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V9Structured());
-        Assert.Equal(new[] { "Upgrade to specVersion 11" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 11", "Upgrade to specVersion 12" }, UpgradeButtons(Render<Templates>()));
 
-        // A v10 package has one rung left, and it runs.
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V10Nested());
-        Assert.Equal(new[] { "Upgrade to specVersion 11" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 11", "Upgrade to specVersion 12" }, UpgradeButtons(Render<Templates>()));
+
+        // An eleven package has one rung left, and it does not run yet.
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V11());
+        Assert.Equal(new[] { "Upgrade to specVersion 12" }, UpgradeButtons(Render<Templates>()));
     }
 
     [Fact]
-    public void ABumpToEleven_IsRunnable_AndSaysNothingOfAGap()
+    public void ABumpToEleven_StaysQuiet_AndAStagedBumpToTwelve_SaysNotYetRunnable()
     {
-        // #429's notice retired again at rung (g) (#566): the ceilings meet,
-        // the one rung runs, and nothing warns. The mechanism stays for the
-        // next format.
+        // #429's notice returns at #617: eleven still runs and says nothing;
+        // twelve publishes into a stated gap, up front rather than into
+        // silence. The mechanism retires again when rung (g) lands.
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V10Nested());
         var page = Render<Templates>();
         UpgradeTo(page, 11);
         Assert.DoesNotContain("not yet runnable", page.Markup, StringComparison.Ordinal);
+        // A staged bump hides every upgrade button (the CanUpgradeTo clause).
         Assert.Empty(UpgradeButtons(page));
-        Assert.Equal(Templates.NewestSpecVersion, Templates.RunnableSpecVersion);
+
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V10Nested());
+        var pageTwelve = Render<Templates>();
+        UpgradeTo(pageTwelve, 12);
+        Assert.Contains("specVersion 12 is publishable but not yet runnable", pageTwelve.Markup, StringComparison.Ordinal);
+        Assert.True(Templates.NewestSpecVersion > Templates.RunnableSpecVersion);
     }
 
     [Fact]
-    public async Task ThePublishSuccess_AppendsNoRunnabilityWarning_WhenTheCeilingsMeet()
+    public async Task ThePublishSuccess_AppendsARunnabilityWarning_OnlyPastTheRunnableCeiling()
     {
-        // #566: the one rung runs, so the success sentence carries no warning.
+        // #617: an eleven publish says nothing; a twelve publish carries the
+        // warning in its own success sentence.
         var (result, _) = await PublishAndCaptureAsync(page => { UpgradeTo(page, 11); return Task.CompletedTask; }, EditorFixtures.V7());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
 
@@ -634,6 +644,15 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         var success = page.FindAll(".fluent-messagebar-message").Select(bar => bar.TextContent.Trim())
             .First(text => text.StartsWith("Published", StringComparison.Ordinal));
         Assert.DoesNotContain("not yet runnable", success, StringComparison.Ordinal);
+
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
+        var pageTwelve = Render<Templates>();
+        UpgradeTo(pageTwelve, 12);
+        pageTwelve.FindAll("fluent-button").First(button => button.TextContent.Contains("Publish")).Click();
+
+        var successTwelve = pageTwelve.FindAll(".fluent-messagebar-message").Select(bar => bar.TextContent.Trim())
+            .First(text => text.StartsWith("Published", StringComparison.Ordinal));
+        Assert.EndsWith("It is not yet runnable.", successTwelve);
     }
 
     [Theory]
@@ -641,6 +660,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
     [InlineData(8, 11)]
     [InlineData(9, 11)]
     [InlineData(10, 11)]
+    [InlineData(11, 12)]
     public async Task AnUpgradeAlone_ChangesOnlyTheSpecVersion(int from, int to)
     {
         // The proving migration, in the editor: package-format-v8.md's own
@@ -649,7 +669,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         // #429 proved every rung; #430 collapsed the offer to one button, so
         // the reachable rungs are the ones to 9 (v9's own migration adds
         // exactly the tags key, asserted below).
-        var fixture = from == 7 ? EditorFixtures.V7() : from == 8 ? EditorFixtures.V8() : from == 9 ? EditorFixtures.V9Structured() : EditorFixtures.V10Nested();
+        var fixture = from == 7 ? EditorFixtures.V7() : from == 8 ? EditorFixtures.V8() : from == 9 ? EditorFixtures.V9Structured() : from == 10 ? EditorFixtures.V10Nested() : EditorFixtures.V11();
         var (result, sent) = await PublishAndCaptureAsync(
             page => { UpgradeTo(page, to); return Task.CompletedTask; },
             fixture);

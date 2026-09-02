@@ -16,9 +16,22 @@ public static class WorkflowMacroPlaceholders
     public static readonly IReadOnlySet<string> RunFacts =
         new HashSet<string>(StringComparer.Ordinal) { "date", "job", "package", "host" };
 
-    /// <summary>The closed profile: vocabulary (v11 § 4). The signature is § 5's flag, deliberately absent.</summary>
+    /// <summary>
+    /// The closed profile: vocabulary of v11 (§ 4) — name alone; the
+    /// signature was § 5's flag, deliberately absent there. v12 (§ 5 of the
+    /// v12 design) folds it in as a token, version-keyed via ProfileFactsFor
+    /// so a v11 manifest carrying the token is refused as a version
+    /// requirement, never as an unknown word.
+    /// </summary>
     public static readonly IReadOnlySet<string> ProfileFacts =
         new HashSet<string>(StringComparer.Ordinal) { "name" };
+
+    private static readonly IReadOnlySet<string> ProfileFactsV12 =
+        new HashSet<string>(StringComparer.Ordinal) { "name", "signature" };
+
+    /// <summary>The profile: vocabulary the given format version resolves (the WorkflowInputTypes.ForSpecVersion shape).</summary>
+    public static IReadOnlySet<string> ProfileFactsFor(int specVersion) =>
+        specVersion >= 12 ? ProfileFactsV12 : ProfileFacts;
 
     /// <summary>The token of one match, trimmed — the form every sentence names.</summary>
     public static string TokenOf(Match match) => match.Groups[1].Value.Trim();

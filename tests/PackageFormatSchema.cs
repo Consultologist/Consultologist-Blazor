@@ -89,7 +89,7 @@ internal static class PackageFormatSchema
         }
         else
         {
-            EnrichMacros(Object(properties, "macros"));
+            EnrichMacros(Object(properties, "macros"), specVersion);
         }
 
         if (specVersion < 9)
@@ -172,7 +172,7 @@ internal static class PackageFormatSchema
         Close(item);
     }
 
-    private static void EnrichMacros(JsonObject macros)
+    private static void EnrichMacros(JsonObject macros, int specVersion)
     {
         macros["minItems"] = 1;
         var item = Object(macros, "items");
@@ -180,6 +180,16 @@ internal static class PackageFormatSchema
         Object(properties, "id")["pattern"] = DeclaredId;
         Object(properties, "label")["minLength"] = 1;
         Object(properties, "file")["minLength"] = 1;
+
+        // v12 (§ 3): the optional pair arrives at 12; booleans need no
+        // enriching. Below it neither member exists, and the published v11
+        // bytes must not move.
+        if (specVersion < 12)
+        {
+            Remove(properties, "optional");
+            Remove(properties, "default");
+        }
+
         Close(item);
     }
 
@@ -250,8 +260,30 @@ internal static class PackageFormatSchema
         }
         else
         {
-            Object(properties, "kind")["enum"] = new JsonArray(WorkflowNodeKinds.All.Select(kind => JsonValue.Create(kind)).ToArray<JsonNode?>());
+            // v12 (§ 13): the check kind joins the enum at 12; below it the
+            // published v10/v11 bytes carry the two kinds they always did.
+            var kinds = specVersion >= 12
+                ? WorkflowNodeKinds.All
+                : new[] { WorkflowNodeKinds.Prompt, WorkflowNodeKinds.Classifier };
+            Object(properties, "kind")["enum"] = new JsonArray(kinds.Select(kind => JsonValue.Create(kind)).ToArray<JsonNode?>());
             EnrichValues(Object(properties, "values"));
+        }
+
+        // v12 (§ 13): the check node's declaration. Below 12 none of the four
+        // members exists, and the published v5–v11 bytes must not move.
+        if (specVersion < 12)
+        {
+            Remove(properties, "op");
+            Remove(properties, "of");
+            Remove(properties, "in");
+            Remove(properties, "failWith");
+        }
+        else
+        {
+            Object(properties, "op")["enum"] = new JsonArray(WorkflowCheckOps.All.Select(op => JsonValue.Create(op)).ToArray<JsonNode?>());
+            Object(properties, "of")["pattern"] = NodeRef;
+            Object(properties, "in")["pattern"] = NodeRef;
+            Object(properties, "failWith")["minLength"] = 1;
         }
 
         Close(item);
@@ -462,6 +494,10 @@ internal static class PackageFormatSchema
         }
 
         // v11 (§ 4/§ 5): a deliverable's macro list and its signature flag.
+        // The exporter cannot see through WorkflowResultMacroSpecConverter
+        // (the bindings precedent above): it reports the record, so the items
+        // shape is hand-written — the v11 string form alone below 12, the
+        // string-or-placed-object oneOf at 12 (v12 § 4).
         if (specVersion < 11)
         {
             Remove(properties, "macros");
@@ -470,8 +506,37 @@ internal static class PackageFormatSchema
         else
         {
             var macros = Object(properties, "macros");
+            macros["items"] = specVersion < 12
+                ? new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId }
+                : new JsonObject
+                {
+                    ["oneOf"] = new JsonArray(
+                        new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId },
+                        new JsonObject
+                        {
+                            ["type"] = "object",
+                            ["properties"] = new JsonObject
+                            {
+                                ["id"] = new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId },
+                                ["before"] = new JsonObject { ["type"] = "string", ["pattern"] = NodeRef },
+                                ["after"] = new JsonObject { ["type"] = "string", ["pattern"] = NodeRef }
+                            },
+                            ["required"] = Required("id"),
+                            ["additionalProperties"] = false
+                        })
+                };
             macros["minItems"] = 1;
-            Object(macros, "items")["pattern"] = DeclaredId;
+        }
+
+        // v12 (§ 13): the deliverable's gate. Below 12 the member does not
+        // exist, and the published v5–v11 bytes must not move.
+        if (specVersion < 12)
+        {
+            Remove(properties, "check");
+        }
+        else
+        {
+            Object(properties, "check")["pattern"] = NodeRef;
         }
 
         Close(item);

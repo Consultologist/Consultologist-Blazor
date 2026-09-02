@@ -39,7 +39,7 @@ public static class V11Fixtures
         manifest = manifest with
         {
             Macros = new List<WorkflowMacroSpec> { new(macroId, "Standing disclaimer", $"macros/{macroId}.md") },
-            Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<string> { macroId } } : r).ToList()
+            Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<WorkflowResultMacroSpec> { macroId } } : r).ToList()
         };
         var files = V6Fixtures.Files(manifest);
         files[$"macros/{macroId}.md"] = template;
@@ -68,10 +68,10 @@ public class WorkflowV11GateTests
     }
 
     [Fact]
-    public void TwelveIsRefused_NamingTheSet()
+    public void ThirteenIsRefused_NamingTheSet()
     {
-        Assert.Contains(V11Fixtures.Validate(V11Fixtures.Minimal() with { SpecVersion = 12 }).Errors,
-            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10 or 11"));
+        Assert.Contains(V11Fixtures.Validate(V11Fixtures.Minimal() with { SpecVersion = 13 }).Errors,
+            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10, 11 or 12"));
     }
 
     [Theory]
@@ -87,7 +87,7 @@ public class WorkflowV11GateTests
         manifest = manifest with
         {
             Results = manifest.Results!.Select((r, i) => i == 0
-                ? r with { Macros = new List<string> { "closing" }, Signature = true }
+                ? r with { Macros = new List<WorkflowResultMacroSpec> { "closing" }, Signature = true }
                 : r).ToList(),
             Nodes = manifest.Nodes!.Select((n, i) => i == 0 ? n with { Reproducible = true } : n).ToList()
         };
@@ -149,13 +149,22 @@ public class WorkflowV11MacroTests
     [InlineData("{{data:missing}}", "data:missing")]
     [InlineData("{{classification:assemble}}", "classification:assemble")]
     [InlineData("{{run:time}}", "run:time")]
-    [InlineData("{{profile:signature}}", "profile:signature")]
     [InlineData("{{no_namespace}}", "no_namespace")]
     [InlineData("{{sql:drop}}", "sql:drop")]
     public void APlaceholderThatDoesNotResolve_IsRefusedNamingTheToken(string template, string token)
     {
         Assert.Contains($"Macro 'disclaimer' placeholder '{{{{{token}}}}}' does not resolve.",
             Errors(V11Fixtures.WithMacro($"Text {template} text.")));
+    }
+
+    [Fact]
+    public void TheSignatureToken_OnAnElevenManifest_IsAVersionRequirement()
+    {
+        // v12 (§ 5) folded the signature into the profile vocabulary — so on
+        // an 11-manifest the token is a word the format knows, held behind
+        // its version: never the misleading "does not resolve".
+        Assert.Contains("Macro 'disclaimer' placeholder '{{profile:signature}}' requires specVersion 12.",
+            Errors(V11Fixtures.WithMacro("Text {{profile:signature}} text.")));
     }
 
     [Fact]
@@ -201,7 +210,7 @@ public class WorkflowV11MacroTests
         var undeclared = V11Fixtures.Minimal();
         undeclared = undeclared with
         {
-            Results = undeclared.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<string> { "ghost" } } : r).ToList()
+            Results = undeclared.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<WorkflowResultMacroSpec> { "ghost" } } : r).ToList()
         };
         Assert.Contains("Result 'consult' references undeclared macro 'ghost'.", V11Fixtures.Validate(undeclared).Errors);
 
@@ -209,7 +218,7 @@ public class WorkflowV11MacroTests
         var (twice, twiceFiles) = V11Fixtures.WithMacro();
         twice = twice with
         {
-            Results = twice.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<string> { "disclaimer", "disclaimer" } } : r).ToList()
+            Results = twice.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<WorkflowResultMacroSpec> { "disclaimer", "disclaimer" } } : r).ToList()
         };
         Assert.Contains("Result 'consult' lists macro 'disclaimer' more than once.", Errors((twice, twiceFiles)));
     }

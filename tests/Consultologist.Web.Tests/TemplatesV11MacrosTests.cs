@@ -551,10 +551,10 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         Publish(page);
 
         var refusals = Refusals(page);
-        Assert.Contains("macros requires specVersion 11. Use \"Upgrade to specVersion 11\" and publish.", refusals);
-        Assert.Contains("Result 'consult_note' declares macros, which requires specVersion 11. Use \"Upgrade to specVersion 11\" and publish.", refusals);
-        Assert.Contains("Result 'consult_note' declares signature, which requires specVersion 11. Use \"Upgrade to specVersion 11\" and publish.", refusals);
-        Assert.Contains("Node 'scope' declares reproducible, which requires specVersion 11. Use \"Upgrade to specVersion 11\" and publish.", refusals);
+        Assert.Contains("macros requires specVersion 11. Use \"Upgrade to specVersion 12\" and publish.", refusals);
+        Assert.Contains("Result 'consult_note' declares macros, which requires specVersion 11. Use \"Upgrade to specVersion 12\" and publish.", refusals);
+        Assert.Contains("Result 'consult_note' declares signature, which requires specVersion 11. Use \"Upgrade to specVersion 12\" and publish.", refusals);
+        Assert.Contains("Node 'scope' declares reproducible, which requires specVersion 11. Use \"Upgrade to specVersion 12\" and publish.", refusals);
         Assert.Null(sent);
     }
 

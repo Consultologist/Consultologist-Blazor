@@ -86,6 +86,47 @@ public class PackageFormatSchemaTests
     }
 
     [Fact]
+    public void TheV12Schema_CarriesTheDeclarationRules_AheadOfItsPublication()
+    {
+        // #617: specVersion 12 is accepted before it is run, so no published
+        // schema exists yet; the shape is pinned here as v11's was, and the
+        // v11 render is seen to be untouched by the members v12 added.
+        var schema = PackageFormatSchema.Build(12);
+        var properties = schema["properties"]!.AsObject();
+
+        var macroProperties = properties["macros"]!["items"]!["properties"]!.AsObject();
+        Assert.True(macroProperties.ContainsKey("optional"));
+        Assert.True(macroProperties.ContainsKey("default"));
+
+        // The macro entry is the hand-written oneOf — the exporter cannot see
+        // through the converter, so this shape is authored, and pinned.
+        var resultProperties = properties["results"]!["items"]!["properties"]!.AsObject();
+        var entry = resultProperties["macros"]!["items"]!.AsObject();
+        Assert.True(entry.ContainsKey("oneOf"));
+        Assert.True(resultProperties.ContainsKey("check"));
+
+        var nodeProperties = properties["nodes"]!["items"]!["properties"]!.AsObject();
+        Assert.True(nodeProperties.ContainsKey("op"));
+        Assert.True(nodeProperties.ContainsKey("of"));
+        Assert.True(nodeProperties.ContainsKey("in"));
+        Assert.True(nodeProperties.ContainsKey("failWith"));
+        Assert.Contains("check", nodeProperties["kind"]!["enum"]!.AsArray().Select(k => k!.GetValue<string>()));
+
+        // And none of it below 12: the v11 macro entry is still the bare
+        // string, and the check family absent.
+        var v11 = PackageFormatSchema.Build(11)["properties"]!.AsObject();
+        Assert.False(v11["macros"]!["items"]!["properties"]!.AsObject().ContainsKey("optional"));
+        var v11Entry = v11["results"]!["items"]!["properties"]!.AsObject()["macros"]!["items"]!.AsObject();
+        Assert.False(v11Entry.ContainsKey("oneOf"));
+        Assert.Equal("string", v11Entry["type"]!.GetValue<string>());
+        Assert.False(v11["results"]!["items"]!["properties"]!.AsObject().ContainsKey("check"));
+        var v11Nodes = v11["nodes"]!["items"]!["properties"]!.AsObject();
+        Assert.False(v11Nodes.ContainsKey("op"));
+        Assert.DoesNotContain("check", v11Nodes["kind"]!["enum"]!.AsArray().Select(k => k!.GetValue<string>()));
+        Assert.Equal("Consultologist workflow package manifest, specVersion 12", schema["title"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void TheV10Schema_CarriesTheDeclarationRules_AheadOfItsPublication()
     {
         // #492: specVersion 10 is accepted before it is run, so no published

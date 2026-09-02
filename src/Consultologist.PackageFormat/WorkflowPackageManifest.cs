@@ -42,11 +42,17 @@ public sealed record WorkflowPackageManifest(
 /// <summary>
 /// One declared macro (v11 § 4): a package-owned template file, applied to a
 /// deliverable by substitution and appended verbatim — never through a model.
+/// v12 (§ 3): an optional macro is a per-run choice and MUST declare its
+/// default — the package decides what a formless run does. bool? on purpose:
+/// a plain bool would write false onto every v11 manifest. Below 12 both are
+/// refused by name by the validator.
 /// </summary>
 public sealed record WorkflowMacroSpec(
     string Id,
     string Label,
-    string File);
+    string File,
+    bool? Optional = null,
+    bool? Default = null);
 
 /// <summary>
 /// One declared input slot of a specVersion-7 package: the id nodes bind as
@@ -269,9 +275,88 @@ public sealed record WorkflowResultSpec(
     // aggregated sections, in this order, and whether the profile's signature
     // is appended last. Trailing optionals — bool? on purpose: a plain bool
     // would write "signature": false onto every earlier manifest. Below 11
-    // both are refused by name by the validator.
-    List<string>? Macros = null,
-    bool? Signature = null);
+    // both are refused by name by the validator. v12 (§ 4): each entry is a
+    // bare id (the v11 form, byte-for-byte) or a placed object — see
+    // WorkflowResultMacroSpec.
+    List<WorkflowResultMacroSpec>? Macros = null,
+    bool? Signature = null,
+    // v12 (§ 13): the check node gating this deliverable — the
+    // post-production mirror of when. Below 12 refused by name.
+    string? Check = null);
+
+/// <summary>
+/// One entry in a deliverable's macro list. On the wire either the v11 bare
+/// id — <c>macros: [closing]</c> — or a placed object, <c>{ id: disclaimer,
+/// before: node:findings }</c> (v12 § 4). A bare entry writes the string
+/// form, so every v11 manifest round-trips byte for byte; the object form
+/// below specVersion 12 is refused by the validator, never by the reader.
+/// </summary>
+[JsonConverter(typeof(WorkflowResultMacroSpecConverter))]
+public sealed record WorkflowResultMacroSpec(
+    string Id,
+    string? Before = null,
+    string? After = null)
+{
+    /// <summary>An id and nothing else — the v11 form.</summary>
+    public bool IsBare => Before is null && After is null;
+
+    public static implicit operator WorkflowResultMacroSpec?(string? id) => id is null ? null : new(id);
+
+    public override string ToString() => Id;
+}
+
+public sealed class WorkflowResultMacroSpecConverter : JsonConverter<WorkflowResultMacroSpec>
+{
+    // The object form, read without this converter on the outer shape.
+    private sealed record Shape(string? Id, string? Before, string? After);
+
+    public override WorkflowResultMacroSpec Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            return new WorkflowResultMacroSpec(reader.GetString()!);
+        }
+
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException("A result macro entry must be a macro id or a placement object.");
+        }
+
+        var shape = JsonSerializer.Deserialize<Shape>(ref reader, options)
+            ?? throw new JsonException("A result macro entry must be a macro id or a placement object.");
+
+        if (string.IsNullOrWhiteSpace(shape.Id))
+        {
+            throw new JsonException("A placed macro entry must declare id.");
+        }
+
+        return new WorkflowResultMacroSpec(shape.Id, shape.Before, shape.After);
+    }
+
+    public override void Write(Utf8JsonWriter writer, WorkflowResultMacroSpec value, JsonSerializerOptions options)
+    {
+        if (value.IsBare)
+        {
+            writer.WriteStringValue(value.Id);
+            return;
+        }
+
+        writer.WriteStartObject();
+        writer.WriteString("id", value.Id);
+
+        if (value.Before != null)
+        {
+            writer.WriteString("before", value.Before);
+        }
+
+        if (value.After != null)
+        {
+            writer.WriteString("after", value.After);
+        }
+
+        writer.WriteEndObject();
+    }
+}
 
 public sealed record WorkflowTemplatingSpec(
     string Engine,
@@ -305,22 +390,51 @@ public sealed record WorkflowNodeSpec(
     // same for the same input — carried for the rerun verdict, never
     // enforced at run time. bool? on purpose (see WorkflowResultSpec); below
     // 11 refused by name by the validator.
-    bool? Reproducible = null);
+    bool? Reproducible = null,
+    // v12 (§ 13): the check node's declaration — kind "check" with the
+    // operation, its two concept-list operands (node:<id> refs) and the
+    // sentence a failed check speaks. Trailing optionals, omitted when
+    // null; below 12 each is refused by name by the validator.
+    string? Op = null,
+    string? Of = null,
+    string? In = null,
+    string? FailWith = null);
 
 /// <summary>
-/// The node kinds a manifest may spell (v10 § 4). Absent is a prompt node
-/// — or an aggregator when aggregate is present, which is a property, not
-/// a kind, and may not be spelled as one.
+/// The node kinds a manifest may spell (v10 § 4; check since v12 § 13).
+/// Absent is a prompt node — or an aggregator when aggregate is present,
+/// which is a property, not a kind, and may not be spelled as one.
 /// </summary>
 public static class WorkflowNodeKinds
 {
     public const string Prompt = "prompt";
     public const string Classifier = "classifier";
+    // v12 (§ 13): the deterministic gate on a deliverable — the second
+    // non-model executor after the aggregator. Below 12 the validator's
+    // gate refuses it by name before the unknown-kind sentence can fire.
+    public const string Check = "check";
 
-    public static readonly IReadOnlyList<string> All = new[] { Prompt, Classifier };
+    public static readonly IReadOnlyList<string> All = new[] { Prompt, Classifier, Check };
+
+    private static readonly IReadOnlyList<string> AllV10 = new[] { Prompt, Classifier };
+
+    /// <summary>The kinds the given format version may spell — the unknown-kind sentence names these, so it stays true per version.</summary>
+    public static IReadOnlyList<string> AllFor(int specVersion) =>
+        specVersion >= 12 ? All : AllV10;
 
     public static bool IsClassifier(WorkflowNodeSpec node) =>
         string.Equals(node.Kind, Classifier, StringComparison.Ordinal);
+
+    public static bool IsCheck(WorkflowNodeSpec node) =>
+        string.Equals(node.Kind, Check, StringComparison.Ordinal);
+}
+
+/// <summary>The check operations a manifest may spell (v12 § 13) — a closed set, like every vocabulary here.</summary>
+public static class WorkflowCheckOps
+{
+    public const string TermsSubset = "terms-subset";
+
+    public static readonly IReadOnlyList<string> All = new[] { TermsSubset };
 }
 
 public sealed record WorkflowNodeOutputSpec(
