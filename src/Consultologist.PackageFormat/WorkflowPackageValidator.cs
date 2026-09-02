@@ -1306,6 +1306,7 @@ public static class WorkflowPackageValidator
         foreach (var result in results)
         {
             ValidateResultCondition(manifest, result, declaredInputs, classifiers, errors);
+            ValidateMacroConditions(manifest, result, declaredInputs, classifiers, errors);
             ValidateResultCheck(manifest, result, checks, namedChecks, errors);
         }
 
@@ -1409,7 +1410,7 @@ public static class WorkflowPackageValidator
 
             if (manifest.SpecVersion >= 10)
             {
-                ValidateV10Clause(result, condition, declaredInputs, classifiers, errors);
+                ValidateV10Clause($"Result '{result.Id}' condition", condition, declaredInputs, classifiers, errors);
             }
             else
             {
@@ -1425,7 +1426,7 @@ public static class WorkflowPackageValidator
                 }
                 else
                 {
-                    ValidateV9Condition(result, condition, input, errors);
+                    ValidateV9Condition($"Result '{result.Id}' condition", condition, input, errors);
                 }
             }
 
@@ -1437,19 +1438,59 @@ public static class WorkflowPackageValidator
     }
 
     /// <summary>
+    /// v12 (§ 14): a macro entry's when speaks exactly the result-level
+    /// grammar — same parser, same clause validator, a longer sentence
+    /// prefix. One error per entry, first wrong clause, the § 6 discipline.
+    /// The below-12 gate spoke already, so this validates at 12 only.
+    /// </summary>
+    private static void ValidateMacroConditions(
+        WorkflowPackageManifest manifest,
+        WorkflowResultSpec result,
+        IReadOnlyDictionary<string, WorkflowInputSpec> declaredInputs,
+        IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
+        List<string> errors)
+    {
+        if (manifest.SpecVersion < 12)
+        {
+            return;
+        }
+
+        foreach (var entry in (result.Macros ?? new List<WorkflowResultMacroSpec>()).Where(e => e.When != null))
+        {
+            var prefix = $"Result '{result.Id}' macro '{entry.Id}' condition";
+
+            if (!WorkflowResultConditions.TryParseExpression(entry.When!, out var expression, out var syntaxError))
+            {
+                errors.Add($"{prefix} {syntaxError}");
+                continue;
+            }
+
+            foreach (var condition in expression!.Leaves)
+            {
+                var before = errors.Count;
+                ValidateV10Clause(prefix, condition, declaredInputs, classifiers, errors);
+
+                if (errors.Count > before)
+                {
+                    break;
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// v10 § 6: every operand — a path of any length, count() of a path, a
     /// classifier's value — is resolved to a declaration node, and the
     /// operator, the literal and any arithmetic are held to it. The v9
     /// sentences are produced for the v9 forms; the new forms have their own.
     /// </summary>
     private static void ValidateV10Clause(
-        WorkflowResultSpec result,
+        string prefix,
         WorkflowResultCondition condition,
         IReadOnlyDictionary<string, WorkflowInputSpec> declaredInputs,
         IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
         List<string> errors)
     {
-        var prefix = $"Result '{result.Id}' condition";
 
         if (condition.IsArithmetic)
         {
@@ -1494,7 +1535,7 @@ public static class WorkflowPackageValidator
         if (condition.PathDepth <= 1 && !condition.IsCount || (condition.IsCount && condition.PathDepth == 0))
         {
             // The v9 forms, in v9's words.
-            ValidateV9Condition(result, condition, input, errors);
+            ValidateV9Condition(prefix, condition, input, errors);
             return;
         }
 
@@ -1800,12 +1841,11 @@ public static class WorkflowPackageValidator
     /// hunting a syntax error.
     /// </summary>
     private static void ValidateV9Condition(
-        WorkflowResultSpec result,
+        string prefix,
         WorkflowResultCondition condition,
         WorkflowInputSpec input,
         List<string> errors)
     {
-        var prefix = $"Result '{result.Id}' condition";
         var inputType = WorkflowInputTypes.Of(input);
         string operandType;
         List<string>? values;
@@ -2142,9 +2182,20 @@ public static class WorkflowPackageValidator
 
             foreach (var result in results)
             {
-                foreach (var entry in (result.Macros ?? new List<WorkflowResultMacroSpec>()).Where(e => !e.IsBare))
+                // Keyed on the fields, not the entry's shape: a when-only
+                // entry must earn the gate sentence for when, never the
+                // placement one.
+                foreach (var entry in result.Macros ?? new List<WorkflowResultMacroSpec>())
                 {
-                    errors.Add($"Result '{result.Id}' places macro '{entry.Id}', which requires specVersion 12.");
+                    if ((entry.Before ?? entry.After) != null)
+                    {
+                        errors.Add($"Result '{result.Id}' places macro '{entry.Id}', which requires specVersion 12.");
+                    }
+
+                    if (entry.When != null)
+                    {
+                        errors.Add($"Result '{result.Id}' gates macro '{entry.Id}' with when, which requires specVersion 12.");
+                    }
                 }
             }
         }
@@ -2286,6 +2337,14 @@ public static class WorkflowPackageValidator
                     .Where(id => tokenCounts.GetValueOrDefault(id) > 0)
                     .ToList();
                 var tokensOnResult = carrying.Sum(id => tokenCounts[id]);
+
+                // § 14: whether a document is signed must not turn on a
+                // classifier's answer — the § 5 never-optional rule's sibling.
+                foreach (var gated in (result.Macros ?? new List<WorkflowResultMacroSpec>())
+                    .Where(e => e.When != null && tokenCounts.GetValueOrDefault(e.Id) > 0))
+                {
+                    errors.Add($"Result '{result.Id}' gates macro '{gated.Id}' with when, and the macro carries {{{{profile:signature}}}}; a conditional signature was rejected (#516) and stays rejected.");
+                }
 
                 if (result.Signature == true && carrying.Count > 0)
                 {

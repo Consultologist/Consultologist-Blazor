@@ -295,10 +295,15 @@ public sealed record WorkflowResultSpec(
 public sealed record WorkflowResultMacroSpec(
     string Id,
     string? Before = null,
-    string? After = null)
+    string? After = null,
+    // v12 (§ 14): the entry's data gate — the result-level condition grammar,
+    // written on the macro. Trailing so the placed pair keeps its positions.
+    string? When = null)
 {
-    /// <summary>An id and nothing else — the v11 form.</summary>
-    public bool IsBare => Before is null && After is null;
+    /// <summary>An id and nothing else — the v11 form. When must count:
+    /// the writer keys the bare-string form on this, and a when-only entry
+    /// serialized bare would silently drop its clause on republish.</summary>
+    public bool IsBare => Before is null && After is null && When is null;
 
     public static implicit operator WorkflowResultMacroSpec?(string? id) => id is null ? null : new(id);
 
@@ -308,7 +313,7 @@ public sealed record WorkflowResultMacroSpec(
 public sealed class WorkflowResultMacroSpecConverter : JsonConverter<WorkflowResultMacroSpec>
 {
     // The object form, read without this converter on the outer shape.
-    private sealed record Shape(string? Id, string? Before, string? After);
+    private sealed record Shape(string? Id, string? Before, string? After, string? When);
 
     public override WorkflowResultMacroSpec Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
@@ -330,7 +335,7 @@ public sealed class WorkflowResultMacroSpecConverter : JsonConverter<WorkflowRes
             throw new JsonException("A placed macro entry must declare id.");
         }
 
-        return new WorkflowResultMacroSpec(shape.Id, shape.Before, shape.After);
+        return new WorkflowResultMacroSpec(shape.Id, shape.Before, shape.After, shape.When);
     }
 
     public override void Write(Utf8JsonWriter writer, WorkflowResultMacroSpec value, JsonSerializerOptions options)
@@ -352,6 +357,11 @@ public sealed class WorkflowResultMacroSpecConverter : JsonConverter<WorkflowRes
         if (value.After != null)
         {
             writer.WriteString("after", value.After);
+        }
+
+        if (value.When != null)
+        {
+            writer.WriteString("when", value.When);
         }
 
         writer.WriteEndObject();

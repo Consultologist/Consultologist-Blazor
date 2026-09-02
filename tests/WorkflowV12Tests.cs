@@ -980,3 +980,144 @@ public class WorkflowV12CheckRecordTests
         Assert.Null(projected["assemble-note"].Check);
     }
 }
+
+/// <summary>
+/// v12 rung (i) (#631, design § 14): the conditional macro — the entry's
+/// when speaks the result-level condition grammar, gated at 12, refused
+/// below by name; the writer keeps the v11 bytes and never drops a clause.
+/// </summary>
+public class WorkflowV12ConditionalMacroTests
+{
+    /// <summary>The § 14 shape: a classifier and a when-gated macro entry.</summary>
+    private static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) Gated(
+        string when,
+        string macroId = "disclaimer",
+        string template = "This paragraph is fixed text.")
+    {
+        var (manifest, files) = V10Fixtures.WithClassifier(from: V12Fixtures.Minimal());
+        manifest = manifest with
+        {
+            Macros = new List<WorkflowMacroSpec> { new(macroId, "Gated paragraph", $"macros/{macroId}.md") },
+            Results = manifest.Results!.Select((r, i) => i == 0
+                ? r with { Macros = new List<WorkflowResultMacroSpec> { new(macroId, When: when) } }
+                : r).ToList()
+        };
+        var all = new Dictionary<string, string>(files) { [$"macros/{macroId}.md"] = template };
+        return (manifest, all);
+    }
+
+    [Fact]
+    public void TheGatedParagraph_Publishes()
+    {
+        var result = V12Fixtures.Validate(Gated("node:scope == in_scope"));
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AMatchCase_TwoArms_Publishes()
+    {
+        var (manifest, files) = V10Fixtures.WithClassifier(from: V12Fixtures.Minimal());
+        manifest = manifest with
+        {
+            Macros = new List<WorkflowMacroSpec>
+            {
+                new("arm_in", "In-scope paragraph", "macros/arm_in.md"),
+                new("arm_out", "Out-of-scope paragraph", "macros/arm_out.md")
+            },
+            Results = manifest.Results!.Select((r, i) => i == 0
+                ? r with
+                {
+                    Macros = new List<WorkflowResultMacroSpec>
+                    {
+                        new("arm_in", When: "node:scope == in_scope"),
+                        new("arm_out", When: "node:scope == out_of_scope")
+                    }
+                }
+                : r).ToList()
+        };
+        var all = new Dictionary<string, string>(files)
+        {
+            ["macros/arm_in.md"] = "The in-scope paragraph.",
+            ["macros/arm_out.md"] = "The out-of-scope paragraph."
+        };
+
+        var result = WorkflowPackageValidator.Validate(manifest, all, TestOutputContracts.CatalogSchemas);
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AtEleven_TheGate_RefusesByName_AndAPlacedGatedEntry_EarnsBothSentences()
+    {
+        var (manifest, files) = Gated("node:scope == in_scope");
+        manifest = manifest with
+        {
+            SpecVersion = 11,
+            Results = manifest.Results!.Select((r, i) => i == 0
+                ? r with { Macros = new List<WorkflowResultMacroSpec> { new("disclaimer", Before: "node:section-instructions", When: "node:scope == in_scope") } }
+                : r).ToList()
+        };
+
+        var errors = WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas).Errors;
+
+        Assert.Contains("Result 'consult' gates macro 'disclaimer' with when, which requires specVersion 12.", errors);
+        Assert.Contains("Result 'consult' places macro 'disclaimer', which requires specVersion 12.", errors);
+    }
+
+    [Fact]
+    public void ABlankClause_IsRefused()
+    {
+        Assert.Contains(
+            "Result 'consult' macro 'disclaimer' condition is blank.",
+            V12Fixtures.Validate(Gated("   ")).Errors);
+    }
+
+    [Fact]
+    public void TheVocabulary_IsTheResultLevelOne_WithTheLongerPrefix()
+    {
+        // One grammar, two doors: the reused refusals speak the macro prefix.
+        var errors = V12Fixtures.Validate(Gated("node:sideways == in_scope")).Errors;
+        Assert.Contains(errors, e => e.StartsWith("Result 'consult' macro 'disclaimer' condition reads 'node:sideways', which is not a classifier", StringComparison.Ordinal));
+
+        Assert.Contains(
+            "Result 'consult' macro 'disclaimer' condition compares 'node:scope' to 'maybe', which it does not declare (values: in_scope, out_of_scope).",
+            V12Fixtures.Validate(Gated("node:scope == maybe")).Errors);
+
+        var undeclared = V12Fixtures.Validate(Gated("include_counseling")).Errors;
+        Assert.Contains(undeclared, e => e.StartsWith("Result 'consult' macro 'disclaimer' condition reads undeclared input 'include_counseling'", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AConditionalSignature_IsRefused()
+    {
+        // § 14: whether a document is signed must not turn on a classifier's
+        // answer — the § 5 never-optional rule's sibling.
+        Assert.Contains(
+            "Result 'consult' gates macro 'disclaimer' with when, and the macro carries {{profile:signature}}; a conditional signature was rejected (#516) and stays rejected.",
+            V12Fixtures.Validate(Gated("node:scope == in_scope", template: "Sincerely,\n\n{{profile:signature}}")).Errors);
+    }
+
+    [Fact]
+    public void TheWriter_KeepsTheClause_AndTheBareForm()
+    {
+        // The IsBare edge: a when-only entry must serialize as an object — a
+        // bare string would silently drop the clause on republish.
+        var (manifest, _) = Gated("node:scope == in_scope");
+        var json = WorkflowV10StructureTests.Write(manifest);
+
+        Assert.Contains("{\"id\":\"disclaimer\",\"when\":\"node:scope == in_scope\"}", json);
+        Assert.Equal(json, WorkflowV10StructureTests.Write(
+            WorkflowPackageManifestJson.Read(json, "v12", WorkflowPackageValidator.AcceptedSpecVersions)));
+
+        // A placed-and-gated entry carries all three keys in declared order.
+        manifest = manifest with
+        {
+            Results = manifest.Results!.Select((r, i) => i == 0
+                ? r with { Macros = new List<WorkflowResultMacroSpec> { new("disclaimer", Before: "node:section-instructions", When: "node:scope == in_scope") } }
+                : r).ToList()
+        };
+        var placed = WorkflowV10StructureTests.Write(manifest);
+        Assert.Contains("{\"id\":\"disclaimer\",\"before\":\"node:section-instructions\",\"when\":\"node:scope == in_scope\"}", placed);
+        Assert.Equal(placed, WorkflowV10StructureTests.Write(
+            WorkflowPackageManifestJson.Read(placed, "v12", WorkflowPackageValidator.AcceptedSpecVersions)));
+    }
+}
