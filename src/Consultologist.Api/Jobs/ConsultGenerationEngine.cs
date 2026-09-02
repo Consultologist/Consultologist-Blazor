@@ -473,9 +473,16 @@ public sealed class ConsultGenerationOrchestrator
                             // Render's bytes above. A deliverable with no
                             // macros passes rendered through untouched — the
                             // control's bytes.
-                            var (text, appended) = ConsultMacroExpander.Append(
-                                rendered,
+                            // v12 #619 (§ 4): the composer interleaves placed
+                            // macros between the sources and appends the rest
+                            // — with nothing placed its bytes equal the v11
+                            // append exactly (pinned). `rendered` above stays
+                            // the hash and the bindable output.
+                            var (text, appended) = ConsultMacroExpander.Compose(
+                                aggregator.Aggregate!,
+                                parts,
                                 deliverable.MacroIds,
+                                deliverable.MacroPlacements,
                                 input.MacroTexts,
                                 effectiveInputs,
                                 input.DataScalars,

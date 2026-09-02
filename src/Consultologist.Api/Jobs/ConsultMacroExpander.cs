@@ -65,6 +65,95 @@ internal static class ConsultMacroExpander
         return (string.Join("\n\n", pieces), appended);
     }
 
+    /// <summary>
+    /// v12 #619 (design § 4): the placement-aware composition — per aggregate
+    /// source, in order: macros placed before it (in results[].macros order),
+    /// the source's rendered bytes, macros placed after it; then every
+    /// unplaced macro, in order; blank-line separated throughout. The
+    /// appended entries emit in DOCUMENT order (§ 6). With nothing placed the
+    /// bytes equal Append(Render(parts), …)'s exactly — the join is
+    /// associative, and the parity is pinned. The caller hashes
+    /// Render(parts) separately, before this runs: composition never touches
+    /// the aggregator's outputHash or its downstream binds (§ 7).
+    /// </summary>
+    public static (string Text, IReadOnlyList<ConsultAppendedEntry>? Appended) Compose(
+        IReadOnlyList<string> sourceRefs,
+        IReadOnlyList<ConsultAggregateRenderer.Part> parts,
+        IReadOnlyList<string>? macroIds,
+        IReadOnlyList<ConsultMacroPlacement>? placements,
+        IReadOnlyDictionary<string, string>? macroTexts,
+        IReadOnlyDictionary<string, string> inputs,
+        IReadOnlyDictionary<string, string>? dataScalars,
+        IReadOnlyDictionary<string, string> classifications,
+        RunFacts facts)
+    {
+        if (sourceRefs.Count != parts.Count)
+        {
+            // The engine's success path builds one part per aggregate source;
+            // a mismatch here is a broken invariant upstream, and placing a
+            // macro against the wrong section is worse than failing the job.
+            throw new InvalidOperationException(
+                $"Aggregate composition received {parts.Count} parts for {sourceRefs.Count} sources.");
+        }
+
+        if (macroIds is not { Count: > 0 })
+        {
+            return (ConsultAggregateRenderer.Render(parts), null);
+        }
+
+        // A placement whose macro is not in the id list places nothing — the
+        // filters keep the two in lockstep, and this is the belt to that
+        // suspender.
+        var active = (placements ?? Array.Empty<ConsultMacroPlacement>())
+            .Where(placement => macroIds.Contains(placement.Id, StringComparer.Ordinal))
+            .ToList();
+        var placedIds = active.Select(placement => placement.Id).ToHashSet(StringComparer.Ordinal);
+
+        string ExpandId(string macroId)
+        {
+            if (macroTexts is null || !macroTexts.TryGetValue(macroId, out var template))
+            {
+                throw new InvalidOperationException($"Macro '{macroId}' has no snapshotted template.");
+            }
+
+            return Expand(template, inputs, dataScalars, classifications, facts);
+        }
+
+        var pieces = new List<string>(parts.Count + macroIds.Count);
+        var appended = new List<ConsultAppendedEntry>(macroIds.Count);
+
+        void Emit(ConsultMacroPlacement placement)
+        {
+            pieces.Add(ExpandId(placement.Id));
+            appended.Add(new ConsultAppendedEntry(ConsultAppendedKinds.Macro, placement.Id));
+        }
+
+        for (var i = 0; i < parts.Count; i++)
+        {
+            var sourceRef = sourceRefs[i];
+
+            foreach (var placement in active.Where(p => string.Equals(p.Before, sourceRef, StringComparison.Ordinal)))
+            {
+                Emit(placement);
+            }
+
+            pieces.Add(ConsultAggregateRenderer.RenderPart(parts[i]));
+
+            foreach (var placement in active.Where(p => string.Equals(p.After, sourceRef, StringComparison.Ordinal)))
+            {
+                Emit(placement);
+            }
+        }
+
+        foreach (var macroId in macroIds.Where(id => !placedIds.Contains(id)))
+        {
+            pieces.Add(ExpandId(macroId));
+            appended.Add(new ConsultAppendedEntry(ConsultAppendedKinds.Macro, macroId));
+        }
+
+        return (string.Join("\n\n", pieces), appended.Count > 0 ? appended : null);
+    }
+
     /// <summary>One template, expanded — substitution over the closed namespaces.</summary>
     public static string Expand(
         string template,
