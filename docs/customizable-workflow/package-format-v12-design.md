@@ -311,19 +311,26 @@ counts) lands as one registry version after the engine rungs, v11
 - **(d)** The signature token: widened snapshot gate, token
   resolution, the appender's embedded mode, unsigned and as-of
   preserved. *(After (c) — same append path.)*
-- **(e)** Editor: § 9, all of it, plus § 13's check-node authoring,
-  gated at 12.
+- **(i)** Conditional macros (§ 14): the entry's `when`, the
+  validator arms, the one helper at both evaluation moments, the
+  `excludedMacros` record, History's line. *(After (b)/(h); before
+  (e) — the editor authors against the final grammar.)*
+- **(e)** Editor: § 9, all of it, plus § 13's check-node authoring
+  and § 14's `when` on the Documents-pane macro rows, gated at 12.
 - **(f)** Provenance registry bump: `macroChoices`, the re-worded
   `appended[]` sentence, the embedded-signature entry, § 13's
-  `failedDocuments` and the check node's row, a worked example.
+  `failedDocuments` and the check node's row, § 14's
+  `excludedMacros` row, a worked example.
 - **(h)** The check node in the engine (§ 13): the inline executor,
   the settle/record split with the deferred append chain, the
   per-document failure state, record and UI. *(After (c)/(d) — it
   moves the same completion path they touch.)*
 - **(g)** *The engine runs twelve*: the gate, the format registry's
-  v12 publication, the submodule pin, a demo package exercising all
-  four constructs, `general` the control — a v12 package using none
-  of v12 hashes and renders byte-identically to its v11 self.
+  v12 publication (§ 14's entry-object `when` and its conformance
+  sentences included), the submodule pin, a demo package exercising
+  all five constructs — a conditional macro among them — `general`
+  the control: a v12 package using none of v12 hashes and renders
+  byte-identically to its v11 self.
 
 ## 13. The check node (added 2026-09-02)
 
@@ -492,3 +499,151 @@ own regulatory position.
 3. **Per-document is the right blast radius** — a multi-deliverable
    package where one failed letter *should* hold back its siblings
    would need an explicit grouping construct, not a quiet widening.
+
+## 14. The conditional macro (added 2026-09-02)
+
+The verbatim paragraph, gated by the run's facts. § 3 gave the macro a
+per-run *human* gate; this section gives it a *data* gate — the same
+closed condition grammar `when` already speaks on results, written on
+the result's macro entry. N mutually-exclusive when-gated macros on
+one result is the match/case a boilerplate letter writes today in
+prose ("if letrozole, add this counseling paragraph; if tamoxifen,
+that one") — spelled as declarations, decided deterministically, and
+landing byte-verbatim or not at all. The v11 § 11 workaround — a
+boolean input read *in a prompt* — routes a verbatim-placement
+decision through a model; this is the § 1 argument, closed.
+
+### Grammar
+
+```yaml
+macros:
+  - { id: letrozole_counseling, label: Letrozole counseling, file: macros/letrozole.md }
+  - { id: tamoxifen_counseling, label: Tamoxifen counseling, file: macros/tamoxifen.md }
+
+nodes:
+  - id: hormone                      # v10 classifier, unchanged
+    kind: classifier
+    prompt: classify-hormone
+    bindings: { draft: input:consult_draft }
+    values: [letrozole, tamoxifen, none]
+
+results:
+  - id: consult_note
+    node: node:assemble-note
+    label: Consultation note
+    macros:
+      - { id: letrozole_counseling, after: node:plan, when: "node:hormone == letrozole" }
+      - { id: tamoxifen_counseling, after: node:plan, when: "node:hormone == tamoxifen" }
+```
+
+- `when` joins the placed-entry object beside `before`/`after`; any
+  combination of the three is legal, and so is `when` alone (an
+  appended-not-placed conditional). The bare string form stays the
+  v11 bytes — untouched, unconditional.
+- The condition vocabulary is **exactly** the result-level grammar
+  (v10 § 6): declared inputs, paths, `count()`, arithmetic,
+  `node:<classifier> == value` with its closed value set, boolean
+  algebra. One grammar, two doors; no macro-only dialect.
+- `when` composes with a declaration's `optional`: inclusion is
+  *choice holds AND when holds*. The gates are orthogonal — "include
+  counseling text at all" is the clinician's; "the letrozole variant"
+  is the run's.
+
+### Semantics
+
+Evaluation is the result-condition's three-valued rule: held,
+not-held, or **absent** — and absence is never held, even under
+`not`. An unsupplied optional input excludes the macro and the record
+says "not supplied". The clause is evaluated **once**, at the moment
+the fire set is decided: at start for a classifier-less package, at
+the deciding boundary otherwise — never twice, and never re-judged
+later in the run. Match/case disjointness is the author's: the
+validator proves each clause's vocabulary, not the set's exclusivity
+(two held arms both land, in declared order — the same discipline as
+two unconditional macros). A `when`-skipped **result** never
+evaluates its macro clauses — skip stays skip, and nothing is
+recorded for a document that does not exist.
+
+### Engine behaviour
+
+Non-held macros are stripped **before descriptor birth**, placements
+leaving in lockstep with their ids. Everything downstream —
+`ConsultMacroExpander.Compose`, `appended[]`, `documentHash`, the
+signature appender — sees exactly the macro list it would have seen
+had the package declared only the held entries; no new wire field, no
+composer change, no hash change. Two standing facts make this cheap,
+stated here so they stay pinned rather than accidental:
+
+- **The deciding stage already runs every classifier.** The closure
+  roots at every classification-contract node, not at the nodes result
+  conditions happen to name — so a classifier referenced only by a
+  macro `when` answers before the boundary asks.
+- **The fire-set prune already keeps every classifier.** Classifiers
+  are exempt from reachability wholesale; a macro-`when` classifier
+  survives any skip.
+
+### What the record says
+
+`excludedMacros[]` — `{ resultId, macroId, reason }` for every
+when-excluded macro on a **firing** result, result-set order then
+declared-macro order. The reason is the condition explainer's
+sentence ("needs node:hormone to be 'letrozole'; it is 'tamoxifen'"),
+which carries package-authored names and declared values only — the
+no-PHI guarantee is the explainer's, inherited not reimplemented.
+Recorded, never derived-only: the pinned package plus the
+classifications *could* re-derive the absence, but absence gets a
+visible name — the skipped-documents tradition. `excludedMacros` is
+independent of § 3's `macroChoices`: a macro can be out by choice, out
+by clause, or both; each record states its own fact and the reader
+ANDs them. History renders the exclusion beside the skipped-documents
+lines; the email reply does not name it (a refused *document* changes
+what the clinic receives; an excluded *paragraph* is the document
+working as authored).
+
+### Validator rules (all refusals by name)
+
+Below 12: `when` on a macro entry — "gates macro … with when, which
+requires specVersion 12" — fired on the field, not on the entry's
+shape, so a when-only entry never earns the placement sentence by
+accident.
+
+At 12: a blank or unparseable clause; every vocabulary refusal the
+result-level `when` already speaks (undeclared input, non-classifier
+`node:`, bare classifier truth-test, ordered classifier, undeclared
+value, arithmetic over symbols) — same sentences, longer prefix
+(`Result '{id}' macro '{mid}' condition …`), one grammar refusing in
+one voice; and a when-gated entry whose macro carries
+`{{profile:signature}}` — a conditional signature was rejected with
+§ 5 (the token is never in an optional macro) and stays rejected: the
+signed-once count is static, and whether a document is signed must
+not turn on a classifier's answer.
+
+### Candidates not taken (§ 10's family)
+
+- **`when` on the macro declaration** — conditionality is
+  per-deliverable, like placement: the same paragraph may be
+  unconditional in the note and gated in the letter (§ 3's
+  compound-key argument, again).
+- **Proving match/case disjointness** — the validator proves clause
+  vocabulary, not set exclusivity; overlapping arms landing in
+  declared order is a package-authoring fact the preview shows.
+- **Evaluating input-only clauses at start for deciding jobs** — two
+  moments for one construct; the boundary has everything in hand and
+  is already the recorded decision point.
+- **Suppressing the exclusion record when a choice already
+  declined** — two true facts; the boundary never sees the request,
+  and the record should not pretend it did.
+- **An `otherwise` arm** — spellable today as `not (…)` or an
+  unconditional entry; sugar can wait for evidence.
+
+### The assumptions a real letter would test (§ 11's family)
+
+1. **Paragraph granularity is right** — no intra-macro
+   conditionality; a macro wanting a conditional *sentence* is two
+   macros.
+2. **History-only surfacing suffices** — the person most likely to
+   wonder where the counseling paragraph went is reading the record,
+   not the reply email.
+3. **No-fallback is what letters want** — an unmatched match/case
+   appends nothing and records why; a package wanting a default arm
+   declares an `otherwise`-shaped clause or an unconditional macro.
