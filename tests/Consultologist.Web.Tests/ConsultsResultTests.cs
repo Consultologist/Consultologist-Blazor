@@ -20,6 +20,7 @@ public class ConsultsResultTests : ClientRenderTestContext
         string? assembledDocument = null,
         IReadOnlyList<ConsultGenerationResultDocumentResponse>? documents = null,
         IReadOnlyList<ConsultSkippedDocumentResponse>? skipped = null,
+        IReadOnlyList<ConsultFailedDocumentResponse>? failed = null,
         IReadOnlyDictionary<string, string>? heldInputs = null,
         DateTimeOffset? inputsDroppedAtUtc = null,
         ConsultTokenUsage? tokens = null)
@@ -41,6 +42,7 @@ public class ConsultsResultTests : ClientRenderTestContext
             AssembledDocument: assembledDocument,
             AssembledDocuments: documents,
             SkippedDocuments: skipped,
+            FailedDocuments: failed,
             HeldInputs: heldInputs,
             InputsDroppedAtUtc: inputsDroppedAtUtc,
             Tokens: tokens));
@@ -177,6 +179,31 @@ public class ConsultsResultTests : ClientRenderTestContext
         var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
 
         Assert.Empty(page.FindAll("[data-skipped-result]"));
+        Assert.Empty(page.FindAll("[data-failed-result]"));
+    }
+
+    [Fact]
+    public void ADocumentItsOwnCheckRefused_IsNamedBesideTheDocuments()
+    {
+        // v12 #624: the third state. The package's failWith sentence is
+        // authored content — shown verbatim beside what did produce.
+        WithCompletedJob(
+            documents: new[]
+            {
+                new ConsultGenerationResultDocumentResponse("consult_note", "Consultation note", "The assembled note.")
+            },
+            failed: new[]
+            {
+                new ConsultFailedDocumentResponse("patient_letter", "Patient letter",
+                    "The letter does not cover every clinical term found in the referral.")
+            });
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var note = page.Find("[data-failed-result='patient_letter']").TextContent;
+        Assert.Contains("Patient letter", note);
+        Assert.Contains("was not produced: its check failed", note);
+        Assert.Contains("does not cover every clinical term", note);
     }
 
     [Fact]

@@ -572,6 +572,15 @@
                                         <strong>@skipped.Label</strong> was not produced: it @skipped.Reason.
                                     </p>
                                 }
+                                @* v12 #624: a deliverable its own check refused —
+                                   the package's failWith sentence is authored
+                                   content, no clinical detail. *@
+                                @foreach (var failed in failedDocuments)
+                                {
+                                    <p class="muted-text" data-failed-result="@failed.ResultId">
+                                        <strong>@failed.Label</strong> was not produced: its check failed — @failed.Reason
+                                    </p>
+                                }
                             </div>
                         }
                         else if (generatedBlocks.Count > 0)
@@ -1017,6 +1026,9 @@
 
   // #315: declared deliverables this job's inputs excluded.
   private IReadOnlyList<ConsultSkippedDocumentResponse> skippedDocuments = Array.Empty<ConsultSkippedDocumentResponse>();
+  // v12 #624: deliverables refused by their check — kept once seen, like the
+  // skipped list, so the explanation survives later polls that omit it.
+  private IReadOnlyList<ConsultFailedDocumentResponse> failedDocuments = Array.Empty<ConsultFailedDocumentResponse>();
   private string? activeDocumentId;
   private List<PackageBlock> packageBlocks = new();
   // #360: the CURRENT pin, resolved to a concrete name@vYYYY.MM.N. One meaning,
@@ -1914,6 +1926,10 @@
     if (response.SkippedDocuments is { Count: > 0 })
     {
       skippedDocuments = response.SkippedDocuments;
+    }
+    if (response.FailedDocuments is { Count: > 0 })
+    {
+      failedDocuments = response.FailedDocuments;
     }
     else if (response.AssembledDocument != null)
     {

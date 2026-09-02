@@ -30,6 +30,7 @@ public class HistoryDetailTests : ClientRenderTestContext
         string? packageTitle = null,
         IReadOnlyList<string>? packageTags = null,
         IReadOnlyList<ConsultGenerationNodeDescriptor>? nodes = null,
+        IReadOnlyList<ConsultFailedDocumentResponse>? failed = null,
         string? catalogRef = null,
         IReadOnlyDictionary<string, string>? agentVersions = null,
         string workflowOutputHash = "bbbb",
@@ -78,6 +79,7 @@ public class HistoryDetailTests : ClientRenderTestContext
             AssembledDocuments: documents,
             InputOrigins: inputOrigins,
             SkippedDocuments: skipped,
+            FailedDocuments: failed,
             SchemaVersion: schemaVersion,
             PackageSpecVersion: packageSpecVersion,
             WorkflowPackage: workflowPackage,
@@ -733,6 +735,32 @@ public class HistoryDetailTests : ClientRenderTestContext
             WorkflowPackage: "general@v2026.08.1",
             PackageTitle: "Breast oncology consults",
             StartFailure: NothingApplied));
+    }
+
+    [Fact]
+    public void ADocumentItsOwnCheckRefused_IsNamedBesideTheEvidence()
+    {
+        // v12 #624: the third state on the record — beside the produced
+        // documents' hashes, with the package's sentence and the uncovered
+        // terms as the evidence.
+        WithJob(3,
+            documents: new[]
+            {
+                new ConsultGenerationResultDocumentResponse("consult_note", "Consultation note", "The note.", DocumentHash: "cccc")
+            },
+            failed: new[]
+            {
+                new ConsultFailedDocumentResponse("patient_letter", "Patient letter",
+                    "The letter does not cover every clinical term found in the referral.",
+                    Uncovered: new[] { "diabetes mellitus" })
+            });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var text = page.Find(".provenance-list").TextContent;
+        Assert.Contains("Patient letter", text, StringComparison.Ordinal);
+        Assert.Contains("not produced — the check failed: The letter does not cover every clinical term found in the referral.", text, StringComparison.Ordinal);
+        Assert.Contains("not covered: diabetes mellitus", text, StringComparison.Ordinal);
     }
 
     [Fact]
