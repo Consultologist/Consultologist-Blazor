@@ -776,7 +776,13 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // chosen block travels as the flag without a snapshot, which the
         // engine records as produced unsigned.
         ConsultSignatureSnapshot? signatureSnapshot = null;
-        if (package.Results?.Any(result => result.Signature == true) == true)
+        // v12 #620 (§ 5): the gate widens — a referenced macro carrying
+        // {{profile:signature}} needs the block too. The orphan rule means
+        // every declared macro is referenced, and the token is refused in
+        // optional macros, so scanning the snapshotted templates is exact.
+        var signatureTokenCarried = macroTexts?.Values
+            .Any(WorkflowMacroPlaceholders.CarriesSignatureToken) == true;
+        if (package.Results?.Any(result => result.Signature == true) == true || signatureTokenCarried)
         {
             var signatureSetting = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.ProfileSignatures, cancellationToken);
             var chosen = SignatureBlocks.Chosen(SignatureBlocks.Parse(signatureSetting?.Value));

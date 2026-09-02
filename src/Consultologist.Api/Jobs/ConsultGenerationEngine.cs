@@ -492,14 +492,17 @@ public sealed class ConsultGenerationOrchestrator
                                     context.InstanceId,
                                     input.WorkflowPackage ?? string.Empty,
                                     input.ApiHost,
-                                    input.ProfileName));
+                                    input.ProfileName,
+                                    // v12 #620: the block the token embeds.
+                                    input.Signature));
 
-                            // v11 #516: the signature, strictly last — on the
-                            // expander's output, so it follows every macro;
-                            // inside the document and its hash, or the named
-                            // unsigned state when none was chosen.
-                            var (finalText, finalAppended, unsigned) = ConsultSignatureAppend.Apply(
-                                text, appended, deliverable.Signature == true, input.Signature);
+                            // v11 #516: the signature, strictly last by
+                            // default — v12 #620 demotes that to the flag's
+                            // behaviour: an embedded token already wrote the
+                            // text and the entry, so Finish skips the append
+                            // (signed once) and names the unsigned state.
+                            var (finalText, finalAppended, unsigned) = ConsultSignatureAppend.Finish(
+                                text, appended, deliverable.Signature == true, tokenCarried, input.Signature);
                             recordedTexts[deliverable.ResultId!] = finalText;
 
                             await context.Entities.CallEntityAsync(
