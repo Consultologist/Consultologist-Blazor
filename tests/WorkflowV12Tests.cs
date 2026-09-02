@@ -1258,3 +1258,116 @@ public class WorkflowV12ConditionalMacroStarterTests
         return condition!;
     }
 }
+
+/// <summary>
+/// v12 rung (i) (#631, design § 14): the proof end to end — the judged
+/// descriptor composes without the excluded paragraph, appended[] and the
+/// document bytes cover only what landed, and the aggregator's hash input
+/// never learns any of it (§ 7 purity, again).
+/// </summary>
+public class WorkflowV12ConditionalMacroCompositionTests
+{
+    private static readonly Dictionary<string, string> NoValues = new(StringComparer.Ordinal);
+
+    private static readonly Dictionary<string, string> Texts = new(StringComparer.Ordinal)
+    {
+        ["opening"] = "Thank you for this referral.",
+        ["letrozole_counseling"] = "We discussed letrozole's side effects.",
+        ["tamoxifen_counseling"] = "We discussed tamoxifen's side effects."
+    };
+
+    private static Consultologist.Api.Jobs.ConsultMacroExpander.RunFacts Facts() =>
+        new(new DateTime(2026, 9, 2, 12, 0, 0, DateTimeKind.Utc), "0123456789abcdef", "general@v2026.09.1", "east.ca.api.consultologist.ai", "Taylor Reyes");
+
+    private static readonly string[] SourceRefs = { "node:plan" };
+
+    private static readonly IReadOnlyList<Consultologist.Api.Jobs.ConsultAggregateRenderer.Part> Parts =
+        new Consultologist.Api.Jobs.ConsultAggregateRenderer.Part[]
+        {
+            new Consultologist.Api.Jobs.ConsultAggregateRenderer.ScalarPart("The plan.")
+        };
+
+    private static Consultologist.Api.Workflow.WorkflowResolvedResult MatchCase() =>
+        new("consult", "assemble-note", "Consultation note",
+            Macros: new[] { "opening", "letrozole_counseling", "tamoxifen_counseling" },
+            MacroPlacements: new[]
+            {
+                new Consultologist.Api.Models.ConsultMacroPlacement("letrozole_counseling", After: "node:plan"),
+                new Consultologist.Api.Models.ConsultMacroPlacement("tamoxifen_counseling", After: "node:plan")
+            },
+            MacroConditions: new[]
+            {
+                new Consultologist.Api.Workflow.WorkflowResolvedMacroCondition("letrozole_counseling", Parse("node:hormone == letrozole")),
+                new Consultologist.Api.Workflow.WorkflowResolvedMacroCondition("tamoxifen_counseling", Parse("node:hormone == tamoxifen"))
+            });
+
+    private static WorkflowConditionExpression Parse(string when)
+    {
+        Assert.True(WorkflowResultConditions.TryParseExpression(when, out var condition, out var error), error);
+        return condition!;
+    }
+
+    private static (string Text, IReadOnlyList<Consultologist.Api.Models.ConsultAppendedEntry>? Appended) ComposeJudged(
+        IReadOnlyDictionary<string, string> classifications)
+    {
+        var result = MatchCase();
+        var (kept, _) = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DecideMacroWhens(result, null, classifications);
+        var placements = Consultologist.Api.Jobs.ConsultGenerationJobStarter.FilterPlacements(result.MacroPlacements, kept);
+
+        var (text, appended, _) = Consultologist.Api.Jobs.ConsultMacroExpander.Compose(
+            SourceRefs, Parts, kept, placements, Texts, NoValues, null, NoValues, Facts());
+        return (text, appended);
+    }
+
+    [Fact]
+    public void TheDocument_CarriesTheHeldArm_AndNotTheOther()
+    {
+        var (text, appended) = ComposeJudged(
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "letrozole" });
+
+        Assert.Equal(
+            "The plan.\n\nWe discussed letrozole's side effects.\n\nThank you for this referral.",
+            text);
+        Assert.DoesNotContain("tamoxifen", text, StringComparison.Ordinal);
+        Assert.Equal(new[] { "letrozole_counseling", "opening" }, appended!.Select(e => e.Id));
+    }
+
+    [Fact]
+    public void TheOtherAnswer_SwapsTheParagraph()
+    {
+        var (text, appended) = ComposeJudged(
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "tamoxifen" });
+
+        Assert.Contains("tamoxifen's side effects", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("letrozole", text, StringComparison.Ordinal);
+        Assert.Equal(new[] { "tamoxifen_counseling", "opening" }, appended!.Select(e => e.Id));
+    }
+
+    [Fact]
+    public void AnUnmatchedCase_AppendsNothing_NoFallback()
+    {
+        // § 14.7 assumption 3: an unmatched match/case appends nothing and
+        // the record says why — a default arm is the package's to declare.
+        var (text, appended) = ComposeJudged(
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "none" });
+
+        Assert.Equal("The plan.\n\nThank you for this referral.", text);
+        Assert.Equal(new[] { "opening" }, appended!.Select(e => e.Id));
+    }
+
+    [Fact]
+    public void TheAggregatorsHashInput_NeverLearnsTheJudgment()
+    {
+        // § 7, § 14.3: the exclusion changes the composed document, never the
+        // aggregator's recorded output — same Render bytes either way.
+        var rendered = Consultologist.Api.Jobs.ConsultAggregateRenderer.Render(Parts);
+        var hash = Consultologist.Api.Workflow.ConsultGenerationProvenance.Sha256Hex(rendered);
+
+        var (letrozole, _) = ComposeJudged(new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "letrozole" });
+        var (none, _) = ComposeJudged(new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "none" });
+
+        Assert.NotEqual(letrozole, none);
+        Assert.Equal(hash, Consultologist.Api.Workflow.ConsultGenerationProvenance.Sha256Hex(
+            Consultologist.Api.Jobs.ConsultAggregateRenderer.Render(Parts)));
+    }
+}
