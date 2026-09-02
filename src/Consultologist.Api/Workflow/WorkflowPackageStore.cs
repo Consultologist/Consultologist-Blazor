@@ -120,7 +120,8 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
                     result.Macros?.Select(entry => entry.Id).ToList(),
                     result.Signature,
                     PlacementsOf(result.Macros),
-                    result.Check))
+                    result.Check,
+                    MacroConditionsOf(result.Macros)))
                 .ToList();
         }
 
@@ -361,6 +362,27 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     /// v12 #619: the placed entries only — a bare id carries no anchor and no
     /// entry here. Null (never empty) when nothing is placed.
     /// </summary>
+
+    /// <summary>
+    /// v12 #631 (§ 14): the when-gated entries, parsed once — null when no
+    /// entry carries when, the control's bytes. A clause that fails to parse
+    /// was refused at publish; here it resolves to no gate, the same
+    /// always-fires reading the result Condition takes.
+    /// </summary>
+    private static IReadOnlyList<WorkflowResolvedMacroCondition>? MacroConditionsOf(
+        IReadOnlyList<WorkflowResultMacroSpec>? macros)
+    {
+        var conditions = (macros ?? Array.Empty<WorkflowResultMacroSpec>())
+            .Where(entry => entry.When != null)
+            .Select(entry => WorkflowResultConditions.TryParseExpression(entry.When, out var condition, out _)
+                ? new WorkflowResolvedMacroCondition(entry.Id, condition!)
+                : null)
+            .Where(entry => entry != null)
+            .Select(entry => entry!)
+            .ToList();
+        return conditions.Count == 0 ? null : conditions;
+    }
+
     private static IReadOnlyList<ConsultMacroPlacement>? PlacementsOf(IReadOnlyList<WorkflowResultMacroSpec>? entries)
     {
         var placed = entries?

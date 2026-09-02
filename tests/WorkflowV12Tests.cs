@@ -980,3 +980,394 @@ public class WorkflowV12CheckRecordTests
         Assert.Null(projected["assemble-note"].Check);
     }
 }
+
+/// <summary>
+/// v12 rung (i) (#631, design § 14): the conditional macro — the entry's
+/// when speaks the result-level condition grammar, gated at 12, refused
+/// below by name; the writer keeps the v11 bytes and never drops a clause.
+/// </summary>
+public class WorkflowV12ConditionalMacroTests
+{
+    /// <summary>The § 14 shape: a classifier and a when-gated macro entry.</summary>
+    private static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) Gated(
+        string when,
+        string macroId = "disclaimer",
+        string template = "This paragraph is fixed text.")
+    {
+        var (manifest, files) = V10Fixtures.WithClassifier(from: V12Fixtures.Minimal());
+        manifest = manifest with
+        {
+            Macros = new List<WorkflowMacroSpec> { new(macroId, "Gated paragraph", $"macros/{macroId}.md") },
+            Results = manifest.Results!.Select((r, i) => i == 0
+                ? r with { Macros = new List<WorkflowResultMacroSpec> { new(macroId, When: when) } }
+                : r).ToList()
+        };
+        var all = new Dictionary<string, string>(files) { [$"macros/{macroId}.md"] = template };
+        return (manifest, all);
+    }
+
+    [Fact]
+    public void TheGatedParagraph_Publishes()
+    {
+        var result = V12Fixtures.Validate(Gated("node:scope == in_scope"));
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AMatchCase_TwoArms_Publishes()
+    {
+        var (manifest, files) = V10Fixtures.WithClassifier(from: V12Fixtures.Minimal());
+        manifest = manifest with
+        {
+            Macros = new List<WorkflowMacroSpec>
+            {
+                new("arm_in", "In-scope paragraph", "macros/arm_in.md"),
+                new("arm_out", "Out-of-scope paragraph", "macros/arm_out.md")
+            },
+            Results = manifest.Results!.Select((r, i) => i == 0
+                ? r with
+                {
+                    Macros = new List<WorkflowResultMacroSpec>
+                    {
+                        new("arm_in", When: "node:scope == in_scope"),
+                        new("arm_out", When: "node:scope == out_of_scope")
+                    }
+                }
+                : r).ToList()
+        };
+        var all = new Dictionary<string, string>(files)
+        {
+            ["macros/arm_in.md"] = "The in-scope paragraph.",
+            ["macros/arm_out.md"] = "The out-of-scope paragraph."
+        };
+
+        var result = WorkflowPackageValidator.Validate(manifest, all, TestOutputContracts.CatalogSchemas);
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AtEleven_TheGate_RefusesByName_AndAPlacedGatedEntry_EarnsBothSentences()
+    {
+        var (manifest, files) = Gated("node:scope == in_scope");
+        manifest = manifest with
+        {
+            SpecVersion = 11,
+            Results = manifest.Results!.Select((r, i) => i == 0
+                ? r with { Macros = new List<WorkflowResultMacroSpec> { new("disclaimer", Before: "node:section-instructions", When: "node:scope == in_scope") } }
+                : r).ToList()
+        };
+
+        var errors = WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas).Errors;
+
+        Assert.Contains("Result 'consult' gates macro 'disclaimer' with when, which requires specVersion 12.", errors);
+        Assert.Contains("Result 'consult' places macro 'disclaimer', which requires specVersion 12.", errors);
+    }
+
+    [Fact]
+    public void ABlankClause_IsRefused()
+    {
+        Assert.Contains(
+            "Result 'consult' macro 'disclaimer' condition is blank.",
+            V12Fixtures.Validate(Gated("   ")).Errors);
+    }
+
+    [Fact]
+    public void TheVocabulary_IsTheResultLevelOne_WithTheLongerPrefix()
+    {
+        // One grammar, two doors: the reused refusals speak the macro prefix.
+        var errors = V12Fixtures.Validate(Gated("node:sideways == in_scope")).Errors;
+        Assert.Contains(errors, e => e.StartsWith("Result 'consult' macro 'disclaimer' condition reads 'node:sideways', which is not a classifier", StringComparison.Ordinal));
+
+        Assert.Contains(
+            "Result 'consult' macro 'disclaimer' condition compares 'node:scope' to 'maybe', which it does not declare (values: in_scope, out_of_scope).",
+            V12Fixtures.Validate(Gated("node:scope == maybe")).Errors);
+
+        var undeclared = V12Fixtures.Validate(Gated("include_counseling")).Errors;
+        Assert.Contains(undeclared, e => e.StartsWith("Result 'consult' macro 'disclaimer' condition reads undeclared input 'include_counseling'", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AConditionalSignature_IsRefused()
+    {
+        // § 14: whether a document is signed must not turn on a classifier's
+        // answer — the § 5 never-optional rule's sibling.
+        Assert.Contains(
+            "Result 'consult' gates macro 'disclaimer' with when, and the macro carries {{profile:signature}}; a conditional signature was rejected (#516) and stays rejected.",
+            V12Fixtures.Validate(Gated("node:scope == in_scope", template: "Sincerely,\n\n{{profile:signature}}")).Errors);
+    }
+
+    [Fact]
+    public void TheWriter_KeepsTheClause_AndTheBareForm()
+    {
+        // The IsBare edge: a when-only entry must serialize as an object — a
+        // bare string would silently drop the clause on republish.
+        var (manifest, _) = Gated("node:scope == in_scope");
+        var json = WorkflowV10StructureTests.Write(manifest);
+
+        Assert.Contains("{\"id\":\"disclaimer\",\"when\":\"node:scope == in_scope\"}", json);
+        Assert.Equal(json, WorkflowV10StructureTests.Write(
+            WorkflowPackageManifestJson.Read(json, "v12", WorkflowPackageValidator.AcceptedSpecVersions)));
+
+        // A placed-and-gated entry carries all three keys in declared order.
+        manifest = manifest with
+        {
+            Results = manifest.Results!.Select((r, i) => i == 0
+                ? r with { Macros = new List<WorkflowResultMacroSpec> { new("disclaimer", Before: "node:section-instructions", When: "node:scope == in_scope") } }
+                : r).ToList()
+        };
+        var placed = WorkflowV10StructureTests.Write(manifest);
+        Assert.Contains("{\"id\":\"disclaimer\",\"before\":\"node:section-instructions\",\"when\":\"node:scope == in_scope\"}", placed);
+        Assert.Equal(placed, WorkflowV10StructureTests.Write(
+            WorkflowPackageManifestJson.Read(placed, "v12", WorkflowPackageValidator.AcceptedSpecVersions)));
+    }
+}
+
+/// <summary>
+/// v12 rung (i) (#631, design § 14): the starter's when judgment — the pure
+/// seam both evaluation moments call. Held keeps, not-held excludes with the
+/// explainer's sentence, absent is never held, the two gates are independent
+/// facts, and an emptied list becomes null (the byte control).
+/// </summary>
+public class WorkflowV12ConditionalMacroStarterTests
+{
+    private static Consultologist.Api.Workflow.WorkflowResolvedResult Gated(
+        params (string MacroId, string When)[] gates)
+    {
+        var macros = new[] { "opening", "letrozole_counseling", "tamoxifen_counseling" };
+        var conditions = gates
+            .Select(gate =>
+            {
+                Assert.True(WorkflowResultConditions.TryParseExpression(gate.When, out var condition, out var error), error);
+                return new Consultologist.Api.Workflow.WorkflowResolvedMacroCondition(gate.MacroId, condition!);
+            })
+            .ToList();
+        return new("consult", "assemble-note", "Consultation note",
+            Macros: macros, MacroConditions: conditions.Count > 0 ? conditions : null);
+    }
+
+    [Fact]
+    public void HeldKeeps_NotHeldExcludes_WithTheExplainersSentence()
+    {
+        var result = Gated(
+            ("letrozole_counseling", "node:hormone == letrozole"),
+            ("tamoxifen_counseling", "node:hormone == tamoxifen"));
+        var classifications = new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "letrozole" };
+
+        var (kept, excluded) = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DecideMacroWhens(
+            result, null, classifications);
+
+        Assert.Equal(new[] { "opening", "letrozole_counseling" }, kept);
+        var entry = Assert.Single(excluded);
+        Assert.Equal(("consult", "tamoxifen_counseling"), (entry.ResultId, entry.MacroId));
+        Assert.Equal("needs node:hormone to be 'tamoxifen'; it is 'letrozole'", entry.Reason);
+    }
+
+    [Fact]
+    public void AnAbsentOperand_IsNeverHeld_AndTheSentenceSaysSo()
+    {
+        var result = Gated(("letrozole_counseling", "include_counseling"));
+
+        var (kept, excluded) = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DecideMacroWhens(
+            result, new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal), null);
+
+        Assert.Equal(new[] { "opening", "tamoxifen_counseling" }, kept);
+        Assert.Contains("not supplied", Assert.Single(excluded).Reason);
+    }
+
+    [Fact]
+    public void TheTwoGates_AreIndependentFacts()
+    {
+        // A macro out by choice AND out by clause: the when judgment records
+        // its fact over the declared list (§ 14.4 — the boundary never sees
+        // the request), and the choice filter then drops what it drops.
+        var result = Gated(("letrozole_counseling", "node:hormone == letrozole"));
+        var classifications = new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "tamoxifen" };
+
+        var (whenKept, excluded) = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DecideMacroWhens(
+            result, null, classifications);
+        var kept = Consultologist.Api.Jobs.ConsultGenerationJobStarter.FilterMacros(
+            whenKept, new Dictionary<string, bool> { ["letrozole_counseling"] = false, ["opening"] = false });
+
+        Assert.Equal("letrozole_counseling", Assert.Single(excluded).MacroId);
+        Assert.Equal(new[] { "tamoxifen_counseling" }, kept);
+
+        // The other direction: declined by choice, held by when — no
+        // exclusion record; the record of that absence is the choice's.
+        var held = new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "letrozole" };
+        var (heldKept, heldExcluded) = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DecideMacroWhens(
+            result, null, held);
+        Assert.Empty(heldExcluded);
+        Assert.Contains("letrozole_counseling", heldKept!);
+    }
+
+    [Fact]
+    public void AnEmptiedList_BecomesNull_TheByteControl()
+    {
+        var result = new Consultologist.Api.Workflow.WorkflowResolvedResult(
+            "consult", "assemble-note", "Consultation note",
+            Macros: new[] { "letrozole_counseling" },
+            MacroConditions: new[]
+            {
+                new Consultologist.Api.Workflow.WorkflowResolvedMacroCondition(
+                    "letrozole_counseling",
+                    Parse("node:hormone == letrozole"))
+            });
+
+        var (kept, excluded) = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DecideMacroWhens(
+            result, null, new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "tamoxifen" });
+
+        Assert.Null(kept);
+        Assert.Single(excluded);
+    }
+
+    [Fact]
+    public void AResultWithoutGates_PassesThroughUntouched()
+    {
+        var result = Gated();
+
+        var (kept, excluded) = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DecideMacroWhens(result, null, null);
+
+        Assert.Same(result.Macros, kept);
+        Assert.Empty(excluded);
+    }
+
+    [Fact]
+    public async Task TheExclusions_RideTheInitializeSignal_IntoState()
+    {
+        var entity = new ConsultGenerationJobEntity(
+            Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>(),
+            Substitute.For<IJobInputsBlobStore>(), Substitute.For<IAccountUsageStore>());
+        var stateProperty = typeof(ConsultGenerationJobEntity).GetProperty(
+            "State", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!;
+
+        await entity.Initialize(new ConsultGenerationJobInitialize(
+            "job-1", "user-1", new List<IReadOnlyDictionary<string, string>>(),
+            ExcludedMacros: new[]
+            {
+                new ConsultExcludedMacro("consult", "tamoxifen_counseling", "needs node:hormone to be 'tamoxifen'; it is 'letrozole'")
+            }));
+
+        var state = (ConsultGenerationJobState)stateProperty.GetValue(entity)!;
+        var recorded = Assert.Single(state.ExcludedMacros!);
+        Assert.Equal("tamoxifen_counseling", recorded.MacroId);
+    }
+
+    private static WorkflowConditionExpression Parse(string when)
+    {
+        Assert.True(WorkflowResultConditions.TryParseExpression(when, out var condition, out var error), error);
+        return condition!;
+    }
+}
+
+/// <summary>
+/// v12 rung (i) (#631, design § 14): the proof end to end — the judged
+/// descriptor composes without the excluded paragraph, appended[] and the
+/// document bytes cover only what landed, and the aggregator's hash input
+/// never learns any of it (§ 7 purity, again).
+/// </summary>
+public class WorkflowV12ConditionalMacroCompositionTests
+{
+    private static readonly Dictionary<string, string> NoValues = new(StringComparer.Ordinal);
+
+    private static readonly Dictionary<string, string> Texts = new(StringComparer.Ordinal)
+    {
+        ["opening"] = "Thank you for this referral.",
+        ["letrozole_counseling"] = "We discussed letrozole's side effects.",
+        ["tamoxifen_counseling"] = "We discussed tamoxifen's side effects."
+    };
+
+    private static Consultologist.Api.Jobs.ConsultMacroExpander.RunFacts Facts() =>
+        new(new DateTime(2026, 9, 2, 12, 0, 0, DateTimeKind.Utc), "0123456789abcdef", "general@v2026.09.1", "east.ca.api.consultologist.ai", "Taylor Reyes");
+
+    private static readonly string[] SourceRefs = { "node:plan" };
+
+    private static readonly IReadOnlyList<Consultologist.Api.Jobs.ConsultAggregateRenderer.Part> Parts =
+        new Consultologist.Api.Jobs.ConsultAggregateRenderer.Part[]
+        {
+            new Consultologist.Api.Jobs.ConsultAggregateRenderer.ScalarPart("The plan.")
+        };
+
+    private static Consultologist.Api.Workflow.WorkflowResolvedResult MatchCase() =>
+        new("consult", "assemble-note", "Consultation note",
+            Macros: new[] { "opening", "letrozole_counseling", "tamoxifen_counseling" },
+            MacroPlacements: new[]
+            {
+                new Consultologist.Api.Models.ConsultMacroPlacement("letrozole_counseling", After: "node:plan"),
+                new Consultologist.Api.Models.ConsultMacroPlacement("tamoxifen_counseling", After: "node:plan")
+            },
+            MacroConditions: new[]
+            {
+                new Consultologist.Api.Workflow.WorkflowResolvedMacroCondition("letrozole_counseling", Parse("node:hormone == letrozole")),
+                new Consultologist.Api.Workflow.WorkflowResolvedMacroCondition("tamoxifen_counseling", Parse("node:hormone == tamoxifen"))
+            });
+
+    private static WorkflowConditionExpression Parse(string when)
+    {
+        Assert.True(WorkflowResultConditions.TryParseExpression(when, out var condition, out var error), error);
+        return condition!;
+    }
+
+    private static (string Text, IReadOnlyList<Consultologist.Api.Models.ConsultAppendedEntry>? Appended) ComposeJudged(
+        IReadOnlyDictionary<string, string> classifications)
+    {
+        var result = MatchCase();
+        var (kept, _) = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DecideMacroWhens(result, null, classifications);
+        var placements = Consultologist.Api.Jobs.ConsultGenerationJobStarter.FilterPlacements(result.MacroPlacements, kept);
+
+        var (text, appended, _) = Consultologist.Api.Jobs.ConsultMacroExpander.Compose(
+            SourceRefs, Parts, kept, placements, Texts, NoValues, null, NoValues, Facts());
+        return (text, appended);
+    }
+
+    [Fact]
+    public void TheDocument_CarriesTheHeldArm_AndNotTheOther()
+    {
+        var (text, appended) = ComposeJudged(
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "letrozole" });
+
+        Assert.Equal(
+            "The plan.\n\nWe discussed letrozole's side effects.\n\nThank you for this referral.",
+            text);
+        Assert.DoesNotContain("tamoxifen", text, StringComparison.Ordinal);
+        Assert.Equal(new[] { "letrozole_counseling", "opening" }, appended!.Select(e => e.Id));
+    }
+
+    [Fact]
+    public void TheOtherAnswer_SwapsTheParagraph()
+    {
+        var (text, appended) = ComposeJudged(
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "tamoxifen" });
+
+        Assert.Contains("tamoxifen's side effects", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("letrozole", text, StringComparison.Ordinal);
+        Assert.Equal(new[] { "tamoxifen_counseling", "opening" }, appended!.Select(e => e.Id));
+    }
+
+    [Fact]
+    public void AnUnmatchedCase_AppendsNothing_NoFallback()
+    {
+        // § 14.7 assumption 3: an unmatched match/case appends nothing and
+        // the record says why — a default arm is the package's to declare.
+        var (text, appended) = ComposeJudged(
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "none" });
+
+        Assert.Equal("The plan.\n\nThank you for this referral.", text);
+        Assert.Equal(new[] { "opening" }, appended!.Select(e => e.Id));
+    }
+
+    [Fact]
+    public void TheAggregatorsHashInput_NeverLearnsTheJudgment()
+    {
+        // § 7, § 14.3: the exclusion changes the composed document, never the
+        // aggregator's recorded output — same Render bytes either way.
+        var rendered = Consultologist.Api.Jobs.ConsultAggregateRenderer.Render(Parts);
+        var hash = Consultologist.Api.Workflow.ConsultGenerationProvenance.Sha256Hex(rendered);
+
+        var (letrozole, _) = ComposeJudged(new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "letrozole" });
+        var (none, _) = ComposeJudged(new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "none" });
+
+        Assert.NotEqual(letrozole, none);
+        Assert.Equal(hash, Consultologist.Api.Workflow.ConsultGenerationProvenance.Sha256Hex(
+            Consultologist.Api.Jobs.ConsultAggregateRenderer.Render(Parts)));
+    }
+}

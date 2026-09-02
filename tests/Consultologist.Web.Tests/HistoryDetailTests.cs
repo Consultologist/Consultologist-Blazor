@@ -31,6 +31,7 @@ public class HistoryDetailTests : ClientRenderTestContext
         IReadOnlyList<string>? packageTags = null,
         IReadOnlyList<ConsultGenerationNodeDescriptor>? nodes = null,
         IReadOnlyList<ConsultFailedDocumentResponse>? failed = null,
+        IReadOnlyList<ConsultExcludedMacroResponse>? excludedMacros = null,
         string? catalogRef = null,
         IReadOnlyDictionary<string, string>? agentVersions = null,
         string workflowOutputHash = "bbbb",
@@ -80,6 +81,7 @@ public class HistoryDetailTests : ClientRenderTestContext
             InputOrigins: inputOrigins,
             SkippedDocuments: skipped,
             FailedDocuments: failed,
+            ExcludedMacros: excludedMacros,
             SchemaVersion: schemaVersion,
             PackageSpecVersion: packageSpecVersion,
             WorkflowPackage: workflowPackage,
@@ -735,6 +737,28 @@ public class HistoryDetailTests : ClientRenderTestContext
             WorkflowPackage: "general@v2026.08.1",
             PackageTitle: "Breast oncology consults",
             StartFailure: NothingApplied));
+    }
+
+    [Fact]
+    public void AMacroTheRunsFactsExcluded_IsNamedBesideTheEvidence()
+    {
+        // v12 #631 (§ 14): recorded absence — the paragraph the when-clause
+        // held back, with the condition explainer's sentence.
+        WithJob(3,
+            documents: new[]
+            {
+                new ConsultGenerationResultDocumentResponse("consult_note", "Consultation note", "The note.", DocumentHash: "cccc")
+            },
+            excludedMacros: new[]
+            {
+                new ConsultExcludedMacroResponse("consult_note", "tamoxifen_counseling",
+                    "needs node:hormone to be 'tamoxifen'; it is 'letrozole'")
+            });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var text = page.Find(".provenance-list").TextContent;
+        Assert.Contains("macro 'tamoxifen_counseling' not appended — it needs node:hormone to be 'tamoxifen'; it is 'letrozole'", text, StringComparison.Ordinal);
     }
 
     [Fact]

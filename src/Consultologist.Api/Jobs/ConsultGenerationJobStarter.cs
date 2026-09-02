@@ -692,15 +692,30 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             declaredInputTypes = null;
         }
 
+        // v12 #631 (§ 14): a non-deciding job judges its macro whens here,
+        // at start, with the supplied inputs — the boundary never runs for
+        // it. A deciding job's whens wait for the boundary, where the
+        // classifier answers are in hand; its starter descriptors are
+        // superseded by the decision's either way.
+        var excludedMacros = new List<ConsultExcludedMacro>();
         var resultDescriptors = package.Results?
             .Select(result =>
             {
+                var whenKept = result.Macros;
+
+                if (!deciding)
+                {
+                    var judged = DecideMacroWhens(result, inputs.Supplied, classifications: null);
+                    whenKept = judged.Macros;
+                    excludedMacros.AddRange(judged.Excluded);
+                }
+
                 // v12 #618: a declined optional macro leaves the list here,
                 // at the descriptor's birth — the engine appends exactly what
                 // the descriptor carries, as it always has. v12 #619: its
                 // placement entry leaves in the same motion (lockstep — a
                 // placement without its macro would mis-place the composer).
-                var kept = FilterMacros(result.Macros, macroChoices.Resolved);
+                var kept = FilterMacros(whenKept, macroChoices.Resolved);
                 return new ConsultResultDescriptor(
                     result.Id,
                     result.NodeId,
@@ -829,7 +844,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // #582: the source's hashes when this is a rerun.
                 RerunBaseline: origin.RerunBaseline,
                 // v12 #618: the optional-macro resolutions, for the record.
-                MacroChoices: macroChoices.Entries));
+                MacroChoices: macroChoices.Entries,
+                // v12 #631 (§ 14): the when-excluded macros of a job decided
+                // at start; a deciding job's ride the boundary's signal.
+                ExcludedMacros: excludedMacros.Count > 0 ? excludedMacros : null));
 
         var terminology = await _terminology.GetAsync(cancellationToken);
         var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(
@@ -1440,6 +1458,47 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             .Where(placement => keptIds?.Contains(placement.Id, StringComparer.Ordinal) == true)
             .ToList();
         return kept.Count == 0 ? null : kept;
+    }
+
+    /// <summary>
+    /// v12 #631 (§ 14): the when-gated entries of one firing result, judged
+    /// with what is in hand — supplied inputs at start, plus the classifier
+    /// answers at the boundary. Returns the ids that hold and every excluded
+    /// entry with the condition explainer's sentence (its no-PHI guarantee is
+    /// inherited, not reimplemented). Evaluated over the DECLARED list,
+    /// before the choice filter: the two gates are independent facts and each
+    /// is recorded on its own (§ 14.4) — the boundary never sees the request,
+    /// and the starter must not pretend it judged differently.
+    /// </summary>
+    internal static (IReadOnlyList<string>? Macros, List<ConsultExcludedMacro> Excluded) DecideMacroWhens(
+        Workflow.WorkflowResolvedResult result,
+        IReadOnlyDictionary<string, ConsultInputValue>? supplied,
+        IReadOnlyDictionary<string, string>? classifications)
+    {
+        var excluded = new List<ConsultExcludedMacro>();
+
+        if (result.MacroConditions is not { Count: > 0 } conditions || result.Macros is null)
+        {
+            return (result.Macros, excluded);
+        }
+
+        var gates = conditions.ToDictionary(c => c.MacroId, c => c.Condition, StringComparer.Ordinal);
+        var kept = new List<string>();
+
+        foreach (var id in result.Macros)
+        {
+            if (gates.TryGetValue(id, out var condition)
+                && !PackageFormat.WorkflowResultConditions.Holds(condition, supplied, classifications))
+            {
+                excluded.Add(new ConsultExcludedMacro(
+                    result.Id, id, PackageFormat.WorkflowResultConditions.Explain(condition, supplied, classifications)));
+                continue;
+            }
+
+            kept.Add(id);
+        }
+
+        return (kept.Count == 0 ? null : kept, excluded);
     }
 
     /// <summary>

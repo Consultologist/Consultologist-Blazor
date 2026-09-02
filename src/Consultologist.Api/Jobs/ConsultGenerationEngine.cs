@@ -810,7 +810,8 @@ public sealed class ConsultGenerationOrchestrator
                     decision.CollectionRosters,
                     decision.ItemSteps,
                     answers,
-                    context.CurrentUtcDateTime));
+                    context.CurrentUtcDateTime,
+                    decision.ExcludedMacros));
 
             // Stage two: the graph as decided. The classifiers' outputs stay
             // bindable; nothing recorded is recomputed.
