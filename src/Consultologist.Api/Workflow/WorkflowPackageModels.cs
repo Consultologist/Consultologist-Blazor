@@ -120,7 +120,14 @@ public sealed record WorkflowPackageResponse(
     IReadOnlyList<WorkflowPackageResultResponse>? Results = null,
     // v9 § 4 (#432): the package's title; null when it has none, and the
     // client shows the ref instead — the stated fallback.
-    string? Title = null);
+    string? Title = null,
+    // v12 § 3 (#621): the OPTIONAL macros alone — the per-run choices the
+    // setup form offers, each with its declared default. Null when the
+    // package declares none: every pre-v12 response is byte-identical.
+    IReadOnlyList<WorkflowPackageMacroResponse>? Macros = null);
+
+/// <summary>One optional macro: the choice the setup form offers (v12 § 3).</summary>
+public sealed record WorkflowPackageMacroResponse(string Id, string Label, bool Default);
 
 /// <summary>
 /// The pin-resolved package's full editable content: the typed manifest (the

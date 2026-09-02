@@ -104,10 +104,12 @@ public abstract class ClientRenderTestContext : BunitContext
         // v6/v7 reading every earlier test relies on.
         int? specVersion = null,
         // #432: the package's title, shown beside the picker when it has one.
-        string? title = null)
+        string? title = null,
+        // v12 § 3 (#621): the optional macros the setup form offers.
+        IReadOnlyList<WorkflowPackageMacroResponse>? macros = null)
     {
         WorkflowService.GetCurrentPackageAsync().Returns(new WorkflowPackageResponse(
-            "general", version, specVersion ?? (inputs is null ? 6 : 7), blocks, inputs, results, title));
+            "general", version, specVersion ?? (inputs is null ? 6 : 7), blocks, inputs, results, title, macros));
 
         // The run rail's enrichment; failures here are swallowed by the page,
         // so a rejected task is a legitimate "content endpoint unavailable".

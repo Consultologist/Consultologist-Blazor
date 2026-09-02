@@ -176,6 +176,26 @@ public class ProvenanceMirrorTests
     }
 
     [Fact]
+    public void TheMacroChoices_ReachTheServer_AndAbsenceStaysAbsent()
+    {
+        // v12 § 3 (#621): the hand-duplicated wire mirror — the deviations
+        // map reads back identically, and a request without one serializes
+        // no key at all (byte-identical to pre-v12).
+        var request = new WebAI.ConsultGenerationRequest(
+            null,
+            MacroChoices: new Dictionary<string, bool> { ["disclaimer"] = false });
+
+        var received = JsonSerializer.Deserialize<ApiModels.ConsultGenerationRequest>(
+            JsonSerializer.Serialize(request, Web), Web)!;
+        Assert.False(Assert.Contains("disclaimer", received.MacroChoices!));
+
+        // Absence stays absent: a request without choices reads back null —
+        // the wire writes the null key as it does every trailing member.
+        var bare = JsonSerializer.Serialize(new WebAI.ConsultGenerationRequest(null), Web);
+        Assert.Null(JsonSerializer.Deserialize<ApiModels.ConsultGenerationRequest>(bare, Web)!.MacroChoices);
+    }
+
+    [Fact]
     public void TwoDocumentsForOneSlot_ReachTheServerInOrder()
     {
         var request = new WebAI.ConsultGenerationRequest(

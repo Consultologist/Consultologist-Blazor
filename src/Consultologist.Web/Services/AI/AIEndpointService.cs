@@ -27,7 +27,11 @@ public interface IAIEndpointService
         IReadOnlyDictionary<string, IReadOnlyList<ConsultInputRef>>? refs = null,
         // #540: per filled input, the held form response its value came from —
         // an assertion beside the value, verified by the server at start.
-        IReadOnlyDictionary<string, ConsultInputFormRef>? formRefs = null);
+        IReadOnlyDictionary<string, ConsultInputFormRef>? formRefs = null,
+        // v12 § 3 (#621): the run's optional-macro choices — only the ids
+        // whose checkbox differs from the declared default; null when none
+        // differ, so every pre-v12 request is byte-identical.
+        IReadOnlyDictionary<string, bool>? macroChoices = null);
 
     Task<ConsultGenerationJobResponse> GetConsultGenerationJobAsync(string jobId);
 
@@ -161,7 +165,8 @@ public class AIEndpointService : IAIEndpointService
         DateTimeOffset? scheduledAtUtc = null,
         IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>? files = null,
         IReadOnlyDictionary<string, IReadOnlyList<ConsultInputRef>>? refs = null,
-        IReadOnlyDictionary<string, ConsultInputFormRef>? formRefs = null)
+        IReadOnlyDictionary<string, ConsultInputFormRef>? formRefs = null,
+        IReadOnlyDictionary<string, bool>? macroChoices = null)
     {
         var stopwatch = Stopwatch.StartNew();
 
@@ -181,6 +186,9 @@ public class AIEndpointService : IAIEndpointService
                     : null,
                 formRefs is { Count: > 0 }
                     ? formRefs.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
+                    : null,
+                macroChoices is { Count: > 0 }
+                    ? macroChoices.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
                     : null);
 
             _logger.LogInformation(
@@ -473,7 +481,10 @@ public record ConsultGenerationRequest(
     // #540: mirrors the Api's InputFormRefs — per filled input, the held
     // form response its value was loaded from, an assertion BESIDE the
     // value in Inputs, verified by the server at start.
-    Dictionary<string, ConsultInputFormRef>? InputFormRefs = null);
+    Dictionary<string, ConsultInputFormRef>? InputFormRefs = null,
+    // v12 § 3 (#621): mirrors the API record's trailing member — the ids
+    // whose value deviates from the manifest default.
+    Dictionary<string, bool>? MacroChoices = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultInputRef.</summary>
 public sealed record ConsultInputRef(string JobId, string ResultId);
