@@ -15,6 +15,27 @@ namespace Consultologist.Api.Tests;
 public class AggregateRendererTests
 {
     [Fact]
+    public void RenderPart_JoinedByBlankLines_IsRender()
+    {
+        // v12 #619: the composer renders per part and joins with the same
+        // separator; this identity is what makes a nothing-placed composition
+        // byte-identical to Render. The empty ForEachPart is the defensive
+        // arm — unreachable live (empty fans refuse upstream) but the join
+        // must not quietly diverge if that ever changes.
+        var parts = new ConsultAggregateRenderer.Part[]
+        {
+            new ConsultAggregateRenderer.ScalarPart("Intro."),
+            new ConsultAggregateRenderer.ForEachPart(new[] { ("A", "alpha"), ("B", "beta") }),
+            new ConsultAggregateRenderer.ForEachPart(Array.Empty<(string, string)>()),
+            new ConsultAggregateRenderer.ScalarPart("Outro.")
+        };
+
+        Assert.Equal(
+            ConsultAggregateRenderer.Render(parts),
+            string.Join("\n\n", parts.Select(ConsultAggregateRenderer.RenderPart)));
+    }
+
+    [Fact]
     public void ForEachSource_RendersLabeledBlocksInOrder()
     {
         var rendered = ConsultAggregateRenderer.Render(new ConsultAggregateRenderer.Part[]
