@@ -300,9 +300,10 @@ public class ConsultGenerationJobStarterTests
 
     private static WorkflowPackage ExecutableV7Package(
         WorkflowPackageManifest manifest,
-        IReadOnlyList<WorkflowResolvedResult> results)
+        IReadOnlyList<WorkflowResolvedResult> results,
+        Dictionary<string, string>? files = null)
     {
-        var files = V6Fixtures.Files(manifest);
+        files ??= V6Fixtures.Files(manifest);
         var errors = new List<string>();
         var data = WorkflowDataResolver.Resolve(manifest, files, errors);
         Assert.Empty(errors);
@@ -313,6 +314,9 @@ public class ConsultGenerationJobStarterTests
             SchemaContracts: TestOutputContracts.CatalogSchemas,
             Data: data,
             ResultNodeId: results.Count == 1 ? results[0].NodeId : null,
+            // v12 #618: the starter's macro snapshot reads SourceFiles; a
+            // package built without them NREs the moment a macro is declared.
+            SourceFiles: files,
             Results: results);
     }
 
@@ -682,6 +686,245 @@ public class ConsultGenerationJobStarterTests
         await _accounts.Received(1).GetDisplayNameAsync("user-1", Arg.Any<CancellationToken>());
     }
 
+    // ----- v12 #618: the optional macro's choice ---------------------------
+
+    /// <summary>A v12 package with a required macro and an optional one, both referenced by the deliverable.</summary>
+    private static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files, List<WorkflowResolvedResult> Results) OptionalMacroPackage(bool defaultValue)
+    {
+        var manifest = V11Fixtures.Minimal() with
+        {
+            SpecVersion = 12,
+            Macros = new List<WorkflowMacroSpec>
+            {
+                new("disclaimer", "Standing disclaimer", "macros/disclaimer.md"),
+                new("closing", "Closing paragraph", "macros/closing.md", Optional: true, Default: defaultValue)
+            }
+        };
+        var files = V6Fixtures.Files(manifest);
+        files["macros/disclaimer.md"] = "This disclaimer is fixed text.";
+        files["macros/closing.md"] = "With thanks.";
+        var results = new List<WorkflowResolvedResult>
+        {
+            new("consult", "assemble-note", "Consultation note", Macros: new[] { "disclaimer", "closing" })
+        };
+        return (manifest, files, results);
+    }
+
+    private async Task<(ConsultGenerationJobStartOutcome Outcome, ConsultGenerationJobInitialize? Initialize, ConsultGenerationOrchestrationInput? Input)>
+        StartWithChoicesAsync(bool defaultValue, Dictionary<string, bool>? macroChoices)
+    {
+        var (manifest, files, results) = OptionalMacroPackage(defaultValue);
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(manifest, results, files));
+
+        ConsultGenerationJobInitialize? initialize = null;
+        await _entities.SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(),
+            nameof(ConsultGenerationJobEntity.Initialize),
+            Arg.Do<object>(payload => initialize = payload as ConsultGenerationJobInitialize));
+
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var supplied = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = Referral,
+            ["seen_on"] = "2026-09-02",
+            ["encounter_kind"] = "follow_up"
+        };
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(null, Inputs: supplied, MacroChoices: macroChoices),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        return (outcome, initialize, orchestrationInput);
+    }
+
+    [Theory]
+    [InlineData(true, null, true, "default")]    // no choice → the declared default applies
+    [InlineData(false, null, false, "default")]
+    [InlineData(false, true, true, "chosen")]    // a choice overrides the default, both ways
+    [InlineData(true, false, false, "chosen")]
+    public async Task AnOptionalMacro_ResolvesTheChoice_ElseTheDeclaredDefault(
+        bool declaredDefault, bool? choice, bool expectedValue, string expectedOrigin)
+    {
+        var choices = choice is { } value
+            ? new Dictionary<string, bool> { ["closing"] = value }
+            : null;
+
+        var (outcome, initialize, input) = await StartWithChoicesAsync(declaredDefault, choices);
+
+        Assert.Null(outcome.Error);
+        // The descriptor is filtered at birth: the required macro always
+        // rides; the optional one rides exactly when its value is true.
+        var descriptor = Assert.Single(input!.Results!);
+        Assert.Equal(
+            expectedValue ? new[] { "disclaimer", "closing" } : new[] { "disclaimer" },
+            descriptor.Macros);
+        // The record's entry carries the value and where it came from; the
+        // required macro carries none.
+        var entry = Assert.Single(initialize!.MacroChoices!);
+        Assert.Equal("closing", entry.Key);
+        Assert.Equal(new ConsultMacroChoice(expectedValue, expectedOrigin), entry.Value);
+        // The boundary's map matches the resolution.
+        Assert.Equal(expectedValue, Assert.Single(input.MacroChoices!).Value);
+    }
+
+    [Fact]
+    public async Task APackageWithNoOptionalMacros_WritesTheNullsItAlwaysWrote()
+    {
+        // The § 12 control: a required-only macro package carries no choice
+        // map anywhere — null, never empty.
+        var (manifest, files, results) = OptionalMacroPackage(defaultValue: true);
+        manifest = manifest with
+        {
+            Macros = new List<WorkflowMacroSpec> { new("disclaimer", "Standing disclaimer", "macros/disclaimer.md") }
+        };
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(manifest, results, files));
+
+        ConsultGenerationJobInitialize? initialize = null;
+        await _entities.SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(),
+            nameof(ConsultGenerationJobEntity.Initialize),
+            Arg.Do<object>(payload => initialize = payload as ConsultGenerationJobInitialize));
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var supplied = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = Referral,
+            ["seen_on"] = "2026-09-02",
+            ["encounter_kind"] = "follow_up"
+        };
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(null, Inputs: supplied),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        Assert.Null(outcome.Error);
+        Assert.Null(initialize!.MacroChoices);
+        Assert.Null(orchestrationInput!.MacroChoices);
+    }
+
+    [Theory]
+    [InlineData("ghost", "MacroChoices names macro 'ghost', which the package does not declare.")]
+    [InlineData("disclaimer", "MacroChoices names macro 'disclaimer', which is not optional; only optional: true takes a per-run choice.")]
+    public async Task AChoiceNamingTheWrongMacro_RefusesTheStart_ByName(string key, string expected)
+    {
+        var (outcome, initialize, input) = await StartWithChoicesAsync(
+            defaultValue: true,
+            new Dictionary<string, bool> { [key] = true });
+
+        Assert.Equal(ConsultGenerationJobStartError.MacroChoiceMismatch, outcome.Error);
+        Assert.Equal(expected, outcome.ErrorDetail);
+        // Macro ids are authored package content — the sentence is sender-safe.
+        Assert.Equal(expected, outcome.SenderSafeDetail);
+        Assert.Null(outcome.JobId);
+        Assert.Null(initialize);
+        Assert.Null(input);
+    }
+
+    [Fact]
+    public async Task AJobBornFailed_StillRecordsItsChoices()
+    {
+        // A choice made at submission is provenance like an origin — the
+        // born-Failed row carries it.
+        var manifest = V9Fixtures.Fanned() with
+        {
+            SpecVersion = 12,
+            Macros = new List<WorkflowMacroSpec>
+            {
+                new("closing", "Closing paragraph", "macros/closing.md", Optional: true, Default: true)
+            }
+        };
+        manifest = manifest with
+        {
+            Inputs = manifest.Inputs!.Select(i => i.Id == "prior_notes" ? i with { Required = false } : i).ToList()
+        };
+
+        var (outcome, _, _) = await StartFannedAsync(
+            manifest, priorNotes: null,
+            macroChoices: new Dictionary<string, bool> { ["closing"] = false });
+
+        Assert.Equal(ConsultGenerationJobStartError.NoApplicableDeliverable, outcome.Error);
+        var recorded = Assert.IsType<ConsultGenerationJobStartFailure>(_recordedStartFailure);
+        var entry = Assert.Single(recorded.Initialize.MacroChoices!);
+        Assert.Equal(new ConsultMacroChoice(false, "chosen"), entry.Value);
+    }
+
+    [Fact]
+    public void MacroChoices_NeverEnterTheEffectiveInputHash()
+    {
+        // Design § 7 made checkable, for the first time as a request-field
+        // claim: the hash covers supplied inputs only, so two runs differing
+        // only in a presentation choice share their effectiveInputHash.
+        var supplied = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = Referral
+        };
+        var inputs = new EffectiveInputsResolution(null, supplied, null);
+
+        var bare = ConsultGenerationJobStarter.EffectiveInputHashOf(
+            12, new ConsultGenerationRequest(null, Inputs: supplied), inputs);
+        var chosen = ConsultGenerationJobStarter.EffectiveInputHashOf(
+            12,
+            new ConsultGenerationRequest(null, Inputs: supplied, MacroChoices: new Dictionary<string, bool> { ["closing"] = true }),
+            inputs);
+
+        Assert.Equal(bare, chosen);
+    }
+
+    [Theory]
+    [InlineData(true, new[] { "disclaimer", "closing" })]
+    [InlineData(false, new[] { "disclaimer" })]
+    public void TheBoundaryFilter_AppliesTheStartResolvedMap(bool chosen, string[] expected)
+    {
+        // DecideActivity never sees the request; the engine filters its
+        // descriptors with the map the orchestration input carries. Same
+        // keep-unless-declined rule as the starter's own descriptors.
+        var descriptors = new List<ConsultResultDescriptor>
+        {
+            new("consult", "assemble-note", "Consultation note", new[] { "disclaimer", "closing" }, Signature: true)
+        };
+
+        var filtered = ConsultGenerationJobStarter.FilterDescriptorMacros(
+            descriptors, new Dictionary<string, bool> { ["closing"] = chosen });
+
+        Assert.Equal(expected, Assert.Single(filtered).Macros);
+        // Everything else on the descriptor is untouched.
+        Assert.True(filtered[0].Signature);
+    }
+
+    [Fact]
+    public void TheBoundaryFilter_WithNoMap_ReturnsTheDescriptorsUntouched()
+    {
+        var descriptors = new List<ConsultResultDescriptor>
+        {
+            new("consult", "assemble-note", "Consultation note", new[] { "disclaimer" })
+        };
+
+        Assert.Same(descriptors, ConsultGenerationJobStarter.FilterDescriptorMacros(descriptors, null));
+    }
+
     [Fact]
     public async Task SpecVersion8Package_StampsHashVersion4()
     {
@@ -842,7 +1085,8 @@ public class ConsultGenerationJobStarterTests
 
     private async Task<(ConsultGenerationJobStartOutcome Outcome, ConsultGenerationJobInitialize? Initialize, ConsultGenerationOrchestrationInput? Input)>
         StartFannedAsync(WorkflowPackageManifest manifest, ConsultInputValue? priorNotes, string fannedId = "prior_notes",
-            IReadOnlyList<WorkflowResolvedResult>? results = null, string? apiHost = null)
+            IReadOnlyList<WorkflowResolvedResult>? results = null, string? apiHost = null,
+            Dictionary<string, bool>? macroChoices = null)
     {
         _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
             .Returns(new WorkflowPackageRef("general", "latest"));
@@ -882,7 +1126,7 @@ public class ConsultGenerationJobStarterTests
 
         var outcome = await CreateStarter(apiHost: apiHost).StartAsync(
             _client,
-            new ConsultGenerationRequest(null, Inputs: supplied),
+            new ConsultGenerationRequest(null, Inputs: supplied, MacroChoices: macroChoices),
             "user-1",
             new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
             CancellationToken.None);
@@ -2255,6 +2499,19 @@ public class ConsultGenerationJobStarterTests
             null,
             Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = ConsultInputValue.OfText(Referral) },
             InputFormRefs: new Dictionary<string, ConsultInputFormRef> { ["consult_draft"] = new("", "17") })));
+    }
+
+    [Fact]
+    public void TheMacroChoicesShape_IsCheckedAtTheDoor()
+    {
+        // v12 #618: shape only — a blank key is a 400 here; whether the id
+        // names an optional macro is the starter's 422.
+        Assert.Contains("blank macro id", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            Referral,
+            MacroChoices: new Dictionary<string, bool> { [" "] = true })));
+        Assert.Null(ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            Referral,
+            MacroChoices: new Dictionary<string, bool> { ["closing"] = false })));
     }
 
     [Fact]
