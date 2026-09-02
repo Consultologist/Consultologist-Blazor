@@ -653,3 +653,121 @@ public class WorkflowV12PlacementRuntimeTests
         Assert.Equal(("closing", "node:intro"), (placement.Id, placement.Before));
     }
 }
+
+/// <summary>
+/// v12 rung (d) (#620, design § 5/§ 6): the signature token at run time — it
+/// embeds the snapshotted block where its macro sits, names itself in
+/// appended[] beside its carrier with the as-of date, renders empty when no
+/// block was chosen, and Finish keeps the signed-once rule: an embedded
+/// signature is never also appended.
+/// </summary>
+public class WorkflowV12SignatureTokenRuntimeTests
+{
+    private static readonly Dictionary<string, string> NoValues = new(StringComparer.Ordinal);
+
+    private static readonly Consultologist.Api.Jobs.ConsultSignatureSnapshot Snapshot =
+        new("clinic-letters", "Taylor Reyes, MD", "2026-09-01");
+
+    private static Consultologist.Api.Jobs.ConsultMacroExpander.RunFacts Facts(Consultologist.Api.Jobs.ConsultSignatureSnapshot? snapshot) =>
+        new(new DateTime(2026, 9, 2, 12, 0, 0, DateTimeKind.Utc), "0123456789abcdef", "general@v2026.09.1", "east.ca.api.consultologist.ai", "Taylor Reyes", snapshot);
+
+    private static readonly string[] SourceRefs = { "node:intro" };
+
+    private static readonly IReadOnlyList<Consultologist.Api.Jobs.ConsultAggregateRenderer.Part> Parts =
+        new Consultologist.Api.Jobs.ConsultAggregateRenderer.Part[] { new Consultologist.Api.Jobs.ConsultAggregateRenderer.ScalarPart("Intro.") };
+
+    private static readonly Dictionary<string, string> Texts = new(StringComparer.Ordinal)
+    {
+        ["signoff"] = "Sincerely,\n{{profile:signature}}",
+        ["disclaimer"] = "This disclaimer is fixed."
+    };
+
+    private static (string Text, IReadOnlyList<Consultologist.Api.Models.ConsultAppendedEntry>? Appended, bool TokenCarried) Compose(
+        IReadOnlyList<string>? macroIds,
+        Consultologist.Api.Jobs.ConsultSignatureSnapshot? snapshot,
+        IReadOnlyList<Consultologist.Api.Models.ConsultMacroPlacement>? placements = null) =>
+        Consultologist.Api.Jobs.ConsultMacroExpander.Compose(
+            SourceRefs, Parts, macroIds, placements, Texts, NoValues, null, NoValues, Facts(snapshot));
+
+    [Fact]
+    public void TheToken_RendersTheSnapshot_AndEmptyWhenNoneChosen()
+    {
+        Assert.Equal("Signed Taylor Reyes, MD.", Consultologist.Api.Jobs.ConsultMacroExpander.Expand(
+            "Signed {{profile:signature}}.", NoValues, null, NoValues, Facts(Snapshot)));
+        // The § 4 optional-input semantic: the slot renders empty, the
+        // surrounding text lands, and the record names why downstream.
+        Assert.Equal("Signed .", Consultologist.Api.Jobs.ConsultMacroExpander.Expand(
+            "Signed {{profile:signature}}.", NoValues, null, NoValues, Facts(null)));
+        // profile:name is untouched by the fold.
+        Assert.Equal("By Taylor Reyes.", Consultologist.Api.Jobs.ConsultMacroExpander.Expand(
+            "By {{profile:name}}.", NoValues, null, NoValues, Facts(null)));
+    }
+
+    [Fact]
+    public void TheEntry_FollowsItsCarrier_WithTheAsOfDate()
+    {
+        var (text, appended, carried) = Compose(new[] { "disclaimer", "signoff" }, Snapshot);
+
+        Assert.True(carried);
+        Assert.Equal("Intro.\n\nThis disclaimer is fixed.\n\nSincerely,\nTaylor Reyes, MD", text);
+        Assert.Equal(
+            new[] { ("macro", "disclaimer", (string?)null), ("macro", "signoff", (string?)null), ("signature", "clinic-letters", (string?)"2026-09-01") },
+            appended!.Select(e => (e.Kind, e.Id, e.AsOf)));
+    }
+
+    [Fact]
+    public void APlacedCarrier_TakesItsEntryPairWithIt()
+    {
+        // Document order (§ 6): the carrier is placed before the section, so
+        // its macro entry AND its signature entry precede the unplaced
+        // disclaimer's.
+        var (text, appended, _) = Compose(
+            new[] { "disclaimer", "signoff" },
+            Snapshot,
+            new[] { new Consultologist.Api.Models.ConsultMacroPlacement("signoff", Before: "node:intro") });
+
+        Assert.Equal("Sincerely,\nTaylor Reyes, MD\n\nIntro.\n\nThis disclaimer is fixed.", text);
+        Assert.Equal(new[] { "signoff", "clinic-letters", "disclaimer" }, appended!.Select(e => e.Id));
+        Assert.Equal(new[] { "macro", "signature", "macro" }, appended.Select(e => e.Kind));
+    }
+
+    [Fact]
+    public void NoChosenBlock_CarriesTheToken_WritesNoEntry()
+    {
+        var (text, appended, carried) = Compose(new[] { "signoff" }, snapshot: null);
+
+        Assert.True(carried);
+        Assert.Equal("Intro.\n\nSincerely,\n", text);
+        var entry = Assert.Single(appended!);
+        Assert.Equal(("macro", "signoff"), (entry.Kind, entry.Id));
+    }
+
+    [Fact]
+    public void Finish_Embedded_ChangesNothing_AndNamesUnsigned()
+    {
+        var appended = new[] { new Consultologist.Api.Models.ConsultAppendedEntry("macro", "signoff") };
+
+        var (text, entries, unsigned) = Consultologist.Api.Jobs.ConsultSignatureAppend.Finish(
+            "Body", appended, signed: false, tokenCarried: true, Snapshot);
+        Assert.Equal("Body", text);
+        Assert.Same(appended, entries);
+        Assert.Null(unsigned);
+
+        var (_, _, unsignedNone) = Consultologist.Api.Jobs.ConsultSignatureAppend.Finish(
+            "Body", appended, signed: false, tokenCarried: true, snapshot: null);
+        Assert.True(unsignedNone);
+    }
+
+    [Fact]
+    public void Finish_NotEmbedded_IsApplyByteForByte()
+    {
+        // The v11 flag path, unmoved: Finish without carriage is Apply.
+        var appended = new[] { new Consultologist.Api.Models.ConsultAppendedEntry("macro", "disclaimer") };
+        var viaApply = Consultologist.Api.Jobs.ConsultSignatureAppend.Apply("Body", appended, signed: true, Snapshot);
+        var viaFinish = Consultologist.Api.Jobs.ConsultSignatureAppend.Finish("Body", appended, signed: true, tokenCarried: false, Snapshot);
+
+        Assert.Equal(viaApply.Text, viaFinish.Text);
+        Assert.Equal(viaApply.Appended!.Select(e => (e.Kind, e.Id, e.AsOf)), viaFinish.Appended!.Select(e => (e.Kind, e.Id, e.AsOf)));
+        Assert.Equal(viaApply.Unsigned, viaFinish.Unsigned);
+    }
+}

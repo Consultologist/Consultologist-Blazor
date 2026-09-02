@@ -926,6 +926,64 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
+    public async Task ATokenCarryingMacro_WidensTheSnapshotGate_WithoutTheFlag()
+    {
+        // v12 #620 (§ 5): a referenced macro carrying {{profile:signature}}
+        // needs the chosen block too — the gate scans the templates it
+        // already snapshotted, so a token package with NO signed flag still
+        // reads the setting and rides the snapshot.
+        var manifest = V11Fixtures.Minimal() with
+        {
+            SpecVersion = 12,
+            Macros = new List<WorkflowMacroSpec> { new("signoff", "Sign-off", "macros/signoff.md") }
+        };
+        var files = V6Fixtures.Files(manifest);
+        files["macros/signoff.md"] = "Sincerely,\n{{profile:signature}}";
+        var results = new List<WorkflowResolvedResult>
+        {
+            new("consult", "assemble-note", "Consultation note", Macros: new[] { "signoff" })
+        };
+
+        _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns(new WorkflowPackageRef("general", "latest"));
+        _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
+            .Returns(ExecutableV7Package(manifest, results, files));
+        _settings.GetAsync("user-1", AccountSettingKeys.ProfileSignatures, Arg.Any<CancellationToken>())
+            .Returns(new AccountSetting(
+                AccountSettingKeys.ProfileSignatures,
+                """{"Blocks":[{"Id":"clinic-letters","Name":"Clinic letters","Text":"Taylor Reyes, MD","UpdatedAtUtc":"2026-08-30T12:00:00+00:00"}],"ChosenId":"clinic-letters"}""",
+                "application/json",
+                DateTimeOffset.UtcNow));
+
+        ConsultGenerationOrchestrationInput? orchestrationInput = null;
+        _client.ScheduleNewOrchestrationInstanceAsync(
+                Arg.Any<TaskName>(),
+                Arg.Do<object?>(payload => orchestrationInput = payload as ConsultGenerationOrchestrationInput),
+                Arg.Any<StartOrchestrationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo => Task.FromResult(((StartOrchestrationOptions?)callInfo[2])!.InstanceId!));
+
+        var supplied = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = Referral,
+            ["seen_on"] = "2026-09-02",
+            ["encounter_kind"] = "follow_up"
+        };
+        var outcome = await CreateStarter().StartAsync(
+            _client,
+            new ConsultGenerationRequest(null, Inputs: supplied),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        Assert.Null(outcome.Error);
+        Assert.Equal(new ConsultSignatureSnapshot("clinic-letters", "Taylor Reyes, MD", "2026-08-30"), orchestrationInput!.Signature);
+        // The deliverable carries no flag — the token is the whole reason
+        // the snapshot rides.
+        Assert.Null(Assert.Single(orchestrationInput.Results!).Signature);
+    }
+
+    [Fact]
     public async Task SpecVersion8Package_StampsHashVersion4()
     {
         // A text-only v8 package hashes to the same bytes a v7 one would,
