@@ -705,13 +705,18 @@ public sealed class ConsultGenerationOrchestrator
                 return;
             }
 
+            // v12 #618 (design § 3): the boundary's descriptors filter with
+            // the choices resolved at start — DecideActivity never sees the
+            // request, so the map rides the orchestration input.
+            var decidedResults = ConsultGenerationJobStarter.FilterDescriptorMacros(decision.Results, input.MacroChoices);
+
             await context.Entities.CallEntityAsync(
                 entityId,
                 nameof(ConsultGenerationJobEntity.Decide),
                 new ConsultGenerationDecision(
                     decision.Items,
                     decision.Nodes,
-                    decision.Results,
+                    decidedResults,
                     decision.Skipped.Count > 0 ? decision.Skipped : null,
                     decision.CollectionRosters,
                     decision.ItemSteps,
@@ -724,7 +729,7 @@ public sealed class ConsultGenerationOrchestrator
             nodesById = nodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
             chainNodes = nodes.Where(node => node.ForEach != null).ToList();
             aggregators = nodes.Where(node => node.Aggregate != null).ToList();
-            results = decision.Results;
+            results = decidedResults;
             items = decision.Items;
             collections = decision.CollectionSets;
             v6 = collections is { Count: > 0 };

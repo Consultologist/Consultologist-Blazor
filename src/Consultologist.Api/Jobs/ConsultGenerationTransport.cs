@@ -1308,6 +1308,20 @@ public sealed class ConsultGenerationJobs
             }
         }
 
+        // v12 #618: choices are shape-checked only — a blank key is a 400;
+        // whether the id names an optional macro is the starter's question,
+        // answered against the resolved package (a 422 there).
+        if (request.MacroChoices is { Count: > 0 })
+        {
+            foreach (var id in request.MacroChoices.Keys)
+            {
+                if (string.IsNullOrWhiteSpace(id))
+                {
+                    return "MacroChoices contains a blank macro id.";
+                }
+            }
+        }
+
         // Exactly one of the two forms: silently preferring one would drop
         // caller data (package-format-v7.md request contract).
         if (hasDraft && hasInputs)
@@ -2257,6 +2271,9 @@ public sealed class ConsultGenerationJobs
             ConsultGenerationJobStartError.InputFormRefNotFound => HttpStatusCode.UnprocessableEntity,
             ConsultGenerationJobStartError.InputFormRefValuesDeleted => HttpStatusCode.UnprocessableEntity,
             ConsultGenerationJobStartError.InputFormRefMismatch => HttpStatusCode.UnprocessableEntity,
+            // v12 #618: same family — well-formed, unsatisfiable against
+            // this package's macro declarations.
+            ConsultGenerationJobStartError.MacroChoiceMismatch => HttpStatusCode.UnprocessableEntity,
             // #266: nothing is wrong with the request at all — the
             // account has spent its window. 429 is the one status
             // that says "the same request will work later".
