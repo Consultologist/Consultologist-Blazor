@@ -468,7 +468,7 @@ public class WorkflowV12PlacementRuntimeTests
         new Consultologist.Api.Jobs.ConsultAggregateRenderer.ForEachPart(new[] { ("History", "Unremarkable."), ("Exam", "Benign.") })
     };
 
-    private static (string Text, IReadOnlyList<Consultologist.Api.Models.ConsultAppendedEntry>? Appended) Compose(
+    private static (string Text, IReadOnlyList<Consultologist.Api.Models.ConsultAppendedEntry>? Appended, bool TokenCarried) Compose(
         IReadOnlyList<string>? macroIds,
         IReadOnlyList<Consultologist.Api.Models.ConsultMacroPlacement>? placements,
         IReadOnlyList<string>? sourceRefs = null,
@@ -486,7 +486,7 @@ public class WorkflowV12PlacementRuntimeTests
         var (appendText, appendEntries) = Consultologist.Api.Jobs.ConsultMacroExpander.Append(
             rendered, new[] { "disclaimer", "closing" }, Texts, NoValues, null, NoValues, Facts());
 
-        var (composed, composedEntries) = Compose(new[] { "disclaimer", "closing" }, placements: null);
+        var (composed, composedEntries, _) = Compose(new[] { "disclaimer", "closing" }, placements: null);
 
         Assert.Equal(appendText, composed);
         Assert.Equal(
@@ -494,7 +494,7 @@ public class WorkflowV12PlacementRuntimeTests
             composedEntries!.Select(e => (e.Kind, e.Id)));
 
         // And with no macros at all, Render's own bytes.
-        var (bare, none) = Compose(null, null);
+        var (bare, none, _) = Compose(null, null);
         Assert.Equal(rendered, bare);
         Assert.Null(none);
     }
@@ -502,7 +502,7 @@ public class WorkflowV12PlacementRuntimeTests
     [Fact]
     public void APlacedMacro_SitsBeforeItsSection()
     {
-        var (text, _) = Compose(
+        var (text, _, _) = Compose(
             new[] { "disclaimer" },
             new[] { new Consultologist.Api.Models.ConsultMacroPlacement("disclaimer", Before: "node:findings") });
 
@@ -516,7 +516,7 @@ public class WorkflowV12PlacementRuntimeTests
     {
         // § 11 assumption 1, held: after the fanned source means after the
         // WHOLE block — never between History and Exam.
-        var (text, _) = Compose(
+        var (text, _, _) = Compose(
             new[] { "disclaimer" },
             new[] { new Consultologist.Api.Models.ConsultMacroPlacement("disclaimer", After: "node:findings") });
 
@@ -531,7 +531,7 @@ public class WorkflowV12PlacementRuntimeTests
         // 'closing' is DECLARED first but placed nowhere; 'disclaimer' is
         // declared second and placed before the first section. Document
         // order wins in the text and in appended[] alike (§ 6).
-        var (text, appended) = Compose(
+        var (text, appended, _) = Compose(
             new[] { "closing", "disclaimer" },
             new[] { new Consultologist.Api.Models.ConsultMacroPlacement("disclaimer", Before: "node:intro") });
 
@@ -544,7 +544,7 @@ public class WorkflowV12PlacementRuntimeTests
     [Fact]
     public void BeforeAndAfterTheSameSection_BothLand()
     {
-        var (text, appended) = Compose(
+        var (text, appended, _) = Compose(
             new[] { "disclaimer", "closing" },
             new[]
             {
@@ -561,7 +561,7 @@ public class WorkflowV12PlacementRuntimeTests
     [Fact]
     public void TheSignature_StillFollowsEveryPlacedMacro()
     {
-        var (text, appended) = Compose(
+        var (text, appended, _) = Compose(
             new[] { "disclaimer" },
             new[] { new Consultologist.Api.Models.ConsultMacroPlacement("disclaimer", Before: "node:intro") });
         var snapshot = new Consultologist.Api.Jobs.ConsultSignatureSnapshot("s1", "Dr. Reyes", "2026-09-01");
@@ -583,9 +583,9 @@ public class WorkflowV12PlacementRuntimeTests
         var hash = Consultologist.Api.Workflow.ConsultGenerationProvenance.Sha256Hex(
             Consultologist.Api.Jobs.ConsultAggregateRenderer.Render(Parts));
 
-        var (bare, _) = Compose(null, null);
-        var (appendedText, _) = Compose(new[] { "disclaimer" }, null);
-        var (placedText, _) = Compose(
+        var (bare, _, _) = Compose(null, null);
+        var (appendedText, _, _) = Compose(new[] { "disclaimer" }, null);
+        var (placedText, _, _) = Compose(
             new[] { "disclaimer" },
             new[] { new Consultologist.Api.Models.ConsultMacroPlacement("disclaimer", Before: "node:intro") });
 
@@ -610,7 +610,7 @@ public class WorkflowV12PlacementRuntimeTests
     {
         // The filters keep ids and placements in lockstep; this is the belt
         // to that suspender — a stray placement never mis-places or throws.
-        var (text, _) = Compose(
+        var (text, _, _) = Compose(
             new[] { "disclaimer" },
             new[] { new Consultologist.Api.Models.ConsultMacroPlacement("ghost", Before: "node:intro") });
 
@@ -651,5 +651,123 @@ public class WorkflowV12PlacementRuntimeTests
 
         var placement = Assert.Single(deliverable.MacroPlacements!);
         Assert.Equal(("closing", "node:intro"), (placement.Id, placement.Before));
+    }
+}
+
+/// <summary>
+/// v12 rung (d) (#620, design § 5/§ 6): the signature token at run time — it
+/// embeds the snapshotted block where its macro sits, names itself in
+/// appended[] beside its carrier with the as-of date, renders empty when no
+/// block was chosen, and Finish keeps the signed-once rule: an embedded
+/// signature is never also appended.
+/// </summary>
+public class WorkflowV12SignatureTokenRuntimeTests
+{
+    private static readonly Dictionary<string, string> NoValues = new(StringComparer.Ordinal);
+
+    private static readonly Consultologist.Api.Jobs.ConsultSignatureSnapshot Snapshot =
+        new("clinic-letters", "Taylor Reyes, MD", "2026-09-01");
+
+    private static Consultologist.Api.Jobs.ConsultMacroExpander.RunFacts Facts(Consultologist.Api.Jobs.ConsultSignatureSnapshot? snapshot) =>
+        new(new DateTime(2026, 9, 2, 12, 0, 0, DateTimeKind.Utc), "0123456789abcdef", "general@v2026.09.1", "east.ca.api.consultologist.ai", "Taylor Reyes", snapshot);
+
+    private static readonly string[] SourceRefs = { "node:intro" };
+
+    private static readonly IReadOnlyList<Consultologist.Api.Jobs.ConsultAggregateRenderer.Part> Parts =
+        new Consultologist.Api.Jobs.ConsultAggregateRenderer.Part[] { new Consultologist.Api.Jobs.ConsultAggregateRenderer.ScalarPart("Intro.") };
+
+    private static readonly Dictionary<string, string> Texts = new(StringComparer.Ordinal)
+    {
+        ["signoff"] = "Sincerely,\n{{profile:signature}}",
+        ["disclaimer"] = "This disclaimer is fixed."
+    };
+
+    private static (string Text, IReadOnlyList<Consultologist.Api.Models.ConsultAppendedEntry>? Appended, bool TokenCarried) Compose(
+        IReadOnlyList<string>? macroIds,
+        Consultologist.Api.Jobs.ConsultSignatureSnapshot? snapshot,
+        IReadOnlyList<Consultologist.Api.Models.ConsultMacroPlacement>? placements = null) =>
+        Consultologist.Api.Jobs.ConsultMacroExpander.Compose(
+            SourceRefs, Parts, macroIds, placements, Texts, NoValues, null, NoValues, Facts(snapshot));
+
+    [Fact]
+    public void TheToken_RendersTheSnapshot_AndEmptyWhenNoneChosen()
+    {
+        Assert.Equal("Signed Taylor Reyes, MD.", Consultologist.Api.Jobs.ConsultMacroExpander.Expand(
+            "Signed {{profile:signature}}.", NoValues, null, NoValues, Facts(Snapshot)));
+        // The § 4 optional-input semantic: the slot renders empty, the
+        // surrounding text lands, and the record names why downstream.
+        Assert.Equal("Signed .", Consultologist.Api.Jobs.ConsultMacroExpander.Expand(
+            "Signed {{profile:signature}}.", NoValues, null, NoValues, Facts(null)));
+        // profile:name is untouched by the fold.
+        Assert.Equal("By Taylor Reyes.", Consultologist.Api.Jobs.ConsultMacroExpander.Expand(
+            "By {{profile:name}}.", NoValues, null, NoValues, Facts(null)));
+    }
+
+    [Fact]
+    public void TheEntry_FollowsItsCarrier_WithTheAsOfDate()
+    {
+        var (text, appended, carried) = Compose(new[] { "disclaimer", "signoff" }, Snapshot);
+
+        Assert.True(carried);
+        Assert.Equal("Intro.\n\nThis disclaimer is fixed.\n\nSincerely,\nTaylor Reyes, MD", text);
+        Assert.Equal(
+            new[] { ("macro", "disclaimer", (string?)null), ("macro", "signoff", (string?)null), ("signature", "clinic-letters", (string?)"2026-09-01") },
+            appended!.Select(e => (e.Kind, e.Id, e.AsOf)));
+    }
+
+    [Fact]
+    public void APlacedCarrier_TakesItsEntryPairWithIt()
+    {
+        // Document order (§ 6): the carrier is placed before the section, so
+        // its macro entry AND its signature entry precede the unplaced
+        // disclaimer's.
+        var (text, appended, _) = Compose(
+            new[] { "disclaimer", "signoff" },
+            Snapshot,
+            new[] { new Consultologist.Api.Models.ConsultMacroPlacement("signoff", Before: "node:intro") });
+
+        Assert.Equal("Sincerely,\nTaylor Reyes, MD\n\nIntro.\n\nThis disclaimer is fixed.", text);
+        Assert.Equal(new[] { "signoff", "clinic-letters", "disclaimer" }, appended!.Select(e => e.Id));
+        Assert.Equal(new[] { "macro", "signature", "macro" }, appended.Select(e => e.Kind));
+    }
+
+    [Fact]
+    public void NoChosenBlock_CarriesTheToken_WritesNoEntry()
+    {
+        var (text, appended, carried) = Compose(new[] { "signoff" }, snapshot: null);
+
+        Assert.True(carried);
+        Assert.Equal("Intro.\n\nSincerely,\n", text);
+        var entry = Assert.Single(appended!);
+        Assert.Equal(("macro", "signoff"), (entry.Kind, entry.Id));
+    }
+
+    [Fact]
+    public void Finish_Embedded_ChangesNothing_AndNamesUnsigned()
+    {
+        var appended = new[] { new Consultologist.Api.Models.ConsultAppendedEntry("macro", "signoff") };
+
+        var (text, entries, unsigned) = Consultologist.Api.Jobs.ConsultSignatureAppend.Finish(
+            "Body", appended, signed: false, tokenCarried: true, Snapshot);
+        Assert.Equal("Body", text);
+        Assert.Same(appended, entries);
+        Assert.Null(unsigned);
+
+        var (_, _, unsignedNone) = Consultologist.Api.Jobs.ConsultSignatureAppend.Finish(
+            "Body", appended, signed: false, tokenCarried: true, snapshot: null);
+        Assert.True(unsignedNone);
+    }
+
+    [Fact]
+    public void Finish_NotEmbedded_IsApplyByteForByte()
+    {
+        // The v11 flag path, unmoved: Finish without carriage is Apply.
+        var appended = new[] { new Consultologist.Api.Models.ConsultAppendedEntry("macro", "disclaimer") };
+        var viaApply = Consultologist.Api.Jobs.ConsultSignatureAppend.Apply("Body", appended, signed: true, Snapshot);
+        var viaFinish = Consultologist.Api.Jobs.ConsultSignatureAppend.Finish("Body", appended, signed: true, tokenCarried: false, Snapshot);
+
+        Assert.Equal(viaApply.Text, viaFinish.Text);
+        Assert.Equal(viaApply.Appended!.Select(e => (e.Kind, e.Id, e.AsOf)), viaFinish.Appended!.Select(e => (e.Kind, e.Id, e.AsOf)));
+        Assert.Equal(viaApply.Unsigned, viaFinish.Unsigned);
     }
 }

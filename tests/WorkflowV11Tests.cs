@@ -309,7 +309,9 @@ public class ConsultMacroExpanderTests
     [InlineData("{{data:intro}}", "data:intro")]
     [InlineData("{{classification:scope}}", "classification:scope")]
     [InlineData("{{run:time}}", "run:time")]
-    [InlineData("{{profile:signature}}", "profile:signature")]
+    // profile:signature left this list at v12 rung (d) (#620): the token
+    // joined the grammar, and the version wall is the publish gate — the
+    // expander resolves it unconditionally (WorkflowV12SignatureTokenTests).
     [InlineData("{{no_namespace}}", "no_namespace")]
     [InlineData("{{sql:drop}}", "sql:drop")]
     public void ATokenThatDoesNotResolve_FailsLoud_NamingIt(string template, string token)

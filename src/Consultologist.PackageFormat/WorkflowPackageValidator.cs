@@ -2214,7 +2214,7 @@ public static class WorkflowPackageValidator
             if (files.TryGetValue(macro.File, out var template))
             {
                 tokenCounts[macro.Id] = WorkflowMacroPlaceholders.Pattern.Matches(template)
-                    .Count(match => WorkflowMacroPlaceholders.TokenOf(match) == "profile:signature");
+                    .Count(match => WorkflowMacroPlaceholders.TokenOf(match) == WorkflowMacroPlaceholders.SignatureToken);
             }
         }
 

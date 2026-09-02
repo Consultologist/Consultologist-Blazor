@@ -39,4 +39,28 @@ internal static class ConsultSignatureAppend
 
         return (text + "\n\n" + snapshot.Text, entries, null);
     }
+
+    /// <summary>
+    /// v12 #620 (design § 5): the post-compose decision, whole. An embedded
+    /// signature (a referenced macro carried {{profile:signature}}) skips the
+    /// append — a document is signed once, and the composer already wrote
+    /// both the text and the entry — reporting unsigned-although-requested
+    /// when no block was chosen; everything else is Apply, byte for byte.
+    /// The validator refuses the flag beside a token-carrying macro at
+    /// publish, so the two arms never compete.
+    /// </summary>
+    public static (string Text, IReadOnlyList<ConsultAppendedEntry>? Appended, bool? Unsigned) Finish(
+        string text,
+        IReadOnlyList<ConsultAppendedEntry>? appended,
+        bool signed,
+        bool tokenCarried,
+        ConsultSignatureSnapshot? snapshot)
+    {
+        if (tokenCarried)
+        {
+            return (text, appended, snapshot == null ? true : null);
+        }
+
+        return Apply(text, appended, signed, snapshot);
+    }
 }

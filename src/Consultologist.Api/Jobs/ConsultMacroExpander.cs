@@ -27,7 +27,12 @@ internal static class ConsultMacroExpander
         string JobId,
         string PackageRef,
         string? ApiHost,
-        string? ProfileName);
+        string? ProfileName,
+        // v12 #620 (design § 5): the chosen signature block as snapshotted at
+        // start — what {{profile:signature}} embeds. Null renders the token
+        // empty (the § 4 optional-input semantic) and the deliverable records
+        // unsigned-although-requested downstream.
+        ConsultSignatureSnapshot? Signature = null);
 
     /// <summary>
     /// The § 4 append rule. Returns the rendered text untouched with no
@@ -76,7 +81,7 @@ internal static class ConsultMacroExpander
     /// Render(parts) separately, before this runs: composition never touches
     /// the aggregator's outputHash or its downstream binds (§ 7).
     /// </summary>
-    public static (string Text, IReadOnlyList<ConsultAppendedEntry>? Appended) Compose(
+    public static (string Text, IReadOnlyList<ConsultAppendedEntry>? Appended, bool TokenCarried) Compose(
         IReadOnlyList<string> sourceRefs,
         IReadOnlyList<ConsultAggregateRenderer.Part> parts,
         IReadOnlyList<string>? macroIds,
@@ -98,7 +103,7 @@ internal static class ConsultMacroExpander
 
         if (macroIds is not { Count: > 0 })
         {
-            return (ConsultAggregateRenderer.Render(parts), null);
+            return (ConsultAggregateRenderer.Render(parts), null, false);
         }
 
         // A placement whose macro is not in the id list places nothing — the
@@ -109,24 +114,38 @@ internal static class ConsultMacroExpander
             .ToList();
         var placedIds = active.Select(placement => placement.Id).ToHashSet(StringComparer.Ordinal);
 
-        string ExpandId(string macroId)
+        var pieces = new List<string>(parts.Count + macroIds.Count);
+        var appended = new List<ConsultAppendedEntry>(macroIds.Count);
+        var tokenCarried = false;
+
+        // v12 #620 (§ 5/§ 6): a macro carrying {{profile:signature}} embeds
+        // the snapshotted block inside its own expansion, and its signature
+        // entry — the as-of date's home — follows the macro's entry
+        // immediately: document order, one entry per signed deliverable (the
+        // validator guarantees one token). With no chosen block the token
+        // rendered empty and no entry is written; Finish reports unsigned.
+        void EmitMacro(string macroId)
         {
             if (macroTexts is null || !macroTexts.TryGetValue(macroId, out var template))
             {
                 throw new InvalidOperationException($"Macro '{macroId}' has no snapshotted template.");
             }
 
-            return Expand(template, inputs, dataScalars, classifications, facts);
+            pieces.Add(Expand(template, inputs, dataScalars, classifications, facts));
+            appended.Add(new ConsultAppendedEntry(ConsultAppendedKinds.Macro, macroId));
+
+            if (WorkflowMacroPlaceholders.CarriesSignatureToken(template))
+            {
+                tokenCarried = true;
+
+                if (facts.Signature is { } snapshot)
+                {
+                    appended.Add(new ConsultAppendedEntry(ConsultAppendedKinds.Signature, snapshot.Id, snapshot.AsOf));
+                }
+            }
         }
 
-        var pieces = new List<string>(parts.Count + macroIds.Count);
-        var appended = new List<ConsultAppendedEntry>(macroIds.Count);
-
-        void Emit(ConsultMacroPlacement placement)
-        {
-            pieces.Add(ExpandId(placement.Id));
-            appended.Add(new ConsultAppendedEntry(ConsultAppendedKinds.Macro, placement.Id));
-        }
+        void Emit(ConsultMacroPlacement placement) => EmitMacro(placement.Id);
 
         for (var i = 0; i < parts.Count; i++)
         {
@@ -147,11 +166,10 @@ internal static class ConsultMacroExpander
 
         foreach (var macroId in macroIds.Where(id => !placedIds.Contains(id)))
         {
-            pieces.Add(ExpandId(macroId));
-            appended.Add(new ConsultAppendedEntry(ConsultAppendedKinds.Macro, macroId));
+            EmitMacro(macroId);
         }
 
-        return (string.Join("\n\n", pieces), appended.Count > 0 ? appended : null);
+        return (string.Join("\n\n", pieces), appended.Count > 0 ? appended : null, tokenCarried);
     }
 
     /// <summary>One template, expanded — substitution over the closed namespaces.</summary>
@@ -211,6 +229,16 @@ internal static class ConsultMacroExpander
                         if (id == "name")
                         {
                             return facts.ProfileName ?? string.Empty;
+                        }
+
+                        // v12 #620 (§ 5): the embedded signature. Version
+                        // gating lives at publish — a v11 package cannot
+                        // carry this token, so the expander resolves it
+                        // unconditionally; empty is the unsigned slot, and
+                        // the record names why.
+                        if (id == WorkflowMacroPlaceholders.SignatureFact)
+                        {
+                            return facts.Signature?.Text ?? string.Empty;
                         }
 
                         break;
