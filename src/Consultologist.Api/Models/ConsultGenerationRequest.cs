@@ -296,7 +296,11 @@ public record ConsultGenerationJobResponse(
     // declined macro records value false rather than vanishing. Null when
     // the package declares no optional macros (the control) or the record
     // predates the field. Appended last.
-    IReadOnlyDictionary<string, ConsultMacroChoice>? MacroChoices = null);
+    IReadOnlyDictionary<string, ConsultMacroChoice>? MacroChoices = null,
+    // v12 #624: deliverables refused by their check — the third state beside
+    // produced and skipped. Null when none failed or the record predates the
+    // field. Appended last.
+    IReadOnlyList<ConsultFailedDocument>? FailedDocuments = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
@@ -494,6 +498,17 @@ public sealed record ConsultFailedDocument(
     IReadOnlyList<string>? Untested = null);
 
 /// <summary>
+/// v12 #624 (design § 13): a check node's verdict — the boolean, the input
+/// terms the document did not cover, and the concepts the comparison could
+/// not code (the record-the-negative discipline: untested is named, never
+/// silently dropped).
+/// </summary>
+public sealed record ConsultCheckOutcome(
+    bool Passed,
+    IReadOnlyList<string>? Uncovered = null,
+    IReadOnlyList<string>? Untested = null);
+
+/// <summary>
 /// Per-node run status and provenance exposed on the job response — the hashes form
 /// the step-level verification chain (dag-improvements #6). Concepts stay off the
 /// wire; they live in entity state.
@@ -511,7 +526,9 @@ public sealed record ConsultGenerationNodeStatusResponse(
     // v10 (#496): a classifier's answer, a declared value.
     string? Classification = null,
     // #551: what this instance's call cost; null is not recorded, never 0.
-    ConsultTokenUsage? Tokens = null);
+    ConsultTokenUsage? Tokens = null,
+    // v12 #624: a check node's verdict and its evidence. Appended last.
+    ConsultCheckOutcome? Check = null);
 
 /// <summary>#390: the body of a reschedule — a job id in the route, a time here.</summary>
 public sealed record RescheduleConsultRequest(DateTimeOffset? ScheduledAtUtc);

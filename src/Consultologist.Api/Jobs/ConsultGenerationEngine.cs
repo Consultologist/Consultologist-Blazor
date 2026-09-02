@@ -183,6 +183,13 @@ public sealed class ConsultGenerationOrchestrator
         // reads THIS from rung (c) on (§ 5, closing the fork): the orchestrator
         // can never read entity state back, so the engine keeps what it sent.
         var recordedTexts = new Dictionary<string, string>(StringComparer.Ordinal);
+        // v12 #624: a checked deliverable's completion chain waits for its
+        // check — the stash carries exactly what Compose's arity invariant
+        // demands travel together. Keyed by resultId: two results may share
+        // one check, each gating itself.
+        var pendingChecked = new Dictionary<string, (ConsultDeliverables.Deliverable Deliverable, IReadOnlyList<string> SourceRefs, List<ConsultAggregateRenderer.Part> Parts)>(StringComparer.Ordinal);
+        var settledChecks = new Dictionary<string, ConsultCheckOutcome>(StringComparer.Ordinal);
+        var failedDocuments = new List<ConsultFailedDocument>();
         // v10 (#496): the skipped set the reply names — the starter's, or the boundary's.
         var skippedForReply = input.SkippedDocuments;
 
@@ -357,6 +364,108 @@ public sealed class ConsultGenerationOrchestrator
             await MarkFullyCompletedChainNodesAsync();
         }
 
+        // v11 #513/#516, v12 #619/#620: one deliverable's completion chain —
+        // Compose (placement-aware, byte-identical to the v11 append with
+        // nothing placed) → Finish (signed once) → the recorded text → the
+        // entity. Extracted so a checked deliverable runs the SAME chain
+        // verbatim after its check passes (v12 #624); the unchecked path is
+        // byte-identical control flow.
+        async Task CompleteDeliverableAsync(
+            ConsultDeliverables.Deliverable deliverable,
+            IReadOnlyList<string> sourceRefs,
+            List<ConsultAggregateRenderer.Part> parts)
+        {
+            var (text, appended, tokenCarried) = ConsultMacroExpander.Compose(
+                sourceRefs,
+                parts,
+                deliverable.MacroIds,
+                deliverable.MacroPlacements,
+                input.MacroTexts,
+                effectiveInputs,
+                input.DataScalars,
+                Classifications(),
+                new ConsultMacroExpander.RunFacts(
+                    context.CurrentUtcDateTime,
+                    context.InstanceId,
+                    input.WorkflowPackage ?? string.Empty,
+                    input.ApiHost,
+                    input.ProfileName,
+                    input.Signature));
+
+            var (finalText, finalAppended, unsigned) = ConsultSignatureAppend.Finish(
+                text, appended, deliverable.Signature == true, tokenCarried, input.Signature);
+            recordedTexts[deliverable.ResultId!] = finalText;
+
+            await context.Entities.CallEntityAsync(
+                entityId,
+                nameof(ConsultGenerationJobEntity.CompleteResultDocument),
+                new ConsultGenerationResultDocument(deliverable.ResultId!, deliverable.Label ?? deliverable.ResultId!, finalText, deliverable.Ordinal, finalAppended, unsigned));
+        }
+
+        // v12 #624 (§ 13): checks settle inline once both operands have —
+        // the aggregator's own discipline: pure, no activity, no retries.
+        // Then every pending deliverable the check gates either runs its
+        // stashed chain verbatim (pass) or records the third state (fail).
+        async Task<bool> TrySettleChecksAsync()
+        {
+            var progressed = false;
+
+            foreach (var checkNode in nodes)
+            {
+                if (checkNode.Check is not { } check || settledChecks.ContainsKey(checkNode.Id))
+                {
+                    continue;
+                }
+
+                var ofId = check.Of[WorkflowNodeBindingSources.NodePrefix.Length..];
+                var inId = check.In[WorkflowNodeBindingSources.NodePrefix.Length..];
+
+                if (!outputs.TryGetValue(ofId, out var ofResult) || !outputs.TryGetValue(inId, out var inResult))
+                {
+                    continue;
+                }
+
+                var outcome = ConsultCheckExecutor.TermsSubset(ofResult.Concepts, inResult.Concepts);
+                settledChecks[checkNode.Id] = outcome;
+                completedNodeCount++;
+                progressed = true;
+
+                await context.Entities.CallEntityAsync(
+                    entityId,
+                    nameof(ConsultGenerationJobEntity.MarkNodeCompleted),
+                    new ConsultGenerationNodeUpdate(
+                        checkNode.Id, checkNode.Label, null,
+                        null, null,
+                        completedNodeCount, totalNodeCount,
+                        Check: outcome));
+
+                foreach (var (resultId, pending) in pendingChecked.Where(pair => pair.Value.Deliverable.CheckNodeId == checkNode.Id).ToList())
+                {
+                    pendingChecked.Remove(resultId);
+
+                    if (outcome.Passed)
+                    {
+                        await CompleteDeliverableAsync(pending.Deliverable, pending.SourceRefs, pending.Parts);
+                        continue;
+                    }
+
+                    var failed = new ConsultFailedDocument(
+                        resultId,
+                        pending.Deliverable.Label ?? resultId,
+                        check.FailWith,
+                        outcome.Uncovered,
+                        outcome.Untested);
+                    failedDocuments.Add(failed);
+                    await context.Entities.CallEntityAsync(
+                        entityId,
+                        nameof(ConsultGenerationJobEntity.RecordFailedDocument),
+                        failed);
+                }
+            }
+
+            return progressed;
+        }
+
         // Aggregators compose inline once every source settles — deterministic,
         // no activity, no retries; a failed contributing item fails the aggregator
         // loud (never a partial document), cascading downstream by absence
@@ -368,6 +477,7 @@ public sealed class ConsultGenerationOrchestrator
             while (progressed)
             {
                 progressed = false;
+                progressed |= await TrySettleChecksAsync();
 
                 foreach (var aggregator in aggregators)
                 {
@@ -468,52 +578,16 @@ public sealed class ConsultGenerationOrchestrator
                         // Result nodes are distinct per the validator: at most one
                         // deliverable owns this aggregator.
                         var deliverable = deliverables.FirstOrDefault(d => string.Equals(d.NodeId, aggregator.Id, StringComparison.Ordinal));
-                        if (deliverable != null)
+                        if (deliverable is { CheckNodeId: not null })
                         {
-                            // v11 #513 (§ 4 append rule): the deliverable's
-                            // macros expand and append after Render returns —
-                            // inside the document, and so inside documentHash
-                            // (stamped over Text at completion); outside this
-                            // aggregator's outputHash, which stays over
-                            // Render's bytes above. A deliverable with no
-                            // macros passes rendered through untouched — the
-                            // control's bytes.
-                            // v12 #619 (§ 4): the composer interleaves placed
-                            // macros between the sources and appends the rest
-                            // — with nothing placed its bytes equal the v11
-                            // append exactly (pinned). `rendered` above stays
-                            // the hash and the bindable output.
-                            var (text, appended, tokenCarried) = ConsultMacroExpander.Compose(
-                                aggregator.Aggregate!,
-                                parts,
-                                deliverable.MacroIds,
-                                deliverable.MacroPlacements,
-                                input.MacroTexts,
-                                effectiveInputs,
-                                input.DataScalars,
-                                Classifications(),
-                                new ConsultMacroExpander.RunFacts(
-                                    context.CurrentUtcDateTime,
-                                    context.InstanceId,
-                                    input.WorkflowPackage ?? string.Empty,
-                                    input.ApiHost,
-                                    input.ProfileName,
-                                    // v12 #620: the block the token embeds.
-                                    input.Signature));
-
-                            // v11 #516: the signature, strictly last by
-                            // default — v12 #620 demotes that to the flag's
-                            // behaviour: an embedded token already wrote the
-                            // text and the entry, so Finish skips the append
-                            // (signed once) and names the unsigned state.
-                            var (finalText, finalAppended, unsigned) = ConsultSignatureAppend.Finish(
-                                text, appended, deliverable.Signature == true, tokenCarried, input.Signature);
-                            recordedTexts[deliverable.ResultId!] = finalText;
-
-                            await context.Entities.CallEntityAsync(
-                                entityId,
-                                nameof(ConsultGenerationJobEntity.CompleteResultDocument),
-                                new ConsultGenerationResultDocument(deliverable.ResultId!, deliverable.Label ?? deliverable.ResultId!, finalText, deliverable.Ordinal, finalAppended, unsigned));
+                            // v12 #624 (§ 13): the settle/record split — the
+                            // aggregator settled and hashed above exactly as
+                            // ever; the document itself waits for the check.
+                            pendingChecked[deliverable.ResultId!] = (deliverable, aggregator.Aggregate!, parts);
+                        }
+                        else if (deliverable != null)
+                        {
+                            await CompleteDeliverableAsync(deliverable, aggregator.Aggregate!, parts);
                         }
                     }
                     else if (string.Equals(aggregator.Id, resultNodeId, StringComparison.Ordinal))
@@ -784,7 +858,7 @@ public sealed class ConsultGenerationOrchestrator
             // Completed requires every declared deliverable produced; the error
             // is the first missing deliverable's, by result-set order
             // (package-format-v7.md).
-            (finalStatus, finalError) = ConsultDeliverables.FinalOutcome(deliverables, outputs, failedAggregators);
+            (finalStatus, finalError) = ConsultDeliverables.FinalOutcome(deliverables, outputs, failedAggregators, failedDocuments);
         }
         else if (v6)
         {
@@ -830,13 +904,16 @@ public sealed class ConsultGenerationOrchestrator
         // text CompleteResultDocument stored, appends and all — so the app,
         // History, the PDF and the delivery email are one text (§ 5).
         var replyDocuments = v7 && finalStatus == ConsultGenerationJobStatuses.Completed
-            ? ConsultDeliverables.ReplyDocumentsFor(deliverables, recordedTexts)
+            ? ConsultDeliverables.ReplyDocumentsFor(
+                deliverables,
+                recordedTexts,
+                failedDocuments.Count > 0 ? failedDocuments.Select(d => d.ResultId).ToHashSet(StringComparer.Ordinal) : null)
             : null;
         var assembledDocument = !v7 && v6 && outputs.TryGetValue(resultNodeId!, out var resultOutput)
             ? resultOutput.RawOutput
             : null;
 
-        await SendEmailIntakeReplyAsync(context, input with { SkippedDocuments = skippedForReply }, finalStatus, logger, assembledDocument, replyDocuments);
+        await SendEmailIntakeReplyAsync(context, input with { SkippedDocuments = skippedForReply }, finalStatus, logger, assembledDocument, replyDocuments, failedDocuments.Count > 0 ? failedDocuments : null);
 
         PublishStatus(finalStatus);
         }
@@ -887,9 +964,10 @@ public sealed class ConsultGenerationOrchestrator
         string finalStatus,
         ILogger logger,
         string? assembledDocument,
-        IReadOnlyList<Email.EmailIntakeReplyDocument>? documents = null)
+        IReadOnlyList<Email.EmailIntakeReplyDocument>? documents = null,
+        IReadOnlyList<ConsultFailedDocument>? failedDocuments = null)
     {
-        var delivery = await TrySendReplyAsync(context, input, finalStatus, logger, assembledDocument, documents);
+        var delivery = await TrySendReplyAsync(context, input, finalStatus, logger, assembledDocument, documents, failedDocuments);
 
         try
         {
@@ -911,7 +989,8 @@ public sealed class ConsultGenerationOrchestrator
         string finalStatus,
         ILogger logger,
         string? assembledDocument,
-        IReadOnlyList<Email.EmailIntakeReplyDocument>? documents)
+        IReadOnlyList<Email.EmailIntakeReplyDocument>? documents,
+        IReadOnlyList<ConsultFailedDocument>? failedDocuments = null)
     {
         // #518: the account's choice, made at start, comes before the address:
         // a run the user asked not to be emailed is not-requested whatever the
@@ -937,7 +1016,8 @@ public sealed class ConsultGenerationOrchestrator
                     input.AppUserId,
                     assembledDocument,
                     documents,
-                    input.SkippedDocuments),
+                    input.SkippedDocuments,
+                    failedDocuments),
                 new TaskOptions(new TaskRetryOptions(new RetryPolicy(3, TimeSpan.FromSeconds(10), 2.0))));
 
             return DeliveryRecordFor(outcome);
@@ -1138,9 +1218,15 @@ internal static class ConsultDeliverables
     /// </summary>
     internal static List<Email.EmailIntakeReplyDocument> ReplyDocumentsFor(
         IReadOnlyList<Deliverable> deliverables,
-        IReadOnlyDictionary<string, string> recordedTexts)
+        IReadOnlyDictionary<string, string> recordedTexts,
+        IReadOnlySet<string>? failedResultIds = null)
     {
+        // v12 #624: a check-failed deliverable has no recorded text and is
+        // named in the reply's failed lines instead — it leaves this set;
+        // the strict indexing stays for everything produced (a missing key
+        // there is still a broken invariant, failing loud).
         return deliverables
+            .Where(deliverable => failedResultIds?.Contains(deliverable.ResultId!) != true)
             .Select(deliverable => new Email.EmailIntakeReplyDocument(
                 deliverable.ResultId!,
                 deliverable.Label ?? deliverable.ResultId!,
@@ -1156,12 +1242,22 @@ internal static class ConsultDeliverables
     public static (string Status, string? Error) FinalOutcome(
         IReadOnlyList<Deliverable> deliverables,
         IReadOnlyDictionary<string, NodeRunResult> outputs,
-        IReadOnlyDictionary<string, string> failedAggregators)
+        IReadOnlyDictionary<string, string> failedAggregators,
+        IReadOnlyList<ConsultFailedDocument>? failedDocuments = null)
     {
         var missing = deliverables.Where(d => !outputs.ContainsKey(d.NodeId)).ToList();
 
         if (missing.Count == 0)
         {
+            // v12 #624 (§ 13): a check fail is per-document — siblings
+            // produce and the job completes. A job whose EVERY deliverable
+            // failed its check ends with no documents and says why.
+            var failedIds = failedDocuments?.Select(d => d.ResultId).ToHashSet(StringComparer.Ordinal);
+            if (failedIds is { Count: > 0 } && deliverables.All(d => d.ResultId != null && failedIds.Contains(d.ResultId)))
+            {
+                return (ConsultGenerationJobStatuses.Failed, failedDocuments![0].Reason);
+            }
+
             return (ConsultGenerationJobStatuses.Completed, null);
         }
 

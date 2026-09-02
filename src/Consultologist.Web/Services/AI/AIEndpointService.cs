@@ -616,13 +616,31 @@ public record ConsultGenerationJobResponse(
     string? RerunVerdict = null,
     string? RerunDivergence = null,
     // #551: the job's token totals, stamped once at completion.
-    ConsultTokenUsage? Tokens = null);
+    ConsultTokenUsage? Tokens = null,
+    // v12 #624: deliverables refused by their check — the third state
+    // beside produced and skipped. Already serialized by the API, merely
+    // undeclared here until now.
+    IReadOnlyList<ConsultFailedDocumentResponse>? FailedDocuments = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.TerminologySnapshot (#403).</summary>
 public record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultSkippedDocument.</summary>
 public record ConsultSkippedDocumentResponse(string ResultId, string Label, string Reason);
+
+/// <summary>Mirrors Consultologist.Api.Models.ConsultCheckOutcome (v12 #624).</summary>
+public record ConsultCheckOutcome(
+    bool Passed,
+    IReadOnlyList<string>? Uncovered = null,
+    IReadOnlyList<string>? Untested = null);
+
+/// <summary>Mirrors Consultologist.Api.Models.ConsultFailedDocument (v12 #624).</summary>
+public record ConsultFailedDocumentResponse(
+    string ResultId,
+    string Label,
+    string Reason,
+    IReadOnlyList<string>? Uncovered = null,
+    IReadOnlyList<string>? Untested = null);
 
 /// <summary>One v7 deliverable: authored identity, the document, and its digest.</summary>
 public record ConsultGenerationResultDocumentResponse(
@@ -676,7 +694,9 @@ public record ConsultGenerationNodeStatus(
     // v10 (#496): a classifier's answer.
     string? Classification = null,
     // #551: what this instance's call cost; null is not recorded, never 0.
-    ConsultTokenUsage? Tokens = null);
+    ConsultTokenUsage? Tokens = null,
+    // v12 #624: a check node's verdict and its named evidence.
+    ConsultCheckOutcome? Check = null);
 
 public record ConsultGenerationJobHistoryEvent(string Kind, string Label, string? Detail, DateTimeOffset OccurredAt);
 
