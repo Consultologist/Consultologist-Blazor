@@ -399,3 +399,86 @@ public class TemplatesV12DeskMirrorTests : ClientRenderTestContext
             PublishAndRead(templateClaim));
     }
 }
+
+/// <summary>
+/// v12 § 3 (#621): the macro turns optional at the pane — and optional
+/// forces a default before publish, never a silent value.
+/// </summary>
+public class TemplatesV12OptionalMacroTests : ClientRenderTestContext
+{
+    private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse fixture)
+    {
+        WorkflowService.GetCurrentPackageContentAsync().Returns(fixture);
+        return Render<Templates>();
+    }
+
+    private static void Navigate(IRenderedComponent<Templates> page, string label) =>
+        page.FindAll("button.editor-nav__item")
+            .First(button => button.TextContent.Replace("●", string.Empty).Trim() == label)
+            .Click();
+
+    private static void Publish(IRenderedComponent<Templates> page) =>
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Publish")).Click();
+
+    private static IReadOnlyList<string> Refusals(IRenderedComponent<Templates> page) =>
+        page.FindAll(".fluent-messagebar-message li").Select(item => item.TextContent.Trim()).ToList();
+
+    private WorkflowPackagePublishRequest? sent;
+
+    private void CapturePublish() =>
+        WorkflowService.PublishPackageAsync(Arg.Do<WorkflowPackagePublishRequest>(request => sent = request))
+            .Returns(new WorkflowPublishOutcome(
+                new WorkflowPackagePublishResponse("acct-1234567890ab", "v2026.08.2", "acct-1234567890ab@v2026.08.2"),
+                Array.Empty<string>()));
+
+    [Fact]
+    public void OptionalAlone_IsRefused_UntilADefaultIsChosen_ThenComposes()
+    {
+        var page = RenderEditor(EditorFixtures.V12());
+        CapturePublish();
+        Navigate(page, "disclaimer");
+
+        // Explicit init: checking optional invents nothing.
+        page.Find(".macro-optional input[type=checkbox]").Change(true);
+        Publish(page);
+        Assert.Contains(
+            "Macro 'disclaimer' is optional and declares no default; an optional macro must say what a run that makes no choice does.",
+            Refusals(page));
+        Assert.Null(sent);
+
+        // Choosing the default completes the pair, and the manifest carries it.
+        page.Find(".macro-default").Change("true");
+        Publish(page);
+        Assert.NotNull(sent);
+        var declaration = JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement
+            .GetProperty("macros").EnumerateArray().Single(m => m.GetProperty("id").GetString() == "disclaimer");
+        Assert.True(declaration.GetProperty("optional").GetBoolean());
+        Assert.True(declaration.GetProperty("default").GetBoolean());
+    }
+
+    [Fact]
+    public void UntogglingOptional_RemovesBothKeys_TheV11Bytes()
+    {
+        var page = RenderEditor(EditorFixtures.V12Full());
+        CapturePublish();
+        Navigate(page, "closing");
+
+        page.Find(".macro-optional input[type=checkbox]").Change(false);
+        Publish(page);
+
+        Assert.NotNull(sent);
+        var declaration = JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement
+            .GetProperty("macros").EnumerateArray().Single(m => m.GetProperty("id").GetString() == "closing");
+        Assert.False(declaration.TryGetProperty("optional", out _));
+        Assert.False(declaration.TryGetProperty("default", out _));
+    }
+
+    [Fact]
+    public void BelowTwelve_ThePairIsNotOffered()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+        Navigate(page, "disclaimer");
+
+        Assert.Empty(page.FindAll(".macro-optional"));
+    }
+}

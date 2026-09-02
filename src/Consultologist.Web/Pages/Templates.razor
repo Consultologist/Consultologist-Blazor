@@ -1375,6 +1375,31 @@
                                             Text="@GetText(macro.File)"
                                             Modified="@(edits.ContainsKey(macro.File) || AddedMacroForFile(macro.File) != null)"
                                             TextChanged="@(value => OnTextChangedAsync(macro.File, value))">
+                            @if (EffectiveSpecVersion >= 12)
+                            {
+                                var effectiveMacro = EffectiveMacros.First(m => m.Id == macro.Id);
+                                <div class="macro-optional-row">
+                                    <label class="macro-optional">
+                                        <input type="checkbox"
+                                               checked="@(effectiveMacro.Optional == true)"
+                                               @onchange="args => SetMacroOptionalAsync(macro.Id, args.Value is bool isChecked && isChecked)"
+                                               aria-label="@($"Optional for macro {macro.Id}")" />
+                                        <span>optional — each run chooses</span>
+                                    </label>
+                                    @if (effectiveMacro.Optional == true)
+                                    {
+                                        @* Explicit init: checking optional never invents a
+                                           default — publish is refused until one is chosen. *@
+                                        <select class="binding-row__select macro-default"
+                                                @onchange="args => SetMacroDefaultAsync(macro.Id, args.Value?.ToString())"
+                                                aria-label="@($"Default for macro {macro.Id}")">
+                                            <option value="" selected="@(effectiveMacro.Default == null)">choose a default…</option>
+                                            <option value="true" selected="@(effectiveMacro.Default == true)">appended unless declined</option>
+                                            <option value="false" selected="@(effectiveMacro.Default == false)">omitted unless asked</option>
+                                        </select>
+                                    }
+                                </div>
+                            }
                             <div class="macro-placeholders">
                                 <span class="muted-text">
                                     Placeholders — substituted at assembly, verbatim; an unknown token blocks publish
@@ -2054,6 +2079,9 @@
             // v11 #564: pending macro templates.
             new("addedMacros", () => addedMacros.Count, addedMacros.Clear,
                 () => $"+{addedMacros.Count} {Plural(addedMacros.Count, "macro")}", () => addedMacros.Count > 0),
+            // v12 § 3 (#621): pending optional/default edits on declared macros.
+            new("macroEdits", () => macroEdits.Count, macroEdits.Clear,
+                () => $"{macroEdits.Count} macro {Plural(macroEdits.Count, "choice")}", () => macroEdits.Count > 0),
             // #571: declared macros marked for removal.
             new("removedMacroIds", () => removedMacroIds.Count, removedMacroIds.Clear,
                 () => $"−{removedMacroIds.Count} {Plural(removedMacroIds.Count, "macro")}", () => removedMacroIds.Count > 0),
@@ -2478,7 +2506,16 @@
         public string Id { get; set; } = string.Empty;
         public string Label { get; set; } = string.Empty;
         public string Text { get; set; } = string.Empty;
+
+        // v12 § 3 (#621): the per-run choice and what a run that makes no
+        // choice does — explicit init: optional never invents a default.
+        public bool Optional { get; set; }
+        public bool? Default { get; set; }
     }
+
+    // v12 § 3 (#621): pending optional/default edits on DECLARED macros,
+    // keyed by id; an entry equal to the manifest removes itself.
+    private readonly Dictionary<string, (bool Optional, bool? Default)> macroEdits = new(StringComparer.Ordinal);
 
     private readonly List<AddedMacro> addedMacros = new();
     private string? newMacroId;
@@ -2492,6 +2529,65 @@
     private AddedMacro? AddedMacroForFile(string path) =>
         addedMacros.FirstOrDefault(m => AddedMacroFile(m.Id) == path);
 
+    // v12 § 3 (#621): the optional/default pair. A pending macro edits in
+    // place; a declared one rides macroEdits, self-removing when it equals
+    // the manifest again. Unchecking optional clears the default — the pair
+    // lives and dies together, the validator's write-or-remove rule.
+    private async Task SetMacroOptionalAsync(string macroId, bool optional)
+    {
+        if (addedMacros.FirstOrDefault(m => m.Id == macroId) is { } pending)
+        {
+            pending.Optional = optional;
+            pending.Default = optional ? pending.Default : null;
+        }
+        else
+        {
+            var declared = content == null
+                ? null
+                : WorkflowManifestReader.ReadMacros(content.Manifest).FirstOrDefault(m => m.Id == macroId);
+            var next = (Optional: optional, Default: optional ? macroEdits.TryGetValue(macroId, out var held) ? held.Default : declared?.Default : null);
+
+            if ((declared?.Optional == true) == next.Optional && declared?.Default == next.Default)
+            {
+                macroEdits.Remove(macroId);
+            }
+            else
+            {
+                macroEdits[macroId] = next;
+            }
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    private async Task SetMacroDefaultAsync(string macroId, string? raw)
+    {
+        bool? chosen = raw switch { "true" => true, "false" => false, _ => null };
+
+        if (addedMacros.FirstOrDefault(m => m.Id == macroId) is { } pending)
+        {
+            pending.Default = chosen;
+        }
+        else
+        {
+            var declared = content == null
+                ? null
+                : WorkflowManifestReader.ReadMacros(content.Manifest).FirstOrDefault(m => m.Id == macroId);
+            var optional = macroEdits.TryGetValue(macroId, out var held) ? held.Optional : declared?.Optional == true;
+
+            if ((declared?.Optional == true) == optional && declared?.Default == chosen)
+            {
+                macroEdits.Remove(macroId);
+            }
+            else
+            {
+                macroEdits[macroId] = (optional, chosen);
+            }
+        }
+
+        await CommitDeclarationAsync();
+    }
+
     // The declared macros plus a synthesized view per pending one — the nav,
     // the panes, the Documents pane and the desk all read this one list.
     private IReadOnlyList<WorkflowManifestReader.MacroView> EffectiveMacros =>
@@ -2501,7 +2597,12 @@
         // #571: a pending removal is effective everywhere this list is read —
         // the nav, the panes, the Documents dropdown and the desk's rules.
         .Where(m => !removedMacroIds.Contains(m.Id))
-        .Concat(addedMacros.Select(m => new WorkflowManifestReader.MacroView(m.Id, m.Label, AddedMacroFile(m.Id))))
+        // v12 § 3: pending optional/default edits are effective everywhere.
+        .Select(m => macroEdits.TryGetValue(m.Id, out var edit)
+            ? m with { Optional = edit.Optional ? true : null, Default = edit.Default }
+            : m)
+        .Concat(addedMacros.Select(m => new WorkflowManifestReader.MacroView(
+            m.Id, m.Label, AddedMacroFile(m.Id), m.Optional ? true : null, m.Default)))
         .ToList();
 
     private WorkflowManifestReader.MacroView? SelectedMacro() =>
@@ -6053,7 +6154,9 @@
 
     private sealed record DraftAddedPrompt(string Id, string Text);
 
-    private sealed record DraftAddedMacro(string Id, string Label, string Text);
+    private sealed record DraftAddedMacro(string Id, string Label, string Text, bool Optional = false, bool? Default = null);
+
+    private sealed record DraftMacroEdit(string Id, bool Optional, bool? Default = null);
 
     private sealed record DraftPayload(
         int Version,
@@ -6088,7 +6191,10 @@
         // v11 #564: pending macro templates. Trailing optional, as ever.
         List<DraftAddedMacro>? AddedMacros = null,
         // #571: declared macros marked for removal.
-        List<string>? RemovedMacros = null);
+        List<string>? RemovedMacros = null,
+        // v12 § 3 (#621): pending optional/default edits on declared macros.
+        // Trailing optional — a draft written before restores with none.
+        List<DraftMacroEdit>? MacroEdits = null);
 
     // #316: Type and Values ride here or a typed input is silently untyped on
     // reload. Trailing optionals — a draft written before v8 restores with null.
@@ -6154,6 +6260,7 @@
         List<DraftAddedPrompt>? draftAddedPrompts = null;
         List<DraftAddedMacro>? draftAddedMacros = null;
         List<string>? draftRemovedMacros = null;
+        List<DraftMacroEdit>? draftMacroEdits = null;
         int? draftSpecVersionBump = null;
         string? draftTitle = null;
         string? draftDescription = null;
@@ -6183,6 +6290,7 @@
                 draftAddedPrompts = payload?.AddedPrompts;
                 draftAddedMacros = payload?.AddedMacros;
                 draftRemovedMacros = payload?.RemovedMacros;
+                draftMacroEdits = payload?.MacroEdits;
                 draftInputs = payload?.Inputs;
                 draftResults = payload?.Results;
                 draftAddedScalars = payload?.AddedScalars;
@@ -6311,12 +6419,26 @@
         {
             if (EffectiveMacros.All(m => m.Id != draftAddedMacro.Id))
             {
-                addedMacros.Add(new AddedMacro { Id = draftAddedMacro.Id, Label = draftAddedMacro.Label, Text = draftAddedMacro.Text });
+                addedMacros.Add(new AddedMacro
+                {
+                    Id = draftAddedMacro.Id, Label = draftAddedMacro.Label, Text = draftAddedMacro.Text,
+                    Optional = draftAddedMacro.Optional, Default = draftAddedMacro.Default
+                });
             }
         }
 
         // #571: a drafted removal is kept only while the loaded package still
         // declares the macro — a stale id is dropped, the removedNodeIds idiom.
+        // v12 § 3 (#621): a drafted optional/default edit is kept only while
+        // the macro is still declared — the stale-id idiom.
+        foreach (var draftMacroEdit in draftMacroEdits ?? new List<DraftMacroEdit>())
+        {
+            if (WorkflowManifestReader.ReadMacros(content!.Manifest).Any(m => m.Id == draftMacroEdit.Id))
+            {
+                macroEdits[draftMacroEdit.Id] = (draftMacroEdit.Optional, draftMacroEdit.Default);
+            }
+        }
+
         foreach (var draftRemovedMacro in draftRemovedMacros ?? new List<string>())
         {
             if (WorkflowManifestReader.ReadMacros(content!.Manifest).Any(m => m.Id == draftRemovedMacro))
@@ -6547,8 +6669,9 @@
             titleEdit,
             descriptionEdit,
             tagsEdit,
-            addedMacros.Select(m => new DraftAddedMacro(m.Id, m.Label, m.Text)).ToList(),
-            removedMacroIds.ToList());
+            addedMacros.Select(m => new DraftAddedMacro(m.Id, m.Label, m.Text, m.Optional, m.Default)).ToList(),
+            removedMacroIds.ToList(),
+            macroEdits.Select(pair => new DraftMacroEdit(pair.Key, pair.Value.Optional, pair.Value.Default)).ToList());
         await JS.InvokeVoidAsync("localStorage.setItem", DraftKey, JsonSerializer.Serialize(payload));
     }
 
@@ -7314,17 +7437,68 @@
 
             foreach (var pendingMacro in addedMacros)
             {
-                macrosArray.Add(new System.Text.Json.Nodes.JsonObject
+                var declaration = new System.Text.Json.Nodes.JsonObject
                 {
                     ["id"] = pendingMacro.Id,
                     ["label"] = pendingMacro.Label,
                     ["file"] = AddedMacroFile(pendingMacro.Id)
-                });
+                };
+
+                // v12 § 3: the pair rides only when optional is on.
+                if (pendingMacro.Optional)
+                {
+                    declaration["optional"] = true;
+                    if (pendingMacro.Default is { } chosenDefault)
+                    {
+                        declaration["default"] = chosenDefault;
+                    }
+                }
+
+                macrosArray.Add(declaration);
             }
 
             if (macrosArray.Count == 0)
             {
                 root.AsObject().Remove(macrosKey);
+            }
+        }
+
+        // v12 § 3 (#621): optional/default edits on DECLARED macros mutate
+        // the declaration object in place — write both keys or remove both,
+        // the write-or-remove discipline of the node-field edits.
+        if (macroEdits.Count > 0)
+        {
+            var macrosKey = root["Macros"] is not null ? "Macros" : "macros";
+
+            if (root[macrosKey] is System.Text.Json.Nodes.JsonArray declaredMacros)
+            {
+                foreach (var (editedMacroId, edit) in macroEdits)
+                {
+                    if (declaredMacros
+                        .OfType<System.Text.Json.Nodes.JsonObject>()
+                        .FirstOrDefault(m => (m["id"] ?? m["Id"])?.GetValue<string>() == editedMacroId) is not { } declaration)
+                    {
+                        continue;
+                    }
+
+                    if (edit.Optional)
+                    {
+                        declaration["optional"] = true;
+                        if (edit.Default is { } chosenDefault)
+                        {
+                            declaration["default"] = chosenDefault;
+                        }
+                        else
+                        {
+                            declaration.Remove("default");
+                        }
+                    }
+                    else
+                    {
+                        declaration.Remove("optional");
+                        declaration.Remove("default");
+                    }
+                }
             }
         }
 
