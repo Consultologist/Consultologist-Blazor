@@ -6,10 +6,16 @@ namespace Consultologist.Api;
 
 internal static class FunctionCors
 {
+    // #612: a static class reads the literal __ env name once, the
+    // Operators.cs shape — app-settings changes restart the workers, so
+    // read-once is exactly when the platform re-reads anyway.
+    internal const string SettingName = "Cors__AllowedOrigins";
+
     // Shared by both Apply overloads and by endpoints that need to validate a
     // browser Origin outside of CORS (the LinkedIn link flow derives its
-    // redirect-back origin from this list, #133).
-    internal static readonly string[] AllowedOrigins =
+    // redirect-back origin from this list, #133). The compiled entries are
+    // the always-present baseline; Cors__AllowedOrigins EXTENDS them (#612).
+    internal static readonly string[] BaselineOrigins =
     {
         "https://app.consultologist.ai",
         "https://gentle-desert-09697700f.3.azurestaticapps.net",
@@ -19,6 +25,28 @@ internal static class FunctionCors
         "http://localhost:5174",
         "http://localhost:7071"
     };
+
+    private static readonly Lazy<string[]> Effective =
+        new(() => WithConfigured(Environment.GetEnvironmentVariable(SettingName)));
+
+    internal static string[] AllowedOrigins => Effective.Value;
+
+    /// <summary>
+    /// #612: configuration EXTENDS the baseline, never replaces it — a
+    /// missing or blank setting changes nothing, and no setting can remove
+    /// a compiled origin (the LinkedIn redirect derivation stays stable for
+    /// the baseline whatever an operator types). Semicolon-separated is the
+    /// documented form; comma and whitespace are tolerated, the Operators
+    /// precedent. Extracted so it can be asserted directly.
+    /// </summary>
+    internal static string[] WithConfigured(string? setting) =>
+        BaselineOrigins
+            .Concat(setting?.Split(
+                new[] { ';', ',', ' ', '\t', '\n', '\r' },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                ?? Array.Empty<string>())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
 
     internal static bool IsAllowedOrigin([NotNullWhen(true)] string? origin)
     {
