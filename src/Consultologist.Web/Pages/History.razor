@@ -643,7 +643,16 @@
                                                 _ => ("●", detail.Status, "node-status--muted")
                                             };
                                         <details class="job-detail-section" open>
-                                            <summary class="muted-text">Workflow (@nodeGroups.Count nodes)</summary>
+                                            <summary class="muted-text">
+                                                Workflow (@nodeGroups.Count nodes)
+                                                @* #642: the run, drawn live. *@
+                                                <button type="button" class="run-dag-button"
+                                                        @onclick="() => _diagramJobId = job.JobId"
+                                                        @onclick:preventDefault @onclick:stopPropagation
+                                                        aria-label="@($"Show run diagram for job {job.JobId}")">
+                                                    Run diagram
+                                                </button>
+                                            </summary>
                                             <div class="node-grid">
                                                 <div class="node-row">
                                                     <span class="node-row__chevron" aria-hidden="true"></span>
@@ -802,6 +811,13 @@
     </Authorized>
 </AuthorizeView>
 
+@* #642: one overlay for whichever job's diagram is open — computed from
+   _jobDetails so each poll tick recolours it in place. *@
+@if (_diagramJobId is { } openJobId && _jobDetails.GetValueOrDefault(openJobId) is { } openDetail)
+{
+    <RunDagOverlay Detail="@openDetail" OnClose="() => _diagramJobId = null" />
+}
+
 @code {
     /// <summary>
     /// #238's sentence, one document at a time: what read it, how many pages,
@@ -881,6 +897,9 @@
     private string? jobsContinuationToken;
     private bool jobsLoading;
     private string? jobsErrorMessage;
+
+    // #642: which job's run diagram is open; null = closed.
+    private string? _diagramJobId;
 
     private Dictionary<string, ConsultGenerationJobResponse?> _jobDetails = new();
     private Dictionary<string, string?> _jobDetailErrors = new();

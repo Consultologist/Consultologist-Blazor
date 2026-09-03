@@ -1294,3 +1294,60 @@ public class HistoryDetailTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".rerun-verdict"));
     }
 }
+
+/// <summary>
+/// #642: the run diagram opens from the Workflow section and closes with
+/// the × or the backdrop — the popup itself renders no SVG under bUnit
+/// (Loose JS); the TEXT is RunDagDiagramTests' to prove.
+/// </summary>
+public class HistoryRunDagTests : ClientRenderTestContext
+{
+    private const string JobId = "0123456789abcdef0123456789abcdef";
+
+    private void WithNodeJob()
+    {
+        AccountService.GetJobsAsync(Arg.Any<int>(), Arg.Any<string?>()).Returns(new AccountJobsResponse(
+            new[]
+            {
+                new AccountJobSummaryResponse(
+                    JobId, "Completed", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+                    TotalBlockCount: 1, CompletedBlockCount: 1, FailedBlockCount: 0)
+            },
+            null));
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
+            JobId, "user-1", "Completed",
+            TotalBlockCount: 1, CompletedBlockCount: 1, FailedBlockCount: 0,
+            GeneratedBlocks: new Dictionary<string, string>(), FailedBlocks: new Dictionary<string, string>(),
+            Success: true,
+            Nodes: new[] { new ConsultGenerationNodeDescriptor("draft", "Drafting", "p") },
+            NodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["draft"] = new("draft", "Drafting", "Completed", "i", "o", null, null)
+            }));
+    }
+
+    [Fact]
+    public void TheButton_OpensTheOverlay_AndTheCross_ClosesIt()
+    {
+        WithNodeJob();
+        var page = Render<Consultologist.Web.Pages.History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        page.Find(".run-dag-button").Click();
+        Assert.NotEmpty(page.FindAll(".run-dag-panel"));
+        Assert.Contains("running", page.Find(".run-dag-legend").TextContent);
+
+        page.Find(".run-dag-close").Click();
+        Assert.Empty(page.FindAll(".run-dag-panel"));
+    }
+
+    [Fact]
+    public void TheBackdrop_ClosesToo()
+    {
+        WithNodeJob();
+        var page = Render<Consultologist.Web.Pages.History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        page.Find(".run-dag-button").Click();
+        page.Find(".run-dag-overlay").Click();
+        Assert.Empty(page.FindAll(".run-dag-overlay"));
+    }
+}
