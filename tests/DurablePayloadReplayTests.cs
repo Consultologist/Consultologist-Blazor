@@ -174,7 +174,7 @@ public class DurablePayloadReplayTests
         var finalize = JsonSerializer.Deserialize<ConsultGenerationJobFinalize>(stored, Durable)!;
 
         Assert.Null(finalize.AccountKind);
-        Assert.Equal(stored[..^1] + ",\"AccountKind\":null}", JsonSerializer.Serialize(finalize, Durable));
+        Assert.Equal(stored[..^1] + ",\"AccountKind\":null,\"FailureStack\":null}", JsonSerializer.Serialize(finalize, Durable));
     }
 
     [Fact]
@@ -287,7 +287,7 @@ public class DurablePayloadReplayTests
         var result = JsonSerializer.Deserialize<NodeRunResult>(stored, Durable)!;
 
         Assert.Null(result.Tokens);
-        Assert.Equal(stored[..^1] + ",\"Tokens\":null}", JsonSerializer.Serialize(result, Durable));
+        Assert.Equal(stored[..^1] + ",\"Tokens\":null,\"StartedAtUtc\":null,\"DurationMs\":null}", JsonSerializer.Serialize(result, Durable));
     }
 
     [Fact]

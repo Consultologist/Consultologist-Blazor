@@ -638,7 +638,11 @@ public record ConsultGenerationJobResponse(
     // v12 #622 (design § 6): every optional macro's resolution — value and
     // chosen|default origin, stamped at start; null when the package
     // declares none.
-    IReadOnlyDictionary<string, ConsultMacroChoiceResponse>? MacroChoices = null);
+    IReadOnlyDictionary<string, ConsultMacroChoiceResponse>? MacroChoices = null,
+    // #639: the consult's terminal-failure frames, and each failed
+    // section's — type and stack only, the message discipline unchanged.
+    string? FailureStack = null,
+    IReadOnlyDictionary<string, string>? FailedBlockStacks = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.TerminologySnapshot (#403).</summary>
 public record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);
@@ -720,7 +724,14 @@ public record ConsultGenerationNodeStatus(
     // #551: what this instance's call cost; null is not recorded, never 0.
     ConsultTokenUsage? Tokens = null,
     // v12 #624: a check node's verdict and its named evidence.
-    ConsultCheckOutcome? Check = null);
+    ConsultCheckOutcome? Check = null,
+    // #639: the activity's clock — start at entry, execution duration with
+    // queue and retry wait excluded; null is not recorded, never zero.
+    DateTimeOffset? StartedAtUtc = null,
+    long? DurationMs = null,
+    // #639: the failure's identity and frames beside Error's message.
+    string? ErrorType = null,
+    string? ErrorStack = null);
 
 public record ConsultGenerationJobHistoryEvent(string Kind, string Label, string? Detail, DateTimeOffset OccurredAt);
 

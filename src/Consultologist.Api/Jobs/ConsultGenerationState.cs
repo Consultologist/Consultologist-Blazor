@@ -103,6 +103,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         state.Status = ConsultGenerationJobStatuses.Failed;
         state.StartFailure = input.Reason;
         state.DecisionFailureKind = input.Kind;
+        state.FailureStack ??= input.FailureStack;
         state.Classifications = input.Classifications?.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         state.SkippedDocuments ??= input.SkippedDocuments?.ToList();
         state.SchemaVersion = 7;
@@ -344,6 +345,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         block.Status = ConsultGenerationBlockStatuses.Failed;
         block.GeneratedText = null;
         block.Error = string.IsNullOrWhiteSpace(result.Error) ? "Section generation failed." : result.Error;
+        block.ErrorStack = result.ErrorStack;
         block.CompletedAtUtc = DateTimeOffset.UtcNow;
         state.History.Add(new JobHistoryEvent("failure", $"Section failed: {result.BlockName}", block.Error, DateTimeOffset.UtcNow));
         State = state;
@@ -370,6 +372,8 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         output.OutputHash = input.OutputHash;
         output.HashVersion = input.HashVersion;
         output.Tokens = input.Tokens;
+        output.StartedAtUtc = input.NodeStartedAtUtc;
+        output.DurationMs = input.DurationMs;
         output.CompletedAtUtc = DateTimeOffset.UtcNow;
 
         var progress = state.GetOrAddItemProgress(input.ItemId, input.ItemName);
@@ -391,6 +395,8 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         node.OutputHash = input.OutputHash;
         node.HashVersion = input.HashVersion;
         node.Tokens = input.Tokens;
+        node.StartedAtUtc = input.NodeStartedAtUtc;
+        node.DurationMs = input.DurationMs;
         node.CompletedAtUtc = DateTimeOffset.UtcNow;
 
         // v12 #624: a check's verdict and its evidence — its own slots, not
@@ -425,10 +431,14 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         var node = state.GetOrAddNodeOutput(input.NodeId, input.Label);
         node.Status = ConsultGenerationNodeStatuses.Failed;
         node.Error = input.Error;
+        node.ErrorType = input.ErrorType;
+        node.ErrorStack = input.ErrorStack;
         node.CompletedAtUtc = DateTimeOffset.UtcNow;
 
         state.AnalysisStatus = input.Status;
         state.AnalysisError = input.Error;
+        // #639: the node that failed the job carries the consult's stack too.
+        state.FailureStack ??= input.ErrorStack;
         state.History.Add(new JobHistoryEvent("failure", input.Label, input.Error, DateTimeOffset.UtcNow));
 
         // The orchestrator holds the graph, so it computes the unreached set; skipped
@@ -687,6 +697,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         var state = EnsureState();
         state.Status = input.Status;
         state.CompletedAtUtc = DateTimeOffset.UtcNow;
+        state.FailureStack ??= input.FailureStack;
 
         foreach (var node in (state.NodeOutputs?.Values ?? Enumerable.Empty<ConsultNodeOutputState>())
             .Where(node => node.Status == ConsultGenerationNodeStatuses.Running))
@@ -1041,7 +1052,12 @@ public sealed record ConsultGenerationNodeUpdate(
     ConsultTokenUsage? Tokens = null,
     // v12 #624: a check node's verdict and evidence. Appended last, same
     // positional-call rule.
-    ConsultCheckOutcome? Check = null);
+    ConsultCheckOutcome? Check = null,
+    // #639: the activity's own clock — start at entry, execution duration
+    // with queue and retry wait excluded. Appended last, same positional
+    // rule; null is "not recorded", never zero.
+    DateTimeOffset? NodeStartedAtUtc = null,
+    long? DurationMs = null);
 
 /// <summary>v10 (#496): what the boundary decided — the one Decide signal.</summary>
 public sealed record ConsultGenerationDecision(
@@ -1070,14 +1086,21 @@ public sealed record ConsultGenerationDecisionFailure(
     string Kind,
     string Reason,
     IReadOnlyDictionary<string, string>? Classifications,
-    IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null);
+    IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null,
+    // #639: the deciding-stage failure's frames. Appended last.
+    string? FailureStack = null);
 
 public sealed record ConsultGenerationNodeFailure(
     string NodeId,
     string Label,
     string Status,
     string Error,
-    IReadOnlyList<ConsultItemStepDescriptor> SkippedNodes);
+    IReadOnlyList<ConsultItemStepDescriptor> SkippedNodes,
+    // #639: the failure's identity and its frames — Durable's FailureDetails
+    // ErrorType and StackTrace (or the exception's own), never its message
+    // beyond what Error already carries. Appended last, positional rule.
+    string? ErrorType = null,
+    string? ErrorStack = null);
 
 public sealed record ConsultGenerationJobFinalize(
     string Status,
@@ -1085,7 +1108,11 @@ public sealed record ConsultGenerationJobFinalize(
     // #557: rides to FinalizeJob so the entity writes the outputs blob into
     // the right container. Appended last — a sleeping completed job replays
     // this payload.
-    string? AccountKind = null);
+    string? AccountKind = null,
+    // #639: the terminal failure's frames — captured where the exception
+    // fell; null on completed jobs and failures with no exception. Appended
+    // last, positional rule.
+    string? FailureStack = null);
 
 /// <summary>#368: the retention sweep's one signal — when the text is deleted.</summary>
 public sealed record ConsultGenerationTextDrop(DateTimeOffset DroppedAtUtc);
@@ -1197,7 +1224,10 @@ public sealed record ConsultGenerationNodeItemUpdate(
     int? HashVersion = null,
     // #551: what the item's call cost. Appended last, same reason; null is
     // "not recorded", never zero.
-    ConsultTokenUsage? Tokens = null);
+    ConsultTokenUsage? Tokens = null,
+    // #639: the activity's clock, as on the node update. Appended last.
+    DateTimeOffset? NodeStartedAtUtc = null,
+    long? DurationMs = null);
 
 public sealed class ConsultGenerationJobState
 {
@@ -1397,6 +1427,10 @@ public sealed class ConsultGenerationJobState
     // check settles, never seeded (a mid-run fact, unlike a skip).
     public List<ConsultFailedDocument>? FailedDocuments { get; set; }
 
+    // #639: the consult's terminal-failure frames; null on completed jobs
+    // and failures with no exception.
+    public string? FailureStack { get; set; }
+
     // #158: how the job was submitted ("app" | "email"; null = pre-#158 record).
     public string? Source { get; set; }
 
@@ -1577,6 +1611,10 @@ public sealed class ConsultGenerationJobState
             .Where(block => block.Status == ConsultGenerationBlockStatuses.Completed && (TextDroppedAtUtc == null || block.GeneratedText != null))
             .ToDictionary(block => block.Id, block => block.GeneratedText ?? string.Empty);
 
+        var failedBlockStacks = Blocks.Values
+            .Where(block => block.Status == ConsultGenerationBlockStatuses.Failed && block.ErrorStack != null)
+            .ToDictionary(block => block.Id, block => block.ErrorStack!);
+
         var failedSections = Blocks.Values
             .Where(block => block.Status == ConsultGenerationBlockStatuses.Failed)
             .ToDictionary(block => block.Id, block => block.Error ?? "Section generation failed.");
@@ -1620,6 +1658,8 @@ public sealed class ConsultGenerationJobState
             SkippedDocuments: SkippedDocuments,
             FailedDocuments: FailedDocuments,
             ExcludedMacros: ExcludedMacros,
+            FailureStack: FailureStack,
+            FailedBlockStacks: failedBlockStacks.Count > 0 ? failedBlockStacks : null,
             Source: Source,
             ScheduledAtUtc: ScheduledAtUtc,
             ItemSteps: ItemSteps,
@@ -1640,7 +1680,11 @@ public sealed class ConsultGenerationJobState
                     pair.Value.Tokens,
                     pair.Value.CheckPassed is { } passed
                         ? new ConsultCheckOutcome(passed, pair.Value.CheckUncovered, pair.Value.CheckUntested)
-                        : null)),
+                        : null,
+                    pair.Value.StartedAtUtc,
+                    pair.Value.DurationMs,
+                    pair.Value.ErrorType,
+                    pair.Value.ErrorStack)),
             AgentVersions: AgentVersions,
             EffectiveInputHashVersion: EffectiveInputHashVersion,
             CatalogRef: CatalogRef,
@@ -1713,6 +1757,9 @@ public sealed class ConsultGenerationJobState
 /// <summary>One deliverable block: its status and, when finished, its text or error.</summary>
 public sealed class ConsultGenerationBlockState
 {
+    // #639: the section failure's frames, beside its message.
+    public string? ErrorStack { get; set; }
+
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Status { get; set; } = ConsultGenerationBlockStatuses.Pending;
@@ -1779,6 +1826,16 @@ public sealed class ConsultNodeOutputState
     public bool? CheckPassed { get; set; }
     public List<string>? CheckUncovered { get; set; }
     public List<string>? CheckUntested { get; set; }
+
+    // #639: the activity's clock — start at entry, execution duration with
+    // queue and retry wait excluded; null on rows no activity ran for.
+    public DateTimeOffset? StartedAtUtc { get; set; }
+    public long? DurationMs { get; set; }
+
+    // #639: the failure's identity and frames — the type name and the stack,
+    // never the message beyond Error.
+    public string? ErrorType { get; set; }
+    public string? ErrorStack { get; set; }
 }
 
 public static class ConsultGenerationNodeStatuses

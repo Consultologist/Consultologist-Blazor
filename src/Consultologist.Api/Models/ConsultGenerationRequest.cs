@@ -303,7 +303,12 @@ public record ConsultGenerationJobResponse(
     IReadOnlyList<ConsultFailedDocument>? FailedDocuments = null,
     // v12 #631 (design § 14): macros a when-clause excluded from firing
     // deliverables. Appended last, the positional-call rule.
-    IReadOnlyList<ConsultExcludedMacro>? ExcludedMacros = null);
+    IReadOnlyList<ConsultExcludedMacro>? ExcludedMacros = null,
+    // #639: the consult's terminal-failure frames, and each failed section's
+    // — the type and stack only, the message discipline unchanged. Appended
+    // last, positional rule.
+    string? FailureStack = null,
+    IReadOnlyDictionary<string, string>? FailedBlockStacks = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
@@ -542,7 +547,14 @@ public sealed record ConsultGenerationNodeStatusResponse(
     // #551: what this instance's call cost; null is not recorded, never 0.
     ConsultTokenUsage? Tokens = null,
     // v12 #624: a check node's verdict and its evidence. Appended last.
-    ConsultCheckOutcome? Check = null);
+    ConsultCheckOutcome? Check = null,
+    // #639: the activity's clock — start at entry, execution duration with
+    // queue and retry wait excluded; null is not recorded, never zero.
+    DateTimeOffset? StartedAtUtc = null,
+    long? DurationMs = null,
+    // #639: the failure's identity and frames beside Error's message.
+    string? ErrorType = null,
+    string? ErrorStack = null);
 
 /// <summary>#390: the body of a reschedule — a job id in the route, a time here.</summary>
 public sealed record RescheduleConsultRequest(DateTimeOffset? ScheduledAtUtc);
@@ -554,7 +566,10 @@ public record BlockGenerationResult(
     string BlockName,
     bool Success,
     string? GeneratedText,
-    string? Error);
+    string? Error,
+    // #639: the section failure's frames — the exception's stack, never its
+    // message beyond Error. Appended last, positional rule.
+    string? ErrorStack = null);
 
 public sealed record ClinicalConcept(
     string Term,

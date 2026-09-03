@@ -324,7 +324,7 @@ public sealed class ConsultGenerationOrchestrator
             }
         }
 
-        async Task FailItemAsync(ConsultNodeDescriptor node, string itemId, string error)
+        async Task FailItemAsync(ConsultNodeDescriptor node, string itemId, string error, string? errorStack = null)
         {
             failedItems.Add(FailedKey(node, itemId));
 
@@ -335,7 +335,7 @@ public sealed class ConsultGenerationOrchestrator
                 await context.Entities.CallEntityAsync(
                     entityId,
                     nameof(ConsultGenerationJobEntity.FailBlock),
-                    new BlockGenerationResult(itemId, ItemName(node, itemId), false, null, error));
+                    new BlockGenerationResult(itemId, ItemName(node, itemId), false, null, error, errorStack));
             }
             else
             {
@@ -622,7 +622,32 @@ public sealed class ConsultGenerationOrchestrator
                 // Scalar node: an activity failure (post-retries) is a runtime job
                 // failure, and an empty declared-required output fails the job with
                 // the node's message — unchanged semantics from the wave interpreter.
-                var result = await completedTask;
+                // #639: caught HERE so the failed node gets its row and its stack —
+                // before this, the exception fell to the outer catch and the job
+                // failed with no failed node row at all.
+                NodeRunResult result;
+
+                try
+                {
+                    result = await completedTask;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    var (errorType, errorStack) = FailureFactsOf(ex);
+                    var skippedNodes = nodes
+                        .Where(other => other.Id != nodeId && !outputs.ContainsKey(other.Id))
+                        .Select(other => new ConsultItemStepDescriptor(other.Id, other.Label))
+                        .ToList();
+                    logger.LogWarning(ex, "Consult generation node activity failed. JobId={JobId}, NodeId={NodeId}", context.InstanceId, nodeId);
+                    await context.Entities.CallEntityAsync(
+                        entityId,
+                        nameof(ConsultGenerationJobEntity.MarkNodeFailed),
+                        new ConsultGenerationNodeFailure(
+                            nodeId, node.Label, $"{nodeId}-failed", $"{node.Label} failed: {ex.Message}", skippedNodes,
+                            errorType, errorStack));
+                    PublishStatus(ConsultGenerationJobStatuses.Failed);
+                    return false;
+                }
 
                 if (node.FailIfEmpty != null && (result.Concepts?.Count ?? 0) == 0)
                 {
@@ -667,7 +692,9 @@ public sealed class ConsultGenerationOrchestrator
                 }
                 catch (Exception ex)
                 {
-                    await FailItemAsync(node, itemId, $"{node.Label} failed: {ex.Message}");
+                    var (itemErrorType, itemErrorStack) = FailureFactsOf(ex);
+                    await FailItemAsync(node, itemId, $"{node.Label} failed: {ex.Message}",
+                        itemErrorStack is null ? null : $"{itemErrorType}\n{itemErrorStack}");
                     PublishStatus(ConsultGenerationJobStatuses.Running);
                     StartReadyInstances();
                     continue;
@@ -764,7 +791,10 @@ public sealed class ConsultGenerationOrchestrator
                         ConsultGenerationDecisionFailureKinds.CouldNotDecide,
                         detail,
                         Classifications(),
-                        null));
+                        null,
+                        FailureStack: FailureFactsOf(ex) is var (decisionType, decisionStack) && decisionStack != null
+                            ? $"{decisionType}\n{decisionStack}"
+                            : null));
                 PublishStatus(ConsultGenerationJobStatuses.Failed);
                 return;
             }
@@ -930,10 +960,13 @@ public sealed class ConsultGenerationOrchestrator
 
             try
             {
+                var (failureType, failureStack) = FailureFactsOf(ex);
                 await context.Entities.CallEntityAsync(
                     entityId,
                     nameof(ConsultGenerationJobEntity.FinalizeJob),
-                    new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Failed, ex.Message, input.AccountKind));
+                    new ConsultGenerationJobFinalize(
+                        ConsultGenerationJobStatuses.Failed, ex.Message, input.AccountKind,
+                        FailureStack: failureStack is null ? null : $"{failureType}\n{failureStack}"));
             }
             catch (Exception cleanupEx)
             {
@@ -1047,13 +1080,15 @@ public sealed class ConsultGenerationOrchestrator
     internal static ConsultGenerationNodeUpdate NodeUpdateFrom(
         ConsultNodeDescriptor node, NodeRunResult result, int completedNodeCount, int totalNodeCount) =>
         new(node.Id, node.Label, result.Concepts, result.InputHash, result.OutputHash,
-            completedNodeCount, totalNodeCount, result.HashVersion, result.Classification, result.Tokens);
+            completedNodeCount, totalNodeCount, result.HashVersion, result.Classification, result.Tokens,
+            NodeStartedAtUtc: result.StartedAtUtc, DurationMs: result.DurationMs);
 
     internal static ConsultGenerationNodeItemUpdate ItemUpdateFrom(
         ConsultNodeDescriptor node, string itemId, string itemName, NodeRunResult result, int completedChainCount, int totalChainCount) =>
         new(node.Id, node.Label, itemId, itemName,
             result.Concepts, result.InputHash, result.OutputHash,
-            completedChainCount, totalChainCount, result.HashVersion, result.Tokens);
+            completedChainCount, totalChainCount, result.HashVersion, result.Tokens,
+            NodeStartedAtUtc: result.StartedAtUtc, DurationMs: result.DurationMs);
 
     internal static ConsultGenerationDeliveryRecord DeliveryRecordFor(Email.EmailIntakeReplyOutcome? outcome) =>
         outcome switch
@@ -1062,6 +1097,16 @@ public sealed class ConsultGenerationOrchestrator
             { Sent: true } => new ConsultGenerationDeliveryRecord(DeliveryOutcomes.Sent, default, outcome.DocumentAttached),
             _ => new ConsultGenerationDeliveryRecord(outcome.Reason ?? DeliveryOutcomes.Failed, default)
         };
+
+    /// <summary>
+    /// #639: the failure's identity and frames — Durable's FailureDetails
+    /// when the exception crossed an activity boundary, the exception's own
+    /// otherwise. Never the message: that keeps its existing discipline.
+    /// </summary>
+    internal static (string? Type, string? Stack) FailureFactsOf(Exception ex) =>
+        ex is Microsoft.DurableTask.TaskFailedException failed && failed.FailureDetails is { } details
+            ? (details.ErrorType, details.StackTrace)
+            : (ex.GetType().FullName, ex.StackTrace);
 
     private static async Task FailNodeAsync(
         TaskOrchestrationContext context,
