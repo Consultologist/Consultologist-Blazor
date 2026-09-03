@@ -1371,6 +1371,89 @@ public class WorkflowV12ConditionalMacroCompositionTests
         Assert.Equal(hash, Consultologist.Api.Workflow.ConsultGenerationProvenance.Sha256Hex(
             Consultologist.Api.Jobs.ConsultAggregateRenderer.Render(Parts)));
     }
+
+    // #623's demo, live: a when-ONLY entry (§ 14 — gated, not placed) got an
+    // anchorless placement from the resolver, the composer counted its id as
+    // placed and matched null against nothing, and the HELD arm silently left
+    // the document — unexcluded, unappended, unwritten. Three seams pin it.
+
+    [Fact]
+    public void AWhenOnlyEntry_IsNoPlacement_TheResolverSays()
+    {
+        var manifest = V12Fixtures.Minimal() with
+        {
+            Macros = new List<WorkflowMacroSpec>
+            {
+                new("disclaimer", "Standing disclaimer", "macros/disclaimer.md"),
+                new("gated", "Gated paragraph", "macros/gated.md"),
+                new("bare", "Bare macro", "macros/bare.md")
+            }
+        };
+        manifest = manifest with
+        {
+            Results = manifest.Results!.Select((r, i) => i == 0
+                ? r with
+                {
+                    Macros = new List<WorkflowResultMacroSpec>
+                    {
+                        new("disclaimer", Before: "node:section-instructions"),
+                        new("gated", When: "node:scope == in_scope"),
+                        "bare"
+                    }
+                }
+                : r).ToList()
+        };
+
+        var results = Consultologist.Api.Workflow.WorkflowPackageStore.ResolveResultSet(manifest);
+
+        var result = results![0];
+        Assert.Equal(new[] { "disclaimer", "gated", "bare" }, result.Macros);
+        var placement = Assert.Single(result.MacroPlacements!);
+        Assert.Equal("disclaimer", placement.Id);
+        var condition = Assert.Single(result.MacroConditions!);
+        Assert.Equal("gated", condition.MacroId);
+    }
+
+    [Fact]
+    public void AWhenOnlyHeldArm_LandsAfterTheSections()
+    {
+        // The match/case in its § 14 primary form — no anchors at all.
+        var result = new Consultologist.Api.Workflow.WorkflowResolvedResult(
+            "consult", "assemble-note", "Consultation note",
+            Macros: new[] { "opening", "letrozole_counseling", "tamoxifen_counseling" },
+            MacroConditions: new[]
+            {
+                new Consultologist.Api.Workflow.WorkflowResolvedMacroCondition("letrozole_counseling", Parse("node:hormone == letrozole")),
+                new Consultologist.Api.Workflow.WorkflowResolvedMacroCondition("tamoxifen_counseling", Parse("node:hormone == tamoxifen"))
+            });
+        var (kept, _) = Consultologist.Api.Jobs.ConsultGenerationJobStarter.DecideMacroWhens(
+            result, null, new Dictionary<string, string>(StringComparer.Ordinal) { ["hormone"] = "letrozole" });
+
+        var (text, appended, _) = Consultologist.Api.Jobs.ConsultMacroExpander.Compose(
+            SourceRefs, Parts, kept,
+            Consultologist.Api.Jobs.ConsultGenerationJobStarter.FilterPlacements(result.MacroPlacements, kept),
+            Texts, NoValues, null, NoValues, Facts());
+
+        Assert.Equal(
+            "The plan.\n\nThank you for this referral.\n\nWe discussed letrozole's side effects.",
+            text);
+        Assert.Equal(new[] { "opening", "letrozole_counseling" }, appended!.Select(e => e.Id));
+    }
+
+    [Fact]
+    public void AnAnchorlessPlacement_DoesNotSwallowItsMacro()
+    {
+        // The belt: a descriptor recorded before the resolver fix still
+        // carries anchorless entries — the composer must read them as
+        // unplaced, never as placed-nowhere.
+        var (text, appended, _) = Consultologist.Api.Jobs.ConsultMacroExpander.Compose(
+            SourceRefs, Parts, new[] { "opening" },
+            new[] { new Consultologist.Api.Models.ConsultMacroPlacement("opening") },
+            Texts, NoValues, null, NoValues, Facts());
+
+        Assert.Equal("The plan.\n\nThank you for this referral.", text);
+        Assert.Equal(new[] { "opening" }, appended!.Select(e => e.Id));
+    }
 }
 
 /// <summary>
