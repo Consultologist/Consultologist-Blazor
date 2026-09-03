@@ -123,6 +123,27 @@ PATCH omitting the entry. One API registration serves every location
 Resource URL — the clinician-facing side of all this is
 `docs/customizable-workflow/forms-intake.md`.
 
+## CORS (`FunctionCors.cs`, #612)
+
+| Variable | Accepted values | Default | Required |
+|---|---|---|---|
+| `Cors__AllowedOrigins` | Extra browser origins, semicolon-separated (comma/whitespace tolerated), e.g. `https://satellite.example;https://panel.example` — read via `Environment.GetEnvironmentVariable`, so the exact `__` name | none (compiled baseline only) | no |
+
+The compiled baseline (the production SPA origins and the localhost
+ports) is always present: the setting **extends** it, never replaces it —
+a missing setting changes nothing, and no setting can remove a compiled
+origin (the LinkedIn redirect-back derivation stays stable). The value is
+read once per process, which is when the platform re-reads anyway:
+changing an app setting restarts the workers, so **admitting a
+satellite's origin is a setting change, not a deploy**.
+
+**CSP is the twin gate.** An origin the *SPA* fetches from must also join
+`connect-src` in `staticwebapp.config.json` — the browser blocks a host
+that is not listed, silently. A satellite calling the API **from its own
+page** needs only CORS here; only content the SPA itself loads needs the
+CSP row. Host-level CORS stays deliberately disabled
+(`host.functionHttpApiCors.disabled.json`); the code is the policy.
+
 ## LinkedIn identity linking (`Auth/LinkedInLink*`, #133)
 
 LinkedIn is a **verification signal**, never a credential: the Connect
