@@ -56,12 +56,13 @@ public static class V12Fixtures
 public class WorkflowV12GateTests
 {
     [Fact]
-    public void TwelveIsAccepted_ButDoesNotRunYet()
+    public void TheValidatorAccepts12_AndTheStoreRunsIt()
     {
-        // (a) #617: the validator's gate moved first, the engine's follows at
-        // rung (g) — publishable before runnable, v8's own shipping shape.
+        // (a) #617 made it publishable; (g) #623 makes it run — the ladder's
+        // last rung, after the registry's one-version v12 publication.
         Assert.Contains(12, WorkflowPackageValidator.AcceptedSpecVersions);
-        Assert.DoesNotContain(12, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions);
+        Assert.Contains(12, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions);
+        Assert.Equal(12, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions.Max());
 
         var result = V12Fixtures.Validate(V12Fixtures.Minimal());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));

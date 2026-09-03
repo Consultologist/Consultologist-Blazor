@@ -626,7 +626,7 @@ public class ConformanceFixtureExport
             "A macro whose file is blank. Prompts check presence only; a macro's file must carry text.",
             V11Fixtures.WithMacro("   "));
         Bundle("invalid-macro-id-not-snake-case", 11,
-            "A macro id with a dash. Macro ids are snake_case, the declared-id grammar.",
+            "A macro id with a dash. Macro ids are snake_case, the declared-id grammar; the malformed id is undeclarable, so the reference to it fails too — a second error that follows from the first.",
             V11Fixtures.WithMacro(macroId: "Bad-Id"));
         {
             var (manifest, files) = V11Fixtures.WithMacro();
@@ -642,7 +642,7 @@ public class ConformanceFixtureExport
             "A run: word outside the closed set (date, job, package, host).",
             V11Fixtures.WithMacro("At {{run:time}}."));
         Bundle("invalid-macro-token-profile-signature", 11,
-            "profile:signature is deliberately absent from the grammar — the signature is the results[].signature flag, with placement and recording of its own.",
+            "profile:signature arrives at 12 (the v12 fold) — on an 11-manifest it is a version requirement, never an unknown word; the signature there is the results[].signature flag.",
             V11Fixtures.WithMacro("Signed {{profile:signature}}."));
         Bundle("invalid-macro-token-unknown-namespace", 11,
             "A namespace outside the closed set.",
@@ -665,6 +665,143 @@ public class ConformanceFixtureExport
         Invalid("invalid-reproducible-at-v10", 10,
             "A node's reproducible claim on a v10 manifest.",
             v10Minimal with { Nodes = v10Minimal.Nodes!.Select((n, i) => i == 0 ? n with { Reproducible = true } : n).ToList() });
+
+        // ----- v12 (#623): optional macros, placement, the signature token,
+        // the check node, conditional macros, the template node —
+        // package-format-v12-design.md §§ 3-5, 8, 13-15. Generated with the
+        // gate flipped; published with the v12 prose. -----
+
+        var v11Minimal = V11Fixtures.Minimal();
+
+        // The § 7 control: one edit, nothing of v12 used.
+        Bundle("v12-minimal-is-v11-plus-a-line", 12,
+            "The migration v12 promises: a valid v11 manifest with specVersion 12 and nothing else changed.",
+            (v11Minimal with { SpecVersion = 12 }, V6Fixtures.Files(v11Minimal)));
+
+        Bundle("v12-optional-macro-with-default", 12,
+            "An optional macro with its declared default — the per-run choice the setup form offers (§ 3).",
+            V12ExportFixtures.OptionalMacro());
+
+        Bundle("v12-macro-placed-before-section", 12,
+            "A macro placed before one of its deliverable's aggregated sections (§ 4).",
+            V12ExportFixtures.PlacedMacro());
+
+        Bundle("v12-macro-signature-token", 12,
+            "A macro embedding {{profile:signature}} — the signature where its macro sits, signed once (§ 5).",
+            V12ExportFixtures.SignatureTokenMacro());
+
+        Bundle("v12-check-node", 12,
+            "A terms-subset check over two package-declared concept-list extractions, gating one deliverable (§ 13).",
+            (V12Fixtures.WithCheck(), V6Fixtures.Files(V12Fixtures.WithCheck())));
+
+        Bundle("v12-conditional-macro", 12,
+            "Two when-gated macros on one deliverable — the match/case, decided by a classifier (§ 14).",
+            V12ExportFixtures.ConditionalMacro());
+
+        Bundle("v12-template-node", 12,
+            "A template node: its prompt renders deterministically and the render IS the output (§ 15).",
+            V12ExportFixtures.TemplateNode());
+
+        Bundle("v12-all-constructs-demo", 12,
+            "The six constructs in one package: a placed macro, a chosen optional macro, an embedded signature, "
+            + "conditional arms on a classifier, a template-rendered letter, and checks on both deliverables — "
+            + "the letter's failing deterministically. The rung (g) live demo's own manifest.",
+            V12ExportFixtures.AllConstructsDemo());
+
+        // § 3 rules.
+        Bundle("invalid-macro-optional-without-default", 12,
+            "An optional macro with no default: the package must say what a run that makes no choice does.",
+            V12ExportFixtures.OptionalMacro(withDefault: false));
+        Bundle("invalid-macro-default-without-optional", 12,
+            "A default on a macro that is not optional; only optional: true takes a per-run choice.",
+            V12ExportFixtures.OptionalMacro(optional: false));
+
+        // § 4 rules.
+        Bundle("invalid-macro-placement-both-anchors", 12,
+            "A placed entry naming both before and after; a placement names exactly one.",
+            V12ExportFixtures.PlacedMacro(alsoAfter: true));
+        Bundle("invalid-macro-placement-anchor-not-aggregated", 12,
+            "A placement anchoring on a node its deliverable's aggregator does not aggregate.",
+            V12ExportFixtures.PlacedMacro(anchor: "node:scope"));
+
+        // § 5 rules.
+        Bundle("invalid-signature-token-in-optional-macro", 12,
+            "The signature token inside an optional macro — a per-run signature choice was rejected (#516) and stays rejected.",
+            V12ExportFixtures.SignatureTokenMacro(optional: true));
+        Bundle("invalid-signature-flag-beside-token", 12,
+            "The signed flag on a result whose macro carries the token — a deliverable is signed once.",
+            V12ExportFixtures.SignatureTokenMacro(signedFlag: true));
+        Bundle("invalid-signature-token-twice", 12,
+            "The token in two of one result's macros — a deliverable is signed once.",
+            V12ExportFixtures.SignatureTokenMacro(twice: true));
+
+        // § 13 rules, each against the valid check baseline.
+        Bundle("invalid-check-without-op", 12, "A check with no op.",
+            V12ExportFixtures.BrokenCheck(node => node with { Op = null }));
+        Bundle("invalid-check-unknown-op", 12, "A check with an op outside the closed set.",
+            V12ExportFixtures.BrokenCheck(node => node with { Op = "terms-equal" }));
+        Bundle("invalid-check-without-of", 12, "A check with no of operand.",
+            V12ExportFixtures.BrokenCheck(node => node with { Of = null }));
+        Bundle("invalid-check-without-in", 12, "A check with no in operand; unreached, its of-extraction also trips the reach rule — a second error that follows from the first.",
+            V12ExportFixtures.BrokenCheck(node => node with { In = null }));
+        Bundle("invalid-check-without-fail-with", 12, "A check with a blank failWith — a failed check must speak the package's own sentence.",
+            V12ExportFixtures.BrokenCheck(node => node with { FailWith = " " }));
+        Bundle("invalid-check-of-not-concept-list", 12, "A check operand naming a node without the concept-list contract.",
+            V12ExportFixtures.BrokenCheck(node => node with { Of = "node:section-instructions" }));
+        Bundle("invalid-check-declares-prompt-fields", 12, "A check carrying the prompt family — the property is the behaviour.",
+            V12ExportFixtures.BrokenCheck(node => node with { Prompt = "extract-patient-concepts" }));
+        Bundle("invalid-check-reproducible", 12, "reproducible on a check — deterministic by construction, and the claim is not its to make.",
+            V12ExportFixtures.BrokenCheck(node => node with { Reproducible = true }));
+        Bundle("invalid-check-members-on-a-prompt", 12, "op on a prompt node; only kind check declares it.",
+            V12ExportFixtures.CheckPackage(manifest => manifest with
+            {
+                Nodes = manifest.Nodes!.Select(n => n.Id == "extract-document-terms" ? n with { Op = WorkflowCheckOps.TermsSubset } : n).ToList()
+            }));
+        Bundle("invalid-result-check-not-a-node-ref", 12, "results[].check must be a node:<id> reference; the unnamed check is then an orphan too — a second error that follows from the first.",
+            V12ExportFixtures.CheckPackage(manifest => manifest with
+            {
+                Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Check = "coverage" } : r).ToList()
+            }));
+        Bundle("invalid-result-check-not-a-check-node", 12, "results[].check naming a node that is not a check; the real check is then an orphan too — a second error that follows from the first.",
+            V12ExportFixtures.CheckPackage(manifest => manifest with
+            {
+                Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Check = "node:scope" } : r).ToList()
+            }));
+        Bundle("invalid-check-orphaned", 12, "A check no result names — it gates a deliverable, or it is dead weight.",
+            V12ExportFixtures.CheckPackage(manifest => manifest with
+            {
+                Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Check = null } : r).ToList()
+            }));
+
+        // § 14 rules.
+        Bundle("invalid-macro-condition-blank", 12, "A macro entry gated by a blank when.",
+            V12ExportFixtures.ConditionalMacro(when: "   "));
+        Bundle("invalid-macro-condition-value-undeclared", 12, "A macro when comparing a classifier to a value it does not declare.",
+            V12ExportFixtures.ConditionalMacro(when: "node:scope == maybe"));
+        Bundle("invalid-conditional-signature", 12, "A when-gated macro carrying the token — a conditional signature was rejected (#516) and stays rejected.",
+            V12ExportFixtures.ConditionalMacro(template: "Sincerely, {{profile:signature}}"));
+
+        // § 15 rules.
+        Bundle("invalid-template-reproducible", 12, "reproducible on a template — deterministic by construction, and the claim is not its to make.",
+            V12ExportFixtures.TemplateNode(reproducible: true));
+        Bundle("invalid-template-classification-output", 12, "A template whose output schema resolves to the classification contract — a template renders, it does not answer.",
+            V12ExportFixtures.TemplateNode(classificationOutput: true));
+        Bundle("invalid-node-kind-unknown-at-v12", 12, "An unknown node kind at 12 — the sentence names the four kinds this version may spell; a node of no known kind references no prompt, the second error that follows.",
+            V12ExportFixtures.TemplateNode(kind: "router"));
+
+        // The gates at v11 (§ 8): each new form refused below 12 by name.
+        Bundle("invalid-macro-optional-at-v11", 11, "optional on a v11 macro. The pair arrives at 12.",
+            V12ExportFixtures.AtEleven(V12ExportFixtures.OptionalMacro(withDefault: false, optionalOnly: true)));
+        Bundle("invalid-macro-default-at-v11", 11, "default on a v11 macro.",
+            V12ExportFixtures.AtEleven(V12ExportFixtures.OptionalMacro(optional: false)));
+        Bundle("invalid-result-macro-placement-at-v11", 11, "A placed macro entry on a v11 manifest.",
+            V12ExportFixtures.AtEleven(V12ExportFixtures.PlacedMacro()));
+        Bundle("invalid-result-macro-when-at-v11", 11, "A when-gated macro entry on a v11 manifest — the object entry form and the when inside it, each refused by version, two sentences.",
+            V12ExportFixtures.AtEleven(V12ExportFixtures.ConditionalMacro()));
+        Bundle("invalid-result-check-at-v11", 11, "results[].check on a v11 manifest, on a bundle carrying the whole construct: the check kind, each of its four members, the aggregate gap and the reference — every v12 word refused by version at once, seven sentences.",
+            V12ExportFixtures.AtEleven((V12Fixtures.WithCheck(), V6Fixtures.Files(V12Fixtures.WithCheck()))));
+        Bundle("invalid-template-kind-at-v11", 11, "kind template on a v11 manifest — refused by version before the unknown-kind sentence can fire, and the v11 kind sentence follows, two sentences.",
+            V12ExportFixtures.AtEleven(V12ExportFixtures.TemplateNode()));
 
         return cases;
     }

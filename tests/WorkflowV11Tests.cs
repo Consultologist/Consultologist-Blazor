@@ -58,10 +58,10 @@ public class WorkflowV11GateTests
     [Fact]
     public void TheValidatorAccepts11_AndTheStoreRunsIt()
     {
-        // (a) #563 made it publishable; (g) #566 makes it run.
+        // (a) #563 made it publishable; (g) #566 made it run. The ceiling
+        // moved on to twelve (#623); the max is WorkflowV12Tests' pin.
         Assert.Contains(11, WorkflowPackageValidator.AcceptedSpecVersions);
         Assert.Contains(11, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions);
-        Assert.Equal(11, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions.Max());
 
         var result = V11Fixtures.Validate(V11Fixtures.Minimal());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));

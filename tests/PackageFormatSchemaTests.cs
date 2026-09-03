@@ -86,10 +86,11 @@ public class PackageFormatSchemaTests
     }
 
     [Fact]
-    public void TheV12Schema_CarriesTheDeclarationRules_AheadOfItsPublication()
+    public void TheV12Schema_CarriesTheDeclarationRules()
     {
-        // #617: specVersion 12 is accepted before it is run, so no published
-        // schema exists yet; the shape is pinned here as v11's was, and the
+        // #617 pinned this ahead of publication; #623 published it, and the
+        // byte-identity theory now covers 12 too — these content pins stay
+        // as the readable statement of what the v12 render declares, and the
         // v11 render is seen to be untouched by the members v12 added.
         var schema = PackageFormatSchema.Build(12);
         var properties = schema["properties"]!.AsObject();
