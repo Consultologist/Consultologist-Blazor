@@ -23,6 +23,12 @@ The first satellite was the Power Automate *HTTP with Microsoft Entra ID*
 connector (#542, the forms door): the pattern below is that setup,
 generalized.
 
+The family's outward half is #615: where a satellite carries a delegated
+token INTO this API, On-Behalf-Of carries the clinician's delegation OUT
+of it — the engine exchanging the incoming bearer for a downstream Graph
+token (CONFIGURATION.md, On-Behalf-Of). Inward and outward are the same
+posture: always the signed-in clinician, never a machine identity.
+
 ## 2. The pattern, normative (part a)
 
 Four operator steps, once per satellite per tenant. The satellite's own

@@ -144,6 +144,43 @@ page** needs only CORS here; only content the SPA itself loads needs the
 CSP row. Host-level CORS stays deliberately disabled
 (`host.functionHttpApiCors.disabled.json`); the code is the policy.
 
+## On-Behalf-Of (`Auth/OnBehalfOfTokenClient.cs`, #615)
+
+The engine reaches outward as the user: an incoming delegated
+`access_as_user` bearer is exchanged for a downstream Graph token, bounded
+by consented delegated scopes. No new settings — the exchange reuses
+`Auth__Audience` (the client id) and `AZURE_CLIENT_ID` (the user-assigned
+managed identity the client assertion is minted from).
+
+**The credential is a federated identity credential, never a secret.** The
+API registration holds no password and no certificate; it trusts the
+function app's user-assigned managed identity via workload identity
+federation, so there is nothing to rotate or leak. The operator recipe
+(recorded on the production registration, #615):
+
+```bash
+APPOBJ=$(az ad app show --id b3866040-8bae-4c01-88ba-ecff646df451 --query id -o tsv)
+UAMI_PRINCIPAL=$(az identity show -g consultologist_group -n canada-east-ai-function-uami --query principalId -o tsv)
+TENANT=$(az account show --query tenantId -o tsv)
+az rest --method POST --url "https://graph.microsoft.com/v1.0/applications/$APPOBJ/federatedIdentityCredentials" \
+  --body "{\"name\":\"obo-uami-fic\",\"issuer\":\"https://login.microsoftonline.com/$TENANT/v2.0\",\"subject\":\"$UAMI_PRINCIPAL\",\"audiences\":[\"api://AzureADTokenExchange\"]}"
+```
+
+Verify by listing `federatedIdentityCredentials`; reverse with a DELETE of
+the credential by id.
+
+**Rules, stated**: exchanged tokens are per-request, in memory only, never
+persisted and never logged (logs carry refusal words, scopes and statuses).
+The exchange is tenanted — the caller's own `tid`, never `/common` — and
+**organisation accounts only**: OBO does not exist for consumer Microsoft
+accounts, so every OBO-powered capability is refused for a personal account
+by name (`personal-account`) and the UI says so up front.
+
+**Consent is incremental, per capability**: Graph `User.Read` is declared
+from the start; `Files.Read` was added and admin-consented for #615's
+OneDrive-link document retrieval. Each future capability adds and consents
+its own scope, with the account-facing description shipped beside it.
+
 ## LinkedIn identity linking (`Auth/LinkedInLink*`, #133)
 
 LinkedIn is a **verification signal**, never a credential: the Connect

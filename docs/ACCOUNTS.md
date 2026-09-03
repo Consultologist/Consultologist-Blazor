@@ -36,6 +36,15 @@ door's flows authenticate as their owner with no consent prompt
 runbook). That setup is the first instance of the general satellite
 caller pattern — SATELLITE_CALLERS.md (#611).
 
+Since #615 the API can also reach **outward** as the signed-in clinician
+(On-Behalf-Of): an organisation account's own token is exchanged for a
+Graph token bounded by consented delegated scopes — today `Files.Read`,
+used only to retrieve a OneDrive/SharePoint document the clinician pastes
+a sharing link for. Personal Microsoft accounts are refused by name (OBO
+does not exist for them) and told up front in the UI. The credential is a
+federated identity credential on the registration — no secret exists
+(CONFIGURATION.md, On-Behalf-Of).
+
 Since 2026-07-18 sign-in is **multi-tenant**, and since 2026-07-23 (#132) it
 also accepts **personal Microsoft accounts**: both registrations use
 `signInAudience: AzureADandPersonalMicrosoftAccount`, and the API
