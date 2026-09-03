@@ -174,7 +174,7 @@ public class DurablePayloadReplayTests
         var finalize = JsonSerializer.Deserialize<ConsultGenerationJobFinalize>(stored, Durable)!;
 
         Assert.Null(finalize.AccountKind);
-        Assert.Equal(stored[..^1] + ",\"AccountKind\":null}", JsonSerializer.Serialize(finalize, Durable));
+        Assert.Equal(stored[..^1] + ",\"AccountKind\":null,\"FailureStack\":null}", JsonSerializer.Serialize(finalize, Durable));
     }
 
     [Fact]

@@ -1786,3 +1786,99 @@ public class RunTraceTimingTests
         Assert.Null(projected["assemble"].DurationMs);
     }
 }
+
+/// <summary>
+/// #639: the stack is caught where it falls — frames and the exception
+/// type, never the message beyond what Error already carries; recorded on
+/// the failed node's row, the job, the deciding stage and the failed
+/// section alike.
+/// </summary>
+public class FailureStackTests
+{
+    private static (Consultologist.Api.Jobs.ConsultGenerationJobEntity Entity, Func<Consultologist.Api.Jobs.ConsultGenerationJobState> State) Job()
+    {
+        var entity = new Consultologist.Api.Jobs.ConsultGenerationJobEntity(
+            NSubstitute.Substitute.For<Consultologist.Api.Jobs.IConsultGenerationJobIndexStore>(),
+            NSubstitute.Substitute.For<Consultologist.Api.Jobs.IJobOutputsBlobStore>(),
+            NSubstitute.Substitute.For<Consultologist.Api.Jobs.IJobInputsBlobStore>(),
+            NSubstitute.Substitute.For<Consultologist.Api.Jobs.IAccountUsageStore>());
+        var stateProperty = typeof(Consultologist.Api.Jobs.ConsultGenerationJobEntity).GetProperty(
+            "State", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)!;
+        stateProperty.SetValue(entity, Consultologist.Api.Jobs.ConsultGenerationJobState.Create("job-1", "user-1", new[]
+        {
+            new Dictionary<string, string> { ["id"] = "consult:s0", ["name"] = "Section 0" }
+        }));
+        return (entity, () => (Consultologist.Api.Jobs.ConsultGenerationJobState)stateProperty.GetValue(entity)!);
+    }
+
+    [Fact]
+    public void FailureFacts_PreferDurableDetails_AndNeverTheMessage()
+    {
+        // The plain-exception arm: type + frames, and the message is not in
+        // the captured pair at all.
+        Exception thrown;
+        try { throw new InvalidOperationException("patient text could be here"); }
+        catch (Exception ex) { thrown = ex; }
+
+        var (type, stack) = Consultologist.Api.Jobs.ConsultGenerationOrchestrator.FailureFactsOf(thrown);
+        Assert.Equal(typeof(InvalidOperationException).FullName, type);
+        Assert.Contains("FailureFacts_PreferDurableDetails", stack!);
+        Assert.DoesNotContain("patient text could be here", stack);
+    }
+
+    [Fact]
+    public async Task TheFailedNodeRow_CarriesItsStack_AndTheJobInheritsIt()
+    {
+        var (entity, state) = Job();
+
+        await entity.MarkNodeFailed(new Consultologist.Api.Jobs.ConsultGenerationNodeFailure(
+            "draft", "Drafting", "draft-failed", "Drafting failed: boom.",
+            Array.Empty<Consultologist.Api.Models.ConsultItemStepDescriptor>(),
+            "System.InvalidOperationException",
+            "   at Engine.Run()"));
+
+        var node = state().NodeOutputs!["draft"];
+        Assert.Equal(("System.InvalidOperationException", "   at Engine.Run()"), (node.ErrorType, node.ErrorStack));
+        Assert.Equal("   at Engine.Run()", state().FailureStack);
+
+        var projected = state().ToResponse();
+        Assert.Equal("   at Engine.Run()", projected.FailureStack);
+        Assert.Equal("System.InvalidOperationException", projected.NodeOutputs!["draft"].ErrorType);
+    }
+
+    [Fact]
+    public async Task TheFailedSection_CarriesItsStack_IntoTheResponseMap()
+    {
+        var (entity, state) = Job();
+
+        await entity.FailBlock(new Consultologist.Api.Models.BlockGenerationResult(
+            "consult:s0", "Section 0", false, null, "Section 0 failed: boom.",
+            "System.TimeoutException\n   at Agent.SendAsync()"));
+
+        var response = state().ToResponse();
+        Assert.Equal("System.TimeoutException\n   at Agent.SendAsync()",
+            Assert.Contains("consult:s0", response.FailedBlockStacks!));
+        // A failIfEmpty-style failure has no exception — no stack appears.
+        await entity.FailBlock(new Consultologist.Api.Models.BlockGenerationResult(
+            "consult:s1", "Section 1", false, null, "The list rendered empty."));
+        Assert.DoesNotContain("consult:s1", state().ToResponse().FailedBlockStacks!);
+    }
+
+    [Fact]
+    public async Task TheTerminalFailure_AndTheDecidingFailure_CarryTheirStacks()
+    {
+        var (entity, state) = Job();
+        await entity.FinalizeJob(new Consultologist.Api.Jobs.ConsultGenerationJobFinalize(
+            "Failed", "boom", FailureStack: "System.Exception\n   at Orchestrator.Run()"));
+        Assert.Equal("System.Exception\n   at Orchestrator.Run()", state().ToResponse().FailureStack);
+
+        var (second, secondState) = Job();
+        await second.RecordDecisionFailure(new Consultologist.Api.Jobs.ConsultGenerationDecisionFailure(
+            Consultologist.Api.Jobs.ConsultGenerationDecisionFailureKinds.CouldNotDecide,
+            "Classifier 'scope' failed (TaskFailedException).",
+            null,
+            null,
+            FailureStack: "System.Exception\n   at Classifier.Run()"));
+        Assert.Equal("System.Exception\n   at Classifier.Run()", secondState().FailureStack);
+    }
+}
