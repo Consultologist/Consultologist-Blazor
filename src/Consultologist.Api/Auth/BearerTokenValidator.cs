@@ -69,6 +69,18 @@ public sealed class BearerTokenValidator : IBearerTokenValidator
 
             var scopes = GetScopes(principal).ToArray();
 
+            // #610: only delegated user tokens enter — checked BEFORE the
+            // scope check, so an app-only token is refused by name and never
+            // as "missing required scope" (the accident production's
+            // configuration used to rely on).
+            var appTokenRefusal = AppTokenRefusal(principal, scopes);
+
+            if (appTokenRefusal != null)
+            {
+                _logger.LogWarning("{Refusal}", appTokenRefusal);
+                return null;
+            }
+
             if (!string.IsNullOrWhiteSpace(requiredScope)
                 && !scopes.Contains(requiredScope, StringComparer.OrdinalIgnoreCase))
             {
@@ -118,6 +130,31 @@ public sealed class BearerTokenValidator : IBearerTokenValidator
         return string.IsNullOrWhiteSpace(_configuration[key])
             ? throw new InvalidOperationException($"{key} is not configured.")
             : _configuration[key]!;
+    }
+
+    /// <summary>
+    /// #610: only delegated user tokens enter; an app-only
+    /// (client-credentials) token gets a machine caller no designed path
+    /// ever gave it. Two shapes, each refused by name: idtyp=app (the
+    /// registration's optional claim — defense in depth, present only when
+    /// requested) and a token with no delegated scopes at all (app-only
+    /// tokens never carry scp, so this branch holds with or without the
+    /// optional claim, RequiredScope set or unset). The sentence carries no
+    /// caller data. Extracted so it can be asserted directly.
+    /// </summary>
+    internal static string? AppTokenRefusal(ClaimsPrincipal principal, IReadOnlyList<string> scopes)
+    {
+        if (string.Equals(principal.FindFirstValue("idtyp"), "app", StringComparison.Ordinal))
+        {
+            return "Bearer token is an application token; only delegated user tokens are accepted.";
+        }
+
+        if (scopes.Count == 0)
+        {
+            return "Bearer token carried no delegated scopes; only delegated user tokens are accepted.";
+        }
+
+        return null;
     }
 
     internal static string ValidateIssuer(string authority, string metadataIssuer, string issuer)
