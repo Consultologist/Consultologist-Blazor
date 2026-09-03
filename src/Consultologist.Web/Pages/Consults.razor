@@ -970,6 +970,14 @@
         <FluentTextArea @bind-Value="slot.Value"
                         Placeholder="@slot.Placeholder"
                         Rows="@slot.Rows" />
+        @* #561: the snippet road — rendered only when the library is
+           non-empty (an empty library adds nothing to every text field;
+           discoverability lives on the profile card). Inserted text is
+           ordinary typed text from that moment. *@
+        @if (snippetSet.Items.Count > 0)
+        {
+          <SnippetPicker Items="@snippetSet.Items" OnChosen="chosen => InsertSnippet(slot, chosen)" />
+        }
       }
     </text>;
 
@@ -1190,6 +1198,8 @@
   private string? accountDeliveryAddress;
   private bool accountDeliveryAddressKnown;
   private string? accountSignInKind;
+  // #561: the snippet library for the pickers on text inputs.
+  private Snippets.SnippetSet snippetSet = Snippets.Empty();
   // #518: the account's choice on emailing app-initiated runs; false = not emailed.
   private bool? accountEmailPdf;
 
@@ -1399,6 +1409,10 @@
       // for consumer accounts) — the kind decides shown-live vs
       // shown-disabled-with-the-reason, never a silent hide.
       accountSignInKind = me.SignInKind;
+      // #561: the snippet library, once per page — tolerant, an unreadable
+      // row is an empty set (and no pickers render).
+      var snippetSetting = await AccountService.GetSettingAsync(Snippets.SettingKey);
+      snippetSet = Snippets.Parse(snippetSetting?.Value);
     }
     catch (AccessTokenNotAvailableException exception)
     {
@@ -2357,6 +2371,17 @@
     {
       field.IsFetchingLink = false;
     }
+  }
+
+  /// <summary>
+  /// #561: the snippet lands as ordinary typed text — appended, blank-line
+  /// separated (Snippets.Insert, the pinned rule); edits, hashing and the
+  /// record are all unchanged by construction.
+  /// </summary>
+  private void InsertSnippet(ScalarSlot slot, Snippets.Snippet snippet)
+  {
+    slot.Value = Snippets.Insert(slot.Value, snippet.Text);
+    scheduleConfirmation = null;
   }
 
   private void MoveDocument(ConsultInputField field, int index, int delta)
