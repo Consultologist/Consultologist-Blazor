@@ -1,0 +1,68 @@
+.run-dag-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(15, 23, 42, 0.45);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+	padding: 2rem;
+}
+
+.run-dag-panel {
+	background: var(--consultologist-surface, #ffffff);
+	border-radius: 12px;
+	box-shadow: var(--consultologist-shadow-md, 0 16px 40px rgba(15, 23, 42, 0.08));
+	max-width: min(1100px, 92vw);
+	max-height: 88vh;
+	width: 100%;
+	overflow: auto;
+	padding: 1rem 1.25rem 1.25rem;
+}
+
+.run-dag-panel__header {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	margin-bottom: 0.5rem;
+}
+
+.run-dag-panel__title {
+	font-weight: 600;
+}
+
+.run-dag-legend {
+	font-size: 0.8rem;
+	margin-left: auto;
+}
+
+/* The legend wears the rails' own colours — the diagram's classDefs. */
+.run-dag-legend__ranNot { color: #5d6a7c; opacity: 0.6; }
+.run-dag-legend__skipped { color: #5d6a7c; text-decoration: underline dashed; }
+.run-dag-legend__done { color: #107c10; }
+.run-dag-legend__failed { color: #a4262c; }
+.run-dag-legend__running { color: #0067b8; }
+
+.run-dag-close {
+	border: none;
+	background: transparent;
+	font-size: 1.3rem;
+	line-height: 1;
+	cursor: pointer;
+	color: var(--consultologist-text-muted, #5d6a7c);
+	padding: 0.15rem 0.4rem;
+	border-radius: 6px;
+}
+
+.run-dag-close:hover {
+	background: rgba(15, 23, 42, 0.06);
+}
+
+::deep .dag-view__canvas {
+	overflow-x: auto;
+	padding: 0.5rem 0 1rem;
+}
+
+::deep .dag-view__canvas svg {
+	max-width: none;
+}

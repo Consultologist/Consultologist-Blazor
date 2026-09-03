@@ -1,0 +1,31 @@
+@* #642: the run, drawn live — one overlay for History and the run rail.
+   The diagram text is rebuilt from the Detail parameter on every render;
+   the pages' polls replace that record in place, so a status change
+   recolours the graph and an unchanged tick is a byte-identical no-op the
+   renderer's change guard skips. The backdrop click and the × both close. *@
+@using Consultologist.Web.Services.AI
+@using Consultologist.Web.Services.Provenance
+
+<div class="run-dag-overlay" @onclick="() => OnClose.InvokeAsync()">
+    <div class="run-dag-panel" @onclick:stopPropagation="true">
+        <div class="run-dag-panel__header">
+            <span class="run-dag-panel__title">Run diagram</span>
+            <span class="run-dag-legend muted-text">
+                <span class="run-dag-legend__ranNot">yet to run</span> ·
+                <span class="run-dag-legend__skipped">skipped</span> ·
+                <span class="run-dag-legend__done">completed</span> ·
+                <span class="run-dag-legend__failed">failed</span> ·
+                <span class="run-dag-legend__running">running</span>
+            </span>
+            <button type="button" class="run-dag-close" aria-label="Close run diagram"
+                    @onclick="() => OnClose.InvokeAsync()">×</button>
+        </div>
+        <WorkflowDagView Diagram="@RunDagDiagram.Build(Detail)" />
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ConsultGenerationJobResponse Detail { get; set; } = default!;
+
+    [Parameter] public EventCallback OnClose { get; set; }
+}

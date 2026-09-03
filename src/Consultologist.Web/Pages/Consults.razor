@@ -651,7 +651,16 @@
 
                     <section class="workflow-panel run-rail">
                         <div class="form-stack">
-                            <h2 class="panel-title">Run</h2>
+                            <h2 class="panel-title">
+                                Run
+                                @if (latestRunResponse != null)
+                                {
+                                    @* #642: the run, drawn live. *@
+                                    <button type="button" class="run-dag-button"
+                                            @onclick="() => showRunDiagram = true"
+                                            aria-label="Show run diagram">Run diagram</button>
+                                }
+                            </h2>
 
                             @{
                                 var stageTotal = totalAnalysisStageCount > 0 ? totalAnalysisStageCount : 6;
@@ -846,6 +855,13 @@
         }
     </Authorized>
 </AuthorizeView>
+
+@* #642: the run diagram over the latest response — the run's own poll
+   cadence recolours it. *@
+@if (showRunDiagram && latestRunResponse is { } diagramResponse)
+{
+    <RunDagOverlay Detail="@diagramResponse" OnClose="() => showRunDiagram = false" />
+}
 
 @code {
   /// <summary>
@@ -1110,6 +1126,11 @@
   // whole time: node-completed carries NodeId, and the job response's NodeOutputs
   // is keyed by node id and carries a real status.
   private Dictionary<string, string> nodeStatuses = new(StringComparer.Ordinal);
+
+  // #642: the latest full job response the run has seen — what the run
+  // diagram draws from; null until the first snapshot-shaped payload.
+  private ConsultGenerationJobResponse? latestRunResponse;
+  private bool showRunDiagram;
   private Dictionary<string, string> generatedBlocks = new();
   private Dictionary<string, string> failedBlockErrors = new();
   private bool isBlocksLoading;
@@ -1401,6 +1422,8 @@
     activeDocumentId = null;
     completedNodeItems = new();
     nodeStatuses = new(StringComparer.Ordinal);
+    latestRunResponse = null;
+    showRunDiagram = false;
     jobNodes = null;
     jobCollections = null;
     aiRequestError = null;
@@ -1935,6 +1958,8 @@
     // done payload, or a polled response) — the rail's Setup row completes
     // on it.
     runEventSeen = true;
+    // #642: the run diagram draws from the whole latest response.
+    latestRunResponse = response;
     generatedBlocks = response.GeneratedBlocks;
     textDroppedAtUtc = response.TextDroppedAtUtc;
     heldInputsAvailable = response.HeldInputs != null;

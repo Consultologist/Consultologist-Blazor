@@ -699,7 +699,19 @@ public record ConsultGenerationNodeDescriptor(
     // #582: the package's reproducibility claim (v11 #550) — same #361
     // situation, the wire always carried it; the comparison table marks the
     // stages the verdict counted.
-    bool? Reproducible = null);
+    bool? Reproducible = null,
+    // #642: the edges — bindings, the check's members, the template kind —
+    // the same #361 situation again: always serialized, undeclared until
+    // the run diagram needed to draw them.
+    IReadOnlyDictionary<string, ConsultNodeBindingDescriptor>? Bindings = null,
+    ConsultCheckDescriptor? Check = null,
+    bool? Template = null);
+
+/// <summary>Mirrors Consultologist.Api.Models.ConsultNodeBindingDescriptor (#642).</summary>
+public record ConsultNodeBindingDescriptor(string From, string? As = null);
+
+/// <summary>Mirrors Consultologist.Api.Models.ConsultCheckDescriptor (#642).</summary>
+public record ConsultCheckDescriptor(string Op, string Of, string In, string FailWith);
 
 public record ConsultItemStepDescriptor(string Id, string Label);
 
