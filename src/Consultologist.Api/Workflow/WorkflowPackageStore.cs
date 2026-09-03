@@ -17,10 +17,11 @@ public interface IWorkflowPackageStore
 public sealed class WorkflowPackageStore : IWorkflowPackageStore
 {
     /// <summary>A manifest declares the rule set it was validated under (package-format-v6-design.md § 9).</summary>
-    // v11 (#566): the engine runs eleven — the last rung of the v11 ladder
-    // (package-format-v11-design.md § 12), after the format registry
-    // published the v11 document, schema and conformance suite.
-    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11 };
+    // v12 (#623): the engine runs twelve — the last rung of the v12 ladder
+    // (package-format-v12-design.md § 12), after the format registry
+    // published the v12 document, schema and conformance suite as one
+    // version.
+    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12 };
     private static readonly TimeSpan LatestPointerCacheDuration = TimeSpan.FromSeconds(60);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
