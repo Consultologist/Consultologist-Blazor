@@ -806,7 +806,7 @@ public class WorkflowPackagePublisherTests
 
         Assert.False(result.Succeeded);
         Assert.Contains(
-            "File path 'publish.json' is not allowed: expected prompts/<file>, schemas/<file>, data/<collection>/<file>, or data/<file>.",
+            "File path 'publish.json' is not allowed: expected prompts/<file>, schemas/<file>, macros/<file>, data/<collection>/<file>, or data/<file>.",
             result.Errors);
         Assert.Empty(writer.Blobs);
     }
@@ -924,6 +924,42 @@ public class WorkflowPackagePublisherTests
 
         Assert.False(result.Succeeded);
         Assert.Contains(result.Errors, error => error.Contains("prompts/unreferenced.md", StringComparison.Ordinal) && error.Contains("not referenced", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Publish_AMacroCarryingPackage_Publishes()
+    {
+        // #623's live demo surfaced the gap: the path rule and the reverse
+        // closure predate v11's macros, so no macro-carrying package could
+        // pass the desk — v11's own example went in through the content
+        // repo and never exercised this door.
+        var (publisher, writer, _) = CreatePublisher();
+        var (manifest, files) = V11Fixtures.WithMacro();
+        // The shared fixture bundle carries the guidelines collection the
+        // minimal manifest never references; a real client sends the closure.
+        var sent = files.Where(f => !f.Key.StartsWith("data/guidelines/", StringComparison.Ordinal))
+            .ToDictionary(f => f.Key, f => f.Value, StringComparer.Ordinal);
+
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: sent), CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join("; ", result.Errors));
+        Assert.NotEmpty(writer.Blobs);
+    }
+
+    [Fact]
+    public async Task Publish_AnUnreferencedMacroFile_IsAStray()
+    {
+        var (publisher, _, _) = CreatePublisher();
+        var (manifest, files) = V11Fixtures.WithMacro();
+        var withStray = new Dictionary<string, string>(files, StringComparer.Ordinal)
+        {
+            ["macros/unreferenced.md"] = "not in the manifest"
+        };
+
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: withStray), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Errors, error => error.Contains("macros/unreferenced.md", StringComparison.Ordinal) && error.Contains("not referenced", StringComparison.Ordinal));
     }
 
     [Fact]
