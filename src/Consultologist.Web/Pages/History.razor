@@ -492,6 +492,14 @@
                                                     <dt class="provenance-list__nested">@excludedMacro.ResultId</dt>
                                                     <dd class="macro-excluded">macro '@excludedMacro.MacroId' not appended — it @excludedMacro.Reason</dd>
                                                 }
+                                                @* v12 #622 (§ 6): every optional macro's resolution — the
+                                                   negative visible, the origin honest: chosen for this run,
+                                                   or the package's declared default. Authored ids only. *@
+                                                @foreach (var choice in (detail.MacroChoices ?? new Dictionary<string, ConsultMacroChoiceResponse>()).OrderBy(pair => pair.Key, StringComparer.Ordinal))
+                                                {
+                                                    <dt class="provenance-list__nested">@choice.Key</dt>
+                                                    <dd class="macro-choice-row">@(choice.Value.Value ? "appended" : "omitted") — @(choice.Value.Origin == "chosen" ? "chosen for this run" : "the package's default")</dd>
+                                                }
                                                 @* #453: the package's tags as they were at the pinned
                                                    version — stamped on the record, shown for finding it. *@
                                                 @if (detail.PackageTags is { Count: > 0 } packageTags)

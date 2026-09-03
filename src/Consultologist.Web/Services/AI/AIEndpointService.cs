@@ -634,7 +634,11 @@ public record ConsultGenerationJobResponse(
     IReadOnlyList<ConsultFailedDocumentResponse>? FailedDocuments = null,
     // v12 #631 (§ 14): macros a when-clause excluded from firing
     // deliverables — recorded absence, the skipped-documents tradition.
-    IReadOnlyList<ConsultExcludedMacroResponse>? ExcludedMacros = null);
+    IReadOnlyList<ConsultExcludedMacroResponse>? ExcludedMacros = null,
+    // v12 #622 (design § 6): every optional macro's resolution — value and
+    // chosen|default origin, stamped at start; null when the package
+    // declares none.
+    IReadOnlyDictionary<string, ConsultMacroChoiceResponse>? MacroChoices = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.TerminologySnapshot (#403).</summary>
 public record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);
@@ -647,6 +651,9 @@ public record ConsultCheckOutcome(
     bool Passed,
     IReadOnlyList<string>? Uncovered = null,
     IReadOnlyList<string>? Untested = null);
+
+/// <summary>Mirrors Consultologist.Api.Models.ConsultMacroChoice (v12 #622).</summary>
+public record ConsultMacroChoiceResponse(bool Value, string Origin);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultExcludedMacro (v12 #631).</summary>
 public record ConsultExcludedMacroResponse(string ResultId, string MacroId, string Reason);
