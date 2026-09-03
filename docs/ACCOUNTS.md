@@ -65,6 +65,11 @@ aud=b3866040-8bae-4c01-88ba-ecff646df451
 scp=access_as_user
 ```
 
+Only delegated user tokens are accepted (#610): a token with `idtyp=app`,
+or with no `scp`/`scope` claims at all, is refused by name before the
+scope check — an app-only (client-credentials) token cannot mint or reach
+an account even if `Auth__RequiredScope` were unset.
+
 Accounts are tenant-agnostic: a first sign-in from any organizational tenant
 resolves-or-creates an app account exactly like a home-tenant sign-in.
 
