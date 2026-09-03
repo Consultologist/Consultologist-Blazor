@@ -1047,13 +1047,15 @@ public sealed class ConsultGenerationOrchestrator
     internal static ConsultGenerationNodeUpdate NodeUpdateFrom(
         ConsultNodeDescriptor node, NodeRunResult result, int completedNodeCount, int totalNodeCount) =>
         new(node.Id, node.Label, result.Concepts, result.InputHash, result.OutputHash,
-            completedNodeCount, totalNodeCount, result.HashVersion, result.Classification, result.Tokens);
+            completedNodeCount, totalNodeCount, result.HashVersion, result.Classification, result.Tokens,
+            NodeStartedAtUtc: result.StartedAtUtc, DurationMs: result.DurationMs);
 
     internal static ConsultGenerationNodeItemUpdate ItemUpdateFrom(
         ConsultNodeDescriptor node, string itemId, string itemName, NodeRunResult result, int completedChainCount, int totalChainCount) =>
         new(node.Id, node.Label, itemId, itemName,
             result.Concepts, result.InputHash, result.OutputHash,
-            completedChainCount, totalChainCount, result.HashVersion, result.Tokens);
+            completedChainCount, totalChainCount, result.HashVersion, result.Tokens,
+            NodeStartedAtUtc: result.StartedAtUtc, DurationMs: result.DurationMs);
 
     internal static ConsultGenerationDeliveryRecord DeliveryRecordFor(Email.EmailIntakeReplyOutcome? outcome) =>
         outcome switch

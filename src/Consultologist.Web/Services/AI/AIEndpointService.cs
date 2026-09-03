@@ -720,7 +720,11 @@ public record ConsultGenerationNodeStatus(
     // #551: what this instance's call cost; null is not recorded, never 0.
     ConsultTokenUsage? Tokens = null,
     // v12 #624: a check node's verdict and its named evidence.
-    ConsultCheckOutcome? Check = null);
+    ConsultCheckOutcome? Check = null,
+    // #639: the activity's clock — start at entry, execution duration with
+    // queue and retry wait excluded; null is not recorded, never zero.
+    DateTimeOffset? StartedAtUtc = null,
+    long? DurationMs = null);
 
 public record ConsultGenerationJobHistoryEvent(string Kind, string Label, string? Detail, DateTimeOffset OccurredAt);
 

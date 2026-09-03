@@ -1713,3 +1713,76 @@ public class WorkflowV12TemplateSchedulingTests
         Assert.Null(itemUpdate.Tokens);
     }
 }
+
+/// <summary>
+/// #639: the run's trace — the activity's clock rides every recorded
+/// result into the node and item rows; rows no activity ran for record
+/// none, not recorded, never zero.
+/// </summary>
+public class RunTraceTimingTests
+{
+    [Fact]
+    public void TheTemplateResult_CarriesTheClock_WhenTheActivityWrapsIt()
+    {
+        // TemplateResult itself is pure (no clock); the activity stamps both
+        // branches on return — the wrap the early return applies.
+        var bare = Consultologist.Api.Jobs.RunPromptNodeActivity.TemplateResult("Rendered.", null, null, "header");
+        Assert.Null(bare.StartedAtUtc);
+        Assert.Null(bare.DurationMs);
+
+        var started = new DateTimeOffset(2026, 9, 3, 12, 0, 0, TimeSpan.Zero);
+        var wrapped = bare with { StartedAtUtc = started, DurationMs = 42 };
+        Assert.Equal((started, 42L), (wrapped.StartedAtUtc!.Value, wrapped.DurationMs!.Value));
+    }
+
+    [Fact]
+    public void TheUpdates_CarryTheClock_ToNodeAndItemRows()
+    {
+        var node = new Consultologist.Api.Models.ConsultNodeDescriptor("draft", "Drafting", "draft-prompt");
+        var started = new DateTimeOffset(2026, 9, 3, 12, 0, 0, TimeSpan.Zero);
+        var result = new Consultologist.Api.Jobs.NodeRunResult("x", null, "i", "o", 5, null, null, started, 1234);
+
+        var update = Consultologist.Api.Jobs.ConsultGenerationOrchestrator.NodeUpdateFrom(node, result, 1, 2);
+        Assert.Equal((started, 1234L), (update.NodeStartedAtUtc!.Value, update.DurationMs!.Value));
+
+        var itemUpdate = Consultologist.Api.Jobs.ConsultGenerationOrchestrator.ItemUpdateFrom(node, "hpi", "History", result, 1, 2);
+        Assert.Equal((started, 1234L), (itemUpdate.NodeStartedAtUtc!.Value, itemUpdate.DurationMs!.Value));
+    }
+
+    [Fact]
+    public async Task TheRows_RecordTheClock_AndRowsWithoutOneRecordNone()
+    {
+        var entity = new Consultologist.Api.Jobs.ConsultGenerationJobEntity(
+            NSubstitute.Substitute.For<Consultologist.Api.Jobs.IConsultGenerationJobIndexStore>(),
+            NSubstitute.Substitute.For<Consultologist.Api.Jobs.IJobOutputsBlobStore>(),
+            NSubstitute.Substitute.For<Consultologist.Api.Jobs.IJobInputsBlobStore>(),
+            NSubstitute.Substitute.For<Consultologist.Api.Jobs.IAccountUsageStore>());
+        var stateProperty = typeof(Consultologist.Api.Jobs.ConsultGenerationJobEntity).GetProperty(
+            "State", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)!;
+        stateProperty.SetValue(entity, Consultologist.Api.Jobs.ConsultGenerationJobState.Create("job-1", "user-1", new[]
+        {
+            new Dictionary<string, string> { ["id"] = "a", ["name"] = "A" }
+        }));
+        var started = new DateTimeOffset(2026, 9, 3, 12, 0, 0, TimeSpan.Zero);
+
+        entity.MarkNodeCompleted(new Consultologist.Api.Jobs.ConsultGenerationNodeUpdate(
+            "draft", "Drafting", null, "i", "o", 1, 3, NodeStartedAtUtc: started, DurationMs: 1234));
+        entity.MarkNodeItemCompleted(new Consultologist.Api.Jobs.ConsultGenerationNodeItemUpdate(
+            "section", "Sectioning", "hpi", "History", null, "i", "o", 1, 2, NodeStartedAtUtc: started, DurationMs: 77));
+        // The aggregate-style row: no activity, no clock — the roll-up shape.
+        entity.MarkNodeCompleted(new Consultologist.Api.Jobs.ConsultGenerationNodeUpdate(
+            "assemble", "Assembling", null, "i", "o", 2, 3));
+        await Task.CompletedTask;
+
+        var state = (Consultologist.Api.Jobs.ConsultGenerationJobState)stateProperty.GetValue(entity)!;
+        Assert.Equal((started, 1234L), (state.NodeOutputs!["draft"].StartedAtUtc!.Value, state.NodeOutputs["draft"].DurationMs!.Value));
+        Assert.Equal(77L, state.NodeOutputs["section:hpi"].DurationMs);
+        Assert.Null(state.NodeOutputs["assemble"].StartedAtUtc);
+        Assert.Null(state.NodeOutputs["assemble"].DurationMs);
+
+        var projected = state.ToResponse().NodeOutputs!;
+        Assert.Equal(1234L, projected["draft"].DurationMs);
+        Assert.Equal(started, projected["draft"].StartedAtUtc);
+        Assert.Null(projected["assemble"].DurationMs);
+    }
+}

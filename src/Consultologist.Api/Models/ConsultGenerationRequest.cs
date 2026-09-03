@@ -542,7 +542,11 @@ public sealed record ConsultGenerationNodeStatusResponse(
     // #551: what this instance's call cost; null is not recorded, never 0.
     ConsultTokenUsage? Tokens = null,
     // v12 #624: a check node's verdict and its evidence. Appended last.
-    ConsultCheckOutcome? Check = null);
+    ConsultCheckOutcome? Check = null,
+    // #639: the activity's clock — start at entry, execution duration with
+    // queue and retry wait excluded; null is not recorded, never zero.
+    DateTimeOffset? StartedAtUtc = null,
+    long? DurationMs = null);
 
 /// <summary>#390: the body of a reschedule — a job id in the route, a time here.</summary>
 public sealed record RescheduleConsultRequest(DateTimeOffset? ScheduledAtUtc);

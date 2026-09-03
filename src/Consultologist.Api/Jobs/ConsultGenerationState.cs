@@ -370,6 +370,8 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         output.OutputHash = input.OutputHash;
         output.HashVersion = input.HashVersion;
         output.Tokens = input.Tokens;
+        output.StartedAtUtc = input.NodeStartedAtUtc;
+        output.DurationMs = input.DurationMs;
         output.CompletedAtUtc = DateTimeOffset.UtcNow;
 
         var progress = state.GetOrAddItemProgress(input.ItemId, input.ItemName);
@@ -391,6 +393,8 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         node.OutputHash = input.OutputHash;
         node.HashVersion = input.HashVersion;
         node.Tokens = input.Tokens;
+        node.StartedAtUtc = input.NodeStartedAtUtc;
+        node.DurationMs = input.DurationMs;
         node.CompletedAtUtc = DateTimeOffset.UtcNow;
 
         // v12 #624: a check's verdict and its evidence — its own slots, not
@@ -1041,7 +1045,12 @@ public sealed record ConsultGenerationNodeUpdate(
     ConsultTokenUsage? Tokens = null,
     // v12 #624: a check node's verdict and evidence. Appended last, same
     // positional-call rule.
-    ConsultCheckOutcome? Check = null);
+    ConsultCheckOutcome? Check = null,
+    // #639: the activity's own clock — start at entry, execution duration
+    // with queue and retry wait excluded. Appended last, same positional
+    // rule; null is "not recorded", never zero.
+    DateTimeOffset? NodeStartedAtUtc = null,
+    long? DurationMs = null);
 
 /// <summary>v10 (#496): what the boundary decided — the one Decide signal.</summary>
 public sealed record ConsultGenerationDecision(
@@ -1197,7 +1206,10 @@ public sealed record ConsultGenerationNodeItemUpdate(
     int? HashVersion = null,
     // #551: what the item's call cost. Appended last, same reason; null is
     // "not recorded", never zero.
-    ConsultTokenUsage? Tokens = null);
+    ConsultTokenUsage? Tokens = null,
+    // #639: the activity's clock, as on the node update. Appended last.
+    DateTimeOffset? NodeStartedAtUtc = null,
+    long? DurationMs = null);
 
 public sealed class ConsultGenerationJobState
 {
@@ -1640,7 +1652,9 @@ public sealed class ConsultGenerationJobState
                     pair.Value.Tokens,
                     pair.Value.CheckPassed is { } passed
                         ? new ConsultCheckOutcome(passed, pair.Value.CheckUncovered, pair.Value.CheckUntested)
-                        : null)),
+                        : null,
+                    pair.Value.StartedAtUtc,
+                    pair.Value.DurationMs)),
             AgentVersions: AgentVersions,
             EffectiveInputHashVersion: EffectiveInputHashVersion,
             CatalogRef: CatalogRef,
@@ -1779,6 +1793,11 @@ public sealed class ConsultNodeOutputState
     public bool? CheckPassed { get; set; }
     public List<string>? CheckUncovered { get; set; }
     public List<string>? CheckUntested { get; set; }
+
+    // #639: the activity's clock — start at entry, execution duration with
+    // queue and retry wait excluded; null on rows no activity ran for.
+    public DateTimeOffset? StartedAtUtc { get; set; }
+    public long? DurationMs { get; set; }
 }
 
 public static class ConsultGenerationNodeStatuses

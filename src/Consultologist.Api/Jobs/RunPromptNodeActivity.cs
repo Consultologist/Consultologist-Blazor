@@ -52,7 +52,14 @@ public sealed record NodeRunResult(
     // #551: what the call cost, as the provider reported it. Appended last,
     // defaulted: a recorded activity result from before replays with null,
     // and null is "not recorded", never zero.
-    ConsultTokenUsage? Tokens = null);
+    ConsultTokenUsage? Tokens = null,
+    // #639: when the activity started and how long it executed — wall clock
+    // at entry and the activity's own stopwatch, so the pair is execution
+    // time with queue and retry wait excluded. Appended last, defaulted:
+    // null is "not recorded", never zero (aggregates, checks and roll-ups
+    // record none — no activity ran).
+    DateTimeOffset? StartedAtUtc = null,
+    long? DurationMs = null);
 
 /// <summary>
 /// The generic DAG prompt node: renders the node's prompt with orchestrator-resolved
@@ -119,6 +126,7 @@ public sealed class RunPromptNodeActivity
         CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
+        var startedAtUtc = DateTimeOffset.UtcNow;
 
         try
         {
@@ -166,7 +174,8 @@ public sealed class RunPromptNodeActivity
                     templateResult.OutputHash,
                     stopwatch.ElapsedMilliseconds);
 
-                return templateResult;
+                // #639: the trace rides every recorded result — template too.
+                return templateResult with { StartedAtUtc = startedAtUtc, DurationMs = stopwatch.ElapsedMilliseconds };
             }
 
             // v10 (#495): a classifier's prompt ends with the values it may
@@ -212,7 +221,7 @@ public sealed class RunPromptNodeActivity
             Console.Error.WriteLine(
                 $"[PromptNode] NodeId={input.NodeId}; ConceptCount={concepts?.Count.ToString() ?? "-"}; InputHash={inputHash}; OutputHash={outputHash}; ElapsedMs={stopwatch.ElapsedMilliseconds}");
 
-            return new NodeRunResult(rawOutput, concepts, inputHash, outputHash, ConsultGenerationProvenance.NodeHashVersion, classification, agentResponse.Tokens);
+            return new NodeRunResult(rawOutput, concepts, inputHash, outputHash, ConsultGenerationProvenance.NodeHashVersion, classification, agentResponse.Tokens, startedAtUtc, stopwatch.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
