@@ -31,8 +31,9 @@ az ad app update --id b3866040-8bae-4c01-88ba-ecff646df451 \
 ```
 
 Machine callers get a designed path or none: satellites present a delegated
-`access_as_user` token for the signed-in clinician (see the Power Automate
-connector section), never their own identity.
+`access_as_user` token for the signed-in clinician, never their own
+identity — the pattern is `docs/SATELLITE_CALLERS.md` (#611); the Power
+Automate connector below is its first instance.
 
 
 ### Multi-tenant sign-in (2026-07-18; personal accounts 2026-07-23)
@@ -93,9 +94,10 @@ and it lands **`Pending`** (since #191) — the activation flip in the
 
 ### The Power Automate connector (forms intake, #542)
 
-The forms door's flows authenticate through the *HTTP with Microsoft
-Entra ID* connector, which sends the same delegated `access_as_user`
-bearer the SPA does — so the API resolves the flow owner's own account
+The first instance of the satellite caller pattern
+(`docs/SATELLITE_CALLERS.md`, #611). The forms door's flows authenticate
+through the *HTTP with Microsoft Entra ID* connector, which sends the same
+delegated `access_as_user` bearer the SPA does — so the API resolves the flow owner's own account
 and stores nothing. Three operator steps make that work, **once per
 tenant, never per location** (done 2026-08-28 for `consultologist.ai`;
 the fenced `az` block with verification and reversal is the spike

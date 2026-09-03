@@ -29,6 +29,7 @@ would otherwise have carried it (#397).
 ## Auth & accounts
 
 - [ACCOUNTS.md](ACCOUNTS.md) — accounts, Entra API access, and LinkedIn login
+- [SATELLITE_CALLERS.md](SATELLITE_CALLERS.md) — how a separate app calls this API as the signed-in clinician, and how external identities bind to accounts (design record, #611)
 
 ## Storage & infrastructure
 
