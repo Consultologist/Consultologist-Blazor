@@ -32,6 +32,7 @@ public class HistoryDetailTests : ClientRenderTestContext
         IReadOnlyList<ConsultGenerationNodeDescriptor>? nodes = null,
         IReadOnlyList<ConsultFailedDocumentResponse>? failed = null,
         IReadOnlyList<ConsultExcludedMacroResponse>? excludedMacros = null,
+        IReadOnlyDictionary<string, ConsultMacroChoiceResponse>? macroChoices = null,
         string? catalogRef = null,
         IReadOnlyDictionary<string, string>? agentVersions = null,
         string workflowOutputHash = "bbbb",
@@ -82,6 +83,7 @@ public class HistoryDetailTests : ClientRenderTestContext
             SkippedDocuments: skipped,
             FailedDocuments: failed,
             ExcludedMacros: excludedMacros,
+            MacroChoices: macroChoices,
             SchemaVersion: schemaVersion,
             PackageSpecVersion: packageSpecVersion,
             WorkflowPackage: workflowPackage,
@@ -737,6 +739,31 @@ public class HistoryDetailTests : ClientRenderTestContext
             WorkflowPackage: "general@v2026.08.1",
             PackageTitle: "Breast oncology consults",
             StartFailure: NothingApplied));
+    }
+
+    [Fact]
+    public void TheOptionalChoices_AreShownWithHonestOrigins()
+    {
+        // v12 #622 (§ 6): the negative visible — an omitted macro says so —
+        // and the origin honest: chosen for this run vs the package's
+        // declared default.
+        WithJob(3,
+            documents: new[]
+            {
+                new ConsultGenerationResultDocumentResponse("consult_note", "Consultation note", "The note.", DocumentHash: "cccc")
+            },
+            macroChoices: new Dictionary<string, ConsultMacroChoiceResponse>
+            {
+                ["closing"] = new(false, "chosen"),
+                ["disclaimer"] = new(true, "default")
+            });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var text = page.Find(".provenance-list").TextContent;
+        Assert.Contains("omitted — chosen for this run", text, StringComparison.Ordinal);
+        Assert.Contains("appended — the package's default", text, StringComparison.Ordinal);
+        Assert.Contains("closing", text, StringComparison.Ordinal);
     }
 
     [Fact]
