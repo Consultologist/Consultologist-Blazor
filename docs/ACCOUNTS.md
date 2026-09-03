@@ -33,7 +33,8 @@ Since #542 the Power Automate *HTTP with Microsoft Entra ID* connector
 `access_as_user` and preauthorized on the API registration — the forms
 door's flows authenticate as their owner with no consent prompt
 (CONFIGURATION.md has the operator paragraph; the spike record § 2.5 the
-runbook).
+runbook). That setup is the first instance of the general satellite
+caller pattern — SATELLITE_CALLERS.md (#611).
 
 Since 2026-07-18 sign-in is **multi-tenant**, and since 2026-07-23 (#132) it
 also accepts **personal Microsoft accounts**: both registrations use
