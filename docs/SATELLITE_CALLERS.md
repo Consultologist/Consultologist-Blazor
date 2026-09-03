@@ -76,6 +76,11 @@ lists every prior entry **plus** the satellite. Reverse: delete the grant
 and the SP (`az ad sp delete` drops the grant with it), PATCH the array
 back without the entry.
 
+A **browser-based** satellite has one more admission: its page's origin
+joins the API's CORS allow-list via the `Cors__AllowedOrigins` app
+setting (CONFIGURATION.md, #612) — a setting change, not a deploy. CSP is
+not involved unless the SPA itself fetches from that origin.
+
 ## 3. What the engine checks, and what it deliberately does not
 
 The engine checks the token: issuer (against the authority's metadata),
