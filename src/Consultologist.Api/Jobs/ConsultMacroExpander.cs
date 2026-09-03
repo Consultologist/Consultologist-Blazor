@@ -108,8 +108,13 @@ internal static class ConsultMacroExpander
 
         // A placement whose macro is not in the id list places nothing — the
         // filters keep the two in lockstep, and this is the belt to that
-        // suspender.
+        // suspender. An anchorless placement is no placement at all: counting
+        // its id as placed while matching its null anchor against nothing is
+        // how a when-only entry silently left the document — the resolver no
+        // longer births those, and this guard keeps any already-recorded
+        // descriptor from repeating it.
         var active = (placements ?? Array.Empty<ConsultMacroPlacement>())
+            .Where(placement => placement.Before != null || placement.After != null)
             .Where(placement => macroIds.Contains(placement.Id, StringComparer.Ordinal))
             .ToList();
         var placedIds = active.Select(placement => placement.Id).ToHashSet(StringComparer.Ordinal);

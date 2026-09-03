@@ -92,7 +92,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     /// well-formed; ResultNodeId is populated only for a single-entry set, so
     /// a not-yet-migrated consumer fails loud on multi-deliverable packages.
     /// </summary>
-    private static IReadOnlyList<WorkflowResolvedResult>? ResolveResultSet(WorkflowPackageManifest manifest)
+    internal static IReadOnlyList<WorkflowResolvedResult>? ResolveResultSet(WorkflowPackageManifest manifest)
     {
         if (manifest.SpecVersion < 7)
         {
@@ -386,8 +386,14 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
 
     private static IReadOnlyList<ConsultMacroPlacement>? PlacementsOf(IReadOnlyList<WorkflowResultMacroSpec>? entries)
     {
+        // An anchor, not the object form, is what makes a placement: a
+        // when-only entry (§ 14) is an object and IsBare said "placed", so
+        // the composer counted its id as placed, matched its null anchor
+        // against nothing, and the held arm silently left the document
+        // (#623's demo caught it live). Gated-and-appended stays the § 14
+        // contract: when alone appends after the sections like the bare form.
         var placed = entries?
-            .Where(entry => !entry.IsBare)
+            .Where(entry => entry.Before != null || entry.After != null)
             .Select(entry => new ConsultMacroPlacement(entry.Id, entry.Before, entry.After))
             .ToList();
         return placed is { Count: > 0 } ? placed : null;
