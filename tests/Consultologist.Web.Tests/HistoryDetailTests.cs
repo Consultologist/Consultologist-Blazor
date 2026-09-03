@@ -33,6 +33,8 @@ public class HistoryDetailTests : ClientRenderTestContext
         IReadOnlyList<ConsultFailedDocumentResponse>? failed = null,
         IReadOnlyList<ConsultExcludedMacroResponse>? excludedMacros = null,
         IReadOnlyDictionary<string, ConsultMacroChoiceResponse>? macroChoices = null,
+        IReadOnlyList<ConsultGenerationJobHistoryEvent>? history = null,
+        string? failureStack = null,
         string? catalogRef = null,
         IReadOnlyDictionary<string, string>? agentVersions = null,
         string workflowOutputHash = "bbbb",
@@ -84,6 +86,8 @@ public class HistoryDetailTests : ClientRenderTestContext
             FailedDocuments: failed,
             ExcludedMacros: excludedMacros,
             MacroChoices: macroChoices,
+            History: history,
+            FailureStack: failureStack,
             SchemaVersion: schemaVersion,
             PackageSpecVersion: packageSpecVersion,
             WorkflowPackage: workflowPackage,
@@ -739,6 +743,58 @@ public class HistoryDetailTests : ClientRenderTestContext
             WorkflowPackage: "general@v2026.08.1",
             PackageTitle: "Breast oncology consults",
             StartFailure: NothingApplied));
+    }
+
+    [Fact]
+    public void TheClock_AndTheStacks_AndTheTrace_Render()
+    {
+        // #639: the duration beside the tokens, the failed node's frames in
+        // a collapsible block, the consult's stack, and the run trace in the
+        // record's own order.
+        var at = new DateTimeOffset(2026, 9, 3, 12, 0, 0, TimeSpan.Zero);
+        WithJob(3,
+            nodes: new[] { new ConsultGenerationNodeDescriptor("draft", "Drafting", "draft-prompt") },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["draft"] = new("draft", "Drafting", "Failed", "aaaa", null, at, "Drafting failed: boom.",
+                    DurationMs: 1234, ErrorType: "System.TimeoutException", ErrorStack: "   at Agent.SendAsync()")
+            },
+            history: new[]
+            {
+                new ConsultGenerationJobHistoryEvent("started", "Queued", null, at),
+                new ConsultGenerationJobHistoryEvent("failure", "Drafting", "Drafting failed: boom.", at.AddSeconds(9))
+            },
+            failureStack: "System.TimeoutException\n   at Agent.SendAsync()",
+            status: "Failed");
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Contains("1.2 s", page.Find(".node-row__duration").TextContent);
+        Assert.Contains("System.TimeoutException", page.Find(".node-stack summary").TextContent);
+        Assert.Contains("at Agent.SendAsync()", page.Find(".node-stack__frames").TextContent);
+        Assert.Contains("at Agent.SendAsync()", page.Find(".job-stack pre").TextContent);
+
+        var events = page.FindAll(".run-trace__event");
+        Assert.Equal(2, events.Count);
+        Assert.Equal(new[] { "started", "failure" }, events.Select(e => e.GetAttribute("data-trace-kind")));
+        Assert.Contains("Drafting — Drafting failed: boom.", events[1].TextContent);
+    }
+
+    [Fact]
+    public void ARowWithoutAClock_ShowsNoDuration_AndACleanRunShowsNoStacks()
+    {
+        WithJob(3,
+            nodes: new[] { new ConsultGenerationNodeDescriptor("assemble", "Assembling", null, Aggregate: new[] { "node:x" }) },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["assemble"] = new("assemble", "Assembling", "Completed", "aaaa", "bbbb", null, null)
+            });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Empty(page.FindAll(".node-row__duration"));
+        Assert.Empty(page.FindAll(".node-stack"));
+        Assert.Empty(page.FindAll(".job-stack"));
     }
 
     [Fact]

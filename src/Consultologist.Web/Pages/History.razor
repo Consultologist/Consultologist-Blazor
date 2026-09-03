@@ -666,12 +666,21 @@
                                                                 <span class="node-row__label">@group.Descriptor.Label</span>
                                                                 <span class="node-row__contract muted-text">@ContractLabel(group.Descriptor, detail)</span>
                                                                 @TokensSpan(group.NodeLevel?.Tokens, group.Descriptor.PromptId != null)
+                                                                @DurationSpan(group.NodeLevel?.DurationMs)
                                                                 <span class="node-row__hashes hash-text">
                                                                     <span title="@group.NodeLevel?.InputHash">in @HashPrefix(group.NodeLevel?.InputHash)</span>
                                                                     <span title="@group.NodeLevel?.OutputHash">out @HashPrefix(group.NodeLevel?.OutputHash)</span>
                                                                     @NodeHashRef(detail, group.NodeLevel)
                                                                 </span>
                                                             </div>
+                                                            @* #639: the failure's frames, where the row failed. *@
+                                                            @if (group.NodeLevel?.ErrorStack is { } nodeStack)
+                                                            {
+                                                                <details class="node-stack">
+                                                                    <summary class="muted-text">@(group.NodeLevel.ErrorType ?? "stack trace")</summary>
+                                                                    <pre class="node-stack__frames">@nodeStack</pre>
+                                                                </details>
+                                                            }
                                                         }
                                                         else
                                                         {
@@ -691,6 +700,7 @@
                                                                         <span class="node-row__status @StatusCss(entry.Status)">@StatusGlyph(entry.Status)</span>
                                                                         <span class="node-row__label">@itemId</span>
                                                                         @TokensSpan(entry.Tokens, group.Descriptor.PromptId != null)
+                                                                        @DurationSpan(entry.DurationMs)
                                                                         <span class="node-row__hashes hash-text">
                                                                             <span title="@entry.InputHash">in @HashPrefix(entry.InputHash)</span>
                                                                             <span title="@entry.OutputHash">out @HashPrefix(entry.OutputHash)</span>
@@ -701,6 +711,13 @@
                                                                             }
                                                                         </span>
                                                                     </div>
+                                                                    @if (entry.ErrorStack is { } itemStack)
+                                                                    {
+                                                                        <details class="node-stack node-stack--item">
+                                                                            <summary class="muted-text">@(entry.ErrorType ?? "stack trace")</summary>
+                                                                            <pre class="node-stack__frames">@itemStack</pre>
+                                                                        </details>
+                                                                    }
                                                                 }
                                                             </details>
                                                         }
@@ -727,6 +744,33 @@
                                                         </span>
                                                     }
                                                 </div>
+                                                @* #639: the consult's terminal-failure frames. *@
+                                                @if (detail.FailureStack is { } jobStack)
+                                                {
+                                                    <details class="job-stack">
+                                                        <summary class="muted-text">the failure's stack</summary>
+                                                        <pre class="node-stack__frames">@jobStack</pre>
+                                                    </details>
+                                                }
+                                                @* #639: the consult-level trace — the record's own event log,
+                                                   in the order the engine wrote it. The same clinical-content
+                                                   surface class as the rest of this page. *@
+                                                @if (detail.History is { Count: > 0 } trace)
+                                                {
+                                                    <details class="run-trace">
+                                                        <summary class="muted-text">Run trace (@trace.Count events)</summary>
+                                                        <ol class="run-trace__events">
+                                                            @foreach (var traceEvent in trace)
+                                                            {
+                                                                <li class="run-trace__event" data-trace-kind="@traceEvent.Kind">
+                                                                    <span class="hash-text">@traceEvent.OccurredAt.ToString("HH:mm:ss.fff")</span>
+                                                                    <span class="run-trace__kind">@traceEvent.Kind</span>
+                                                                    <span>@traceEvent.Label@(traceEvent.Detail != null ? $" — {traceEvent.Detail}" : "")</span>
+                                                                </li>
+                                                            }
+                                                        </ol>
+                                                    </details>
+                                                }
                                             </div>
                                         </details>
                                     }
@@ -1551,6 +1595,22 @@
     // node) — the named absence. Aggregates, roll-ups and fan summaries
     // render nothing: no model ran, and "not recorded" on every non-model
     // row would be noise. Never a zero.
+    // #639: the activity's execution time — queue and retry wait excluded;
+    // rows no activity ran for show nothing.
+    private static RenderFragment DurationSpan(long? durationMs) => builder =>
+    {
+        if (durationMs is not { } ms)
+        {
+            return;
+        }
+
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", "node-row__duration muted-text");
+        builder.AddAttribute(2, "title", "Activity execution time — queue and retry wait excluded");
+        builder.AddContent(3, ms < 1000 ? $"{ms} ms" : $"{ms / 1000.0:0.#} s");
+        builder.CloseElement();
+    };
+
     private static RenderFragment TokensSpan(ConsultTokenUsage? tokens, bool promptStage) => builder =>
     {
         if (tokens is { } t)
