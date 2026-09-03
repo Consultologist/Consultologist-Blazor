@@ -147,7 +147,14 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
 
     private void Seed(ConsultGenerationJobInitialize input)
     {
-        if (State == null || State.Blocks.Count == 0)
+        // Untouched state is told by the missing JobId, NOT by an empty block
+        // map: a deciding job legitimately has no blocks until the boundary,
+        // and Initialize is called twice — the starter's rich signal first,
+        // then the orchestrator's sparse one. Testing Blocks.Count meant the
+        // second call re-created the state and silently dropped everything
+        // only the starter stamps (title, tags, spec version, inputs blob,
+        // macro choices) on every deciding job (#623 found it live).
+        if (State == null || string.IsNullOrWhiteSpace(State.JobId))
         {
             State = ConsultGenerationJobState.Create(input.JobId, input.AppUserId, input.Items);
         }

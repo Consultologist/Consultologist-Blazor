@@ -62,6 +62,42 @@ public class DecisionBoundaryEntityTests
     }
 
     [Fact]
+    public async Task ADecidingJob_KeepsTheStartersRecord_ThroughTheOrchestratorsInitialize()
+    {
+        // Initialize is called twice: the starter's rich signal, then the
+        // orchestrator's sparse one. A deciding job has no blocks until the
+        // boundary, and testing Blocks.Count for "fresh" made the second call
+        // re-create the state — silently dropping everything only the starter
+        // stamps. #623 found it live: MacroChoices, title, tags, spec version
+        // all null on every deciding job's record.
+        var (entity, state, _) = Fresh();
+
+        await entity.Initialize(Deciding() with
+        {
+            PackageTitle = "The demo",
+            PackageTags = new[] { "demo" },
+            PackageSpecVersion = 12,
+            MacroChoices = new Dictionary<string, ConsultMacroChoice>(StringComparer.Ordinal)
+            {
+                ["followup"] = new(true, ConsultMacroChoiceOrigins.Chosen)
+            }
+        });
+        // The orchestrator's shape: items empty (deciding), none of the
+        // starter-only members.
+        await entity.Initialize(Deciding());
+
+        Assert.Equal("The demo", state().PackageTitle);
+        Assert.Equal(new[] { "demo" }, state().PackageTags);
+        Assert.Equal(12, state().PackageSpecVersion);
+        var choice = Assert.Single(state().MacroChoices!);
+        Assert.Equal("followup", choice.Key);
+        Assert.Equal(new ConsultMacroChoice(true, ConsultMacroChoiceOrigins.Chosen), choice.Value);
+        var response = state().ToResponse();
+        Assert.Equal("The demo", response.PackageTitle);
+        Assert.NotNull(response.MacroChoices);
+    }
+
+    [Fact]
     public async Task AJobWithoutClassifiers_IsDecidedAtStart()
     {
         var (entity, state, _) = Fresh();
