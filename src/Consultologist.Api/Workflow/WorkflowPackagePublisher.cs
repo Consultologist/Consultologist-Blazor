@@ -36,7 +36,7 @@ public sealed class WorkflowPackagePublisher
     private const int MaxTotalBytes = 2 * 1024 * 1024;
     private const int MaxPublishAttempts = 3;
 
-    private static readonly Regex RootFilePattern = new("^(prompts|schemas)/[A-Za-z0-9._-]+$", RegexOptions.Compiled);
+    private static readonly Regex RootFilePattern = new("^(prompts|schemas|macros)/[A-Za-z0-9._-]+$", RegexOptions.Compiled);
     private static readonly Regex DataFilePattern = new("^data/[a-z0-9-]+/[A-Za-z0-9._-]+$", RegexOptions.Compiled);
 
     /// <summary>
@@ -408,7 +408,7 @@ public sealed class WorkflowPackagePublisher
             if ((!RootFilePattern.IsMatch(path) && !DataFilePattern.IsMatch(path) && !DataValuePattern.IsMatch(path))
                 || path.Split('/').Any(segment => segment.Trim('.').Length == 0))
             {
-                errors.Add($"File path '{path}' is not allowed: expected prompts/<file>, schemas/<file>, data/<collection>/<file>, or data/<file>.");
+                errors.Add($"File path '{path}' is not allowed: expected prompts/<file>, schemas/<file>, macros/<file>, data/<collection>/<file>, or data/<file>.");
                 continue;
             }
 
@@ -449,6 +449,11 @@ public sealed class WorkflowPackagePublisher
         foreach (var path in (manifest.Preludes ?? new Dictionary<string, string>()).Values)
         {
             referenced.Add(path);
+        }
+
+        foreach (var macro in manifest.Macros ?? new List<WorkflowMacroSpec>())
+        {
+            referenced.Add(macro.File);
         }
 
         foreach (var path in (manifest.Schemas ?? new Dictionary<string, string>()).Values)
