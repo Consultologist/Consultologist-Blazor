@@ -17,6 +17,24 @@ through `IConfiguration` accept either form; settings read directly via
 | `Auth__Audience` | Expected token audience, e.g. `api://<client-id>` | — | yes |
 | `Auth__RequiredScope` | Scope name callers must carry, e.g. `access_as_user` | none (scope check skipped) | no |
 
+**App-only tokens are refused by name (#610).** Only delegated user tokens
+enter: a token whose `idtyp` claim is `app`, or one carrying no delegated
+scopes at all (`scp`/`scope`), is refused before the scope check —
+RequiredScope set or not. App-only (client-credentials) tokens never carry
+`scp`, so the no-scopes branch holds on its own; the `idtyp` branch is
+defense in depth and fires only when the API registration requests the
+optional claim. To request it (recorded on the production registration):
+
+```bash
+az ad app update --id b3866040-8bae-4c01-88ba-ecff646df451 \
+  --set optionalClaims.accessToken='[{"name":"idtyp"}]'
+```
+
+Machine callers get a designed path or none: satellites present a delegated
+`access_as_user` token for the signed-in clinician (see the Power Automate
+connector section), never their own identity.
+
+
 ### Multi-tenant sign-in (2026-07-18; personal accounts 2026-07-23)
 
 Sign-in accepts any Microsoft Entra organizational tenant and, since #132,
