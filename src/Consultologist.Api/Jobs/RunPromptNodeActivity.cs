@@ -86,7 +86,6 @@ public sealed class RunPromptNodeActivity
         _logger = logger;
     }
 
-    [Function(ConsultGenerationActivityNames.RunPromptNode)]
     /// <summary>
     /// v12 #634 (design § 15): the template's whole answer, pure — one hash,
     /// twice: nothing is sent, and the message-that-would-have-been IS the
@@ -121,6 +120,7 @@ public sealed class RunPromptNodeActivity
         return new NodeRunResult(rendered, concepts, hash, hash, ConsultGenerationProvenance.NodeHashVersion, null, null);
     }
 
+    [Function(ConsultGenerationActivityNames.RunPromptNode)]
     public async Task<NodeRunResult> RunAsync(
         [ActivityTrigger] ConsultPromptNodeActivityInput input,
         CancellationToken cancellationToken)
