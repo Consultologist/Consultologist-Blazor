@@ -154,6 +154,7 @@ builder.Services.AddSingleton<IConsultGenerationJobStarter, ConsultGenerationJob
 builder.Services.AddSingleton<IGraphMailClient, GraphMailClient>();
 // #615: the On-Behalf-Of exchange — the engine reaching outward as the user.
 builder.Services.AddSingleton<IOnBehalfOfTokenClient, OnBehalfOfTokenClient>();
+builder.Services.AddSingleton<IGraphDocumentFetcher, GraphDocumentFetcher>();
 builder.Services.AddSingleton<IEmailSenderResolver, TableEmailSenderResolver>();
 builder.Services.AddSingleton<IEmailIntakeClaimStore, TableEmailIntakeClaimStore>();
 builder.Services.AddSingleton<EmailIntakeProcessor>();
