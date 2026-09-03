@@ -519,7 +519,8 @@ internal static class PackageFormatSchema
                             {
                                 ["id"] = new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId },
                                 ["before"] = new JsonObject { ["type"] = "string", ["pattern"] = NodeRef },
-                                ["after"] = new JsonObject { ["type"] = "string", ["pattern"] = NodeRef }
+                                ["after"] = new JsonObject { ["type"] = "string", ["pattern"] = NodeRef },
+                                ["when"] = new JsonObject { ["type"] = "string", ["minLength"] = 1 }
                             },
                             ["required"] = Required("id"),
                             ["additionalProperties"] = false

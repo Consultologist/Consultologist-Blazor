@@ -626,7 +626,7 @@ public class ConformanceFixtureExport
             "A macro whose file is blank. Prompts check presence only; a macro's file must carry text.",
             V11Fixtures.WithMacro("   "));
         Bundle("invalid-macro-id-not-snake-case", 11,
-            "A macro id with a dash. Macro ids are snake_case, the declared-id grammar.",
+            "A macro id with a dash. Macro ids are snake_case, the declared-id grammar; the malformed id is undeclarable, so the reference to it fails too — a second error that follows from the first.",
             V11Fixtures.WithMacro(macroId: "Bad-Id"));
         {
             var (manifest, files) = V11Fixtures.WithMacro();
@@ -642,7 +642,7 @@ public class ConformanceFixtureExport
             "A run: word outside the closed set (date, job, package, host).",
             V11Fixtures.WithMacro("At {{run:time}}."));
         Bundle("invalid-macro-token-profile-signature", 11,
-            "profile:signature is deliberately absent from the grammar — the signature is the results[].signature flag, with placement and recording of its own.",
+            "profile:signature arrives at 12 (the v12 fold) — on an 11-manifest it is a version requirement, never an unknown word; the signature there is the results[].signature flag.",
             V11Fixtures.WithMacro("Signed {{profile:signature}}."));
         Bundle("invalid-macro-token-unknown-namespace", 11,
             "A namespace outside the closed set.",
@@ -742,7 +742,7 @@ public class ConformanceFixtureExport
             V12ExportFixtures.BrokenCheck(node => node with { Op = "terms-equal" }));
         Bundle("invalid-check-without-of", 12, "A check with no of operand.",
             V12ExportFixtures.BrokenCheck(node => node with { Of = null }));
-        Bundle("invalid-check-without-in", 12, "A check with no in operand.",
+        Bundle("invalid-check-without-in", 12, "A check with no in operand; unreached, its of-extraction also trips the reach rule — a second error that follows from the first.",
             V12ExportFixtures.BrokenCheck(node => node with { In = null }));
         Bundle("invalid-check-without-fail-with", 12, "A check with a blank failWith — a failed check must speak the package's own sentence.",
             V12ExportFixtures.BrokenCheck(node => node with { FailWith = " " }));
@@ -757,12 +757,12 @@ public class ConformanceFixtureExport
             {
                 Nodes = manifest.Nodes!.Select(n => n.Id == "extract-document-terms" ? n with { Op = WorkflowCheckOps.TermsSubset } : n).ToList()
             }));
-        Bundle("invalid-result-check-not-a-node-ref", 12, "results[].check must be a node:<id> reference.",
+        Bundle("invalid-result-check-not-a-node-ref", 12, "results[].check must be a node:<id> reference; the unnamed check is then an orphan too — a second error that follows from the first.",
             V12ExportFixtures.CheckPackage(manifest => manifest with
             {
                 Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Check = "coverage" } : r).ToList()
             }));
-        Bundle("invalid-result-check-not-a-check-node", 12, "results[].check naming a node that is not a check.",
+        Bundle("invalid-result-check-not-a-check-node", 12, "results[].check naming a node that is not a check; the real check is then an orphan too — a second error that follows from the first.",
             V12ExportFixtures.CheckPackage(manifest => manifest with
             {
                 Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Check = "node:scope" } : r).ToList()
@@ -786,7 +786,7 @@ public class ConformanceFixtureExport
             V12ExportFixtures.TemplateNode(reproducible: true));
         Bundle("invalid-template-classification-output", 12, "A template whose output schema resolves to the classification contract — a template renders, it does not answer.",
             V12ExportFixtures.TemplateNode(classificationOutput: true));
-        Bundle("invalid-node-kind-unknown-at-v12", 12, "An unknown node kind at 12 — the sentence names the four kinds this version may spell.",
+        Bundle("invalid-node-kind-unknown-at-v12", 12, "An unknown node kind at 12 — the sentence names the four kinds this version may spell; a node of no known kind references no prompt, the second error that follows.",
             V12ExportFixtures.TemplateNode(kind: "router"));
 
         // The gates at v11 (§ 8): each new form refused below 12 by name.
@@ -796,11 +796,11 @@ public class ConformanceFixtureExport
             V12ExportFixtures.AtEleven(V12ExportFixtures.OptionalMacro(optional: false)));
         Bundle("invalid-result-macro-placement-at-v11", 11, "A placed macro entry on a v11 manifest.",
             V12ExportFixtures.AtEleven(V12ExportFixtures.PlacedMacro()));
-        Bundle("invalid-result-macro-when-at-v11", 11, "A when-gated macro entry on a v11 manifest.",
+        Bundle("invalid-result-macro-when-at-v11", 11, "A when-gated macro entry on a v11 manifest — the object entry form and the when inside it, each refused by version, two sentences.",
             V12ExportFixtures.AtEleven(V12ExportFixtures.ConditionalMacro()));
-        Bundle("invalid-result-check-at-v11", 11, "results[].check on a v11 manifest.",
+        Bundle("invalid-result-check-at-v11", 11, "results[].check on a v11 manifest, on a bundle carrying the whole construct: the check kind, each of its four members, the aggregate gap and the reference — every v12 word refused by version at once, seven sentences.",
             V12ExportFixtures.AtEleven((V12Fixtures.WithCheck(), V6Fixtures.Files(V12Fixtures.WithCheck()))));
-        Bundle("invalid-template-kind-at-v11", 11, "kind template on a v11 manifest.",
+        Bundle("invalid-template-kind-at-v11", 11, "kind template on a v11 manifest — refused by version before the unknown-kind sentence can fire, and the v11 kind sentence follows, two sentences.",
             V12ExportFixtures.AtEleven(V12ExportFixtures.TemplateNode()));
 
         return cases;
