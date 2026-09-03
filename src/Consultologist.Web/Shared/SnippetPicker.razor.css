@@ -1,0 +1,54 @@
+.snippet-picker {
+	position: relative;
+	display: inline-flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	font-weight: 400;
+}
+
+.snippet-picker__trigger {
+	align-self: flex-start;
+	padding: 0.2rem 0.6rem;
+	border: 1px solid var(--consultologist-border);
+	border-radius: var(--consultologist-radius-sm);
+	background: var(--consultologist-surface-muted);
+	font: inherit;
+	font-size: 0.85rem;
+	cursor: pointer;
+}
+
+.snippet-picker__panel {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	padding: 0.5rem 0.75rem;
+	border: 1px solid var(--consultologist-border);
+	border-radius: var(--consultologist-radius-sm);
+	background: var(--consultologist-surface);
+	font-size: 0.85rem;
+	max-height: 12rem;
+	overflow: auto;
+}
+
+.snippet-picker__items {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+
+.snippet-picker__item {
+	border: none;
+	background: transparent;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	padding: 0.15rem 0.25rem;
+	border-radius: var(--consultologist-radius-sm);
+}
+
+.snippet-picker__item:hover {
+	background: var(--consultologist-surface-muted);
+}

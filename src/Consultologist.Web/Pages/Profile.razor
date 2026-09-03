@@ -69,6 +69,95 @@
                 </div>
             </section>
 
+            @* #561: the snippet library — the personal, dot-phrase sense of
+               "macro", beside #516's signature blocks and outside the package
+               grammar. A snippet acts only when inserted on the setup form,
+               where it becomes ordinary typed text. *@
+            <section class="content-card snippet-card">
+                <div class="form-stack">
+                    <h2 class="panel-title">
+                        Snippets
+                    </h2>
+
+                    <p class="panel-description">
+                        Canned text that belongs to you, not to a package: create a snippet
+                        here and the setup form's text inputs offer it for insertion. Inserted
+                        text is your own typing from that moment — editable, hashed and
+                        recorded like anything you type.
+                    </p>
+
+                    @if (snippetMessage != null)
+                    {
+                        <FluentMessageBar Intent="@snippetMessageIntent" AllowDismiss="false" Class="snippet-message">
+                            @snippetMessage
+                        </FluentMessageBar>
+                    }
+
+                    <div class="state-panel">
+                        <span class="muted-text">Snippets</span>
+                        <strong class="snippet-state">@Snippets.Describe(snippetSet)</strong>
+                    </div>
+
+                    @foreach (var snippet in snippetSet.Items)
+                    {
+                        <div class="state-panel snippet-item" @key="snippet.Id">
+                            <span class="muted-text">@snippet.Name</span>
+                            <span class="snippet-preview">@Preview(snippet.Text)</span>
+                            <div class="action-row">
+                                <FluentButton Appearance="Appearance.Neutral"
+                                              Class="snippet-edit"
+                                              Disabled="@snippetRequestInProgress"
+                                              @onclick="() => EditSnippet(snippet.Id)">
+                                    Edit
+                                </FluentButton>
+                                <FluentButton Appearance="Appearance.Neutral"
+                                              Class="snippet-remove"
+                                              Disabled="@snippetRequestInProgress"
+                                              @onclick="() => RemoveSnippetAsync(snippet.Id)">
+                                    @(snippetRemoveArmedId == snippet.Id ? "Confirm remove" : "Remove")
+                                </FluentButton>
+                            </div>
+                        </div>
+                    }
+
+                    @if (editingSnippetId != null || snippetSet.Items.Count < Snippets.MaxSnippets)
+                    {
+                        <div class="form-stack snippet-form">
+                            <input class="node-field__input snippet-name-input"
+                                   value="@snippetNameInput"
+                                   @onchange="args => snippetNameInput = args.Value?.ToString()"
+                                   maxlength="@Snippets.MaxNameLength"
+                                   placeholder="Snippet name (e.g. Normal exam)"
+                                   aria-label="Snippet name" />
+                            <textarea class="node-field__input snippet-text-input"
+                                      rows="5"
+                                      value="@snippetTextInput"
+                                      @onchange="args => snippetTextInput = args.Value?.ToString()"
+                                      maxlength="@Snippets.MaxTextLength"
+                                      placeholder="The text, exactly as it should be inserted"
+                                      aria-label="Snippet text"></textarea>
+                            <div class="action-row">
+                                <FluentButton Appearance="Appearance.Accent"
+                                              Class="snippet-save"
+                                              Disabled="@(snippetRequestInProgress || !SnippetFormValid)"
+                                              @onclick="SaveSnippetAsync">
+                                    @(editingSnippetId == null ? "Add snippet" : "Save changes")
+                                </FluentButton>
+                                @if (editingSnippetId != null)
+                                {
+                                    <FluentButton Appearance="Appearance.Neutral"
+                                                  Class="snippet-cancel-edit"
+                                                  Disabled="@snippetRequestInProgress"
+                                                  @onclick="CancelSnippetEdit">
+                                        Cancel
+                                    </FluentButton>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </section>
+
             <section class="content-card">
                 <div class="form-stack">
                     <h2 class="panel-title">
@@ -922,6 +1011,7 @@
         await LoadRetentionAsync();
         await LoadUsageAsync();
         await LoadSignaturesAsync();
+        await LoadSnippetsAsync();
         await LoadEngineHostAsync();
         }
         catch (AccessTokenNotAvailableException exception)
@@ -1664,6 +1754,152 @@
         await SaveSignatureSetAsync(
             new SignatureBlocks.SignatureBlockSet(blocks, chosenId),
             blocks.Count == 0 ? "Signature block removed. No blocks remain." : "Signature block removed.");
+    }
+
+    // #561: the snippet library — the SignatureBlocks shape without a
+    // chosen one: a snippet acts only in the moment the setup form inserts
+    // it. Every mutation is one write of the one row (or its deletion when
+    // the last snippet goes).
+    private Snippets.SnippetSet snippetSet = Snippets.Empty();
+    private bool snippetRequestInProgress;
+    private string? snippetMessage;
+    private MessageIntent snippetMessageIntent = MessageIntent.Info;
+    private string? snippetRemoveArmedId;
+    private string? editingSnippetId;
+    private string? snippetNameInput;
+    private string? snippetTextInput;
+
+    private bool SnippetFormValid =>
+        !string.IsNullOrWhiteSpace(snippetNameInput)
+        && !string.IsNullOrWhiteSpace(snippetTextInput)
+        && snippetNameInput!.Trim().Length <= Snippets.MaxNameLength
+        && snippetTextInput!.Trim().Length <= Snippets.MaxTextLength;
+
+    private async Task LoadSnippetsAsync()
+    {
+        try
+        {
+            var setting = await AccountService.GetSettingAsync(Snippets.SettingKey);
+            snippetSet = Snippets.Parse(setting?.Value);
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch
+        {
+            snippetSet = Snippets.Empty();
+        }
+    }
+
+    private async Task SaveSnippetSetAsync(Snippets.SnippetSet next, string message)
+    {
+        snippetRequestInProgress = true;
+
+        try
+        {
+            if (next.Items.Count == 0)
+            {
+                await AccountService.DeleteSettingAsync(Snippets.SettingKey);
+            }
+            else
+            {
+                await AccountService.SaveSettingAsync(
+                    Snippets.SettingKey, Snippets.Serialize(next), Snippets.ContentType);
+            }
+
+            snippetSet = next;
+            snippetMessage = message;
+            snippetMessageIntent = MessageIntent.Success;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            snippetMessage = ex.Message;
+            snippetMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            snippetRequestInProgress = false;
+        }
+    }
+
+    private async Task SaveSnippetAsync()
+    {
+        if (!SnippetFormValid)
+        {
+            return;
+        }
+
+        var name = snippetNameInput!.Trim();
+        var text = snippetTextInput!.Trim();
+        var items = new List<Snippets.Snippet>(snippetSet.Items);
+        string message;
+
+        var editIndex = editingSnippetId == null ? -1 : items.FindIndex(x => x.Id == editingSnippetId);
+        if (editIndex >= 0)
+        {
+            items[editIndex] = items[editIndex] with { Name = name, Text = text, UpdatedAtUtc = DateTimeOffset.UtcNow };
+            message = $"Snippet '{name}' updated.";
+        }
+        else
+        {
+            if (items.Count >= Snippets.MaxSnippets)
+            {
+                return;
+            }
+
+            var id = Snippets.SlugFor(name, items.Select(x => x.Id));
+            items.Add(new Snippets.Snippet(id, name, text, DateTimeOffset.UtcNow));
+            message = $"Snippet '{name}' added. The setup form's text inputs now offer it.";
+        }
+
+        await SaveSnippetSetAsync(new Snippets.SnippetSet(items), message);
+        editingSnippetId = null;
+        snippetNameInput = null;
+        snippetTextInput = null;
+    }
+
+    private void EditSnippet(string id)
+    {
+        var snippet = snippetSet.Items.FirstOrDefault(x => x.Id == id);
+        if (snippet == null)
+        {
+            return;
+        }
+
+        editingSnippetId = id;
+        snippetNameInput = snippet.Name;
+        snippetTextInput = snippet.Text;
+        snippetRemoveArmedId = null;
+    }
+
+    private void CancelSnippetEdit()
+    {
+        editingSnippetId = null;
+        snippetNameInput = null;
+        snippetTextInput = null;
+    }
+
+    /// <summary>#561: remove, in two clicks — the #195 arming pattern; no dialogs in this app.</summary>
+    private async Task RemoveSnippetAsync(string id)
+    {
+        if (snippetRemoveArmedId != id)
+        {
+            snippetRemoveArmedId = id;
+            snippetMessage = "Removing a snippet cannot be undone. Click Confirm remove to proceed.";
+            snippetMessageIntent = MessageIntent.Warning;
+            return;
+        }
+
+        snippetRemoveArmedId = null;
+        var items = snippetSet.Items.Where(x => x.Id != id).ToList();
+        await SaveSnippetSetAsync(
+            new Snippets.SnippetSet(items),
+            items.Count == 0 ? "Snippet removed. No snippets remain." : "Snippet removed.");
     }
 
     // #486: the verified delivery address. Send → Confirm; nothing is ever

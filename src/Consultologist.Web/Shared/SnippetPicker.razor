@@ -1,0 +1,55 @@
+@* #561: a snippet into a text input. The PreviousRunPicker's inline
+   disclosure — no dialog infrastructure exists — and the same
+   preventDefault rule on every button: the picker sits inside the slot's
+   <label>, and when a click's target is removed by the re-render it causes,
+   the browser runs the label's activation on the first labelable control.
+   preventDefault cancels that; bUnit has no browser to show it, so it is
+   pinned by this note. The parent renders the picker only when the library
+   is non-empty — an empty library adds nothing to every text field, and
+   discoverability lives on the profile card. *@
+@using Consultologist.Web.Services.Accounts
+
+<span class="snippet-picker" @onclick:stopPropagation="true">
+    <button type="button"
+            class="snippet-picker__trigger"
+            aria-expanded="@(isOpen ? "true" : "false")"
+            @onclick:preventDefault="true" @onclick="Toggle">Insert snippet&hellip;</button>
+    @if (isOpen)
+    {
+        <div class="snippet-picker__panel" role="group" aria-label="Snippets">
+            <ul class="snippet-picker__items">
+                @foreach (var snippet in Items)
+                {
+                    var current = snippet;
+                    <li>
+                        <button type="button"
+                                class="snippet-picker__item"
+                                title="@Preview(current.Text)"
+                                @onclick:preventDefault="true" @onclick="() => ChooseAsync(current)">
+                            @current.Name
+                        </button>
+                    </li>
+                }
+            </ul>
+        </div>
+    }
+</span>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<Snippets.Snippet> Items { get; set; } = Array.Empty<Snippets.Snippet>();
+
+    [Parameter] public EventCallback<Snippets.Snippet> OnChosen { get; set; }
+
+    private bool isOpen;
+
+    private void Toggle() => isOpen = !isOpen;
+
+    private static string Preview(string text) =>
+        text.Length <= 160 ? text : text[..160] + "…";
+
+    private async Task ChooseAsync(Snippets.Snippet snippet)
+    {
+        isOpen = false;
+        await OnChosen.InvokeAsync(snippet);
+    }
+}

@@ -67,6 +67,15 @@ public static class AccountSettingKeys
     public const string ProfileSignatures = "profile.signatures";
 
     /// <summary>
+    /// #561: the profile's snippet library — clinician-owned canned text the
+    /// setup form inserts into text inputs, one JSON row on the generic
+    /// routes. The Web owns it (Services/Accounts/Snippets.cs); the Api
+    /// mirror (Auth/Snippets.cs) exists to pin the wire format — nothing
+    /// server-side acts on a snippet: inserted text is ordinary typed text.
+    /// </summary>
+    public const string ProfileSnippets = "profile.snippets";
+
+    /// <summary>
     /// #548: how many days produced text (outputs) is kept after completion —
     /// a whole number of days; absent = not chosen, which keeps the
     /// deployment default (TextRetention__Days). Rides the generic routes;
