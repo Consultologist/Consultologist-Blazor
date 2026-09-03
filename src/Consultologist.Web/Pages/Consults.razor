@@ -233,6 +233,7 @@
                                             </span>
                                             @* #510: or a previous run's deliverable, one per entry. *@
                                             <PreviousRunPicker OnChosen="loaded => LoadDeliverable(field, loaded)" />
+                                            @LinkDocumentControl(field)
                                         }
                                     </div>
                                 }
@@ -258,6 +259,7 @@
                                         </span>
                                         @* #510: or a previous run's deliverable. *@
                                         <PreviousRunPicker OnChosen="loaded => LoadDeliverable(field, loaded)" />
+                                        @LinkDocumentControl(field)
                                     }
                                 }
                                 @if (field.Problem is { } problem)
@@ -865,6 +867,42 @@
 
 @code {
   /// <summary>
+  /// #615: the OneDrive/SharePoint link road into a document slot — one
+  /// fragment for both picker sites. Organisation accounts get the live
+  /// control; a personal account sees it DISABLED with the reason in words
+  /// beside it (tell the user early — the PreviousRunPicker discipline,
+  /// never the silent hide), because OBO does not exist for consumer
+  /// accounts and failure-time would be too late to say so.
+  /// </summary>
+  private RenderFragment<ConsultInputField> LinkDocumentControl => docField =>
+    @<text>
+      @if (accountSignInKind != null)
+      {
+        var organisation = accountSignInKind == "organisation";
+        <span class="input-field__link" @onclick:stopPropagation="true">
+          <input type="text"
+                 placeholder="Paste a OneDrive or SharePoint link"
+                 disabled="@(!organisation || docField.IsFetchingLink)"
+                 @bind="docField.LinkUrl" @bind:event="oninput" />
+          <button type="button" class="input-field__link-fetch"
+                  disabled="@(!organisation || docField.IsFetchingLink || string.IsNullOrWhiteSpace(docField.LinkUrl))"
+                  @onclick="() => LoadLinkAsync(docField)">Retrieve</button>
+          @if (docField.IsFetchingLink)
+          {
+            <FluentProgressRing style="width: 16px; height: 16px;" />
+            <span class="muted-text">Retrieving&hellip;</span>
+          }
+          @if (!organisation)
+          {
+            <span class="muted-text input-field__link-reason">
+              Retrieving from OneDrive signs in as your organisation account; a personal account uploads the file instead.
+            </span>
+          }
+        </span>
+      }
+    </text>;
+
+  /// <summary>
   /// One control per scalar type (v8; v9 adds number). Drawn at the top of a
   /// scalar slot, inside an array's row and inside an object's field group —
   /// one fragment, so the three sites cannot drift. A fragment rather than a
@@ -1151,6 +1189,7 @@
   // the schedule confirmation, rather than promising an email that will not come.
   private string? accountDeliveryAddress;
   private bool accountDeliveryAddressKnown;
+  private string? accountSignInKind;
   // #518: the account's choice on emailing app-initiated runs; false = not emailed.
   private bool? accountEmailPdf;
 
@@ -1356,6 +1395,10 @@
       var me = await AccountService.GetCurrentAccountAsync();
       accountDeliveryAddress = me.DeliveryAddress;
       accountDeliveryAddressKnown = true;
+      // #615: the link affordance is organisation-only (OBO does not exist
+      // for consumer accounts) — the kind decides shown-live vs
+      // shown-disabled-with-the-reason, never a silent hide.
+      accountSignInKind = me.SignInKind;
     }
     catch (AccessTokenNotAvailableException exception)
     {
@@ -2254,6 +2297,65 @@
     {
       field.IsReading = false;
       field.FileError = refusals.Count > 0 ? string.Join(" ", refusals) : null;
+    }
+  }
+
+  /// <summary>
+  /// #615: the link road joins the upload road — the server retrieves the
+  /// item as the signed-in clinician and the outcome carries the bytes, so
+  /// the slot ends holding exactly what an upload would and the job's
+  /// authoritative re-extraction sees no difference.
+  /// </summary>
+  private async Task LoadLinkAsync(ConsultInputField field)
+  {
+    var url = field.LinkUrl.Trim();
+
+    if (url.Length == 0 || field.IsFetchingLink)
+    {
+      return;
+    }
+
+    field.FileError = null;
+    scheduleConfirmation = null;
+    field.IsFetchingLink = true;
+    await InvokeAsync(StateHasChanged);
+
+    try
+    {
+      var outcome = await DocumentService.ExtractFromLinkAsync(url);
+
+      if (!outcome.Succeeded)
+      {
+        // The sentence written for this cause, verbatim; the slot stays as
+        // it was, so a refused link changes nothing.
+        field.FileError = outcome.Error;
+        return;
+      }
+
+      if (!field.TakesSeveralDocuments)
+      {
+        field.Documents.Clear();
+      }
+
+      field.Documents.Add(new AttachedDocument(
+        string.IsNullOrWhiteSpace(outcome.Name) ? "OneDrive document" : outcome.Name!,
+        "application/octet-stream",
+        outcome.Content!,
+        outcome.PageCount,
+        outcome.Text!));
+      field.LinkUrl = "";
+    }
+    catch (AccessTokenNotAvailableException exception)
+    {
+      exception.Redirect();
+    }
+    catch (Exception ex)
+    {
+      field.FileError = $"That link could not be read: {ex.Message}";
+    }
+    finally
+    {
+      field.IsFetchingLink = false;
     }
   }
 
@@ -3212,6 +3314,10 @@
     // field the user aimed at.
     public string? FileError { get; set; }
     public bool IsReading { get; set; }
+
+    // #615: the OneDrive/SharePoint link affordance's state.
+    public string LinkUrl { get; set; } = "";
+    public bool IsFetchingLink { get; set; }
 
     public bool HasFile => Documents.Count > 0;
 
