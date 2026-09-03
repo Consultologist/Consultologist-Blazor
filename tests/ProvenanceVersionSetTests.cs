@@ -209,6 +209,49 @@ public class ProvenanceVersionSetTests
     }
 
     [Fact]
+    public void TheV12WorkedExample_IsWhatTheEnginesOwnCompositionProduces()
+    {
+        // provenance@v2026.09.4 (#622), hash-definitions.md § 5: a placed
+        // macro, a chosen optional macro and an embedded signature compose
+        // to one text and one digest — recomputed here through the very
+        // seams the engine runs (Compose, then Finish), so the registry's
+        // published bytes and the engine can never drift apart silently.
+        var texts = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["disclaimer"] = "Standing disclaimer.",
+            ["closing"] = "Sincerely,\n\n{{profile:signature}}"
+        };
+        var none = new Dictionary<string, string>(StringComparer.Ordinal);
+        var facts = new Consultologist.Api.Jobs.ConsultMacroExpander.RunFacts(
+            new DateTime(2026, 9, 2, 12, 0, 0, DateTimeKind.Utc), "0123456789abcdef", "general@v2026.09.1",
+            "east.ca.api.consultologist.ai", "Taylor Reyes",
+            new Consultologist.Api.Jobs.ConsultSignatureSnapshot("clinic-letters", "Taylor Reyes, MD", "2026-09-01"));
+
+        var (text, appended, tokenCarried) = Consultologist.Api.Jobs.ConsultMacroExpander.Compose(
+            new[] { "node:plan" },
+            new Consultologist.Api.Jobs.ConsultAggregateRenderer.Part[] { new Consultologist.Api.Jobs.ConsultAggregateRenderer.ScalarPart("The plan.") },
+            new[] { "disclaimer", "closing" },
+            new[] { new Consultologist.Api.Models.ConsultMacroPlacement("disclaimer", Before: "node:plan") },
+            texts, none, null, none, facts);
+        var (finalText, finalAppended, unsigned) = Consultologist.Api.Jobs.ConsultSignatureAppend.Finish(
+            text, appended, signed: true, tokenCarried, facts.Signature);
+
+        Assert.Equal("Standing disclaimer.\n\nThe plan.\n\nSincerely,\n\nTaylor Reyes, MD", finalText);
+        Assert.Equal(
+            "c41f36a58079d55dbfedccb627d6232b98e34f879bdaafef57a4ff9e22c4ba1a",
+            ConsultGenerationProvenance.Sha256Hex(finalText));
+        // The vendored document publishes the same digest on its labelled row.
+        Assert.Contains(
+            "`c41f36a58079d55dbfedccb627d6232b98e34f879bdaafef57a4ff9e22c4ba1a`",
+            Vendored("hash-definitions.md").Split('\n').Single(l => l.StartsWith("| `documentHash` (specVersion 12) |", StringComparison.Ordinal)));
+        // appended[] in document order: placed, appended, embedded.
+        Assert.Equal(
+            new[] { ("macro", "disclaimer", (string?)null), ("macro", "closing", null), ("signature", "clinic-letters", "2026-09-01") },
+            finalAppended!.Select(entry => (entry.Kind, entry.Id, entry.AsOf)));
+        Assert.Null(unsigned);
+    }
+
+    [Fact]
     public void OutputDefinitions_1_2_3_AndTheAggregateInput()
     {
         Assert.Equal("208471a047a8964edc58a50d8317ad24a711e04b59445006ec06e8e44dc38f85",
