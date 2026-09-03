@@ -195,6 +195,7 @@ delivery.addressPending     (reserved — the code out to an address)
 delivery.addressVerifiedBy  (reserved — "code" | "tenant", how it was verified)
 delivery.emailPdf           ("true" | "false" — whether app-initiated runs are emailed; absent = not chosen = sent)
 profile.signatures          (JSON — the profile's signature blocks and the chosen one, #516)
+profile.snippets            (JSON — the profile's snippet library, #561)
 retention.outputDays        (whole days produced text is kept after completion, #548 — 1..30; absent = TextRetention__Days)
 retention.inputDays         (whole days held inputs are kept, #548 — 1..30, never past outputs; absent = TextRetention__Days)
 ```
@@ -216,6 +217,18 @@ a deliverable signed (the chosen block is snapshotted onto the job, the
 EmailRequested principle). Explicit initialisation: absent, blank, or
 unreadable is an empty set, and with no chosen block a signed deliverable
 is produced unsigned, said by name on the record and in History.
+
+`profile.snippets` (#561) holds the profile's snippet library — the
+personal, dot-phrase sense of "macro" — as one JSON row (PascalCase:
+`{ "Items": [{ "Id", "Name", "Text", "UpdatedAtUtc" }] }`). Distinct from
+both its neighbours: a package macro (#513) belongs to the package and is
+appended by the engine; a signature block (#516) is chosen once and
+appended to signed deliverables; a snippet acts only in the moment the
+setup form inserts it into a text input, where it becomes ordinary typed
+text — part of the effective inputs, hashed and recorded like anything
+typed, nothing new on the record. The Web owns the row; nothing
+server-side acts on it (the Api mirror pins the wire format only). The
+key is deleted when the last snippet is removed.
 
 `retention.outputDays` / `retention.inputDays` (#548) are the account's
 retention clocks — how many whole days a completed run's produced text
