@@ -239,3 +239,39 @@ public class ConsultsResultTests : ClientRenderTestContext
         Assert.Empty(page.FindAll("fluent-tab"));
     }
 }
+
+/// <summary>
+/// #642: the run rail offers the run diagram once any snapshot-shaped
+/// payload arrived, and the × closes it — the re-attach path stands in for
+/// a live run (the same ApplyConsultGenerationJobResponse seam).
+/// </summary>
+public class ConsultsRunDagTests : ClientRenderTestContext
+{
+    private const string JobId = "0123456789abcdef0123456789abcdef";
+
+    [Fact]
+    public void TheRail_OffersTheDiagram_AndTheCross_ClosesIt()
+    {
+        WithPinnedPackage(blocks: new[] { Block("section-instructions:hpi", "History of Present Illness") });
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
+            JobId, "user-1", "Completed",
+            TotalBlockCount: 1, CompletedBlockCount: 1, FailedBlockCount: 0,
+            GeneratedBlocks: new Dictionary<string, string> { ["section-instructions:hpi"] = "Prose." },
+            FailedBlocks: new Dictionary<string, string>(),
+            Success: true,
+            AssembledDocuments: new[] { new ConsultGenerationResultDocumentResponse("consult", "Consultation note", "The note.") },
+            Nodes: new[] { new ConsultGenerationNodeDescriptor("draft", "Drafting", "p") },
+            NodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["draft"] = new("draft", "Drafting", "Completed", "i", "o", null, null)
+            }));
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        page.Find(".run-dag-button").Click();
+        Assert.NotEmpty(page.FindAll(".run-dag-panel"));
+
+        page.Find(".run-dag-close").Click();
+        Assert.Empty(page.FindAll(".run-dag-panel"));
+    }
+}
