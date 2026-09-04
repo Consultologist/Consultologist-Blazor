@@ -1,5 +1,8 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Consultologist.Api.Auth;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Consultologist.Api.Tests;
 
@@ -64,5 +67,51 @@ public class EpicIdTokenValidatorTests
             : CreatePrincipal(("sub", "s1"));
 
         Assert.Null(EpicIdTokenValidator.ReadClaims(principal));
+    }
+
+    [Fact]
+    public async Task ValidateAsync_ForeignIssuer_IsRefusedBeforeAnyNetwork()
+    {
+        // The allowlist enforcement, not just the set: a token whose issuer
+        // is not listed is refused after ReadJwtToken and BEFORE any JWKS
+        // fetch — so this needs no network and no valid signature. A forged
+        // token cannot steer key resolution to an attacker's endpoint.
+        var foreign = new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken(
+            issuer: "https://evil.example/oauth2",
+            claims: new[] { new Claim("sub", "s1") }));
+
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Epic:ClientId"] = "our-epic-client-id",
+            ["Epic:AllowedIssuers"] = "https://fhir.epic.com/interconnect-fhir-oauth/oauth2"
+        }).Build();
+
+        var keyFetches = new List<string>();
+        var validator = new EpicIdTokenValidator(config, NullLogger<EpicIdTokenValidator>.Instance,
+            signingKeys: (issuer, _) =>
+            {
+                keyFetches.Add(issuer);
+                return Task.FromResult<ICollection<Microsoft.IdentityModel.Tokens.SecurityKey>>(
+                    new List<Microsoft.IdentityModel.Tokens.SecurityKey>());
+            });
+
+        Assert.Null(await validator.ValidateAsync(foreign, CancellationToken.None));
+        // The security property: the allowlist refuses BEFORE any key fetch,
+        // so no metadata resolution was even attempted for the foreign issuer.
+        Assert.Empty(keyFetches);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_MissingClientId_IsAConfigurationError()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Epic:AllowedIssuers"] = "https://fhir.epic.com/interconnect-fhir-oauth/oauth2"
+        }).Build();
+
+        var validator = new EpicIdTokenValidator(config, NullLogger<EpicIdTokenValidator>.Instance);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => validator.ValidateAsync("any.token.here", CancellationToken.None));
     }
 }

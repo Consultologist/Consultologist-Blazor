@@ -39,11 +39,35 @@ public sealed class EpicIdTokenValidator : IEpicIdTokenValidator
     // per-instance analogue of the LinkedIn validator's single manager.
     private readonly ConcurrentDictionary<string, ConfigurationManager<OpenIdConnectConfiguration>> _managers = new(StringComparer.Ordinal);
 
+    // The signing keys for an issuer — a seam so a test can observe that it
+    // is NEVER reached for an unlisted issuer (the allowlist's whole point is
+    // to refuse before any key fetch). Production fetches the issuer's OIDC
+    // metadata; the allowlist has already gated which issuers get here.
+    private readonly Func<string, CancellationToken, Task<ICollection<SecurityKey>>> _signingKeys;
+
     public EpicIdTokenValidator(IConfiguration configuration, ILogger<EpicIdTokenValidator> logger)
+        : this(configuration, logger, signingKeys: null)
+    {
+    }
+
+    internal EpicIdTokenValidator(
+        IConfiguration configuration,
+        ILogger<EpicIdTokenValidator> logger,
+        Func<string, CancellationToken, Task<ICollection<SecurityKey>>>? signingKeys)
     {
         _configuration = configuration;
         _logger = logger;
         _tokenHandler.MapInboundClaims = false;
+        _signingKeys = signingKeys ?? DefaultSigningKeysAsync;
+    }
+
+    private async Task<ICollection<SecurityKey>> DefaultSigningKeysAsync(string issuer, CancellationToken cancellationToken)
+    {
+        var manager = _managers.GetOrAdd(issuer, iss => new ConfigurationManager<OpenIdConnectConfiguration>(
+            iss.TrimEnd('/') + "/.well-known/openid-configuration",
+            new OpenIdConnectConfigurationRetriever()));
+        var oidc = await manager.GetConfigurationAsync(cancellationToken);
+        return oidc.SigningKeys;
     }
 
     /// <summary>
@@ -90,13 +114,9 @@ public sealed class EpicIdTokenValidator : IEpicIdTokenValidator
             return null;
         }
 
-        var manager = _managers.GetOrAdd(issuer, iss => new ConfigurationManager<OpenIdConnectConfiguration>(
-            iss.TrimEnd('/') + "/.well-known/openid-configuration",
-            new OpenIdConnectConfigurationRetriever()));
-
         try
         {
-            var oidcConfiguration = await manager.GetConfigurationAsync(cancellationToken);
+            var signingKeys = await _signingKeys(issuer, cancellationToken);
 
             var principal = _tokenHandler.ValidateToken(idToken, new TokenValidationParameters
             {
@@ -107,7 +127,7 @@ public sealed class EpicIdTokenValidator : IEpicIdTokenValidator
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.FromMinutes(2),
                 ValidateIssuerSigningKey = true,
-                IssuerSigningKeys = oidcConfiguration.SigningKeys,
+                IssuerSigningKeys = signingKeys,
                 NameClaimType = "name"
             }, out _);
 
