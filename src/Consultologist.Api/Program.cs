@@ -150,6 +150,7 @@ builder.Services.AddSingleton<ILinkedInLinkService, LinkedInLinkService>();
 builder.Services.AddScoped<IAccountAuthorizer, AccountAuthorizer>();
 builder.Services.AddScoped<Account>();
 builder.Services.AddScoped<AccountLinkedIn>();
+builder.Services.AddScoped<AccountEpic>();
 builder.Services.AddScoped<Diagnostics>();
 builder.Services.AddSingleton<IAccountRateLimiter, TableAccountRateLimiter>();
 builder.Services.AddSingleton<IConsultGenerationJobStarter, ConsultGenerationJobStarter>();

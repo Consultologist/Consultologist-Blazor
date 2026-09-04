@@ -50,6 +50,20 @@ public class AccountStoreLinkOutcomeTests
         Assert.Equal(expected, AccountStore.StatusAfterLink(current));
     }
 
+    // #654: activation is provider-aware. LinkedIn is the eligibility
+    // signal and activates; Epic proves Epic-account control (a different
+    // bar) and does not — the store gates StatusAfterLink/Unlink on this,
+    // so an epic link leaves a Pending account Pending and an epic unlink
+    // never demotes.
+    [Theory]
+    [InlineData(IdentityProviders.LinkedIn, true)]
+    [InlineData(IdentityProviders.Epic, false)]
+    [InlineData(IdentityProviders.EntraExternalId, false)]
+    public void ActivatesAccount_IsLinkedInAlone(string provider, bool activates)
+    {
+        Assert.Equal(activates, IdentityProviders.ActivatesAccount(provider));
+    }
+
     [Theory]
     // Withdrawing the evidence withdraws the activation it justified.
     [InlineData(AccountStatuses.Active, AccountStatuses.Unverified)]
