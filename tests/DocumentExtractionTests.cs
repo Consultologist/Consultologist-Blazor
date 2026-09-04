@@ -346,6 +346,112 @@ public class DocumentExtractionTests
         Assert.InRange(DocumentExtraction.MaxConcurrentParses, 1, 15);
     }
 
+    // ---- html (#655) ---------------------------------------------------
+
+    [Fact]
+    public void HtmlNote_IsExtractedAsVisibleText()
+    {
+        var html = "<html><body>" +
+            "<div>Emily Lee is a 54 year old woman.</div>" +
+            "<div>Oncotype DX recurrence score 20.</div>" +
+            "</body></html>";
+
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(html));
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.Contains("Emily Lee is a 54 year old woman.", result.Text);
+        Assert.Contains("Oncotype DX recurrence score 20.", result.Text);
+        Assert.DoesNotContain("<div>", result.Text);
+        Assert.StartsWith("html/", result.ExtractorId);
+    }
+
+    [Fact]
+    public void HtmlFragment_IsRecognized()
+    {
+        // The Epic shape: no <html> root, a bare fragment — recognized by
+        // the close-tag sniff, not a document root.
+        var fragment = "<div class=\"fmtConv\"><span>Referral acknowledged.</span></div>";
+
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(fragment));
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.Contains("Referral acknowledged.", result.Text);
+    }
+
+    [Fact]
+    public void HtmlEntities_AreDecoded()
+    {
+        var html = "<p>BP &lt; 140/90 &amp; stable</p>";
+
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(html));
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.Contains("BP < 140/90 & stable", result.Text);
+    }
+
+    [Fact]
+    public void ScriptAndStyle_AreNotExtracted()
+    {
+        var html = "<html><head><style>.x{color:red}</style></head><body>" +
+            "<script>alert('x')</script><p>Note body.</p></body></html>";
+
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(html));
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.Contains("Note body.", result.Text);
+        Assert.DoesNotContain("alert", result.Text);
+        Assert.DoesNotContain("color:red", result.Text);
+    }
+
+    [Fact]
+    public void PdfRenderedAsHtml_IsCorrupt()
+    {
+        // The sandbox note's actual shape: a PDF rendered into spans. The
+        // stripped text is PDF source, not prose — it stays corrupt (#655),
+        // detected, never unwrapped.
+        var html = "<div class=\"fmtConv\">" +
+            "<div><span>%PDF-1.7</span></div>" +
+            "<div><span>" + new string('\u0001', 200) + "</span></div>" +
+            "</div>";
+
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(html));
+
+        Assert.Equal(DocumentExtractionOutcomes.Corrupt, result.Outcome);
+    }
+
+    [Fact]
+    public void EmptyHtml_IsEmpty()
+    {
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes("<div></div>"));
+
+        Assert.Equal(DocumentExtractionOutcomes.Empty, result.Outcome);
+    }
+
+    [Fact]
+    public void PlainTextWithAngleBrackets_IsStillText()
+    {
+        // The guard: prose with a stray <threshold> and no close tag must
+        // NOT be claimed by HTML — it falls to the text decoder verbatim.
+        var text = "The value is <threshold> today, and the plan holds.";
+
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(text));
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.Equal(text, result.Text);
+        Assert.Equal("text/1", result.ExtractorId);
+    }
+
+    [Fact]
+    public void HtmlOverTheCharacterCap_IsTooMuchText()
+    {
+        var body = new string('a', 256 * 1024 + 1);
+        var html = "<html><body><p>" + body + "</p></body></html>";
+
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(html));
+
+        Assert.Equal(DocumentExtractionOutcomes.TooMuchText, result.Outcome);
+    }
+
     // ---- docx ----------------------------------------------------------
 
     [Fact]

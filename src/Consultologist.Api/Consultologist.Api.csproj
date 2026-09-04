@@ -39,6 +39,7 @@
     <PackageReference Include="PDFsharp-MigraDoc" />
     <PackageReference Include="DocumentFormat.OpenXml" />
     <PackageReference Include="PdfPig" />
+    <PackageReference Include="AngleSharp" />
     <PackageReference Include="YamlDotNet" />
   </ItemGroup>
 
