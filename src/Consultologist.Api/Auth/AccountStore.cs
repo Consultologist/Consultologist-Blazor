@@ -321,7 +321,12 @@ public sealed class AccountStore : IAccountStore
         await _identityLinks.UpsertEntityAsync(identityLink, TableUpdateMode.Replace, cancellationToken);
         await _userIdentityLinks.UpsertEntityAsync(ToUserIdentityLink(identityLink), TableUpdateMode.Replace, cancellationToken);
 
-        await ApplyStatusAsync(appUserId, StatusAfterLink, cancellationToken);
+        // #654: only an activating provider (LinkedIn) moves status; an epic
+        // link is proof/display and leaves a Pending account Pending.
+        if (IdentityProviders.ActivatesAccount(provider))
+        {
+            await ApplyStatusAsync(appUserId, StatusAfterLink, cancellationToken);
+        }
 
         _logger.LogInformation(
             "Linked identity to app user. AppUserId={AppUserId}, Provider={Provider}, Outcome={Outcome}",
@@ -372,7 +377,12 @@ public sealed class AccountStore : IAccountStore
             return;
         }
 
-        await ApplyStatusAsync(appUserId, StatusAfterUnlink, cancellationToken);
+        // #654: only an activating provider's removal withdraws activation;
+        // unlinking an epic (proof-only) link never demotes the account.
+        if (IdentityProviders.ActivatesAccount(provider))
+        {
+            await ApplyStatusAsync(appUserId, StatusAfterUnlink, cancellationToken);
+        }
 
         _logger.LogInformation(
             "Unlinked identity from app user. AppUserId={AppUserId}, Provider={Provider}, Rows={Rows}",
