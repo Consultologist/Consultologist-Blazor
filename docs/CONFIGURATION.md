@@ -214,6 +214,29 @@ harmless. The callback's redirect-back origin is captured at Start from the
 browser's `Origin` header validated against the CORS allow-list — never
 from a client-supplied value.
 
+## Epic identity linking (`Auth/EpicIdTokenValidator.cs`, `AccountEpic.cs`, #654)
+
+The clinician's Epic identity is bound as proof of Epic-account control,
+from the SMART panel (a satellite): the panel does the SMART launch,
+holds the id_token, and POSTs it to `Account/Epic/Link` under the
+clinician's own Entra `access_as_user` bearer. The engine validates the
+id_token and binds `epic` to the Entra-resolved account. Like LinkedIn,
+Epic is **never a sign-in credential**; **unlike** LinkedIn it is **not
+an activation signal** — it proves Epic control, a different bar than the
+eligibility gate (the LinkedIn link / operator flip, #191).
+
+| Variable | Accepted values | Default | Required |
+|---|---|---|---|
+| `Epic__ClientId` | The audience an Epic id_token must carry — our registered Epic app's client id (the non-production id in the sandbox) | — | yes (to accept Epic links) |
+| `Epic__AllowedIssuers` | Semicolon-separated Epic issuers to trust. Epic's issuer is **per-installation** (each health system its own), so this is the onboarded-organisation allowlist; the sandbox issuer is `https://fhir.epic.com/interconnect-fhir-oauth/oauth2` | — | yes (to accept Epic links) |
+
+No client secret: the panel is a public client (PKCE). The allowlist is
+load-bearing security — the engine fetches an issuer's OIDC metadata/JWKS
+**only** for a listed issuer, so a forged token cannot steer key
+resolution elsewhere. A health system is onboarded by adding its issuer
+here; production readiness also needs an https panel origin (the #190
+sequencing).
+
 ## Email consult intake (`Email/*`, #158)
 
 Submit consults by email: a timer polls the dedicated shared mailbox via

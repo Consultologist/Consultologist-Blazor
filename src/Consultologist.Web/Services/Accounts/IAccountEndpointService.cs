@@ -7,6 +7,10 @@ public interface IAccountEndpointService
 
     /// <summary>#195: disconnect this account's LinkedIn identity.</summary>
     Task DisconnectLinkedInAsync();
+
+    // #654: the Epic identity is linked from the SMART panel; the Profile
+    // only displays it and can disconnect it.
+    Task DisconnectEpicLinkAsync();
     Task SetDeliveryPasswordAsync(string password);
     Task ClearDeliveryPasswordAsync();
 
