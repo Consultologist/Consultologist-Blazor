@@ -143,6 +143,8 @@ builder.Services.AddTransient<ConsultGenerationJobEntity>();
 builder.Services.AddSingleton<ILinkedInLinkStateStore, LinkedInLinkStateStore>();
 builder.Services.AddSingleton<ILinkedInTokenClient, LinkedInTokenClient>();
 builder.Services.AddSingleton<ILinkedInIdTokenValidator, LinkedInIdTokenValidator>();
+// #654: the Epic SMART id_token validator for the identity-link flow.
+builder.Services.AddSingleton<IEpicIdTokenValidator, EpicIdTokenValidator>();
 builder.Services.AddSingleton<ILinkedInVerificationClient, LinkedInVerificationClient>();
 builder.Services.AddSingleton<ILinkedInLinkService, LinkedInLinkService>();
 builder.Services.AddScoped<IAccountAuthorizer, AccountAuthorizer>();
