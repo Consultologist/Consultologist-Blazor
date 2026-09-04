@@ -369,13 +369,17 @@ public class DocumentExtractionTests
     public void HtmlFragment_IsRecognized()
     {
         // The Epic shape: no <html> root, a bare fragment — recognized by
-        // the close-tag sniff, not a document root.
+        // the close-tag sniff, not a document root. The html/ id is the
+        // proof it went through the HTML extractor, not the text decoder
+        // (which would return the markup verbatim as text/1).
         var fragment = "<div class=\"fmtConv\"><span>Referral acknowledged.</span></div>";
 
         var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(fragment));
 
         Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
         Assert.Contains("Referral acknowledged.", result.Text);
+        Assert.DoesNotContain("<span", result.Text);
+        Assert.StartsWith("html/", result.ExtractorId);
     }
 
     [Fact]
@@ -406,13 +410,27 @@ public class DocumentExtractionTests
     [Fact]
     public void PdfRenderedAsHtml_IsCorrupt()
     {
-        // The sandbox note's actual shape: a PDF rendered into spans. The
-        // stripped text is PDF source, not prose — it stays corrupt (#655),
-        // detected, never unwrapped.
+        // The sandbox note's actual shape: a PDF rendered into spans, whose
+        // stripped text is PDF source starting %PDF-. It stays corrupt
+        // (#655's requirement — refused, never unwrapped); the ratio arm of
+        // the refusal is pinned separately below.
         var html = "<div class=\"fmtConv\">" +
             "<div><span>%PDF-1.7</span></div>" +
-            "<div><span>" + new string('\u0001', 200) + "</span></div>" +
+            "<div><span>2 0 obj &lt;&lt;/Length 3 0 R/Filter/FlateDecode&gt;&gt; stream</span></div>" +
             "</div>";
+
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(html));
+
+        Assert.Equal(DocumentExtractionOutcomes.Corrupt, result.Outcome);
+    }
+
+    [Fact]
+    public void HtmlOfMostlyUnreadableCharacters_IsCorrupt()
+    {
+        // The other LooksUnreadable arm: text dominated by replacement
+        // characters (what a binary body decodes to) is refused by the
+        // ratio, not extracted as noise.
+        var html = "<p>" + new string('\uFFFD', 100) + " ok</p>";
 
         var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(html));
 
