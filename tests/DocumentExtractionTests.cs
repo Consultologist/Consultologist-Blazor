@@ -346,6 +346,130 @@ public class DocumentExtractionTests
         Assert.InRange(DocumentExtraction.MaxConcurrentParses, 1, 15);
     }
 
+    // ---- html (#655) ---------------------------------------------------
+
+    [Fact]
+    public void HtmlNote_IsExtractedAsVisibleText()
+    {
+        var html = "<html><body>" +
+            "<div>Emily Lee is a 54 year old woman.</div>" +
+            "<div>Oncotype DX recurrence score 20.</div>" +
+            "</body></html>";
+
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(html));
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.Contains("Emily Lee is a 54 year old woman.", result.Text);
+        Assert.Contains("Oncotype DX recurrence score 20.", result.Text);
+        Assert.DoesNotContain("<div>", result.Text);
+        Assert.StartsWith("html/", result.ExtractorId);
+    }
+
+    [Fact]
+    public void HtmlFragment_IsRecognized()
+    {
+        // The Epic shape: no <html> root, a bare fragment — recognized by
+        // the close-tag sniff, not a document root. The html/ id is the
+        // proof it went through the HTML extractor, not the text decoder
+        // (which would return the markup verbatim as text/1).
+        var fragment = "<div class=\"fmtConv\"><span>Referral acknowledged.</span></div>";
+
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(fragment));
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.Contains("Referral acknowledged.", result.Text);
+        Assert.DoesNotContain("<span", result.Text);
+        Assert.StartsWith("html/", result.ExtractorId);
+    }
+
+    [Fact]
+    public void HtmlEntities_AreDecoded()
+    {
+        var html = "<p>BP &lt; 140/90 &amp; stable</p>";
+
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(html));
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.Contains("BP < 140/90 & stable", result.Text);
+    }
+
+    [Fact]
+    public void ScriptAndStyle_AreNotExtracted()
+    {
+        var html = "<html><head><style>.x{color:red}</style></head><body>" +
+            "<script>alert('x')</script><p>Note body.</p></body></html>";
+
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(html));
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.Contains("Note body.", result.Text);
+        Assert.DoesNotContain("alert", result.Text);
+        Assert.DoesNotContain("color:red", result.Text);
+    }
+
+    [Fact]
+    public void PdfRenderedAsHtml_IsCorrupt()
+    {
+        // The sandbox note's actual shape: a PDF rendered into spans, whose
+        // stripped text is PDF source starting %PDF-. It stays corrupt
+        // (#655's requirement — refused, never unwrapped); the ratio arm of
+        // the refusal is pinned separately below.
+        var html = "<div class=\"fmtConv\">" +
+            "<div><span>%PDF-1.7</span></div>" +
+            "<div><span>2 0 obj &lt;&lt;/Length 3 0 R/Filter/FlateDecode&gt;&gt; stream</span></div>" +
+            "</div>";
+
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(html));
+
+        Assert.Equal(DocumentExtractionOutcomes.Corrupt, result.Outcome);
+    }
+
+    [Fact]
+    public void HtmlOfMostlyUnreadableCharacters_IsCorrupt()
+    {
+        // The other LooksUnreadable arm: text dominated by replacement
+        // characters (what a binary body decodes to) is refused by the
+        // ratio, not extracted as noise.
+        var html = "<p>" + new string('\uFFFD', 100) + " ok</p>";
+
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(html));
+
+        Assert.Equal(DocumentExtractionOutcomes.Corrupt, result.Outcome);
+    }
+
+    [Fact]
+    public void EmptyHtml_IsEmpty()
+    {
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes("<div></div>"));
+
+        Assert.Equal(DocumentExtractionOutcomes.Empty, result.Outcome);
+    }
+
+    [Fact]
+    public void PlainTextWithAngleBrackets_IsStillText()
+    {
+        // The guard: prose with a stray <threshold> and no close tag must
+        // NOT be claimed by HTML — it falls to the text decoder verbatim.
+        var text = "The value is <threshold> today, and the plan holds.";
+
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(text));
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.Equal(text, result.Text);
+        Assert.Equal("text/1", result.ExtractorId);
+    }
+
+    [Fact]
+    public void HtmlOverTheCharacterCap_IsTooMuchText()
+    {
+        var body = new string('a', 256 * 1024 + 1);
+        var html = "<html><body><p>" + body + "</p></body></html>";
+
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(html));
+
+        Assert.Equal(DocumentExtractionOutcomes.TooMuchText, result.Outcome);
+    }
+
     // ---- docx ----------------------------------------------------------
 
     [Fact]

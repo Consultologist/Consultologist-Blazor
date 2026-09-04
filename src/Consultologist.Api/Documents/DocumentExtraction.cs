@@ -162,7 +162,10 @@ internal static class DocumentExtraction
     private static readonly IReadOnlyList<DocumentFormat> Formats =
     [
         new DocumentFormat(PdfDocumentExtractor.Matches, PdfDocumentExtractor.Extract),
-        new DocumentFormat(DocxDocumentExtractor.Matches, DocxDocumentExtractor.Extract)
+        new DocumentFormat(DocxDocumentExtractor.Matches, DocxDocumentExtractor.Extract),
+        // #655: before the text fallback, so HTML yields visible text rather
+        // than the tag soup the decoder would return for it.
+        new DocumentFormat(HtmlDocumentExtractor.Matches, HtmlDocumentExtractor.Extract)
     ];
 
     /// <summary>
