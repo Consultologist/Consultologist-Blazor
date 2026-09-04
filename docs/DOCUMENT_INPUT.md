@@ -38,11 +38,19 @@ about documents; the intake layer does.
 ```
                     PARSER  (sole format authority)
               sniff → decode/extract → named outcome
-                 owns: txt · md · pdf · docx
+                 owns: txt · md · pdf · docx · html
                       ↑                ↑
               SOURCE: app        SOURCE: email
               (bytes only)       (bytes only)
 ```
+
+**html (#190 → #655).** Epic SMART on FHIR chart documents arrive as
+`text/html`; the parser sniffs HTML (a close tag is the fragment
+signal — Epic notes carry no `<html>` root) and extracts the visible
+text through AngleSharp, dropping tags, script and style. One deliberate
+refusal: a note that is really a PDF *rendered* into HTML spans strips to
+PDF source, and stays `corrupt` — detected, never unwrapped. Adding the
+format touched the parser only (the § 1 seam), as this section promises.
 
 Decisions (settled 2026-07-28; files:
 `src/Consultologist.Api/Documents/*`, the two sources at
@@ -716,7 +724,7 @@ happened and what to do instead.
 
 | Outcome | App |
 |---|---|
-| `unsupported-type` | We can read .txt, .md, .pdf and .docx files — that one is something else. |
+| `unsupported-type` | We can read .txt, .md, .pdf, .docx and .html files — that one is something else. |
 | `no-text-layer` | This PDF has no text layer, so it is a scan or a fax. Paste the text instead, or attach a PDF exported from your system. |
 | `password-protected` | This PDF is password-protected. Remove the password and try again, or paste the text instead. |
 | `corrupt` | This file could not be read — it may be damaged or incomplete. |

@@ -18,7 +18,7 @@ internal static class DocumentExtractionCopy
     internal static string For(string outcome) => outcome switch
     {
         DocumentExtractionOutcomes.UnsupportedType =>
-            "We can read .txt, .md, .pdf and .docx files — that one is something else.",
+            "We can read .txt, .md, .pdf, .docx and .html files — that one is something else.",
 
         DocumentExtractionOutcomes.NoTextLayer =>
             "This PDF has no text layer, so it is a scan or a fax. Paste the text instead, "
