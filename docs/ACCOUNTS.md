@@ -36,6 +36,11 @@ door's flows authenticate as their owner with no consent prompt
 runbook). That setup is the first instance of the general satellite
 caller pattern — SATELLITE_CALLERS.md (#611).
 
+Since #654 an account may also link an **Epic** identity (`epic`),
+bound from the SMART panel as proof of Epic-account control — surfaced on
+the profile, never a sign-in credential, and (unlike LinkedIn) never an
+activation signal. Removing it never changes account status.
+
 Since #615 the API can also reach **outward** as the signed-in clinician
 (On-Behalf-Of): an organisation account's own token is exchanged for a
 Graph token bounded by consented delegated scopes — today `Files.Read`,

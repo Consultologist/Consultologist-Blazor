@@ -140,6 +140,21 @@ public static class IdentityProviders
     // Verification signal only (#133): linked for proof of account control,
     // never accepted as a bearer credential.
     public const string LinkedIn = "linkedin";
+    // #654: the clinician's Epic identity, bound from the SMART panel as
+    // proof of Epic-account control. Like LinkedIn, never a bearer
+    // credential — but, unlike LinkedIn, NOT an activation signal (it
+    // proves Epic control, a different bar than the eligibility gate the
+    // LinkedIn link / operator flip clears).
+    public const string Epic = "epic";
+
+    /// <summary>
+    /// #654: which providers, when linked, activate a Pending account
+    /// (#191/#195). LinkedIn does — it is the eligibility signal. Epic does
+    /// not; its link is proof/display only. Extracted so the boundary can be
+    /// asserted directly.
+    /// </summary>
+    public static bool ActivatesAccount(string provider) =>
+        string.Equals(provider, LinkedIn, StringComparison.Ordinal);
 }
 
 public sealed class AppUserEntity : ITableEntity

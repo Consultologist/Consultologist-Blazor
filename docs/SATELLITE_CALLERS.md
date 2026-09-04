@@ -101,7 +101,21 @@ more, less, or different behaviour than the SPA — would need `azp` read
 and a designed policy behind it. No current satellite needs it; that
 issue does not exist yet and should be filed when one does.
 
-## 4. External identity binding, designed (part b)
+## 4. External identity binding — designed (part b); `epic` built (#654)
+
+**Built for `epic` (#654):** the clinician links their Epic identity from
+the SMART panel — the panel holds the SMART id_token and POSTs it to
+`Account/Epic/Link` under the clinician's Entra bearer; the engine
+validates it (a per-installation issuer allowlist — `EpicIdTokenValidator`)
+and binds `epic` via `LinkIdentityAsync`, keyed `{iss}|{sub}`. It is
+proof/display only: never a bearer credential, and — the one refinement to
+the design below — **not an activation signal** (`IdentityProviders.
+ActivatesAccount` gates status to LinkedIn alone). No intake door consumes
+the `epic` row today: the panel presents the clinician's Entra token, so
+the account resolves from that; the row is proof and readiness for a
+future launch-context resolution. The `zoom` provider remains designed,
+not built.
+
 
 A satellite-borne payload — a Zoom transcript webhook, an Epic launch
 context — arrives bearing an **external subject** (a Zoom user id, an

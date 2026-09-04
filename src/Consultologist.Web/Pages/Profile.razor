@@ -249,6 +249,52 @@
                 </div>
             </section>
 
+            @* #654: the Epic identity — proof of Epic-account control, linked
+               from the SMART panel (not a redirect this page can drive). Shown
+               here; disconnected here. *@
+            <section class="content-card epic-card">
+                <div class="form-stack">
+                    <h2 class="panel-title">
+                        Epic identity
+                    </h2>
+
+                    <p class="panel-description">
+                        When you open Consultologist from Epic, your Epic identity is linked here as
+                        proof it belongs to you. Epic is never used to sign in, and linking it does
+                        not by itself activate the account. Linking happens in the Epic panel; you can
+                        remove it here.
+                    </p>
+
+                    @if (epicMessage != null)
+                    {
+                        <FluentMessageBar Intent="@epicMessageIntent">@epicMessage</FluentMessageBar>
+                    }
+
+                    @if (EpicIdentity != null)
+                    {
+                        <div class="state-panel">
+                            <span class="muted-text">Linked Epic identity</span>
+                            <strong>@(EpicIdentity.DisplayName ?? "Epic Practitioner")</strong>
+                            <span class="muted-text">Linked @EpicIdentity.LinkedAt.ToString("yyyy-MM-dd")</span>
+                        </div>
+
+                        <div class="action-row">
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Disabled="@epicDisconnectInProgress"
+                                          @onclick="DisconnectEpicAsync">
+                                @(epicDisconnectArmed ? "Confirm disconnect" : "Disconnect")
+                            </FluentButton>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="state-panel">
+                            <span class="muted-text">No Epic identity linked. Open Consultologist from Epic to link one.</span>
+                        </div>
+                    }
+                </div>
+            </section>
+
             @* #515: the location — where the app sends data and reads the
                account. Kept on this device; empty until chosen, and the
                unchosen line says which location is used meanwhile. *@
@@ -947,6 +993,17 @@
     private AccountIdentity? LinkedInIdentity =>
         account?.LinkedIdentities.FirstOrDefault(identity =>
             string.Equals(identity.Provider, "linkedin", StringComparison.Ordinal));
+
+    // #654: the Epic identity — linked from the SMART panel, shown here as
+    // proof of Epic-account control. Never a sign-in credential, and (unlike
+    // LinkedIn) not an activation signal.
+    private AccountIdentity? EpicIdentity =>
+        account?.LinkedIdentities.FirstOrDefault(identity =>
+            string.Equals(identity.Provider, "epic", StringComparison.Ordinal));
+    private bool epicDisconnectArmed;
+    private bool epicDisconnectInProgress;
+    private string? epicMessage;
+    private MessageIntent epicMessageIntent = MessageIntent.Info;
 
     private string[] VerifiedCategoryLabels =>
         (LinkedInIdentity?.VerifiedCategories ?? string.Empty)
@@ -2106,6 +2163,43 @@
         {
             disconnectArmed = false;
             linkedInDisconnectInProgress = false;
+        }
+    }
+
+    // #654: two-click disconnect, the LinkedIn pattern; removing the Epic
+    // link never changes account status (it never activated it).
+    private async Task DisconnectEpicAsync()
+    {
+        if (!epicDisconnectArmed)
+        {
+            epicDisconnectArmed = true;
+            epicMessage = "Disconnecting removes the Epic identity link from this account.";
+            epicMessageIntent = MessageIntent.Warning;
+            return;
+        }
+
+        epicDisconnectInProgress = true;
+
+        try
+        {
+            await AccountService.DisconnectEpicLinkAsync();
+            await LoadAccountAsync();
+            epicMessage = "Epic identity disconnected.";
+            epicMessageIntent = MessageIntent.Success;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            epicMessage = $"Unable to disconnect Epic: {ex.Message}";
+            epicMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            epicDisconnectArmed = false;
+            epicDisconnectInProgress = false;
         }
     }
 
