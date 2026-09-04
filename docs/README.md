@@ -30,6 +30,7 @@ would otherwise have carried it (#397).
 
 - [ACCOUNTS.md](ACCOUNTS.md) — accounts, Entra API access, and LinkedIn login
 - [SATELLITE_CALLERS.md](SATELLITE_CALLERS.md) — how a separate app calls this API as the signed-in clinician, and how external identities bind to accounts (design record, #611)
+- [EPIC_SMART_INTAKE.md](EPIC_SMART_INTAKE.md) — the Epic SMART on FHIR read-only intake spike: what the sandbox and the engine establish, the id_token and DocumentReference legs, and the sequencing to production (spike record, #190)
 
 ## Storage & infrastructure
 
