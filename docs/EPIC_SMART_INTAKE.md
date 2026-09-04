@@ -134,16 +134,27 @@ corrupt payloads) before SMART intake is real. Per the #234 criterion
 this touches the parser only; it is filed as a follow-on (see § 7), not
 assumed here.
 
-### A finding from the failed relaunch (recorded, not a blocker)
-Re-authorizing on an **active sandbox SSO session** repeatedly returned
-"Invalid OAuth 2.0 request" — the reused Epic session/`ticket=` carried a
-truncated scope through `fhir.epic.com/HSWeb_uscdi/…` rather than a clean
-authorize. The first, cold launch succeeded end to end; the trouble was
-the relaunch path, not the request the panel built. (One panel bug was
-found and fixed along the way — a persisted, truncated scope edit in
-`localStorage` overrode the prefill; scopes are no longer persisted.) The
-`patient/`-scoped token shape beside the `user/`-scoped one is therefore
-the one datum not captured; it is a bonus, not a #654 premise.
+### A relaunch that failed — cause not diagnosed (recorded, not a blocker)
+The first, cold launch succeeded end to end (E1–E4 above). Every
+**re-launch** afterwards returned "Invalid OAuth 2.0 request" from
+Epic's login handler (`fhir.epic.com/HSWeb_uscdi/?ticket=…`), which
+reflected a scope of only `openid fhirUser launch/patient` — the
+resource scopes absent. **The cause was not diagnosed.** The reflected
+URL is Epic's own, so it cannot be told from it whether the panel sent a
+truncated scope or Epic pared one back; the one datum that would
+distinguish them — the panel's own pre-redirect log of the scope it
+built — was not captured while the failures were live. A stale browser
+tab, a service-worker cache, an Epic session-resume quirk, and a
+remaining panel bug are all consistent with the evidence and none is
+ruled in or out. One real panel bug *was* found and fixed along the way
+(a persisted, truncated scope edit in `localStorage` overrode the
+prefill; scopes are no longer persisted) — but it is not established
+that it was the cause of these failures. The consequence for the spike:
+the `patient/`-scoped token shape beside the `user/`-scoped one is the
+one datum not captured — a bonus, not a #654 premise, so #190's
+substance is unaffected. Anyone resuming should first capture the
+`scope sent:` log line the panel now prints, which settles the
+panel-vs-Epic question in one launch.
 
 ## 4. The design #654 builds — premises confirmed / amended
 
