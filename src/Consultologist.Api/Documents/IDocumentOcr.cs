@@ -14,7 +14,7 @@ namespace Consultologist.Api.Documents;
 /// so the edge maps a transient outage to a "try again" outcome without ever
 /// knowing the SDK's types.
 /// </summary>
-internal interface IDocumentOcr
+public interface IDocumentOcr
 {
     /// <summary>
     /// True when the OCR endpoint app setting is present. When false the edge
@@ -33,11 +33,11 @@ internal interface IDocumentOcr
     Task<DocumentOcrResult> ReadAsync(byte[] pdfBytes, int? pageCount, CancellationToken cancellationToken);
 }
 
-internal enum DocumentOcrStatus
+public enum DocumentOcrStatus
 {
     Extracted,
     Empty,
     Unavailable
 }
 
-internal sealed record DocumentOcrResult(DocumentOcrStatus Status, string? Text, string? ExtractorId);
+public sealed record DocumentOcrResult(DocumentOcrStatus Status, string? Text, string? ExtractorId);

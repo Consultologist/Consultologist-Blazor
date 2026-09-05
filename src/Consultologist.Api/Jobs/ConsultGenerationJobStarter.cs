@@ -173,6 +173,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly IConsultGenerationLinkStore _links;
     private readonly Forms.IFormResponseStore _formResponses;
     private readonly Forms.IFormResponseBlobStore _formResponseBlobs;
+    private readonly IDocumentOcr _ocr;
 
     public ConsultGenerationJobStarter(
         ILogger<ConsultGenerationJobStarter> logger,
@@ -189,7 +190,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IJobInputsBlobStore inputsBlobs,
         IConsultGenerationLinkStore links,
         Forms.IFormResponseStore formResponses,
-        Forms.IFormResponseBlobStore formResponseBlobs)
+        Forms.IFormResponseBlobStore formResponseBlobs,
+        IDocumentOcr ocr)
     {
         _logger = logger;
         _packageStore = packageStore;
@@ -206,6 +208,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         _links = links;
         _formResponses = formResponses;
         _formResponseBlobs = formResponseBlobs;
+        _ocr = ocr;
     }
 
     public async Task<ConsultGenerationJobStartOutcome> StartAsync(
@@ -366,7 +369,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 SenderSafeDetail: macroChoices.Error);
         }
 
-        var extraction = await ExtractInputFilesAsync(request, package.Manifest, GateWaitFor(origin), cancellationToken);
+        var extraction = await ExtractInputFilesAsync(request, package.Manifest, GateWaitFor(origin), _ocr, cancellationToken);
         if (extraction.Error != null)
         {
             _logger.LogWarning(
@@ -1686,6 +1689,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         ConsultGenerationRequest request,
         WorkflowPackageManifest manifest,
         TimeSpan gateWait,
+        IDocumentOcr ocr,
         CancellationToken cancellationToken)
     {
         if (request.InputFiles is not { Count: > 0 })
@@ -1745,7 +1749,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // the parser touches them — the one thing the bytes leave on the
                 // record, since they are cleared below and never kept.
                 var fileSha256 = ConsultGenerationProvenance.Sha256Hex(documents[index].Content);
-                var result = await DocumentExtraction.ExtractAsync(documents[index].Content, gateWait, cancellationToken);
+                var result = await DocumentExtraction.ExtractAsync(documents[index].Content, gateWait, cancellationToken, ocr);
 
                 if (!DocumentExtraction.Succeeded(result))
                 {

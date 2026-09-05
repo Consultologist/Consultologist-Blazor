@@ -32,6 +32,9 @@ public class ConsultGenerationJobStarterTests
     private readonly IConsultGenerationLinkStore _links = Substitute.For<IConsultGenerationLinkStore>();
     private readonly Consultologist.Api.Forms.IFormResponseStore _formResponses = Substitute.For<Consultologist.Api.Forms.IFormResponseStore>();
     private readonly Consultologist.Api.Forms.IFormResponseBlobStore _formResponseBlobs = Substitute.For<Consultologist.Api.Forms.IFormResponseBlobStore>();
+    // #239: OCR off by default (IsConfigured is false), so these tests keep
+    // their pre-OCR behaviour — an image-only PDF stays no-text-layer.
+    private readonly IDocumentOcr _ocr = Substitute.For<IDocumentOcr>();
 
     // #290: a terse but genuine referral. These fixtures used to say
     // "draft", which is not a referral and which the content floor
@@ -65,7 +68,8 @@ public class ConsultGenerationJobStarterTests
             _inputsBlobs,
             _links,
             _formResponses,
-            _formResponseBlobs);
+            _formResponseBlobs,
+            _ocr);
     }
 
     private readonly FakeTerminologySource _terminology = new();

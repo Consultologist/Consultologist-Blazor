@@ -30,19 +30,22 @@ public sealed class DocumentExtractions
     private readonly IAccountRateLimiter _rateLimiter;
     private readonly IOnBehalfOfTokenClient _onBehalfOf;
     private readonly IGraphDocumentFetcher _graphFetcher;
+    private readonly IDocumentOcr _ocr;
 
     public DocumentExtractions(
         ILogger<DocumentExtractions> logger,
         IAccountAuthorizer authorizer,
         IAccountRateLimiter rateLimiter,
         IOnBehalfOfTokenClient onBehalfOf,
-        IGraphDocumentFetcher graphFetcher)
+        IGraphDocumentFetcher graphFetcher,
+        IDocumentOcr ocr)
     {
         _logger = logger;
         _authorizer = authorizer;
         _rateLimiter = rateLimiter;
         _onBehalfOf = onBehalfOf;
         _graphFetcher = graphFetcher;
+        _ocr = ocr;
     }
 
     [Function("CreateDocumentExtraction")]
@@ -104,7 +107,8 @@ public sealed class DocumentExtractions
         var result = await DocumentExtraction.ExtractAsync(
             bytes,
             DocumentExtraction.InteractiveGateWait,
-            cancellationToken);
+            cancellationToken,
+            _ocr);
 
         // Lengths and dispositions only: no bytes, no extracted text, no
         // filename — there is no filename to log.
@@ -262,7 +266,8 @@ public sealed class DocumentExtractions
         var result = await DocumentExtraction.ExtractAsync(
             fetch.Content!,
             DocumentExtraction.InteractiveGateWait,
-            cancellationToken);
+            cancellationToken,
+            _ocr);
 
         // Lengths and dispositions only — no bytes, no text, no URL: a
         // sharing link names a file, and a filename can itself be PHI.

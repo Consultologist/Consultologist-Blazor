@@ -141,6 +141,20 @@ internal static class DocumentExtraction
             : 4;
 
     /// <summary>
+    /// #239: the most pages an image-only PDF may have before OCR is skipped
+    /// and it degrades to <c>no-text-layer</c>. OCR is priced per page, so this
+    /// bounds per-document cost; it defaults to <see cref="MaxPages"/> (a scan
+    /// the parser accepted is one OCR tries to read) and is tunable per
+    /// environment without a deploy. Over the cap is a skip, not a truncation —
+    /// the project never reads half a document (§ 4).
+    /// </summary>
+    internal static int OcrMaxPages { get; } =
+        int.TryParse(Environment.GetEnvironmentVariable("DocumentExtraction__OcrMaxPages"), out var ocrPages)
+        && ocrPages > 0
+            ? ocrPages
+            : MaxPages;
+
+    /// <summary>
     /// What an interactive caller waits for a slot before being told we are
     /// busy: the preview endpoint and app-originated job start, where someone
     /// is watching a spinner.
@@ -206,8 +220,9 @@ internal static class DocumentExtraction
     internal static Task<DocumentExtractionResult> ExtractAsync(
         byte[] bytes,
         TimeSpan gateWait,
-        CancellationToken cancellationToken) =>
-        ExtractAsync(bytes, gateWait, ParseGate, cancellationToken);
+        CancellationToken cancellationToken,
+        IDocumentOcr? ocr = null) =>
+        ExtractAsync(bytes, gateWait, ParseGate, cancellationToken, ocr);
 
     /// <summary>
     /// The gate as a parameter, so saturation can be tested by handing in a
@@ -218,7 +233,8 @@ internal static class DocumentExtraction
         byte[] bytes,
         TimeSpan gateWait,
         SemaphoreSlim gate,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IDocumentOcr? ocr = null)
     {
         if (!await gate.WaitAsync(gateWait, cancellationToken))
         {
@@ -246,14 +262,50 @@ internal static class DocumentExtraction
             }
         });
 
+        DocumentExtractionResult result;
+
         try
         {
-            return await parse.WaitAsync(MaxParseDuration, cancellationToken);
+            result = await parse.WaitAsync(MaxParseDuration, cancellationToken);
         }
         catch (TimeoutException)
         {
             return DocumentExtractionResult.Refused(DocumentExtractionOutcomes.TimedOut);
         }
+
+        // #239: OCR fallback for image-only PDFs, on this impure edge only —
+        // the pure Extract cannot make a network call. Fires ONLY on
+        // no-text-layer (a text PDF, a corrupt one, a timed-out one, an empty
+        // one never reach OCR — cost and correctness both), and only when OCR
+        // is configured and the scan is within the page cap; anything else
+        // returns the parser's result untouched, so an unconfigured or absent
+        // ocr leaves today's behaviour exactly as it was. The parse-gate slot
+        // is already released (the finally in the Task.Run delegate ran before
+        // the await above returned), so this network call is outside the gate
+        // and outside MaxParseDuration — the OCR reader owns its own clock.
+        if (ocr is { IsConfigured: true }
+            && string.Equals(result.Outcome, DocumentExtractionOutcomes.NoTextLayer, StringComparison.Ordinal)
+            && result.PageCount is int pages
+            && pages <= OcrMaxPages)
+        {
+            var ocrResult = await ocr.ReadAsync(bytes, result.PageCount, cancellationToken);
+
+            return ocrResult.Status switch
+            {
+                // Through Normalize, so OCR text gets the same LF/whitespace
+                // canonicalisation every other path does — and whitespace-only
+                // OCR output folds to Empty.
+                DocumentOcrStatus.Extracted =>
+                    Normalize(DocumentExtractionResult.Extracted(
+                        ocrResult.Text!, ocrResult.ExtractorId!, result.PageCount)),
+                DocumentOcrStatus.Empty =>
+                    DocumentExtractionResult.Refused(DocumentExtractionOutcomes.Empty),
+                _ =>
+                    DocumentExtractionResult.Refused(DocumentExtractionOutcomes.OcrUnavailable),
+            };
+        }
+
+        return result;
     }
 
     internal static DocumentExtractionResult Extract(byte[] bytes)
