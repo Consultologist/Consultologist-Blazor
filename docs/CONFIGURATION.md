@@ -407,6 +407,45 @@ gate, so upload memory is bounded by platform concurrency rather than by this
 number, and one crafted file can still allocate its own worst case. See
 `docs/DOCUMENT_INPUT.md` § 9.
 
+### OCR for image-only PDFs (`Documents/AzureDocumentIntelligenceOcr.cs`, #239)
+
+Scans and faxes carry no text layer, so the parser refuses them as
+`no-text-layer`. When OCR is configured, an image-only PDF is instead read
+with **Azure AI Document Intelligence** (`prebuilt-read`), which unblocks
+#188's fax bridge (the email-intake path runs the same extraction). OCR fires
+**only** on `no-text-layer` and within the page cap — a PDF with a text layer
+is never sent, so it is never billed.
+
+| Variable | Accepted values | Default | Required |
+|---|---|---|---|
+| `DocumentExtraction__OcrEndpoint` | The Document Intelligence resource endpoint, e.g. `https://<resource>.cognitiveservices.azure.com/`. **Unset ⇒ OCR is off** and image-only PDFs return `no-text-layer` as before | — | no (required to enable OCR) |
+| `DocumentExtraction__OcrMaxPages` | A positive integer: the most pages an image-only PDF may have before OCR is skipped (it degrades to `no-text-layer`, never a partial read). Bounds per-document cost | `100` (= the parser's page limit) | no |
+| `DocumentExtraction__OcrTimeoutSeconds` | A non-negative integer: OCR's own wall clock, separate from the 20-second parse timeout | `60` | no |
+| `DocumentExtraction__OcrMaxRetries` | A non-negative integer of SDK retries | `0` | no |
+
+**Identity-only, never keys.** The endpoint is reached with the app's
+user-assigned managed identity (`AZURE_CLIENT_ID`, already set for the Foundry
+integration) via `DefaultAzureCredential`. Entra ID authentication requires
+the resource's **custom-subdomain** endpoint (a regional endpoint does not
+accept token credentials), which is why the endpoint above is the
+`<resource>.cognitiveservices.azure.com` form. Grant the identity **Cognitive
+Services Data Reader** on the resource (sufficient for analyze-only).
+
+**Subprocessor and residency.** Enabling OCR makes Document Intelligence a PHI
+subprocessor: document bytes are sent to it for analysis. Nothing new is
+persisted — the extracted text follows the same retention as any other input —
+and the resource must be in a **Canadian region** (the app runs in Canada
+East). A transient service outage surfaces as `ocr-unavailable` (503, "try
+again"), never as a refusal that blames the scan.
+
+**The confidence gate is per account, not an app setting.** Whether an OCR
+read must clear a minimum mean word confidence is the account's own policy
+(`ocr.confidenceGate` / `ocr.minConfidence`, on by default at 80%, set on the
+Profile's *Scanned PDF confidence* card) — see ACCOUNTS.md. Below the minimum
+the read is refused as `ocr-low-confidence` (422). There is no deployment-wide
+confidence knob; the operator settings above are only the endpoint, caps, and
+timeout.
+
 ## Rate limiting (`RateLimiting/AccountRateLimiter.cs`, #266)
 
 | Variable | Accepted values | Default | Required |

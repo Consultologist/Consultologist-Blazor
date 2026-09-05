@@ -9,9 +9,10 @@ tracked in #266: per-account rate limiting.** v7 declared named input slots (#20
 both intake paths then stalled at `.txt`/`.md`, which is not the shape
 referrals arrive in. Decisions taken with the operator: the file itself
 is submitted rather than text extracted from it in the browser;
-extraction is text-layer only, so OCR and #188's fax parity stay
-deliberately blocked; and a second format (DOCX) ships in the same
-milestone so the parser's seam is tested rather than asserted.
+extraction is text-layer only, so OCR and #188's fax parity are
+deliberately blocked at this milestone (OCR has since been added in #239 —
+see § 10); and a second format (DOCX) ships in the same milestone so the
+parser's seam is tested rather than asserted.
 
 ## Foundation: extraction is a pre-step, not a format change
 
@@ -726,6 +727,8 @@ happened and what to do instead.
 |---|---|
 | `unsupported-type` | We can read .txt, .md, .pdf, .docx and .html files — that one is something else. |
 | `no-text-layer` | This PDF has no text layer, so it is a scan or a fax. Paste the text instead, or attach a PDF exported from your system. |
+| `ocr-unavailable` | We could not read this scan right now. Nothing is wrong with it — try again in a moment, or paste the text instead. |
+| `ocr-low-confidence` | This scan was read, but its text confidence was below the minimum set in your profile. Paste the text instead, or lower the minimum in your profile. |
 | `password-protected` | This PDF is password-protected. Remove the password and try again, or paste the text instead. |
 | `corrupt` | This file could not be read — it may be damaged or incomplete. |
 | `empty` | There is no text in this file. |
@@ -743,6 +746,13 @@ We could not read one of your attachments: it looks like a scanned
 document with no text layer. Please attach a PDF exported from your
 system, or paste the referral into the message itself.
 ```
+
+Since #239, when OCR is configured an image-only PDF is read rather than
+refused, so `no-text-layer` reaches a person only when OCR is **off** (no
+endpoint set) or the scan is **over the OCR page cap**. `ocr-unavailable` is
+its transient sibling — OCR was tried and the service was momentarily
+unavailable — and, like `busy`, it is about us, not the file: 503 and "try
+again", never a refusal that blames a readable scan.
 
 ## 9. Security posture
 
@@ -972,19 +982,32 @@ job start, and email intake.
 
 ## 10. Not in this milestone
 
-- **OCR for image-only PDFs** (#239). Text-layer extraction adds **zero
-  new data processors** — the bytes never leave the Function App and are
-  never persisted. OCR adds one: a cloud service is a new PHI
-  subprocessor, a new data-flow arrow, and a new vendor-management
-  evidence item in an audit that is in progress, with per-page cost on
-  top; native Tesseract avoids that and brings native binaries and
-  fax-quality accuracy, where a misread dose is a clinical error rather
-  than a typo. **#188's fax parity therefore stays blocked** — but on a
-  narrower and more honest reason than before: not "PDF is unreadable"
-  but "image-only PDFs need OCR". #188's own doctrine is to defer until
-  demand picks a target, and this is the same shape. The `no-text-layer`
-  outcome is built now regardless, because even after OCR ships
-  something must detect the scan in order to route to it.
+- **OCR for image-only PDFs** (#239) — *deferred here at #234, since built.*
+  The reasoning stands as recorded: text-layer extraction adds **zero new
+  data processors** — the bytes never leave the Function App and are never
+  persisted — whereas OCR adds one, a cloud service that is a new PHI
+  subprocessor, a new data-flow arrow, and a new vendor-management evidence
+  item, with per-page cost on top; the alternative, native Tesseract, brings
+  native binaries and fax-quality accuracy where a misread dose is a clinical
+  error. #234 deferred it under #188's doctrine — wait until demand picks a
+  target — and built only the `no-text-layer` outcome, because even after OCR
+  ships something must detect the scan to route to it. **#239 has since made
+  that call and built it**, with **Azure AI Document Intelligence**
+  (`prebuilt-read`): one PHI subprocessor, in a **Canadian region**, reached
+  by the user-assigned managed identity (never keys). It changes no retention
+  story — the bytes are sent for analysis and nothing new is persisted; the
+  extracted text follows the same 7-day retention as any other. It fires
+  **only** on `no-text-layer` and within a page cap, and when the endpoint is
+  unset it is simply off (the scan keeps the `no-text-layer` copy). A misread
+  dose is a clinical error, so a **per-account confidence gate** (on by
+  default, `ocr.confidenceGate` / `ocr.minConfidence`, mean word confidence
+  ≥ the account's minimum, default 80%) refuses a doubtful read as
+  `ocr-low-confidence` rather than feeding it into a consult — gate on mean,
+  not min, since OCR always has a few very-low tokens, with the clinician
+  review and the `docintel/` provenance as the backstop for a single misread
+  word. **#188's fax parity is unblocked** when OCR is configured (see
+  CONFIGURATION.md, *Document extraction — OCR*, and ACCOUNTS.md for the
+  confidence policy).
 - **Retaining source files** (§ 7), which would make extraction
   re-runnable at the cost of a PHI-at-rest retention story.
 - **Binary inputs in the package format.** Files bind through extraction

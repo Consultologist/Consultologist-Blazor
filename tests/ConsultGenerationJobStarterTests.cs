@@ -32,6 +32,9 @@ public class ConsultGenerationJobStarterTests
     private readonly IConsultGenerationLinkStore _links = Substitute.For<IConsultGenerationLinkStore>();
     private readonly Consultologist.Api.Forms.IFormResponseStore _formResponses = Substitute.For<Consultologist.Api.Forms.IFormResponseStore>();
     private readonly Consultologist.Api.Forms.IFormResponseBlobStore _formResponseBlobs = Substitute.For<Consultologist.Api.Forms.IFormResponseBlobStore>();
+    // #239: OCR off by default (IsConfigured is false), so these tests keep
+    // their pre-OCR behaviour — an image-only PDF stays no-text-layer.
+    private readonly IDocumentOcr _ocr = Substitute.For<IDocumentOcr>();
 
     // #290: a terse but genuine referral. These fixtures used to say
     // "draft", which is not a referral and which the content floor
@@ -65,7 +68,8 @@ public class ConsultGenerationJobStarterTests
             _inputsBlobs,
             _links,
             _formResponses,
-            _formResponseBlobs);
+            _formResponseBlobs,
+            _ocr);
     }
 
     private readonly FakeTerminologySource _terminology = new();
@@ -612,7 +616,9 @@ public class ConsultGenerationJobStarterTests
         Assert.Null(orchestrationInput!.Signature);
         Assert.True(Assert.Single(orchestrationInput.Results!).Signature);
 
-        // A package that marks nothing signed pays no table read.
+        // A package that marks nothing signed pays no signature table read.
+        // (The OCR-confidence keys are read on every start, #239, so the check
+        // is specific to the signature key rather than "no read at all".)
         orchestrationInput = null;
         _settings.ClearReceivedCalls();
         _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
@@ -622,7 +628,7 @@ public class ConsultGenerationJobStarterTests
         await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(Referral), "user-1",
             new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
         Assert.Null(orchestrationInput!.Signature);
-        await _settings.DidNotReceive().GetAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _settings.DidNotReceive().GetAsync(Arg.Any<string>(), AccountSettingKeys.ProfileSignatures, Arg.Any<CancellationToken>());
     }
 
     [Fact]

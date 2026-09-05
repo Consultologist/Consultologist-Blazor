@@ -97,12 +97,14 @@ internal static class PdfDocumentExtractor
             if (letters == 0)
             {
                 // No glyphs anywhere. Images present means a scan or a fax —
-                // the case OCR would answer and #188 is blocked on. No
+                // the case OCR answers (#239) and #188 is blocked on. No
                 // images means the document is genuinely blank, and the two
-                // deserve different copy.
-                return DocumentExtractionResult.Refused(images > 0
-                    ? DocumentExtractionOutcomes.NoTextLayer
-                    : DocumentExtractionOutcomes.Empty);
+                // deserve different copy. no-text-layer carries the page count
+                // so the OCR fallback can cap pages and record what it read.
+                return images > 0
+                    ? DocumentExtractionResult.Refused(
+                        DocumentExtractionOutcomes.NoTextLayer, document.NumberOfPages)
+                    : DocumentExtractionResult.Refused(DocumentExtractionOutcomes.Empty);
             }
 
             return DocumentExtractionResult.Extracted(

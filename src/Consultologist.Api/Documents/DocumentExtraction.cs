@@ -33,6 +33,15 @@ public static class DocumentExtractionOutcomes
     // about us rather than about the document — the file may be perfectly
     // readable, and resending is the right advice.
     public const string Busy = "busy";
+    // #239: OCR was configured and tried on an image-only PDF, but the service
+    // errored or timed out. Transient and about us, like Busy — never tell a
+    // clinician a readable fax is unreadable — so 503 and "try again", not a
+    // 422 refusal of the file.
+    public const string OcrUnavailable = "ocr-unavailable";
+    // #239: OCR read the scan, but its mean word confidence was below the
+    // minimum the account set in its profile. A policy refusal, not a service
+    // fault — 422, and the copy points at the profile setting.
+    public const string OcrLowConfidence = "ocr-low-confidence";
 }
 
 internal sealed record DocumentExtractionResult(
@@ -47,6 +56,12 @@ internal sealed record DocumentExtractionResult(
     bool TrackedChangesResolved = false)
 {
     internal static DocumentExtractionResult Refused(string outcome) => new(outcome, null, null, null);
+
+    // #239: a refusal that still carries the page count. no-text-layer uses it
+    // so the OCR fallback can enforce a page cap and record how many pages it
+    // read — the count comes from the parse, so this stays pure.
+    internal static DocumentExtractionResult Refused(string outcome, int? pageCount) =>
+        new(outcome, null, null, pageCount);
 
     internal static DocumentExtractionResult Extracted(
         string text,
@@ -130,6 +145,20 @@ internal static class DocumentExtraction
             : 4;
 
     /// <summary>
+    /// #239: the most pages an image-only PDF may have before OCR is skipped
+    /// and it degrades to <c>no-text-layer</c>. OCR is priced per page, so this
+    /// bounds per-document cost; it defaults to <see cref="MaxPages"/> (a scan
+    /// the parser accepted is one OCR tries to read) and is tunable per
+    /// environment without a deploy. Over the cap is a skip, not a truncation —
+    /// the project never reads half a document (§ 4).
+    /// </summary>
+    internal static int OcrMaxPages =>
+        int.TryParse(Environment.GetEnvironmentVariable("DocumentExtraction__OcrMaxPages"), out var ocrPages)
+        && ocrPages > 0
+            ? ocrPages
+            : MaxPages;
+
+    /// <summary>
     /// What an interactive caller waits for a slot before being told we are
     /// busy: the preview endpoint and app-originated job start, where someone
     /// is watching a spinner.
@@ -195,8 +224,10 @@ internal static class DocumentExtraction
     internal static Task<DocumentExtractionResult> ExtractAsync(
         byte[] bytes,
         TimeSpan gateWait,
-        CancellationToken cancellationToken) =>
-        ExtractAsync(bytes, gateWait, ParseGate, cancellationToken);
+        CancellationToken cancellationToken,
+        IDocumentOcr? ocr = null,
+        double? ocrMinConfidence = null) =>
+        ExtractAsync(bytes, gateWait, ParseGate, cancellationToken, ocr, ocrMinConfidence);
 
     /// <summary>
     /// The gate as a parameter, so saturation can be tested by handing in a
@@ -207,7 +238,9 @@ internal static class DocumentExtraction
         byte[] bytes,
         TimeSpan gateWait,
         SemaphoreSlim gate,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IDocumentOcr? ocr = null,
+        double? ocrMinConfidence = null)
     {
         if (!await gate.WaitAsync(gateWait, cancellationToken))
         {
@@ -235,14 +268,65 @@ internal static class DocumentExtraction
             }
         });
 
+        DocumentExtractionResult result;
+
         try
         {
-            return await parse.WaitAsync(MaxParseDuration, cancellationToken);
+            result = await parse.WaitAsync(MaxParseDuration, cancellationToken);
         }
         catch (TimeoutException)
         {
             return DocumentExtractionResult.Refused(DocumentExtractionOutcomes.TimedOut);
         }
+
+        // #239: OCR fallback for image-only PDFs, on this impure edge only —
+        // the pure Extract cannot make a network call. Fires ONLY on
+        // no-text-layer (a text PDF, a corrupt one, a timed-out one, an empty
+        // one never reach OCR — cost and correctness both), and only when OCR
+        // is configured and the scan is within the page cap; anything else
+        // returns the parser's result untouched, so an unconfigured or absent
+        // ocr leaves today's behaviour exactly as it was. The parse-gate slot
+        // is already released (the finally in the Task.Run delegate ran before
+        // the await above returned), so this network call is outside the gate
+        // and outside MaxParseDuration — the OCR reader owns its own clock.
+        if (ocr is { IsConfigured: true }
+            && string.Equals(result.Outcome, DocumentExtractionOutcomes.NoTextLayer, StringComparison.Ordinal)
+            && result.PageCount is int pages
+            && pages <= OcrMaxPages)
+        {
+            var ocrResult = await ocr.ReadAsync(bytes, result.PageCount, cancellationToken);
+
+            return ocrResult.Status switch
+            {
+                DocumentOcrStatus.Extracted =>
+                    AcceptOrGateOcr(ocrResult, result.PageCount, ocrMinConfidence),
+                DocumentOcrStatus.Empty =>
+                    DocumentExtractionResult.Refused(DocumentExtractionOutcomes.Empty),
+                _ =>
+                    DocumentExtractionResult.Refused(DocumentExtractionOutcomes.OcrUnavailable),
+            };
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// #239: the account's OCR confidence policy. When a minimum is set and the
+    /// mean word confidence is below it, refuse as <c>ocr-low-confidence</c>
+    /// rather than feed a doubtful read into a consult — a misread dose is a
+    /// clinical error. No minimum (the gate off) accepts whatever OCR returned.
+    /// Accepted text goes through Normalize, like every other path, so
+    /// whitespace-only OCR output still folds to <c>empty</c>.
+    /// </summary>
+    private static DocumentExtractionResult AcceptOrGateOcr(
+        DocumentOcrResult ocr, int? pageCount, double? minConfidence)
+    {
+        if (minConfidence is double min && ocr.MeanConfidence is double mean && mean < min)
+        {
+            return DocumentExtractionResult.Refused(DocumentExtractionOutcomes.OcrLowConfidence, pageCount);
+        }
+
+        return Normalize(DocumentExtractionResult.Extracted(ocr.Text!, ocr.ExtractorId!, pageCount));
     }
 
     internal static DocumentExtractionResult Extract(byte[] bytes)

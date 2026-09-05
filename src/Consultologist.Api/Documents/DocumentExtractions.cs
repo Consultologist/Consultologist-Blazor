@@ -30,19 +30,35 @@ public sealed class DocumentExtractions
     private readonly IAccountRateLimiter _rateLimiter;
     private readonly IOnBehalfOfTokenClient _onBehalfOf;
     private readonly IGraphDocumentFetcher _graphFetcher;
+    private readonly IDocumentOcr _ocr;
+    private readonly IAccountSettingsStore _settingsStore;
 
     public DocumentExtractions(
         ILogger<DocumentExtractions> logger,
         IAccountAuthorizer authorizer,
         IAccountRateLimiter rateLimiter,
         IOnBehalfOfTokenClient onBehalfOf,
-        IGraphDocumentFetcher graphFetcher)
+        IGraphDocumentFetcher graphFetcher,
+        IDocumentOcr ocr,
+        IAccountSettingsStore settingsStore)
     {
         _logger = logger;
         _authorizer = authorizer;
         _rateLimiter = rateLimiter;
         _onBehalfOf = onBehalfOf;
         _graphFetcher = graphFetcher;
+        _ocr = ocr;
+        _settingsStore = settingsStore;
+    }
+
+    // #239: the caller's OCR confidence policy — the minimum a scan's read must
+    // clear, or null when the gate is off. Read per request so the preview
+    // matches what job start will do for the same account.
+    private async Task<double?> OcrMinConfidenceAsync(string appUserId, CancellationToken cancellationToken)
+    {
+        var gate = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.OcrConfidenceGate, cancellationToken);
+        var min = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.OcrMinConfidence, cancellationToken);
+        return OcrConfidenceSettings.EffectiveMinConfidence(gate?.Value, min?.Value);
     }
 
     [Function("CreateDocumentExtraction")]
@@ -104,7 +120,9 @@ public sealed class DocumentExtractions
         var result = await DocumentExtraction.ExtractAsync(
             bytes,
             DocumentExtraction.InteractiveGateWait,
-            cancellationToken);
+            cancellationToken,
+            _ocr,
+            await OcrMinConfidenceAsync(account.AppUserId, cancellationToken));
 
         // Lengths and dispositions only: no bytes, no extracted text, no
         // filename — there is no filename to log.
@@ -143,8 +161,9 @@ public sealed class DocumentExtractions
         DocumentExtractionOutcomes.TooLarge => HttpStatusCode.RequestEntityTooLarge,
         // #241: not 422. The request was well-formed AND satisfiable — we
         // simply had no capacity, and 503 is the one status that says
-        // "try the same thing again".
-        DocumentExtractionOutcomes.Busy => HttpStatusCode.ServiceUnavailable,
+        // "try the same thing again". #239: an OCR outage is the same shape.
+        DocumentExtractionOutcomes.Busy or DocumentExtractionOutcomes.OcrUnavailable =>
+            HttpStatusCode.ServiceUnavailable,
         _ => HttpStatusCode.UnprocessableEntity
     };
 
@@ -261,7 +280,9 @@ public sealed class DocumentExtractions
         var result = await DocumentExtraction.ExtractAsync(
             fetch.Content!,
             DocumentExtraction.InteractiveGateWait,
-            cancellationToken);
+            cancellationToken,
+            _ocr,
+            await OcrMinConfidenceAsync(authorized.Account.AppUserId, cancellationToken));
 
         // Lengths and dispositions only — no bytes, no text, no URL: a
         // sharing link names a file, and a filename can itself be PHI.

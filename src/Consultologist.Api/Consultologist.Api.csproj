@@ -25,6 +25,7 @@
     <PackageReference Include="Azure.AI.Extensions.OpenAI" />
     <PackageReference Include="Azure.AI.Projects" />
     <PackageReference Include="Azure.AI.Projects.Agents" />
+    <PackageReference Include="Azure.AI.DocumentIntelligence" />
     <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
     <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" />

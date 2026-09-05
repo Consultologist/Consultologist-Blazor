@@ -56,6 +56,19 @@ internal static class DocumentExtractionCopy
         DocumentExtractionOutcomes.Busy =>
             "We are reading several documents right now. Nothing is wrong with this one — try again in a moment.",
 
+        // #239: also not about the file. OCR was tried on the scan and the
+        // service was momentarily unavailable — the same "nothing is wrong
+        // with this one" shape as Busy, so it must not read as a fault.
+        DocumentExtractionOutcomes.OcrUnavailable =>
+            "We could not read this scan right now. Nothing is wrong with it — try again in a moment, "
+            + "or paste the text instead.",
+
+        // #239: a policy refusal, not a fault — the read happened, its
+        // confidence just did not clear the bar the account set.
+        DocumentExtractionOutcomes.OcrLowConfidence =>
+            "This scan was read, but its text confidence was below the minimum set in your profile. "
+            + "Paste the text instead, or lower the minimum in your profile.",
+
         _ => "This file could not be read."
     };
 }
