@@ -38,6 +38,10 @@ public static class DocumentExtractionOutcomes
     // clinician a readable fax is unreadable — so 503 and "try again", not a
     // 422 refusal of the file.
     public const string OcrUnavailable = "ocr-unavailable";
+    // #239: OCR read the scan, but its mean word confidence was below the
+    // minimum the account set in its profile. A policy refusal, not a service
+    // fault — 422, and the copy points at the profile setting.
+    public const string OcrLowConfidence = "ocr-low-confidence";
 }
 
 internal sealed record DocumentExtractionResult(
@@ -221,8 +225,9 @@ internal static class DocumentExtraction
         byte[] bytes,
         TimeSpan gateWait,
         CancellationToken cancellationToken,
-        IDocumentOcr? ocr = null) =>
-        ExtractAsync(bytes, gateWait, ParseGate, cancellationToken, ocr);
+        IDocumentOcr? ocr = null,
+        double? ocrMinConfidence = null) =>
+        ExtractAsync(bytes, gateWait, ParseGate, cancellationToken, ocr, ocrMinConfidence);
 
     /// <summary>
     /// The gate as a parameter, so saturation can be tested by handing in a
@@ -234,7 +239,8 @@ internal static class DocumentExtraction
         TimeSpan gateWait,
         SemaphoreSlim gate,
         CancellationToken cancellationToken,
-        IDocumentOcr? ocr = null)
+        IDocumentOcr? ocr = null,
+        double? ocrMinConfidence = null)
     {
         if (!await gate.WaitAsync(gateWait, cancellationToken))
         {
@@ -292,12 +298,8 @@ internal static class DocumentExtraction
 
             return ocrResult.Status switch
             {
-                // Through Normalize, so OCR text gets the same LF/whitespace
-                // canonicalisation every other path does — and whitespace-only
-                // OCR output folds to Empty.
                 DocumentOcrStatus.Extracted =>
-                    Normalize(DocumentExtractionResult.Extracted(
-                        ocrResult.Text!, ocrResult.ExtractorId!, result.PageCount)),
+                    AcceptOrGateOcr(ocrResult, result.PageCount, ocrMinConfidence),
                 DocumentOcrStatus.Empty =>
                     DocumentExtractionResult.Refused(DocumentExtractionOutcomes.Empty),
                 _ =>
@@ -306,6 +308,25 @@ internal static class DocumentExtraction
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// #239: the account's OCR confidence policy. When a minimum is set and the
+    /// mean word confidence is below it, refuse as <c>ocr-low-confidence</c>
+    /// rather than feed a doubtful read into a consult — a misread dose is a
+    /// clinical error. No minimum (the gate off) accepts whatever OCR returned.
+    /// Accepted text goes through Normalize, like every other path, so
+    /// whitespace-only OCR output still folds to <c>empty</c>.
+    /// </summary>
+    private static DocumentExtractionResult AcceptOrGateOcr(
+        DocumentOcrResult ocr, int? pageCount, double? minConfidence)
+    {
+        if (minConfidence is double min && ocr.MeanConfidence is double mean && mean < min)
+        {
+            return DocumentExtractionResult.Refused(DocumentExtractionOutcomes.OcrLowConfidence, pageCount);
+        }
+
+        return Normalize(DocumentExtractionResult.Extracted(ocr.Text!, ocr.ExtractorId!, pageCount));
     }
 
     internal static DocumentExtractionResult Extract(byte[] bytes)

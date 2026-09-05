@@ -63,6 +63,12 @@ internal static class DocumentExtractionCopy
             "We could not read this scan right now. Nothing is wrong with it — try again in a moment, "
             + "or paste the text instead.",
 
+        // #239: a policy refusal, not a fault — the read happened, its
+        // confidence just did not clear the bar the account set.
+        DocumentExtractionOutcomes.OcrLowConfidence =>
+            "This scan was read, but its text confidence was below the minimum set in your profile. "
+            + "Paste the text instead, or lower the minimum in your profile.",
+
         _ => "This file could not be read."
     };
 }

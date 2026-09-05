@@ -40,4 +40,12 @@ public enum DocumentOcrStatus
     Unavailable
 }
 
-public sealed record DocumentOcrResult(DocumentOcrStatus Status, string? Text, string? ExtractorId);
+/// <summary>
+/// #239: <paramref name="MeanConfidence"/> is the mean per-word confidence
+/// (0..1) the service reported, or null when it read no words. The extraction
+/// edge compares it to the account's minimum-confidence policy to decide
+/// whether an Extracted read is accepted or refused as
+/// <see cref="DocumentExtractionOutcomes.OcrLowConfidence"/>.
+/// </summary>
+public sealed record DocumentOcrResult(
+    DocumentOcrStatus Status, string? Text, string? ExtractorId, double? MeanConfidence = null);

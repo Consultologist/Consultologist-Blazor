@@ -82,11 +82,11 @@ internal sealed class AzureDocumentIntelligenceOcr : IDocumentOcr
                 await client.AnalyzeDocumentAsync(WaitUntil.Completed, options, cancellationToken: timeout.Token);
 
             var analysis = operation.Value;
-            LogConfidence(analysis, pageCount);
+            var meanConfidence = LogAndMeanConfidence(analysis, pageCount);
 
             return string.IsNullOrWhiteSpace(analysis.Content)
                 ? new DocumentOcrResult(DocumentOcrStatus.Empty, null, null)
-                : new DocumentOcrResult(DocumentOcrStatus.Extracted, analysis.Content, ExtractorId);
+                : new DocumentOcrResult(DocumentOcrStatus.Extracted, analysis.Content, ExtractorId, meanConfidence);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -143,10 +143,12 @@ internal sealed class AzureDocumentIntelligenceOcr : IDocumentOcr
     }
 
     /// <summary>
-    /// Min and mean word confidence — logged, never gated. Bytes and text never
-    /// appear; only the aggregate numbers and the page count.
+    /// Logs min and mean word confidence and returns the mean (0..1), which the
+    /// extraction edge gates against the account's minimum. Bytes and text never
+    /// appear; only the aggregate numbers and the page count. Null when the scan
+    /// held no words (the read is Empty, so there is nothing to gate).
     /// </summary>
-    private void LogConfidence(AnalyzeResult analysis, int? pageCount)
+    private double? LogAndMeanConfidence(AnalyzeResult analysis, int? pageCount)
     {
         var min = 1.0;
         var sum = 0.0;
@@ -165,15 +167,19 @@ internal sealed class AzureDocumentIntelligenceOcr : IDocumentOcr
         if (words == 0)
         {
             _logger.LogInformation("OCR read no words. Pages={Pages}", pageCount);
-            return;
+            return null;
         }
+
+        var mean = sum / words;
 
         _logger.LogInformation(
             "OCR confidence. Words={Words}, Pages={Pages}, MinConfidence={MinConfidence:F3}, MeanConfidence={MeanConfidence:F3}",
             words,
             pageCount,
             min,
-            sum / words);
+            mean);
+
+        return mean;
     }
 
     private static int GetEnvironmentInt(string name, int fallback) =>

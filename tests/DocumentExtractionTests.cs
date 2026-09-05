@@ -373,14 +373,20 @@ public class DocumentExtractionTests
         }
 
         public static FakeDocumentOcr Returning(
-            DocumentOcrStatus status, string? text = null, string? extractorId = null, bool isConfigured = true) =>
-            new(new DocumentOcrResult(status, text, extractorId), isConfigured);
+            DocumentOcrStatus status,
+            string? text = null,
+            string? extractorId = null,
+            bool isConfigured = true,
+            double? meanConfidence = null) =>
+            new(new DocumentOcrResult(status, text, extractorId, meanConfidence), isConfigured);
     }
 
-    private static async Task<DocumentExtractionResult> ExtractWithOcrAsync(byte[] bytes, IDocumentOcr? ocr)
+    private static async Task<DocumentExtractionResult> ExtractWithOcrAsync(
+        byte[] bytes, IDocumentOcr? ocr, double? ocrMinConfidence = null)
     {
         using var gate = new SemaphoreSlim(1, 1);
-        return await DocumentExtraction.ExtractAsync(bytes, TimeSpan.Zero, gate, CancellationToken.None, ocr);
+        return await DocumentExtraction.ExtractAsync(
+            bytes, TimeSpan.Zero, gate, CancellationToken.None, ocr, ocrMinConfidence);
     }
 
     [Fact]
@@ -475,6 +481,45 @@ public class DocumentExtractionTests
 
         Assert.Equal(DocumentExtractionOutcomes.Empty, result.Outcome);
         Assert.False(ocr.Invoked);
+    }
+
+    [Fact]
+    public async Task WhenMeanConfidenceIsBelowTheAccountMinimum_TheOutcomeIsOcrLowConfidence()
+    {
+        var ocr = FakeDocumentOcr.Returning(
+            DocumentOcrStatus.Extracted, "faint fax text", "docintel/1.0.0", meanConfidence: 0.62);
+
+        var result = await ExtractWithOcrAsync(ImageOnlyPdf(), ocr, ocrMinConfidence: 0.80);
+
+        Assert.Equal(DocumentExtractionOutcomes.OcrLowConfidence, result.Outcome);
+        Assert.Null(result.Text);
+    }
+
+    [Fact]
+    public async Task WhenMeanConfidenceMeetsTheAccountMinimum_ItIsExtracted()
+    {
+        var ocr = FakeDocumentOcr.Returning(
+            DocumentOcrStatus.Extracted, "clear scan text", "docintel/1.0.0", meanConfidence: 0.80);
+
+        // At the threshold is accepted (the gate refuses strictly below).
+        var result = await ExtractWithOcrAsync(ImageOnlyPdf(), ocr, ocrMinConfidence: 0.80);
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.Equal("clear scan text", result.Text);
+    }
+
+    [Fact]
+    public async Task WithNoConfidenceMinimum_ALowConfidenceScanIsStillExtracted()
+    {
+        // The gate off (no account minimum): OCR text is accepted whatever its
+        // confidence.
+        var ocr = FakeDocumentOcr.Returning(
+            DocumentOcrStatus.Extracted, "faint fax text", "docintel/1.0.0", meanConfidence: 0.10);
+
+        var result = await ExtractWithOcrAsync(ImageOnlyPdf(), ocr, ocrMinConfidence: null);
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.Equal("faint fax text", result.Text);
     }
 
     [Fact]
@@ -822,7 +867,8 @@ public class DocumentExtractionTests
             DocumentExtractionOutcomes.TooMuchText,
             DocumentExtractionOutcomes.TimedOut,
             DocumentExtractionOutcomes.Busy,
-            DocumentExtractionOutcomes.OcrUnavailable
+            DocumentExtractionOutcomes.OcrUnavailable,
+            DocumentExtractionOutcomes.OcrLowConfidence
         ];
 
         foreach (var outcome in outcomes)
@@ -1047,7 +1093,8 @@ public class DocumentExtractionTests
         DocumentExtractionOutcomes.TooMuchText,
         DocumentExtractionOutcomes.TimedOut,
         DocumentExtractionOutcomes.Busy,
-        DocumentExtractionOutcomes.OcrUnavailable
+        DocumentExtractionOutcomes.OcrUnavailable,
+        DocumentExtractionOutcomes.OcrLowConfidence
     ];
 
     /// <summary>
