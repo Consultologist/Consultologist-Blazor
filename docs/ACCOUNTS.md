@@ -203,6 +203,8 @@ profile.signatures          (JSON — the profile's signature blocks and the cho
 profile.snippets            (JSON — the profile's snippet library, #561)
 retention.outputDays        (whole days produced text is kept after completion, #548 — 1..30; absent = TextRetention__Days)
 retention.inputDays         (whole days held inputs are kept, #548 — 1..30, never past outputs; absent = TextRetention__Days)
+ocr.confidenceGate          ("true" | "false" — whether OCR of a scanned PDF must clear a minimum confidence, #239; absent = on)
+ocr.minConfidence           (whole-number percent 0..100 the OCR read must reach when the gate is on, #239; absent = 80)
 ```
 
 `delivery.emailPdf` (#518) is a preference, not an identity, so it rides
@@ -247,6 +249,21 @@ a value that is missing, unreadable, or out of shape falls back and is
 clamped, so nothing is ever kept past the ceiling. A shortened setting
 applies to runs already held at the next sweep; the record's hashes and
 history are never subject to retention.
+
+`ocr.confidenceGate` / `ocr.minConfidence` (#239) are the account's OCR
+confidence policy for scanned/faxed PDFs (OCR is #239's Document
+Intelligence reader). Preferences on the generic routes, but **on by
+default** — a scan's text is the riskiest input the app reads, so absence
+means *check*, not skip: only a stored `false` on the gate turns it off,
+and the minimum is a whole-number percent (absent = 80). When the gate is
+on and the mean OCR word confidence falls below the minimum, the read is
+refused as `ocr-low-confidence` (the clinician pastes the text instead)
+rather than feeding a doubtful scan into a consult. Both doors read the
+policy — the preview endpoint and the job starter (so the email/fax path
+honours it too); the PUT validates the gate word and the percent range by
+name (`Auth/OcrConfidenceSettings.cs`) and reads clamp, so a slipped value
+never turns the gate into an accident. The Profile's *Scanned PDF
+confidence* card writes both keys.
 
 `delivery.address` (#486) is the account's **verified delivery address**:
 the only address app-submitted consults are ever emailed to. It is written

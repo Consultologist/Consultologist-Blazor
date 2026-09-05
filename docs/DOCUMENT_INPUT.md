@@ -728,6 +728,7 @@ happened and what to do instead.
 | `unsupported-type` | We can read .txt, .md, .pdf, .docx and .html files — that one is something else. |
 | `no-text-layer` | This PDF has no text layer, so it is a scan or a fax. Paste the text instead, or attach a PDF exported from your system. |
 | `ocr-unavailable` | We could not read this scan right now. Nothing is wrong with it — try again in a moment, or paste the text instead. |
+| `ocr-low-confidence` | This scan was read, but its text confidence was below the minimum set in your profile. Paste the text instead, or lower the minimum in your profile. |
 | `password-protected` | This PDF is password-protected. Remove the password and try again, or paste the text instead. |
 | `corrupt` | This file could not be read — it may be damaged or incomplete. |
 | `empty` | There is no text in this file. |
@@ -997,9 +998,16 @@ job start, and email intake.
   story — the bytes are sent for analysis and nothing new is persisted; the
   extracted text follows the same 7-day retention as any other. It fires
   **only** on `no-text-layer` and within a page cap, and when the endpoint is
-  unset it is simply off (the scan keeps the `no-text-layer` copy). **#188's
-  fax parity is unblocked** when OCR is configured (see CONFIGURATION.md,
-  *Document extraction — OCR*).
+  unset it is simply off (the scan keeps the `no-text-layer` copy). A misread
+  dose is a clinical error, so a **per-account confidence gate** (on by
+  default, `ocr.confidenceGate` / `ocr.minConfidence`, mean word confidence
+  ≥ the account's minimum, default 80%) refuses a doubtful read as
+  `ocr-low-confidence` rather than feeding it into a consult — gate on mean,
+  not min, since OCR always has a few very-low tokens, with the clinician
+  review and the `docintel/` provenance as the backstop for a single misread
+  word. **#188's fax parity is unblocked** when OCR is configured (see
+  CONFIGURATION.md, *Document extraction — OCR*, and ACCOUNTS.md for the
+  confidence policy).
 - **Retaining source files** (§ 7), which would make extraction
   re-runnable at the cost of a PHI-at-rest retention story.
 - **Binary inputs in the package format.** Files bind through extraction

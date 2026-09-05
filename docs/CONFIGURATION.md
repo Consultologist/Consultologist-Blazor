@@ -438,6 +438,14 @@ and the resource must be in a **Canadian region** (the app runs in Canada
 East). A transient service outage surfaces as `ocr-unavailable` (503, "try
 again"), never as a refusal that blames the scan.
 
+**The confidence gate is per account, not an app setting.** Whether an OCR
+read must clear a minimum mean word confidence is the account's own policy
+(`ocr.confidenceGate` / `ocr.minConfidence`, on by default at 80%, set on the
+Profile's *Scanned PDF confidence* card) — see ACCOUNTS.md. Below the minimum
+the read is refused as `ocr-low-confidence` (422). There is no deployment-wide
+confidence knob; the operator settings above are only the endpoint, caps, and
+timeout.
+
 ## Rate limiting (`RateLimiting/AccountRateLimiter.cs`, #266)
 
 | Variable | Accepted values | Default | Required |
