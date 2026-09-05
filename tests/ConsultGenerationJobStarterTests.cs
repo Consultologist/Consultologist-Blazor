@@ -616,7 +616,9 @@ public class ConsultGenerationJobStarterTests
         Assert.Null(orchestrationInput!.Signature);
         Assert.True(Assert.Single(orchestrationInput.Results!).Signature);
 
-        // A package that marks nothing signed pays no table read.
+        // A package that marks nothing signed pays no signature table read.
+        // (The OCR-confidence keys are read on every start, #239, so the check
+        // is specific to the signature key rather than "no read at all".)
         orchestrationInput = null;
         _settings.ClearReceivedCalls();
         _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
@@ -626,7 +628,7 @@ public class ConsultGenerationJobStarterTests
         await CreateStarter().StartAsync(_client, new ConsultGenerationRequest(Referral), "user-1",
             new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
         Assert.Null(orchestrationInput!.Signature);
-        await _settings.DidNotReceive().GetAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _settings.DidNotReceive().GetAsync(Arg.Any<string>(), AccountSettingKeys.ProfileSignatures, Arg.Any<CancellationToken>());
     }
 
     [Fact]

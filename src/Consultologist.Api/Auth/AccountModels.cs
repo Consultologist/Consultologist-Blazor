@@ -99,6 +99,23 @@ public static class AccountSettingKeys
     /// other value by name; read at the door per push.
     /// </summary>
     public const string FormResponseMode = "forms.responseMode";
+
+    /// <summary>
+    /// #239: whether OCR of an image-only PDF must clear a minimum confidence
+    /// before its text is accepted. Default ON — absent or anything but
+    /// <c>"false"</c> means on (the safer default for clinical text). Rides the
+    /// generic routes; saves refuse any other value by name; read at extraction
+    /// alongside <see cref="OcrMinConfidence"/> (<see cref="OcrConfidenceSettings"/>).
+    /// </summary>
+    public const string OcrConfidenceGate = "ocr.confidenceGate";
+
+    /// <summary>
+    /// #239: the minimum mean OCR word confidence, as a whole-number percent
+    /// (0–100), the account requires when <see cref="OcrConfidenceGate"/> is on.
+    /// Absent = the default (<see cref="OcrConfidenceSettings.DefaultPercent"/>).
+    /// Saves are validated by <see cref="OcrConfidenceSettings"/>; reads clamp.
+    /// </summary>
+    public const string OcrMinConfidence = "ocr.minConfidence";
 }
 
 /// <summary>#517: the two ways a delivery address gets verified.</summary>

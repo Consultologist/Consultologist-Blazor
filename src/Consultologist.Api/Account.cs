@@ -826,6 +826,14 @@ public sealed class Account
             return await CreateTextResponseAsync(req, HttpStatusCode.BadRequest, modeError, cancellationToken);
         }
 
+        // #239: the OCR gate is a boolean word and the minimum a percent in
+        // range — refused by name so a bad value never lands (reads clamp).
+        if (OcrConfidenceSettings.IsOcrKey(key)
+            && OcrConfidenceSettings.Validate(key, request.Value) is { } ocrError)
+        {
+            return await CreateTextResponseAsync(req, HttpStatusCode.BadRequest, ocrError, cancellationToken);
+        }
+
         await _settingsStore.SaveAsync(account.AppUserId, key, request.Value, contentType, cancellationToken);
 
         var response = req.CreateResponse(HttpStatusCode.NoContent);

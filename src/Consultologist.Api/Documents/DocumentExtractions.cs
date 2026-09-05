@@ -31,6 +31,7 @@ public sealed class DocumentExtractions
     private readonly IOnBehalfOfTokenClient _onBehalfOf;
     private readonly IGraphDocumentFetcher _graphFetcher;
     private readonly IDocumentOcr _ocr;
+    private readonly IAccountSettingsStore _settingsStore;
 
     public DocumentExtractions(
         ILogger<DocumentExtractions> logger,
@@ -38,7 +39,8 @@ public sealed class DocumentExtractions
         IAccountRateLimiter rateLimiter,
         IOnBehalfOfTokenClient onBehalfOf,
         IGraphDocumentFetcher graphFetcher,
-        IDocumentOcr ocr)
+        IDocumentOcr ocr,
+        IAccountSettingsStore settingsStore)
     {
         _logger = logger;
         _authorizer = authorizer;
@@ -46,6 +48,17 @@ public sealed class DocumentExtractions
         _onBehalfOf = onBehalfOf;
         _graphFetcher = graphFetcher;
         _ocr = ocr;
+        _settingsStore = settingsStore;
+    }
+
+    // #239: the caller's OCR confidence policy — the minimum a scan's read must
+    // clear, or null when the gate is off. Read per request so the preview
+    // matches what job start will do for the same account.
+    private async Task<double?> OcrMinConfidenceAsync(string appUserId, CancellationToken cancellationToken)
+    {
+        var gate = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.OcrConfidenceGate, cancellationToken);
+        var min = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.OcrMinConfidence, cancellationToken);
+        return OcrConfidenceSettings.EffectiveMinConfidence(gate?.Value, min?.Value);
     }
 
     [Function("CreateDocumentExtraction")]
@@ -108,7 +121,8 @@ public sealed class DocumentExtractions
             bytes,
             DocumentExtraction.InteractiveGateWait,
             cancellationToken,
-            _ocr);
+            _ocr,
+            await OcrMinConfidenceAsync(account.AppUserId, cancellationToken));
 
         // Lengths and dispositions only: no bytes, no extracted text, no
         // filename — there is no filename to log.
@@ -267,7 +281,8 @@ public sealed class DocumentExtractions
             fetch.Content!,
             DocumentExtraction.InteractiveGateWait,
             cancellationToken,
-            _ocr);
+            _ocr,
+            await OcrMinConfidenceAsync(authorized.Account.AppUserId, cancellationToken));
 
         // Lengths and dispositions only — no bytes, no text, no URL: a
         // sharing link names a file, and a filename can itself be PHI.
