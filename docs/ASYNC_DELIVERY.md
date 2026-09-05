@@ -146,7 +146,9 @@ files: `src/Consultologist.Api/Email/*`, settings in
   saying so rather than silently concatenating them into the body. The
   reply now names the cause — a scan, a size, an ambiguous assignment —
   because that describes a file's format rather than its contents. The
-  fax bridge (#188) stays blocked on OCR (#239) alone.
+  fax bridge (#188) was blocked on OCR (#239) alone; #239 has since built
+  OCR (Azure AI Document Intelligence), so a faxed image-only PDF is read
+  and answered rather than rejected wherever OCR is configured.
 - **A refusal carries its reason when the reason is authored** (#369).
   The starter marks each start-failure sentence `SenderSafeDetail` when it
   is composed of manifest content and request structure — declared input
