@@ -56,6 +56,13 @@ internal static class DocumentExtractionCopy
         DocumentExtractionOutcomes.Busy =>
             "We are reading several documents right now. Nothing is wrong with this one — try again in a moment.",
 
+        // #239: also not about the file. OCR was tried on the scan and the
+        // service was momentarily unavailable — the same "nothing is wrong
+        // with this one" shape as Busy, so it must not read as a fault.
+        DocumentExtractionOutcomes.OcrUnavailable =>
+            "We could not read this scan right now. Nothing is wrong with it — try again in a moment, "
+            + "or paste the text instead.",
+
         _ => "This file could not be read."
     };
 }

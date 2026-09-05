@@ -33,6 +33,11 @@ public static class DocumentExtractionOutcomes
     // about us rather than about the document — the file may be perfectly
     // readable, and resending is the right advice.
     public const string Busy = "busy";
+    // #239: OCR was configured and tried on an image-only PDF, but the service
+    // errored or timed out. Transient and about us, like Busy — never tell a
+    // clinician a readable fax is unreadable — so 503 and "try again", not a
+    // 422 refusal of the file.
+    public const string OcrUnavailable = "ocr-unavailable";
 }
 
 internal sealed record DocumentExtractionResult(
@@ -47,6 +52,12 @@ internal sealed record DocumentExtractionResult(
     bool TrackedChangesResolved = false)
 {
     internal static DocumentExtractionResult Refused(string outcome) => new(outcome, null, null, null);
+
+    // #239: a refusal that still carries the page count. no-text-layer uses it
+    // so the OCR fallback can enforce a page cap and record how many pages it
+    // read — the count comes from the parse, so this stays pure.
+    internal static DocumentExtractionResult Refused(string outcome, int? pageCount) =>
+        new(outcome, null, null, pageCount);
 
     internal static DocumentExtractionResult Extracted(
         string text,

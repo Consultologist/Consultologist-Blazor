@@ -143,8 +143,9 @@ public sealed class DocumentExtractions
         DocumentExtractionOutcomes.TooLarge => HttpStatusCode.RequestEntityTooLarge,
         // #241: not 422. The request was well-formed AND satisfiable — we
         // simply had no capacity, and 503 is the one status that says
-        // "try the same thing again".
-        DocumentExtractionOutcomes.Busy => HttpStatusCode.ServiceUnavailable,
+        // "try the same thing again". #239: an OCR outage is the same shape.
+        DocumentExtractionOutcomes.Busy or DocumentExtractionOutcomes.OcrUnavailable =>
+            HttpStatusCode.ServiceUnavailable,
         _ => HttpStatusCode.UnprocessableEntity
     };
 
