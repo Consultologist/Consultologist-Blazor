@@ -39,7 +39,10 @@ caller pattern — SATELLITE_CALLERS.md (#611).
 Since #654 an account may also link an **Epic** identity (`epic`),
 bound from the SMART panel as proof of Epic-account control — surfaced on
 the profile, never a sign-in credential, and (unlike LinkedIn) never an
-activation signal. Removing it never changes account status.
+activation signal. Removing it never changes account status. Since #662 the
+same is true of a **Cerner** (Oracle Health) identity (`cerner`) — the Epic
+link generalized to a second EHR over the shared SMART validator; identical
+posture (proof of control, never a credential, never activation).
 
 Since #615 the API can also reach **outward** as the signed-in clinician
 (On-Behalf-Of): an organisation account's own token is exchanged for a
