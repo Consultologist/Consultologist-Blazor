@@ -163,6 +163,11 @@ public static class IdentityProviders
     // proves Epic control, a different bar than the eligibility gate the
     // LinkedIn link / operator flip clears).
     public const string Epic = "epic";
+    // #662: the clinician's Cerner (Oracle Health) identity, bound from the
+    // SMART panel — the Epic provider generalized to a second EHR. Same posture
+    // as Epic: proof of control, never a bearer credential, never an activation
+    // signal.
+    public const string Cerner = "cerner";
 
     /// <summary>
     /// #654: which providers, when linked, activate a Pending account

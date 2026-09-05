@@ -237,6 +237,26 @@ resolution elsewhere. A health system is onboarded by adding its issuer
 here; production readiness also needs an https panel origin (the #190
 sequencing).
 
+## Cerner (Oracle Health) identity linking (`Auth/CernerIdTokenValidator.cs`, `AccountCerner.cs`, #662)
+
+The Epic linking above generalized to a second EHR: same SMART on FHIR
+flow, same shared validator (`SmartIdTokenValidator` — Epic and Cerner are
+its two config prefixes), the panel POSTs the id_token to
+`Account/Cerner/Link`, and `cerner` binds exactly as `epic` does —
+**never a sign-in credential, never an activation signal**, proof of
+control only.
+
+| Variable | Accepted values | Default | Required |
+|---|---|---|---|
+| `Cerner__ClientId` | The audience a Cerner id_token must carry — our registered Oracle Health app's client id (the sandbox/non-production id from the code Console) | — | yes (to accept Cerner links) |
+| `Cerner__AllowedIssuers` | Semicolon-separated Cerner issuers to trust. Cerner's issuer is **per-tenant** (`https://authorization.cerner.com/tenants/{id}/oidc/idsps/{id}/`), so this is the onboarded-tenant allowlist; the public sandbox tenant is `ec2458f2-1e24-41c8-b71b-0e701af7583d` (confirm the exact issuer from that sandbox's `.well-known/openid-configuration`) | — | yes (to accept Cerner links) |
+
+Same posture as Epic: public PKCE client (no secret), the allowlist is
+load-bearing (the engine fetches an issuer's JWKS only when it is listed),
+and a tenant is onboarded by adding its issuer here. Production also needs
+Cerner certification + per-customer tenant enablement (the code.cerner.com
+path) — the same org-gating as Epic.
+
 ## Email consult intake (`Email/*`, #158)
 
 Submit consults by email: a timer polls the dedicated shared mailbox via

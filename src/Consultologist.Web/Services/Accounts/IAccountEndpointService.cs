@@ -9,8 +9,9 @@ public interface IAccountEndpointService
     Task DisconnectLinkedInAsync();
 
     // #654: the Epic identity is linked from the SMART panel; the Profile
-    // only displays it and can disconnect it.
+    // only displays it and can disconnect it. #662: Cerner, the same shape.
     Task DisconnectEpicLinkAsync();
+    Task DisconnectCernerLinkAsync();
     Task SetDeliveryPasswordAsync(string password);
     Task ClearDeliveryPasswordAsync();
 

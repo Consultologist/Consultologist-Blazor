@@ -58,6 +58,7 @@ public class AccountStoreLinkOutcomeTests
     [Theory]
     [InlineData(IdentityProviders.LinkedIn, true)]
     [InlineData(IdentityProviders.Epic, false)]
+    [InlineData(IdentityProviders.Cerner, false)]
     [InlineData(IdentityProviders.EntraExternalId, false)]
     public void ActivatesAccount_IsLinkedInAlone(string provider, bool activates)
     {

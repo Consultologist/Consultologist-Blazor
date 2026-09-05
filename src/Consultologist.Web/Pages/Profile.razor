@@ -295,6 +295,52 @@
                 </div>
             </section>
 
+            @* #662: the Cerner (Oracle Health) identity — the Epic card for a
+               second EHR. Same posture: proof of control, linked from the SMART
+               panel, shown and disconnected here. *@
+            <section class="content-card cerner-card">
+                <div class="form-stack">
+                    <h2 class="panel-title">
+                        Cerner (Oracle Health) identity
+                    </h2>
+
+                    <p class="panel-description">
+                        When you open Consultologist from Cerner, your Cerner identity is linked here as
+                        proof it belongs to you. Cerner is never used to sign in, and linking it does
+                        not by itself activate the account. Linking happens in the Cerner panel; you can
+                        remove it here.
+                    </p>
+
+                    @if (cernerMessage != null)
+                    {
+                        <FluentMessageBar Intent="@cernerMessageIntent">@cernerMessage</FluentMessageBar>
+                    }
+
+                    @if (CernerIdentity != null)
+                    {
+                        <div class="state-panel">
+                            <span class="muted-text">Linked Cerner identity</span>
+                            <strong>@(CernerIdentity.DisplayName ?? "Cerner Practitioner")</strong>
+                            <span class="muted-text">Linked @CernerIdentity.LinkedAt.ToString("yyyy-MM-dd")</span>
+                        </div>
+
+                        <div class="action-row">
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Disabled="@cernerDisconnectInProgress"
+                                          @onclick="DisconnectCernerAsync">
+                                @(cernerDisconnectArmed ? "Confirm disconnect" : "Disconnect")
+                            </FluentButton>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="state-panel">
+                            <span class="muted-text">No Cerner identity linked. Open Consultologist from Cerner to link one.</span>
+                        </div>
+                    }
+                </div>
+            </section>
+
             @* #515: the location — where the app sends data and reads the
                account. Kept on this device; empty until chosen, and the
                unchosen line says which location is used meanwhile. *@
@@ -1072,6 +1118,17 @@
     private bool epicDisconnectInProgress;
     private string? epicMessage;
     private MessageIntent epicMessageIntent = MessageIntent.Info;
+
+    // #662: the Cerner (Oracle Health) identity — the Epic accessor for a second
+    // EHR. Same posture: proof of control, never a sign-in credential, never an
+    // activation signal.
+    private AccountIdentity? CernerIdentity =>
+        account?.LinkedIdentities.FirstOrDefault(identity =>
+            string.Equals(identity.Provider, "cerner", StringComparison.Ordinal));
+    private bool cernerDisconnectArmed;
+    private bool cernerDisconnectInProgress;
+    private string? cernerMessage;
+    private MessageIntent cernerMessageIntent = MessageIntent.Info;
 
     private string[] VerifiedCategoryLabels =>
         (LinkedInIdentity?.VerifiedCategories ?? string.Empty)
@@ -2370,6 +2427,41 @@
         {
             epicDisconnectArmed = false;
             epicDisconnectInProgress = false;
+        }
+    }
+
+    private async Task DisconnectCernerAsync()
+    {
+        if (!cernerDisconnectArmed)
+        {
+            cernerDisconnectArmed = true;
+            cernerMessage = "Disconnecting removes the Cerner identity link from this account.";
+            cernerMessageIntent = MessageIntent.Warning;
+            return;
+        }
+
+        cernerDisconnectInProgress = true;
+
+        try
+        {
+            await AccountService.DisconnectCernerLinkAsync();
+            await LoadAccountAsync();
+            cernerMessage = "Cerner identity disconnected.";
+            cernerMessageIntent = MessageIntent.Success;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            cernerMessage = $"Unable to disconnect Cerner: {ex.Message}";
+            cernerMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            cernerDisconnectArmed = false;
+            cernerDisconnectInProgress = false;
         }
     }
 

@@ -148,12 +148,14 @@ builder.Services.AddSingleton<ILinkedInTokenClient, LinkedInTokenClient>();
 builder.Services.AddSingleton<ILinkedInIdTokenValidator, LinkedInIdTokenValidator>();
 // #654: the Epic SMART id_token validator for the identity-link flow.
 builder.Services.AddSingleton<IEpicIdTokenValidator, EpicIdTokenValidator>();
+builder.Services.AddSingleton<ICernerIdTokenValidator, CernerIdTokenValidator>();
 builder.Services.AddSingleton<ILinkedInVerificationClient, LinkedInVerificationClient>();
 builder.Services.AddSingleton<ILinkedInLinkService, LinkedInLinkService>();
 builder.Services.AddScoped<IAccountAuthorizer, AccountAuthorizer>();
 builder.Services.AddScoped<Account>();
 builder.Services.AddScoped<AccountLinkedIn>();
 builder.Services.AddScoped<AccountEpic>();
+builder.Services.AddScoped<AccountCerner>();
 builder.Services.AddScoped<Diagnostics>();
 builder.Services.AddSingleton<IAccountRateLimiter, TableAccountRateLimiter>();
 builder.Services.AddSingleton<IConsultGenerationJobStarter, ConsultGenerationJobStarter>();
