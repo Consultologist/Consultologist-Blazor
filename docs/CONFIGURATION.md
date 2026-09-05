@@ -429,7 +429,10 @@ integration) via `DefaultAzureCredential`. Entra ID authentication requires
 the resource's **custom-subdomain** endpoint (a regional endpoint does not
 accept token credentials), which is why the endpoint above is the
 `<resource>.cognitiveservices.azure.com` form. Grant the identity **Cognitive
-Services Data Reader** on the resource (sufficient for analyze-only).
+Services User** on the resource — `analyze` is a data *action*, not a read, so
+the read-only Data Reader role is refused (verified live, #239); User's
+`Microsoft.CognitiveServices/*` data actions cover it, and it is the same role
+the Foundry integration uses.
 
 **Subprocessor and residency.** Enabling OCR makes Document Intelligence a PHI
 subprocessor: document bytes are sent to it for analysis. Nothing new is
