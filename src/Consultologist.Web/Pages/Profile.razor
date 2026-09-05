@@ -702,6 +702,74 @@
                 </div>
             </section>
 
+            @* #239: OCR confidence gate for scanned/faxed PDFs. On by default —
+               a scan's text is the riskiest input, so the account opts OUT, not
+               in. The state line says what the policy does; a save is refused by
+               name for a bad percent. *@
+            <section class="content-card ocr-confidence-card">
+                <div class="form-stack">
+                    <h2 class="panel-title">
+                        Scanned PDF confidence
+                    </h2>
+
+                    <p class="panel-description">
+                        A scanned or faxed PDF has no text layer, so it is read by OCR. This sets
+                        the minimum confidence OCR must reach before that text is accepted — below
+                        it, the scan is refused and you are asked to paste the text instead, so a
+                        doubtful read never becomes a consult. Turn the check off to accept every
+                        readable scan whatever its confidence.
+                    </p>
+
+                    @if (ocrMessage != null)
+                    {
+                        <FluentMessageBar Intent="@ocrMessageIntent" AllowDismiss="false" Class="ocr-confidence-message">
+                            @ocrMessage
+                        </FluentMessageBar>
+                    }
+
+                    <div class="state-panel">
+                        <span class="muted-text">Minimum OCR confidence</span>
+                        <strong class="ocr-confidence-state">@OcrConfidencePreference.Describe(ocrGateEnabled, ocrSavedPercent)</strong>
+                    </div>
+
+                    <div class="action-row">
+                        <input type="number"
+                               min="@OcrConfidencePreference.MinPercent"
+                               max="@OcrConfidencePreference.MaxPercent"
+                               class="node-field__input ocr-confidence-input"
+                               value="@ocrPercentInput"
+                               @onchange="args => ocrPercentInput = args.Value?.ToString() ?? string.Empty"
+                               disabled="@(ocrRequestInProgress || !ocrGateEnabled)"
+                               placeholder="Percent"
+                               aria-label="Minimum OCR confidence percent" />
+                        <FluentButton Appearance="Appearance.Accent"
+                                      Class="ocr-confidence-save"
+                                      Disabled="@(ocrRequestInProgress || !ocrGateEnabled || string.IsNullOrWhiteSpace(ocrPercentInput))"
+                                      @onclick="SaveOcrConfidenceAsync">
+                            Save
+                        </FluentButton>
+                        @if (ocrGateEnabled)
+                        {
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Class="ocr-confidence-off"
+                                          Disabled="@ocrRequestInProgress"
+                                          @onclick="() => SetOcrGateAsync(false)">
+                                Turn off checking
+                            </FluentButton>
+                        }
+                        else
+                        {
+                            <FluentButton Appearance="Appearance.Accent"
+                                          Class="ocr-confidence-on"
+                                          Disabled="@ocrRequestInProgress"
+                                          @onclick="() => SetOcrGateAsync(true)">
+                                Turn on checking
+                            </FluentButton>
+                        }
+                    </div>
+                </div>
+            </section>
+
             @* #552: what the account has spent — the derived usage store,
                numbers only. Empty until the first completed run after it
                shipped, and says so; per-consult figures live in History. *@
@@ -1066,6 +1134,7 @@
         await LoadEmailPdfAsync();
         await LoadFormsModeAsync();
         await LoadRetentionAsync();
+        await LoadOcrConfidenceAsync();
         await LoadUsageAsync();
         await LoadSignaturesAsync();
         await LoadSnippetsAsync();
@@ -1579,6 +1648,107 @@
         finally
         {
             retentionRequestInProgress = false;
+        }
+    }
+
+    // #239: the OCR confidence gate. Default ON — ocrGateEnabled starts true so
+    // the card reflects the server's default before any save.
+    private bool ocrGateEnabled = true;
+    private int? ocrSavedPercent;
+    private string ocrPercentInput = OcrConfidencePreference.DefaultPercent.ToString();
+    private bool ocrRequestInProgress;
+    private string? ocrMessage;
+    private MessageIntent ocrMessageIntent = MessageIntent.Info;
+
+    private async Task LoadOcrConfidenceAsync()
+    {
+        try
+        {
+            var gate = await AccountService.GetSettingAsync(OcrConfidencePreference.GateKey);
+            var min = await AccountService.GetSettingAsync(OcrConfidencePreference.MinKey);
+            ocrGateEnabled = OcrConfidencePreference.GateEnabled(gate?.Value);
+            ocrSavedPercent = OcrConfidencePreference.ParsePercent(min?.Value);
+            // The input prefills with the effective percent, so the field shows
+            // the default (80) rather than blank on an account that never set it.
+            ocrPercentInput = OcrConfidencePreference.EffectivePercent(min?.Value).ToString();
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch
+        {
+            ocrGateEnabled = true;
+            ocrSavedPercent = null;
+        }
+    }
+
+    private async Task SaveOcrConfidenceAsync()
+    {
+        var percent = OcrConfidencePreference.ParsePercent(ocrPercentInput);
+        if (percent == null || !OcrConfidencePreference.InRange(percent.Value))
+        {
+            ocrMessage = $"The minimum must be a whole number between {OcrConfidencePreference.MinPercent} and {OcrConfidencePreference.MaxPercent}.";
+            ocrMessageIntent = MessageIntent.Error;
+            return;
+        }
+
+        ocrRequestInProgress = true;
+
+        try
+        {
+            await AccountService.SaveSettingAsync(
+                OcrConfidencePreference.MinKey, OcrConfidencePreference.StorePercent(percent.Value), OcrConfidencePreference.ContentType);
+            // Saving a minimum implies the check is on; ensure the gate is set,
+            // so a Save from a freshly-turned-on card is coherent.
+            await AccountService.SaveSettingAsync(
+                OcrConfidencePreference.GateKey, OcrConfidencePreference.StoreGate(true), OcrConfidencePreference.ContentType);
+            ocrGateEnabled = true;
+            ocrSavedPercent = percent;
+            ocrMessage = $"Scans below {percent}% OCR confidence will be refused.";
+            ocrMessageIntent = MessageIntent.Success;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            ocrMessage = ex.Message;
+            ocrMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            ocrRequestInProgress = false;
+        }
+    }
+
+    private async Task SetOcrGateAsync(bool enabled)
+    {
+        ocrRequestInProgress = true;
+
+        try
+        {
+            await AccountService.SaveSettingAsync(
+                OcrConfidencePreference.GateKey, OcrConfidencePreference.StoreGate(enabled), OcrConfidencePreference.ContentType);
+            ocrGateEnabled = enabled;
+            ocrMessage = enabled
+                ? $"Scanned PDFs will be checked; those below {OcrConfidencePreference.EffectivePercent(ocrSavedPercent?.ToString())}% OCR confidence are refused."
+                : "Checking is off. Every readable scan is accepted, whatever its OCR confidence.";
+            ocrMessageIntent = MessageIntent.Success;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception ex)
+        {
+            ocrMessage = ex.Message;
+            ocrMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            ocrRequestInProgress = false;
         }
     }
 
