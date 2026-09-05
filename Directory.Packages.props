@@ -25,6 +25,9 @@
     <PackageVersion Include="Azure.AI.Extensions.OpenAI" Version="2.0.0" />
     <PackageVersion Include="Azure.AI.Projects" Version="2.0.1" />
     <PackageVersion Include="Azure.AI.Projects.Agents" Version="2.0.0" />
+    <!-- #239: OCR for image-only PDFs via Azure AI Document Intelligence
+         (prebuilt-read). Managed-identity auth; no native assets. -->
+    <PackageVersion Include="Azure.AI.DocumentIntelligence" Version="1.0.0" />
     <PackageVersion Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.15.0" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.15.0" />
     <PackageVersion Include="Microsoft.ApplicationInsights.WorkerService" Version="2.23.0" />

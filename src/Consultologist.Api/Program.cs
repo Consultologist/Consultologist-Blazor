@@ -82,6 +82,9 @@ builder.Services.AddSingleton(_ =>
         : OutputContractCatalog.LoadFromRegistryAsync(new Uri(publicUri), pin).GetAwaiter().GetResult();
 });
 builder.Services.AddScoped<AgentSectionGenerator>();
+// #239: OCR for image-only PDFs. Singleton so the Document Intelligence client
+// is built once and reused; off unless DocumentExtraction__OcrEndpoint is set.
+builder.Services.AddSingleton<Consultologist.Api.Documents.IDocumentOcr, Consultologist.Api.Documents.AzureDocumentIntelligenceOcr>();
 builder.Services.AddSingleton<IBearerTokenValidator, BearerTokenValidator>();
 builder.Services.AddSingleton<IAccountStore, AccountStore>();
 builder.Services.AddSingleton<IAccountSettingsStore, AccountSettingsStore>();
