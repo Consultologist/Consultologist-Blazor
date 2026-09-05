@@ -148,7 +148,7 @@ internal static class DocumentExtraction
     /// environment without a deploy. Over the cap is a skip, not a truncation —
     /// the project never reads half a document (§ 4).
     /// </summary>
-    internal static int OcrMaxPages { get; } =
+    internal static int OcrMaxPages =>
         int.TryParse(Environment.GetEnvironmentVariable("DocumentExtraction__OcrMaxPages"), out var ocrPages)
         && ocrPages > 0
             ? ocrPages

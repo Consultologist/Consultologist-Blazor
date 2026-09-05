@@ -346,6 +346,156 @@ public class DocumentExtractionTests
         Assert.InRange(DocumentExtraction.MaxConcurrentParses, 1, 15);
     }
 
+    // ---- ocr for image-only PDFs (#239) --------------------------------
+    //
+    // OCR is the one impure reader, so it is exercised through ExtractAsync
+    // with a fake IDocumentOcr — never a cloud call. A fresh permitful
+    // semaphore keeps these off the production ParseGate.
+
+    private sealed class FakeDocumentOcr : IDocumentOcr
+    {
+        private readonly DocumentOcrResult _result;
+
+        private FakeDocumentOcr(DocumentOcrResult result, bool isConfigured)
+        {
+            _result = result;
+            IsConfigured = isConfigured;
+        }
+
+        public bool IsConfigured { get; }
+
+        public bool Invoked { get; private set; }
+
+        public Task<DocumentOcrResult> ReadAsync(byte[] pdfBytes, int? pageCount, CancellationToken cancellationToken)
+        {
+            Invoked = true;
+            return Task.FromResult(_result);
+        }
+
+        public static FakeDocumentOcr Returning(
+            DocumentOcrStatus status, string? text = null, string? extractorId = null, bool isConfigured = true) =>
+            new(new DocumentOcrResult(status, text, extractorId), isConfigured);
+    }
+
+    private static async Task<DocumentExtractionResult> ExtractWithOcrAsync(byte[] bytes, IDocumentOcr? ocr)
+    {
+        using var gate = new SemaphoreSlim(1, 1);
+        return await DocumentExtraction.ExtractAsync(bytes, TimeSpan.Zero, gate, CancellationToken.None, ocr);
+    }
+
+    [Fact]
+    public async Task ImageOnlyPdf_WithConfiguredOcr_IsExtractedWithDocintelProvenance()
+    {
+        var ocr = FakeDocumentOcr.Returning(
+            DocumentOcrStatus.Extracted, "Referral: 65M, stage IIIA.", "docintel/1.0.0+abc12345");
+
+        var result = await ExtractWithOcrAsync(ImageOnlyPdf(), ocr);
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.Equal("Referral: 65M, stage IIIA.", result.Text);
+        // Provenance says the consult came from an OCR'd scan, not the parser.
+        Assert.StartsWith("docintel/", result.ExtractorId);
+        Assert.NotNull(result.PageCount);
+        Assert.True(ocr.Invoked);
+    }
+
+    [Fact]
+    public async Task ImageOnlyPdf_WithNoOcr_IsStillNoTextLayer()
+    {
+        // The pre-#239 behaviour: no OCR wired, the scan stays no-text-layer.
+        var result = await ExtractWithOcrAsync(ImageOnlyPdf(), ocr: null);
+
+        Assert.Equal(DocumentExtractionOutcomes.NoTextLayer, result.Outcome);
+    }
+
+    [Fact]
+    public async Task ImageOnlyPdf_WithUnconfiguredOcr_IsNoTextLayerAndNeverCallsTheService()
+    {
+        var ocr = FakeDocumentOcr.Returning(DocumentOcrStatus.Extracted, "unused", isConfigured: false);
+
+        var result = await ExtractWithOcrAsync(ImageOnlyPdf(), ocr);
+
+        Assert.Equal(DocumentExtractionOutcomes.NoTextLayer, result.Outcome);
+        Assert.False(ocr.Invoked);
+    }
+
+    [Fact]
+    public async Task WhenOcrIsUnavailable_TheOutcomeIsOcrUnavailableRatherThanBlamingTheFile()
+    {
+        var ocr = FakeDocumentOcr.Returning(DocumentOcrStatus.Unavailable);
+
+        var result = await ExtractWithOcrAsync(ImageOnlyPdf(), ocr);
+
+        Assert.Equal(DocumentExtractionOutcomes.OcrUnavailable, result.Outcome);
+        Assert.Null(result.Text);
+    }
+
+    [Fact]
+    public async Task WhenOcrFindsNoText_TheOutcomeIsEmpty()
+    {
+        var ocr = FakeDocumentOcr.Returning(DocumentOcrStatus.Empty);
+
+        var result = await ExtractWithOcrAsync(ImageOnlyPdf(), ocr);
+
+        Assert.Equal(DocumentExtractionOutcomes.Empty, result.Outcome);
+    }
+
+    [Fact]
+    public async Task WhenOcrReturnsOnlyWhitespace_ItFoldsToEmptyThroughNormalize()
+    {
+        var ocr = FakeDocumentOcr.Returning(DocumentOcrStatus.Extracted, "   \n\t  ", "docintel/1.0.0");
+
+        var result = await ExtractWithOcrAsync(ImageOnlyPdf(), ocr);
+
+        Assert.Equal(DocumentExtractionOutcomes.Empty, result.Outcome);
+    }
+
+    [Fact]
+    public async Task ATextPdf_IsReadByTheParserAndNeverReachesOcr()
+    {
+        // The cost + correctness guard: OCR fires only on no-text-layer, so a
+        // PDF that already has a text layer is never sent (and never billed).
+        var ocr = FakeDocumentOcr.Returning(DocumentOcrStatus.Extracted, "SHOULD NOT BE USED", "docintel/1.0.0");
+
+        var result = await ExtractWithOcrAsync(TextPdf(Referral), ocr);
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.StartsWith("pdfpig/", result.ExtractorId);
+        Assert.False(ocr.Invoked);
+    }
+
+    [Fact]
+    public async Task ARefusalThatIsNotNoTextLayer_NeverReachesOcr()
+    {
+        // A blank PDF (no glyphs AND no images) is empty, not a scan — it must
+        // not be sent to OCR.
+        var ocr = FakeDocumentOcr.Returning(DocumentOcrStatus.Extracted, "unused", "docintel/1.0.0");
+
+        var result = await ExtractWithOcrAsync(BlankPdf(1), ocr);
+
+        Assert.Equal(DocumentExtractionOutcomes.Empty, result.Outcome);
+        Assert.False(ocr.Invoked);
+    }
+
+    [Fact]
+    public async Task AnImageOnlyPdfOverTheOcrPageCap_DegradesToNoTextLayerAndSkipsOcr()
+    {
+        var ocr = FakeDocumentOcr.Returning(DocumentOcrStatus.Extracted, "unused", "docintel/1.0.0");
+        Environment.SetEnvironmentVariable("DocumentExtraction__OcrMaxPages", "1");
+
+        try
+        {
+            var result = await ExtractWithOcrAsync(ImageOnlyPdf(pages: 2), ocr);
+
+            Assert.Equal(DocumentExtractionOutcomes.NoTextLayer, result.Outcome);
+            Assert.False(ocr.Invoked);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DocumentExtraction__OcrMaxPages", null);
+        }
+    }
+
     // ---- html (#655) ---------------------------------------------------
 
     [Fact]
@@ -671,7 +821,8 @@ public class DocumentExtractionTests
             DocumentExtractionOutcomes.TooManyPages,
             DocumentExtractionOutcomes.TooMuchText,
             DocumentExtractionOutcomes.TimedOut,
-            DocumentExtractionOutcomes.Busy
+            DocumentExtractionOutcomes.Busy,
+            DocumentExtractionOutcomes.OcrUnavailable
         ];
 
         foreach (var outcome in outcomes)
@@ -773,7 +924,7 @@ public class DocumentExtractionTests
     /// fax looks like. The image is a 1x1 JPEG inline rather than a checked-in
     /// file, keeping to this suite's no-committed-binaries convention.
     /// </summary>
-    private static byte[] ImageOnlyPdf()
+    private static byte[] ImageOnlyPdf(int pages = 1)
     {
         const string OnePixelJpeg =
             "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a"
@@ -781,11 +932,13 @@ public class DocumentExtractionTests
             + "AAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==";
 
         var document = new PdfDocument();
-        var page = document.AddPage();
+        var jpeg = Convert.FromBase64String(OnePixelJpeg);
 
-        using (var gfx = XGraphics.FromPdfPage(page))
-        using (var image = XImage.FromStream(new MemoryStream(Convert.FromBase64String(OnePixelJpeg))))
+        for (var i = 0; i < pages; i++)
         {
+            var page = document.AddPage();
+            using var gfx = XGraphics.FromPdfPage(page);
+            using var image = XImage.FromStream(new MemoryStream(jpeg));
             gfx.DrawImage(image, 50, 50, 400, 500);
         }
 
@@ -893,7 +1046,8 @@ public class DocumentExtractionTests
         DocumentExtractionOutcomes.ExpandsTooLarge,
         DocumentExtractionOutcomes.TooMuchText,
         DocumentExtractionOutcomes.TimedOut,
-        DocumentExtractionOutcomes.Busy
+        DocumentExtractionOutcomes.Busy,
+        DocumentExtractionOutcomes.OcrUnavailable
     ];
 
     /// <summary>
