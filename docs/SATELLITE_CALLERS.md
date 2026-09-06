@@ -10,8 +10,8 @@ user tokens enter the API.
 ## 1. What a satellite is
 
 A satellite is a separate application — a SMART on FHIR panel, a Zoom app,
-a Dragon workflow step — that calls this API **as the signed-in
-clinician**. It has its own app registration and presents a delegated
+a Dragon workflow step, a Microsoft 365 Copilot agent — that calls this API
+**as the signed-in clinician**. It has its own app registration and presents a delegated
 `access_as_user` bearer for that clinician; it never presents its own
 identity. Machine callers get a designed path or none: an app-only
 (client-credentials) token is refused by name before the scope check
@@ -28,6 +28,16 @@ token INTO this API, On-Behalf-Of carries the clinician's delegation OUT
 of it — the engine exchanging the incoming bearer for a downstream Graph
 token (CONFIGURATION.md, On-Behalf-Of). Inward and outward are the same
 posture: always the signed-in clinician, never a machine identity.
+
+A **Microsoft 365 Copilot agent** (#663 spike, GO) is a designed satellite of
+this exact shape and needs **no new engine surface**: an M365 Agents-SDK agent
+signs the clinician in (Teams/M365 SSO) and, via On-Behalf-Of, exchanges that
+token for a delegated `access_as_user` bearer to call the existing doors
+(`DocumentExtractions`, `ConsultGenerationJobs`); results are fetched, not
+pushed. It is admitted identically to the SPA and the EHR panels (#610 still
+refuses app-only). Its own build lands in a separate repo; its publishing —
+an M365 admin approving it and consenting to `access_as_user` — is #554's
+activation door. Full record: `docs/COPILOT_AGENT_SPIKE.md`.
 
 ## 2. The pattern, normative (part a)
 
