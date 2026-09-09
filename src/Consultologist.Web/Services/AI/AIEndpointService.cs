@@ -484,7 +484,12 @@ public record ConsultGenerationRequest(
     Dictionary<string, ConsultInputFormRef>? InputFormRefs = null,
     // v12 § 3 (#621): mirrors the API record's trailing member — the ids
     // whose value deviates from the manifest default.
-    Dictionary<string, bool>? MacroChoices = null);
+    Dictionary<string, bool>? MacroChoices = null,
+    // #613/#671: mirrors the API record's trailing member — the file slots
+    // whose supplied documents are transcripts. The setup form does not send
+    // it (the SPA has no transcript intake); the Zoom satellite, a separate
+    // client, is what populates it. Kept here so the mirror stays faithful.
+    IReadOnlyCollection<string>? TranscriptInputs = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultInputRef.</summary>
 public sealed record ConsultInputRef(string JobId, string ResultId);
