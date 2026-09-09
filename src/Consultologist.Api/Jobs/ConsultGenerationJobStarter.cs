@@ -1748,6 +1748,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     request, null, takesOne, null, ConsultGenerationJobStartError.InputsMismatch, SenderSafeError: takesOne);
             }
 
+            // #613/#671: a slot the caller marked a transcript stamps that
+            // origin for every element it holds; every other file is a
+            // document. Only the label changes — the observed digests,
+            // extractor and page count below are computed identically.
+            var kind = request.TranscriptInputs?.Contains(id) == true
+                ? ConsultInputOriginKinds.Transcript
+                : ConsultInputOriginKinds.Document;
+
             var texts = new List<ConsultInputValue>(documents.Count);
             var slotOrigins = new List<ConsultInputOrigin>(documents.Count);
             var total = 0;
@@ -1794,7 +1802,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // hashes the record carries for one document are the file and
                 // exactly the bytes the input hash saw for it.
                 slotOrigins.Add(new ConsultInputOrigin(
-                    ConsultInputOriginKinds.Document,
+                    kind,
                     result.ExtractorId,
                     result.PageCount,
                     result.TrackedChangesResolved,
@@ -1814,9 +1822,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // inline limit. Leaving the bytes on would put every attached document
         // at rest with no retention story, contradicting the promise that
         // extraction keeps them transient (docs/DOCUMENT_INPUT.md § 5).
-        // Nothing downstream needs them: the text is in Inputs.
+        // Nothing downstream needs them: the text is in Inputs. #613/#671:
+        // TranscriptInputs is cleared for the same reason InputFormRefs is —
+        // it has done its work here (the transcript origins are stamped) and
+        // must not ride the durable payload a sleeping instance re-reads.
         return new InputFileExtraction(
-            request with { Inputs = inputs, InputFiles = null },
+            request with { Inputs = inputs, InputFiles = null, TranscriptInputs = null },
             origins,
             null,
             null);

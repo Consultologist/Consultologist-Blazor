@@ -54,7 +54,16 @@ public record ConsultGenerationRequest(
     // package decides what a formless run does, every door. Never enters
     // effectiveInputHash (the hash covers supplied inputs only — that is the
     // construct's point). Appended last, same reason as everything above.
-    Dictionary<string, bool>? MacroChoices = null);
+    Dictionary<string, bool>? MacroChoices = null,
+    // #613/#671: the file slots whose supplied documents are transcripts
+    // rather than referral documents — a caller assertion BESIDE the value
+    // (like InputFormRefs), but needing no verification because the bytes ride
+    // InputFiles inline, with nothing external to resolve. A slot named here
+    // must appear in InputFiles; its extracted elements stamp the `transcript`
+    // origin (ConsultInputOriginKinds.Transcript) instead of `document`.
+    // Cleared once origins are stamped, so it never rides the durable payload
+    // (the InputFiles/InputFormRefs precedent). Appended last, wire-compat.
+    IReadOnlyCollection<string>? TranscriptInputs = null);
 
 /// <summary>#510: one deliverable of one of the account's completed runs.</summary>
 public sealed record ConsultInputRef(string JobId, string ResultId);
@@ -139,6 +148,18 @@ public static class ConsultInputOriginKinds
     // answer coerced by the declaration). Observed like PreviousRun; an
     // edited value is typed text and carries no origin. #540 records it.
     public const string FormResponse = "form-response";
+
+    // #613/#671 (provenance@v2026.09.6): an uploaded file the caller declared
+    // to be a meeting transcript — a satellite (docs/ZOOM_SATELLITE_SPIKE.md)
+    // fetches a speaker-labeled transcript as the signed-in clinician and
+    // submits it like any document. Its server-observed fields are a
+    // Document's (Extractor, PageCount, FileSha256, TextSha256); only this
+    // label differs, and it is the submitter's assertion, not something the
+    // server observed — whether a text is a clinical transcript cannot be read
+    // from its bytes. So a transcript and a document carrying identical text
+    // have equal effectiveInputHash and differ only here. Recorded beside the
+    // hash, like every kind above.
+    public const string Transcript = "transcript";
 }
 
 public record ConsultGenerationJobStartResponse(

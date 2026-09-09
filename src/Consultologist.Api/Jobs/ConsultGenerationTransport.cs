@@ -1404,6 +1404,27 @@ public sealed class ConsultGenerationJobs
             }
         }
 
+        // #613/#671: a transcript marker is an assertion BESIDE a file in
+        // InputFiles — it names which supplied documents are transcripts, so
+        // every id must be a file slot. A blank or unmatched id is refused the
+        // way a form reference without a value is; the id is an authored input
+        // id, never a filename, so it is safe to name.
+        if (request.TranscriptInputs is { Count: > 0 })
+        {
+            foreach (var id in request.TranscriptInputs)
+            {
+                if (string.IsNullOrWhiteSpace(id))
+                {
+                    return "TranscriptInputs contains a blank id.";
+                }
+
+                if (request.InputFiles?.ContainsKey(id) != true)
+                {
+                    return $"Input '{id}' is marked a transcript but was not supplied as a file.";
+                }
+            }
+        }
+
         if (hasInputs)
         {
             foreach (var (id, value) in request.Inputs!)
