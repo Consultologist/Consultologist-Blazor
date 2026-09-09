@@ -129,7 +129,10 @@ the Commercial Marketplace** (Teams Store validation via Partner Center).
 
 **This is exactly #554's "marketplace as the activation door"** — a per-tenant
 activation and commercial chokepoint, layered on top of per-clinician delegated
-identity at runtime. #663 and #554 should be planned together at build time.
+identity at runtime. #663 and #554 should be planned together at build time. #554's
+spike is now recorded in `docs/MARKETPLACE_ACTIVATION_SPIKE.md` (GO; an
+additional, org-only activation signal beside LinkedIn); the agent-distribution
+half is `consultologist-copilot-agent#6`.
 
 - Manage agent requests/consent: https://learn.microsoft.com/microsoft-365/admin/manage/agent-requests
 - Publish to Teams Store/AppSource: https://learn.microsoft.com/microsoftteams/platform/concepts/deploy-and-publish/appsource/publish
