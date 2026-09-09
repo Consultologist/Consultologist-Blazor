@@ -132,7 +132,11 @@ designed, not built — and the #613 spike (`docs/ZOOM_SATELLITE_SPIKE.md`)
 recommends it **stay** unbuilt: the Zoom satellite fetches the transcript with a
 delegated token (§ 5, poll/SSE) and submits it as the clinician, so it needs no
 external-identity binding and no inbound webhook. The binding here is built only
-when a spike genuinely demands a push/subject-resolved payload.
+when a spike genuinely demands a push/subject-resolved payload. The **Dragon
+workflow step** (§ 1) is the same story — the #614 spike
+(`docs/DRAGON_COPILOT_SPIKE.md`) recommends a Dragon "AI apps and agents"
+extension that calls this API as the clinician (Entra delegated token) and fetches
+letters over the read doors; no `dragon` provider, no binding, no push.
 
 
 A satellite-borne payload — a Zoom transcript webhook, an Epic launch
