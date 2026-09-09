@@ -128,7 +128,11 @@ launch-context resolution. Cerner (#662) was the Epic pattern generalized
 to a second EHR — the validator became shared, the store/`Account/Me` were
 already provider-parameterized, so it was mostly a new prefix + a thin
 `AccountCerner` endpoint + a Profile card. The `zoom` provider remains
-designed, not built.
+designed, not built — and the #613 spike (`docs/ZOOM_SATELLITE_SPIKE.md`)
+recommends it **stay** unbuilt: the Zoom satellite fetches the transcript with a
+delegated token (§ 5, poll/SSE) and submits it as the clinician, so it needs no
+external-identity binding and no inbound webhook. The binding here is built only
+when a spike genuinely demands a push/subject-resolved payload.
 
 
 A satellite-borne payload — a Zoom transcript webhook, an Epic launch
