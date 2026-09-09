@@ -2322,6 +2322,87 @@ public class ConsultGenerationJobStarterTests
         Assert.Null(captured.Initialize.InputOrigins);
     }
 
+    // ----- #613/#671: a file the caller marked a transcript -----
+
+    [Fact]
+    public async Task ATranscriptMarkedSlot_IsReadLikeADocument_ButRecordedAsATranscript()
+    {
+        var request = new ConsultGenerationRequest(
+            null,
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
+            {
+                ["consult_draft"] = [new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))]
+            },
+            TranscriptInputs: new[] { "consult_draft" });
+
+        var captured = await StartV7AndCaptureAsync(request);
+
+        Assert.Null(captured.Outcome.Error);
+        var origin = Assert.Single(Assert.Contains("consult_draft", captured.Initialize!.InputDocumentOrigins));
+        Assert.Equal(ConsultInputOriginKinds.Transcript, origin.Kind);
+        // The server-observed fields are exactly a document's — only the label
+        // differs, and it is the caller's assertion, not something observed.
+        Assert.Equal("text/1", origin.Extractor);
+        Assert.NotNull(origin.FileSha256);
+        Assert.NotNull(origin.TextSha256);
+        // The marker has done its work and does not ride the durable payload.
+        Assert.Null(captured.OrchestrationInput!.Request.TranscriptInputs);
+    }
+
+    [Fact]
+    public async Task ATranscript_HashesLikeTheSameTextAsADocument_DifferingOnlyInOrigin()
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(Referral);
+        ConsultGenerationRequest Make(bool asTranscript) => new(
+            null,
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
+            {
+                ["consult_draft"] = [new("text/plain", bytes)]
+            },
+            TranscriptInputs: asTranscript ? new[] { "consult_draft" } : null);
+
+        var asDocument = await StartV7AndCaptureAsync(Make(false));
+        var asTranscript = await StartV7AndCaptureAsync(Make(true));
+
+        Assert.Null(asDocument.Outcome.Error);
+        Assert.Null(asTranscript.Outcome.Error);
+        // Origin is recorded beside the effective-input hash, never inside it:
+        // identical text, identical hash — only the recorded kind differs.
+        Assert.Equal(
+            asDocument.OrchestrationInput!.EffectiveInputHash,
+            asTranscript.OrchestrationInput!.EffectiveInputHash);
+        Assert.Equal(ConsultInputOriginKinds.Document, Assert.Single(asDocument.Initialize!.InputDocumentOrigins!["consult_draft"]).Kind);
+        Assert.Equal(ConsultInputOriginKinds.Transcript, Assert.Single(asTranscript.Initialize!.InputDocumentOrigins!["consult_draft"]).Kind);
+    }
+
+    [Fact]
+    public void TheTranscriptKind_IsTheKebabWord()
+    {
+        // #613/#671: the registry grammar's word (provenance@v2026.09.6), verbatim.
+        Assert.Equal("transcript", ConsultInputOriginKinds.Transcript);
+    }
+
+    [Fact]
+    public void TheTranscriptMarkerShape_IsCheckedAtTheDoor()
+    {
+        // A transcript marker names which file slots are transcripts, so every
+        // id must be a file slot; a blank or unmatched id is a 400 here, like a
+        // form reference without a value.
+        Assert.Contains("was not supplied as a file", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = ConsultInputValue.OfText(Referral) },
+            TranscriptInputs: new[] { "consult_draft" })));
+        Assert.Contains("blank id", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null,
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))] },
+            TranscriptInputs: new[] { " " })));
+        // A marker that names its file slot is well formed.
+        Assert.Null(ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null,
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))] },
+            TranscriptInputs: new[] { "consult_draft" })));
+    }
+
     // ----- #510: an input copied from a previous run -----
 
     private const string SourceJob = "0123456789abcdef0123456789abcdef";
