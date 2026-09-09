@@ -634,6 +634,24 @@ public class HistoryDetailTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ATranscriptOrigin_ReadsAsATranscript_NotADocument()
+    {
+        // #613/#671: a transcript is read like a document — same extractor and
+        // page count — but named for what it is, so the record does not read
+        // it as a referral.
+        WithJob(3, inputOrigins: new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
+        {
+            ["consult_draft"] = new[] { new ConsultInputOrigin(Consultologist.Api.Models.ConsultInputOriginKinds.Transcript, "pdfpig/0.1.15", 3) }
+        });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var row = page.Find(".provenance-list__nested + dd");
+        Assert.Equal("read from a transcript by pdfpig/0.1.15 · 3 pages", row.TextContent.Trim());
+        Assert.DoesNotContain("read from a document", row.TextContent);
+    }
+
+    [Fact]
     public void ADocumentsDigests_AreShownShortened_WithTheFullValueInTheTitle()
     {
         // #512: the file and its reading, beside the extractor — shortened in

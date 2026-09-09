@@ -869,6 +869,11 @@
         // server. No source link — a response is not a run; the digest chip
         // renders through the shared path.
         "form-response" => $"from form '{origin.SourceFormId}' response {origin.SourceResponseId}",
+        // #613/#671: a meeting transcript the caller submitted as a file. Read
+        // like a document — the same extractor and digests — but named for
+        // what it is, so the record does not read it as a referral.
+        "transcript" => $"read from a transcript by {origin.Extractor ?? "—"}"
+            + (origin.PageCount is { } tpages ? $" · {tpages} page{(tpages == 1 ? "" : "s")}" : ""),
         _ => $"read from a document by {origin.Extractor ?? "—"}"
             + (origin.PageCount is { } pages ? $" · {pages} page{(pages == 1 ? "" : "s")}" : "")
             + (origin.TrackedChangesResolved ? " · tracked changes resolved to the accepted view" : "")

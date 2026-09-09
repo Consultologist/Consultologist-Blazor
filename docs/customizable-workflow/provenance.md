@@ -183,6 +183,19 @@ each has, or needs, its own work:
 > account's own held responses, never a registry, and only while the
 > values are held. History reads it as *from form … response …*.
 >
+> Since #613/#671 (provenance `v2026.09.6`) an origin may be `transcript`:
+> the element was read from an uploaded file the caller declared to be a
+> meeting transcript. Its server-observed fields are a document's — the
+> `extractor` and the `fileSha256`/`textSha256` digests — but the `kind`
+> label is the submitter's assertion about what the file is, not something
+> the server observed, because whether a text is a clinical transcript
+> cannot be read from its bytes. A satellite (`docs/ZOOM_SATELLITE_SPIKE.md`)
+> fetches a speaker-labeled transcript as the signed-in clinician and submits
+> it like any document, so a transcript and a document carrying identical
+> text have equal `effectiveInputHash` and differ only here; the assertion
+> resolves nothing external. History reads it as *read from a transcript
+> by …*.
+>
 > Since #582 (provenance `v2026.08.13`) a rerun's record also carries the
 > judgment: `rerunOf` lifts the source id to the job level, and
 > `rerunVerdict`/`rerunDivergence` are derived once at the rerun's
