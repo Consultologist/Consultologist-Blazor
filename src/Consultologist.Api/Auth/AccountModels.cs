@@ -168,15 +168,25 @@ public static class IdentityProviders
     // as Epic: proof of control, never a bearer credential, never an activation
     // signal.
     public const string Cerner = "cerner";
+    // #669: the clinic's Microsoft commercial-marketplace SaaS subscription,
+    // tied from the marketplace landing/webhook flow. An ACTIVATING signal like
+    // LinkedIn — a purchase clears the eligibility bar — but ORG-ONLY: personal
+    // Microsoft accounts cannot transact a SaaS offer, so LinkedIn stays their
+    // door and this is an *additional* signal, never a replacement. The link's
+    // subject is the marketplace subscriptionId; never a bearer credential.
+    public const string MicrosoftMarketplace = "microsoft-marketplace";
 
     /// <summary>
-    /// #654: which providers, when linked, activate a Pending account
-    /// (#191/#195). LinkedIn does — it is the eligibility signal. Epic does
-    /// not; its link is proof/display only. Extracted so the boundary can be
-    /// asserted directly.
+    /// #654/#669: which providers, when linked, activate a Pending account
+    /// (#191/#195). LinkedIn does — the universal eligibility signal — and
+    /// MicrosoftMarketplace does (org-only, a paid/trial subscription). Epic and
+    /// Cerner do not; their links are proof/display only. Two independent
+    /// activating doors: unlinking one leaves the account Active if the other
+    /// still links it (AccountStore.StatusAfterUnlink).
     /// </summary>
     public static bool ActivatesAccount(string provider) =>
-        string.Equals(provider, LinkedIn, StringComparison.Ordinal);
+        string.Equals(provider, LinkedIn, StringComparison.Ordinal)
+        || string.Equals(provider, MicrosoftMarketplace, StringComparison.Ordinal);
 }
 
 public sealed class AppUserEntity : ITableEntity
