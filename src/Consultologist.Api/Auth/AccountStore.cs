@@ -377,11 +377,28 @@ public sealed class AccountStore : IAccountStore
             return;
         }
 
-        // #654: only an activating provider's removal withdraws activation;
-        // unlinking an epic (proof-only) link never demotes the account.
+        // #654/#669: only an activating provider's removal withdraws activation;
+        // unlinking an epic (proof-only) link never demotes the account. And the
+        // rows for this provider are already deleted above, so a re-query of the
+        // account's surviving links tells us whether another activating door
+        // (the other of LinkedIn / MicrosoftMarketplace) still keeps it Active.
         if (IdentityProviders.ActivatesAccount(provider))
         {
-            await ApplyStatusAsync(appUserId, StatusAfterUnlink, cancellationToken);
+            var anotherActivatingLinkRemains = false;
+            await foreach (var surviving in _userIdentityLinks.QueryAsync<UserIdentityLinkEntity>(
+                link => link.PartitionKey == appUserId, cancellationToken: cancellationToken))
+            {
+                if (IdentityProviders.ActivatesAccount(surviving.Provider))
+                {
+                    anotherActivatingLinkRemains = true;
+                    break;
+                }
+            }
+
+            await ApplyStatusAsync(
+                appUserId,
+                current => StatusAfterUnlink(current, anotherActivatingLinkRemains),
+                cancellationToken);
         }
 
         _logger.LogInformation(
@@ -475,8 +492,17 @@ public sealed class AccountStore : IAccountStore
         return deleted;
     }
 
-    internal static string StatusAfterUnlink(string current) =>
-        current == AccountStatuses.Active ? AccountStatuses.Unverified : current;
+    /// <summary>
+    /// #669: unlinking an activating provider withdraws activation — but only
+    /// when no *other* activating provider still links the account. With two
+    /// independent doors (LinkedIn and MicrosoftMarketplace), removing one while
+    /// the other stands must leave the account Active; only losing the last
+    /// activating link demotes Active → Unverified. Other states are unchanged.
+    /// </summary>
+    internal static string StatusAfterUnlink(string current, bool anotherActivatingLinkRemains) =>
+        anotherActivatingLinkRemains
+            ? current
+            : current == AccountStatuses.Active ? AccountStatuses.Unverified : current;
 
     private async Task ApplyStatusAsync(
         string appUserId, Func<string, string> transition, CancellationToken cancellationToken)
