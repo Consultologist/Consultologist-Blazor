@@ -341,6 +341,45 @@
                 </div>
             </section>
 
+            @* #669: the Microsoft Marketplace subscription — an org-only activation
+               door beside LinkedIn. Activation happens on the Marketplace landing
+               page (/subscription), and the subscription is managed in Microsoft,
+               so this card shows state only: there is no connect or disconnect. *@
+            <section class="content-card marketplace-card">
+                <div class="form-stack">
+                    <h2 class="panel-title">Subscription</h2>
+
+                    <p class="panel-description">
+                        A Microsoft Marketplace subscription activates your account (for work or school
+                        accounts). Buy or start a trial in Microsoft Marketplace, then complete it from
+                        its <em>Configure account</em> link. Manage or cancel the subscription in Microsoft.
+                    </p>
+
+                    @if (MarketplaceIdentity != null)
+                    {
+                        <div class="state-panel">
+                            <span class="muted-text">Marketplace subscription</span>
+                            <strong>@(MarketplaceIdentity.DisplayName ?? "Active subscription")</strong>
+                            <span class="muted-text">Linked @MarketplaceIdentity.LinkedAt.ToString("yyyy-MM-dd")</span>
+                        </div>
+
+                        @if (string.Equals(account?.Status, "Unverified", StringComparison.Ordinal))
+                        {
+                            <FluentMessageBar Intent="MessageIntent.Warning">
+                                Your subscription is suspended or lapsed. Reinstate it in Microsoft to start
+                                new consults again; consults you already generated stay available.
+                            </FluentMessageBar>
+                        }
+                    }
+                    else
+                    {
+                        <div class="state-panel">
+                            <span class="muted-text">No Marketplace subscription linked. Personal Microsoft accounts use LinkedIn to activate instead.</span>
+                        </div>
+                    }
+                </div>
+            </section>
+
             @* #515: the location — where the app sends data and reads the
                account. Kept on this device; empty until chosen, and the
                unchosen line says which location is used meanwhile. *@
@@ -1129,6 +1168,13 @@
     private bool cernerDisconnectInProgress;
     private string? cernerMessage;
     private MessageIntent cernerMessageIntent = MessageIntent.Info;
+
+    // #669: the Microsoft Marketplace subscription — an org-only activation door.
+    // Activation happens on the /subscription landing page; the subscription is
+    // managed in Microsoft, so it is shown here as state only.
+    private AccountIdentity? MarketplaceIdentity =>
+        account?.LinkedIdentities.FirstOrDefault(identity =>
+            string.Equals(identity.Provider, "microsoft-marketplace", StringComparison.Ordinal));
 
     private string[] VerifiedCategoryLabels =>
         (LinkedInIdentity?.VerifiedCategories ?? string.Empty)

@@ -156,6 +156,13 @@ builder.Services.AddScoped<Account>();
 builder.Services.AddScoped<AccountLinkedIn>();
 builder.Services.AddScoped<AccountEpic>();
 builder.Services.AddScoped<AccountCerner>();
+// #669: the marketplace activation door — the resolve (landing) + webhook
+// endpoints and the SaaS Fulfillment API client (WIF token + raw REST + the
+// webhook JWT validator).
+builder.Services.AddScoped<AccountMarketplace>();
+builder.Services.AddSingleton<Consultologist.Api.Marketplace.IMarketplaceTokenClient, Consultologist.Api.Marketplace.MarketplaceTokenClient>();
+builder.Services.AddSingleton<Consultologist.Api.Marketplace.IMarketplaceFulfillmentClient, Consultologist.Api.Marketplace.MarketplaceFulfillmentClient>();
+builder.Services.AddSingleton<Consultologist.Api.Marketplace.IMarketplaceJwtValidator, Consultologist.Api.Marketplace.MarketplaceJwtValidator>();
 builder.Services.AddScoped<Diagnostics>();
 builder.Services.AddSingleton<IAccountRateLimiter, TableAccountRateLimiter>();
 builder.Services.AddSingleton<IConsultGenerationJobStarter, ConsultGenerationJobStarter>();

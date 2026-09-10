@@ -12,6 +12,11 @@ public interface IAccountEndpointService
     // only displays it and can disconnect it. #662: Cerner, the same shape.
     Task DisconnectEpicLinkAsync();
     Task DisconnectCernerLinkAsync();
+
+    /// <summary>#669: the marketplace landing page posts its resolve token here;
+    /// the engine resolves + activates the subscription and ties it to the
+    /// account. Throws with the server's named reason on failure.</summary>
+    Task ResolveMarketplaceAsync(string token);
     Task SetDeliveryPasswordAsync(string password);
     Task ClearDeliveryPasswordAsync();
 

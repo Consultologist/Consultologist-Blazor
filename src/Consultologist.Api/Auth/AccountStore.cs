@@ -15,6 +15,17 @@ public enum IdentityLinkOutcome
     ConflictOtherUser
 }
 
+/// <summary>#669: a marketplace webhook's effect on the tied account's status.</summary>
+public enum MarketplaceStatusEffect
+{
+    /// <summary>Subscribe / Activate / Reinstate → Active (StatusAfterLink).</summary>
+    Activate,
+
+    /// <summary>Suspend (a recoverable payment hold) → Unverified, unless another
+    /// activating door (LinkedIn) still stands. The marketplace link is kept.</summary>
+    Suspend,
+}
+
 public interface IAccountStore
 {
     Task<AppAccount> ResolveOrCreateAsync(AuthenticatedUser user, CancellationToken cancellationToken);
@@ -32,6 +43,14 @@ public interface IAccountStore
 
     /// <summary>#195: remove a linked identity from the caller's own account.</summary>
     Task UnlinkIdentityAsync(string appUserId, string provider, CancellationToken cancellationToken);
+
+    /// <summary>#669: the account a linked identity belongs to, or null when the
+    /// pair is unknown — the webhook's subscriptionId → appUserId lookup.</summary>
+    Task<string?> FindAppUserByLinkAsync(string provider, string issuer, string subject, CancellationToken cancellationToken);
+
+    /// <summary>#669: apply a marketplace lifecycle event to the tied account's
+    /// status (Activate/Suspend); Unsubscribe uses <see cref="UnlinkIdentityAsync"/>.</summary>
+    Task ApplyMarketplaceStatusAsync(string appUserId, MarketplaceStatusEffect effect, CancellationToken cancellationToken);
 
     /// <summary>
     /// #384: every account, id and status only. A partition scan of AppUsers —
@@ -384,17 +403,9 @@ public sealed class AccountStore : IAccountStore
         // (the other of LinkedIn / MicrosoftMarketplace) still keeps it Active.
         if (IdentityProviders.ActivatesAccount(provider))
         {
-            var anotherActivatingLinkRemains = false;
-            await foreach (var surviving in _userIdentityLinks.QueryAsync<UserIdentityLinkEntity>(
-                link => link.PartitionKey == appUserId, cancellationToken: cancellationToken))
-            {
-                if (IdentityProviders.ActivatesAccount(surviving.Provider))
-                {
-                    anotherActivatingLinkRemains = true;
-                    break;
-                }
-            }
-
+            // The unlinked provider's rows are already deleted above, so a
+            // survivor scan tells us whether another activating door still stands.
+            var anotherActivatingLinkRemains = await AnyActivatingLinkAsync(appUserId, provider, cancellationToken);
             await ApplyStatusAsync(
                 appUserId,
                 current => StatusAfterUnlink(current, anotherActivatingLinkRemains),
@@ -503,6 +514,61 @@ public sealed class AccountStore : IAccountStore
         anotherActivatingLinkRemains
             ? current
             : current == AccountStatuses.Active ? AccountStatuses.Unverified : current;
+
+    public async Task<string?> FindAppUserByLinkAsync(
+        string provider, string issuer, string subject, CancellationToken cancellationToken)
+    {
+        await EnsureTablesAsync(cancellationToken);
+        var subjectHash = CreateSubjectHash(provider, issuer, subject);
+        try
+        {
+            var response = await _identityLinks.GetEntityAsync<IdentityLinkEntity>(
+                provider, subjectHash, cancellationToken: cancellationToken);
+            return response.Value.AppUserId;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+    }
+
+    public async Task ApplyMarketplaceStatusAsync(
+        string appUserId, MarketplaceStatusEffect effect, CancellationToken cancellationToken)
+    {
+        switch (effect)
+        {
+            case MarketplaceStatusEffect.Activate:
+                await ApplyStatusAsync(appUserId, StatusAfterLink, cancellationToken);
+                break;
+
+            case MarketplaceStatusEffect.Suspend:
+                // A suspend keeps the marketplace link, so it is excluded when
+                // asking whether another activating door (LinkedIn) still stands.
+                var anotherActivatingLinkRemains = await AnyActivatingLinkAsync(
+                    appUserId, IdentityProviders.MicrosoftMarketplace, cancellationToken);
+                await ApplyStatusAsync(
+                    appUserId,
+                    current => StatusAfterUnlink(current, anotherActivatingLinkRemains),
+                    cancellationToken);
+                break;
+        }
+    }
+
+    private async Task<bool> AnyActivatingLinkAsync(
+        string appUserId, string? exceptProvider, CancellationToken cancellationToken)
+    {
+        await foreach (var link in _userIdentityLinks.QueryAsync<UserIdentityLinkEntity>(
+            l => l.PartitionKey == appUserId, cancellationToken: cancellationToken))
+        {
+            if (IdentityProviders.ActivatesAccount(link.Provider)
+                && !string.Equals(link.Provider, exceptProvider, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private async Task ApplyStatusAsync(
         string appUserId, Func<string, string> transition, CancellationToken cancellationToken)

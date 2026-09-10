@@ -113,6 +113,24 @@ public sealed class AccountEndpointService : IAccountEndpointService
         }
     }
 
+    public async Task ResolveMarketplaceAsync(string token)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, GetAccountBaseUrl() + "/Marketplace/Resolve")
+        {
+            Content = JsonContent.Create(new { token })
+        };
+        await AddAuthorizationAsync(request);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            _logger.LogError("Marketplace resolve failed with status {StatusCode}", response.StatusCode);
+            throw new HttpRequestException(ExtractError(error) ?? $"Marketplace resolve failed: {response.StatusCode}");
+        }
+    }
+
     public async Task DisconnectEpicLinkAsync()
     {
         using var request = new HttpRequestMessage(HttpMethod.Delete, GetAccountBaseUrl() + "/Epic");

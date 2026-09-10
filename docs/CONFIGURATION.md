@@ -257,6 +257,38 @@ and a tenant is onboarded by adding its issuer here. Production also needs
 Cerner certification + per-customer tenant enablement (the code.cerner.com
 path) — the same org-gating as Epic.
 
+## Microsoft Marketplace activation (`Marketplace/*`, `AccountMarketplace.cs`, #669)
+
+The commercial-marketplace SaaS offer as an **additional, org-only** activation
+door beside LinkedIn (`docs/MARKETPLACE_ACTIVATION_SPIKE.md`). The offer's landing
+URL points at the SPA `/subscription` page; it signs the clinician in with Entra and
+POSTs the marketplace token to `Account/Marketplace/Resolve`, which resolves +
+activates the subscription (SaaS Fulfillment API v2) and ties it to the account —
+tying it activates the account, since `microsoft-marketplace` is an activating
+provider. `Account/Marketplace/Webhook` maps the subscription lifecycle to status
+(Subscribe/Reinstate → Active, Suspend → Unverified, Unsubscribe → unlink), after
+validating the marketplace Entra JWT **and** confirming the operation via Get-Operation.
+
+The server-to-server Fulfillment token is client-credentials to
+`20e940b3-4c77-4b0b-9a53-9e16a1b010a7/.default`. The identity-only default is
+**workload identity federation** — a federated credential on the marketplace app
+registration trusting the function app's user-assigned managed identity (the
+`OnBehalfOfTokenClient` mechanics). WIF is not documented as a Marketplace-supported
+path; if the Fulfillment API rejects it, set `Marketplace__ClientSecret` to fall back
+to the documented client-secret grant (the `LinkedIn__ClientSecret` precedent).
+
+| Variable | Accepted values | Default | Required |
+|---|---|---|---|
+| `Marketplace__ClientId` | Client id of the S2S app registration whose token calls the Fulfillment API (the offer's Technical Configuration pins this app) | — | yes (to call Fulfillment) |
+| `Marketplace__TenantId` | The tenant the S2S client-credentials token is issued from (the S2S app's own tenant) | — | yes |
+| `Marketplace__Authority` | The authority whose OIDC metadata validates the webhook's Entra JWT, e.g. `https://login.microsoftonline.com/<tenant>/v2.0` | — | yes (to accept webhook calls) |
+| `Marketplace__WebhookAudience` | The audience the webhook JWT must carry — the registered app id Microsoft stamps (`api://<id>` or the bare id) | — | yes (to accept webhook calls) |
+| `Marketplace__ClientSecret` | A genuine secret **fallback** used only if WIF is rejected by the Fulfillment API; when set, the token client uses the client-secret grant instead of WIF | — | no (WIF is the default) |
+
+Phase A (this build) is exercised against dummy payloads; the live preview purchase →
+resolve → activate → webhook loop and go-live are Phase B, gated on Partner Center
+account verification + Tax Profile + Payout Account. No engine hosting change.
+
 ## Email consult intake (`Email/*`, #158)
 
 Submit consults by email: a timer polls the dedicated shared mailbox via
