@@ -16,8 +16,9 @@ they already work in.
 Microsoft/Nuance's finished *ambient clinical scribe* — #614 integrates
 Consultologist as a guest *into* that product, via the healthcare partner
 program, minding the anti-ambient boundary (#189). That spike is now recorded in
-`docs/DRAGON_COPILOT_SPIKE.md` (GO — the "AI apps and agents" extension, a
-delegated-token satellite; fetch, one `ambient-note` origin kind). **This** is us building and
+`docs/DRAGON_COPILOT_SPIKE.md` (fit gate resolved 2026-09-10 — the direct extension is
+**deferred**; the payload carries no referral and no clinician token, so EHR-mediated is
+recommended). **This** is us building and
 owning an agent in the *general* M365 Copilot surface, Entra-native, standard
 publishing. Separate targets; scope them apart.
 

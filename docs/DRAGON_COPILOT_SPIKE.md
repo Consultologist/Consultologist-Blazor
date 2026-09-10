@@ -1,12 +1,18 @@
 # Dragon Copilot integration — spike record (#614)
 
-**Status: spike complete, 2026-09-09 — GO on the extension path, prototype-first.
-Dragon Copilot now has a documented third-party program ("AI apps and agents"
-extensions); Consultologist fits as a delegated-token Entra-native satellite over
-the existing engine doors, with at most **one input origin kind (`ambient-note`),
-registry-first**. Validate the referral→letter fit against the open-source samples
-BEFORE the sales-led, US-only partner application; EHR-mediated is the non-US
-fallback. Docs only this pass. Design of record for the build follow-up.**
+**Status: fit gate resolved, 2026-09-10 — the direct extension does NOT fit cleanly;
+recommend EHR-mediated.** The prototype-first fit check ran against Microsoft's *actual*
+`/v1/process` contract (`github.com/microsoft/dragon-copilot-extension-samples`, fetched
+2026-09-10) and found **two blocking mismatches** (§ 6): the payload is **encounter-bound
+with no referral channel**, and Dragon presents an **app-only token with no clinician
+delegated token** (the #610 bridge is missing — OBO cannot mint one from an app token).
+So the direct "AI apps and agents" extension is **deferred** — a narrow
+note-in→letter-out fit, blocked on a clinician-identity bridge; the recommended path is
+**EHR-mediated** (Epic #654 / Cerner #662, where the clinician is interactively signed in
+and holds a delegated token). The **`ambient-note` origin kind and the satellite are NOT
+built** — deferred until a Dragon-note-in delivery path has a real consumer. The
+extensibility-surface map (§ 3) was recorded 2026-09-09; this pass folds in the gate
+outcome. Design of record.**
 
 ## 1. What this is — and the anti-ambient boundary, in Dragon's own presence
 
@@ -26,12 +32,17 @@ flags ("stage 3's claim verification and stage 4's coding suggestions edge towar
 clinical decision support … SaMD territory"). Nothing here analyses a patient or
 advises a clinician; the SaMD line is unmoved.
 
-## 2. Decision — GO, extension path, prototype-first
+## 2. Decision — EHR-mediated; the direct extension deferred (fit gate resolved)
 
-Build Consultologist as a Dragon **"AI apps and agents" extension** — a
-delegated-token satellite (the #611 F2 pattern, like the Copilot agent), in its own
-repo. But **validate the fit against the open-source samples before** engaging the
-sales-led partner program (§ 6). EHR-mediated is the fallback for non-US markets.
+The original decision (2026-09-09) was "GO, extension path, prototype-first." **The
+prototype-first gate (§ 6) has now run, and it changes the decision.** The direct Dragon
+extension does **not** fit the referral→consult-letter core, and it lacks a
+clinician-token bridge, so it is **deferred — not built**. The recommended path is
+**EHR-mediated**: documents flow through Epic/Cerner (SMART on FHIR), where the clinician
+is interactively signed in and holds a delegated `access_as_user` token — which both
+sidesteps the referral-channel gap and supplies the clinician identity the engine (#610)
+requires. The direct extension stays a *future* option — for a narrow "Dragon encounter
+note → consult letter" flow only — and only once a clinician-identity bridge exists.
 
 ## 3. Extensibility-surface map (state as of 2026-09-09; moving fast, pricing gated)
 
@@ -57,7 +68,12 @@ Sources: https://learn.microsoft.com/industry/healthcare/dragon-copilot/extensio
 .../extensions/adaptive-card-spec · .../sdk/partner-apis/dragon-data-exchange/ ·
 https://github.com/microsoft/dragon-copilot-extension-samples
 
-## 4. Integration shape per leg (recommended)
+## 4. Integration shape per leg (as originally proposed — superseded by § 6)
+
+> **Superseded by the fit gate (§ 6).** The shapes below describe how the direct
+> extension *would* work; the gate found it doesn't fit (no referral channel, no
+> clinician token), so this is deferred in favour of EHR-mediated (§ 2). Kept for the
+> record and for a future revisit once the identity bridge is solved.
 
 - **Leg 2 (the spine):** Consultologist is an **extension** — `POST /v1/process`
   returns an Adaptive Card in Dragon's UI. This is the "more access than a separate
@@ -68,28 +84,60 @@ https://github.com/microsoft/dragon-copilot-extension-samples
 - **Leg 1B:** the card's **update-note** action writes our consult letter back into
   the clinician's Dragon note.
 
-## 5. The auth bridge (the #610 perimeter stays intact)
+## 5. The auth bridge (the assumption the gate disproved)
 
-Dragon → the extension is authenticated with an **Entra service principal**; the
-extension then calls **our engine as the clinician** — a delegated `access_as_user`
-bearer (Entra SSO / On-Behalf-Of, natural since Dragon is Entra-native). Our engine
-still only ever sees the **clinician's delegated token**; app-only is refused by
-name (#610, `SATELLITE_CALLERS.md`). Surfacing the clinician's letters is a
-**fetch/read** over the existing doors (History / `GET ConsultGenerationJobs/{id}`)
-— the engine never pushes into Dragon (`SATELLITE_CALLERS.md` §5; push "leans more
-ambient," an extra reason against it).
+The 2026-09-09 assumption was: Dragon → the extension via an **Entra service principal**;
+the extension then calls **our engine as the clinician** — a delegated `access_as_user`
+bearer (Entra SSO / On-Behalf-Of, "natural since Dragon is Entra-native"). Our engine
+still only ever sees the clinician's delegated token; app-only is refused by name (#610).
 
-## 6. The fit-risk + prototype-first validation (the gate)
+> **The gate (§ 6) disproved the middle step.** Dragon calls the extension with an
+> **app-only token** (`idtyp=app`) identifying *Dragon*, not the clinician — it carries
+> practitioner metadata (NPI) but **no clinician delegated token**, and On-Behalf-Of
+> cannot mint one from an app token. So the extension has nothing to present the engine
+> as the clinician, and #610 refuses the app token by name. There is **no clean
+> clinician-token bridge** in the direct-extension path. EHR-mediated (§ 2) is where the
+> clinician's delegated token actually exists. Surfacing letters as a **fetch/read** over
+> the existing doors, and never pushing into Dragon, still holds for whatever path ships.
 
-The extension model is **encounter/note-centric** (an ambient visit → a clinical
-note). Consultologist is **referral-package → consult-letter**. **Open question:**
-can `/v1/process` carry our *referral* inputs, or must the referral ride the
-transcript/context/dictation that Dragon hands in? Resolve this **cheaply and
-first**: clone the samples repo, read `physician/physician-extensibility-api.yaml`
-(the `/v1/process` contract) and `AuthenticationDesign.md`, and prototype an
-endpoint against the sample requests — **before** engaging Dragon partner relations
-for allow-listing. If the referral→letter flow doesn't fit the encounter trigger,
-fall back to EHR-mediated (§ 3) rather than force it.
+## 6. Fit validation — findings (the gate, resolved 2026-09-10)
+
+The open question was: can `/v1/process` carry our *referral* inputs, and can the
+extension call the engine as the clinician? Resolved by reading Microsoft's actual
+contract — `physician/physician-extensibility-api.yaml` and `doc/AuthenticationDesign.md`
+in `github.com/microsoft/dragon-copilot-extension-samples` (MIT, fetched 2026-09-10).
+**Two blocking mismatches:**
+
+1. **No referral channel — the payload is encounter-bound.** `POST /v1/process` takes a
+   `DragonStandardPayload` = required `sessionData` + one of `Note` / `Transcript` /
+   `IterativeTranscript` / `IterativeAudio`, **all nested under a single `encounter`**
+   (patient / practitioner / visit). There is **no field for an external referral
+   package** — the extension receives only what Dragon captured in the visit. Our core
+   input (a referral → consult letter) has nowhere to enter; it could only ride the
+   dictated transcript, a degenerate workflow. (The response is a `ProcessResponse` whose
+   `VisualizationResource` — an AdaptiveCard, subtype note/timeline — supports
+   **accept / reject / copy / updateNote**, so Leg 1B, writing our letter into the note,
+   would work; and Leg 1A, the note itself, is in the payload. Only the narrow "Dragon
+   encounter note → consult letter" shape fits — not referral→letter.)
+
+2. **No clinician delegated token — the #610 bridge is missing.** Dragon authenticates to
+   the extension with an **app-only** Entra token: the extension must validate
+   `idtyp=app`, `azp` = Dragon's app id `d9350f5d-71c2-46b9-b41d-3c5d51ffe6e8`, and
+   `aud` = the vendor app (whose identifier URI is `api://{tenant}/{endpoint host}`). That
+   token identifies *Dragon*, not the clinician; it carries practitioner metadata (NPI)
+   but **no clinician `access_as_user` token**, and because it is app-only, **On-Behalf-Of
+   cannot exchange it for one**. The extension is invoked server-side by Dragon (no
+   interactive clinician session), so it cannot mint a fresh delegated token either. The
+   engine (#610) refuses app-only tokens — so there is **no clean way for the extension to
+   call the engine as the clinician**.
+
+**Determination:** the direct extension is a *narrow* fit (note-in→letter-out, not the
+referral→letter core) **and** blocked on a hard clinician-identity problem. **Recommend
+EHR-mediated** (§ 2): via Epic (#654) / Cerner (#662) SMART on FHIR the clinician is
+interactively signed in and holds a delegated token, and documents flow through the EHR —
+sidestepping both mismatches. The direct extension is **deferred** pending a solved
+clinician-identity bridge; the partner-program application is **not** pursued now (the fit
+does not justify the US-only, sales-led onboarding — § 7).
 
 ## 7. Constraints / gatekeeping
 
@@ -102,39 +150,50 @@ fall back to EHR-mediated (§ 3) rather than force it.
 - **No BYOL / license-key apps.** **Pricing + clinical-safety-review depth are not
   public** (gated behind Partner Center) — flag to stakeholders.
 - Transcription/STT stays **Dragon's paid product** — none on our side.
+- **Partner-program application is NOT pursued now** (§ 6): the fit gate found the direct
+  extension does not carry referral→letter work and has no clinician-token bridge, so the
+  US-only, sales-led Partner Center onboarding is not justified. Revisit only if the
+  clinician-identity bridge is solved and the US market is in scope.
 
-## 8. Engine-change inventory (for the build follow-up — not built here)
+## 8. Engine-change inventory (DEFERRED — not built; waits for a note-in consumer)
 
-**One input origin kind, registry-first — a DISTINCT kind, not `transcript`.** A
-Dragon note's provenance differs from a Zoom speaker-labeled transcript (a Dragon
-*ambient* note is an AI-summarized visit draft; a *dictated* note is the clinician's
-own words). Recommend **`ambient-note`** — the name keeps the SaMD/anti-ambient
-boundary legible in the provenance record and in `History.razor` — adding
-`dictation` only if Dragon hands in verbatim dictation. Same surface as the Zoom
-spike's `transcript`:
+**One input origin kind, registry-first — a DISTINCT kind, not `transcript`** — but
+**deferred**: it is only worth adding once a Dragon-note-in path is committed and has a
+consumer (the EHR-mediated document road, or a future direct extension once the
+clinician-identity bridge exists). A Dragon *ambient* note's provenance differs from a
+Zoom speaker-labeled transcript (an AI-summarized visit draft vs. speaker turns), so it
+warrants its own kind. Recommend **`ambient-note`** — the name keeps the SaMD/anti-ambient
+boundary legible in the record and in `History.razor` — adding `dictation` only if a
+verbatim-dictation path appears. When built, it mirrors the now-live `transcript` kind
+(#671) exactly:
 
-1. New `consultologist-provenance@v…` version defining the kind (normative;
-   `tests/ProvenanceVersionSetTests.cs` holds the engine equal to it).
+1. Bump `consultologist-provenance@v…` — add the `ambient-note` sentence to the
+   `inputOrigins` narrative in `provenance-record.md` and bump `provenance-versions.json`
+   (prose-only; no hash-ladder change, since an ambient note reuses a document's fields —
+   `ProvenanceVersionSetTests` does not gate origin kinds).
 2. Const in `ConsultInputOriginKinds` — `src/Consultologist.Api/Models/ConsultGenerationRequest.cs`.
-3. Stamp it at the note slot in `src/Consultologist.Api/Jobs/ConsultGenerationJobStarter.cs`
-   (not the default `document`).
+3. A caller-declared marker (an `AmbientNoteInputs` field beside `TranscriptInputs`, or a
+   generalized slot→kind map) driving the stamp in
+   `src/Consultologist.Api/Jobs/ConsultGenerationJobStarter.cs` (not the default `document`).
 4. A `DescribeOrigin` arm in `src/Consultologist.Web/Pages/History.razor`.
 
-No new endpoint, auth, `source`, container, `dragon` provider constant, or webhook
-(fetch). The note enters the existing doors (`DocumentExtractions`,
-`ConsultGenerationJobs`) as an `InputFilePayload`/`ConsultInputValue` on a declared
-slot — identical to the Zoom transcript. The satellite is greenfield in its **own
-repo**.
+No new endpoint, auth, `source`, container, `dragon` provider constant, or webhook. The
+note would enter the existing doors as an `InputFilePayload` on a declared slot —
+identical to the Zoom transcript.
 
-## 9. Go / no-go
+## 9. Go / no-go (revised after the gate)
 
-- **GO** to build the extension satellite (own repo) and — **first** — to prototype
-  the `/v1/process` fit against the open-source samples (free, no gating,
-  verification-independent).
-- **Partner-program application = deferred** (a sub-step): engage Dragon partner
-  relations for the Marketplace offer + allow-list only once the fit holds and the
-  US-market timing is right. Outside the US, ship EHR-mediated instead.
-- Engine cost = the one `ambient-note` origin kind, registry-first — nothing else.
+- **Direct extension: NO-GO for now (deferred).** The gate (§ 6) showed it neither carries
+  the referral→letter core nor gives the extension a clinician token to call the engine.
+  It stays a future option for a narrow note-in→letter-out flow, gated on a solved
+  clinician-identity bridge.
+- **Recommended path: EHR-mediated** — Epic (#654) / Cerner (#662, leg-2 #665) SMART on
+  FHIR, where the clinician holds a delegated token and documents flow through the EHR.
+- **Partner-program application: NOT pursued** (§ 7).
+- **`ambient-note` origin kind: deferred, not built** (§ 8) — added when a note-in path has
+  a consumer; it then mirrors the live `transcript` kind (#671).
 
-Build precedent: `consultologist-copilot-agent` (the delegated-token satellite,
-#667) and the Zoom satellite (#613/#671).
+Build precedent for a delegated-token satellite (if the identity bridge is ever solved):
+`consultologist-copilot-agent` (#667) and the Zoom satellite (#613/#671/#675). The
+anti-ambient boundary (§ 1) is unchanged: a Dragon note read into a **reviewed,
+provenance-recorded** run is transcription-side, not CDS.
