@@ -1,0 +1,77 @@
+@page "/subscription"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject IAccountEndpointService AccountService
+@inject NavigationManager Navigation
+@inject ILogger<Subscription> Logger
+
+@* #669: the Microsoft Marketplace landing page. The offer's landing URL points
+   here; Marketplace appends its single-use ?token=. The clinician is signed into
+   Entra (the [Authorize] attribute), and this posts the token to the backend to
+   resolve + activate the subscription and tie it to the account. The token never
+   leaves the backend beyond this hop. *@
+
+<PageTitle>Subscription · Consultologist</PageTitle>
+
+<div class="content-card">
+    <div class="form-stack">
+        <h1 class="panel-title">Consultologist subscription</h1>
+
+        @if (_working)
+        {
+            <p class="muted-text">Activating your subscription…</p>
+        }
+        else if (_error != null)
+        {
+            <FluentMessageBar Intent="MessageIntent.Error">@_error</FluentMessageBar>
+            <p><a href="/profile">Go to your profile</a></p>
+        }
+        else if (_done)
+        {
+            <FluentMessageBar Intent="MessageIntent.Success">Your subscription is active. You can start generating consults.</FluentMessageBar>
+            <p><a href="/profile">Go to your profile</a></p>
+        }
+        else
+        {
+            <p class="muted-text">This page completes a Microsoft Marketplace purchase. Open it from your Marketplace subscription's <em>Configure account</em> link.</p>
+            <p><a href="/profile">Go to your profile</a></p>
+        }
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "token")]
+    public string? Token { get; set; }
+
+    private bool _working;
+    private bool _done;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Token))
+        {
+            return;
+        }
+
+        _working = true;
+        try
+        {
+            await AccountService.ResolveMarketplaceAsync(Token);
+            _done = true;
+        }
+        catch (AccessTokenNotAvailableException ex)
+        {
+            ex.Redirect();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Marketplace resolve failed.");
+            _error = ex.Message;
+        }
+        finally
+        {
+            _working = false;
+        }
+    }
+}
