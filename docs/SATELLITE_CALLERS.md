@@ -133,10 +133,13 @@ recommends it **stay** unbuilt: the Zoom satellite fetches the transcript with a
 delegated token (§ 5, poll/SSE) and submits it as the clinician, so it needs no
 external-identity binding and no inbound webhook. The binding here is built only
 when a spike genuinely demands a push/subject-resolved payload. The **Dragon
-workflow step** (§ 1) is the same story — the #614 spike
-(`docs/DRAGON_COPILOT_SPIKE.md`) recommends a Dragon "AI apps and agents"
-extension that calls this API as the clinician (Entra delegated token) and fetches
-letters over the read doors; no `dragon` provider, no binding, no push.
+workflow step** (§ 1): the #614 spike's fit gate (`docs/DRAGON_COPILOT_SPIKE.md`,
+resolved 2026-09-10) found the direct "AI apps and agents" extension does **not** fit
+— its `/v1/process` payload carries no referral, and Dragon presents an app-only token
+(no clinician delegated token, and #610 refuses app-only), so there is no
+clinician-token bridge. The extension is **deferred**; **EHR-mediated** (Epic/Cerner) is
+recommended, which is where the clinician's delegated token already exists. No `dragon`
+provider, no binding, no push either way.
 
 
 A satellite-borne payload — a Zoom transcript webhook, an Epic launch
