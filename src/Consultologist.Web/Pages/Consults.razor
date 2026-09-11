@@ -662,10 +662,13 @@
                                 var stageTotal = totalAnalysisStageCount > 0 ? totalAnalysisStageCount : 6;
                                 var setupStatus = SetupRowStatus();
                             }
-                            <div class="node-grid">
+                            @* #687: the run's status is glyph-only, so a screen reader gets it
+                               from this one spoken sentence instead of the visual checklist. *@
+                            <span class="visually-hidden" role="status">@RunProgressAnnouncement()</span>
+                            <div class="node-grid" aria-busy="@(isAiRequestLoading ? "true" : "false")">
                                 <div class="node-row">
                                     <span class="node-row__chevron" aria-hidden="true"></span>
-                                    <span class="node-row__status @RunStatusCss(setupStatus)">@RunStatusGlyph(setupStatus)</span>
+                                    <span class="node-row__status @RunStatusCss(setupStatus)" aria-hidden="true">@RunStatusGlyph(setupStatus)</span>
                                     <span class="node-row__label">Setup</span>
                                 </div>
 
@@ -680,7 +683,7 @@
                                         <details class="node-group node-group--deciding" open>
                                             <summary class="node-row">
                                                 <span class="node-row__chevron" aria-hidden="true">&#x203A;</span>
-                                                <span class="node-row__status @RunStatusCss(decidingStatus)">@RunStatusGlyph(decidingStatus)</span>
+                                                <span class="node-row__status @RunStatusCss(decidingStatus)" aria-hidden="true">@RunStatusGlyph(decidingStatus)</span>
                                                 <span class="node-row__label">Deciding what to produce</span>
                                                 @if (classifications is { Count: > 0 })
                                                 {
@@ -697,7 +700,7 @@
                                                 var classifierStatus = NodeRowStatus(classifier, c);
                                                 <div class="node-row node-row--item">
                                                     <span class="node-row__chevron" aria-hidden="true"></span>
-                                                    <span class="node-row__status @RunStatusCss(classifierStatus)">@RunStatusGlyph(classifierStatus)</span>
+                                                    <span class="node-row__status @RunStatusCss(classifierStatus)" aria-hidden="true">@RunStatusGlyph(classifierStatus)</span>
                                                     <span class="node-row__label">@classifier.Label</span>
                                                     @if (classifications?.GetValueOrDefault(classifier.Id) is { } answer)
                                                     {
@@ -736,7 +739,7 @@
                                             <details class="node-group" open>
                                                 <summary class="node-row">
                                                     <span class="node-row__chevron" aria-hidden="true">&#x203A;</span>
-                                                    <span class="node-row__status @RunStatusCss(stageStatus)">@RunStatusGlyph(stageStatus)</span>
+                                                    <span class="node-row__status @RunStatusCss(stageStatus)" aria-hidden="true">@RunStatusGlyph(stageStatus)</span>
                                                     <span class="node-row__label">@node.Label</span>
                                                     <span class="node-row__count muted-text">@doneItems/@nodeItems.Count</span>
                                                 </summary>
@@ -745,7 +748,7 @@
                                                     var itemStatus = NodeItemStatus(node, done, current, item.Id);
                                                     <div class="node-row node-row--item">
                                                         <span class="node-row__chevron" aria-hidden="true"></span>
-                                                        <span class="node-row__status @RunStatusCss(itemStatus)">@RunStatusGlyph(itemStatus)</span>
+                                                        <span class="node-row__status @RunStatusCss(itemStatus)" aria-hidden="true">@RunStatusGlyph(itemStatus)</span>
                                                         <span class="node-row__label">@item.Name</span>
                                                     </div>
                                                 }
@@ -755,7 +758,7 @@
                                         {
                                             <div class="node-row">
                                                 <span class="node-row__chevron" aria-hidden="true"></span>
-                                                <span class="node-row__status @RunStatusCss(stageStatus)">@RunStatusGlyph(stageStatus)</span>
+                                                <span class="node-row__status @RunStatusCss(stageStatus)" aria-hidden="true">@RunStatusGlyph(stageStatus)</span>
                                                 <span class="node-row__label">@node.Label</span>
                                             </div>
                                         }
@@ -783,7 +786,7 @@
                                             <details class="node-group" open>
                                                 <summary class="node-row">
                                                     <span class="node-row__chevron" aria-hidden="true">&#x203A;</span>
-                                                    <span class="node-row__status @RunStatusCss(stageStatus)">@RunStatusGlyph(stageStatus)</span>
+                                                    <span class="node-row__status @RunStatusCss(stageStatus)" aria-hidden="true">@RunStatusGlyph(stageStatus)</span>
                                                     <span class="node-row__label">@GetStageChecklistLabel(stepNum)</span>
                                                     <span class="node-row__count muted-text">@completedBlockCount/@totalBlockCount</span>
                                                 </summary>
@@ -794,7 +797,7 @@
                                                         : current ? "Running" : null;
                                                     <div class="node-row node-row--item">
                                                         <span class="node-row__chevron" aria-hidden="true"></span>
-                                                        <span class="node-row__status @RunStatusCss(sectionStatus)">@RunStatusGlyph(sectionStatus)</span>
+                                                        <span class="node-row__status @RunStatusCss(sectionStatus)" aria-hidden="true">@RunStatusGlyph(sectionStatus)</span>
                                                         <span class="node-row__label">@sec.Name</span>
                                                     </div>
                                                 }
@@ -804,7 +807,7 @@
                                         {
                                             <div class="node-row">
                                                 <span class="node-row__chevron" aria-hidden="true"></span>
-                                                <span class="node-row__status @RunStatusCss(stageStatus)">@RunStatusGlyph(stageStatus)</span>
+                                                <span class="node-row__status @RunStatusCss(stageStatus)" aria-hidden="true">@RunStatusGlyph(stageStatus)</span>
                                                 <span class="node-row__label">@GetStageChecklistLabel(stepNum)</span>
                                             </div>
                                             @if (current && !string.IsNullOrEmpty(aiProgressNotice))
@@ -820,7 +823,7 @@
                                 }
                                 <div class="node-row">
                                     <span class="node-row__chevron" aria-hidden="true"></span>
-                                    <span class="node-row__status @RunStatusCss(doneStatus)">@RunStatusGlyph(doneStatus)</span>
+                                    <span class="node-row__status @RunStatusCss(doneStatus)" aria-hidden="true">@RunStatusGlyph(doneStatus)</span>
                                     <span class="node-row__label">@(doneStatus == "Failed" ? (decisionFailureKind != null ? DecisionState.DoneLabel(decisionFailureKind) : "Failed") : "Done")</span>
                                     @if (NotYetDecided)
                                     {
@@ -2759,6 +2762,34 @@
     }
 
     return null;
+  }
+
+  // #687: a screen reader can't read the glyph checklist, so the run's state is
+  // summarised in one polite live-region sentence that updates each tick.
+  private string RunProgressAnnouncement()
+  {
+    if (isAiRequestLoading)
+    {
+      if (totalBlockCount > 0)
+      {
+        return $"Generating consult: {generatedBlocks.Count} of {totalBlockCount} sections complete.";
+      }
+
+      return string.IsNullOrEmpty(aiProgressNotice) ? "Generating consult." : aiProgressNotice;
+    }
+
+    // DoneRowStatus folds a cancelled run into "Completed"; the announcement shouldn't.
+    if (runTerminalStatus == "Cancelled")
+    {
+      return "Run cancelled.";
+    }
+
+    return DoneRowStatus() switch
+    {
+      "Completed" => "Run complete.",
+      "Failed" => "Run failed.",
+      _ => string.Empty
+    };
   }
 
   // ⊘ is Skipped and ○ is not-started: a node the job decided against and one it
