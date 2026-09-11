@@ -2,14 +2,21 @@
    The diagram text is rebuilt from the Detail parameter on every render;
    the pages' polls replace that record in place, so a status change
    recolours the graph and an unchanged tick is a byte-identical no-op the
-   renderer's change guard skips. The backdrop click and the × both close. *@
+   renderer's change guard skips. The backdrop click and the × both close.
+   #686: it's the app's only modal, so it carries dialog semantics — a
+   labelled role="dialog", Escape-to-close, and focus moved in on open,
+   trapped while up, and restored to the trigger on close (the last three
+   via consultologistDialog, since a virtual DOM has no real focus). *@
 @using Consultologist.Web.Services.AI
 @using Consultologist.Web.Services.Provenance
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
-<div class="run-dag-overlay" @onclick="() => OnClose.InvokeAsync()">
-    <div class="run-dag-panel" @onclick:stopPropagation="true">
+<div class="run-dag-overlay" @onclick="() => OnClose.InvokeAsync()" @onkeydown="OnKeyDown">
+    <div class="run-dag-panel" @ref="_panel" @onclick:stopPropagation="true"
+         role="dialog" aria-modal="true" aria-labelledby="run-dag-title" tabindex="-1">
         <div class="run-dag-panel__header">
-            <span class="run-dag-panel__title">Run diagram</span>
+            <span class="run-dag-panel__title" id="run-dag-title">Run diagram</span>
             <span class="run-dag-legend muted-text">
                 <span class="run-dag-legend__ranNot">yet to run</span> ·
                 <span class="run-dag-legend__skipped">skipped</span> ·
@@ -28,4 +35,37 @@
     [Parameter, EditorRequired] public ConsultGenerationJobResponse Detail { get; set; } = default!;
 
     [Parameter] public EventCallback OnClose { get; set; }
+
+    private ElementReference _panel;
+
+    // Escape closes, via the same callback the backdrop and × use.
+    private async Task OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            await OnClose.InvokeAsync();
+        }
+    }
+
+    // The parent renders this under an @if, so a fresh instance's first render
+    // is the dialog opening — the moment to take focus.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("consultologistDialog.activate", _panel);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("consultologistDialog.deactivate");
+        }
+        catch (JSDisconnectedException)
+        {
+            // The runtime is already gone; nothing to restore focus to.
+        }
+    }
 }
