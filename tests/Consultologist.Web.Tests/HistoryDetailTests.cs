@@ -1368,4 +1368,53 @@ public class HistoryRunDagTests : ClientRenderTestContext
         page.Find(".run-dag-overlay").Click();
         Assert.Empty(page.FindAll(".run-dag-overlay"));
     }
+
+    // ----- #686: modal semantics -----
+
+    [Fact]
+    public void Escape_ClosesTheOverlay()
+    {
+        WithNodeJob();
+        var page = Render<Consultologist.Web.Pages.History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        page.Find(".run-dag-button").Click();
+        Assert.NotEmpty(page.FindAll(".run-dag-panel"));
+
+        page.Find(".run-dag-overlay").TriggerEvent(
+            "onkeydown", new Microsoft.AspNetCore.Components.Web.KeyboardEventArgs { Key = "Escape" });
+
+        Assert.Empty(page.FindAll(".run-dag-panel"));
+    }
+
+    [Fact]
+    public void ANonEscapeKey_LeavesItOpen()
+    {
+        WithNodeJob();
+        var page = Render<Consultologist.Web.Pages.History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        page.Find(".run-dag-button").Click();
+
+        page.Find(".run-dag-overlay").TriggerEvent(
+            "onkeydown", new Microsoft.AspNetCore.Components.Web.KeyboardEventArgs { Key = "Enter" });
+
+        // Escape is the only key that closes; nothing else does.
+        Assert.NotEmpty(page.FindAll(".run-dag-panel"));
+    }
+
+    [Fact]
+    public void TheDialog_CarriesModalSemantics()
+    {
+        WithNodeJob();
+        var page = Render<Consultologist.Web.Pages.History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        page.Find(".run-dag-button").Click();
+
+        var panel = page.Find(".run-dag-panel");
+        Assert.Equal("dialog", panel.GetAttribute("role"));
+        Assert.Equal("true", panel.GetAttribute("aria-modal"));
+        Assert.Equal("run-dag-title", panel.GetAttribute("aria-labelledby"));
+        Assert.Equal("-1", panel.GetAttribute("tabindex"));
+        // The label the dialog points at is actually present.
+        Assert.Equal("Run diagram", page.Find("#run-dag-title").TextContent);
+    }
 }
