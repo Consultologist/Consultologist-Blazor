@@ -59,7 +59,11 @@
                 }
             </div>
 
-            @if (usage is { } usageData)
+            @if (loading)
+            {
+                <div class="loading-state"><FluentProgressRing /><span>Loading usage&hellip;</span></div>
+            }
+            else if (usage is { } usageData)
             {
                 @if (usageData.Rows.Count == 0)
                 {
@@ -109,6 +113,7 @@
 
 @code {
     private OperatorUsageResponse? usage;
+    private bool loading;
     private string window = "30";
     private string fromInput = string.Empty;
     private string toInput = string.Empty;
@@ -142,6 +147,7 @@
             from = today.AddDays(-(windowDays - 1)).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
         }
 
+        loading = true;
         try
         {
             usage = await OperatorService.GetUsageAsync(from, to);
@@ -157,6 +163,10 @@
         catch (Exception ex)
         {
             usageError = ex.Message;
+        }
+        finally
+        {
+            loading = false;
         }
     }
 
