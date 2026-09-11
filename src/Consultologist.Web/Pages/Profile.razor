@@ -225,6 +225,15 @@
                         </FluentMessageBar>
                     }
 
+                    @* #679: a fresh Pending account — name the step that activates it,
+                       echoing the awaiting-activation banner. *@
+                    @if (account?.Status == "Pending")
+                    {
+                        <FluentMessageBar Intent="MessageIntent.Info">
+                            Connect LinkedIn to activate this account.
+                        </FluentMessageBar>
+                    }
+
                     <div class="action-row">
                         <FluentButton Appearance="Appearance.Accent"
                                       IconStart="@(new Icons.Regular.Size20.LinkMultiple())"
