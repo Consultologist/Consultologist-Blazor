@@ -28,165 +28,14 @@
     <Authorized>
         @if (account != null)
         {
-            <section class="content-card">
-                <div class="form-stack">
-                    <h2 class="panel-title">
-                        Signed-in account details
-                    </h2>
-
-                    <p class="panel-description">
-                        These details come from the Consultologist account service for the current clinician session.
-                    </p>
-
-                    <div class="state-panel">
-                        <span class="muted-text">Display name</span>
-                        <strong>@account.DisplayName</strong>
-                    </div>
-
-                    <div class="state-panel">
-                        <span class="muted-text">Email</span>
-                        <strong>@(account.Email ?? "Not provided")</strong>
-                    </div>
-
-                    <div class="state-panel">
-                        <span class="muted-text">App user ID</span>
-                        <strong>@account.AppUserId</strong>
-                    </div>
-
-                    <div class="state-panel">
-                        <span class="muted-text">Current identity</span>
-                        <strong>@account.CurrentIdentity.Provider</strong>
-                    </div>
-
-                    <div class="state-panel">
-                        <span class="muted-text">Account kind</span>
-                        <strong class="account-kind">@(account.AccountKind switch { "organisation" => "Work or school", "personal" => "Personal", _ => "—" })</strong>
-                    </div>
-
-                    <FluentMessageBar Intent="MessageIntent.Info">
-                        Protected API requests use this account identity for server-side authorization and job ownership.
-                    </FluentMessageBar>
-                </div>
-            </section>
-
-            @* #561: the snippet library — the personal, dot-phrase sense of
-               "macro", beside #516's signature blocks and outside the package
-               grammar. A snippet acts only when inserted on the setup form,
-               where it becomes ordinary typed text. *@
-            <section class="content-card snippet-card">
-                <div class="form-stack">
-                    <h2 class="panel-title">
-                        Snippets
-                    </h2>
-
-                    <p class="panel-description">
-                        Canned text that belongs to you, not to a package: create a snippet
-                        here and the setup form's text inputs offer it for insertion. Inserted
-                        text is your own typing from that moment — editable, hashed and
-                        recorded like anything you type.
-                    </p>
-
-                    @if (snippetMessage != null)
-                    {
-                        <FluentMessageBar Intent="@snippetMessageIntent" AllowDismiss="false" Class="snippet-message">
-                            @snippetMessage
-                        </FluentMessageBar>
-                    }
-
-                    <div class="state-panel">
-                        <span class="muted-text">Snippets</span>
-                        <strong class="snippet-state">@Snippets.Describe(snippetSet)</strong>
-                    </div>
-
-                    @foreach (var snippet in snippetSet.Items)
-                    {
-                        <div class="state-panel snippet-item" @key="snippet.Id">
-                            <span class="muted-text">@snippet.Name</span>
-                            <span class="snippet-preview">@Preview(snippet.Text)</span>
-                            <div class="action-row">
-                                <FluentButton Appearance="Appearance.Neutral"
-                                              Class="snippet-edit"
-                                              Disabled="@snippetRequestInProgress"
-                                              @onclick="() => EditSnippet(snippet.Id)">
-                                    Edit
-                                </FluentButton>
-                                <FluentButton Appearance="Appearance.Neutral"
-                                              Class="snippet-remove"
-                                              Disabled="@snippetRequestInProgress"
-                                              @onclick="() => RemoveSnippetAsync(snippet.Id)">
-                                    @(snippetRemoveArmedId == snippet.Id ? "Confirm remove" : "Remove")
-                                </FluentButton>
-                            </div>
-                        </div>
-                    }
-
-                    @if (editingSnippetId != null || snippetSet.Items.Count < Snippets.MaxSnippets)
-                    {
-                        <div class="form-stack snippet-form">
-                            <input class="node-field__input snippet-name-input"
-                                   value="@snippetNameInput"
-                                   @onchange="args => snippetNameInput = args.Value?.ToString()"
-                                   maxlength="@Snippets.MaxNameLength"
-                                   placeholder="Snippet name (e.g. Normal exam)"
-                                   aria-label="Snippet name" />
-                            <textarea class="node-field__input snippet-text-input"
-                                      rows="5"
-                                      value="@snippetTextInput"
-                                      @onchange="args => snippetTextInput = args.Value?.ToString()"
-                                      maxlength="@Snippets.MaxTextLength"
-                                      placeholder="The text, exactly as it should be inserted"
-                                      aria-label="Snippet text"></textarea>
-                            <div class="action-row">
-                                <FluentButton Appearance="Appearance.Accent"
-                                              Class="snippet-save"
-                                              Disabled="@(snippetRequestInProgress || !SnippetFormValid)"
-                                              @onclick="SaveSnippetAsync">
-                                    @(editingSnippetId == null ? "Add snippet" : "Save changes")
-                                </FluentButton>
-                                @if (editingSnippetId != null)
-                                {
-                                    <FluentButton Appearance="Appearance.Neutral"
-                                                  Class="snippet-cancel-edit"
-                                                  Disabled="@snippetRequestInProgress"
-                                                  @onclick="CancelSnippetEdit">
-                                        Cancel
-                                    </FluentButton>
-                                }
-                            </div>
-                        </div>
-                    }
-                </div>
-            </section>
+            <section class="profile-group">
+                <h2 class="profile-group__title">Identity & activation</h2>
 
             <section class="content-card">
                 <div class="form-stack">
-                    <h2 class="panel-title">
-                        Build
-                    </h2>
-
-                    <p class="panel-description">
-                        The client this tab is running and the engine it talks to, as git commits.
-                        A new client build is announced at the top of the page when it is ready; the
-                        engine's commit is what its provenance records cite.
-                    </p>
-
-                    <div class="state-panel">
-                        <span class="muted-text">Client</span>
-                        <strong class="build-client">@BuildLabel.Describe(Configuration)</strong>
-                    </div>
-
-                    <div class="state-panel">
-                        <span class="muted-text">Engine</span>
-                        <strong class="build-engine">@(engineCommit ?? "Unavailable")</strong>
-                    </div>
-                </div>
-            </section>
-
-            <section class="content-card">
-                <div class="form-stack">
-                    <h2 class="panel-title">
+                    <h3 class="panel-title">
                         LinkedIn verification
-                    </h2>
+                    </h3>
 
                     <p class="panel-description">
                         Connecting your LinkedIn profile proves this account belongs to a real clinician.
@@ -263,9 +112,9 @@
                here; disconnected here. *@
             <section class="content-card epic-card">
                 <div class="form-stack">
-                    <h2 class="panel-title">
+                    <h3 class="panel-title">
                         Epic identity
-                    </h2>
+                    </h3>
 
                     <p class="panel-description">
                         When you open Consultologist from Epic, your Epic identity is linked here as
@@ -309,9 +158,9 @@
                panel, shown and disconnected here. *@
             <section class="content-card cerner-card">
                 <div class="form-stack">
-                    <h2 class="panel-title">
+                    <h3 class="panel-title">
                         Cerner (Oracle Health) identity
-                    </h2>
+                    </h3>
 
                     <p class="panel-description">
                         When you open Consultologist from Cerner, your Cerner identity is linked here as
@@ -356,7 +205,7 @@
                so this card shows state only: there is no connect or disconnect. *@
             <section class="content-card marketplace-card">
                 <div class="form-stack">
-                    <h2 class="panel-title">Subscription</h2>
+                    <h3 class="panel-title">Subscription</h3>
 
                     @* #680: Marketplace is work/school only, so a personal account
                        is told this door isn't theirs and pointed at LinkedIn. *@
@@ -410,15 +259,18 @@
                     }
                 </div>
             </section>
+            </section>
+            <section class="profile-group">
+                <h2 class="profile-group__title">Delivery</h2>
 
             @* #515: the location — where the app sends data and reads the
                account. Kept on this device; empty until chosen, and the
                unchosen line says which location is used meanwhile. *@
             <section class="content-card location-card">
                 <div class="form-stack">
-                    <h2 class="panel-title">
+                    <h3 class="panel-title">
                         Location
-                    </h2>
+                    </h3>
 
                     <p class="panel-description">
                         Where the app sends your data and reads your account, packages and History.
@@ -472,9 +324,9 @@
 
             <section class="content-card">
                 <div class="form-stack">
-                    <h2 class="panel-title">
+                    <h3 class="panel-title">
                         Scheduled consults
-                    </h2>
+                    </h3>
 
                     <p class="panel-description">
                         The time of day a scheduled consult runs, unless you choose otherwise
@@ -521,9 +373,9 @@
 
             <section class="content-card delivery-address-card">
                 <div class="form-stack">
-                    <h2 class="panel-title">
+                    <h3 class="panel-title">
                         Delivery address
-                    </h2>
+                    </h3>
 
                     <p class="panel-description">
                         Every consult you submit is emailed here when it completes — and only here.
@@ -625,9 +477,9 @@
                nothing changes silently for an account that never chose. *@
             <section class="content-card email-pdf-card">
                 <div class="form-stack">
-                    <h2 class="panel-title">
+                    <h3 class="panel-title">
                         Email each run's PDF
-                    </h2>
+                    </h3>
 
                     <p class="panel-description">
                         Whether a consult you start from the app — now or scheduled — is emailed
@@ -679,302 +531,139 @@
                 </div>
             </section>
 
-            @* #543: how a pushed form response becomes a consult — empty until
-               chosen, the unset line saying what unset means (the #518 rule). *@
-            <section class="content-card forms-mode-card">
+            <section class="content-card">
                 <div class="form-stack">
-                    <h2 class="panel-title">
-                        Form responses
-                    </h2>
+                    <h3 class="panel-title">
+                        Encrypted document delivery
+                    </h3>
 
                     <p class="panel-description">
-                        What happens when your Power Automate flow pushes a form response.
-                        Held responses wait for the setup form's <em>Load from a form
-                        response…</em> picker; with <em>run at once</em> each response starts
-                        a consult on your pinned package immediately — an answer that does
-                        not fit its input is refused by name, and the response stays held
-                        for the picker either way.
+                        With a delivery password set, the email to your delivery address attaches the
+                        consult as a password-protected PDF. Without one, it carries only a sign-in link.
+                        The password is write-only — it is never shown again, and History always
+                        keeps the document if it is forgotten.
                     </p>
 
-                    @if (formsModeMessage != null)
+                    @if (passwordMessage != null)
                     {
-                        <FluentMessageBar Intent="@formsModeMessageIntent" AllowDismiss="false" Class="forms-mode-message">
-                            @formsModeMessage
-                        </FluentMessageBar>
+                        <FluentMessageBar Intent="@passwordMessageIntent">@passwordMessage</FluentMessageBar>
                     }
 
                     <div class="state-panel">
-                        <span class="muted-text">Form responses</span>
-                        <strong class="forms-mode-state">@FormResponsePreference.Describe(formsModeChoice)</strong>
+                        <span class="muted-text">Delivery password</span>
+                        <strong>@(account.DocumentPasswordSet ? "Set" : "Not set")</strong>
                     </div>
 
                     <div class="action-row">
-                        @if (formsModeChoice != FormResponsePreference.RunAtOnce)
-                        {
-                            <FluentButton Appearance="Appearance.Accent"
-                                          Class="forms-mode-run"
-                                          Disabled="@formsModeRequestInProgress"
-                                          @onclick="() => SaveFormsModeAsync(FormResponsePreference.RunAtOnce)">
-                                Run each response at once
-                            </FluentButton>
-                        }
-                        @if (formsModeChoice != FormResponsePreference.Hold)
-                        {
-                            <FluentButton Appearance="Appearance.Neutral"
-                                          Class="forms-mode-hold"
-                                          Disabled="@formsModeRequestInProgress"
-                                          @onclick="() => SaveFormsModeAsync(FormResponsePreference.Hold)">
-                                Hold for review
-                            </FluentButton>
-                        }
-                        @if (formsModeChoice != null)
-                        {
-                            <FluentButton Appearance="Appearance.Neutral"
-                                          Class="forms-mode-clear"
-                                          Disabled="@formsModeRequestInProgress"
-                                          @onclick="ClearFormsModeAsync">
-                                Back to not chosen
-                            </FluentButton>
-                        }
-                    </div>
-                </div>
-            </section>
-
-            @* #548: how long a run's text is kept. Empty until chosen; each
-               unset line says what unset means, and a change is refused by
-               name rather than silently reordered. *@
-            <section class="content-card retention-card">
-                <div class="form-stack">
-                    <h2 class="panel-title">
-                        Retention
-                    </h2>
-
-                    <p class="panel-description">
-                        How many days a completed run's text is kept — the produced documents
-                        (outputs) and, separately, the referral text held for a rerun (inputs).
-                        Inputs never outlive outputs, and 30 days is the ceiling. Hashes and
-                        history are never deleted. A shortened setting applies to runs already
-                        held at the next nightly sweep.
-                    </p>
-
-                    @if (retentionMessage != null)
-                    {
-                        <FluentMessageBar Intent="@retentionMessageIntent" AllowDismiss="false" Class="retention-message">
-                            @retentionMessage
-                        </FluentMessageBar>
-                    }
-
-                    <div class="state-panel">
-                        <span class="muted-text">Outputs</span>
-                        <strong class="retention-output-state">@RetentionPreference.Describe(savedRetentionOutputDays)</strong>
-                        <span class="muted-text">Inputs</span>
-                        <strong class="retention-input-state">@RetentionPreference.Describe(savedRetentionInputDays)</strong>
-                    </div>
-
-                    <div class="action-row">
-                        <input type="number"
-                               min="@RetentionPreference.MinDays"
-                               max="@RetentionPreference.MaxDays"
-                               class="node-field__input retention-output-input"
-                               value="@retentionOutputInput"
-                               @onchange="args => retentionOutputInput = args.Value?.ToString() ?? string.Empty"
-                               disabled="@retentionRequestInProgress"
-                               placeholder="Outputs"
-                               aria-label="Days outputs are kept" />
-                        <input type="number"
-                               min="@RetentionPreference.MinDays"
-                               max="@RetentionPreference.MaxDays"
-                               class="node-field__input retention-input-input"
-                               value="@retentionInputInput"
-                               @onchange="args => retentionInputInput = args.Value?.ToString() ?? string.Empty"
-                               disabled="@retentionRequestInProgress"
-                               placeholder="Inputs"
-                               aria-label="Days inputs are kept" />
+                        <FluentTextField @bind-Value="deliveryPasswordInput"
+                                         TextFieldType="TextFieldType.Password"
+                                         Placeholder="At least 16 characters"
+                                         Disabled="@passwordRequestInProgress" />
                         <FluentButton Appearance="Appearance.Accent"
-                                      Class="retention-save"
-                                      Disabled="@(retentionRequestInProgress || (string.IsNullOrWhiteSpace(retentionOutputInput) && string.IsNullOrWhiteSpace(retentionInputInput)))"
-                                      @onclick="SaveRetentionAsync">
-                            Save
+                                      Disabled="@(passwordRequestInProgress || (deliveryPasswordInput?.Length ?? 0) < 16)"
+                                      @onclick="SetDeliveryPasswordAsync">
+                            @(account.DocumentPasswordSet ? "Replace password" : "Set password")
                         </FluentButton>
-                        @if (savedRetentionOutputDays != null)
+                        @if (account.DocumentPasswordSet)
                         {
                             <FluentButton Appearance="Appearance.Neutral"
-                                          Class="retention-output-clear"
-                                          Disabled="@retentionRequestInProgress"
-                                          @onclick="() => ClearRetentionAsync(RetentionPreference.OutputDaysKey)">
-                                Clear outputs
-                            </FluentButton>
-                        }
-                        @if (savedRetentionInputDays != null)
-                        {
-                            <FluentButton Appearance="Appearance.Neutral"
-                                          Class="retention-input-clear"
-                                          Disabled="@retentionRequestInProgress"
-                                          @onclick="() => ClearRetentionAsync(RetentionPreference.InputDaysKey)">
-                                Clear inputs
+                                          Disabled="@passwordRequestInProgress"
+                                          @onclick="ClearDeliveryPasswordAsync">
+                                Clear
                             </FluentButton>
                         }
                     </div>
                 </div>
             </section>
+            </section>
+            <section class="profile-group">
+                <h2 class="profile-group__title">Workflow preferences</h2>
 
-            @* #239: OCR confidence gate for scanned/faxed PDFs. On by default —
-               a scan's text is the riskiest input, so the account opts OUT, not
-               in. The state line says what the policy does; a save is refused by
-               name for a bad percent. *@
-            <section class="content-card ocr-confidence-card">
+            @* #561: the snippet library — the personal, dot-phrase sense of
+               "macro", beside #516's signature blocks and outside the package
+               grammar. A snippet acts only when inserted on the setup form,
+               where it becomes ordinary typed text. *@
+            <section class="content-card snippet-card">
                 <div class="form-stack">
-                    <h2 class="panel-title">
-                        Scanned PDF confidence
-                    </h2>
+                    <h3 class="panel-title">
+                        Snippets
+                    </h3>
 
                     <p class="panel-description">
-                        A scanned or faxed PDF has no text layer, so it is read by OCR. This sets
-                        the minimum confidence OCR must reach before that text is accepted — below
-                        it, the scan is refused and you are asked to paste the text instead, so a
-                        doubtful read never becomes a consult. Turn the check off to accept every
-                        readable scan whatever its confidence.
+                        Canned text that belongs to you, not to a package: create a snippet
+                        here and the setup form's text inputs offer it for insertion. Inserted
+                        text is your own typing from that moment — editable, hashed and
+                        recorded like anything you type.
                     </p>
 
-                    @if (ocrMessage != null)
+                    @if (snippetMessage != null)
                     {
-                        <FluentMessageBar Intent="@ocrMessageIntent" AllowDismiss="false" Class="ocr-confidence-message">
-                            @ocrMessage
+                        <FluentMessageBar Intent="@snippetMessageIntent" AllowDismiss="false" Class="snippet-message">
+                            @snippetMessage
                         </FluentMessageBar>
                     }
 
                     <div class="state-panel">
-                        <span class="muted-text">Minimum OCR confidence</span>
-                        <strong class="ocr-confidence-state">@OcrConfidencePreference.Describe(ocrGateEnabled, ocrSavedPercent)</strong>
+                        <span class="muted-text">Snippets</span>
+                        <strong class="snippet-state">@Snippets.Describe(snippetSet)</strong>
                     </div>
 
-                    <div class="action-row">
-                        <input type="number"
-                               min="@OcrConfidencePreference.MinPercent"
-                               max="@OcrConfidencePreference.MaxPercent"
-                               class="node-field__input ocr-confidence-input"
-                               value="@ocrPercentInput"
-                               @onchange="args => ocrPercentInput = args.Value?.ToString() ?? string.Empty"
-                               disabled="@(ocrRequestInProgress || !ocrGateEnabled)"
-                               placeholder="Percent"
-                               aria-label="Minimum OCR confidence percent" />
-                        <FluentButton Appearance="Appearance.Accent"
-                                      Class="ocr-confidence-save"
-                                      Disabled="@(ocrRequestInProgress || !ocrGateEnabled || string.IsNullOrWhiteSpace(ocrPercentInput))"
-                                      @onclick="SaveOcrConfidenceAsync">
-                            Save
-                        </FluentButton>
-                        @if (ocrGateEnabled)
-                        {
-                            <FluentButton Appearance="Appearance.Neutral"
-                                          Class="ocr-confidence-off"
-                                          Disabled="@ocrRequestInProgress"
-                                          @onclick="() => SetOcrGateAsync(false)">
-                                Turn off checking
-                            </FluentButton>
-                        }
-                        else
-                        {
-                            <FluentButton Appearance="Appearance.Accent"
-                                          Class="ocr-confidence-on"
-                                          Disabled="@ocrRequestInProgress"
-                                          @onclick="() => SetOcrGateAsync(true)">
-                                Turn on checking
-                            </FluentButton>
-                        }
-                    </div>
-                </div>
-            </section>
-
-            @* #552: what the account has spent — the derived usage store,
-               numbers only. Empty until the first completed run after it
-               shipped, and says so; per-consult figures live in History. *@
-            <section class="content-card usage-card">
-                <div class="form-stack">
-                    <h2 class="panel-title">
-                        Usage
-                    </h2>
-
-                    <p class="panel-description">
-                        Consults and tokens per day, from a store written once at each run's
-                        completion. Numbers only — nothing here names a consult's content.
-                    </p>
-
-                    @if (usageError != null)
+                    @foreach (var snippet in snippetSet.Items)
                     {
-                        <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false" Class="usage-message">@usageError</FluentMessageBar>
+                        <div class="state-panel snippet-item" @key="snippet.Id">
+                            <span class="muted-text">@snippet.Name</span>
+                            <span class="snippet-preview">@Preview(snippet.Text)</span>
+                            <div class="action-row">
+                                <FluentButton Appearance="Appearance.Neutral"
+                                              Class="snippet-edit"
+                                              Disabled="@snippetRequestInProgress"
+                                              @onclick="() => EditSnippet(snippet.Id)">
+                                    Edit
+                                </FluentButton>
+                                <FluentButton Appearance="Appearance.Neutral"
+                                              Class="snippet-remove"
+                                              Disabled="@snippetRequestInProgress"
+                                              @onclick="() => RemoveSnippetAsync(snippet.Id)">
+                                    @(snippetRemoveArmedId == snippet.Id ? "Confirm remove" : "Remove")
+                                </FluentButton>
+                            </div>
+                        </div>
                     }
 
-                    <div class="action-row">
-                        <select class="node-field__input usage-window"
-                                value="@usageWindow"
-                                @onchange="OnUsageWindowChangedAsync"
-                                aria-label="Usage window">
-                            <option value="7">Last 7 days</option>
-                            <option value="30">Last 30 days</option>
-                            <option value="90">Last 90 days</option>
-                            <option value="custom">Custom range</option>
-                        </select>
-                        @if (usageWindow == "custom")
-                        {
-                            <input type="date"
-                                   class="node-field__input usage-from"
-                                   value="@usageFromInput"
-                                   @onchange="args => usageFromInput = args.Value?.ToString() ?? string.Empty"
-                                   aria-label="Usage from" />
-                            <input type="date"
-                                   class="node-field__input usage-to"
-                                   value="@usageToInput"
-                                   @onchange="args => usageToInput = args.Value?.ToString() ?? string.Empty"
-                                   aria-label="Usage to" />
-                            <FluentButton Appearance="Appearance.Accent"
-                                          Class="usage-apply"
-                                          Disabled="@(string.IsNullOrWhiteSpace(usageFromInput) || string.IsNullOrWhiteSpace(usageToInput))"
-                                          @onclick="LoadUsageAsync">
-                                Apply
-                            </FluentButton>
-                        }
-                    </div>
-
-                    @if (usage is { } usageData)
+                    @if (editingSnippetId != null || snippetSet.Items.Count < Snippets.MaxSnippets)
                     {
-                        @if (usageData.Days.Count == 0)
-                        {
-                            <p class="usage-empty muted-text">No usage yet — counts begin with the first completed run after 2026-08-31; older runs have no counts.</p>
-                        }
-                        else
-                        {
-                            var usageFigures = UsageSummary.Of(usageData.Days, UsageSummary.WindowDaysOf(usageData.From, usageData.To));
-                            <div class="state-panel usage-figures">
-                                <span class="muted-text">Consults</span>
-                                <strong class="usage-consults">@usageFigures.Consults.ToString("N0")</strong>
-                                <span class="muted-text">Tokens</span>
-                                <strong class="usage-tokens">@($"{usageFigures.TokensIn:N0} in · {usageFigures.TokensOut:N0} out · {usageFigures.TokensTotal:N0} total")</strong>
-                                <span class="muted-text">Per day</span>
-                                <strong class="usage-per-day">@($"{usageFigures.ConsultsPerDay:0.##} consults · {usageFigures.TokensPerDay:N0} tokens")</strong>
-                                <span class="muted-text">Average tokens per consult</span>
-                                <strong class="usage-average">@UsageSummary.DescribeAverage(usageFigures.AverageTokensPerConsult)</strong>
+                        <div class="form-stack snippet-form">
+                            <input class="node-field__input snippet-name-input"
+                                   value="@snippetNameInput"
+                                   @onchange="args => snippetNameInput = args.Value?.ToString()"
+                                   maxlength="@Snippets.MaxNameLength"
+                                   placeholder="Snippet name (e.g. Normal exam)"
+                                   aria-label="Snippet name" />
+                            <textarea class="node-field__input snippet-text-input"
+                                      rows="5"
+                                      value="@snippetTextInput"
+                                      @onchange="args => snippetTextInput = args.Value?.ToString()"
+                                      maxlength="@Snippets.MaxTextLength"
+                                      placeholder="The text, exactly as it should be inserted"
+                                      aria-label="Snippet text"></textarea>
+                            <div class="action-row">
+                                <FluentButton Appearance="Appearance.Accent"
+                                              Class="snippet-save"
+                                              Disabled="@(snippetRequestInProgress || !SnippetFormValid)"
+                                              @onclick="SaveSnippetAsync">
+                                    @(editingSnippetId == null ? "Add snippet" : "Save changes")
+                                </FluentButton>
+                                @if (editingSnippetId != null)
+                                {
+                                    <FluentButton Appearance="Appearance.Neutral"
+                                                  Class="snippet-cancel-edit"
+                                                  Disabled="@snippetRequestInProgress"
+                                                  @onclick="CancelSnippetEdit">
+                                        Cancel
+                                    </FluentButton>
+                                }
                             </div>
-                            <div class="usage__scroll">
-                                <table class="usage__table">
-                                    <thead>
-                                        <tr><th>Day</th><th>Consults</th><th>Tokens in</th><th>Tokens out</th></tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var usageDay in usageData.Days)
-                                        {
-                                            <tr class="usage__row">
-                                                <td>@usageDay.Day</td>
-                                                <td>@usageDay.ConsultsCompleted.ToString("N0")</td>
-                                                <td>@usageDay.TokensIn.ToString("N0")</td>
-                                                <td>@usageDay.TokensOut.ToString("N0")</td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
-                            </div>
-                            <p class="usage-history-line muted-text">Per-consult figures are on each run in <a href="/history">History</a>.</p>
-                        }
+                        </div>
                     }
                 </div>
             </section>
@@ -985,9 +674,9 @@
                chosen; the unchosen line names the consequence. *@
             <section class="content-card signature-card">
                 <div class="form-stack">
-                    <h2 class="panel-title">
+                    <h3 class="panel-title">
                         Signature
-                    </h2>
+                    </h3>
 
                     <p class="panel-description">
                         Named signature blocks — name, credentials, contact — that belong to you,
@@ -1089,49 +778,372 @@
                 </div>
             </section>
 
-            <section class="content-card">
+            @* #543: how a pushed form response becomes a consult — empty until
+               chosen, the unset line saying what unset means (the #518 rule). *@
+            <section class="content-card forms-mode-card">
                 <div class="form-stack">
-                    <h2 class="panel-title">
-                        Encrypted document delivery
-                    </h2>
+                    <h3 class="panel-title">
+                        Form responses
+                    </h3>
 
                     <p class="panel-description">
-                        With a delivery password set, the email to your delivery address attaches the
-                        consult as a password-protected PDF. Without one, it carries only a sign-in link.
-                        The password is write-only — it is never shown again, and History always
-                        keeps the document if it is forgotten.
+                        What happens when your Power Automate flow pushes a form response.
+                        Held responses wait for the setup form's <em>Load from a form
+                        response…</em> picker; with <em>run at once</em> each response starts
+                        a consult on your pinned package immediately — an answer that does
+                        not fit its input is refused by name, and the response stays held
+                        for the picker either way.
                     </p>
 
-                    @if (passwordMessage != null)
+                    @if (formsModeMessage != null)
                     {
-                        <FluentMessageBar Intent="@passwordMessageIntent">@passwordMessage</FluentMessageBar>
+                        <FluentMessageBar Intent="@formsModeMessageIntent" AllowDismiss="false" Class="forms-mode-message">
+                            @formsModeMessage
+                        </FluentMessageBar>
                     }
 
                     <div class="state-panel">
-                        <span class="muted-text">Delivery password</span>
-                        <strong>@(account.DocumentPasswordSet ? "Set" : "Not set")</strong>
+                        <span class="muted-text">Form responses</span>
+                        <strong class="forms-mode-state">@FormResponsePreference.Describe(formsModeChoice)</strong>
                     </div>
 
                     <div class="action-row">
-                        <FluentTextField @bind-Value="deliveryPasswordInput"
-                                         TextFieldType="TextFieldType.Password"
-                                         Placeholder="At least 16 characters"
-                                         Disabled="@passwordRequestInProgress" />
-                        <FluentButton Appearance="Appearance.Accent"
-                                      Disabled="@(passwordRequestInProgress || (deliveryPasswordInput?.Length ?? 0) < 16)"
-                                      @onclick="SetDeliveryPasswordAsync">
-                            @(account.DocumentPasswordSet ? "Replace password" : "Set password")
-                        </FluentButton>
-                        @if (account.DocumentPasswordSet)
+                        @if (formsModeChoice != FormResponsePreference.RunAtOnce)
+                        {
+                            <FluentButton Appearance="Appearance.Accent"
+                                          Class="forms-mode-run"
+                                          Disabled="@formsModeRequestInProgress"
+                                          @onclick="() => SaveFormsModeAsync(FormResponsePreference.RunAtOnce)">
+                                Run each response at once
+                            </FluentButton>
+                        }
+                        @if (formsModeChoice != FormResponsePreference.Hold)
                         {
                             <FluentButton Appearance="Appearance.Neutral"
-                                          Disabled="@passwordRequestInProgress"
-                                          @onclick="ClearDeliveryPasswordAsync">
-                                Clear
+                                          Class="forms-mode-hold"
+                                          Disabled="@formsModeRequestInProgress"
+                                          @onclick="() => SaveFormsModeAsync(FormResponsePreference.Hold)">
+                                Hold for review
+                            </FluentButton>
+                        }
+                        @if (formsModeChoice != null)
+                        {
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Class="forms-mode-clear"
+                                          Disabled="@formsModeRequestInProgress"
+                                          @onclick="ClearFormsModeAsync">
+                                Back to not chosen
                             </FluentButton>
                         }
                     </div>
                 </div>
+            </section>
+
+            @* #548: how long a run's text is kept. Empty until chosen; each
+               unset line says what unset means, and a change is refused by
+               name rather than silently reordered. *@
+            <section class="content-card retention-card">
+                <div class="form-stack">
+                    <h3 class="panel-title">
+                        Retention
+                    </h3>
+
+                    <p class="panel-description">
+                        How many days a completed run's text is kept — the produced documents
+                        (outputs) and, separately, the referral text held for a rerun (inputs).
+                        Inputs never outlive outputs, and 30 days is the ceiling. Hashes and
+                        history are never deleted. A shortened setting applies to runs already
+                        held at the next nightly sweep.
+                    </p>
+
+                    @if (retentionMessage != null)
+                    {
+                        <FluentMessageBar Intent="@retentionMessageIntent" AllowDismiss="false" Class="retention-message">
+                            @retentionMessage
+                        </FluentMessageBar>
+                    }
+
+                    <div class="state-panel">
+                        <span class="muted-text">Outputs</span>
+                        <strong class="retention-output-state">@RetentionPreference.Describe(savedRetentionOutputDays)</strong>
+                        <span class="muted-text">Inputs</span>
+                        <strong class="retention-input-state">@RetentionPreference.Describe(savedRetentionInputDays)</strong>
+                    </div>
+
+                    <div class="action-row">
+                        <input type="number"
+                               min="@RetentionPreference.MinDays"
+                               max="@RetentionPreference.MaxDays"
+                               class="node-field__input retention-output-input"
+                               value="@retentionOutputInput"
+                               @onchange="args => retentionOutputInput = args.Value?.ToString() ?? string.Empty"
+                               disabled="@retentionRequestInProgress"
+                               placeholder="Outputs"
+                               aria-label="Days outputs are kept" />
+                        <input type="number"
+                               min="@RetentionPreference.MinDays"
+                               max="@RetentionPreference.MaxDays"
+                               class="node-field__input retention-input-input"
+                               value="@retentionInputInput"
+                               @onchange="args => retentionInputInput = args.Value?.ToString() ?? string.Empty"
+                               disabled="@retentionRequestInProgress"
+                               placeholder="Inputs"
+                               aria-label="Days inputs are kept" />
+                        <FluentButton Appearance="Appearance.Accent"
+                                      Class="retention-save"
+                                      Disabled="@(retentionRequestInProgress || (string.IsNullOrWhiteSpace(retentionOutputInput) && string.IsNullOrWhiteSpace(retentionInputInput)))"
+                                      @onclick="SaveRetentionAsync">
+                            Save
+                        </FluentButton>
+                        @if (savedRetentionOutputDays != null)
+                        {
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Class="retention-output-clear"
+                                          Disabled="@retentionRequestInProgress"
+                                          @onclick="() => ClearRetentionAsync(RetentionPreference.OutputDaysKey)">
+                                Clear outputs
+                            </FluentButton>
+                        }
+                        @if (savedRetentionInputDays != null)
+                        {
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Class="retention-input-clear"
+                                          Disabled="@retentionRequestInProgress"
+                                          @onclick="() => ClearRetentionAsync(RetentionPreference.InputDaysKey)">
+                                Clear inputs
+                            </FluentButton>
+                        }
+                    </div>
+                </div>
+            </section>
+
+            @* #239: OCR confidence gate for scanned/faxed PDFs. On by default —
+               a scan's text is the riskiest input, so the account opts OUT, not
+               in. The state line says what the policy does; a save is refused by
+               name for a bad percent. *@
+            <section class="content-card ocr-confidence-card">
+                <div class="form-stack">
+                    <h3 class="panel-title">
+                        Scanned PDF confidence
+                    </h3>
+
+                    <p class="panel-description">
+                        A scanned or faxed PDF has no text layer, so it is read by OCR. This sets
+                        the minimum confidence OCR must reach before that text is accepted — below
+                        it, the scan is refused and you are asked to paste the text instead, so a
+                        doubtful read never becomes a consult. Turn the check off to accept every
+                        readable scan whatever its confidence.
+                    </p>
+
+                    @if (ocrMessage != null)
+                    {
+                        <FluentMessageBar Intent="@ocrMessageIntent" AllowDismiss="false" Class="ocr-confidence-message">
+                            @ocrMessage
+                        </FluentMessageBar>
+                    }
+
+                    <div class="state-panel">
+                        <span class="muted-text">Minimum OCR confidence</span>
+                        <strong class="ocr-confidence-state">@OcrConfidencePreference.Describe(ocrGateEnabled, ocrSavedPercent)</strong>
+                    </div>
+
+                    <div class="action-row">
+                        <input type="number"
+                               min="@OcrConfidencePreference.MinPercent"
+                               max="@OcrConfidencePreference.MaxPercent"
+                               class="node-field__input ocr-confidence-input"
+                               value="@ocrPercentInput"
+                               @onchange="args => ocrPercentInput = args.Value?.ToString() ?? string.Empty"
+                               disabled="@(ocrRequestInProgress || !ocrGateEnabled)"
+                               placeholder="Percent"
+                               aria-label="Minimum OCR confidence percent" />
+                        <FluentButton Appearance="Appearance.Accent"
+                                      Class="ocr-confidence-save"
+                                      Disabled="@(ocrRequestInProgress || !ocrGateEnabled || string.IsNullOrWhiteSpace(ocrPercentInput))"
+                                      @onclick="SaveOcrConfidenceAsync">
+                            Save
+                        </FluentButton>
+                        @if (ocrGateEnabled)
+                        {
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Class="ocr-confidence-off"
+                                          Disabled="@ocrRequestInProgress"
+                                          @onclick="() => SetOcrGateAsync(false)">
+                                Turn off checking
+                            </FluentButton>
+                        }
+                        else
+                        {
+                            <FluentButton Appearance="Appearance.Accent"
+                                          Class="ocr-confidence-on"
+                                          Disabled="@ocrRequestInProgress"
+                                          @onclick="() => SetOcrGateAsync(true)">
+                                Turn on checking
+                            </FluentButton>
+                        }
+                    </div>
+                </div>
+            </section>
+            </section>
+            <section class="profile-group">
+                <h2 class="profile-group__title">Account</h2>
+            <section class="content-card">
+                <div class="form-stack">
+                    <h3 class="panel-title">
+                        Signed-in account details
+                    </h3>
+
+                    <p class="panel-description">
+                        These details come from the Consultologist account service for the current clinician session.
+                    </p>
+
+                    <div class="state-panel">
+                        <span class="muted-text">Display name</span>
+                        <strong>@account.DisplayName</strong>
+                    </div>
+
+                    <div class="state-panel">
+                        <span class="muted-text">Email</span>
+                        <strong>@(account.Email ?? "Not provided")</strong>
+                    </div>
+
+                    <div class="state-panel">
+                        <span class="muted-text">App user ID</span>
+                        <strong>@account.AppUserId</strong>
+                    </div>
+
+                    <div class="state-panel">
+                        <span class="muted-text">Current identity</span>
+                        <strong>@account.CurrentIdentity.Provider</strong>
+                    </div>
+
+                    <div class="state-panel">
+                        <span class="muted-text">Account kind</span>
+                        <strong class="account-kind">@(account.AccountKind switch { "organisation" => "Work or school", "personal" => "Personal", _ => "—" })</strong>
+                    </div>
+
+                    <FluentMessageBar Intent="MessageIntent.Info">
+                        Protected API requests use this account identity for server-side authorization and job ownership.
+                    </FluentMessageBar>
+                </div>
+            </section>
+
+            <section class="content-card">
+                <div class="form-stack">
+                    <h3 class="panel-title">
+                        Build
+                    </h3>
+
+                    <p class="panel-description">
+                        The client this tab is running and the engine it talks to, as git commits.
+                        A new client build is announced at the top of the page when it is ready; the
+                        engine's commit is what its provenance records cite.
+                    </p>
+
+                    <div class="state-panel">
+                        <span class="muted-text">Client</span>
+                        <strong class="build-client">@BuildLabel.Describe(Configuration)</strong>
+                    </div>
+
+                    <div class="state-panel">
+                        <span class="muted-text">Engine</span>
+                        <strong class="build-engine">@(engineCommit ?? "Unavailable")</strong>
+                    </div>
+                </div>
+            </section>
+
+            @* #552: what the account has spent — the derived usage store,
+               numbers only. Empty until the first completed run after it
+               shipped, and says so; per-consult figures live in History. *@
+            <section class="content-card usage-card">
+                <div class="form-stack">
+                    <h3 class="panel-title">
+                        Usage
+                    </h3>
+
+                    <p class="panel-description">
+                        Consults and tokens per day, from a store written once at each run's
+                        completion. Numbers only — nothing here names a consult's content.
+                    </p>
+
+                    @if (usageError != null)
+                    {
+                        <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false" Class="usage-message">@usageError</FluentMessageBar>
+                    }
+
+                    <div class="action-row">
+                        <select class="node-field__input usage-window"
+                                value="@usageWindow"
+                                @onchange="OnUsageWindowChangedAsync"
+                                aria-label="Usage window">
+                            <option value="7">Last 7 days</option>
+                            <option value="30">Last 30 days</option>
+                            <option value="90">Last 90 days</option>
+                            <option value="custom">Custom range</option>
+                        </select>
+                        @if (usageWindow == "custom")
+                        {
+                            <input type="date"
+                                   class="node-field__input usage-from"
+                                   value="@usageFromInput"
+                                   @onchange="args => usageFromInput = args.Value?.ToString() ?? string.Empty"
+                                   aria-label="Usage from" />
+                            <input type="date"
+                                   class="node-field__input usage-to"
+                                   value="@usageToInput"
+                                   @onchange="args => usageToInput = args.Value?.ToString() ?? string.Empty"
+                                   aria-label="Usage to" />
+                            <FluentButton Appearance="Appearance.Accent"
+                                          Class="usage-apply"
+                                          Disabled="@(string.IsNullOrWhiteSpace(usageFromInput) || string.IsNullOrWhiteSpace(usageToInput))"
+                                          @onclick="LoadUsageAsync">
+                                Apply
+                            </FluentButton>
+                        }
+                    </div>
+
+                    @if (usage is { } usageData)
+                    {
+                        @if (usageData.Days.Count == 0)
+                        {
+                            <p class="usage-empty muted-text">No usage yet — counts begin with the first completed run after 2026-08-31; older runs have no counts.</p>
+                        }
+                        else
+                        {
+                            var usageFigures = UsageSummary.Of(usageData.Days, UsageSummary.WindowDaysOf(usageData.From, usageData.To));
+                            <div class="state-panel usage-figures">
+                                <span class="muted-text">Consults</span>
+                                <strong class="usage-consults">@usageFigures.Consults.ToString("N0")</strong>
+                                <span class="muted-text">Tokens</span>
+                                <strong class="usage-tokens">@($"{usageFigures.TokensIn:N0} in · {usageFigures.TokensOut:N0} out · {usageFigures.TokensTotal:N0} total")</strong>
+                                <span class="muted-text">Per day</span>
+                                <strong class="usage-per-day">@($"{usageFigures.ConsultsPerDay:0.##} consults · {usageFigures.TokensPerDay:N0} tokens")</strong>
+                                <span class="muted-text">Average tokens per consult</span>
+                                <strong class="usage-average">@UsageSummary.DescribeAverage(usageFigures.AverageTokensPerConsult)</strong>
+                            </div>
+                            <div class="usage__scroll">
+                                <table class="usage__table">
+                                    <thead>
+                                        <tr><th>Day</th><th>Consults</th><th>Tokens in</th><th>Tokens out</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var usageDay in usageData.Days)
+                                        {
+                                            <tr class="usage__row">
+                                                <td>@usageDay.Day</td>
+                                                <td>@usageDay.ConsultsCompleted.ToString("N0")</td>
+                                                <td>@usageDay.TokensIn.ToString("N0")</td>
+                                                <td>@usageDay.TokensOut.ToString("N0")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p class="usage-history-line muted-text">Per-consult figures are on each run in <a href="/history">History</a>.</p>
+                        }
+                    }
+                </div>
+            </section>
             </section>
         }
         else if (!string.IsNullOrWhiteSpace(accountErrorMessage))
