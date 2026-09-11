@@ -80,6 +80,27 @@ public class OperatorsPageTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void WhileLoading_ShowsASpinner_ThenTheResults()
+    {
+        // #692: the fetch is in flight until we release the gate — the page
+        // shows the shared loading ring and no table; once it completes, the
+        // ring gives way to the rollup.
+        var gate = new TaskCompletionSource<OperatorUsageResponse>();
+        OperatorService.GetUsageAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(gate.Task);
+
+        var page = Render<OperatorsPage>();
+
+        Assert.NotEmpty(page.FindAll(".loading-state"));
+        Assert.Empty(page.FindAll(".operators__table"));
+
+        gate.SetResult(new OperatorUsageResponse(
+            "2026-08-03", "2026-09-01", new[] { Row("u1", "Dr One", "tenant-a", 3, 3000, 900) }));
+
+        page.WaitForState(() => page.FindAll(".loading-state").Count == 0);
+        Assert.Contains("Dr One", page.Find(".operators__table").TextContent);
+    }
+
+    [Fact]
     public void ANonOperator_MeetsTheNamedState_NeverABrokenPage()
     {
         OperatorService.GetUsageAsync(Arg.Any<string>(), Arg.Any<string>())
