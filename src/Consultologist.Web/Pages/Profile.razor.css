@@ -26,3 +26,20 @@
 .usage-history-line {
     font-size: 0.85rem;
 }
+
+/* #682: titled groups that organise the profile cards (activation first). The
+   groups are the flex children of .content-shell; cards stack within each. */
+.profile-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--section-gap);
+}
+
+.profile-group__title {
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--consultologist-text-muted);
+}
