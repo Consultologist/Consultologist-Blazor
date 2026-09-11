@@ -5,8 +5,12 @@
         @if (message != null)
         {
             <div class="account-status-banner">
-                <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">
+                <FluentMessageBar Intent="@intent" AllowDismiss="false">
                     @message
+                    @if (actionHref != null)
+                    {
+                        <FluentAnchor Href="@actionHref" Appearance="Appearance.Hypertext">@actionText</FluentAnchor>
+                    }
                 </FluentMessageBar>
             </div>
         }
@@ -18,6 +22,9 @@
     private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
 
     private string? message;
+    private MessageIntent intent = MessageIntent.Warning;
+    private string? actionHref;
+    private string? actionText;
 
     protected override async Task OnInitializedAsync()
     {
@@ -36,12 +43,26 @@
         try
         {
             var account = await AccountService.GetCurrentAccountAsync();
-            message = account.Status switch
+
+            // #679: every non-Active state carries a next step, not just a nag.
+            switch (account.Status)
             {
-                "Active" => null,
-                "Disabled" => "This account has been disabled. Contact Consultologist support if you believe this is an error.",
-                _ => "Your account is awaiting activation. Protected workflows stay unavailable until it is activated."
-            };
+                case "Active":
+                    message = null;
+                    break;
+                case "Disabled":
+                    intent = MessageIntent.Error;
+                    message = "This account has been disabled.";
+                    actionHref = "mailto:hello@consultologist.ai";
+                    actionText = "Contact support";
+                    break;
+                default: // Pending / Unverified — awaiting activation.
+                    intent = MessageIntent.Warning;
+                    message = "Your account is awaiting activation. Protected workflows stay unavailable until it is activated.";
+                    actionHref = "profile";
+                    actionText = "Go to your profile to activate";
+                    break;
+            }
         }
         catch
         {
