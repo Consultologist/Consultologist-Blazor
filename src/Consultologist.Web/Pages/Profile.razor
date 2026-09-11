@@ -60,7 +60,7 @@
 
                     <div class="state-panel">
                         <span class="muted-text">Account kind</span>
-                        <strong class="account-kind">@(account.AccountKind ?? "—")</strong>
+                        <strong class="account-kind">@(account.AccountKind switch { "organisation" => "Work or school", "personal" => "Personal", _ => "—" })</strong>
                     </div>
 
                     <FluentMessageBar Intent="MessageIntent.Info">
@@ -358,33 +358,55 @@
                 <div class="form-stack">
                     <h2 class="panel-title">Subscription</h2>
 
-                    <p class="panel-description">
-                        A Microsoft Marketplace subscription activates your account (for work or school
-                        accounts). Buy or start a trial in Microsoft Marketplace, then complete it from
-                        its <em>Configure account</em> link. Manage or cancel the subscription in Microsoft.
-                    </p>
-
-                    @if (MarketplaceIdentity != null)
+                    @* #680: Marketplace is work/school only, so a personal account
+                       is told this door isn't theirs and pointed at LinkedIn. *@
+                    @if (IsPersonalAccount)
                     {
+                        <p class="panel-description">
+                            Microsoft Marketplace subscriptions are for work or school accounts. Your account
+                            is a personal Microsoft account — activate it with LinkedIn (above).
+                        </p>
                         <div class="state-panel">
-                            <span class="muted-text">Marketplace subscription</span>
-                            <strong>@(MarketplaceIdentity.DisplayName ?? "Active subscription")</strong>
-                            <span class="muted-text">Linked @MarketplaceIdentity.LinkedAt.ToString("yyyy-MM-dd")</span>
+                            <span class="muted-text">Not available for personal accounts.</span>
                         </div>
-
-                        @if (string.Equals(account?.Status, "Unverified", StringComparison.Ordinal))
-                        {
-                            <FluentMessageBar Intent="MessageIntent.Warning">
-                                Your subscription is suspended or lapsed. Reinstate it in Microsoft to start
-                                new consults again; consults you already generated stay available.
-                            </FluentMessageBar>
-                        }
                     }
                     else
                     {
-                        <div class="state-panel">
-                            <span class="muted-text">No Marketplace subscription linked. Personal Microsoft accounts use LinkedIn to activate instead.</span>
-                        </div>
+                        <p class="panel-description">
+                            A Microsoft Marketplace subscription activates your account (for work or school
+                            accounts). Buy or start a trial in Microsoft Marketplace, then complete it from
+                            its <em>Configure account</em> link. Manage or cancel the subscription in Microsoft.
+                        </p>
+
+                        @if (MarketplaceIdentity != null)
+                        {
+                            <div class="state-panel">
+                                <span class="muted-text">Marketplace subscription</span>
+                                <strong>@(MarketplaceIdentity.DisplayName ?? "Active subscription")</strong>
+                                <span class="muted-text">Linked @MarketplaceIdentity.LinkedAt.ToString("yyyy-MM-dd")</span>
+                            </div>
+
+                            @if (string.Equals(account?.Status, "Unverified", StringComparison.Ordinal))
+                            {
+                                <FluentMessageBar Intent="MessageIntent.Warning">
+                                    Your subscription is suspended or lapsed. Reinstate it in Microsoft to start
+                                    new consults again; consults you already generated stay available.
+                                </FluentMessageBar>
+                            }
+                        }
+                        else
+                        {
+                            @* #680 (deferred from #679): a Pending org account — name the step. *@
+                            @if (string.Equals(account?.Status, "Pending", StringComparison.Ordinal))
+                            {
+                                <FluentMessageBar Intent="MessageIntent.Info">
+                                    Start a subscription to activate this account.
+                                </FluentMessageBar>
+                            }
+                            <div class="state-panel">
+                                <span class="muted-text">No Marketplace subscription linked.</span>
+                            </div>
+                        }
                     }
                 </div>
             </section>
@@ -1184,6 +1206,12 @@
     private AccountIdentity? MarketplaceIdentity =>
         account?.LinkedIdentities.FirstOrDefault(identity =>
             string.Equals(identity.Provider, "microsoft-marketplace", StringComparison.Ordinal));
+
+    // #680: a personal Microsoft account can't transact a Marketplace subscription
+    // (org-only, decided once — #556), so the Subscription card is marked N/A for
+    // it. Fall back to the token's SignInKind when the stored kind isn't back-filled.
+    private bool IsPersonalAccount =>
+        string.Equals(account?.AccountKind ?? account?.SignInKind, "personal", StringComparison.Ordinal);
 
     private string[] VerifiedCategoryLabels =>
         (LinkedInIdentity?.VerifiedCategories ?? string.Empty)
