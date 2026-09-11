@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
 @using Consultologist.Web.Services.Workflow
 @inject IWorkflowEndpointService WorkflowService
+@inject IAccountEndpointService AccountService
 
 <PageTitle>Consultologist Clinical Workspace</PageTitle>
 
@@ -83,15 +84,39 @@
         <section class="workflow-grid">
             <div class="content-card">
                 <div class="form-stack">
-                    <h2 class="panel-title">Start a consult</h2>
-                    <p class="panel-description">
-                        Enter referral context and generate a draft consultation note for review.
-                    </p>
-                    <div class="action-row">
-                        <FluentAnchor Appearance="Appearance.Accent" Href="consults">
-                            Create Consult
-                        </FluentAnchor>
-                    </div>
+                    @if (accountStatus == "Disabled")
+                    {
+                        <h2 class="panel-title">Account disabled</h2>
+                        <p class="panel-description muted-text">
+                            This account has been disabled and cannot start consults.
+                        </p>
+                    }
+                    else if (accountStatus is not null and not "Active")
+                    {
+                        @* #679: not activated yet — route to Profile rather than
+                           invite a consult the account cannot run. *@
+                        <h2 class="panel-title">Activate your account</h2>
+                        <p class="panel-description">
+                            Your account isn't active yet — connect an activation method to start generating consults.
+                        </p>
+                        <div class="action-row">
+                            <FluentAnchor Appearance="Appearance.Accent" Href="profile">
+                                Go to your profile
+                            </FluentAnchor>
+                        </div>
+                    }
+                    else
+                    {
+                        <h2 class="panel-title">Start a consult</h2>
+                        <p class="panel-description">
+                            Enter referral context and generate a draft consultation note for review.
+                        </p>
+                        <div class="action-row">
+                            <FluentAnchor Appearance="Appearance.Accent" Href="consults">
+                                Create Consult
+                            </FluentAnchor>
+                        </div>
+                    }
                 </div>
             </div>
             <div class="content-card">
@@ -135,11 +160,12 @@
     [CascadingParameter] private Task<AuthenticationState>? AuthenticationState { get; set; }
 
     private string? currentRef;
+    private string? accountStatus;
 
     protected override async Task OnInitializedAsync()
     {
-        // The pin line is signed-in decoration only: an unauthenticated fetch
-        // would redirect a visitor to login, so check the state first.
+        // The pin line and the status-aware CTA are signed-in only: an
+        // unauthenticated fetch would redirect a visitor to login.
         if (AuthenticationState == null)
         {
             return;
@@ -150,6 +176,18 @@
         if (state.User.Identity?.IsAuthenticated != true)
         {
             return;
+        }
+
+        // #679: the primary card routes a not-yet-active account to activation.
+        // On failure it stays null — fail open to the normal "Create Consult"
+        // CTA; the status banner still carries the real message.
+        try
+        {
+            accountStatus = (await AccountService.GetCurrentAccountAsync()).Status;
+        }
+        catch
+        {
+            // Advisory only.
         }
 
         try
