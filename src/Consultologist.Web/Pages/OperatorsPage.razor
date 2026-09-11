@@ -61,7 +61,7 @@
 
             @if (loading)
             {
-                <div class="loading-state"><FluentProgressRing /><span>Loading usage&hellip;</span></div>
+                <LoadingState>Loading usage&hellip;</LoadingState>
             }
             else if (usage is { } usageData)
             {

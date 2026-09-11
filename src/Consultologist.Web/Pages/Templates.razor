@@ -29,10 +29,7 @@
         @if (isLoading)
         {
             <section class="content-card">
-                <div class="loading-state">
-                    <FluentProgressRing />
-                    <span>Loading workflow package...</span>
-                </div>
+                <LoadingState>Loading workflow package...</LoadingState>
             </section>
         }
         else if (!string.IsNullOrWhiteSpace(loadError))

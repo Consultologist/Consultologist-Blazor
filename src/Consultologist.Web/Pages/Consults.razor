@@ -275,10 +275,7 @@
 
                         @if (isBlocksLoading)
                         {
-                            <div class="loading-state">
-                                <FluentProgressRing />
-                                <span>Loading section standards...</span>
-                            </div>
+                            <LoadingState>Loading section standards...</LoadingState>
                         }
                         else if (!string.IsNullOrEmpty(blocksLoadError))
                         {
@@ -642,10 +639,7 @@
                                 </p>
                                 @if (isAiRequestLoading)
                                 {
-                                    <div class="loading-state">
-                                        <FluentProgressRing />
-                                        <span>Generating&hellip;</span>
-                                    </div>
+                                    <LoadingState>Generating&hellip;</LoadingState>
                                 }
                             </div>
                         }

@@ -1,0 +1,11 @@
+@* #687: the app's one loading indicator, announced. role="status" carries an
+   implicit aria-live="polite" + aria-atomic, so a screen reader speaks the
+   message when the block appears — the spinner alone has no accessible name. *@
+<div class="loading-state" role="status">
+    <FluentProgressRing />
+    <span>@ChildContent</span>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

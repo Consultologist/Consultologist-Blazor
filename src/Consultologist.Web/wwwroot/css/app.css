@@ -390,6 +390,21 @@ header.header.app-header {
 	color: var(--consultologist-text-muted);
 }
 
+/* #687: off-screen but read by screen readers — for live-region status text
+   that has no visible counterpart (the run rail conveys status by glyph). */
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
 .code-panel,
 .note-preview {
 	min-width: 0;
