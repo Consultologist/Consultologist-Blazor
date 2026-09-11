@@ -2,7 +2,7 @@
 @using Consultologist.Web.Services.Accounts
 @inject IAccountEndpointService AccountService
 
-<FluentDesignTheme @ref="@_theme" Mode="@_themeMode" StorageName="consultologist-clinical-theme" />
+<FluentDesignTheme @ref="@_theme" @bind-Mode="_themeMode" OnLoaded="OnThemeLoaded" StorageName="consultologist-clinical-theme" />
 
 <FluentHeader Class="app-header">
     <FluentStack Class="app-header__inner"
@@ -38,7 +38,7 @@
                      VerticalAlignment="VerticalAlignment.Center">
             <FluentButton IconStart="@_themeIcon"
                           Appearance="Appearance.Stealth"
-                          Title="Toggle theme"
+                          Title="@($"Theme: {_themeMode}")"
                           OnClick="@ToggleTheme" />
             <LoginDisplay />
         </FluentStack>
@@ -80,14 +80,30 @@
         }
     }
 
-    private Icon _themeIcon => _themeMode == DesignThemeModes.Dark
-        ? new Icons.Regular.Size20.WeatherSunny()
-        : new Icons.Regular.Size20.WeatherMoon();
-
-    private void ToggleTheme()
+    // #690: the icon shows the CURRENT mode (the tooltip names it), so it is
+    // correct after a reload once OnThemeLoaded has seeded _themeMode from the
+    // persisted theme — not the stale System default.
+    private Icon _themeIcon => _themeMode switch
     {
-        _themeMode = _themeMode == DesignThemeModes.Dark
-            ? DesignThemeModes.Light
-            : DesignThemeModes.Dark;
+        DesignThemeModes.Dark => new Icons.Regular.Size20.WeatherMoon(),
+        DesignThemeModes.Light => new Icons.Regular.Size20.WeatherSunny(),
+        _ => new Icons.Regular.Size20.Desktop(),
+    };
+
+    // #690: seed the field from what FluentDesignTheme actually loaded/applied
+    // (from StorageName), so the icon and the cycle start from the real theme.
+    private void OnThemeLoaded(LoadedEventArgs e)
+    {
+        _themeMode = e.Mode;
+        StateHasChanged();
     }
+
+    // #690: a three-way cycle so a user can return to follow-the-OS System.
+    private void ToggleTheme() => _themeMode = _themeMode switch
+    {
+        DesignThemeModes.System => DesignThemeModes.Light,
+        DesignThemeModes.Light => DesignThemeModes.Dark,
+        DesignThemeModes.Dark => DesignThemeModes.System,
+        _ => DesignThemeModes.System,
+    };
 }
