@@ -3,7 +3,18 @@
         <Found Context="routeData">
             <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
                 <NotAuthorized>
-                    <p role="alert">You are not authorized to access this resource.</p>
+                    @* #681: a protected route reached while signed out sends the
+                       visitor to sign-in (with a returnUrl back here) rather than a
+                       dead-end sentence. The else branch is unreachable today (the
+                       app has no role policies) but is the correct fallback. *@
+                    @if (context.User.Identity?.IsAuthenticated != true)
+                    {
+                        <RedirectToLogin />
+                    }
+                    else
+                    {
+                        <p role="alert">You are not authorized to access this resource.</p>
+                    }
                 </NotAuthorized>
             </AuthorizeRouteView>
             <FocusOnNavigate RouteData="@routeData" Selector="h1" />
