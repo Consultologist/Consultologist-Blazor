@@ -283,4 +283,35 @@ public class ConsultsRunRailTests : ClientRenderTestContext
         Assert.Contains("Drafting section", labels);
         Assert.Contains("Assembling note", labels);
     }
+
+    // ----- #687: the rail is announced to screen readers -----
+
+    [Fact]
+    public void TheRail_CarriesAPoliteStatusSummary()
+    {
+        // A completed run: the glyph checklist is silent to AT, so a single
+        // role="status" line has to carry the state in words.
+        WithTwoNodePackage();
+        WithJobReporting(("assemble-note", "Assembling note", "Completed"));
+
+        var page = RenderRail();
+
+        var status = page.Find(".visually-hidden[role=status]");
+        Assert.Contains("complete", status.TextContent, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TheStatusGlyphs_AreHiddenFromScreenReaders()
+    {
+        // The glyphs are decoration; the label carries the meaning. If AT read
+        // them it would hear "check mark" or nothing, so they're aria-hidden.
+        WithTwoNodePackage();
+        WithJobReporting(("assemble-note", "Assembling note", "Completed"));
+
+        var page = RenderRail();
+
+        Assert.Equal("true", page.Find(".node-row__status").GetAttribute("aria-hidden"));
+        // The node grid announces its busy state.
+        Assert.NotNull(page.Find(".node-grid").GetAttribute("aria-busy"));
+    }
 }

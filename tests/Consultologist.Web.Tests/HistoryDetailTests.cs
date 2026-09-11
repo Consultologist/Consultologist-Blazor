@@ -1417,4 +1417,16 @@ public class HistoryRunDagTests : ClientRenderTestContext
         // The label the dialog points at is actually present.
         Assert.Equal("Run diagram", page.Find("#run-dag-title").TextContent);
     }
+
+    // ----- #687: the polling list is announced -----
+
+    [Fact]
+    public void TheJobList_AnnouncesItsBusyState()
+    {
+        WithNodeJob();
+        var page = Render<Consultologist.Web.Pages.History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        // The list region carries aria-busy so AT is told when a poll is refreshing it.
+        Assert.NotNull(page.Find(".content-card .form-stack").GetAttribute("aria-busy"));
+    }
 }

@@ -31,7 +31,9 @@
 <AuthorizeView>
     <Authorized>
         <section class="content-card">
-            <div class="form-stack">
+            @* #687: the list refreshes on a 5s/60s poll; aria-busy tells AT the
+               region is updating. The initial load is announced by LoadingState. *@
+            <div class="form-stack" aria-busy="@(jobsLoading ? "true" : "false")">
                 <h2 class="panel-title">Recent consult jobs</h2>
 
                 @* #202: a refused cancel has to say which state refused, or the
@@ -43,10 +45,7 @@
 
                 @if (jobsLoading && jobs.Count == 0)
                 {
-                    <div class="loading-state">
-                        <FluentProgressRing />
-                        <span>Loading job history...</span>
-                    </div>
+                    <LoadingState>Loading job history...</LoadingState>
                 }
                 else if (!string.IsNullOrWhiteSpace(jobsErrorMessage))
                 {
@@ -193,10 +192,7 @@
                                     }
                                     else if (detail == null)
                                     {
-                                        <div class="loading-state">
-                                            <FluentProgressRing />
-                                            <span>Loading job events&hellip;</span>
-                                        </div>
+                                        <LoadingState>Loading job events&hellip;</LoadingState>
                                     }
                                     else
                                     {
