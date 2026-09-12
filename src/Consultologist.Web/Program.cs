@@ -16,11 +16,21 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddFluentUIComponents();
 
+#if E2E
+// #710: a test-only fake auth path so a headless browser can reach the
+// [Authorize]-gated pages. Compiled ONLY under -p:E2E=true (never the prod
+// build). The endpoint services request a token per call, so the token
+// provider is faked too; Playwright mocks the API responses.
+builder.Services.AddAuthorizationCore();
+builder.Services.AddScoped<Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider, Consultologist.Web.E2eAuth.StateProvider>();
+builder.Services.AddScoped<IAccessTokenProvider, Consultologist.Web.E2eAuth.TokenProvider>();
+#else
 builder.Services.AddMsalAuthentication(options =>
 {
     builder.Configuration.Bind("AzureAd", options.ProviderOptions.Authentication);
     options.ProviderOptions.LoginMode = "redirect";
 });
+#endif
 
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 
