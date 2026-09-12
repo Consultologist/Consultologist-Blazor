@@ -326,6 +326,43 @@
     margin: 0.25rem 0 0.5rem;
 }
 
+/* #685: the plain-language line sits full-width above the Verify button. */
+.provenance-verify__explainer {
+    flex-basis: 100%;
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--consultologist-text-muted);
+    line-height: 1.5;
+}
+
+/* #685: the "What do these mean?" disclosure under the provenance chips. */
+.provenance-help {
+    margin: 0.5rem 0 0.25rem;
+    font-size: 0.85rem;
+}
+
+.provenance-help > summary {
+    cursor: pointer;
+    user-select: none;
+    color: var(--consultologist-text-muted);
+}
+
+.provenance-help__list {
+    margin: 0.4rem 0;
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.2rem 0.75rem;
+}
+
+.provenance-help__list dt {
+    font-weight: 600;
+}
+
+.provenance-help__list dd {
+    margin: 0;
+    color: var(--consultologist-text-muted);
+}
+
 .hash-check {
     margin-left: 0.5rem;
     font-family: inherit;

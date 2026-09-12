@@ -272,6 +272,24 @@
                                             }
                                         </div>
 
+                                        @* #685: the chips' meanings were hover-only titles —
+                                           invisible to keyboard/touch. A native <details> makes the
+                                           key ones reachable; the full set is in Help. *@
+                                        <details class="provenance-help">
+                                            <summary>What do these mean?</summary>
+                                            <dl class="provenance-help__list">
+                                                <dt>Workflow package</dt>
+                                                <dd>The versioned bundle of steps and rules this consult ran.</dd>
+                                                <dt>via …</dt>
+                                                <dd>How the job was submitted — the app, email intake, or a form response.</dd>
+                                                <dt>Host</dt>
+                                                <dd>The API host that ran the job — where the data was processed.</dd>
+                                                <dt>SNOMED CT</dt>
+                                                <dd>The clinical terminology edition the concepts were answered against.</dd>
+                                            </dl>
+                                            <a href="/help#glossary">Full glossary in Help</a>
+                                        </details>
+
                                         @* #549: replay this run on its held inputs, same exact
                                            package version. Greyed with the reason in words while
                                            it cannot run (tell the user early). *@
@@ -306,6 +324,12 @@
                                             @if (detail.WorkflowOutputHash != null)
                                             {
                                                 <div class="provenance-verify">
+                                                    @* #685: what a match actually proves, in plain language. *@
+                                                    <p class="provenance-verify__explainer">
+                                                        Verify recomputes this letter's fingerprints in your browser and checks them
+                                                        against what was recorded — confirming the text is byte-for-byte what was
+                                                        produced. <a href="/help#verify">Learn more</a>.
+                                                    </p>
                                                     <FluentButton Appearance="Appearance.Outline" OnClick="@(() => VerifyHashes(detail))" title="Recompute this record's deliverable hashes from its texts">Verify</FluentButton>
                                                     @if (_hashChecks.TryGetValue(detail.JobId, out var verified))
                                                     {
