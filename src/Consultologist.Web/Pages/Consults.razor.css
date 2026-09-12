@@ -56,6 +56,13 @@
 	font-weight: 400;
 }
 
+/* #683: the required marker beside a field label. */
+.input-field__required {
+	margin-left: 0.25rem;
+	color: var(--error-foreground, #a4262c);
+	font-weight: 700;
+}
+
 /* Run phase: collapsed draft bar over a note | run-rail grid. */
 .consult-run {
 	display: flex;
@@ -447,6 +454,13 @@
 }
 
 .input-field__error {
+	color: var(--error-foreground, #a4262c);
+	font-size: 0.8rem;
+	font-weight: 500;
+}
+
+/* #683: an empty required field, called out inline after a submit attempt. */
+.input-field__required-hint {
 	color: var(--error-foreground, #a4262c);
 	font-size: 0.8rem;
 	font-weight: 500;
