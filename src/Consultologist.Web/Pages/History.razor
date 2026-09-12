@@ -4,8 +4,6 @@
 @using Consultologist.Web.Services.AI
 @using Consultologist.Web.Services.Workflow
 @using Consultologist.Web.Services.Provenance
-@using Microsoft.Extensions.Configuration
-@inject IConfiguration Configuration
 @inject IAccountEndpointService AccountService
 @inject IAIEndpointService AIService
 @inject IWorkflowEndpointService WorkflowService
@@ -226,7 +224,7 @@
                                                        address and emits it verbatim. #402: the number links
                                                        to the document that defines it, at the format registry
                                                        version the deployed engine attests. *@
-                                                    @if (FormatLink(detail, packageFormat) is { } formatHref)
+                                                    @if (FormatReleaseLink(detail) is { } formatHref)
                                                     {
                                                         <a class="provenance-ref" href="@formatHref" target="_blank" rel="noopener">format v@(packageFormat)</a>
                                                     }
@@ -378,7 +376,7 @@
                                                 }
                                                 <dt>Contract</dt>
                                                 <dd class="provenance-contract">
-                                                    @if (detail.ProvenanceRef is { } provenanceRef && ProvenanceDocument(detail, "provenance-record.md") is { } contractHref)
+                                                    @if (detail.ProvenanceRef is { } provenanceRef && ProvenanceReleaseLink(detail) is { } contractHref)
                                                     {
                                                         <a class="provenance-ref" href="@contractHref" target="_blank" rel="noopener" title="The provenance contract this record conforms to, recorded on the job">@provenanceRef</a>
                                                     }
@@ -1312,8 +1310,6 @@
     private EngineView? _engine;
     private readonly Dictionary<string, IReadOnlyList<HashCheck>> _hashChecks = new(StringComparer.Ordinal);
 
-    private string? RegistryBase => Configuration["AzureFunction:PublicRegistryBaseUrl"]?.TrimEnd('/');
-
     private const string PackageFormatRefPrefix = "package-format@";
     private const string ProvenanceRefPrefix = "provenance@";
 
@@ -1328,11 +1324,19 @@
     private (string? Version, bool Recorded) ProvenanceVersionFor(ConsultGenerationJobResponse detail) =>
         VersionOf(detail.ProvenanceRef, ProvenanceRefPrefix) is { } recorded ? (recorded, true) : (_engine?.Provenance, false);
 
-    private string? ProvenanceDocument(ConsultGenerationJobResponse detail, string document) =>
-        ProvenanceVersionFor(detail).Version is { } version && RegistryBase is { } root ? $"{root}/provenance/{version}/{document}" : null;
+    // Consultologist/Consultologist-Blazor#717: a registry ref opens the
+    // version's GitHub Release page rather than a raw registry blob. One release
+    // page per version, so the doc/definition a ref named is context in the
+    // tooltip, not a deep link.
+    private const string GitHubOrg = "https://github.com/Consultologist";
 
-    private string? FormatLink(ConsultGenerationJobResponse detail, int specVersion) =>
-        FormatVersionFor(detail).Version is { } version && RegistryBase is { } root ? $"{root}/package-format/{version}/package-format-v{specVersion}.md" : null;
+    private static string ReleaseLink(string repo, string tag) => $"{GitHubOrg}/{repo}/releases/tag/{tag}";
+
+    private string? ProvenanceReleaseLink(ConsultGenerationJobResponse detail) =>
+        ProvenanceVersionFor(detail).Version is { } version ? ReleaseLink("consultologist-provenance", version) : null;
+
+    private string? FormatReleaseLink(ConsultGenerationJobResponse detail) =>
+        FormatVersionFor(detail).Version is { } version ? ReleaseLink("consultologist-package-format", version) : null;
 
     private const string TerminologyServerPrefix = "snomed-snowstorm-mcp@";
 
@@ -1357,7 +1361,7 @@
     {
         var text = $"v{number?.ToString() ?? "—"}";
         var (version, recorded) = ProvenanceVersionFor(detail);
-        if (number is { } n && ProvenanceDocument(detail, document) is { } href)
+        if (number is { } n && ProvenanceReleaseLink(detail) is { } href)
         {
             builder.OpenElement(0, "a");
             builder.AddAttribute(1, "class", "provenance-ref");
