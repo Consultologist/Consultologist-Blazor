@@ -4,12 +4,13 @@
 name: Build and deploy dotnet core project to Azure Function App - canada-east-ai-function
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "src/Consultologist.Api/**" # Only run when API code changes
-      - "src/Consultologist.PackageFormat/**" # #450: ships inside the Function App
+  # Release-driven deploy: the engine ships from a tagged GitHub Release, so
+  # production is always a known release and every record's engineRelease points
+  # at a versioned page. Cut a release (its tag becomes engineRelease) to deploy.
+  release:
+    types: [published]
+  # The manual door — a hotfix or a re-run of a failed deploy. It carries no
+  # release tag, so the build stamps only the commit and records fall back to it.
   workflow_dispatch:
 
 env:
@@ -36,11 +37,18 @@ jobs:
 
       - name: "Resolve Project Dependencies Using Dotnet"
         shell: bash
+        # The release tag through an env var, not inline in the command, so a
+        # tag string cannot inject into the build line (workflow-injection guard).
+        # Empty on a manual workflow_dispatch — the csproj then stamps no release.
+        env:
+          ENGINE_RELEASE: ${{ github.event.release.tag_name }}
         run: |
           pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
           # #449: the deployed engine reports this commit from GET /api/Public/Engine,
           # and content CI checks it out to validate against what actually runs.
-          dotnet build --configuration Release --output ./output -p:SourceRevisionId=${{ github.sha }} -p:ContinuousIntegrationBuild=true
+          # The engine also reports the release it was deployed from (engineRelease),
+          # stamped as assembly metadata from the tag that triggered this run.
+          dotnet build --configuration Release --output ./output -p:SourceRevisionId=${{ github.sha }} -p:EngineRelease="$ENGINE_RELEASE" -p:ContinuousIntegrationBuild=true
           popd
 
       - name: Login to Azure

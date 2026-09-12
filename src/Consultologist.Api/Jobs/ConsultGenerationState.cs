@@ -192,6 +192,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.TerminologyServerRef ??= input.TerminologyServerRef;
         State.ApiHost ??= input.ApiHost;
         State.EngineCommit ??= input.EngineCommit;
+        State.EngineRelease ??= input.EngineRelease;
         State.InputsBlob ??= input.InputsBlob;
         State.RerunBaseline ??= input.RerunBaseline;
         State.Source ??= input.Source;
@@ -964,7 +965,12 @@ public sealed record ConsultGenerationOrchestrationInput(
     // (choice, else declared default) — what the deciding boundary filters
     // descriptors with, since DecideActivity never sees the request. Null
     // when the package declares no optional macros. Appended last.
-    IReadOnlyDictionary<string, bool>? MacroChoices = null);
+    IReadOnlyDictionary<string, bool>? MacroChoices = null,
+    // The engine build's release tag, beside EngineCommit — the release the
+    // commit shipped under, as Public/Engine attests. Null when the deployment
+    // carried no tag. Appended last, the positional-call rule EngineCommit's
+    // neighbours give.
+    string? EngineRelease = null);
 
 /// <summary>
 /// v11 #516: the chosen signature as it was at job start — the block's id,
@@ -1039,7 +1045,11 @@ public sealed record ConsultGenerationJobInitialize(
     // v12 #631 (design § 14): the when-excluded macros of a job decided at
     // start; null when nothing was excluded (the control). Appended last,
     // same positional-call rule.
-    IReadOnlyList<ConsultExcludedMacro>? ExcludedMacros = null);
+    IReadOnlyList<ConsultExcludedMacro>? ExcludedMacros = null,
+    // The engine build's release tag, beside EngineCommit — the release the
+    // commit shipped under. Null when the deployment carried no tag. Appended
+    // last, the same positional-call rule.
+    string? EngineRelease = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -1361,6 +1371,11 @@ public sealed class ConsultGenerationJobState
     // host, and on records from before.
     public string? ApiHost { get; set; }
     public string? EngineCommit { get; set; }
+
+    // The GitHub Release the engine build was deployed from, beside EngineCommit.
+    // Write-once; null when the deployment carried no release tag, and on records
+    // from before the field.
+    public string? EngineRelease { get; set; }
     public List<ConsultItemStepDescriptor>? ItemSteps { get; set; }
     public List<ConsultNodeDescriptor>? Nodes { get; set; }
 
@@ -1702,6 +1717,7 @@ public sealed class ConsultGenerationJobState
             MacroChoices: MacroChoices,
             ApiHost: ApiHost,
             EngineCommit: EngineCommit,
+            EngineRelease: EngineRelease,
             OutputsBlob: OutputsBlob,
             InputsBlob: InputsBlob,
             InputsDroppedAtUtc: InputsDroppedAtUtc,

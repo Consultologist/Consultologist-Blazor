@@ -288,6 +288,11 @@ public record ConsultGenerationJobResponse(
     // engine build that ran it. Null on records from before 2026-08-28.
     string? ApiHost = null,
     string? EngineCommit = null,
+    // The GitHub Release the engine build was deployed from — the release its
+    // EngineCommit shipped under, which the app links to (falling back to the
+    // commit). Null on a deployment with no release tag, and on records from
+    // before this field. Named-constructed everywhere, so it sits by EngineCommit.
+    string? EngineRelease = null,
     // #557: where the produced text lives (container + name, never a URL).
     // Null on pre-#557 records, on Failed jobs, and when the completion
     // write failed and the text stayed on the entity.

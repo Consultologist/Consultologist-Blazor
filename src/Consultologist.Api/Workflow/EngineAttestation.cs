@@ -27,7 +27,12 @@ public sealed record EngineAttestationResponse(
     // #514: the canonical public host of this deployment (Public__ApiHost) —
     // the data-residency statement every record carries as apiHost. Null
     // when the deployment names none, which the record then says.
-    string? ApiHost = null);
+    string? ApiHost = null,
+    // The GitHub Release this build was deployed from — the tag the deploy
+    // workflow stamped (-p:EngineRelease), the release the Commit shipped
+    // under. Null when the build carried no tag (a local build or a manual
+    // workflow_dispatch deploy); a record then links to the commit alone.
+    string? Release = null);
 
 public static class EngineAttestation
 {
@@ -40,7 +45,7 @@ public static class EngineAttestation
     private const int FullCommitLength = 40;
 
     /// <summary>The rule, separated from reflection and the file system so it can be tested on strings.</summary>
-    public static EngineAttestationResponse Describe(string? informationalVersion, string catalogRef, string? packageFormat, string? provenance, DateTimeOffset now, string? apiHost = null)
+    public static EngineAttestationResponse Describe(string? informationalVersion, string catalogRef, string? packageFormat, string? provenance, DateTimeOffset now, string? apiHost = null, string? release = null)
     {
         var raw = string.IsNullOrWhiteSpace(informationalVersion) ? "unknown" : informationalVersion;
         var separator = raw.IndexOf('+');
@@ -55,8 +60,27 @@ public static class EngineAttestation
             WorkflowPackageStore.SupportedSpecVersions,
             WorkflowPackageValidator.EngineScribanVersion.ToString(),
             now,
-            ApiHostOf(apiHost));
+            ApiHostOf(apiHost),
+            ReleaseOf(release));
     }
+
+    /// <summary>
+    /// A release tag and nothing else: trimmed, blank to null — so a build with
+    /// no tag attests none and a record then links to the commit alone.
+    /// </summary>
+    internal static string? ReleaseOf(string? configured)
+    {
+        var value = configured?.Trim();
+        return string.IsNullOrEmpty(value) ? null : value;
+    }
+
+    /// <summary>The assembly-metadata key the deploy workflow stamps the release tag under.</summary>
+    public const string ReleaseMetadataKey = "EngineRelease";
+
+    /// <summary>The release tag stamped as assembly metadata (-p:EngineRelease), or null when the build carried none.</summary>
+    internal static string? ReleaseMetadataOf(Assembly assembly) =>
+        assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == ReleaseMetadataKey)?.Value;
 
     /// <summary>
     /// A host name and nothing else: trimmed, lower-cased, no scheme, no path,
@@ -144,5 +168,6 @@ public static class EngineAttestation
             PackageFormatVersionIn(AppContext.BaseDirectory),
             ProvenanceVersionIn(AppContext.BaseDirectory),
             DateTimeOffset.UtcNow,
-            apiHost);
+            apiHost,
+            ReleaseMetadataOf(typeof(EngineAttestation).Assembly));
 }

@@ -99,7 +99,8 @@ public sealed class ConsultGenerationOrchestrator
                 Deciding: input.Deciding,
                 // #514: by name, last.
                 ApiHost: input.ApiHost,
-                EngineCommit: input.EngineCommit));
+                EngineCommit: input.EngineCommit,
+                EngineRelease: input.EngineRelease));
 
         // #157: a scheduled job sleeps here — visible as Scheduled (entity state
         // above) — then proceeds identically. CurrentUtcDateTime keeps the guard
