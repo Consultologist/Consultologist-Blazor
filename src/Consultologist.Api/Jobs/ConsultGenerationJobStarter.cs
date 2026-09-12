@@ -897,6 +897,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // #514: where this runs and what runs it, as Public/Engine attests.
                 ApiHost: _engine.ApiHost,
                 EngineCommit: _engine.Commit,
+                EngineRelease: _engine.Release,
                 // #518: the choice made at start; the reply leg reads only this.
                 EmailRequested: origin.EmailRequested,
                 // v11 #513: the expansion facts assembly needs, when macros are declared.
@@ -1179,6 +1180,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     TerminologyServerRef: terminology?.ServerRef,
                     ApiHost: _engine.ApiHost,
                     EngineCommit: _engine.Commit,
+                    EngineRelease: _engine.Release,
                     // v12 #618: the choices are submission provenance, like
                     // the origins — a job born Failed still records them.
                     MacroChoices: macroChoices),

@@ -103,7 +103,7 @@ public class DurablePayloadReplayTests
         var withRefs = stored
             .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null,\"MacroChoices\":null,\"TranscriptInputs\":null}", StringComparison.Ordinal)
             .Replace("\"Label\":\"Consultation note\"}", "\"Label\":\"Consultation note\",\"Macros\":null,\"Signature\":null,\"MacroPlacements\":null,\"Check\":null}", StringComparison.Ordinal);
-        Assert.Equal(withRefs[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(withRefs[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null}", JsonSerializer.Serialize(input, Durable));
         // v11 #513/#516: the macro and signature slots and the descriptor's
         // trailing fields bind null.
         Assert.Null(input.MacroTexts);
@@ -154,7 +154,7 @@ public class DurablePayloadReplayTests
             .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null,\"MacroChoices\":null,\"TranscriptInputs\":null}", StringComparison.Ordinal)
             .Replace("\"TrackedChangesResolved\":false}", "\"TrackedChangesResolved\":false,\"FileSha256\":null,\"TextSha256\":null,\"SourceJobId\":null,\"SourceResultId\":null,\"SourceFormId\":null,\"SourceResponseId\":null}", StringComparison.Ordinal)
             .Replace("\"TrackedChangesResolved\":true}", "\"TrackedChangesResolved\":true,\"FileSha256\":null,\"TextSha256\":null,\"SourceJobId\":null,\"SourceResultId\":null,\"SourceFormId\":null,\"SourceResponseId\":null}", StringComparison.Ordinal);
-        Assert.Equal(expected[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(expected[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null}", JsonSerializer.Serialize(input, Durable));
         var origins = Assert.Contains("prior_notes", input.InputDocumentOrigins!);
         Assert.Equal(2, origins.Count);
         Assert.Equal("pdfpig/0.1.15", origins[1].Extractor);
@@ -204,8 +204,8 @@ public class DurablePayloadReplayTests
         // mid-list insertion would leave the strip target unmatched.
         var current = JsonSerializer.Serialize(
             new ConsultGenerationJobInitialize("job-1", "user-1", new List<IReadOnlyDictionary<string, string>>()), Durable);
-        Assert.EndsWith(",\"MacroChoices\":null,\"ExcludedMacros\":null}", current);
-        var stored = current.Replace(",\"MacroChoices\":null,\"ExcludedMacros\":null}", "}", StringComparison.Ordinal);
+        Assert.EndsWith(",\"MacroChoices\":null,\"ExcludedMacros\":null,\"EngineRelease\":null}", current);
+        var stored = current.Replace(",\"MacroChoices\":null,\"ExcludedMacros\":null,\"EngineRelease\":null}", "}", StringComparison.Ordinal);
 
         var initialize = JsonSerializer.Deserialize<ConsultGenerationJobInitialize>(stored, Durable)!;
 
