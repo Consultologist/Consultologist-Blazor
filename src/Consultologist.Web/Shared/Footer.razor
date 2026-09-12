@@ -18,6 +18,10 @@
             </FluentLabel>
         </FluentStack>
         <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="20" VerticalAlignment="VerticalAlignment.Center" Wrap="true">
+            @* #685: an in-app link (relative href, Blazor-routed) to the Help/verifiability page. *@
+            <FluentAnchor Href="help" Appearance="Appearance.Lightweight" Style="font-size: 12px;">
+                Help
+            </FluentAnchor>
             <FluentAnchor Href="mailto:hello@consultologist.ai" Appearance="Appearance.Lightweight" Style="font-size: 12px;">
                 Contact
             </FluentAnchor>

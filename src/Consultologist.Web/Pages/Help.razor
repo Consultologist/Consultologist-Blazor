@@ -1,0 +1,99 @@
+@page "/help"
+
+@* #685: the public Help/verifiability page. No [Authorize] — the verifiability
+   story is for signed-out visitors too. Plain language, no CDS content. *@
+
+<PageTitle>Help · Consultologist</PageTitle>
+
+<section class="page-header">
+    <div class="page-header__content">
+        <span class="section-eyebrow">Help</span>
+        <h1 class="page-title">How Consultologist works — and how to check it.</h1>
+        <p class="page-description">
+            Consultologist drafts specialist consult notes and keeps every one traceable.
+            Here's the flow, and the verifiability behind it — no jargon required.
+        </p>
+    </div>
+</section>
+
+<section class="content-card">
+    <div class="form-stack">
+        <h2 class="panel-title">How a consult works</h2>
+        <ol class="help-steps">
+            <li>Enter the referral details and clinical context.</li>
+            <li>Consultologist generates a structured draft consultation note.</li>
+            <li>You review and edit — the physician stays in control before anything reaches the chart.</li>
+            <li>Every run is saved in History with its full provenance.</li>
+        </ol>
+    </div>
+</section>
+
+<section class="content-card" id="verify">
+    <div class="form-stack">
+        <h2 class="panel-title">Verifiability: checking what you're reading</h2>
+        <p class="panel-description">
+            Every consult resolves to versioned, inspectable artifacts — the workflow that ran it,
+            the rules it followed, and each step's provenance. When a run completes, its deliverables
+            are fingerprinted (a SHA-256 hash) and recorded.
+        </p>
+        <p class="panel-description">
+            The <strong>Verify</strong> button on a run recomputes those fingerprints in your browser,
+            from the text the record carries, and checks they match what was recorded. A match confirms
+            the letter you're reading is <strong>byte-for-byte what the engine produced</strong> — it
+            hasn't been altered since.
+        </p>
+        <p class="panel-description">
+            If the produced text was later deleted under the retention policy, the fingerprints are kept
+            and still attest what was produced — but there's no text left to check them against, and
+            Verify says so.
+        </p>
+    </div>
+</section>
+
+<section class="content-card" id="glossary">
+    <div class="form-stack">
+        <h2 class="panel-title">Glossary</h2>
+        <dl class="help-glossary">
+            <dt>Provenance</dt>
+            <dd>The record of how a consult was produced — the workflow, its versions, the inputs, and the fingerprints of every step. Kept for every run.</dd>
+
+            <dt>Workflow package</dt>
+            <dd>The versioned, immutable bundle that runs a consult: the steps, prompts, section standards, and output rules — published to a public registry so anyone can inspect the exact version that ran.</dd>
+
+            <dt>Fork</dt>
+            <dd>An account's own edited copy of a workflow package. The provenance shows when a run used a fork rather than the shared package.</dd>
+
+            <dt>Catalog &amp; package format</dt>
+            <dd>The output-contract catalog version the run used, and the manifest format its package was written against.</dd>
+
+            <dt>Engine</dt>
+            <dd>The exact engine build (a git commit) that ran the job.</dd>
+
+            <dt>Contract</dt>
+            <dd>The published provenance contract the record conforms to — what a record carries, and how its hashes are computed.</dd>
+
+            <dt>SNOMED CT edition</dt>
+            <dd>The clinical terminology edition the concepts were answered against, and the server build that served it.</dd>
+
+            <dt>Pins &amp; attestation</dt>
+            <dd>The workflow and its agents are pinned to exact versions and attested at startup; the provenance names the versions the deployed engine attests.</dd>
+
+            <dt>Input hash</dt>
+            <dd>A fingerprint (SHA-256) of the effective inputs a run used.</dd>
+
+            <dt>Output (deliverable) hash</dt>
+            <dd>A fingerprint of each produced deliverable — what Verify recomputes.</dd>
+
+            <dt>Origin</dt>
+            <dd>Where each input came from. A run labels each: read from a document, read from a transcript (the submitter's declaration), copied from a previous run's deliverable, filled from a form response, or replayed as a rerun. An edited value becomes typed text and carries no origin.</dd>
+
+            <dt>Verify</dt>
+            <dd>Recomputes a run's deliverable fingerprints in your browser and checks them against the record.</dd>
+
+            <dt>Rerun</dt>
+            <dd>Runs a completed consult again on the same inputs and package version; the verdict says whether every reproducible stage matched.</dd>
+        </dl>
+    </div>
+</section>
+
+<PublicChainStrip />

@@ -1,0 +1,39 @@
+/* #685: the Help page — a readable flow, verifiability story, and glossary. */
+.help-steps {
+	margin: 0;
+	padding-left: 1.25rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+	line-height: 1.6;
+}
+
+.help-glossary {
+	margin: 0;
+	display: grid;
+	grid-template-columns: minmax(9rem, max-content) 1fr;
+	gap: 0.5rem 1.25rem;
+}
+
+.help-glossary dt {
+	font-weight: 600;
+	color: var(--consultologist-text);
+}
+
+.help-glossary dd {
+	margin: 0;
+	color: var(--consultologist-text-muted);
+	line-height: 1.6;
+}
+
+/* Stack the term over its definition on narrow screens. */
+@media (max-width: 640px) {
+	.help-glossary {
+		grid-template-columns: 1fr;
+		gap: 0.15rem 0;
+	}
+
+	.help-glossary dd {
+		margin-bottom: 0.6rem;
+	}
+}
