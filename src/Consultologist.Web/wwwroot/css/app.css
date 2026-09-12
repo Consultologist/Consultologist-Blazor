@@ -11,6 +11,7 @@
 	--consultologist-accent: var(--accent-fill-rest, #0067b8);
 	--consultologist-accent-soft: rgba(0, 103, 184, 0.08);
 	--consultologist-success: #107c10;
+	--consultologist-warning: #a15c00;
 	--consultologist-error: #a4262c;
 	--consultologist-radius-sm: 4px;
 	--consultologist-radius-md: 8px;
@@ -19,6 +20,28 @@
 	--page-gutter: clamp(1rem, 3vw, 2rem);
 	--section-gap: clamp(1.25rem, 3vw, 2rem);
 	--shell-max-width: 1600px;
+}
+
+/* #689: the success/warning/error colours don't ride the FAST neutral/accent
+   tokens, so they need dark-tuned values of their own. FluentDesignTheme stamps
+   body[data-theme] ("dark"/"light", resolving System via matchMedia), which is
+   the only theme signal in the app. The media companion is belt-and-suspenders:
+   it only bites if System ever leaves data-theme="system" literal, and the
+   data-theme guard keeps it from forcing dark under an explicit Light choice. */
+body[data-theme="dark"] {
+	--consultologist-success: #3fb950;
+	--consultologist-warning: #d29922;
+	--consultologist-error: #f85149;
+	--consultologist-accent-soft: color-mix(in srgb, var(--consultologist-accent) 22%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+	body[data-theme="system"] {
+		--consultologist-success: #3fb950;
+		--consultologist-warning: #d29922;
+		--consultologist-error: #f85149;
+		--consultologist-accent-soft: color-mix(in srgb, var(--consultologist-accent) 22%, transparent);
+	}
 }
 
 html,

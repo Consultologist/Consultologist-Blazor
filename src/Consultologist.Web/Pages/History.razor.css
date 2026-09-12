@@ -84,8 +84,8 @@
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
 	margin-left: 0.4em;
-	background: rgba(0, 120, 212, 0.12);
-	color: #0078d4;
+	background: color-mix(in srgb, var(--consultologist-accent) 12%, transparent);
+	color: var(--consultologist-accent);
 }
 
 .job-status-badge {
@@ -101,13 +101,13 @@
 }
 
 .job-status-badge--completed {
-	background: rgba(16, 124, 16, 0.12);
-	color: #107c10;
+	background: color-mix(in srgb, var(--consultologist-success) 14%, transparent);
+	color: var(--consultologist-success);
 }
 
 .job-status-badge--failed {
-	background: rgba(164, 38, 44, 0.12);
-	color: #a4262c;
+	background: color-mix(in srgb, var(--consultologist-error) 14%, transparent);
+	color: var(--consultologist-error);
 }
 
 .job-status-badge--running {
@@ -116,12 +116,12 @@
 }
 
 .job-status-badge--scheduled {
-	background: rgba(161, 92, 0, 0.12);
-	color: #a15c00;
+	background: color-mix(in srgb, var(--consultologist-warning) 14%, transparent);
+	color: var(--consultologist-warning);
 }
 
 .job-status-badge--queued {
-	background: rgba(93, 106, 124, 0.12);
+	background: color-mix(in srgb, var(--consultologist-text-muted) 14%, transparent);
 	color: var(--consultologist-text-muted);
 }
 
@@ -144,7 +144,7 @@
 }
 
 .cancel-run-button:hover:not(:disabled) {
-	color: #a4262c;
+	color: var(--consultologist-error);
 	text-decoration: underline;
 }
 
@@ -289,11 +289,11 @@
 }
 
 .node-status--success {
-	color: #107c10;
+	color: var(--consultologist-success);
 }
 
 .node-status--failure {
-	color: #a4262c;
+	color: var(--consultologist-error);
 }
 
 .node-status--muted {
@@ -333,11 +333,11 @@
 }
 
 .hash-check--match {
-    color: var(--success, #107c10);
+    color: var(--consultologist-success);
 }
 
 .hash-check--mismatch {
-    color: var(--error, #a4262c);
+    color: var(--consultologist-error);
     font-weight: 600;
 }
 
@@ -393,7 +393,7 @@
 
 .rerun-row__error {
     font-size: 0.8rem;
-    color: #a4262c;
+    color: var(--consultologist-error);
 }
 
 .rerun-comparison__inputs {
@@ -401,7 +401,7 @@
 }
 
 .rerun-comparison__inputs--bug {
-    color: #a4262c;
+    color: var(--consultologist-error);
     font-weight: 600;
 }
 
@@ -437,11 +437,11 @@
 }
 
 .rerun-comparison__verdict--same {
-    color: #107c10;
+    color: var(--consultologist-success);
 }
 
 .rerun-comparison__verdict--different {
-    color: #a4262c;
+    color: var(--consultologist-error);
     font-weight: 600;
 }
 
@@ -477,11 +477,11 @@
 }
 
 .rerun-verdict--pass {
-    color: #107c10;
+    color: var(--consultologist-success);
 }
 
 .rerun-verdict--fail {
-    color: #a4262c;
+    color: var(--consultologist-error);
 }
 
 .rerun-verdict--no-reproducible-stages {
@@ -491,7 +491,7 @@
 }
 
 .rerun-comparison__counted {
-    color: #107c10;
+    color: var(--consultologist-success);
     font-size: 0.65rem;
     vertical-align: middle;
     margin-left: 0.25rem;

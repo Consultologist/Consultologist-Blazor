@@ -261,11 +261,11 @@
 }
 
 .node-status--success {
-	color: #107c10;
+	color: var(--consultologist-success);
 }
 
 .node-status--failure {
-	color: #a4262c;
+	color: var(--consultologist-error);
 }
 
 .node-status--muted {
