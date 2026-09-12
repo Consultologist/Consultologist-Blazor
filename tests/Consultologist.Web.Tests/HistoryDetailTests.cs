@@ -131,6 +131,23 @@ public class HistoryDetailTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void TheProvenancePanel_ExplainsItselfInPlainLanguage()
+    {
+        // #685: the chips' meanings and what Verify proves must be reachable
+        // without hover.
+        WithJob(3, source: "app");
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        // The accessible "What do these mean?" disclosure under the chips.
+        var help = page.Find(".provenance-help");
+        Assert.Contains("What do these mean?", help.QuerySelector("summary")!.TextContent);
+        Assert.Contains("Full glossary in Help", help.TextContent);
+
+        // The plain-language line by Verify says what a match proves.
+        Assert.Contains("byte-for-byte", page.Find(".provenance-verify__explainer").TextContent);
+    }
+
+    [Fact]
     public void ARecordWithoutThem_NamesTheAbsence_AndNeverBorrowsTheClientsHost()
     {
         // A deployment that named no host, or a record from before the field:
