@@ -55,7 +55,14 @@
                             <label class="input-field" @key="field.Id">
                                 <span>
                                     @field.Label
-                                    @if (!field.Required)
+                                    @if (field.Required)
+                                    {
+                                        @* #683: required is marked, not just optional — otherwise
+                                           a required field looks the same as an optional one. *@
+                                        <span class="input-field__required" aria-hidden="true">*</span>
+                                        <span class="visually-hidden">(required)</span>
+                                    }
+                                    else
                                     {
                                         <span class="muted-text input-field__optional">(optional)</span>
                                     }
@@ -272,6 +279,12 @@
                                 {
                                     <span class="input-field__error">@problem</span>
                                 }
+                                @if (attemptedSubmit && field.Required && !field.IsFilled)
+                                {
+                                    @* #683: after a submit attempt, name the empty required
+                                       field inline; clears itself once the field is filled. *@
+                                    <span class="input-field__required-hint">Required.</span>
+                                }
                                 @if (field.FileError != null)
                                 {
                                     <span class="input-field__file-error">@field.FileError</span>
@@ -438,7 +451,7 @@
                             }
                             <FluentButton Appearance="Appearance.Accent"
                                           @onclick="CreateConsultAsync"
-                                          Disabled="@(isBlocksLoading || isAiRequestLoading || isSchedulingRequest || !HasEveryRequiredInput || !HasNoInputProblems || packageBlocks.Count == 0)">
+                                          Disabled="@(isBlocksLoading || isAiRequestLoading || isSchedulingRequest || !HasNoInputProblems || packageBlocks.Count == 0)">
                                 @(runOvernight ? "Schedule consult" : "Create consult")
                             </FluentButton>
                         </div>
@@ -1189,6 +1202,10 @@
   private string? blocksLoadError;
   private bool isAiRequestLoading;
   private string? aiRequestError;
+
+  // #683: set once the user tries to submit, so empty required fields can be
+  // called out inline. There is no other form-touched state.
+  private bool attemptedSubmit;
   // #434: set beside aiRequestError when the refusal left a row in History —
   // a well-formed request the package produced nothing for. Cleared with it.
   private string? refusedJobId;
@@ -1490,6 +1507,7 @@
     jobNodes = null;
     jobCollections = null;
     aiRequestError = null;
+    attemptedSubmit = true;
     refusedJobId = null;
     aiProgressNotice = null;
     scheduleConfirmation = null;
@@ -2228,6 +2246,7 @@
     }
 
     scheduleConfirmation = null;
+    attemptedSubmit = false;
   }
 
   // #236: bytes accepted before anything is uploaded, so a huge file is not
