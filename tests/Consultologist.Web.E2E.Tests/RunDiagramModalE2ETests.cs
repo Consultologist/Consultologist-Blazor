@@ -48,6 +48,17 @@ public class RunDiagramModalE2ETests
     }
 
     [Fact]
+    public async Task TheDiagram_ActuallyRenders_NoSyntaxError()
+    {
+        var page = await OpenModalAsync();
+
+        // Mermaid renders the run graph to SVG — proving the generated diagram
+        // text parses (a classDef rgba() fill silently failed every diagram).
+        await page.WaitForSelectorAsync(".run-dag-panel .dag-view__canvas svg", new() { Timeout = 30_000 });
+        Assert.Empty(await page.Locator(".dag-view .muted-text").AllAsync());
+    }
+
+    [Fact]
     public async Task Tab_KeepsFocusInsideTheDialog()
     {
         var page = await OpenModalAsync();
