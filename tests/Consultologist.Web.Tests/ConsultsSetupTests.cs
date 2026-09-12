@@ -56,6 +56,8 @@ public class ConsultsSetupTests : ClientRenderTestContext
         Assert.Equal(2, fields.Count);
         Assert.Contains("Consult draft", fields[0].TextContent);
         Assert.DoesNotContain("(optional)", fields[0].TextContent);
+        // #683: the required field is now marked too (the visually-hidden text).
+        Assert.Contains("(required)", fields[0].TextContent);
         Assert.Contains("Prior notes", fields[1].TextContent);
         Assert.Contains("(optional)", fields[1].TextContent);
     }
@@ -75,8 +77,10 @@ public class ConsultsSetupTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void Submit_IsGatedOnEveryRequiredInput()
+    public void Submit_WithMissingRequired_SurfacesTheError_NotASilentDisable()
     {
+        // #683: an empty required input must not silently disable the button —
+        // it stays enabled, and a submit attempt says what's missing.
         WithPinnedPackage(
             blocks: NineSections(),
             inputs: new[]
@@ -86,15 +90,20 @@ public class ConsultsSetupTests : ClientRenderTestContext
             });
 
         var page = Render<Consults>();
-        var submit = page.FindAll("fluent-button").Last();
-        Assert.True(submit.HasAttribute("disabled"));
 
-        // Filling only the optional input leaves the gate closed.
-        page.FindAll("fluent-text-area")[1].Change("Old notes.");
-        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
-
-        page.FindAll("fluent-text-area")[0].Change("Chest pain, rule out ACS.");
+        // Enabled despite the empty required field; nothing flagged before an attempt.
         Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+        Assert.Empty(page.FindAll(".input-field__required-hint"));
+
+        page.FindAll("fluent-button").Last().Click();
+
+        // Named in the summary bar and inline on the field.
+        Assert.Contains("Consult draft is required.", page.Markup);
+        Assert.NotEmpty(page.FindAll(".input-field__required-hint"));
+
+        // Filling it clears the inline hint.
+        page.FindAll("fluent-text-area")[0].Change("Chest pain, rule out ACS.");
+        Assert.Empty(page.FindAll(".input-field__required-hint"));
     }
 
     [Fact]
@@ -230,19 +239,24 @@ public class ConsultsSetupTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void AttachingIntoARequiredSlot_OpensTheSubmitGate()
+    public void AttachingIntoARequiredSlot_CountsAsFilled()
     {
-        // The interaction most likely to regress: every gate used to read
-        // field.Value, and a file-backed slot has none.
+        // The interaction most likely to regress: every fill-check used to read
+        // field.Value, and a file-backed slot has none — a file must count as
+        // filled. Proven through the #683 required hint rather than the gate.
         WithPinnedPackage(blocks: NineSections());
         WithExtraction("Referral body.");
 
         var page = Render<Consults>();
-        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+
+        // A submit attempt flags the empty required draft slot.
+        page.FindAll("fluent-button").Last().Click();
+        Assert.NotEmpty(page.FindAll(".input-field__required-hint"));
 
         FileInput(page, 0).UploadFiles(InputFileContent.CreateFromText("Referral body.", "referral.txt"));
 
-        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+        // The attached file fills the slot, so the hint clears.
+        Assert.Empty(page.FindAll(".input-field__required-hint"));
     }
 
     [Fact]
@@ -482,25 +496,27 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void AnUnchosenRequiredEnum_BlocksTheRun()
+    public void AnUnchosenRequiredEnum_IsSurfaced_NotSilentlyBlocking()
     {
-        // The same gate a blank textarea hits: IsFilled asks whether the slot
-        // would supply anything, so "chose nothing" and "typed nothing" are one
-        // rule rather than two. The run button is disabled rather than the
-        // click being refused — the control says so before it is pressed.
+        // #683: an unchosen required enum is the same "empty required" case as a
+        // blank textarea — it no longer silently disables the button; a submit
+        // attempt names it inline, and choosing it clears the hint.
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: TypedInputs());
 
         var page = Render<Consults>();
         page.Find("fluent-text-area").Change("Referral.");
         page.Find("input[type=date]").Change("2026-08-10");
 
-        var run = page.FindAll("fluent-button").Last();
-        Assert.True(run.HasAttribute("disabled"));
-
-        // Choosing the enum releases it; the optional boolean is not required.
-        page.FindAll("select.node-field__input")[0].Change("follow_up");
-
+        // Enabled with the enum still unchosen.
         Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+
+        // A submit attempt names the missing enum inline.
+        page.FindAll("fluent-button").Last().Click();
+        Assert.NotEmpty(page.FindAll(".input-field__required-hint"));
+
+        // Choosing it clears the hint; the optional boolean is not required.
+        page.FindAll("select.node-field__input")[0].Change("follow_up");
+        Assert.Empty(page.FindAll(".input-field__required-hint"));
     }
 
     // ----- #429: v9 intake controls ----------------------------------------
@@ -624,11 +640,13 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         var page = Render<Consults>();
         page.FindAll("fluent-text-area")[0].Change("Referral.");
 
-        // Untouched: required, so closed — but nothing is wrong yet.
-        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+        // Untouched: required but nothing is wrong yet, so the button is enabled
+        // (#683 — no silent disable) and no per-field error shows.
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
         Assert.Empty(page.FindAll(".input-field__error"));
 
-        // Touched through an optional field: the required one is now named.
+        // Touched through an optional field: the required one is now named, and
+        // the now-present problem holds the button.
         page.Find(".input-field__group select.node-field__input").Change("female");
         Assert.Equal("Patient: Age is required.", page.Find(".input-field__error").TextContent.Trim());
         Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
@@ -762,17 +780,22 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void ARequiredArrayWithNoRows_KeepsTheGateClosed()
+    public void ARequiredArrayWithNoRows_IsSurfaced_NotSilentlyGated()
     {
-        // No rows is absent, and a required slot cannot be absent — closed
-        // without complaint, like a blank required textarea.
+        // No rows is absent, and a required slot cannot be absent — but that is
+        // surfaced on a submit attempt, not left as a silent disable (#683).
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(required: true), specVersion: 9);
 
         var page = Render<Consults>();
         page.FindAll("fluent-text-area")[0].Change("Referral.");
 
-        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+        // Enabled, and nothing is wrong yet (an absent array is not a problem).
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
         Assert.Empty(page.FindAll(".input-field__error"));
+
+        // A submit attempt names the empty required array inline.
+        page.FindAll("fluent-button").Last().Click();
+        Assert.NotEmpty(page.FindAll(".input-field__required-hint"));
     }
 
     [Fact]
