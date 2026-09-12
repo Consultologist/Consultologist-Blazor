@@ -25,6 +25,7 @@
          own folder; each needs excluding here until this one moves into
          tests/Consultologist.Api.Tests/ as well. -->
     <Compile Remove="Consultologist.Web.Tests/**" />
+    <Compile Remove="Consultologist.Web.E2E.Tests/**" />
   </ItemGroup>
 
   <ItemGroup>
