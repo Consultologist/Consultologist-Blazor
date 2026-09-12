@@ -13,6 +13,18 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
+  <!-- The GitHub Release this build was deployed from, stamped by the deploy
+       workflow (-p:EngineRelease=<tag>). The commit rides InformationalVersion
+       via -p:SourceRevisionId; the release has no built-in home, so it lands as
+       assembly metadata EngineAttestation reads. Absent on a build with no tag
+       (a local build or a manual workflow_dispatch deploy). -->
+  <ItemGroup Condition="'$(EngineRelease)' != ''">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>EngineRelease</_Parameter1>
+      <_Parameter2>$(EngineRelease)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
   <ItemGroup>
     <!-- #450: the format is its own assembly; Scriban arrives through it. -->
     <ProjectReference Include="..\Consultologist.PackageFormat\Consultologist.PackageFormat.csproj" />
