@@ -20,6 +20,13 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    # The deploy authenticates to Azure by OIDC. Binding the job to an
+    # environment makes the token's subject ref-independent
+    # (repo:…:environment:production), so a release tag authenticates the same
+    # way a main push did — the org-production-immutable federated credential on
+    # canada-east-ai-function-uami trusts exactly that subject. Without it a
+    # release runs at refs/tags/<tag>, which no credential matches.
+    environment: production
     permissions:
       id-token: write #This is required for requesting the JWT
       contents: read #This is required for actions/checkout
