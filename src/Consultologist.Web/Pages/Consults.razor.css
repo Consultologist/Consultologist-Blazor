@@ -213,6 +213,12 @@
 	padding: clamp(1rem, 2vw, 1.5rem);
 }
 
+/* #684: the elapsed + expectation line under the "Generating…" spinner. */
+.generating-status {
+	margin: 0;
+	font-size: 0.85rem;
+}
+
 /* The live run grid shares History's node-row visual language (scoped CSS
    cannot be reused across pages, so the rules are mirrored here). */
 .node-grid {

@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.Components.Routing
 @using System.Diagnostics
 @using System.Text.Json
+@using Consultologist.Web.Services
 @using Consultologist.Web.Services.AI
 @using Consultologist.Web.Services.Accounts
 @using Consultologist.Web.Services.Diagnostics
@@ -659,6 +660,12 @@
                                 @if (isAiRequestLoading)
                                 {
                                     <LoadingState>Generating&hellip;</LoadingState>
+                                    @* #684: a run takes minutes — show how long it's been going
+                                       and set the expectation, so the wait doesn't feel stuck. *@
+                                    <p class="generating-status muted-text">
+                                        @ElapsedTime.Format(RunElapsed) elapsed &middot; this usually takes a few
+                                        minutes, and it keeps running in History if you leave.
+                                    </p>
                                 }
                             </div>
                         }
@@ -1203,6 +1210,12 @@
   private bool isAiRequestLoading;
   private string? aiRequestError;
 
+  // #684: wall-clock elapsed for the "Generating…" readout. A dedicated 1s
+  // ticker drives it — SSE renders are event-driven and can be minutes apart.
+  private DateTimeOffset? runStartedAt;
+  private CancellationTokenSource? elapsedTicker;
+  private TimeSpan RunElapsed => runStartedAt is { } start ? DateTimeOffset.UtcNow - start : TimeSpan.Zero;
+
   // #683: set once the user tries to submit, so empty required fields can be
   // called out inline. There is no other form-touched state.
   private bool attemptedSubmit;
@@ -1318,6 +1331,7 @@
     {
       isAiRequestLoading = true;
       editingDraft = false;
+      BeginElapsedReadout();
       await InvokeAsync(StateHasChanged);
 
       var snapshot = await AIService.GetConsultGenerationJobAsync(targetJobId);
@@ -1581,6 +1595,7 @@
     try
     {
       isAiRequestLoading = true;
+      BeginElapsedReadout();
       var inputSnapshot = SuppliedInputs();
       var fileSnapshot = SuppliedFiles();
       // What the run displays and what re-attach restores: the text, however
@@ -3663,6 +3678,35 @@
     Navigation.LocationChanged -= HandleLocationChanged;
     CancelActiveEventStream("component-disposed");
     activeEventStreamCancellationTokenSource?.Dispose();
+    elapsedTicker?.Cancel();
+    elapsedTicker?.Dispose();
     return ValueTask.CompletedTask;
+  }
+
+  // #684: mark when the run started and re-render once a second so the elapsed
+  // readout counts up smoothly; the loop stops itself when the run ends.
+  private void BeginElapsedReadout()
+  {
+    runStartedAt = DateTimeOffset.UtcNow;
+    elapsedTicker?.Cancel();
+    elapsedTicker?.Dispose();
+    elapsedTicker = new CancellationTokenSource();
+    _ = TickElapsedAsync(elapsedTicker.Token);
+  }
+
+  private async Task TickElapsedAsync(CancellationToken token)
+  {
+    try
+    {
+      using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+      while (isAiRequestLoading && await timer.WaitForNextTickAsync(token))
+      {
+        await InvokeAsync(StateHasChanged);
+      }
+    }
+    catch (OperationCanceledException)
+    {
+      // The run ended or the component was disposed — nothing to do.
+    }
   }
 }
