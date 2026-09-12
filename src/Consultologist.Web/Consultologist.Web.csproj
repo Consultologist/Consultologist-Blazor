@@ -7,6 +7,10 @@
     <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <!-- #710: publish with -p:E2E=true to compile in the test-only fake-auth
+         shim (see Program.cs / E2eAuth.cs). Appended, never overriding, so a
+         normal build carries none of it. Only the CI e2e job passes it. -->
+    <DefineConstants Condition="'$(E2E)' == 'true'">$(DefineConstants);E2E</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
