@@ -96,7 +96,8 @@ public class OperatorsPageTests : ClientRenderTestContext
         gate.SetResult(new OperatorUsageResponse(
             "2026-08-03", "2026-09-01", new[] { Row("u1", "Dr One", "tenant-a", 3, 3000, 900) }));
 
-        page.WaitForState(() => page.FindAll(".loading-state").Count == 0);
+        // #691: an explicit timeout — the default 1s flaked under CI load.
+        page.WaitForState(() => page.FindAll(".loading-state").Count == 0, TimeSpan.FromSeconds(5));
         Assert.Contains("Dr One", page.Find(".operators__table").TextContent);
     }
 
