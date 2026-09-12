@@ -13,13 +13,17 @@ namespace Consultologist.Web.Services.Provenance;
 public static class RunDagDiagram
 {
     /// <summary>The rails' colours, verbatim (Mermaid cannot read CSS vars):
-    /// muted #5d6a7c, success #107c10, error #a4262c, accent #0067b8.</summary>
+    /// muted #5d6a7c, success #107c10, error #a4262c, accent #0067b8. Fills are
+    /// hex, never rgba(): Mermaid's classDef parser splits its style list on
+    /// commas, so the commas inside rgba(...) are a syntax error that fails the
+    /// whole diagram — the running fill is the accent flattened onto white at
+    /// ~8% (#eaf3fb).</summary>
     private const string ClassDefs =
         "classDef ranNot fill:#f7f9fc,stroke:#5d6a7c,color:#5d6a7c,opacity:0.6\n"
         + "classDef skipped fill:#f7f9fc,stroke:#5d6a7c,color:#5d6a7c,stroke-dasharray:4 3\n"
         + "classDef done fill:#f7f9fc,stroke:#107c10,color:#107c10,stroke-width:2px\n"
         + "classDef failed fill:#f7f9fc,stroke:#a4262c,color:#a4262c,stroke-width:2px\n"
-        + "classDef running fill:rgba(0,103,184,0.08),stroke:#0067b8,color:#0067b8,stroke-width:2.5px";
+        + "classDef running fill:#eaf3fb,stroke:#0067b8,color:#0067b8,stroke-width:2.5px";
 
     public static string Build(ConsultGenerationJobResponse detail)
     {
