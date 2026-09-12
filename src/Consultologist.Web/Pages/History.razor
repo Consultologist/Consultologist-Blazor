@@ -400,7 +400,11 @@
                                                 </dd>
                                                 <dt>Engine</dt>
                                                 <dd class="provenance-engine">
-                                                    @if (detail.EngineCommit is { Length: 40 } engineCommit)
+                                                    @if (detail.EngineRelease is { Length: > 0 } engineRelease)
+                                                    {
+                                                        <a class="provenance-ref" href="@EngineReleaseLink(engineRelease)" target="_blank" rel="noopener" title="@($"The engine build that ran this job, deployed from release {engineRelease}" + (detail.EngineCommit is { Length: 40 } releasedCommit ? $" (commit {releasedCommit})" : string.Empty))">@engineRelease</a>
+                                                    }
+                                                    else if (detail.EngineCommit is { Length: 40 } engineCommit)
                                                     {
                                                         <a class="provenance-ref" href="@EngineCommitLink(engineCommit)" target="_blank" rel="noopener" title="@($"The engine build that ran this job: {engineCommit}")">@engineCommit[..7]</a>
                                                     }
@@ -1354,6 +1358,9 @@
 
     /// <summary>#514: the engine's commit page — an anchor, not a fetch, so the CSP's connect-src is not involved.</summary>
     private static string EngineCommitLink(string commit) => $"https://github.com/Consultologist/Consultologist-Blazor/commit/{commit}";
+
+    /// <summary>The engine's release page for a job's recorded tag — the versioned page the commit shipped under; a record with no release falls back to <see cref="EngineCommitLink"/>.</summary>
+    private static string EngineReleaseLink(string release) => ReleaseLink("Consultologist-Blazor", release);
 
     private static string Witness(bool recorded) => recorded ? "recorded on the job" : "the deployed engine's — this record predates its own";
 

@@ -26,7 +26,7 @@ public interface IWorkflowEndpointService
 }
 
 /// <summary>The deployed engine's attestation, the three refs History resolves numbers through.</summary>
-public record EngineView(string? Commit, string? PackageFormat, string? Provenance, string? ApiHost = null);
+public record EngineView(string? Commit, string? PackageFormat, string? Provenance, string? ApiHost = null, string? Release = null);
 
 /// <summary>One entry of a specific catalog version's document (public registry blob).</summary>
 public record PublicCatalogEntry(string? AgentName, string? AgentVersion);

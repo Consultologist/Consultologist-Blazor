@@ -622,6 +622,10 @@ public record ConsultGenerationJobResponse(
     // #514: mirrors the Api's ApiHost / EngineCommit — where the job ran and what ran it.
     string? ApiHost = null,
     string? EngineCommit = null,
+    // Mirrors the Api's EngineRelease — the release the EngineCommit shipped
+    // under, which History links to (falling back to the commit). Null on a
+    // deployment with no release tag, and on records from before the field.
+    string? EngineRelease = null,
     // #547: the held effective inputs (hydrated server-side while held) and
     // when the retention drop deleted them. HeldInputs is null once dropped
     // or for a job never held; the pointer itself is not mirrored.

@@ -49,6 +49,7 @@ public class HistoryDetailTests : ClientRenderTestContext
         string? source = null,
         string? apiHost = null,
         string? engineCommit = null,
+        string? engineRelease = null,
         string status = "Completed",
         string? rerunOf = null,
         string? rerunVerdict = null,
@@ -107,6 +108,7 @@ public class HistoryDetailTests : ClientRenderTestContext
             Source: source,
             ApiHost: apiHost,
             EngineCommit: engineCommit,
+            EngineRelease: engineRelease,
             RerunOf: rerunOf,
             RerunVerdict: rerunVerdict,
             RerunDivergence: rerunDivergence,
@@ -128,6 +130,36 @@ public class HistoryDetailTests : ClientRenderTestContext
         Assert.Equal("77a617f", engine.TextContent.Trim());
         Assert.Equal($"https://github.com/Consultologist/Consultologist-Blazor/commit/{commit}", engine.GetAttribute("href"));
         Assert.Equal("via app", page.Find(".provenance-chip--source").TextContent.Trim());
+    }
+
+    [Fact]
+    public void TheEngine_LinksItsRelease_WhenTheRecordHasOne()
+    {
+        // The engine deploys from a tagged release, so a record names it: the
+        // link is the versioned release page, not the commit, and the commit
+        // rides the tooltip as the verifiable anchor.
+        var commit = "77a617f453cb2d8875c2b6918ff8e9fe92cce7ac";
+        WithJob(3, source: "app", engineCommit: commit, engineRelease: "v2026.09.1");
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var engine = page.Find(".provenance-engine a");
+        Assert.Equal("v2026.09.1", engine.TextContent.Trim());
+        Assert.Equal("https://github.com/Consultologist/Consultologist-Blazor/releases/tag/v2026.09.1", engine.GetAttribute("href"));
+        Assert.Contains(commit, engine.GetAttribute("title"));
+    }
+
+    [Fact]
+    public void TheEngine_FallsBackToTheCommit_WhenTheRecordHasNoRelease()
+    {
+        // A record from before the field, or a manual dispatch that stamped only
+        // the commit: the link stays the commit page.
+        var commit = "77a617f453cb2d8875c2b6918ff8e9fe92cce7ac";
+        WithJob(3, source: "app", engineCommit: commit);
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var engine = page.Find(".provenance-engine a");
+        Assert.Equal("77a617f", engine.TextContent.Trim());
+        Assert.Equal($"https://github.com/Consultologist/Consultologist-Blazor/commit/{commit}", engine.GetAttribute("href"));
     }
 
     [Fact]
