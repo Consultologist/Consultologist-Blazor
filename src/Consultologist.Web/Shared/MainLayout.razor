@@ -2,10 +2,13 @@
 
 <FluentLayout Class="app-shell">
     @* #688: the first focusable element, so a keyboard user can jump the header
-       nav and land in the content instead of tabbing it on every page. *@
-    <a class="skip-link" href="#main-content">Skip to main content</a>
+       nav and land in the content instead of tabbing it on every page. The href
+       scrolls (and is the no-JS fallback); the click also moves focus into main,
+       because Blazor intercepts the fragment navigation and would otherwise only
+       scroll — leaving keyboard focus stranded on the link (#707). *@
+    <a class="skip-link" href="#main-content" @onclick="FocusMainAsync">Skip to main content</a>
 	<Header />
-    <main class="content" id="main-content" tabindex="-1">
+    <main class="content" id="main-content" tabindex="-1" @ref="_main">
         <div class="content-shell">
             <UpdateBanner />
             <AccountStatusBanner />
@@ -14,3 +17,9 @@
     </main>
     <Footer />
 </FluentLayout>
+
+@code {
+    private ElementReference _main;
+
+    private async Task FocusMainAsync() => await _main.FocusAsync();
+}
