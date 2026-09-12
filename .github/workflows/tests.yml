@@ -46,7 +46,9 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Publish the web app
-        run: dotnet publish src/Consultologist.Web/Consultologist.Web.csproj -c Release -o publish
+        # #710: -p:E2E=true compiles in the test-only fake-auth shim so the
+        # authed a11y surfaces are reachable. Never passed by the prod deploy.
+        run: dotnet publish src/Consultologist.Web/Consultologist.Web.csproj -c Release -o publish -p:E2E=true
 
       - name: Build the E2E tests
         run: dotnet build tests/Consultologist.Web.E2E.Tests/Consultologist.Web.E2E.Tests.csproj -c Release
@@ -59,8 +61,9 @@ jobs:
           E2E_BASE_URL: http://localhost:5000
         run: |
           # Serve and test in one step: a backgrounded server does not reliably
-          # survive into a later step (each step is a fresh shell).
-          python3 -m http.server 5000 --directory publish/wwwroot &
+          # survive into a later step (each step is a fresh shell). The SPA
+          # fallback server lets Blazor deep links (/history, /consults/{id}) load.
+          python3 tests/Consultologist.Web.E2E.Tests/serve.py 5000 publish/wwwroot &
           server=$!
           for i in $(seq 1 30); do curl -sf http://localhost:5000/ >/dev/null && break; sleep 1; done
           dotnet test tests/Consultologist.Web.E2E.Tests/Consultologist.Web.E2E.Tests.csproj -c Release
