@@ -60,6 +60,9 @@ public class RunDagDiagramTests
         Assert.Contains("stroke:#0067b8", diagram);
         Assert.Contains("stroke-dasharray:4 3", diagram);
         Assert.Contains("opacity:0.6", diagram);
+        // Fills must be hex, not rgba(): Mermaid's classDef splits styles on
+        // commas, so rgba(...) is a parse error that fails the whole diagram.
+        Assert.DoesNotContain("rgba", diagram);
         // The stadium source and its edge.
         Assert.Contains("src_input_consult_draft([\"input:consult_draft\"])", diagram);
         Assert.Contains("extract --> draft", diagram);
