@@ -140,6 +140,39 @@ public class EngineAttestationTests
         Assert.Equal("Public:ApiHost", EngineAttestation.ApiHostSetting);
     }
 
+    [Theory]
+    [InlineData("v2026.09.1", "v2026.09.1")]
+    [InlineData("  v2026.09.1  ", "v2026.09.1")]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData(null, null)]
+    public void ReleaseOf_IsATrimmedTag_OrNull(string? configured, string? expected)
+    {
+        // The release the deploy workflow stamped, blank to null — a build with
+        // no tag (a local build or a manual dispatch) attests none.
+        Assert.Equal(expected, EngineAttestation.ReleaseOf(configured));
+    }
+
+    [Fact]
+    public void Describe_AttestsTheRelease_AndNullWhenUnset()
+    {
+        var now = new DateTimeOffset(2026, 9, 12, 12, 0, 0, TimeSpan.Zero);
+        Assert.Equal("v2026.09.1",
+            EngineAttestation.Describe($"1.0.0+{Sha}", "output-contracts@v2026.08.1", "v2026.08.8", "v2026.08.7", now, "east.ca.api.consultologist.ai", "v2026.09.1").Release);
+        // Unstamped — a local build or a manual workflow_dispatch deploy — is a
+        // named absence: the record links to the commit alone.
+        Assert.Null(EngineAttestation.Describe($"1.0.0+{Sha}", "output-contracts@v2026.08.1", "v2026.08.8", "v2026.08.7", now).Release);
+        Assert.Equal("EngineRelease", EngineAttestation.ReleaseMetadataKey);
+    }
+
+    [Fact]
+    public void ReleaseMetadataOf_IsNullOnAnAssemblyWithNoTag()
+    {
+        // The test assembly is built without -p:EngineRelease, so it carries no
+        // such metadata — the same null a local or dispatch build attests.
+        Assert.Null(EngineAttestation.ReleaseMetadataOf(typeof(EngineAttestationTests).Assembly));
+    }
+
     [Fact]
     public void TheResponse_CarriesExactlyTheDeploymentFacts()
     {
@@ -147,7 +180,7 @@ public class EngineAttestationTests
         // added here, in the open, before it can reach the wire.
         var properties = typeof(EngineAttestationResponse).GetProperties().Select(p => p.Name).Order(StringComparer.Ordinal);
         Assert.Equal(
-            new[] { "AcceptedSpecVersions", "ApiHost", "Commit", "GeneratedAtUtc", "OutputContracts", "PackageFormat", "Provenance", "Scriban", "SupportedSpecVersions", "Version" },
+            new[] { "AcceptedSpecVersions", "ApiHost", "Commit", "GeneratedAtUtc", "OutputContracts", "PackageFormat", "Provenance", "Release", "Scriban", "SupportedSpecVersions", "Version" },
             properties);
     }
 
