@@ -831,6 +831,7 @@
                                         }
                                     }
                                     <button type="button" class="aggregate-row__button" title="Remove input"
+                                            aria-label="Remove input"
                                             disabled="@(EffectiveInputs.Count == 1 || ConditionLock(slot) != null)"
                                             @onclick="() => RemoveInputAsync(slot)">×</button>
                                 </li>
@@ -844,6 +845,7 @@
                                             <span class="input-field__chip" data-enum-value="@declaredValue">
                                                 @declaredValue
                                                 <button type="button" class="aggregate-row__button" title="Remove value"
+                                                        aria-label="Remove value @declaredValue"
                                                         @onclick="() => RemoveEnumValueAsync(slot, declaredValue)">×</button>
                                             </span>
                                         }
@@ -922,6 +924,7 @@
                                             }
                                         </select>
                                         <button type="button" class="aggregate-row__button" title="Remove document"
+                                                aria-label="Remove document"
                                                 disabled="@(EffectiveResults.Count == 1)"
                                                 @onclick="() => RemoveResultAsync(deliverable)">×</button>
                                     </li>
@@ -983,12 +986,15 @@
                                                         </span>
                                                     }
                                                     <button type="button" class="aggregate-row__button result-macro-up" title="Move up"
+                                                            aria-label="Move macro @(macroIndex + 1) up"
                                                             disabled="@(macroIndex == 0)"
                                                             @onclick="() => MoveResultMacroAsync(deliverable, macroId, -1)">↑</button>
                                                     <button type="button" class="aggregate-row__button result-macro-down" title="Move down"
+                                                            aria-label="Move macro @(macroIndex + 1) down"
                                                             disabled="@(macroIndex == resultMacros.Count - 1)"
                                                             @onclick="() => MoveResultMacroAsync(deliverable, macroId, 1)">↓</button>
                                                     <button type="button" class="aggregate-row__button result-macro-remove" title="Remove macro"
+                                                            aria-label="Remove macro @(macroIndex + 1)"
                                                             @onclick="() => RemoveResultMacroAsync(deliverable, macroId)">×</button>
                                                 </span>
                                             }
@@ -1853,6 +1859,7 @@
                           }
                       }
                       <button type="button" class="aggregate-row__button" title="Remove field"
+                              aria-label="Remove field"
                               disabled="@(FieldLock(owner, member) != null)"
                               @onclick="() => RemoveFieldAsync(owner, member)">×</button>
                   </li>
@@ -1865,6 +1872,7 @@
                               <span class="input-field__chip" data-field-enum-value="@declaredValue">
                                   @declaredValue
                                   <button type="button" class="aggregate-row__button" title="Remove value"
+                                          aria-label="Remove value @declaredValue"
                                           @onclick="() => RemoveFieldValueAsync(owner, member, declaredValue)">×</button>
                               </span>
                           }

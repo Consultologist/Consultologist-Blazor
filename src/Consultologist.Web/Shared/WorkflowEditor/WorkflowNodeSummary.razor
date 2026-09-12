@@ -83,6 +83,7 @@
                                 <span class="input-field__chip" data-node-value="@declaredValue">
                                     @declaredValue
                                     <button type="button" class="aggregate-row__button" title="Remove value"
+                                            aria-label="Remove value @declaredValue"
                                             @onclick="() => EmitValuesAsync(node, (node.Values ?? Array.Empty<string>()).Where(v => v != declaredValue).ToList())">×</button>
                                 </span>
                             }
@@ -236,12 +237,15 @@
                             <span class="muted-text">@(index + 1).</span>
                             <code>@node.Aggregate[index]</code>
                             <button type="button" class="aggregate-row__button" title="Move up"
+                                    aria-label="Move source @(index + 1) up"
                                     disabled="@(index == 0)"
                                     @onclick="() => MoveAggregateSourceAsync(currentNode, index, -1)">↑</button>
                             <button type="button" class="aggregate-row__button" title="Move down"
+                                    aria-label="Move source @(index + 1) down"
                                     disabled="@(index == node.Aggregate.Count - 1)"
                                     @onclick="() => MoveAggregateSourceAsync(currentNode, index, +1)">↓</button>
                             <button type="button" class="aggregate-row__button" title="Remove source"
+                                    aria-label="Remove source @(index + 1)"
                                     disabled="@(node.Aggregate.Count == 1)"
                                     @onclick="() => RemoveAggregateSourceAsync(currentNode, index)">×</button>
                         </li>

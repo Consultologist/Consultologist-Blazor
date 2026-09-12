@@ -39,6 +39,7 @@
             <FluentButton IconStart="@_themeIcon"
                           Appearance="Appearance.Stealth"
                           Title="@($"Theme: {_themeMode}")"
+                          aria-label="@($"Theme: {_themeMode}. Activate to change.")"
                           OnClick="@ToggleTheme" />
             <LoginDisplay />
         </FluentStack>

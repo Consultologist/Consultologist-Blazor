@@ -390,6 +390,26 @@ header.header.app-header {
 	color: var(--consultologist-text-muted);
 }
 
+/* #688: the skip-link — off-screen until focused, then it slides into the
+   top-left corner above everything so a keyboard user can see and use it. */
+.skip-link {
+	position: fixed;
+	top: -3rem;
+	left: 0.5rem;
+	z-index: 2000;
+	padding: 0.5rem 0.9rem;
+	background: var(--consultologist-surface, #ffffff);
+	color: var(--consultologist-text, #1a2332);
+	border-radius: 6px;
+	box-shadow: var(--consultologist-shadow-md, 0 16px 40px rgba(15, 23, 42, 0.08));
+	text-decoration: none;
+	transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+	top: 0.5rem;
+}
+
 /* #687: off-screen but read by screen readers — for live-region status text
    that has no visible counterpart (the run rail conveys status by glyph). */
 .visually-hidden {

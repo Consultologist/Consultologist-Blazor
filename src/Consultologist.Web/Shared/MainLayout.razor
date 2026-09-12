@@ -1,8 +1,11 @@
 @inherits LayoutComponentBase
 
 <FluentLayout Class="app-shell">
+    @* #688: the first focusable element, so a keyboard user can jump the header
+       nav and land in the content instead of tabbing it on every page. *@
+    <a class="skip-link" href="#main-content">Skip to main content</a>
 	<Header />
-    <main class="content">
+    <main class="content" id="main-content" tabindex="-1">
         <div class="content-shell">
             <UpdateBanner />
             <AccountStatusBanner />

@@ -124,12 +124,15 @@
                                                     }
                                                     <span class="input-field__row-buttons">
                                                         <button type="button" class="aggregate-row__button" title="Move up"
+                                                                aria-label="Move @document.FileName up"
                                                                 disabled="@(index == 0)"
                                                                 @onclick="() => MoveDocument(currentField, index, -1)">↑</button>
                                                         <button type="button" class="aggregate-row__button" title="Move down"
+                                                                aria-label="Move @document.FileName down"
                                                                 disabled="@(index == currentField.Documents.Count - 1)"
                                                                 @onclick="() => MoveDocument(currentField, index, +1)">↓</button>
                                                         <button type="button" class="aggregate-row__button" title="Remove this file"
+                                                                aria-label="Remove @document.FileName"
                                                                 @onclick="() => RemoveDocument(currentField, index)">×</button>
                                                     </span>
                                                 </span>
@@ -206,12 +209,15 @@
                                                 </div>
                                                 <span class="input-field__row-buttons">
                                                     <button type="button" class="aggregate-row__button" title="Move up"
+                                                            aria-label="Move entry @(index + 1) up"
                                                             disabled="@(index == 0)"
                                                             @onclick="() => currentField.MoveRow(index, -1)">↑</button>
                                                     <button type="button" class="aggregate-row__button" title="Move down"
+                                                            aria-label="Move entry @(index + 1) down"
                                                             disabled="@(index == currentField.Rows.Count - 1)"
                                                             @onclick="() => currentField.MoveRow(index, +1)">↓</button>
                                                     <button type="button" class="aggregate-row__button" title="Remove entry"
+                                                            aria-label="Remove entry @(index + 1)"
                                                             @onclick="() => currentField.RemoveRow(index)">×</button>
                                                 </span>
                                             </div>
@@ -1049,12 +1055,15 @@
             </div>
             <span class="input-field__row-buttons">
               <button type="button" class="aggregate-row__button" title="Move up"
+                      aria-label="Move entry @(index + 1) up"
                       disabled="@(index == 0)"
                       @onclick="() => array.MoveRow(index, -1)">↑</button>
               <button type="button" class="aggregate-row__button" title="Move down"
+                      aria-label="Move entry @(index + 1) down"
                       disabled="@(index == array.Rows.Count - 1)"
                       @onclick="() => array.MoveRow(index, +1)">↓</button>
               <button type="button" class="aggregate-row__button" title="Remove entry"
+                      aria-label="Remove entry @(index + 1)"
                       @onclick="() => array.RemoveRow(index)">×</button>
             </span>
           </div>
