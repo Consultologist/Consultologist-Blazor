@@ -239,8 +239,12 @@
                                                knows nothing — a job from before this predates the leg. *@
                                             @if (detail.Terminology is { Version: { Length: > 0 } terminologyVersion } terminology)
                                             {
-                                                <span class="provenance-chip" title="@TerminologyTitle(terminology, detail.TerminologyServerRef)">
-                                                    @if (TerminologyServerLink(detail.TerminologyServerRef) is { } serverHref)
+                                                <span class="provenance-chip" title="@TerminologyTitle(terminology, detail.TerminologyServerRef, detail.TerminologyServerRelease)">
+                                                    @if (detail.TerminologyServerRelease is { Length: > 0 } serverRelease)
+                                                    {
+                                                        <a class="provenance-ref" href="@TerminologyServerReleaseLink(serverRelease)" target="_blank" rel="noopener">SNOMED CT @terminologyVersion</a>
+                                                    }
+                                                    else if (TerminologyServerLink(detail.TerminologyServerRef) is { } serverHref)
                                                     {
                                                         <a class="provenance-ref" href="@serverHref" target="_blank" rel="noopener">SNOMED CT @terminologyVersion</a>
                                                     }
@@ -1344,9 +1348,10 @@
 
     private const string TerminologyServerPrefix = "snomed-snowstorm-mcp@";
 
-    private static string TerminologyTitle(TerminologySnapshot terminology, string? serverRef) =>
+    private static string TerminologyTitle(TerminologySnapshot terminology, string? serverRef, string? serverRelease = null) =>
         $"Terminology edition the concepts were answered against: {terminology.Edition ?? "—"} (imported {terminology.ImportDate ?? "—"})"
-        + (serverRef != null ? $" · served by {serverRef}" : string.Empty);
+        + (serverRef != null ? $" · served by {serverRef}" : string.Empty)
+        + (serverRelease != null ? $" (release {serverRelease})" : string.Empty);
 
     // A stamped build links to its commit; a server deployed by hand reports a
     // version, which has no page to open.
@@ -1355,6 +1360,12 @@
             && serverRef[TerminologyServerPrefix.Length..] is { Length: 40 } commit && commit.All(Uri.IsHexDigit)
             ? $"https://github.com/Tauheed-Elahee/snomed-snowstorm-mcp/commit/{commit}"
             : null;
+
+    // The terminology server's release page for a job's recorded tag. Its own
+    // org, so not ReleaseLink (which is Consultologist/); a record with no
+    // release falls back to TerminologyServerLink's commit page.
+    private static string TerminologyServerReleaseLink(string release) =>
+        $"https://github.com/Tauheed-Elahee/snomed-snowstorm-mcp/releases/tag/{release}";
 
     /// <summary>#514: the engine's commit page — an anchor, not a fetch, so the CSP's connect-src is not involved.</summary>
     private static string EngineCommitLink(string commit) => $"https://github.com/Consultologist/Consultologist-Blazor/commit/{commit}";
