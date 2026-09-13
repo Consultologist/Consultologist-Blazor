@@ -293,6 +293,11 @@ public record ConsultGenerationJobResponse(
     // commit). Null on a deployment with no release tag, and on records from
     // before this field. Named-constructed everywhere, so it sits by EngineCommit.
     string? EngineRelease = null,
+    // The GitHub Release the terminology server was deployed from — the release
+    // its TerminologyServerRef commit shipped under, which the app links to
+    // (falling back to the commit). Null when the server carried no tag, and on
+    // records from before this field.
+    string? TerminologyServerRelease = null,
     // #557: where the produced text lives (container + name, never a URL).
     // Null on pre-#557 records, on Failed jobs, and when the completion
     // write failed and the text stayed on the entity.

@@ -604,9 +604,12 @@ public record ConsultGenerationJobResponse(
     // #398: package-format@v… and provenance@v… as the job recorded them; null before.
     string? PackageFormatRef = null,
     string? ProvenanceRef = null,
-    // #403: mirrors the Api's Terminology / TerminologyServerRef.
+    // #403: mirrors the Api's Terminology / TerminologyServerRef, and the
+    // release the server was deployed from — the release History links to,
+    // falling back to the commit ref. Null when the server carried no tag.
     TerminologySnapshot? Terminology = null,
     string? TerminologyServerRef = null,
+    string? TerminologyServerRelease = null,
     // #368: when the produced text was deleted under the retention policy.
     DateTimeOffset? TextDroppedAtUtc = null,
     // #486: mirrors the Api's DeliveryOutcome / DeliveredAtUtc / DeliveryDocumentAttached.

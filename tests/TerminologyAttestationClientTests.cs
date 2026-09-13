@@ -29,6 +29,27 @@ public class TerminologyAttestationClientTests
     }
 
     [Fact]
+    public void Describe_CarriesTheServerRelease_WhenReported_AndNullOtherwise()
+    {
+        const string commit = "0fff939d4a5c3a6e7b8c9d0e1f2a3b4c5d6e7f80";
+        var released = TerminologyAttestationClient.Describe(
+            new TerminologyAttestationClient.TerminologyInfoDocument("e", "v", "d", "1.0.0", commit, "v2026.09.1"),
+            DateTimeOffset.UnixEpoch)!;
+        Assert.Equal("v2026.09.1", released.ServerRelease);
+        // The commit ref stays the recorded anchor beside the release.
+        Assert.Equal($"snomed-snowstorm-mcp@{commit}", released.ServerRef);
+
+        // A server with no release tag (a hand deploy, or a build from before):
+        // null, and blank is null too.
+        var noRelease = TerminologyAttestationClient.Describe(
+            new TerminologyAttestationClient.TerminologyInfoDocument("e", "v", "d", "1.0.0", commit), DateTimeOffset.UnixEpoch)!;
+        Assert.Null(noRelease.ServerRelease);
+        var blank = TerminologyAttestationClient.Describe(
+            new TerminologyAttestationClient.TerminologyInfoDocument("e", "v", "d", "1.0.0", commit, "  "), DateTimeOffset.UnixEpoch)!;
+        Assert.Null(blank.ServerRelease);
+    }
+
+    [Fact]
     public async Task Unconfigured_SaysNothing_AndNeverCalls()
     {
         var handler = new StubHandler(Document);

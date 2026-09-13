@@ -108,13 +108,15 @@ public class ProvenanceMirrorTests
             "job-1", "user-1", "Completed", 1, 1, 0,
             new Dictionary<string, string>(), new Dictionary<string, string>(), true,
             Terminology: new Consultologist.Api.Workflow.TerminologySnapshot("SNOMEDCT 20251130 import.", "2025-11-30", "2025-12-21T22:39:16.944Z"),
-            TerminologyServerRef: "snomed-snowstorm-mcp@0fff939d4a5c3a6e7b8c9d0e1f2a3b4c5d6e7f80");
+            TerminologyServerRef: "snomed-snowstorm-mcp@0fff939d4a5c3a6e7b8c9d0e1f2a3b4c5d6e7f80",
+            TerminologyServerRelease: "v2026.09.1");
 
         var mirrored = JsonSerializer.Deserialize<WebAI.ConsultGenerationJobResponse>(
             JsonSerializer.Serialize(response, Web), Web)!;
 
         Assert.Equal("2025-11-30", mirrored.Terminology!.Version);
         Assert.Equal("snomed-snowstorm-mcp@0fff939d4a5c3a6e7b8c9d0e1f2a3b4c5d6e7f80", mirrored.TerminologyServerRef);
+        Assert.Equal("v2026.09.1", mirrored.TerminologyServerRelease);
     }
 
     [Fact]

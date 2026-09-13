@@ -43,6 +43,7 @@ public class HistoryDetailTests : ClientRenderTestContext
         string? provenanceRef = null,
         TerminologySnapshot? terminology = null,
         string? terminologyServerRef = null,
+        string? terminologyServerRelease = null,
         DateTimeOffset? textDroppedAtUtc = null,
         IReadOnlyDictionary<string, string>? heldInputs = null,
         DateTimeOffset? inputsDroppedAtUtc = null,
@@ -100,6 +101,7 @@ public class HistoryDetailTests : ClientRenderTestContext
             ProvenanceRef: provenanceRef,
             Terminology: terminology,
             TerminologyServerRef: terminologyServerRef,
+            TerminologyServerRelease: terminologyServerRelease,
             TextDroppedAtUtc: textDroppedAtUtc,
             HeldInputs: heldInputs,
             InputsDroppedAtUtc: inputsDroppedAtUtc,
@@ -297,6 +299,23 @@ public class HistoryDetailTests : ClientRenderTestContext
 
         WithJob(3);
         Assert.DoesNotContain(Render<History>(parameters => parameters.Add(p => p.JobId, JobId)).FindAll(".provenance-chip"), c => c.TextContent.Contains("SNOMED CT", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TheTerminologyChip_LinksTheServersRelease_WhenTheRecordHasOne()
+    {
+        // The terminology server deploys from a tagged release, so a record names
+        // it: the chip links the versioned release page, not the commit, and the
+        // commit ref stays in the tooltip.
+        WithJob(3, terminology: new TerminologySnapshot("SNOMEDCT 20251130 import.", "2025-11-30", "2025-12-21T22:39:16.944Z"),
+            terminologyServerRef: "snomed-snowstorm-mcp@0fff939d4a5c3a6e7b8c9d0e1f2a3b4c5d6e7f80",
+            terminologyServerRelease: "v2026.09.1");
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var chip = page.FindAll(".provenance-chip").Single(c => c.TextContent.Contains("SNOMED CT", StringComparison.Ordinal));
+        Assert.Equal("https://github.com/Tauheed-Elahee/snomed-snowstorm-mcp/releases/tag/v2026.09.1", chip.QuerySelector("a")!.GetAttribute("href"));
+        Assert.Contains("snomed-snowstorm-mcp@0fff939d", chip.GetAttribute("title"));
+        Assert.Contains("v2026.09.1", chip.GetAttribute("title"));
     }
 
     [Fact]

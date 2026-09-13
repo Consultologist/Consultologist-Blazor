@@ -190,6 +190,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.ProvenanceRef ??= input.ProvenanceRef;
         State.Terminology ??= input.Terminology;
         State.TerminologyServerRef ??= input.TerminologyServerRef;
+        State.TerminologyServerRelease ??= input.TerminologyServerRelease;
         State.ApiHost ??= input.ApiHost;
         State.EngineCommit ??= input.EngineCommit;
         State.EngineRelease ??= input.EngineRelease;
@@ -970,7 +971,11 @@ public sealed record ConsultGenerationOrchestrationInput(
     // commit shipped under, as Public/Engine attests. Null when the deployment
     // carried no tag. Appended last, the positional-call rule EngineCommit's
     // neighbours give.
-    string? EngineRelease = null);
+    string? EngineRelease = null,
+    // The terminology server's release tag, beside TerminologyServerRef — the
+    // release its commit shipped under, as Public/Terminology attests. Null
+    // when the server carried no tag. Appended last, same rule.
+    string? TerminologyServerRelease = null);
 
 /// <summary>
 /// v11 #516: the chosen signature as it was at job start — the block's id,
@@ -1049,7 +1054,10 @@ public sealed record ConsultGenerationJobInitialize(
     // The engine build's release tag, beside EngineCommit — the release the
     // commit shipped under. Null when the deployment carried no tag. Appended
     // last, the same positional-call rule.
-    string? EngineRelease = null);
+    string? EngineRelease = null,
+    // The terminology server's release tag, beside TerminologyServerRef. Null
+    // when the server carried no tag. Appended last, same rule.
+    string? TerminologyServerRelease = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -1376,6 +1384,11 @@ public sealed class ConsultGenerationJobState
     // Write-once; null when the deployment carried no release tag, and on records
     // from before the field.
     public string? EngineRelease { get; set; }
+
+    // The GitHub Release the terminology server was deployed from, beside
+    // TerminologyServerRef. Write-once; null when the server carried no tag, and
+    // on records from before the field.
+    public string? TerminologyServerRelease { get; set; }
     public List<ConsultItemStepDescriptor>? ItemSteps { get; set; }
     public List<ConsultNodeDescriptor>? Nodes { get; set; }
 
@@ -1718,6 +1731,7 @@ public sealed class ConsultGenerationJobState
             ApiHost: ApiHost,
             EngineCommit: EngineCommit,
             EngineRelease: EngineRelease,
+            TerminologyServerRelease: TerminologyServerRelease,
             OutputsBlob: OutputsBlob,
             InputsBlob: InputsBlob,
             InputsDroppedAtUtc: InputsDroppedAtUtc,
