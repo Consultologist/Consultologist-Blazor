@@ -95,6 +95,7 @@ public sealed class ConsultGenerationOrchestrator
                 ProvenanceRef: input.ProvenanceRef,
                 Terminology: input.Terminology,
                 TerminologyServerRef: input.TerminologyServerRef,
+                TerminologyServerRelease: input.TerminologyServerRelease,
                 // v10 (#496): by name, last.
                 Deciding: input.Deciding,
                 // #514: by name, last.

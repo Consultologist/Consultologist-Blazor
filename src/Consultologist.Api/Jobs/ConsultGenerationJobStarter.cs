@@ -891,6 +891,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // #403: the edition the terminology server had loaded, and its build.
                 Terminology: terminology?.Terminology,
                 TerminologyServerRef: terminology?.ServerRef,
+                TerminologyServerRelease: terminology?.ServerRelease,
                 // v10 (#496): the boundary's inputs, only when there is one.
                 Deciding: deciding ? true : null,
                 SuppliedInputs: deciding ? SuppliedCarrier(inputs.Supplied) : null,
@@ -1178,6 +1179,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     ProvenanceRef: EngineAttestation.RefOf(EngineAttestation.ProvenanceRegistry, _engine.Provenance),
                     Terminology: terminology?.Terminology,
                     TerminologyServerRef: terminology?.ServerRef,
+                    TerminologyServerRelease: terminology?.ServerRelease,
                     ApiHost: _engine.ApiHost,
                     EngineCommit: _engine.Commit,
                     EngineRelease: _engine.Release,

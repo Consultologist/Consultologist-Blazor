@@ -7,8 +7,8 @@ namespace Consultologist.Api.Workflow;
 /// <summary>The SNOMED CT edition the terminology server had loaded, as it reported it (#403).</summary>
 public sealed record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);
 
-/// <summary>What the terminology server said about itself, and when.</summary>
-public sealed record TerminologyAttestation(TerminologySnapshot? Terminology, string? ServerRef, DateTimeOffset FetchedAtUtc);
+/// <summary>What the terminology server said about itself, and when. ServerRelease is the GitHub Release it was deployed from (null when it carried no tag).</summary>
+public sealed record TerminologyAttestation(TerminologySnapshot? Terminology, string? ServerRef, DateTimeOffset FetchedAtUtc, string? ServerRelease = null);
 
 public interface ITerminologyAttestationSource
 {
@@ -115,10 +115,13 @@ public sealed class TerminologyAttestationClient : ITerminologyAttestationSource
         var serverRef = document.Commit is { Length: > 0 } commit ? $"{ServerName}@{commit}"
             : document.ServerVersion is { Length: > 0 } version ? $"{ServerName}@{version}"
             : null;
+        // The release the server was deployed from, when it reports one — the tag
+        // a record links to, falling back to the commit ref. Blank is null.
+        var serverRelease = document.Release?.Trim() is { Length: > 0 } release ? release : null;
 
-        return snapshot == null && serverRef == null ? null : new TerminologyAttestation(snapshot, serverRef, now);
+        return snapshot == null && serverRef == null ? null : new TerminologyAttestation(snapshot, serverRef, now, serverRelease);
     }
 
     /// <summary>The wire shape of GET Public/Terminology on the server (PascalCase, case-insensitive here).</summary>
-    public sealed record TerminologyInfoDocument(string? Edition, string? Version, string? ImportDate, string? ServerVersion, string? Commit);
+    public sealed record TerminologyInfoDocument(string? Edition, string? Version, string? ImportDate, string? ServerVersion, string? Commit, string? Release = null);
 }
