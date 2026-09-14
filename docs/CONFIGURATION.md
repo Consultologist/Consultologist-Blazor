@@ -9,6 +9,31 @@ through `IConfiguration` accept either form; settings read directly via
 `Environment.GetEnvironmentVariable` (the `AzureAI__*`, `AgentAttestation__*`, and
 `WorkflowPackages__Default` groups) must use the exact `__` name.
 
+## Environments (#490)
+
+There are two engine deployments, and the difference that matters is **what may be
+logged**:
+
+| | **Production** | **Dev/test** |
+|---|---|---|
+| Function app | `canada-east-ai-function` | `canada-east-ai-function-dev` |
+| App Insights / workspace | `canada-east-ai-function` (90-day) | `canada-east-ai-function-dev` → `canada-east-ai-function-dev-logs` (30-day) |
+| Storage | `consult{host,jobrecs,text}caeast` (per-role) | `consultdevcaeast` (one account) |
+| Identity | `canada-east-ai-function-uami` | `canada-east-ai-function-dev-uami` |
+| `Diagnostics__LogPromptText` | **never set** (`OFF` at start) | `true` (`ON` at start) |
+| Inputs | real referrals (PHI) | **fictional inputs only** |
+| Email intake | on | **`EmailIntake__*` unset** — never polls the mailbox |
+| Deploy | release-driven (`main_canada-east-ai-function.yml`) | manual `workflow_dispatch` (`dev_canada-east-ai-function.yml`) |
+
+**The rule:** the dev app exists so `Diagnostics__LogPromptText=true` can append full
+prompt/response text to telemetry for debugging. That text is clinical content, so
+**only fictional inputs (e.g. `~/Projects/Consultologist/docs`) are ever sent to the
+dev app** — never a real patient referral. Production never logs prompt text
+(`[Diagnostics] Prompt text logging OFF` at every start; the dev app logs `ON`, naming
+the risk). The dev app reuses production's shared AI/registry resources (Azure OpenAI,
+Foundry, Doc Intelligence, the public registries) but has its own compute, storage, and
+telemetry, so its verbose traces never mix with production's.
+
 ## Authentication (`Auth/BearerTokenValidator.cs`)
 
 | Variable | Accepted values | Default | Required |
@@ -777,6 +802,17 @@ via `appsettings.Development.json`), not by environment variables:
   inside the cached build it describes. The footer shows its short form on
   every page and Profile the full sha beside the engine's; a build without it
   reads "local". (#412)
+
+### Running a local client against the dev app (#490)
+
+To exercise the dev/test engine (`canada-east-ai-function-dev`) from the Blazor client,
+run the client locally and point a `Locations` entry at the dev host via
+`src/Consultologist.Web/wwwroot/appsettings.Development.json` — e.g. a location whose
+`ApiBase` is the dev function host's `/api`. Running the client locally sidesteps the
+deployed `connect-src` allow-list (that governs the hosted SPA, not a local dev server),
+so no `staticwebapp.config.json` change is needed just to test against dev. Keep sending
+**fictional inputs only** — the dev app logs full prompt text (see **Environments**). A
+dedicated dev Static Web App environment is a heavier alternative and is not set up.
 
 ### How a new build reaches an open tab (#412)
 
