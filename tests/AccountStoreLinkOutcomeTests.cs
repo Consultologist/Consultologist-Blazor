@@ -50,19 +50,21 @@ public class AccountStoreLinkOutcomeTests
         Assert.Equal(expected, AccountStore.StatusAfterLink(current));
     }
 
-    // #654/#669: activation is provider-aware. LinkedIn is the universal
+    // #654/#669/#725: activation is provider-aware. LinkedIn is the universal
     // eligibility signal and activates; MicrosoftMarketplace (org-only, a
-    // paid/trial subscription) activates too. Epic/Cerner prove EHR-account
-    // control (a different bar) and do not — the store gates
-    // StatusAfterLink/Unlink on this, so an epic link leaves a Pending account
-    // Pending and an epic unlink never demotes.
+    // paid/trial subscription) and Stripe (the paid personal-account
+    // subscription) activate too. Epic/Cerner prove EHR-account control (a
+    // different bar) and do not — the store gates StatusAfterLink/Unlink on
+    // this, so an epic link leaves a Pending account Pending and an epic unlink
+    // never demotes.
     [Theory]
     [InlineData(IdentityProviders.LinkedIn, true)]
     [InlineData(IdentityProviders.MicrosoftMarketplace, true)]
+    [InlineData(IdentityProviders.Stripe, true)]
     [InlineData(IdentityProviders.Epic, false)]
     [InlineData(IdentityProviders.Cerner, false)]
     [InlineData(IdentityProviders.EntraExternalId, false)]
-    public void ActivatesAccount_IsLinkedInOrMarketplace(string provider, bool activates)
+    public void ActivatesAccount_IsLinkedInMarketplaceOrStripe(string provider, bool activates)
     {
         Assert.Equal(activates, IdentityProviders.ActivatesAccount(provider));
     }
@@ -71,9 +73,9 @@ public class AccountStoreLinkOutcomeTests
     // Withdrawing the last activating evidence withdraws the activation it
     // justified: Active → Unverified when no other activating link remains.
     [InlineData(AccountStatuses.Active, false, AccountStatuses.Unverified)]
-    // #669: but the two doors are independent — if the OTHER activating
-    // provider (LinkedIn / MicrosoftMarketplace) still links the account,
-    // unlinking one leaves it Active.
+    // #669/#725: but the activating doors are independent — if ANY other
+    // activating provider (LinkedIn / MicrosoftMarketplace / Stripe) still links
+    // the account, unlinking one leaves it Active.
     [InlineData(AccountStatuses.Active, true, AccountStatuses.Active)]
     // An account that was never activated does not become Unverified by
     // unlinking — Pending means never activated, which is still true.
