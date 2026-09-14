@@ -17,7 +17,20 @@
     <div class="form-stack">
         <h1 class="panel-title">Consultologist subscription</h1>
 
-        @if (_working)
+        @if (_stripePaid)
+        {
+            @* #725: Stripe redirects here after checkout. The tie + activation happen
+               webhook-side, so this confirms payment and points at the profile rather
+               than asserting an activation that may be a moment behind. *@
+            <FluentMessageBar Intent="MessageIntent.Success">Payment received. Your account activates in a moment — check your profile shortly.</FluentMessageBar>
+            <p><a href="/profile">Go to your profile</a></p>
+        }
+        else if (_stripeCanceled)
+        {
+            <FluentMessageBar Intent="MessageIntent.Info">Checkout canceled — you were not charged. You can subscribe any time from your profile.</FluentMessageBar>
+            <p><a href="/profile">Go to your profile</a></p>
+        }
+        else if (_working)
         {
             <p class="muted-text">Activating your subscription…</p>
         }
@@ -43,12 +56,31 @@
     [SupplyParameterFromQuery(Name = "token")]
     public string? Token { get; set; }
 
+    // #725: Stripe Checkout's return — "success" | "cancel".
+    [SupplyParameterFromQuery(Name = "stripe")]
+    public string? Stripe { get; set; }
+
     private bool _working;
     private bool _done;
     private string? _error;
+    private bool _stripePaid;
+    private bool _stripeCanceled;
 
     protected override async Task OnInitializedAsync()
     {
+        // #725: a Stripe return carries ?stripe=; the webhook does the tie/activation.
+        if (string.Equals(Stripe, "success", StringComparison.Ordinal))
+        {
+            _stripePaid = true;
+            return;
+        }
+
+        if (string.Equals(Stripe, "cancel", StringComparison.Ordinal))
+        {
+            _stripeCanceled = true;
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(Token))
         {
             return;

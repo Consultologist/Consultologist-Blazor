@@ -314,7 +314,11 @@ public sealed record AccountMeResponse(
     // #553: whether this account is on Operators__AppUserIds — a fact about
     // the caller, computed at the endpoint, leaking nothing. The nav shows
     // the Operators link on it; the server gate stays the real one.
-    bool IsOperator = false);
+    bool IsOperator = false,
+    // #725: whether the Stripe paid-activation door is provisioned in this
+    // deployment — a deployment fact the Profile uses to show the personal
+    // Subscribe path only when it will work. Inert (false) until configured.
+    bool StripeAvailable = false);
 
 /// <summary>#517: what kind of account signed the token — an organisation's, or a personal Microsoft account.</summary>
 public static class SignInKinds

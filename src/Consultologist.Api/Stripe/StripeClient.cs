@@ -56,7 +56,13 @@ public sealed class StripeClient : IStripeClient
     private string? SecretApiKey => Trimmed(_configuration["Stripe:SecretApiKey"]);
     private string? PriceId => Trimmed(_configuration["Stripe:PriceId"]);
 
-    public bool IsConfigured => SecretApiKey != null && PriceId != null;
+    public bool IsConfigured => ConfiguredIn(_configuration);
+
+    /// <summary>Whether the door is provisioned — the secret key and price are set.
+    /// Static so the account endpoint can surface it without taking the client.</summary>
+    internal static bool ConfiguredIn(IConfiguration configuration) =>
+        !string.IsNullOrWhiteSpace(configuration["Stripe:SecretApiKey"])
+        && !string.IsNullOrWhiteSpace(configuration["Stripe:PriceId"]);
 
     public async Task<StripeCheckoutSession?> CreateCheckoutSessionAsync(
         string appUserId, string successUrl, string cancelUrl, CancellationToken cancellationToken)

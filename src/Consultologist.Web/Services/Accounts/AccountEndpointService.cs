@@ -78,6 +78,26 @@ public sealed class AccountEndpointService : IAccountEndpointService
         return startResponse.AuthorizationUrl;
     }
 
+    public async Task<string> StartStripeCheckoutAsync()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, GetAccountBaseUrl() + "/Stripe/Checkout");
+        await AddAuthorizationAsync(request);
+
+        using var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            _logger.LogError("Stripe checkout start failed with status {StatusCode}", response.StatusCode);
+            throw new HttpRequestException(ExtractError(error) ?? $"Stripe checkout start failed: {response.StatusCode}");
+        }
+
+        var checkout = await response.Content.ReadFromJsonAsync<StripeCheckoutResponse>()
+            ?? throw new InvalidOperationException("Failed to deserialize Stripe checkout response.");
+
+        return checkout.CheckoutUrl;
+    }
+
     public async Task SetDeliveryPasswordAsync(string password)
     {
         using var request = new HttpRequestMessage(HttpMethod.Put, GetAccountBaseUrl() + "/DeliveryPassword")

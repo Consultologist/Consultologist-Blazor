@@ -207,17 +207,61 @@
                 <div class="form-stack">
                     <h3 class="panel-title">Subscription</h3>
 
-                    @* #680: Marketplace is work/school only, so a personal account
-                       is told this door isn't theirs and pointed at LinkedIn. *@
+                    @* #680/#725: Marketplace is work/school only. A personal account's
+                       paid door is a Stripe subscription (when the deployment has it),
+                       with LinkedIn (above) the free alternative. *@
                     @if (IsPersonalAccount)
                     {
-                        <p class="panel-description">
-                            Microsoft Marketplace subscriptions are for work or school accounts. Your account
-                            is a personal Microsoft account — activate it with LinkedIn (above).
-                        </p>
-                        <div class="state-panel">
-                            <span class="muted-text">Not available for personal accounts.</span>
-                        </div>
+                        @if (StripeIdentity != null)
+                        {
+                            <p class="panel-description">
+                                A subscription activates your account. Manage or cancel it from the billing
+                                portal our payment provider emailed you.
+                            </p>
+                            <div class="state-panel">
+                                <span class="muted-text">Subscription</span>
+                                <strong>Active subscription</strong>
+                                <span class="muted-text">Since @StripeIdentity.LinkedAt.ToString("yyyy-MM-dd")</span>
+                            </div>
+                            @if (string.Equals(account?.Status, "Unverified", StringComparison.Ordinal))
+                            {
+                                <FluentMessageBar Intent="MessageIntent.Warning">
+                                    Your subscription payment is overdue. Update your payment method to keep
+                                    generating new consults; consults you already generated stay available.
+                                </FluentMessageBar>
+                            }
+                        }
+                        else if (account?.StripeAvailable == true)
+                        {
+                            <p class="panel-description">
+                                Subscribe to activate your account. You'll be taken to our payment provider to
+                                complete checkout — no card details are handled by Consultologist. LinkedIn
+                                (above) is the free alternative.
+                            </p>
+                            @if (string.Equals(account?.Status, "Pending", StringComparison.Ordinal))
+                            {
+                                <FluentMessageBar Intent="MessageIntent.Info">
+                                    Subscribe to activate this account.
+                                </FluentMessageBar>
+                            }
+                            <FluentButton Appearance="Appearance.Accent" OnClick="StartStripeCheckout" Disabled="_stripeCheckoutBusy">
+                                @(_stripeCheckoutBusy ? "Redirecting…" : "Subscribe")
+                            </FluentButton>
+                            @if (_stripeCheckoutError != null)
+                            {
+                                <FluentMessageBar Intent="MessageIntent.Error">@_stripeCheckoutError</FluentMessageBar>
+                            }
+                        }
+                        else
+                        {
+                            <p class="panel-description">
+                                Microsoft Marketplace subscriptions are for work or school accounts. Your account
+                                is a personal Microsoft account — activate it with LinkedIn (above).
+                            </p>
+                            <div class="state-panel">
+                                <span class="muted-text">Not available for personal accounts.</span>
+                            </div>
+                        }
                     }
                     else
                     {
@@ -1215,6 +1259,34 @@
     private AccountIdentity? MarketplaceIdentity =>
         account?.LinkedIdentities.FirstOrDefault(identity =>
             string.Equals(identity.Provider, "microsoft-marketplace", StringComparison.Ordinal));
+
+    // #725: the Stripe subscription — the paid personal-account door. The tie is made
+    // webhook-side on checkout completion, so this is shown as state only; the button
+    // just starts checkout.
+    private AccountIdentity? StripeIdentity =>
+        account?.LinkedIdentities.FirstOrDefault(identity =>
+            string.Equals(identity.Provider, "stripe", StringComparison.Ordinal));
+
+    private bool _stripeCheckoutBusy;
+    private string? _stripeCheckoutError;
+
+    private async Task StartStripeCheckout()
+    {
+        _stripeCheckoutBusy = true;
+        _stripeCheckoutError = null;
+        try
+        {
+            var url = await AccountService.StartStripeCheckoutAsync();
+            Navigation.NavigateTo(url, forceLoad: true);
+        }
+        catch (Exception)
+        {
+            // The named server reason (e.g. not-configured) or a transport failure —
+            // never a card detail; the processor's hosted checkout owns those.
+            _stripeCheckoutError = "Could not start checkout. Please try again later.";
+            _stripeCheckoutBusy = false;
+        }
+    }
 
     // #680: a personal Microsoft account can't transact a Marketplace subscription
     // (org-only, decided once — #556), so the Subscription card is marked N/A for

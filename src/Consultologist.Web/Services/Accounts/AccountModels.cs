@@ -20,7 +20,10 @@ public sealed record AccountMeResponse(
     // SignInKind above is this token's. Null until back-filled.
     string? AccountKind = null,
     // #553: mirrors the Api's IsOperator — the nav's fact, never the gate.
-    bool IsOperator = false);
+    bool IsOperator = false,
+    // #725: mirrors the Api's StripeAvailable — whether the paid personal-account
+    // door is provisioned; the Subscription card shows Subscribe only when true.
+    bool StripeAvailable = false);
 
 public sealed record SaveDeliveryPasswordRequest(string Password);
 
@@ -40,6 +43,9 @@ public sealed record AccountIdentity(
     string? VerifiedCategories = null);
 
 public sealed record LinkedInStartResponse(string AuthorizationUrl);
+
+/// <summary>#725: the hosted Stripe Checkout URL the SPA redirects to.</summary>
+public sealed record StripeCheckoutResponse(string CheckoutUrl);
 
 public sealed record AccountSettingResponse(
     string Key,
