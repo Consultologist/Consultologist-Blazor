@@ -60,6 +60,50 @@ public class StripeTests
         Assert.Equal(expected, ClientFor(new StubHandler(HttpStatusCode.OK, "{}"), secret, priceId).IsConfigured);
     }
 
+    // ----- #725: the event → effect mapping and event parsing -----
+
+    [Theory]
+    [InlineData("checkout.session.completed", null, "Link")]
+    [InlineData("customer.subscription.updated", "active", "Activate")]
+    [InlineData("customer.subscription.updated", "trialing", "Activate")]
+    [InlineData("customer.subscription.updated", "past_due", "Suspend")]
+    [InlineData("customer.subscription.updated", "unpaid", "Suspend")]
+    [InlineData("customer.subscription.updated", "canceled", "Unsubscribe")]
+    [InlineData("customer.subscription.created", "active", "Activate")]
+    [InlineData("customer.subscription.deleted", null, "Unsubscribe")]
+    [InlineData("customer.subscription.updated", "incomplete", "Ignore")]
+    [InlineData("invoice.paid", "active", "Ignore")]
+    [InlineData(null, null, "Ignore")]
+    public void EffectFor_MapsTheEventAndStatus(string? eventType, string? status, string expected)
+    {
+        Assert.Equal(expected, AccountStripe.EffectFor(eventType, status).ToString());
+    }
+
+    [Fact]
+    public void ParseEvent_PullsTheTie_FromACheckoutSession()
+    {
+        const string body = "{\"id\":\"evt_1\",\"type\":\"checkout.session.completed\",\"data\":{\"object\":{\"id\":\"cs_1\",\"client_reference_id\":\"user-1\",\"subscription\":\"sub_9\"}}}";
+        var evt = AccountStripe.ParseEvent(body)!;
+        Assert.Equal("checkout.session.completed", evt.Type);
+        Assert.Equal("user-1", evt.ClientReferenceId);
+        Assert.Equal("sub_9", evt.Subscription);
+    }
+
+    [Fact]
+    public void ParseEvent_PullsTheSubscriptionIdAndStatus_FromALifecycleEvent()
+    {
+        const string body = "{\"id\":\"evt_2\",\"type\":\"customer.subscription.updated\",\"data\":{\"object\":{\"id\":\"sub_9\",\"status\":\"past_due\"}}}";
+        var evt = AccountStripe.ParseEvent(body)!;
+        Assert.Equal("sub_9", evt.ObjectId);
+        Assert.Equal("past_due", evt.Status);
+    }
+
+    [Fact]
+    public void ParseEvent_IsNull_OnMalformedJson()
+    {
+        Assert.Null(AccountStripe.ParseEvent("not json"));
+    }
+
     // ----- #725: the webhook signature validator (HMAC over the raw body) -----
 
     [Fact]
