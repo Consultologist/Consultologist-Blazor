@@ -289,6 +289,40 @@ Phase A (this build) is exercised against dummy payloads; the live preview purch
 resolve → activate → webhook loop and go-live are Phase B, gated on Partner Center
 account verification + Tax Profile + Payout Account. No engine hosting change.
 
+## Stripe subscription activation (`Stripe/*`, `AccountStripe.cs`, #725)
+
+The paid **personal-account** activation door beside LinkedIn (free) and the
+marketplace (org) — `docs/PERSONAL_ACTIVATION_SPIKE.md`. It uses **Stripe Managed
+Payments** (Stripe as merchant of record — Stripe remits tax and owns disputes).
+`Account/Stripe/Checkout` returns a hosted Checkout Session URL under the caller's
+Entra bearer, carrying `appUserId` as `client_reference_id`. `Account/Stripe/Webhook`
+verifies the `Stripe-Signature` HMAC over the raw body, then ties the subscription on
+`checkout.session.completed` (which activates the account, since `stripe` is an
+activating provider) and maps `customer.subscription.*` to status — `active` → Active,
+`past_due`/`unpaid` → Unverified, `canceled`/`deleted` → unlink — refetching the
+subscription as the source of truth before acting. Stripe is a billing signal, never a
+bearer credential (#610); hosted checkout keeps card data off us; only billing
+identity, never PHI, reaches Stripe.
+
+The API key and webhook signing secret are genuine secrets with no managed-identity
+equivalent (the `LinkedIn__ClientSecret` precedent). The door is **inert** until the
+secret key **and** price are set: `Account/Me` reports `StripeAvailable=false` and the
+Profile hides the Subscribe path.
+
+| Variable | Accepted values | Default | Required |
+|---|---|---|---|
+| `Stripe__SecretApiKey` | The Stripe secret API key (`sk_test_…` in test mode, `sk_live_…` live) used as the Bearer on server-side Stripe calls — a **genuine secret** | — | yes (the door is inert without it) |
+| `Stripe__WebhookSigningSecret` | The webhook endpoint's signing secret (`whsec_…`) the `Stripe-Signature` HMAC is verified against — a **genuine secret** | — | yes (to accept webhook calls) |
+| `Stripe__PriceId` | The subscription price the Checkout Session bills (`price_…`) | — | yes (the door is inert without it) |
+
+Phase A (this build) is exercised against dummy payloads and a stub HTTP handler; going
+live is provisioning-only (no engine hosting change): create the Stripe product/price,
+enable **Managed Payments** (confirm the offer clears Stripe's eligibility — checkout
+method, business model, geography, product type — or a transaction falls back to standard
+Stripe, where *we* would be merchant of record), set the three settings (test mode first),
+register the webhook endpoint, then a test-mode Checkout → `checkout.session.completed`
+flips a `Pending` account to `Active`.
+
 ## Email consult intake (`Email/*`, #158)
 
 Submit consults by email: a timer polls the dedicated shared mailbox via

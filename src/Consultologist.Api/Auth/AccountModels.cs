@@ -175,18 +175,27 @@ public static class IdentityProviders
     // door and this is an *additional* signal, never a replacement. The link's
     // subject is the marketplace subscriptionId; never a bearer credential.
     public const string MicrosoftMarketplace = "microsoft-marketplace";
+    // #725: the clinician's paid Stripe subscription, tied from the Stripe
+    // Checkout / webhook flow. An ACTIVATING signal like LinkedIn and the
+    // marketplace — a paid subscription clears the eligibility bar — and the
+    // paid *personal-account* door (personal Microsoft accounts cannot transact
+    // a marketplace offer, #554). The link's subject is the Stripe subscription
+    // id; never a bearer credential.
+    public const string Stripe = "stripe";
 
     /// <summary>
-    /// #654/#669: which providers, when linked, activate a Pending account
-    /// (#191/#195). LinkedIn does — the universal eligibility signal — and
-    /// MicrosoftMarketplace does (org-only, a paid/trial subscription). Epic and
-    /// Cerner do not; their links are proof/display only. Two independent
-    /// activating doors: unlinking one leaves the account Active if the other
-    /// still links it (AccountStore.StatusAfterUnlink).
+    /// #654/#669/#725: which providers, when linked, activate a Pending account
+    /// (#191/#195). LinkedIn does — the universal eligibility signal —
+    /// MicrosoftMarketplace does (org-only, a paid/trial subscription), and
+    /// Stripe does (the paid personal-account subscription). Epic and Cerner do
+    /// not; their links are proof/display only. Independent activating doors:
+    /// unlinking one leaves the account Active if another still links it
+    /// (AccountStore.StatusAfterUnlink).
     /// </summary>
     public static bool ActivatesAccount(string provider) =>
         string.Equals(provider, LinkedIn, StringComparison.Ordinal)
-        || string.Equals(provider, MicrosoftMarketplace, StringComparison.Ordinal);
+        || string.Equals(provider, MicrosoftMarketplace, StringComparison.Ordinal)
+        || string.Equals(provider, Stripe, StringComparison.Ordinal);
 }
 
 public sealed class AppUserEntity : ITableEntity
@@ -305,7 +314,11 @@ public sealed record AccountMeResponse(
     // #553: whether this account is on Operators__AppUserIds — a fact about
     // the caller, computed at the endpoint, leaking nothing. The nav shows
     // the Operators link on it; the server gate stays the real one.
-    bool IsOperator = false);
+    bool IsOperator = false,
+    // #725: whether the Stripe paid-activation door is provisioned in this
+    // deployment — a deployment fact the Profile uses to show the personal
+    // Subscribe path only when it will work. Inert (false) until configured.
+    bool StripeAvailable = false);
 
 /// <summary>#517: what kind of account signed the token — an organisation's, or a personal Microsoft account.</summary>
 public static class SignInKinds

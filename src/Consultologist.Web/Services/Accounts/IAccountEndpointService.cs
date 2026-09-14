@@ -17,6 +17,11 @@ public interface IAccountEndpointService
     /// the engine resolves + activates the subscription and ties it to the
     /// account. Throws with the server's named reason on failure.</summary>
     Task ResolveMarketplaceAsync(string token);
+
+    /// <summary>#725: start a Stripe subscription — returns the hosted Checkout URL to
+    /// redirect to. The webhook ties the subscription and activates the account on
+    /// completion. Throws with the server's named reason (e.g. not-configured).</summary>
+    Task<string> StartStripeCheckoutAsync();
     Task SetDeliveryPasswordAsync(string password);
     Task ClearDeliveryPasswordAsync();
 

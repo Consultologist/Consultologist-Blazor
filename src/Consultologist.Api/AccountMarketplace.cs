@@ -208,10 +208,10 @@ public sealed class AccountMarketplace
             switch (effect)
             {
                 case WebhookEffect.Activate:
-                    await _accountStore.ApplyMarketplaceStatusAsync(appUserId, MarketplaceStatusEffect.Activate, cancellationToken);
+                    await _accountStore.ApplyActivationStatusAsync(appUserId, IdentityProviders.MicrosoftMarketplace, ActivationStatusEffect.Activate, cancellationToken);
                     break;
                 case WebhookEffect.Suspend:
-                    await _accountStore.ApplyMarketplaceStatusAsync(appUserId, MarketplaceStatusEffect.Suspend, cancellationToken);
+                    await _accountStore.ApplyActivationStatusAsync(appUserId, IdentityProviders.MicrosoftMarketplace, ActivationStatusEffect.Suspend, cancellationToken);
                     break;
                 case WebhookEffect.Unsubscribe:
                     await _accountStore.UnlinkIdentityAsync(appUserId, IdentityProviders.MicrosoftMarketplace, cancellationToken);

@@ -163,6 +163,12 @@ builder.Services.AddScoped<AccountMarketplace>();
 builder.Services.AddSingleton<Consultologist.Api.Marketplace.IMarketplaceTokenClient, Consultologist.Api.Marketplace.MarketplaceTokenClient>();
 builder.Services.AddSingleton<Consultologist.Api.Marketplace.IMarketplaceFulfillmentClient, Consultologist.Api.Marketplace.MarketplaceFulfillmentClient>();
 builder.Services.AddSingleton<Consultologist.Api.Marketplace.IMarketplaceJwtValidator, Consultologist.Api.Marketplace.MarketplaceJwtValidator>();
+// #725: the paid personal-account door — the Stripe Checkout (landing) + webhook
+// endpoints, the raw-REST Stripe client (static secret key, no S2S exchange), and the
+// Stripe-Signature HMAC validator.
+builder.Services.AddScoped<AccountStripe>();
+builder.Services.AddSingleton<Consultologist.Api.Stripe.IStripeClient, Consultologist.Api.Stripe.StripeClient>();
+builder.Services.AddSingleton<Consultologist.Api.Stripe.IStripeSignatureValidator, Consultologist.Api.Stripe.StripeSignatureValidator>();
 builder.Services.AddScoped<Diagnostics>();
 builder.Services.AddSingleton<IAccountRateLimiter, TableAccountRateLimiter>();
 builder.Services.AddSingleton<IConsultGenerationJobStarter, ConsultGenerationJobStarter>();

@@ -15,14 +15,15 @@ public enum IdentityLinkOutcome
     ConflictOtherUser
 }
 
-/// <summary>#669: a marketplace webhook's effect on the tied account's status.</summary>
-public enum MarketplaceStatusEffect
+/// <summary>#669/#725: an activation webhook's effect on the tied account's status —
+/// a marketplace or Stripe subscription lifecycle event, mapped to a status move.</summary>
+public enum ActivationStatusEffect
 {
     /// <summary>Subscribe / Activate / Reinstate → Active (StatusAfterLink).</summary>
     Activate,
 
-    /// <summary>Suspend (a recoverable payment hold) → Unverified, unless another
-    /// activating door (LinkedIn) still stands. The marketplace link is kept.</summary>
+    /// <summary>Suspend (a recoverable payment hold, e.g. past_due) → Unverified,
+    /// unless another activating door still stands. The provider's link is kept.</summary>
     Suspend,
 }
 
@@ -50,7 +51,7 @@ public interface IAccountStore
 
     /// <summary>#669: apply a marketplace lifecycle event to the tied account's
     /// status (Activate/Suspend); Unsubscribe uses <see cref="UnlinkIdentityAsync"/>.</summary>
-    Task ApplyMarketplaceStatusAsync(string appUserId, MarketplaceStatusEffect effect, CancellationToken cancellationToken);
+    Task ApplyActivationStatusAsync(string appUserId, string provider, ActivationStatusEffect effect, CancellationToken cancellationToken);
 
     /// <summary>
     /// #384: every account, id and status only. A partition scan of AppUsers —
@@ -532,20 +533,20 @@ public sealed class AccountStore : IAccountStore
         }
     }
 
-    public async Task ApplyMarketplaceStatusAsync(
-        string appUserId, MarketplaceStatusEffect effect, CancellationToken cancellationToken)
+    public async Task ApplyActivationStatusAsync(
+        string appUserId, string provider, ActivationStatusEffect effect, CancellationToken cancellationToken)
     {
         switch (effect)
         {
-            case MarketplaceStatusEffect.Activate:
+            case ActivationStatusEffect.Activate:
                 await ApplyStatusAsync(appUserId, StatusAfterLink, cancellationToken);
                 break;
 
-            case MarketplaceStatusEffect.Suspend:
-                // A suspend keeps the marketplace link, so it is excluded when
-                // asking whether another activating door (LinkedIn) still stands.
+            case ActivationStatusEffect.Suspend:
+                // A suspend keeps this provider's own link, so it is excluded when
+                // asking whether another activating door still stands.
                 var anotherActivatingLinkRemains = await AnyActivatingLinkAsync(
-                    appUserId, IdentityProviders.MicrosoftMarketplace, cancellationToken);
+                    appUserId, provider, cancellationToken);
                 await ApplyStatusAsync(
                     appUserId,
                     current => StatusAfterUnlink(current, anotherActivatingLinkRemains),

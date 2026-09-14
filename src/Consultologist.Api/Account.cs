@@ -111,7 +111,9 @@ public sealed class Account
                 // #556: the account's stored kind — null until back-filled.
                 AccountKind: account.AccountKind,
                 // #553: the allowlist fact about the caller.
-                IsOperator: Operators.IsOperator(account)),
+                IsOperator: Operators.IsOperator(account),
+                // #725: whether the Stripe paid door is provisioned in this deployment.
+                StripeAvailable: Stripe.StripeClient.ConfiguredIn(_configuration)),
             cancellationToken);
 
         return response;
