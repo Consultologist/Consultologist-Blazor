@@ -1,0 +1,62 @@
+# #490: deploy to the dev/test function app — a separate deployment fed FICTIONAL
+# inputs only, where Diagnostics__LogPromptText=true logs full prompt/response text.
+# Manual-only (workflow_dispatch): dev is not release-driven, and it must never
+# deploy on a push/release the way production does. Real/PHI inputs never touch it.
+
+name: Build and deploy to the dev Azure Function App - canada-east-ai-function-dev
+
+on:
+  workflow_dispatch:
+
+env:
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: "src/Consultologist.Api"
+  DOTNET_VERSION: "10.0.x"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    # OIDC via the `dev` environment — the token's subject is
+    # repo:…:environment:dev, matched by a federated credential on the dev
+    # identity (canada-east-ai-function-dev-uami). The environment carries the
+    # dev identity's client/tenant/subscription as variables (not the prod
+    # secrets), so this can only ever authenticate as the dev identity.
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: "Checkout GitHub Action"
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+
+      - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: "Resolve Project Dependencies Using Dotnet"
+        shell: bash
+        run: |
+          pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
+          # Stamp the commit like production so the dev app's GET /api/Public/Engine
+          # attests exactly what is running; dev is not release-driven, so no
+          # EngineRelease is stamped (records from dev fall back to the commit).
+          dotnet build --configuration Release --output ./output -p:SourceRevisionId=${{ github.sha }} -p:ContinuousIntegrationBuild=true
+          popd
+
+      - name: Login to Azure
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: "Run Azure Functions Action"
+        uses: Azure/functions-action@c5060b3b8bb1ebbcb531abd00c822ecbaa8ea656 # v1
+        id: fa
+        with:
+          app-name: "canada-east-ai-function-dev"
+          slot-name: "Production"
+          package: "${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output"
