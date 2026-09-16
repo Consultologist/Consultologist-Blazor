@@ -113,15 +113,18 @@ public sealed class WorkflowPackages
                     input.Label,
                     input.Required,
                     // Only a declared type travels: text is the default, so a
-                    // v7 package's response is byte-identical to before.
-                    input.Type,
+                    // v7 package's response is byte-identical to before. For a
+                    // union (#729) this is the primary arm; Types carries all.
+                    input.Type is null ? null : WorkflowInputTypes.Of(input),
                     input.Values,
                     // v10 (#497): the element and the fields as the
                     // declaration node resolves them, to any depth.
                     ElementResponse(WorkflowDeclarationNode.Of(input).Items),
                     FieldResponses(input.Fields),
                     // v13 (#728): the declared content channel travels as-is.
-                    input.ExpectedContent))
+                    input.ExpectedContent,
+                    // v14 (#729): the union arms, in try order; null for a single type.
+                    input.Type is { IsUnion: true } union ? union.Types : null))
                 .ToList(),
             package.Results?
                 .Select(result => new WorkflowPackageResultResponse(result.Id, result.Label))

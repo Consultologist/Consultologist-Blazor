@@ -74,6 +74,12 @@
                                     {
                                         <span class="input-field__channel">@channel</span>
                                     }
+                                    @* #729: a union slot renders its primary arm's control; the
+                                       chip names the alternatives a caller may send instead. *@
+                                    @if (field.UnionLabel is { } union)
+                                    {
+                                        <span class="input-field__channel">@union</span>
+                                    }
                                 </span>
                                 @* #236: a slot holds either typed text or an
                                    attached document, never both. The text is
@@ -3384,6 +3390,10 @@
       // A transcript slot is a text slot, so it already shows the file upload;
       // the engine stamps the transcript origin from the declaration.
       ExpectedContent = input.ExpectedContent;
+      // #729: a union slot renders its primary arm's control (Type above is the
+      // first arm); the alternatives are named beside the label. A value for
+      // another arm is supplied by an API/satellite caller as JSON.
+      AcceptedTypes = input.Types;
 
       var placeholder = Id == "consult_draft"
         ? "Enter referral details, clinical context, and the consult question..."
@@ -3403,6 +3413,12 @@
         WorkflowExpectedContent.Form => "From a form",
         _ => null
     };
+    /// <summary>#729: a union slot's accepted types, in try order; null for a single type.</summary>
+    public IReadOnlyList<string>? AcceptedTypes { get; }
+    /// <summary>The chip naming a union slot's alternatives, or null.</summary>
+    public string? UnionLabel => AcceptedTypes is { Count: > 1 } types
+        ? "accepts " + string.Join(" or ", types)
+        : null;
 
     // v8: what control this slot renders. v9: an array's element type name
     // — the document rule reads it; the tree below holds the rest.

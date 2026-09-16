@@ -204,8 +204,8 @@ public class DurablePayloadReplayTests
         // mid-list insertion would leave the strip target unmatched.
         var current = JsonSerializer.Serialize(
             new ConsultGenerationJobInitialize("job-1", "user-1", new List<IReadOnlyDictionary<string, string>>()), Durable);
-        Assert.EndsWith(",\"MacroChoices\":null,\"ExcludedMacros\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null}", current);
-        var stored = current.Replace(",\"MacroChoices\":null,\"ExcludedMacros\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null}", "}", StringComparison.Ordinal);
+        Assert.EndsWith(",\"MacroChoices\":null,\"ExcludedMacros\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"ResolvedInputTypes\":null}", current);
+        var stored = current.Replace(",\"MacroChoices\":null,\"ExcludedMacros\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"ResolvedInputTypes\":null}", "}", StringComparison.Ordinal);
 
         var initialize = JsonSerializer.Deserialize<ConsultGenerationJobInitialize>(stored, Durable)!;
 

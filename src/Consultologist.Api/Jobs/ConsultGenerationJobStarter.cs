@@ -115,7 +115,10 @@ internal sealed record EffectiveInputsResolution(
     // #369: Error when it names only declared ids and declared values, so the
     // email door may quote it back to the sender. Null for the canonical-form
     // complaints, which end in got '<supplied value>'.
-    string? SenderSafeError = null);
+    string? SenderSafeError = null,
+    // #729: for each union slot, the arm the supplied value matched (first-match
+    // in declared order). Null when no slot is a union.
+    IReadOnlyDictionary<string, string>? ResolvedInputTypes = null);
 
 /// <summary>
 /// JobId without Error: started. Error without JobId: refused, no row. Both
@@ -837,6 +840,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 Source: origin.Source,
                 ScheduledAtUtc: request.ScheduledAtUtc,
                 InputDocumentOrigins: inputOrigins,
+                ResolvedInputTypes: inputs.ResolvedInputTypes,
                 SkippedDocuments: skipped.Count > 0 ? skipped : null,
                 Collections: collectionRosters,
                 // #373: what the manifest was written against, recorded rather
@@ -1173,6 +1177,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     SkippedDocuments: notProduced,
                     PackageSpecVersion: specVersion,
                     InputDocumentOrigins: inputOrigins,
+                    ResolvedInputTypes: inputs.ResolvedInputTypes,
                     PackageTitle: package.Manifest.Title,
                     PackageTags: package.Manifest.Tags,
                     PackageFormatRef: EngineAttestation.RefOf(EngineAttestation.PackageFormatRegistry, _engine.PackageFormat),
@@ -1618,7 +1623,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     $"The response does not carry input '{inputId}'.");
             }
 
-            var (coerced, misfit) = FormResponseCoercion.Coerce(WorkflowDeclarationNode.Of(declaration), held);
+            var (coerced, misfit) = CoerceFormValue(declaration, held);
             if (misfit != null)
             {
                 return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch,
@@ -1977,10 +1982,25 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // silently rewriting '2026-8-1' would hash a value nobody sent, and
         // provenance would record input that never arrived. An absent optional
         // is not checked: absence is not a malformed value.
+        // #729: a union slot's value must match one of its arms; the matched
+        // arm (first in declared order) is recorded for provenance.
+        var resolvedTypes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var input in declared)
         {
             if (!supplied.TryGetValue(input.Id, out var value) || value.IsBlank)
             {
+                continue;
+            }
+
+            if (input.Type is { IsUnion: true })
+            {
+                var (arm, complaint) = MatchUnionArm(input, value);
+                if (complaint != null)
+                {
+                    return new EffectiveInputsResolution(null, null, $"Input '{input.Id}' {complaint}");
+                }
+
+                resolvedTypes[input.Id] = arm!;
                 continue;
             }
 
@@ -2009,7 +2029,63 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 : string.Empty;
         }
 
-        return new EffectiveInputsResolution(effective, supplied, null);
+        return new EffectiveInputsResolution(
+            effective, supplied, null,
+            ResolvedInputTypes: resolvedTypes.Count > 0 ? resolvedTypes : null);
+    }
+
+    /// <summary>
+    /// #729: which arm of a union slot the supplied value matches — the first,
+    /// in declared order, whose per-arm complaint is null. Reuses the whole
+    /// ValueComplaint machinery per arm (the slot's one items/fields/values
+    /// serves the sub-declaring arm). Returns the matched arm, or a combined
+    /// refusal completing "Input '&lt;id&gt;' …" that names every arm.
+    /// </summary>
+    /// <summary>
+    /// #729: coerce a held form answer against a slot, union-aware. A single
+    /// type defers to FormResponseCoercion unchanged; a union tries each arm in
+    /// declared order and takes the first that coerces (the server accepts the
+    /// arm the held value fits, whatever the SPA rendered).
+    /// </summary>
+    private static (ConsultInputValue? Value, string? Misfit) CoerceFormValue(WorkflowInputSpec declaration, string held)
+    {
+        var node = WorkflowDeclarationNode.Of(declaration);
+
+        if (declaration.Type is not { IsUnion: true })
+        {
+            return FormResponseCoercion.Coerce(node, held);
+        }
+
+        string? lastMisfit = null;
+        foreach (var arm in WorkflowInputTypes.TypesOf(declaration))
+        {
+            var (value, misfit) = FormResponseCoercion.Coerce(node with { Type = arm }, held);
+            if (misfit == null)
+            {
+                return (value, null); // a match, or the blank (null, null) case
+            }
+
+            lastMisfit = misfit;
+        }
+
+        return (null, lastMisfit);
+    }
+
+    internal static (string? Arm, string? Complaint) MatchUnionArm(WorkflowInputSpec input, ConsultInputValue value)
+    {
+        var baseNode = WorkflowDeclarationNode.Of(input);
+
+        foreach (var arm in WorkflowInputTypes.TypesOf(input))
+        {
+            if (ValueComplaint(baseNode with { Type = arm }, value, where: string.Empty) == null)
+            {
+                return (arm, null);
+            }
+        }
+
+        var alternatives = WorkflowInputTypes.TypesOf(input)
+            .Select(arm => (baseNode with { Type = arm }).Describe());
+        return (null, $"accepts {string.Join(" or ", alternatives)}; got {value.Described}.");
     }
 
     /// <summary>

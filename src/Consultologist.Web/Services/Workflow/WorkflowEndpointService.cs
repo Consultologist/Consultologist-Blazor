@@ -78,7 +78,10 @@ public record WorkflowPackageInputResponse(
     WorkflowPackageElementResponse? Items = null,
     IReadOnlyList<WorkflowPackageFieldResponse>? Fields = null,
     // v13 (#728): the declared content channel — transcript or form. Null before 13.
-    string? ExpectedContent = null);
+    string? ExpectedContent = null,
+    // v14 (#729): a union slot's accepted types, in try order (Type is the
+    // primary/first arm the setup form renders). Null for a single-type slot.
+    IReadOnlyList<string>? Types = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.WorkflowPackageFieldResponse.</summary>
 public record WorkflowPackageFieldResponse(

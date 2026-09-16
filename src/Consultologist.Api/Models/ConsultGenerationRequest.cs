@@ -235,6 +235,10 @@ public record ConsultGenerationJobResponse(
     // v9 (#428): one origin per document, positionally. A job recorded
     // before this with one document reads as a one-element list.
     IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? InputOrigins = null,
+    // #729: for each union slot, the value type its supplied value matched
+    // (first-match in declared order). Null when no slot is a union. Recorded
+    // beside the input hash, never inside it (provenance@v2026.09.9).
+    IReadOnlyDictionary<string, string>? ResolvedInputTypes = null,
     // #315: declared deliverables this job's inputs excluded, with the reason.
     IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null,
     // #361: each forEach collection's items as this job's package declared
