@@ -1,0 +1,82 @@
+/* #732: the chart's colours are the app's own theme tokens, so light/dark
+   flips carry into the SVG for free (unlike the DAG's frozen hex). The SVG is
+   injected as a markup string, so its inner elements carry no Blazor scope
+   attribute — they are reached with ::deep from the scoped container. The
+   container, title and legend below are authored here and scope normally. */
+
+.usage-chart {
+    margin-block: 0.75rem;
+}
+
+.usage-chart__title {
+    margin: 0 0 0.25rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--consultologist-text);
+}
+
+.usage-chart ::deep .usage-chart__svg {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.usage-chart ::deep .usage-chart__grid {
+    stroke: var(--consultologist-border);
+    stroke-width: 1;
+}
+
+.usage-chart ::deep .usage-chart__axis-label,
+.usage-chart ::deep .usage-chart__xlabel {
+    fill: var(--consultologist-text-muted);
+    font-size: 11px;
+}
+
+.usage-chart ::deep .usage-chart__seg {
+    /* A hairline separates stacked segments and lifts bars off the surface. */
+    stroke: var(--consultologist-surface);
+    stroke-width: 0.5;
+}
+
+.usage-chart ::deep .usage-chart__seg--consults,
+.usage-chart ::deep .usage-chart__seg--tokens-in {
+    fill: var(--consultologist-accent);
+}
+
+.usage-chart ::deep .usage-chart__seg--tokens-out {
+    fill: var(--consultologist-success);
+}
+
+.usage-chart__legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    margin: 0.4rem 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.8rem;
+    color: var(--consultologist-text-muted);
+}
+
+.usage-chart__legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.usage-chart__swatch {
+    display: inline-block;
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 2px;
+}
+
+/* The swatch is an HTML element, so it takes a background, not an SVG fill. */
+.usage-chart__swatch.usage-chart__seg--consults,
+.usage-chart__swatch.usage-chart__seg--tokens-in {
+    background: var(--consultologist-accent);
+}
+
+.usage-chart__swatch.usage-chart__seg--tokens-out {
+    background: var(--consultologist-success);
+}
