@@ -21,7 +21,8 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     // (package-format-v12-design.md § 12), after the format registry
     // published the v12 document, schema and conformance suite as one
     // version.
-    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12 };
+    // v13 (#728): declarable input content channels — transcript and form.
+    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13 };
     private static readonly TimeSpan LatestPointerCacheDuration = TimeSpan.FromSeconds(60);
 
     private static readonly JsonSerializerOptions JsonOptions = new()

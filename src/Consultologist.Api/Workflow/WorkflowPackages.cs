@@ -119,7 +119,9 @@ public sealed class WorkflowPackages
                     // v10 (#497): the element and the fields as the
                     // declaration node resolves them, to any depth.
                     ElementResponse(WorkflowDeclarationNode.Of(input).Items),
-                    FieldResponses(input.Fields)))
+                    FieldResponses(input.Fields),
+                    // v13 (#728): the declared content channel travels as-is.
+                    input.ExpectedContent))
                 .ToList(),
             package.Results?
                 .Select(result => new WorkflowPackageResultResponse(result.Id, result.Label))

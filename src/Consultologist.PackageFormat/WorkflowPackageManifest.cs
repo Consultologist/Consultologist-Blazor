@@ -82,7 +82,12 @@ public sealed record WorkflowInputSpec(
     // whole element spec rather than a type name — see WorkflowElementSpec,
     // which still writes the v9 string when it is only a name.
     WorkflowElementSpec? Items = null,
-    List<WorkflowFieldSpec>? Fields = null);
+    List<WorkflowFieldSpec>? Fields = null,
+    // v13 (#728): the medium/source a slot expects — a transcript or a form
+    // response — distinct from Type, which stays the value kind. A trailing
+    // optional, omitted when null, so a v≤12 manifest writes the bytes it
+    // always wrote. See WorkflowExpectedContent.
+    string? ExpectedContent = null);
 
 /// <summary>
 /// One field of a declared object (v9 § 4), in an input's vocabulary — id,
@@ -256,6 +261,33 @@ public static class WorkflowInputTypes
     /// <summary>v10: whether a field has fields — an object, or an array of objects.</summary>
     public static bool DeclaresObject(WorkflowFieldSpec field) =>
         Of(field) == Object || (Of(field) == Array && field.Items?.Type == Object);
+}
+
+/// <summary>
+/// The declarable input content channels (package-format-v13-design.md § 4,
+/// #728): the medium or source a slot expects, distinct from its value
+/// <see cref="WorkflowInputTypes"/>. A <c>transcript</c> is a document whose
+/// extracted text fills a text slot and whose origin is stamped `transcript`
+/// (a submitter assertion, not read from the bytes); a <c>form</c> is a slot
+/// whose value is meant to be filled from a held form response, coerced to the
+/// slot's declared value type. Both arrive at specVersion 13.
+/// </summary>
+public static class WorkflowExpectedContent
+{
+    public const string Transcript = "transcript";
+    public const string Form = "form";
+
+    /// <summary>Every content channel the format has, as of the newest version.</summary>
+    public static readonly IReadOnlyList<string> All = new[] { Transcript, Form };
+
+    private static readonly IReadOnlyList<string> None = Array.Empty<string>();
+
+    /// <summary>
+    /// The channels one specVersion admits — none before 13, keyed by version
+    /// so a v≤12 manifest's refusal reads exactly as the conformance suite
+    /// recorded it (the WorkflowInputTypes.ForSpecVersion precedent).
+    /// </summary>
+    public static IReadOnlyList<string> ForSpecVersion(int specVersion) => specVersion >= 13 ? All : None;
 }
 
 /// <summary>
