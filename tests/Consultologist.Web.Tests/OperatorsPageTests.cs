@@ -86,6 +86,35 @@ public class OperatorsPageTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ServedUsage_DrawsTheChartsAboveTheTables()
+    {
+        OperatorService.GetUsageAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(new OperatorUsageResponse(
+            "2026-09-01", "2026-09-03",
+            new[]
+            {
+                Row("u1", "Dr One", "tenant-a", 3, 3000, 900),
+                Row("u2", "Dr Two", "tenant-b", 5, 9000, 2500)
+            },
+            new[]
+            {
+                Day("2026-09-01", 4, 6000, 1600),
+                Day("2026-09-03", 4, 6000, 1800)
+            }));
+
+        var page = Render<OperatorsPage>();
+
+        // Four charts: consults/day, tokens/day, consults by org, tokens by org.
+        var titles = page.FindAll(".usage-chart__title").Select(t => t.TextContent).ToList();
+        Assert.Contains("Consults per day", titles);
+        Assert.Contains("Tokens per day", titles);
+        Assert.Contains("Consults by organisation", titles);
+        Assert.Contains("Tokens by organisation", titles);
+        Assert.NotEmpty(page.FindAll("svg.usage-chart__svg"));
+        // The tables stay as the exact-numbers source.
+        Assert.NotEmpty(page.FindAll(".operators__table"));
+    }
+
+    [Fact]
     public void WhileLoading_ShowsASpinner_ThenTheResults()
     {
         // #692: the fetch is in flight until we release the gate — the page
