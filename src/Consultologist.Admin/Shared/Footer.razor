@@ -1,0 +1,21 @@
+@using Consultologist.Admin.Services
+@inject IConfiguration Configuration
+
+<FluentFooter Class="app-footer">
+    <FluentStack Class="app-footer__inner"
+                 Orientation="Orientation.Horizontal"
+                 HorizontalAlignment="HorizontalAlignment.SpaceBetween"
+                 VerticalAlignment="VerticalAlignment.Center"
+                 Wrap="true">
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="16" VerticalAlignment="VerticalAlignment.Center" Wrap="true">
+            <FluentLabel Style="font-size: 12px; color: var(--consultologist-text-muted);">
+                &copy; 2026 Consultologist — Admin
+            </FluentLabel>
+            @* #412: which build this tab is running — the first question of any
+               "it looks different for me" report. *@
+            <FluentLabel Class="build-label" Style="font-size: 12px; color: var(--consultologist-text-muted);" Title="@BuildLabel.Describe(Configuration)">
+                Build @BuildLabel.Short(Configuration)
+            </FluentLabel>
+        </FluentStack>
+    </FluentStack>
+</FluentFooter>

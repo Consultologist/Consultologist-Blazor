@@ -1,0 +1,56 @@
+@* #733: the admin app's own header. Unlike the clinician header it carries no
+   workspace nav (the app is one surface today, rooted at /) — just the brand,
+   the theme toggle, and sign-in/out. Its own theme storage key so the two apps
+   remember their themes independently. *@
+
+<FluentDesignTheme @ref="@_theme" @bind-Mode="_themeMode" OnLoaded="OnThemeLoaded" StorageName="consultologist-admin-theme" />
+
+<FluentHeader Class="app-header">
+    <FluentStack Class="app-header__inner"
+                 Orientation="Orientation.Horizontal"
+                 VerticalAlignment="VerticalAlignment.Center"
+                 Width="100%">
+        <a class="brand-lockup" href="/">
+            <img src="icon-192.png" alt="" />
+            <span class="brand-name">Consultologist Admin</span>
+        </a>
+        <FluentSpacer />
+        <FluentStack Class="app-header__actions"
+                     Orientation="Orientation.Horizontal"
+                     HorizontalGap="12"
+                     VerticalAlignment="VerticalAlignment.Center">
+            <FluentButton IconStart="@_themeIcon"
+                          Appearance="Appearance.Stealth"
+                          Title="@($"Theme: {_themeMode}")"
+                          aria-label="@($"Theme: {_themeMode}. Activate to change.")"
+                          OnClick="@ToggleTheme" />
+            <LoginDisplay />
+        </FluentStack>
+    </FluentStack>
+</FluentHeader>
+
+@code {
+    private FluentDesignTheme? _theme;
+    private DesignThemeModes _themeMode = DesignThemeModes.System;
+
+    private Icon _themeIcon => _themeMode switch
+    {
+        DesignThemeModes.Dark => new Icons.Regular.Size20.WeatherMoon(),
+        DesignThemeModes.Light => new Icons.Regular.Size20.WeatherSunny(),
+        _ => new Icons.Regular.Size20.Desktop(),
+    };
+
+    private void OnThemeLoaded(LoadedEventArgs e)
+    {
+        _themeMode = e.Mode;
+        StateHasChanged();
+    }
+
+    private void ToggleTheme() => _themeMode = _themeMode switch
+    {
+        DesignThemeModes.System => DesignThemeModes.Light,
+        DesignThemeModes.Light => DesignThemeModes.Dark,
+        DesignThemeModes.Dark => DesignThemeModes.System,
+        _ => DesignThemeModes.System,
+    };
+}

@@ -26,6 +26,7 @@
          tests/Consultologist.Api.Tests/ as well. -->
     <Compile Remove="Consultologist.Web.Tests/**" />
     <Compile Remove="Consultologist.Web.E2E.Tests/**" />
+    <Compile Remove="Consultologist.Admin.Tests/**" />
   </ItemGroup>
 
   <ItemGroup>

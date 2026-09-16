@@ -1,0 +1,749 @@
+:root {
+	--consultologist-font:
+		"Segoe UI Variable", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
+		sans-serif;
+	--consultologist-bg: var(--neutral-layer-2, #f7f9fc);
+	--consultologist-surface: var(--neutral-layer-1, #ffffff);
+	--consultologist-surface-muted: var(--neutral-layer-3, #eef5fb);
+	--consultologist-text: var(--neutral-foreground-rest, #172033);
+	--consultologist-text-muted: var(--neutral-foreground-hint, #5d6a7c);
+	--consultologist-border: var(--neutral-stroke-divider-rest, rgba(23, 32, 51, 0.12));
+	--consultologist-accent: var(--accent-fill-rest, #0067b8);
+	--consultologist-accent-soft: rgba(0, 103, 184, 0.08);
+	--consultologist-success: #107c10;
+	--consultologist-warning: #a15c00;
+	--consultologist-error: #a4262c;
+	--consultologist-radius-sm: 4px;
+	--consultologist-radius-md: 8px;
+	--consultologist-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
+	--consultologist-shadow-md: 0 16px 40px rgba(15, 23, 42, 0.08);
+	--page-gutter: clamp(1rem, 3vw, 2rem);
+	--section-gap: clamp(1.25rem, 3vw, 2rem);
+	--shell-max-width: 1600px;
+}
+
+/* #689: the success/warning/error colours don't ride the FAST neutral/accent
+   tokens, so they need dark-tuned values of their own. FluentDesignTheme stamps
+   body[data-theme] ("dark"/"light", resolving System via matchMedia), which is
+   the only theme signal in the app. The media companion is belt-and-suspenders:
+   it only bites if System ever leaves data-theme="system" literal, and the
+   data-theme guard keeps it from forcing dark under an explicit Light choice. */
+body[data-theme="dark"] {
+	--consultologist-success: #3fb950;
+	--consultologist-warning: #d29922;
+	--consultologist-error: #f85149;
+	--consultologist-accent-soft: color-mix(in srgb, var(--consultologist-accent) 22%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+	body[data-theme="system"] {
+		--consultologist-success: #3fb950;
+		--consultologist-warning: #d29922;
+		--consultologist-error: #f85149;
+		--consultologist-accent-soft: color-mix(in srgb, var(--consultologist-accent) 22%, transparent);
+	}
+}
+
+html,
+body {
+	box-sizing: border-box;
+	min-width: 0;
+	overflow-x: hidden;
+	background: var(--consultologist-bg);
+	color: var(--consultologist-text);
+	font-family: var(--consultologist-font);
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: inherit;
+}
+
+img,
+svg,
+video,
+canvas {
+	max-width: 100%;
+}
+
+h1:focus {
+	outline: none;
+}
+
+a {
+	color: var(--consultologist-accent);
+}
+
+a:focus-visible,
+button:focus-visible,
+fluent-button:focus-visible,
+fluent-anchor:focus-visible,
+fluent-nav-link:focus-visible,
+fluent-text-field:focus-within,
+fluent-text-area:focus-within,
+fluent-select:focus-within {
+	outline: 2px solid var(--consultologist-accent);
+	outline-offset: 2px;
+}
+
+.valid.modified:not([type="checkbox"]) {
+	outline: 1px solid var(--consultologist-success);
+}
+
+.invalid {
+	outline: 1px solid var(--consultologist-error);
+}
+
+.validation-message {
+	color: var(--consultologist-error);
+	font-size: 0.875rem;
+}
+
+.app-shell {
+	min-height: 100dvh;
+	display: flex;
+	flex-direction: column;
+	background: var(--consultologist-bg);
+}
+
+.app-header,
+.app-footer {
+	flex-shrink: 0;
+	border-color: var(--consultologist-border) !important;
+	background: var(--consultologist-surface) !important;
+	color: var(--consultologist-text);
+}
+
+.app-header {
+	border-bottom: 2px solid var(--consultologist-accent) !important;
+	background: var(--neutral-layer-4, var(--consultologist-surface)) !important;
+}
+
+header.header.app-header {
+	height: 50px !important;
+	min-height: 50px;
+	overflow: hidden;
+}
+
+.app-header .header-gutters {
+	width: 100%;
+}
+
+.app-header__inner,
+.app-footer__inner {
+	width: 100%;
+	max-width: var(--shell-max-width);
+	margin: 0 auto;
+	padding: 0.625rem var(--page-gutter);
+}
+
+.app-header__inner {
+	align-items: center;
+	min-height: 3rem;
+}
+
+.brand-lockup {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.625rem;
+	min-width: 0;
+	color: var(--consultologist-text);
+	text-decoration: none;
+	flex: 0 0 auto;
+}
+
+.brand-lockup img {
+	width: 28px;
+	height: 28px;
+	border-radius: var(--consultologist-radius-sm);
+	flex: 0 0 auto;
+}
+
+.brand-name {
+	font-size: 1.05rem;
+	font-weight: 700;
+	letter-spacing: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.top-nav {
+	display: flex;
+	align-items: center;
+	flex: 0 0 auto;
+	gap: 0.25rem;
+	margin-left: 1rem;
+	min-width: 0;
+	overflow-x: auto;
+	scrollbar-width: none;
+	white-space: nowrap;
+}
+
+.top-nav::-webkit-scrollbar {
+	display: none;
+}
+
+.top-nav .fluent-nav-item,
+.top-nav .fluent-nav-link,
+.top-nav .positioning-region {
+	display: inline-flex;
+	width: auto;
+}
+
+.top-nav .fluent-nav-item,
+.top-nav .fluent-nav-link {
+	flex: 0 0 auto;
+}
+
+.top-nav .fluent-nav-link {
+	padding: 0;
+}
+
+.top-nav a {
+	display: inline-flex;
+	align-items: center;
+	min-height: 2rem;
+	padding: 0.25rem 0.65rem;
+	border-radius: var(--consultologist-radius-sm);
+	color: var(--consultologist-text);
+	font-size: 0.95rem;
+	font-weight: 600;
+	text-decoration: none;
+	transition: background-color 0.12s ease;
+	flex: 0 0 auto;
+}
+
+.top-nav .content-region {
+	width: auto;
+	min-height: 2rem;
+	padding: 0.25rem 0.65rem;
+	border-radius: var(--consultologist-radius-sm);
+	color: var(--consultologist-text);
+	font-size: 0.95rem;
+	font-weight: 600;
+	text-decoration: none;
+	transition: background-color 0.12s ease;
+}
+
+.top-nav .fluent-nav-icon {
+	display: none;
+}
+
+.top-nav a:hover,
+.top-nav a.active {
+	background: var(--consultologist-accent-soft);
+	color: var(--consultologist-text);
+	text-decoration: underline;
+	text-underline-offset: 0.18em;
+}
+
+.top-nav a.fluent-nav-link:hover,
+.top-nav a.fluent-nav-link.active {
+	background: transparent;
+	text-decoration: none;
+}
+
+.top-nav a.fluent-nav-link:hover .content-region,
+.top-nav a.fluent-nav-link.active .content-region {
+	background: var(--consultologist-accent-soft);
+	color: var(--consultologist-text);
+	text-decoration: underline;
+	text-underline-offset: 0.18em;
+}
+
+.app-header__actions {
+	align-items: center;
+	flex: 0 0 auto;
+	width: auto !important;
+}
+
+.content {
+	flex: 1 1 auto;
+	min-width: 0;
+	width: 100%;
+	padding: var(--section-gap) var(--page-gutter);
+}
+
+.content-shell {
+	/* One centered column for the whole shell: content matches the
+	   header/footer cap instead of hugging the left edge beneath them. */
+	width: min(var(--shell-max-width), 100%);
+	min-width: 0;
+	margin: 0 auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--section-gap);
+}
+
+.page-header {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	align-items: flex-end;
+	gap: 1rem;
+}
+
+.page-header__content {
+	min-width: 0;
+	max-width: 760px;
+}
+
+.section-eyebrow {
+	display: block;
+	margin-bottom: 0.45rem;
+	color: var(--consultologist-accent);
+	font-size: 0.78rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.page-title {
+	margin: 0;
+	color: var(--consultologist-text);
+	font-size: clamp(1.75rem, 3vw, 2.5rem);
+	font-weight: 700;
+	line-height: 1.15;
+	white-space: normal;
+	overflow-wrap: break-word;
+}
+
+.page-description {
+	margin: 0.65rem 0 0;
+	color: var(--consultologist-text-muted);
+	font-size: 1rem;
+	line-height: 1.65;
+	white-space: normal;
+	overflow-wrap: break-word;
+}
+
+.action-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.75rem;
+}
+
+.content-card,
+.workflow-panel,
+.result-panel,
+.state-panel {
+	width: 100%;
+	min-width: 0;
+	border: 1px solid var(--consultologist-border);
+	border-radius: var(--consultologist-radius-md);
+	background: var(--consultologist-surface);
+	box-shadow: var(--consultologist-shadow-sm);
+}
+
+.content-card,
+.workflow-panel,
+.result-panel {
+	padding: clamp(1rem, 2.5vw, 1.5rem);
+}
+
+.workflow-grid {
+	display: grid;
+	grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
+	gap: 1rem;
+	align-items: start;
+}
+
+.form-stack {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	min-width: 0;
+}
+
+.input-field {
+	display: flex;
+	flex-direction: column;
+	gap: 0.45rem;
+	min-width: 0;
+	color: var(--consultologist-text-muted);
+	font-size: 0.95rem;
+	font-weight: 600;
+}
+
+.input-field fluent-text-field,
+.input-field fluent-text-area,
+.input-field fluent-select {
+	width: 100%;
+	max-width: 100%;
+}
+
+.input-field fluent-text-area::part(control) {
+	min-height: 9rem;
+}
+
+.panel-title {
+	margin: 0;
+	color: var(--consultologist-text);
+	font-size: 1.05rem;
+	font-weight: 700;
+	line-height: 1.35;
+	white-space: normal;
+	overflow-wrap: break-word;
+}
+
+.panel-description,
+.muted-text {
+	margin: 0;
+	color: var(--consultologist-text-muted);
+	line-height: 1.6;
+	white-space: normal;
+	overflow-wrap: break-word;
+}
+
+.state-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+	padding: 1rem;
+	background: var(--consultologist-surface-muted);
+}
+
+.loading-state {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	color: var(--consultologist-text-muted);
+}
+
+/* #688: the skip-link — off-screen until focused, then it slides into the
+   top-left corner above everything so a keyboard user can see and use it. */
+.skip-link {
+	position: fixed;
+	top: -3rem;
+	left: 0.5rem;
+	z-index: 2000;
+	padding: 0.5rem 0.9rem;
+	background: var(--consultologist-surface, #ffffff);
+	color: var(--consultologist-text, #1a2332);
+	border-radius: 6px;
+	box-shadow: var(--consultologist-shadow-md, 0 16px 40px rgba(15, 23, 42, 0.08));
+	text-decoration: none;
+	transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+	top: 0.5rem;
+}
+
+/* #687: off-screen but read by screen readers — for live-region status text
+   that has no visible counterpart (the run rail conveys status by glyph). */
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+.code-panel,
+.note-preview {
+	min-width: 0;
+	overflow: auto;
+	border: 1px solid var(--consultologist-border);
+	border-radius: var(--consultologist-radius-sm);
+	background: var(--consultologist-surface);
+}
+
+.code-panel {
+	padding: 0.875rem;
+	font-size: 0.82rem;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.note-preview {
+	max-height: 600px;
+	padding: clamp(1rem, 2vw, 1.5rem);
+}
+
+.template-section {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	min-width: 0;
+	padding: 1rem;
+	border: 1px solid var(--consultologist-border);
+	border-radius: var(--consultologist-radius-md);
+	background: var(--consultologist-surface);
+}
+
+.template-section__header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 1rem;
+	min-width: 0;
+}
+
+.template-editor-grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: 1rem;
+	align-items: stretch;
+}
+
+.markdown-preview {
+	min-height: 9rem;
+	max-height: 18rem;
+	overflow: auto;
+	padding: 0.875rem;
+	border: 1px solid var(--consultologist-border);
+	border-radius: var(--consultologist-radius-sm);
+	background: var(--consultologist-surface-muted);
+	color: var(--consultologist-text);
+	line-height: 1.55;
+}
+
+.markdown-preview p,
+.markdown-preview ul,
+.markdown-preview ol {
+	margin: 0 0 0.75rem;
+}
+
+/* Heading levels the full renderer can emit (the old lightweight preview
+   only ever produced h4). */
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3,
+.markdown-preview h4 {
+	margin: 1rem 0 0.4rem;
+	color: var(--consultologist-text);
+	font-weight: 700;
+	line-height: 1.35;
+}
+
+.markdown-preview h1 {
+	font-size: 1.1rem;
+}
+
+.markdown-preview h2 {
+	font-size: 1rem;
+}
+
+.markdown-preview h3,
+.markdown-preview h4 {
+	font-size: 0.92rem;
+}
+
+.markdown-preview > :first-child {
+	margin-top: 0;
+}
+
+.markdown-preview > :last-child {
+	margin-bottom: 0;
+}
+
+.generated-note {
+	display: flex;
+	flex-direction: column;
+	gap: 1.25rem;
+	color: var(--consultologist-text);
+	line-height: 1.6;
+	white-space: normal;
+}
+
+.note-section {
+	display: flex;
+	flex-direction: column;
+	gap: 0.45rem;
+	min-width: 0;
+}
+
+.note-section h3 {
+	margin: 0;
+	color: var(--consultologist-text);
+	font-size: 1rem;
+	font-weight: 700;
+	line-height: 1.35;
+}
+
+.note-section p {
+	margin: 0;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+/* The v6 assembled document: rendered markdown (h2 block headings), styled to
+   match the v5 per-section view's typography. Block flow with margins instead
+   of the flex gap so a heading sits tight above its first paragraph. */
+.generated-note--assembled {
+	display: block;
+}
+
+.generated-note--assembled h2 {
+	margin: 1.25rem 0 0.45rem;
+	color: var(--consultologist-text);
+	font-size: 1rem;
+	font-weight: 700;
+	line-height: 1.35;
+}
+
+.generated-note--assembled h3,
+.generated-note--assembled h4 {
+	margin: 1rem 0 0.35rem;
+	color: var(--consultologist-text);
+	font-size: 0.92rem;
+	font-weight: 700;
+	line-height: 1.35;
+}
+
+.generated-note--assembled h2:first-child,
+.generated-note--assembled h3:first-child {
+	margin-top: 0;
+}
+
+.generated-note--assembled p,
+.generated-note--assembled ul,
+.generated-note--assembled ol {
+	margin: 0 0 0.75rem;
+	overflow-wrap: break-word;
+}
+
+.generated-note--assembled > :last-child {
+	margin-bottom: 0;
+}
+
+.app-footer a {
+	color: var(--consultologist-text-muted);
+	text-decoration: none;
+}
+
+.app-footer a:hover {
+	color: var(--consultologist-text);
+	text-decoration: underline;
+}
+
+#blazor-error-ui {
+	background: lightyellow;
+	bottom: 0;
+	box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+	display: none;
+	left: 0;
+	padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+	position: fixed;
+	width: 100%;
+	z-index: 1000;
+}
+
+#blazor-error-ui .dismiss {
+	cursor: pointer;
+	position: absolute;
+	right: 0.75rem;
+	top: 0.5rem;
+}
+
+.blazor-error-boundary {
+	background:
+		url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTYiIGhlaWdodD0iNDkiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIG92ZXJmbG93PSJoaWRkZW4iPjxkZWZzPjxjbGlwUGF0aCBpZD0iY2xpcDAiPjxyZWN0IHg9IjIzNSIgeT0iNTEiIHdpZHRoPSI1NiIgaGVpZ2h0PSI0OSIvPjwvY2xpcFBhdGg+PC9kZWZzPjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMCkiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMzUgLTUxKSI+PHBhdGggZD0iTTI2My41MDYgNTFDMjY0LjcxNyA1MSAyNjUuODEzIDUxLjQ4MzcgMjY2LjYwNiA1Mi4yNjU4TDI2Ny4wNTIgNTIuNzk4NyAyNjcuNTM5IDUzLjYyODMgMjkwLjE4NSA5Mi4xODMxIDI5MC41NDUgOTIuNzk1IDI5MC42NTYgOTIuOTk2QzI5MC44NzcgOTMuNTEzIDI5MSA5NC4wODE1IDI5MSA5NC42NzgyIDI5MSA5Ny4wNjUxIDI4OS4wMzggOTkgMjg2LjYxNyA5OUwyNDAuMzgzIDk5QzIzNy45NjMgOTkgMjM2IDk3LjA2NTEgMjM2IDk0LjY3ODIgMjM2IDk0LjM3OTkgMjM2LjAzMSA5NC4wODg2IDIzNi4wODkgOTMuODA3MkwyMzYuMzM4IDkzLjAxNjIgMjM2Ljg1OCA5Mi4xMzE0IDI1OS40NzMgNTMuNjI5NCAyNTkuOTYxIDUyLjc5ODUgMjYwLjQwNyA1Mi4yNjU4QzI2MS4yIDUxLjQ4MzcgMjYyLjI5NiA1MSAyNjMuNTA2IDUxWk0yNjMuNTg2IDY2LjAxODNDMjYwLjczNyA2Ni4wMTgzIDI1OS4zMTMgNjcuMTI0NSAyNTkuMzEzIDY5LjMzNyAyNTkuMzEzIDY5LjYxMDIgMjU5LjMzMiA2OS44NjA4IDI1OS4zNzEgNzAuMDg4N0wyNjEuNzk1IDg0LjAxNjEgMjY1LjM4IDg0LjAxNjEgMjY3LjgyMSA2OS43NDc1QzI2Ny44NiA2OS43MzA5IDI2Ny44NzkgNjkuNTg3NyAyNjcuODc5IDY5LjMxNzkgMjY3Ljg3OSA2Ny4xMTgyIDI2Ni40NDggNjYuMDE4MyAyNjMuNTg2IDY2LjAxODNaTTI2My41NzYgODYuMDU0N0MyNjEuMDQ5IDg2LjA1NDcgMjU5Ljc4NiA4Ny4zMDA1IDI1OS43ODYgODkuNzkyMSAyNTkuNzg2IDkyLjI4MzcgMjYxLjA0OSA5My41Mjk1IDI2My41NzYgOTMuNTI5NSAyNjYuMTE2IDkzLjUyOTUgMjY3LjM4NyA5Mi4yODM3IDI2Ny4zODcgODkuNzkyMSAyNjcuMzg3IDg3LjMwMDUgMjY2LjExNiA4Ni4wNTQ3IDI2My41NzYgODYuMDU0N1oiIGZpbGw9IiNGRkU1MDAiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPjwvZz48L3N2Zz4=)
+			no-repeat 1rem/1.8rem,
+		#b32121;
+	padding: 1rem 1rem 1rem 3.7rem;
+	color: white;
+}
+
+.blazor-error-boundary::after {
+	content: "An error has occurred.";
+}
+
+@media (max-width: 760px) {
+	header.header.app-header {
+		height: auto !important;
+		overflow: visible;
+	}
+
+	.app-header__inner,
+	.app-footer__inner {
+		padding-inline: 1rem;
+	}
+
+	.app-header__inner {
+		display: grid !important;
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas:
+			"brand actions"
+			"nav nav";
+		column-gap: 0.75rem;
+		row-gap: 0.25rem;
+		align-items: center;
+		min-height: 0;
+	}
+
+	.app-header__inner > :nth-child(3) {
+		display: none;
+	}
+
+	.brand-lockup {
+		grid-area: brand;
+		min-width: 0;
+	}
+
+	.brand-name {
+		min-width: 0;
+		max-width: 9rem;
+	}
+
+	.top-nav {
+		grid-area: nav;
+		margin-left: 0;
+		width: 100%;
+		padding-top: 0.1rem;
+	}
+
+	.top-nav a {
+		min-height: 1.75rem;
+		padding-inline: 0.45rem;
+	}
+
+	.top-nav .content-region {
+		min-height: 1.75rem;
+		padding-inline: 0.45rem;
+	}
+
+	.app-header__actions {
+		grid-area: actions;
+		justify-self: end;
+	}
+
+	.content {
+		overflow: visible;
+		padding: 1.25rem 1rem;
+	}
+
+	.content-card,
+	.workflow-panel,
+	.result-panel,
+	.state-panel {
+		max-width: calc(100vw - 2rem);
+	}
+
+	.workflow-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.template-editor-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.page-header {
+		align-items: flex-start;
+	}
+
+	.action-row,
+	.action-row fluent-button {
+		width: 100%;
+	}
+}
