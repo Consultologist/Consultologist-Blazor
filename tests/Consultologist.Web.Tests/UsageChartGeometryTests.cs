@@ -1,4 +1,4 @@
-using Consultologist.Web.Services.Charts;
+using Consultologist.UI.Charts;
 
 namespace Consultologist.Web.Tests;
 

@@ -1,15 +1,12 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
-@using Consultologist.Web.Services.Accounts
-@using Consultologist.Web.Services.Charts
-@using Consultologist.Web.Services.Operators
 @inject IOperatorEndpointService OperatorService
 @attribute [Authorize]
 
-@page "/operators"
-<PageTitle>Operators - Consultologist</PageTitle>
+@page "/"
+<PageTitle>Usage - Consultologist Admin</PageTitle>
 
-@* #553: a first slice, not a console — usage per user and per
+@* #553/#733: a first slice, not a console — usage per user and per
    organisation from the derived store, for accounts on the operator
    allowlist. The server gate is the real one; a signed-in non-operator
    meets the named state, never a broken page. Numbers, ids and stored

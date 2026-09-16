@@ -53,6 +53,8 @@ public class FunctionCorsTests
 
     [Theory]
     [InlineData("https://app.consultologist.ai", true)]
+    // #733: the standalone admin app's origin is a baseline entry.
+    [InlineData("https://admin.consultologist.ai", true)]
     [InlineData("http://localhost:5173", true)]
     [InlineData("https://evil.example.com", false)]
     [InlineData("https://app.consultologist.ai.evil.example.com", false)]

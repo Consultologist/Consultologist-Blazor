@@ -1,4 +1,4 @@
-namespace Consultologist.Web.Services.Operators;
+namespace Consultologist.Admin.Services.Operators;
 
 public interface IOperatorEndpointService
 {

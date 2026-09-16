@@ -1,0 +1,44 @@
+<CascadingAuthenticationState>
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                <NotAuthorized>
+                    @* A protected route reached while signed out sends the
+                       operator to sign-in (with a returnUrl back here). *@
+                    @if (context.User.Identity?.IsAuthenticated != true)
+                    {
+                        <RedirectToLogin />
+                    }
+                    else
+                    {
+                        <p role="alert">You are not authorized to access this resource.</p>
+                    }
+                </NotAuthorized>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <PageTitle>Not found</PageTitle>
+            <LayoutView Layout="@typeof(MainLayout)">
+                <section class="page-header">
+                    <div class="page-header__content">
+                        <span class="section-eyebrow">Not found</span>
+                        <h1 class="page-title">There's nothing at this address.</h1>
+                        <p class="page-description">
+                            The page may have moved, or the link may be out of date.
+                        </p>
+                    </div>
+                </section>
+                <section class="content-card">
+                    <div class="form-stack">
+                        <div class="action-row">
+                            <FluentAnchor Appearance="Appearance.Accent" Href="/">
+                                Back to Usage
+                            </FluentAnchor>
+                        </div>
+                    </div>
+                </section>
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>

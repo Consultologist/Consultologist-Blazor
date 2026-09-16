@@ -5,8 +5,10 @@
    colours are CSS classes (var(--consultologist-*)), so it recolours with the
    theme, and being DOM not script it needs no CSP allowance. The table beside
    it stays the accessible data source, so the SVG is role="img" with a one-line
-   summary rather than re-encoding every number. *@
-@using Consultologist.Web.Services.Charts
+   summary rather than re-encoding every number.
+   #733: moved into the shared Consultologist.UI RCL so both apps render it. *@
+@namespace Consultologist.UI.Components
+@using Consultologist.UI.Charts
 
 <div class="usage-chart">
     <h4 class="usage-chart__title">@Title</h4>

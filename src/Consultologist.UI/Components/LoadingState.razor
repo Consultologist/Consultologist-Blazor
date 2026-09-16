@@ -1,6 +1,10 @@
 @* #687: the app's one loading indicator, announced. role="status" carries an
    implicit aria-live="polite" + aria-atomic, so a screen reader speaks the
-   message when the block appears — the spinner alone has no accessible name. *@
+   message when the block appears — the spinner alone has no accessible name.
+   #733: moved into the shared Consultologist.UI RCL. The .loading-state layout
+   rule lives in each app's global css/app.css. *@
+@namespace Consultologist.UI.Components
+
 <div class="loading-state" role="status">
     <FluentProgressRing />
     <span>@ChildContent</span>

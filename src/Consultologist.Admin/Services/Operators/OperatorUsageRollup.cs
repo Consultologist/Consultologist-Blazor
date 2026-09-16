@@ -1,11 +1,10 @@
-namespace Consultologist.Web.Services.Operators;
+namespace Consultologist.Admin.Services.Operators;
 
 /// <summary>
 /// #553: the panel's grouping, pure. An organisation is the issuer tenant;
 /// personal accounts group under the consumers tenant's own label; a row
 /// whose tenant could not be read from the record groups under a named
-/// state, never into an organisation. Arithmetic is sums only — the window
-/// figures reuse UsageSummary where rates are wanted.
+/// state, never into an organisation. Arithmetic is sums only.
 /// </summary>
 public static class OperatorUsageRollup
 {

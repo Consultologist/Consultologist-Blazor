@@ -1,0 +1,20 @@
+@inherits LayoutComponentBase
+
+<FluentLayout Class="app-shell">
+    @* The first focusable element, so a keyboard user can jump the header and
+       land in the content (mirrors the clinician app's skip link). *@
+    <a class="skip-link" href="#main-content" @onclick="FocusMainAsync">Skip to main content</a>
+    <Header />
+    <main class="content" id="main-content" tabindex="-1" @ref="_main">
+        <div class="content-shell">
+            @Body
+        </div>
+    </main>
+    <Footer />
+</FluentLayout>
+
+@code {
+    private ElementReference _main;
+
+    private async Task FocusMainAsync() => await _main.FocusAsync();
+}

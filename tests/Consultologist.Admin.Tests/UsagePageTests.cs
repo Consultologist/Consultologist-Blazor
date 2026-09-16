@@ -1,18 +1,17 @@
 using Bunit;
-using Consultologist.Web.Pages;
-using Consultologist.Web.Services.Accounts;
-using Consultologist.Web.Services.Operators;
-using Consultologist.Web.Shared;
+using Consultologist.Admin.Pages;
+using Consultologist.Admin.Services.Operators;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
-namespace Consultologist.Web.Tests;
+namespace Consultologist.Admin.Tests;
 
 /// <summary>
-/// #553: the operator panel — grouped by tenant, sortable, and a signed-in
-/// non-operator meets the named state, never a broken page.
+/// #553/#733: the operator usage page (now the admin app's home) — grouped by
+/// tenant, sortable, charted, and a signed-in non-operator meets the named
+/// state, never a broken page.
 /// </summary>
-public class OperatorsPageTests : ClientRenderTestContext
+public class UsagePageTests : AdminRenderTestContext
 {
     private static OperatorUsageRowResponse Row(
         string id, string name, string? tenantId, int consults, int tokensIn, int tokensOut) =>
@@ -76,7 +75,7 @@ public class OperatorsPageTests : ClientRenderTestContext
             },
             NoDays));
 
-        var page = Render<OperatorsPage>();
+        var page = Render<Usage>();
 
         var labels = page.FindAll(".operators-org__label").Select(l => l.TextContent.Trim()).ToList();
         Assert.Contains("Organisation tenant-a", labels);
@@ -101,7 +100,7 @@ public class OperatorsPageTests : ClientRenderTestContext
                 Day("2026-09-03", 4, 6000, 1800)
             }));
 
-        var page = Render<OperatorsPage>();
+        var page = Render<Usage>();
 
         // Four charts: consults/day, tokens/day, consults by org, tokens by org.
         var titles = page.FindAll(".usage-chart__title").Select(t => t.TextContent).ToList();
@@ -125,7 +124,7 @@ public class OperatorsPageTests : ClientRenderTestContext
             new[] { Row("u1", "Dr One", "tenant-a", 3, 3000, 900) },
             Days: null));
 
-        var page = Render<OperatorsPage>();
+        var page = Render<Usage>();
 
         var titles = page.FindAll(".usage-chart__title").Select(t => t.TextContent).ToList();
         Assert.DoesNotContain("Consults per day", titles);
@@ -143,7 +142,7 @@ public class OperatorsPageTests : ClientRenderTestContext
         var gate = new TaskCompletionSource<OperatorUsageResponse>();
         OperatorService.GetUsageAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(gate.Task);
 
-        var page = Render<OperatorsPage>();
+        var page = Render<Usage>();
 
         Assert.NotEmpty(page.FindAll(".loading-state"));
         Assert.Empty(page.FindAll(".operators__table"));
@@ -162,7 +161,7 @@ public class OperatorsPageTests : ClientRenderTestContext
         OperatorService.GetUsageAsync(Arg.Any<string>(), Arg.Any<string>())
             .ThrowsAsync(new OperatorAccessException());
 
-        var page = Render<OperatorsPage>();
+        var page = Render<Usage>();
 
         Assert.Contains("your account is not on the allowlist", page.Find(".operators-denied").TextContent);
         Assert.Empty(page.FindAll(".operators-window"));
@@ -174,7 +173,7 @@ public class OperatorsPageTests : ClientRenderTestContext
         OperatorService.GetUsageAsync(Arg.Any<string>(), Arg.Any<string>())
             .Returns(new OperatorUsageResponse("2026-08-03", "2026-09-01", Array.Empty<OperatorUsageRowResponse>(), NoDays));
 
-        var page = Render<OperatorsPage>();
+        var page = Render<Usage>();
 
         Assert.Contains("No usage in this window", page.Find(".operators-empty").TextContent);
     }
@@ -190,7 +189,7 @@ public class OperatorsPageTests : ClientRenderTestContext
                 Row("u2", "Alpha", "t", 3, 9000, 100)
             },
             NoDays));
-        var page = Render<OperatorsPage>();
+        var page = Render<Usage>();
 
         // Default: consults descending — u1 first.
         Assert.StartsWith("Beta", page.FindAll(".operators__row")[0].TextContent.Trim());
@@ -198,36 +197,5 @@ public class OperatorsPageTests : ClientRenderTestContext
         await page.Find(".operators-sort--name").ClickAsync(new());
 
         Assert.StartsWith("Alpha", page.FindAll(".operators__row")[0].TextContent.Trim());
-    }
-
-    // ----- the nav link -----
-
-    private void WithMe(bool isOperator)
-    {
-        AccountService.GetCurrentAccountAsync().Returns(new AccountMeResponse(
-            "user-1", "A Clinician", "clinician@example.com", "Active",
-            new AccountIdentity("entra-external-id", "https://login.microsoftonline.com/x", "sub-1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
-            new[] { new AccountIdentity("entra-external-id", "https://login.microsoftonline.com/x", "sub-1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow) },
-            IsOperator: isOperator));
-    }
-
-    [Fact]
-    public void AnOperator_SeesTheNavLink()
-    {
-        WithMe(isOperator: true);
-
-        var header = Render<Header>();
-
-        Assert.Contains(header.FindAll("fluent-nav-link, a").Select(a => a.TextContent.Trim()), t => t == "Operators");
-    }
-
-    [Fact]
-    public void AnOrdinaryAccount_SeesNoNavLink()
-    {
-        WithMe(isOperator: false);
-
-        var header = Render<Header>();
-
-        Assert.DoesNotContain(header.FindAll("fluent-nav-link, a").Select(a => a.TextContent.Trim()), t => t == "Operators");
     }
 }

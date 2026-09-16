@@ -1,15 +1,14 @@
 using System.Globalization;
 
-namespace Consultologist.Web.Services.Charts;
+namespace Consultologist.UI.Charts;
 
 /// <summary>
 /// #732: the served usage rows are <em>sparse</em> — a day with no activity is
-/// absent from the response by design (see <see cref="Accounts.UsageSummary"/>).
-/// A time series must not draw a 30-day window as however-many bars happened to
-/// have activity, so this fills the gaps: one point per calendar day in
-/// [from..to] inclusive, zero where the day is absent. Both the profile's own
-/// days and the operators' aggregate daily series flow through here after
-/// mapping their DTO to <see cref="DayPoint"/>.
+/// absent from the response by design. A time series must not draw a 30-day
+/// window as however-many bars happened to have activity, so this fills the
+/// gaps: one point per calendar day in [from..to] inclusive, zero where the day
+/// is absent. Both the profile's own days and the operators' aggregate daily
+/// series flow through here after mapping their DTO to <see cref="DayPoint"/>.
 /// </summary>
 public static class UsageSeries
 {

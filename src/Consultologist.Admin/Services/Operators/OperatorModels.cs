@@ -1,4 +1,4 @@
-namespace Consultologist.Web.Services.Operators;
+namespace Consultologist.Admin.Services.Operators;
 
 // #553: mirrors the Api's OperatorUsageRowResponse — numbers, the account id,
 // and the display name the account already carries. Rows link nowhere.

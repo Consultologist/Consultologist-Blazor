@@ -21,6 +21,9 @@
          the wire, compressed). Referenced where needed under the PF alias;
          the Web's own mirrors of the wire value stay. -->
     <ProjectReference Include="../Consultologist.PackageFormat/Consultologist.PackageFormat.csproj" />
+    <!-- #733: the shared UI (usage chart, loading indicator) both this app and
+         the admin app render — see Consultologist.UI. -->
+    <ProjectReference Include="../Consultologist.UI/Consultologist.UI.csproj" />
   </ItemGroup>
 
   <ItemGroup>

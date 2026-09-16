@@ -1,17 +1,25 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using Consultologist.Web.Services.Locations;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.WebAssembly.Authentication;
 
-namespace Consultologist.Web.Services.Operators;
+namespace Consultologist.Admin.Services.Operators;
 
+/// <summary>
+/// #733: the admin app's operator client. Unlike the clinician SPA's version it
+/// resolves a single API base from <c>Api:BaseUrl</c> (this is a one-deployment
+/// ops tool, not the multi-region clinician app) and keeps the same per-call
+/// bearer against <c>AzureFunction:ApiScope</c>. The server gate is the real
+/// boundary; a 403 for a signed-in non-operator surfaces as the named state.
+/// </summary>
 public sealed class OperatorEndpointService : IOperatorEndpointService
 {
+    public const string ApiBaseKey = "Api:BaseUrl";
+    public const string ApiScopeKey = "AzureFunction:ApiScope";
+
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
-    private readonly IApiLocations _locations;
     private readonly IAccessTokenProvider _accessTokenProvider;
     private readonly NavigationManager _navigation;
     private readonly ILogger<OperatorEndpointService> _logger;
@@ -19,14 +27,12 @@ public sealed class OperatorEndpointService : IOperatorEndpointService
     public OperatorEndpointService(
         HttpClient httpClient,
         IConfiguration configuration,
-        IApiLocations locations,
         IAccessTokenProvider accessTokenProvider,
         NavigationManager navigation,
         ILogger<OperatorEndpointService> logger)
     {
         _httpClient = httpClient;
         _configuration = configuration;
-        _locations = locations;
         _accessTokenProvider = accessTokenProvider;
         _navigation = navigation;
         _logger = logger;
@@ -34,7 +40,13 @@ public sealed class OperatorEndpointService : IOperatorEndpointService
 
     public async Task<OperatorUsageResponse> GetUsageAsync(string from, string to)
     {
-        var url = _locations.Url(ApiRoutes.OperatorUsage)
+        var apiBase = _configuration[ApiBaseKey];
+        if (string.IsNullOrWhiteSpace(apiBase))
+        {
+            throw new InvalidOperationException($"{ApiBaseKey} is not configured.");
+        }
+
+        var url = $"{apiBase.TrimEnd('/')}/Operator/Usage"
             + $"?from={Uri.EscapeDataString(from)}&to={Uri.EscapeDataString(to)}";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -66,11 +78,11 @@ public sealed class OperatorEndpointService : IOperatorEndpointService
 
     private async Task AddAuthorizationAsync(HttpRequestMessage request)
     {
-        var apiScope = _configuration["AzureFunction:ApiScope"];
+        var apiScope = _configuration[ApiScopeKey];
 
         if (string.IsNullOrWhiteSpace(apiScope))
         {
-            throw new InvalidOperationException("AzureFunction:ApiScope is not configured.");
+            throw new InvalidOperationException($"{ApiScopeKey} is not configured.");
         }
 
         var tokenResult = await _accessTokenProvider.RequestAccessToken(new AccessTokenRequestOptions
