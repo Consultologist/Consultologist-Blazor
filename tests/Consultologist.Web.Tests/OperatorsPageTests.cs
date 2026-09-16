@@ -115,6 +115,26 @@ public class OperatorsPageTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void AnOlderApiWithoutDays_ShowsOnlyThePerOrgCharts_NeverCrashes()
+    {
+        // The frontend and API deploy independently: a new client can meet an
+        // API build that predates the Days field. The page must not crash, and
+        // simply omits the daily series until the API catches up.
+        OperatorService.GetUsageAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(new OperatorUsageResponse(
+            "2026-09-01", "2026-09-03",
+            new[] { Row("u1", "Dr One", "tenant-a", 3, 3000, 900) },
+            Days: null));
+
+        var page = Render<OperatorsPage>();
+
+        var titles = page.FindAll(".usage-chart__title").Select(t => t.TextContent).ToList();
+        Assert.DoesNotContain("Consults per day", titles);
+        Assert.DoesNotContain("Tokens per day", titles);
+        Assert.Contains("Consults by organisation", titles);
+        Assert.NotEmpty(page.FindAll(".operators__table"));
+    }
+
+    [Fact]
     public void WhileLoading_ShowsASpinner_ThenTheResults()
     {
         // #692: the fetch is in flight until we release the gate — the page

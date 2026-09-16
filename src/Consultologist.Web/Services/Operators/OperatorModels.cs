@@ -19,12 +19,14 @@ public sealed record OperatorUsageDayResponse(
     int TokensIn,
     int TokensOut);
 
-// #553: mirrors the Api's OperatorUsageResponse. Days added in #732.
+// #553: mirrors the Api's OperatorUsageResponse. Days added in #732 — nullable
+// on the client because the frontend and API deploy independently, so a new
+// client can meet an API build that predates the field (then no daily series).
 public sealed record OperatorUsageResponse(
     string From,
     string To,
     IReadOnlyList<OperatorUsageRowResponse> Rows,
-    IReadOnlyList<OperatorUsageDayResponse> Days);
+    IReadOnlyList<OperatorUsageDayResponse>? Days);
 
 /// <summary>
 /// #553: the caller is signed in but not on Operators__AppUserIds — the 403

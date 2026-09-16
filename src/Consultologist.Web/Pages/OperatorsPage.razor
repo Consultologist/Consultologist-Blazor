@@ -76,9 +76,11 @@
 
                     @* #732: the window as graphs, above the per-org tables — an
                        aggregate daily series (days densified over the window),
-                       and a per-organisation comparison. *@
+                       and a per-organisation comparison. Days may be absent when
+                       the API predates the field; then only the per-org charts show. *@
+                    var days = usageData.Days ?? Array.Empty<OperatorUsageDayResponse>();
                     var denseDays = UsageSeries.DenseDays(usageData.From, usageData.To,
-                        usageData.Days.Select(day => new UsageSeries.DayPoint(day.Day, day.ConsultsCompleted, day.TokensIn, day.TokensOut)));
+                        days.Select(day => new UsageSeries.DayPoint(day.Day, day.ConsultsCompleted, day.TokensIn, day.TokensOut)));
                     var dailyConsults = denseDays
                         .Select(day => new UsageChartGeometry.Category(day.Day,
                             new[] { new UsageChartGeometry.CategorySegment("consults", day.ConsultsCompleted) }))
@@ -103,12 +105,15 @@
                         .ToList();
 
                     <div class="operators-charts">
-                        <UsageBarChart Title="Consults per day" Unit="consults"
-                                       Categories="dailyConsults"
-                                       Legend="@(new[] { ("consults", "Consults") })" />
-                        <UsageBarChart Title="Tokens per day" Unit="tokens"
-                                       Categories="dailyTokens"
-                                       Legend="@(new[] { ("tokens-in", "Tokens in"), ("tokens-out", "Tokens out") })" />
+                        @if (days.Count > 0)
+                        {
+                            <UsageBarChart Title="Consults per day" Unit="consults"
+                                           Categories="dailyConsults"
+                                           Legend="@(new[] { ("consults", "Consults") })" />
+                            <UsageBarChart Title="Tokens per day" Unit="tokens"
+                                           Categories="dailyTokens"
+                                           Legend="@(new[] { ("tokens-in", "Tokens in"), ("tokens-out", "Tokens out") })" />
+                        }
                         <UsageBarChart Title="Consults by organisation" Unit="consults"
                                        Categories="orgConsults"
                                        Legend="@(new[] { ("consults", "Consults") })" />
