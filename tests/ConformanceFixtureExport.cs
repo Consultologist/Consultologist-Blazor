@@ -917,6 +917,37 @@ public class ConformanceFixtureExport
             "A raw prompt declaring variables. A verbatim prompt interpolates nothing, so it declares none.",
             V15Fixtures.WithRawTemplateNode(variables: new List<string> { "seen_on" }));
 
+        // ----- v16 (#730): an `image` content channel — a slot expecting an
+        // uploaded raw image (PNG/JPEG/TIFF) read into text by OCR. Like
+        // transcript, image is a text channel. Generated with the gate flipped;
+        // published with the v16 prose. -----
+
+        var v15Minimal = V15Fixtures.Minimal();
+
+        // The § 7 control: one edit, nothing of v16 used.
+        Bundle("v16-minimal-is-v15-plus-a-line", 16,
+            "The migration v16 promises: a valid v15 manifest with specVersion 16 and nothing else changed.",
+            (v15Minimal with { SpecVersion = 16 }, V6Fixtures.Files(v15Minimal)));
+
+        WorkflowPackageManifest V16(WorkflowInputSpec input) => V16Fixtures.WithInput(input);
+
+        cases.Add(new Case("v16-image-slot", 16,
+            "A slot expecting an uploaded image; its OCR'd text fills the text slot, and the engine stamps the image origin.",
+            V16(new("referral_letter", "Referral letter", Required: false,
+                Type: WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.Image)),
+            V6Fixtures.Files(V16(new("referral_letter", "Referral letter", Required: false,
+                Type: WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.Image)))));
+
+        Invalid("invalid-expected-content-image-below-16", 15,
+            "expectedContent 'image' on a v15 manifest. The image channel arrives at 16; before it, it is outside the closed set.",
+            V16(new("referral_letter", "Referral letter", Required: false,
+                Type: WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.Image)) with { SpecVersion = 15 });
+
+        Invalid("invalid-expected-content-image-on-number", 16,
+            "expectedContent 'image' on a number slot. An image is OCR'd into a text slot, never a scalar.",
+            V16(new("length_of_stay", "Length of stay", Required: false,
+                Type: WorkflowInputTypes.Number, ExpectedContent: WorkflowExpectedContent.Image)));
+
         return cases;
     }
 

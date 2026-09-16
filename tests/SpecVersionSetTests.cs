@@ -83,7 +83,7 @@ public class SpecVersionSetTests
         // The set became a constant and the prose became generated; this pins
         // the wording so that refactor cannot quietly reword a message an
         // author reads. Note it is NOT the store's phrasing — see below.
-        Assert.Equal("5, 6, 7, 8, 9, 10, 11, 12, 13, 14 or 15", WorkflowPackageValidator.DescribeAcceptedSpecVersions());
+        Assert.Equal("5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 or 16", WorkflowPackageValidator.DescribeAcceptedSpecVersions());
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public class SpecVersionSetTests
         var store = new WorkflowPackageSpecVersionException(
             "general@v2026.08.1", 3, WorkflowPackageStore.SupportedSpecVersions);
 
-        Assert.Contains("5 or 6 or 7 or 8 or 9 or 10 or 11 or 12 or 13 or 14 or 15", store.Message);
+        Assert.Contains("5 or 6 or 7 or 8 or 9 or 10 or 11 or 12 or 13 or 14 or 15 or 16", store.Message);
         Assert.DoesNotContain(WorkflowPackageValidator.DescribeAcceptedSpecVersions(), store.Message);
     }
 }
