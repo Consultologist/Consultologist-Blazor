@@ -19,6 +19,11 @@ internal static class FunctionCors
     {
         "https://app.consultologist.ai",
         "https://gentle-desert-09697700f.3.azurestaticapps.net",
+        // #733: the standalone admin app (Consultologist.Admin), its own Static
+        // Web App and origin, calling the same server-gated operator endpoints.
+        // The SWA default hostname is added via Cors__AllowedOrigins until the
+        // custom domain is provisioned.
+        "https://admin.consultologist.ai",
         "http://localhost:3000",
         "http://localhost:5000",
         "http://localhost:5173",

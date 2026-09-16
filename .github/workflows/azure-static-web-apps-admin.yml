@@ -1,0 +1,111 @@
+name: Azure Static Web Apps CI/CD (Admin)
+
+# #733: the standalone admin app's SWA pipeline — a clone of the clinician
+# app's workflow, scoped to the admin project and the shared UI library it
+# renders. Until the admin Static Web App + its deployment token exist, the
+# build still runs (real CI signal) and skips the upload
+# (skip_deploy_on_missing_secrets), so the app is inert but continuously built.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/Consultologist.Admin/**"
+      - "src/Consultologist.UI/**" # the shared RCL the admin app renders
+      - ".github/workflows/azure-static-web-apps-admin.yml"
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - main
+    paths:
+      - "src/Consultologist.Admin/**"
+      - "src/Consultologist.UI/**"
+      - ".github/workflows/azure-static-web-apps-admin.yml"
+  workflow_dispatch:
+
+# One run per branch at a time, newest wins (the clinician workflow's #156
+# staging-leak fix). A distinct group so the two SWA pipelines never cancel
+# each other.
+concurrency:
+  group: swa-admin-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build_and_deploy_job:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    runs-on: ubuntu-latest
+    name: Build and Deploy Job
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          lfs: false
+
+      # #412/#733: the client shows which build it is. Oryx publishes from the
+      # checked-out tree, so the commit is written into appsettings.json here,
+      # before the deploy step.
+      - name: Stamp the admin build
+        run: |
+          jq --arg commit "$GITHUB_SHA" '.Build = {Commit: $commit}' \
+            src/Consultologist.Admin/wwwroot/appsettings.json > appsettings.stamped.json
+          mv appsettings.stamped.json src/Consultologist.Admin/wwwroot/appsettings.json
+
+      - name: Install OIDC Client from Core Package
+        run: npm install @actions/core@1.6.0 @actions/http-client
+
+      - name: Get Id Token
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        id: idtoken
+        with:
+          script: |
+            const coredemo = require('@actions/core')
+            return await coredemo.getIDToken()
+          result-encoding: string
+
+      - name: Build And Deploy
+        id: builddeploy
+        uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1 # v1
+        with:
+          # Set once the admin Static Web App is provisioned (#733). Until then
+          # the secret is absent and the deploy is skipped (see below).
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_ADMIN }}
+          action: "upload"
+          app_location: "src/Consultologist.Admin" # the standalone admin Blazor WASM project
+          api_location: "" # Empty - Azure Functions deployed separately
+          output_location: "wwwroot" # Blazor static content within the publish output
+          github_id_token: ${{ steps.idtoken.outputs.result }} # Required: this SWA uses GitHub OIDC deployment authorization (the "unexpected input" warning is benign)
+          # Same posture as the clinician workflow: a missing token (Dependabot,
+          # or before the SWA is provisioned) builds and skips the upload rather
+          # than failing red, so the build stays real signal.
+          skip_deploy_on_missing_secrets: true
+
+  close_pull_request_job:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: Close Pull Request Job
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Install OIDC Client from Core Package
+        run: npm install @actions/core@1.6.0 @actions/http-client
+
+      - name: Get Id Token
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        id: idtoken
+        with:
+          script: |
+            const coredemo = require('@actions/core')
+            return await coredemo.getIDToken()
+          result-encoding: string
+
+      - name: Close Pull Request
+        id: closepullrequest
+        uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1 # v1
+        with:
+          action: "close"
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_ADMIN }}
+          github_id_token: ${{ steps.idtoken.outputs.result }} # Required: this SWA uses GitHub OIDC deployment authorization (see build job)
