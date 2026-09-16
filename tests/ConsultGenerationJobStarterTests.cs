@@ -2350,6 +2350,38 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
+    public async Task ADeclaredTranscriptSlot_StampsTheTranscriptOrigin_WithoutACallerAssertion()
+    {
+        // #728: the package DECLARES the slot a transcript (expectedContent), so
+        // the origin is right even though the request carries no TranscriptInputs
+        // — the SPA never sends it, and the declaration is authoritative.
+        var minimal = V7Fixtures.Minimal();
+        var manifest = minimal with
+        {
+            SpecVersion = 13,
+            Inputs = minimal.Inputs!.Select(input => input.Id == "consult_draft"
+                ? input with { Type = WorkflowInputTypes.Text, ExpectedContent = WorkflowExpectedContent.Transcript }
+                : input).ToList()
+        };
+
+        var request = new ConsultGenerationRequest(
+            null,
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
+            {
+                ["consult_draft"] = [new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))]
+            });
+
+        var captured = await StartAndCaptureAsync(manifest, request);
+
+        Assert.Null(captured.Outcome.Error);
+        var origin = Assert.Single(Assert.Contains("consult_draft", captured.Initialize!.InputDocumentOrigins));
+        Assert.Equal(ConsultInputOriginKinds.Transcript, origin.Kind);
+        // Read like a document, only the label differs.
+        Assert.NotNull(origin.FileSha256);
+        Assert.Null(captured.OrchestrationInput!.Request.TranscriptInputs);
+    }
+
+    [Fact]
     public async Task ATranscript_HashesLikeTheSameTextAsADocument_DifferingOnlyInOrigin()
     {
         var bytes = System.Text.Encoding.UTF8.GetBytes(Referral);

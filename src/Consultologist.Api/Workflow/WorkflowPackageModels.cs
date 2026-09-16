@@ -76,7 +76,10 @@ public sealed record WorkflowPackageInputResponse(
     // and it carries its own fields and values at every depth — a v9 array
     // of objects sends its fields on the element as well as here.
     WorkflowPackageElementResponse? Items = null,
-    IReadOnlyList<WorkflowPackageFieldResponse>? Fields = null);
+    IReadOnlyList<WorkflowPackageFieldResponse>? Fields = null,
+    // v13 (#728): the declared content channel — transcript or form — so the
+    // setup form labels the slot and offers the right source. Null before 13.
+    string? ExpectedContent = null);
 
 /// <summary>
 /// One declared field of an object, as the setup form renders it (v9 § 4).

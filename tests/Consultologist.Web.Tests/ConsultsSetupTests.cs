@@ -427,6 +427,28 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ADeclaredContentChannel_LabelsTheSlot()
+    {
+        // #728: a transcript slot is a text slot (so it still offers the file
+        // upload) marked with a channel chip; a form slot names its source.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: new[]
+        {
+            new WorkflowPackageInputResponse("meeting_transcript", "Meeting transcript", false,
+                WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.Transcript),
+            new WorkflowPackageInputResponse("encounter_kind", "Encounter kind", true, WorkflowInputTypes.Enum,
+                new[] { "new_patient", "follow_up" }, ExpectedContent: WorkflowExpectedContent.Form)
+        });
+
+        var page = Render<Consults>();
+
+        var chips = page.FindAll(".input-field__channel").Select(c => c.TextContent.Trim()).ToList();
+        Assert.Contains("Transcript", chips);
+        Assert.Contains("From a form", chips);
+        // The transcript slot is still a text slot: its document upload is present.
+        Assert.NotEmpty(page.FindAll("input[type=file]"));
+    }
+
+    [Fact]
     public void AnEnumOffersNoSelectionUntilOneIsMade()
     {
         // Explicit initialisation: a plausible default is still a value nobody

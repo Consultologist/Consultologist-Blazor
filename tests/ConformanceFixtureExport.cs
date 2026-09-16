@@ -803,6 +803,56 @@ public class ConformanceFixtureExport
         Bundle("invalid-template-kind-at-v11", 11, "kind template on a v11 manifest — refused by version before the unknown-kind sentence can fire, and the v11 kind sentence follows, two sentences.",
             V12ExportFixtures.AtEleven(V12ExportFixtures.TemplateNode()));
 
+        // ----- v13 (#728): declarable input content channels — transcript and
+        // form. Generated with the gate flipped; published with the v13 prose. -----
+
+        var v12Minimal = V12Fixtures.Minimal();
+
+        // The § 7 control: one edit, nothing of v13 used.
+        Bundle("v13-minimal-is-v12-plus-a-line", 13,
+            "The migration v13 promises: a valid v12 manifest with specVersion 13 and nothing else changed.",
+            (v12Minimal with { SpecVersion = 13 }, V6Fixtures.Files(v12Minimal)));
+
+        WorkflowPackageManifest V13(WorkflowInputSpec input) => V13Fixtures.WithInput(input);
+
+        cases.Add(new Case("v13-transcript-slot", 13,
+            "A text slot the package declares a transcript: its uploaded document stamps the transcript origin, no caller assertion needed.",
+            V13(new("meeting_transcript", "Meeting transcript", Required: false,
+                Type: WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.Transcript)),
+            V6Fixtures.Files(V13(new("meeting_transcript", "Meeting transcript", Required: false,
+                Type: WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.Transcript)))));
+
+        cases.Add(new Case("v13-form-slot", 13,
+            "An enum slot the package declares a form: its value is filled from a held form response, coerced to the declared type.",
+            V13(new("encounter_kind", "Encounter kind",
+                Type: WorkflowInputTypes.Enum, Values: new List<string> { "new_patient", "follow_up" },
+                ExpectedContent: WorkflowExpectedContent.Form)),
+            V6Fixtures.Files(V13(new("encounter_kind", "Encounter kind",
+                Type: WorkflowInputTypes.Enum, Values: new List<string> { "new_patient", "follow_up" },
+                ExpectedContent: WorkflowExpectedContent.Form)))));
+
+        // The rules, each refused by name against an otherwise-valid baseline.
+        Invalid("invalid-expected-content-at-v12", 12,
+            "expectedContent on a v12 manifest. The channel arrives at 13; before it, a known field is an error, never ignored.",
+            V13(new("meeting_transcript", "Meeting transcript", Required: false,
+                Type: WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.Transcript)) with { SpecVersion = 12 });
+
+        Invalid("invalid-expected-content-unknown", 13,
+            "A content channel outside the closed set.",
+            V13(new("voicemail", "Voicemail", Required: false,
+                Type: WorkflowInputTypes.Text, ExpectedContent: "voicemail")));
+
+        Invalid("invalid-expected-content-transcript-on-number", 13,
+            "expectedContent 'transcript' on a number slot. A transcript is a document read into a text slot.",
+            V13(new("length_of_stay", "Length of stay", Required: false,
+                Type: WorkflowInputTypes.Number, ExpectedContent: WorkflowExpectedContent.Transcript)));
+
+        Invalid("invalid-expected-content-form-on-object", 13,
+            "expectedContent 'form' on an object slot. A form answer coerces to a value, never to an object.",
+            V13(new("patient", "Patient", Required: false, Type: WorkflowInputTypes.Object,
+                Fields: new List<WorkflowFieldSpec> { new("age", "Age") },
+                ExpectedContent: WorkflowExpectedContent.Form)));
+
         return cases;
     }
 

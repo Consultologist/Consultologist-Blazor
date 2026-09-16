@@ -155,6 +155,23 @@ public class SpecVersionMirrorTests
             WorkflowInputFans.ItemFields,
             Consultologist.Web.Services.Workflow.WorkflowInputFans.ItemFields);
     }
+
+    [Fact]
+    public void TheClientsExpectedContent_AreTheServers()
+    {
+        // v13 (#728): the content channels the setup form labels a slot with —
+        // a channel the server knows and the client does not is a slot the form
+        // cannot mark. The list and the version gate are both mirrored.
+        Assert.Equal(
+            WorkflowExpectedContent.All,
+            Consultologist.Web.Services.Workflow.WorkflowExpectedContent.All);
+        foreach (var version in new[] { 12, 13 })
+        {
+            Assert.Equal(
+                WorkflowExpectedContent.ForSpecVersion(version),
+                Consultologist.Web.Services.Workflow.WorkflowExpectedContent.ForSpecVersion(version));
+        }
+    }
 }
 
 /// <summary>
@@ -188,5 +205,21 @@ public class V12VocabularyMirrorTests
         // 11 — the desk drift this rung fixed must never return.
         Assert.Contains("signature", Consultologist.PackageFormat.WorkflowMacroPlaceholders.ProfileFactsFor(12));
         Assert.DoesNotContain("signature", Consultologist.PackageFormat.WorkflowMacroPlaceholders.ProfileFactsFor(11));
+    }
+}
+
+/// <summary>
+/// v13 (#728): the content-channel vocabulary the setup form assumes, pinned
+/// so the next format change fails loudly here rather than drifting silently.
+/// </summary>
+public class V13VocabularyMirrorTests
+{
+    [Fact]
+    public void TheChannels_ArriveAtThirteen()
+    {
+        Assert.Equal(
+            new[] { "transcript", "form" },
+            Consultologist.PackageFormat.WorkflowExpectedContent.ForSpecVersion(13));
+        Assert.Empty(Consultologist.PackageFormat.WorkflowExpectedContent.ForSpecVersion(12));
     }
 }

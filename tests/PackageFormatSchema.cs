@@ -326,6 +326,17 @@ internal static class PackageFormatSchema
             EnrichStructuredInput(item, properties, specVersion);
         }
 
+        // v13 (#728): the declared content channel arrives at 13. Below it the
+        // member does not exist, and the published v5–v12 bytes must not move.
+        if (specVersion < 13)
+        {
+            Remove(properties, "expectedContent");
+        }
+        else
+        {
+            Object(properties, "expectedContent")["enum"] = TypeNames(WorkflowExpectedContent.All);
+        }
+
         // Required defaults to true when absent, so it is not required here.
         item["required"] = Required("id", "label");
         Close(item);

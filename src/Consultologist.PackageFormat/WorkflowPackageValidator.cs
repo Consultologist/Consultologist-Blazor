@@ -28,7 +28,7 @@ public static class WorkflowPackageValidator
     /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
     /// are checked against the published spec-versions.json there too.
     /// </summary>
-    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12 };
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13 };
 
     /// <summary>
     /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
@@ -1064,6 +1064,37 @@ public static class WorkflowPackageValidator
         {
             errors.Add($"Input '{input.Id}' declares unknown type '{type}' (accepted: {string.Join(", ", accepted)}).");
             return; // An unknown type says nothing about whether values belong.
+        }
+
+        // v13 (#728): the declared content channel — version-gated like items
+        // and fields, then checked for membership and for fit with the value
+        // type. A transcript is a document read into a text slot; a form is a
+        // held response coerced to the slot's value type (never an object).
+        if (input.ExpectedContent is { } content)
+        {
+            if (manifest.SpecVersion < 13)
+            {
+                errors.Add($"Input '{input.Id}' declares expectedContent, which requires specVersion 13.");
+                return;
+            }
+
+            var channels = WorkflowExpectedContent.ForSpecVersion(manifest.SpecVersion);
+            if (!channels.Contains(content, StringComparer.Ordinal))
+            {
+                errors.Add($"Input '{input.Id}' declares unknown expectedContent '{content}' (accepted: {string.Join(", ", channels)}).");
+            }
+            else if (content == WorkflowExpectedContent.Transcript
+                && type != WorkflowInputTypes.Text
+                && !(type == WorkflowInputTypes.Array && WorkflowInputTypes.ElementTypeOf(input) == WorkflowInputTypes.Text))
+            {
+                errors.Add($"Input '{input.Id}' declares expectedContent 'transcript', which is only for a text slot or an array of text.");
+            }
+            else if (content == WorkflowExpectedContent.Form
+                && (type == WorkflowInputTypes.Object
+                    || (type == WorkflowInputTypes.Array && WorkflowInputTypes.ElementTypeOf(input) == WorkflowInputTypes.Object)))
+            {
+                errors.Add($"Input '{input.Id}' declares expectedContent 'form', which a slot of type '{type}' cannot be filled from.");
+            }
         }
 
         var subject = $"Input '{input.Id}'";
