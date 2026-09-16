@@ -48,8 +48,7 @@ builder.Services.AddHttpClient<IAccountEndpointService, AccountEndpointService>(
 builder.Services.AddHttpClient<ISseDiagnosticsService, SseDiagnosticsService>();
 builder.Services.AddHttpClient<IWorkflowEndpointService, WorkflowEndpointService>();
 builder.Services.AddHttpClient<IDocumentEndpointService, DocumentEndpointService>();
-// #553: the operator panel — server-gated; the client only asks.
-builder.Services.AddHttpClient<Consultologist.Web.Services.Operators.IOperatorEndpointService, Consultologist.Web.Services.Operators.OperatorEndpointService>();
+// #733: the operator panel moved to the standalone admin app (Consultologist.Admin).
 // #540: the held form responses — the setup form's picker reads them.
 builder.Services.AddHttpClient<Consultologist.Web.Services.Forms.IFormsIntakeEndpointService, Consultologist.Web.Services.Forms.FormsIntakeEndpointService>();
 builder.Services.AddScoped<Consultologist.Web.Services.AI.ConsultJobSession>();
