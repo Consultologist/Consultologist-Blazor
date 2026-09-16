@@ -76,7 +76,9 @@ public record WorkflowPackageInputResponse(
     // values at every depth. Mirrors the server's record, which is what the
     // response deserialises into.
     WorkflowPackageElementResponse? Items = null,
-    IReadOnlyList<WorkflowPackageFieldResponse>? Fields = null);
+    IReadOnlyList<WorkflowPackageFieldResponse>? Fields = null,
+    // v13 (#728): the declared content channel — transcript or form. Null before 13.
+    string? ExpectedContent = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.WorkflowPackageFieldResponse.</summary>
 public record WorkflowPackageFieldResponse(
@@ -162,6 +164,24 @@ public static class WorkflowInputTypes
 
     /// <summary>What an array may hold, keyed by version. Mirrors the server's; pinned.</summary>
     public static IReadOnlyList<string> ElementTypesFor(int specVersion) => specVersion >= 10 ? All : ElementTypes;
+}
+
+/// <summary>
+/// Mirrors Consultologist.PackageFormat.WorkflowExpectedContent (v13, #728):
+/// the declared content channel a slot expects. Pinned against the server's in
+/// SpecVersionMirrorTests.
+/// </summary>
+public static class WorkflowExpectedContent
+{
+    public const string Transcript = "transcript";
+    public const string Form = "form";
+
+    /// <summary>Every content channel the format has. Mirrors the server's; pinned.</summary>
+    public static readonly IReadOnlyList<string> All = new[] { Transcript, Form };
+
+    /// <summary>The channels one specVersion admits — none before 13. Mirrors the server's; pinned.</summary>
+    public static IReadOnlyList<string> ForSpecVersion(int specVersion) =>
+        specVersion >= 13 ? All : Array.Empty<string>();
 }
 
 /// <summary>One declared deliverable — blocks and result tabs group by these.</summary>

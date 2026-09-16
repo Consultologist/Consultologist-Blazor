@@ -67,6 +67,13 @@
                                     {
                                         <span class="muted-text input-field__optional">(optional)</span>
                                     }
+                                    @* #728: the declared content channel — a transcript slot
+                                       still takes a document (it is a text slot); the chip
+                                       tells the clinician what the package expects here. *@
+                                    @if (field.ChannelLabel is { } channel)
+                                    {
+                                        <span class="input-field__channel">@channel</span>
+                                    }
                                 </span>
                                 @* #236: a slot holds either typed text or an
                                    attached document, never both. The text is
@@ -3373,6 +3380,10 @@
       Required = input.Required;
       Type = WorkflowInputTypes.Of(input);
       Items = input.Items?.Type ?? WorkflowInputTypes.Text;
+      // #728: the declared content channel — the setup form labels the slot.
+      // A transcript slot is a text slot, so it already shows the file upload;
+      // the engine stamps the transcript origin from the declaration.
+      ExpectedContent = input.ExpectedContent;
 
       var placeholder = Id == "consult_draft"
         ? "Enter referral details, clinical context, and the consult question..."
@@ -3383,6 +3394,15 @@
     public string Id { get; }
     public string Label { get; }
     public bool Required { get; }
+    /// <summary>#728: the declared content channel (transcript/form), or null.</summary>
+    public string? ExpectedContent { get; }
+    /// <summary>The chip shown beside the label for a declared channel.</summary>
+    public string? ChannelLabel => ExpectedContent switch
+    {
+        WorkflowExpectedContent.Transcript => "Transcript",
+        WorkflowExpectedContent.Form => "From a form",
+        _ => null
+    };
 
     // v8: what control this slot renders. v9: an array's element type name
     // — the document rule reads it; the tree below holds the rest.

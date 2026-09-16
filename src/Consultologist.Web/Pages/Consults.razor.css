@@ -63,6 +63,18 @@
 	font-weight: 700;
 }
 
+/* #728: the declared content channel (transcript / from a form) as a chip. */
+.input-field__channel {
+	margin-left: 0.4rem;
+	padding: 0.05rem 0.4rem;
+	border-radius: 999px;
+	font-size: 0.72rem;
+	font-weight: 500;
+	color: var(--consultologist-accent);
+	background: var(--consultologist-accent-soft);
+	vertical-align: middle;
+}
+
 /* Run phase: collapsed draft bar over a note | run-rail grid. */
 .consult-run {
 	display: flex;
