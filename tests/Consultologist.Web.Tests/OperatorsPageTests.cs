@@ -18,6 +18,11 @@ public class OperatorsPageTests : ClientRenderTestContext
         string id, string name, string? tenantId, int consults, int tokensIn, int tokensOut) =>
         new(id, name, "organisation", tenantId, consults, tokensIn, tokensOut);
 
+    private static OperatorUsageDayResponse Day(string day, int consults, int tokensIn, int tokensOut) =>
+        new(day, consults, tokensIn, tokensOut);
+
+    private static readonly IReadOnlyList<OperatorUsageDayResponse> NoDays = Array.Empty<OperatorUsageDayResponse>();
+
     // ----- the rollup, pure -----
 
     [Fact]
@@ -68,7 +73,8 @@ public class OperatorsPageTests : ClientRenderTestContext
             {
                 Row("u1", "Dr One", "tenant-a", 3, 3000, 900),
                 Row("u3", "Dr Personal", OperatorUsageRollup.ConsumersTenantId, 1, 800, 200)
-            }));
+            },
+            NoDays));
 
         var page = Render<OperatorsPage>();
 
@@ -94,7 +100,7 @@ public class OperatorsPageTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".operators__table"));
 
         gate.SetResult(new OperatorUsageResponse(
-            "2026-08-03", "2026-09-01", new[] { Row("u1", "Dr One", "tenant-a", 3, 3000, 900) }));
+            "2026-08-03", "2026-09-01", new[] { Row("u1", "Dr One", "tenant-a", 3, 3000, 900) }, NoDays));
 
         // #691: an explicit timeout — the default 1s flaked under CI load.
         page.WaitForState(() => page.FindAll(".loading-state").Count == 0, TimeSpan.FromSeconds(5));
@@ -117,7 +123,7 @@ public class OperatorsPageTests : ClientRenderTestContext
     public void AnEmptyWindow_SaysSo()
     {
         OperatorService.GetUsageAsync(Arg.Any<string>(), Arg.Any<string>())
-            .Returns(new OperatorUsageResponse("2026-08-03", "2026-09-01", Array.Empty<OperatorUsageRowResponse>()));
+            .Returns(new OperatorUsageResponse("2026-08-03", "2026-09-01", Array.Empty<OperatorUsageRowResponse>(), NoDays));
 
         var page = Render<OperatorsPage>();
 
@@ -133,7 +139,8 @@ public class OperatorsPageTests : ClientRenderTestContext
             {
                 Row("u1", "Beta", "t", 5, 100, 50),
                 Row("u2", "Alpha", "t", 3, 9000, 100)
-            }));
+            },
+            NoDays));
         var page = Render<OperatorsPage>();
 
         // Default: consults descending — u1 first.

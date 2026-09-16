@@ -143,6 +143,39 @@ public class AccountUsageTests
         Assert.Equal((1, 100, 50), (row.ConsultsCompleted, row.TokensIn, row.TokensOut));
     }
 
+    // ----- #732: the operator daily series, pure -----
+
+    [Fact]
+    public void TheOperatorDays_SumAcrossAllAccounts_PerDay_Ordered()
+    {
+        var usage = new[]
+        {
+            new AccountUsageDay("user-1", "2026-09-02", 1, 1000, 300),
+            new AccountUsageDay("user-1", "2026-09-01", 2, 2000, 600),
+            new AccountUsageDay("user-2", "2026-09-01", 5, 9000, 2500)
+        };
+
+        var days = Consultologist.Api.Workflow.OperatorUsage.DaysOf(usage);
+
+        // One point per day with activity, ordered; both accounts' numbers add up.
+        Assert.Equal(2, days.Count);
+        Assert.Equal(
+            new Consultologist.Api.Workflow.OperatorUsageDayResponse("2026-09-01", 7, 11000, 3100),
+            days[0]);
+        Assert.Equal(
+            new Consultologist.Api.Workflow.OperatorUsageDayResponse("2026-09-02", 1, 1000, 300),
+            days[1]);
+        // The daily totals reconcile with the per-user rows over the window.
+        var rows = Consultologist.Api.Workflow.OperatorUsage.RowsOf(
+            usage, Array.Empty<Consultologist.Api.Auth.AccountDirectoryEntry>(), new Dictionary<string, string?>());
+        Assert.Equal(rows.Sum(row => row.ConsultsCompleted), days.Sum(day => day.ConsultsCompleted));
+        Assert.Equal(rows.Sum(row => (long)row.TokensIn), days.Sum(day => (long)day.TokensIn));
+    }
+
+    [Fact]
+    public void TheOperatorDays_EmptyUsage_IsEmpty() =>
+        Assert.Empty(Consultologist.Api.Workflow.OperatorUsage.DaysOf(Array.Empty<AccountUsageDay>()));
+
     // ----- the write at finalize: exactly once, never failing the job -----
 
     private static readonly PropertyInfo StateProperty =
