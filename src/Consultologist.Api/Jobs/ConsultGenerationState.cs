@@ -209,6 +209,10 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             pair => pair.Key,
             pair => pair.Value.ToList(),
             StringComparer.Ordinal);
+        State.ResolvedInputTypes ??= input.ResolvedInputTypes?.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value,
+            StringComparer.Ordinal);
         State.SkippedDocuments ??= input.SkippedDocuments?.ToList();
         State.MacroChoices ??= input.MacroChoices?.ToDictionary(
             pair => pair.Key,
@@ -1057,7 +1061,10 @@ public sealed record ConsultGenerationJobInitialize(
     string? EngineRelease = null,
     // The terminology server's release tag, beside TerminologyServerRef. Null
     // when the server carried no tag. Appended last, same rule.
-    string? TerminologyServerRelease = null);
+    string? TerminologyServerRelease = null,
+    // #729: for each union slot, the arm the supplied value matched. Null when
+    // no slot is a union. Appended last — the engine calls Initialize positionally.
+    IReadOnlyDictionary<string, string>? ResolvedInputTypes = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -1333,6 +1340,9 @@ public sealed class ConsultGenerationJobState
     // second field. A record has one or the other, never both; ToResponse
     // projects either into the one response map.
     public Dictionary<string, List<ConsultInputOrigin>>? InputDocumentOrigins { get; set; }
+    // #729: for each union slot, the arm the supplied value matched. Null for
+    // every job with no union slot and every job predating this field.
+    public Dictionary<string, string>? ResolvedInputTypes { get; set; }
     // The effective-input hash definition this job used: null/1 = draft+sections
     // (pre-v5, historical); 2 = draft only (v5/v6); 3 = the declared inputs as
     // strings (v7); 4 = the typed scalars (v8); 5 = structured values with
@@ -1690,6 +1700,7 @@ public sealed class ConsultGenerationJobState
             WorkflowPackage: WorkflowPackage,
             EffectiveInputHash: EffectiveInputHash,
             InputOrigins: ProjectInputOrigins(),
+            ResolvedInputTypes: ResolvedInputTypes,
             SkippedDocuments: SkippedDocuments,
             FailedDocuments: FailedDocuments,
             ExcludedMacros: ExcludedMacros,
