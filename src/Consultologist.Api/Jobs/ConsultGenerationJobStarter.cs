@@ -1754,9 +1754,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
             // #613/#671: a slot the caller marked a transcript stamps that
             // origin for every element it holds; every other file is a
-            // document. Only the label changes — the observed digests,
-            // extractor and page count below are computed identically.
-            var kind = request.TranscriptInputs?.Contains(id) == true
+            // document. #728: a slot the package DECLARES a transcript
+            // (expectedContent) stamps it too, so the origin is right whatever
+            // client submitted — the declaration is authoritative, the caller
+            // flag still serves an undeclared slot (the Zoom satellite). Only
+            // the label changes — the observed digests, extractor and page
+            // count below are computed identically.
+            var kind = spec?.ExpectedContent == WorkflowExpectedContent.Transcript
+                    || request.TranscriptInputs?.Contains(id) == true
                 ? ConsultInputOriginKinds.Transcript
                 : ConsultInputOriginKinds.Document;
 
