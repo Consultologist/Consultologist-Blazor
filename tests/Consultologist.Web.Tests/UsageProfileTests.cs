@@ -80,6 +80,12 @@ public class UsageProfileTests : ClientRenderTestContext
         Assert.Contains("2026-09-01", rows[0].TextContent);
         // The History link line closes the card.
         Assert.Contains("History", page.Find(".usage-history-line").TextContent);
+
+        // #732: the charts render above the table (which stays as the numbers).
+        Assert.Equal(2, page.FindAll(".usage-chart").Count);
+        Assert.NotEmpty(page.FindAll("svg.usage-chart__svg"));
+        Assert.Contains("Consults per day", page.FindAll(".usage-chart__title").Select(t => t.TextContent));
+        Assert.Contains("Tokens per day", page.FindAll(".usage-chart__title").Select(t => t.TextContent));
     }
 
     [Fact]
@@ -92,6 +98,8 @@ public class UsageProfileTests : ClientRenderTestContext
         Assert.Contains("No usage yet — counts begin with the first completed run", page.Find(".usage-empty").TextContent);
         Assert.Empty(page.FindAll(".usage-figures"));
         Assert.Empty(page.FindAll(".usage__table"));
+        // #732: no data, no chart — the empty sentence stands alone.
+        Assert.Empty(page.FindAll(".usage-chart"));
     }
 
     [Fact]

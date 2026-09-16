@@ -27,6 +27,15 @@
     font-size: 0.85rem;
 }
 
+/* #732: the two per-day charts sit side by side when there is room, and stack
+   on a narrow screen. */
+.usage-charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem 1.5rem;
+    margin-block: 0.5rem;
+}
+
 /* #682: titled groups that organise the profile cards (activation first). The
    groups are the flex children of .content-shell; cards stack within each. */
 .profile-group {
