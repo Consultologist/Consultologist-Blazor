@@ -160,6 +160,13 @@ public static class ConsultInputOriginKinds
     // have equal effectiveInputHash and differ only here. Recorded beside the
     // hash, like every kind above.
     public const string Transcript = "transcript";
+
+    // #730 (provenance@v2026.09.10): an uploaded image (PNG/JPEG/TIFF) whose
+    // text was produced by OCR. Its server-observed fields are a Document's
+    // (Extractor names the OCR build, PageCount, FileSha256, TextSha256) — and
+    // unlike a transcript, image-ness IS observed: the parser recognized the
+    // image's bytes, so this label is a server fact, not a submitter assertion.
+    public const string Image = "image";
 }
 
 public record ConsultGenerationJobStartResponse(

@@ -1815,8 +1815,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // and NormalizeInputs below is idempotent over it — so the two
                 // hashes the record carries for one document are the file and
                 // exactly the bytes the input hash saw for it.
+                // #730: an OCR'd image stamps the `image` origin, observed from
+                // the bytes — it wins over the slot's declaration (image-ness is
+                // a server fact). Every other element keeps the slot's kind.
+                var elementKind = result.FromImage ? ConsultInputOriginKinds.Image : kind;
                 slotOrigins.Add(new ConsultInputOrigin(
-                    kind,
+                    elementKind,
                     result.ExtractorId,
                     result.PageCount,
                     result.TrackedChangesResolved,

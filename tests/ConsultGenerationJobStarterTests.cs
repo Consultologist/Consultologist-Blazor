@@ -2349,6 +2349,43 @@ public class ConsultGenerationJobStarterTests
         Assert.Null(captured.OrchestrationInput!.Request.TranscriptInputs);
     }
 
+    // ----- #730: a file the engine read as an image (server-observed) -----
+
+    [Fact]
+    public async Task AnUploadedImage_IsRecordedAsReadFromAnImage_WithoutAnyDeclaration()
+    {
+        // Image-ness is observed by the extractor, not asserted by the caller:
+        // a raw image in an undeclared slot stamps the `image` origin because
+        // that is what the bytes were, precedence image > transcript > document.
+        _ocr.IsConfigured.Returns(true);
+        _ocr.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int?>(), Arg.Any<CancellationToken>())
+            .Returns(new DocumentOcrResult(DocumentOcrStatus.Extracted, Referral, "docintel/1.0.0+abc12345", null));
+
+        var request = new ConsultGenerationRequest(
+            null,
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
+            {
+                ["consult_draft"] = [new("image/png", new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0 })]
+            });
+
+        var captured = await StartV7AndCaptureAsync(request);
+
+        Assert.Null(captured.Outcome.Error);
+        var origin = Assert.Single(Assert.Contains("consult_draft", captured.Initialize!.InputDocumentOrigins));
+        Assert.Equal(ConsultInputOriginKinds.Image, origin.Kind);
+        // The witness is the OCR extractor — the same server-observed fields a
+        // document carries, only the label differs.
+        Assert.StartsWith("docintel/", origin.Extractor);
+        Assert.NotNull(origin.FileSha256);
+        Assert.NotNull(origin.TextSha256);
+    }
+
+    [Fact]
+    public void TheImageKind_IsTheKebabWord()
+    {
+        Assert.Equal("image", ConsultInputOriginKinds.Image);
+    }
+
     // #729: an optional "notes" slot accepting text OR an array of text.
     private static WorkflowInputSpec UnionNotes() =>
         new("notes", "Notes", Required: false,
