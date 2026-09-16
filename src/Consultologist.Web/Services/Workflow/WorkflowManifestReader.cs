@@ -10,7 +10,7 @@ namespace Consultologist.Web.Services.Workflow;
 /// </summary>
 public static class WorkflowManifestReader
 {
-    public sealed record PromptView(string Id, string File, IReadOnlyList<string> Variables, string? Prelude);
+    public sealed record PromptView(string Id, string File, IReadOnlyList<string> Variables, string? Prelude, bool Raw = false);
 
     /// <summary>One binding: a prompt variable, its source, and the optional concept renderer.</summary>
     public sealed record BindingView(string Variable, string From, string? As);
@@ -155,7 +155,8 @@ public static class WorkflowManifestReader
                 ReadString(prompt, "id") ?? string.Empty,
                 ReadString(prompt, "file") ?? string.Empty,
                 variables,
-                ReadString(prompt, "prelude")));
+                ReadString(prompt, "prelude"),
+                ReadBool(prompt, "raw") == true));
         }
 
         return prompts;
