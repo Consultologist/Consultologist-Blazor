@@ -73,7 +73,7 @@ internal static class PackageFormatSchema
         Object(properties, "result")["pattern"] = NodeRef;
 
         EnrichTemplating(Object(properties, "templating"));
-        EnrichPrompts(Object(properties, "prompts"));
+        EnrichPrompts(Object(properties, "prompts"), specVersion);
         EnrichNodes(Object(properties, "nodes"), specVersion);
 
         // The MANIFEST's title lives under properties — root["title"] above is
@@ -162,13 +162,22 @@ internal static class PackageFormatSchema
         Close(templating);
     }
 
-    private static void EnrichPrompts(JsonObject prompts)
+    private static void EnrichPrompts(JsonObject prompts, int specVersion)
     {
         var item = Object(prompts, "items");
         var properties = Object(item, "properties");
         Object(properties, "id")["minLength"] = 1;
         Object(properties, "file")["minLength"] = 1;
         Object(properties, "prelude")["minLength"] = 1;
+
+        // v15 (#731): the raw toggle arrives at 15; a boolean needs no
+        // enriching. Below it the member does not exist, and the published
+        // v≤14 bytes must not move.
+        if (specVersion < 15)
+        {
+            Remove(properties, "raw");
+        }
+
         Close(item);
     }
 

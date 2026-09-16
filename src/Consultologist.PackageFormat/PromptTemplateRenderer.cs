@@ -24,6 +24,16 @@ public static class PromptTemplateRenderer
         // the package, still materialises structure by its JSON kinds.
         IReadOnlyDictionary<string, WorkflowInputSpec>? declarations = null)
     {
+        // #731: a raw prompt is verbatim — no Scriban parse or render, and no
+        // variable check (it declares none). Its prelude, already verbatim,
+        // still prepends, exactly as for a rendered prompt.
+        if (prompt.Raw)
+        {
+            return string.IsNullOrEmpty(prompt.PreludeText)
+                ? prompt.TemplateText
+                : $"{prompt.PreludeText.TrimEnd()}\n\n{prompt.TemplateText}";
+        }
+
         var declared = new HashSet<string>(prompt.Variables, StringComparer.Ordinal);
         if (!declared.SetEquals(variables.Keys))
         {

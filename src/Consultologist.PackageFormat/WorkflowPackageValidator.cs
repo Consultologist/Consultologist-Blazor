@@ -28,7 +28,7 @@ public static class WorkflowPackageValidator
     /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
     /// are checked against the published spec-versions.json there too.
     /// </summary>
-    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 };
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
 
     /// <summary>
     /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
@@ -125,6 +125,25 @@ public static class WorkflowPackageValidator
             if (!files.TryGetValue(prompt.File, out var templateText))
             {
                 errors.Add($"Prompt '{prompt.Id}' file '{prompt.File}' is missing from the package.");
+                continue;
+            }
+
+            // v15 (#731): the raw toggle — version-gated like reproducible.
+            if (prompt.Raw != null && manifest.SpecVersion < 15)
+            {
+                errors.Add($"Prompt '{prompt.Id}' declares raw, which requires specVersion 15.");
+                continue;
+            }
+
+            // A raw prompt is verbatim: it interpolates nothing, so it declares
+            // no variables, and its text is never parsed as a Scriban template.
+            if (prompt.Raw == true)
+            {
+                if (prompt.Variables.Count > 0)
+                {
+                    errors.Add($"Prompt '{prompt.Id}' is raw and must declare no variables; a raw prompt renders its text verbatim.");
+                }
+
                 continue;
             }
 
