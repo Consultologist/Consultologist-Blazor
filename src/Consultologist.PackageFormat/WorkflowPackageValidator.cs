@@ -28,7 +28,7 @@ public static class WorkflowPackageValidator
     /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
     /// are checked against the published spec-versions.json there too.
     /// </summary>
-    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13 };
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 };
 
     /// <summary>
     /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
@@ -1027,6 +1027,56 @@ public static class WorkflowPackageValidator
 
         var accepted = WorkflowInputTypes.ForSpecVersion(manifest.SpecVersion);
         var type = WorkflowInputTypes.Of(input);
+
+        // v14 (#729): a union type — several accepted value types, first-match
+        // at start. Version-gated; every arm known and unique; the slot's one
+        // items/fields/values serves the single sub-declaring arm, so a union
+        // carries at most one of array/object/enum. Content channels stay off a
+        // union. Validated here end to end; a single type falls through below.
+        if (input.Type is { IsUnion: true })
+        {
+            var arms = WorkflowInputTypes.TypesOf(input);
+
+            if (manifest.SpecVersion < 14)
+            {
+                errors.Add($"Input '{input.Id}' declares a union type, which requires specVersion 14.");
+                return;
+            }
+
+            var unknown = arms.FirstOrDefault(arm => !accepted.Contains(arm, StringComparer.Ordinal));
+            if (unknown != null)
+            {
+                errors.Add($"Input '{input.Id}' declares unknown type '{unknown}' (accepted: {string.Join(", ", accepted)}).");
+                return;
+            }
+
+            if (arms.Distinct(StringComparer.Ordinal).Count() != arms.Count)
+            {
+                errors.Add($"Input '{input.Id}' names a type more than once in its union.");
+                return;
+            }
+
+            var structured = arms
+                .Where(arm => arm is WorkflowInputTypes.Array or WorkflowInputTypes.Object or WorkflowInputTypes.Enum)
+                .ToList();
+            if (structured.Count > 1)
+            {
+                errors.Add($"Input '{input.Id}' unions '{structured[0]}' and '{structured[1]}', but a union carries at most one type that needs a sub-declaration (items, fields or values).");
+                return;
+            }
+
+            if (input.ExpectedContent != null)
+            {
+                errors.Add($"Input '{input.Id}' declares expectedContent on a union type; a content channel is only for a single-type slot.");
+                return;
+            }
+
+            // The one items/fields/values belongs to the sub-declaring arm (or,
+            // for an all-scalar union, to the primary, which carries none).
+            var shapeType = structured.Count == 1 ? structured[0] : type;
+            ValidateShape(manifest.SpecVersion, $"Input '{input.Id}'", shapeType, input.Items, input.Fields, input.Values, errors);
+            return;
+        }
 
         if (manifest.SpecVersion < 9)
         {

@@ -309,8 +309,10 @@ internal static class PackageFormatSchema
         else if (specVersion < 9)
         {
             // The v8 type set, keyed by version so this schema's bytes do not
-            // move when a later version widens the vocabulary.
-            Object(properties, "type")["enum"] = TypeNames(WorkflowInputTypes.ForSpecVersion(8));
+            // move when a later version widens the vocabulary. Set explicitly
+            // (not mutated) because the exporter cannot see through the
+            // WorkflowTypeSet converter #729 put on `type`.
+            properties["type"] = TypeSchema(WorkflowInputTypes.ForSpecVersion(8), allowUnion: false);
             EnrichValues(Object(properties, "values"));
             Remove(properties, "items");
             Remove(properties, "fields");
@@ -350,7 +352,9 @@ internal static class PackageFormatSchema
     /// </summary>
     private static void EnrichStructuredInput(JsonObject item, JsonObject properties, int specVersion)
     {
-        Object(properties, "type")["enum"] = TypeNames(WorkflowInputTypes.ForSpecVersion(specVersion));
+        // v14 (#729): a type name, or an array of ≥2 for a union. Set explicitly
+        // (not mutated) — the exporter cannot see through the type converter.
+        properties["type"] = TypeSchema(WorkflowInputTypes.ForSpecVersion(specVersion), allowUnion: specVersion >= 14);
         // The exporter cannot see through WorkflowElementSpecConverter (as with
         // bindings): `items` arrives bare. v9 wrote a string of the element
         // types; v10 (§ 7) admits an element spec object too.
@@ -383,7 +387,7 @@ internal static class PackageFormatSchema
             ["required"] = Required("type", "items")
         };
 
-        item["allOf"] = new JsonArray(
+        var singleTypeClauses = new JsonArray(
             // items: required for an array, forbidden otherwise.
             new JsonObject
             {
@@ -405,6 +409,31 @@ internal static class PackageFormatSchema
                 ["then"] = new JsonObject { ["required"] = Required("values") },
                 ["else"] = new JsonObject { ["not"] = new JsonObject { ["required"] = Required("values") } }
             });
+
+        // v14 (#729): the single-type sub-declaration rules apply when `type` is
+        // absent or a string; a union (an array-valued `type`) is exempt — its
+        // one items/fields/values serves the sub-declaring arm, which the C#
+        // validator checks. Below 14 `type` is never an array, so the clauses
+        // apply unwrapped and the published bytes do not move.
+        if (specVersion >= 14)
+        {
+            item["allOf"] = new JsonArray(new JsonObject
+            {
+                ["if"] = new JsonObject
+                {
+                    ["not"] = new JsonObject
+                    {
+                        ["properties"] = new JsonObject { ["type"] = new JsonObject { ["type"] = "array" } },
+                        ["required"] = Required("type")
+                    }
+                },
+                ["then"] = new JsonObject { ["allOf"] = singleTypeClauses }
+            });
+        }
+        else
+        {
+            item["allOf"] = singleTypeClauses;
+        }
     }
 
     private static void EnrichValues(JsonObject values)
@@ -482,6 +511,33 @@ internal static class PackageFormatSchema
 
     private static JsonArray TypeNames(IEnumerable<string> names) =>
         new(names.Select(name => (JsonNode?)name).ToArray());
+
+    /// <summary>
+    /// v14 (#729): the `type` schema — a type name, or (when allowUnion) a
+    /// oneOf that also admits an array of ≥2 distinct names for a union.
+    /// </summary>
+    private static JsonNode TypeSchema(IReadOnlyList<string> names, bool allowUnion)
+    {
+        JsonObject Single() => new() { ["type"] = "string", ["enum"] = TypeNames(names) };
+
+        if (!allowUnion)
+        {
+            return Single();
+        }
+
+        return new JsonObject
+        {
+            ["oneOf"] = new JsonArray(
+                Single(),
+                new JsonObject
+                {
+                    ["type"] = "array",
+                    ["items"] = new JsonObject { ["type"] = "string", ["enum"] = TypeNames(names) },
+                    ["minItems"] = 2,
+                    ["uniqueItems"] = true
+                })
+        };
+    }
 
     private static void EnrichResults(JsonObject results, int specVersion)
     {

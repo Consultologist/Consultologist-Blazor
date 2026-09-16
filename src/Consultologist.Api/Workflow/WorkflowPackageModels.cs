@@ -79,7 +79,10 @@ public sealed record WorkflowPackageInputResponse(
     IReadOnlyList<WorkflowPackageFieldResponse>? Fields = null,
     // v13 (#728): the declared content channel — transcript or form — so the
     // setup form labels the slot and offers the right source. Null before 13.
-    string? ExpectedContent = null);
+    string? ExpectedContent = null,
+    // v14 (#729): a union slot's accepted types, in try order (Type is the
+    // primary/first arm). Null for a single-type slot.
+    IReadOnlyList<string>? Types = null);
 
 /// <summary>
 /// One declared field of an object, as the setup form renders it (v9 § 4).

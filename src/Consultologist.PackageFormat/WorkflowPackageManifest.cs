@@ -68,11 +68,80 @@ public sealed record WorkflowMacroSpec(
 /// Nothing here travels into the orchestrator — a typed value renders as its
 /// canonical string, so the resolver and every durable payload are untouched.
 /// </summary>
+/// <summary>
+/// v14 (#729): a slot's declared type — one value type, or a union of several
+/// ("this or that", e.g. <c>type: [text, array]</c>). On the wire a lone type
+/// is the bare v≤13 string and round-trips byte for byte; a union is a JSON
+/// array of type names, in the order the engine tries them (first match wins).
+/// The value types only — the content channel (#728 expectedContent) is a
+/// separate, single-valued axis. Fields and array elements stay single-typed.
+/// </summary>
+[JsonConverter(typeof(WorkflowTypeSetConverter))]
+public sealed record WorkflowTypeSet(IReadOnlyList<string> Types)
+{
+    /// <summary>The first arm — the single type of a non-union slot, and the primary of a union.</summary>
+    public string Primary => Types[0];
+
+    public bool IsUnion => Types.Count > 1;
+
+    /// <summary>A lone type name is the v≤13 form.</summary>
+    public bool IsBare => Types.Count == 1;
+
+    public static implicit operator WorkflowTypeSet?(string? type) =>
+        type is null ? null : new WorkflowTypeSet(new[] { type });
+
+    public override string ToString() => string.Join(" | ", Types);
+}
+
+public sealed class WorkflowTypeSetConverter : JsonConverter<WorkflowTypeSet>
+{
+    public override WorkflowTypeSet Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            return new WorkflowTypeSet(new[] { reader.GetString()! });
+        }
+
+        if (reader.TokenType != JsonTokenType.StartArray)
+        {
+            throw new JsonException("type must be a type name or an array of type names.");
+        }
+
+        var names = JsonSerializer.Deserialize<List<string>>(ref reader, options)
+            ?? throw new JsonException("type must be a type name or an array of type names.");
+
+        if (names.Count == 0)
+        {
+            throw new JsonException("A union type must name at least one type.");
+        }
+
+        return new WorkflowTypeSet(names);
+    }
+
+    public override void Write(Utf8JsonWriter writer, WorkflowTypeSet value, JsonSerializerOptions options)
+    {
+        // A lone arm writes the bare string — a v≤13 manifest round-trips byte for byte.
+        if (value.IsBare)
+        {
+            writer.WriteStringValue(value.Primary);
+            return;
+        }
+
+        writer.WriteStartArray();
+        foreach (var name in value.Types)
+        {
+            writer.WriteStringValue(name);
+        }
+
+        writer.WriteEndArray();
+    }
+}
+
 public sealed record WorkflowInputSpec(
     string Id,
     string Label,
     bool Required = true,
-    string? Type = null,
+    WorkflowTypeSet? Type = null,
     List<string>? Values = null,
     // v9 (package-format-v9-design.md § 4): the element type of an array —
     // required for `array`, forbidden otherwise — and the fields of an object,
@@ -233,8 +302,14 @@ public static class WorkflowInputTypes
     /// </summary>
     public static IReadOnlyList<string> ForSpecVersion(int specVersion) => specVersion >= 9 ? All : V8Types;
 
-    /// <summary>An absent type is text — the default that keeps v7 declarations valid.</summary>
-    public static string Of(WorkflowInputSpec input) => input.Type ?? Text;
+    /// <summary>
+    /// An absent type is text — the default that keeps v7 declarations valid.
+    /// For a union (#729) this is the PRIMARY (first) arm; TypesOf gives them all.
+    /// </summary>
+    public static string Of(WorkflowInputSpec input) => input.Type?.Primary ?? Text;
+
+    /// <summary>v14 (#729): every declared arm, in try order; a single type or the default is one arm.</summary>
+    public static IReadOnlyList<string> TypesOf(WorkflowInputSpec input) => input.Type?.Types ?? new[] { Text };
 
     /// <summary>The type an array's elements have; text when items is absent.</summary>
     public static string ElementTypeOf(WorkflowInputSpec input) => input.Items?.Type ?? Text;
