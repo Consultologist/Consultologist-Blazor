@@ -1,5 +1,5 @@
 using Bunit;
-using Consultologist.Web.Shared;
+using Consultologist.UI.Components;
 using Xunit;
 
 namespace Consultologist.Web.Tests;

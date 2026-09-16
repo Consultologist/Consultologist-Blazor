@@ -1,15 +1,15 @@
 using System.Text;
 using System.Web;
 
-namespace Consultologist.Web.Services.Charts;
+namespace Consultologist.UI.Charts;
 
 /// <summary>
-/// #732: the geometry rendered to an SVG markup string — a pure function, the
-/// way <see cref="Provenance.RunDagDiagram"/> builds Mermaid text. Building the
-/// string (rather than authoring the SVG in the .razor) is also the only way to
-/// emit an SVG <c>&lt;text&gt;</c> element, which Razor reserves as a control
-/// keyword. Colours are class names only — never a literal — so the component's
-/// CSS keeps them on the theme tokens; a test asserts the absence of any colour.
+/// #732: the geometry rendered to an SVG markup string — a pure function.
+/// Building the string (rather than authoring the SVG in the .razor) is also the
+/// only way to emit an SVG <c>&lt;text&gt;</c> element, which Razor reserves as a
+/// control keyword. Colours are class names only — never a literal — so the
+/// component's CSS keeps them on the theme tokens; a test asserts the absence of
+/// any colour.
 /// </summary>
 public static class UsageChartSvg
 {

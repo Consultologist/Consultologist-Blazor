@@ -1,6 +1,6 @@
 using Bunit;
-using Consultologist.Web.Services.Charts;
-using Consultologist.Web.Shared;
+using Consultologist.UI.Charts;
+using Consultologist.UI.Components;
 
 namespace Consultologist.Web.Tests;
 

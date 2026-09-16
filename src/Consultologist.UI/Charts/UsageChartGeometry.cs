@@ -1,16 +1,15 @@
 using System.Globalization;
 
-namespace Consultologist.Web.Services.Charts;
+namespace Consultologist.UI.Charts;
 
 /// <summary>
 /// #732: the usage bar chart as a pure function — categories in (a day or an
-/// organisation), SVG geometry out. Deterministic and unit-tested the way
-/// <see cref="Provenance.RunDagDiagram"/> is, but with one difference that is
-/// the whole reason this is inline SVG rather than a canvas library: it emits
-/// <em>geometry and segment roles only, never colours</em>. The colours live
-/// in the component's CSS as <c>var(--consultologist-*)</c> tokens, so a bar
-/// recolours with the theme automatically — a thing Mermaid's frozen hex cannot
-/// do. A test asserts this output carries no colour literal.
+/// organisation), SVG geometry out. Deterministic and unit-tested, but with one
+/// difference that is the whole reason this is inline SVG rather than a canvas
+/// library: it emits <em>geometry and segment roles only, never colours</em>.
+/// The colours live in the component's CSS as <c>var(--consultologist-*)</c>
+/// tokens, so a bar recolours with the theme automatically. A test asserts this
+/// output carries no colour literal.
 /// </summary>
 public static class UsageChartGeometry
 {
