@@ -178,13 +178,17 @@ public static class WorkflowExpectedContent
 {
     public const string Transcript = "transcript";
     public const string Form = "form";
+    // v16 (#730): the image channel.
+    public const string Image = "image";
 
     /// <summary>Every content channel the format has. Mirrors the server's; pinned.</summary>
-    public static readonly IReadOnlyList<string> All = new[] { Transcript, Form };
+    public static readonly IReadOnlyList<string> All = new[] { Transcript, Form, Image };
 
-    /// <summary>The channels one specVersion admits — none before 13. Mirrors the server's; pinned.</summary>
+    private static readonly IReadOnlyList<string> V13Channels = new[] { Transcript, Form };
+
+    /// <summary>The channels one specVersion admits — none before 13, image at 16. Mirrors the server's; pinned.</summary>
     public static IReadOnlyList<string> ForSpecVersion(int specVersion) =>
-        specVersion >= 13 ? All : Array.Empty<string>();
+        specVersion >= 16 ? All : specVersion >= 13 ? V13Channels : Array.Empty<string>();
 }
 
 /// <summary>One declared deliverable — blocks and result tabs group by these.</summary>

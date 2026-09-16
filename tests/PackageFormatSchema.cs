@@ -345,7 +345,9 @@ internal static class PackageFormatSchema
         }
         else
         {
-            Object(properties, "expectedContent")["enum"] = TypeNames(WorkflowExpectedContent.All);
+            // v16 (#730): the channel set is keyed by version — image joins at
+            // 16, so v13–15 schemas keep [transcript, form] byte-for-byte.
+            Object(properties, "expectedContent")["enum"] = TypeNames(WorkflowExpectedContent.ForSpecVersion(specVersion));
         }
 
         // Required defaults to true when absent, so it is not required here.

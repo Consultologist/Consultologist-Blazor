@@ -665,6 +665,79 @@ public class DocumentExtractionTests
         Assert.Equal(DocumentExtractionOutcomes.TooMuchText, result.Outcome);
     }
 
+    // ---- image (#730) --------------------------------------------------
+
+    [Theory]
+    [InlineData("png", new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A })]
+    [InlineData("jpeg", new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 })]
+    [InlineData("tiff-le", new byte[] { 0x49, 0x49, 0x2A, 0x00 })]
+    [InlineData("tiff-be", new byte[] { 0x4D, 0x4D, 0x00, 0x2A })]
+    public async Task AnUploadedImage_WithConfiguredOcr_IsExtractedAndFlaggedFromImage(string _, byte[] magic)
+    {
+        // A raw image (no PDF wrapper) is recognized by its magic bytes, sent to
+        // OCR, and returned as extracted text — flagged FromImage so the starter
+        // can stamp the image origin. The DI prebuilt-read model takes the bytes
+        // unchanged, so nothing here depends on the pixels being a real image.
+        var ocr = FakeDocumentOcr.Returning(
+            DocumentOcrStatus.Extracted, "Referral: 65M, stage IIIA.", "docintel/1.0.0+abc12345");
+
+        var result = await ExtractWithOcrAsync(Image(magic), ocr);
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.Equal("Referral: 65M, stage IIIA.", result.Text);
+        Assert.StartsWith("docintel/", result.ExtractorId);
+        Assert.True(result.FromImage);
+        Assert.True(ocr.Invoked);
+    }
+
+    [Fact]
+    public async Task AnUploadedImage_WithNoOcr_IsUnsupportedType()
+    {
+        // Without OCR the engine cannot read an image at all, so it refuses it
+        // as an unsupported type rather than pretending it has a text layer.
+        var result = await ExtractWithOcrAsync(Image(Png), ocr: null);
+
+        Assert.Equal(DocumentExtractionOutcomes.UnsupportedType, result.Outcome);
+        Assert.Null(result.Text);
+        Assert.False(result.FromImage);
+    }
+
+    [Fact]
+    public async Task AnUploadedImage_WithUnconfiguredOcr_IsUnsupportedTypeAndNeverCallsTheService()
+    {
+        var ocr = FakeDocumentOcr.Returning(DocumentOcrStatus.Extracted, "unused", isConfigured: false);
+
+        var result = await ExtractWithOcrAsync(Image(Png), ocr);
+
+        Assert.Equal(DocumentExtractionOutcomes.UnsupportedType, result.Outcome);
+        Assert.False(ocr.Invoked);
+    }
+
+    [Fact]
+    public async Task AnUploadedImage_WhoseOcrIsLowConfidence_IsGatedLikeAScan()
+    {
+        // The per-account confidence gate is shared with PDF-OCR; an image is
+        // held to the same bar.
+        var ocr = FakeDocumentOcr.Returning(
+            DocumentOcrStatus.Extracted, "faint scan text", "docintel/1.0.0", meanConfidence: 0.40);
+
+        var result = await ExtractWithOcrAsync(Image(Png), ocr, ocrMinConfidence: 0.80);
+
+        Assert.Equal(DocumentExtractionOutcomes.OcrLowConfidence, result.Outcome);
+    }
+
+    [Fact]
+    public void PlainText_IsNotClaimedAsAnImage()
+    {
+        // The guard: the image matcher keys on binary magic bytes, so prose
+        // still falls to the text decoder, never to OCR.
+        var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes("A plain referral note."));
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.Equal("text/1", result.ExtractorId);
+        Assert.False(result.FromImage);
+    }
+
     // ---- docx ----------------------------------------------------------
 
     [Fact]
@@ -970,6 +1043,21 @@ public class DocumentExtractionTests
     /// fax looks like. The image is a 1x1 JPEG inline rather than a checked-in
     /// file, keeping to this suite's no-committed-binaries convention.
     /// </summary>
+    /// <summary>The PNG signature — the magic bytes the image matcher keys on.</summary>
+    private static readonly byte[] Png = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+
+    /// <summary>
+    /// A raw image body: its format magic bytes plus a little padding. The DI
+    /// prebuilt-read model (faked here) takes the bytes unchanged, so the matcher
+    /// only ever reads the leading signature — no valid pixel data is needed.
+    /// </summary>
+    private static byte[] Image(byte[] magic)
+    {
+        var bytes = new byte[magic.Length + 16];
+        Array.Copy(magic, bytes, magic.Length);
+        return bytes;
+    }
+
     private static byte[] ImageOnlyPdf(int pages = 1)
     {
         const string OnePixelJpeg =

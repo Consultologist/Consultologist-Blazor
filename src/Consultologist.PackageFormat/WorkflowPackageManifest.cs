@@ -345,24 +345,34 @@ public static class WorkflowInputTypes
 /// extracted text fills a text slot and whose origin is stamped `transcript`
 /// (a submitter assertion, not read from the bytes); a <c>form</c> is a slot
 /// whose value is meant to be filled from a held form response, coerced to the
-/// slot's declared value type. Both arrive at specVersion 13.
+/// slot's declared value type. Transcript and form arrive at specVersion 13.
+/// v16 (#730): <c>image</c> — an uploaded image OCR'd into a text slot; its
+/// origin is stamped `image`, observed from the bytes (unlike transcript).
 /// </summary>
 public static class WorkflowExpectedContent
 {
     public const string Transcript = "transcript";
     public const string Form = "form";
 
+    // v16 (#730): the image channel.
+    public const string Image = "image";
+
     /// <summary>Every content channel the format has, as of the newest version.</summary>
-    public static readonly IReadOnlyList<string> All = new[] { Transcript, Form };
+    public static readonly IReadOnlyList<string> All = new[] { Transcript, Form, Image };
+
+    // The v13 set — transcript and form — kept so a v13–v15 manifest's refusal
+    // reads exactly as the conformance suite recorded it.
+    private static readonly IReadOnlyList<string> V13Channels = new[] { Transcript, Form };
 
     private static readonly IReadOnlyList<string> None = Array.Empty<string>();
 
     /// <summary>
-    /// The channels one specVersion admits — none before 13, keyed by version
-    /// so a v≤12 manifest's refusal reads exactly as the conformance suite
-    /// recorded it (the WorkflowInputTypes.ForSpecVersion precedent).
+    /// The channels one specVersion admits, keyed by version (the
+    /// WorkflowInputTypes.ForSpecVersion precedent): none before 13, transcript
+    /// and form at 13, image joining at 16.
     /// </summary>
-    public static IReadOnlyList<string> ForSpecVersion(int specVersion) => specVersion >= 13 ? All : None;
+    public static IReadOnlyList<string> ForSpecVersion(int specVersion) =>
+        specVersion >= 16 ? All : specVersion >= 13 ? V13Channels : None;
 }
 
 /// <summary>

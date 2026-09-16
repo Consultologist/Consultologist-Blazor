@@ -16,6 +16,10 @@ public static class DocumentExtractionOutcomes
     // because the copy differs, and because it is the case #188's fax
     // parity is blocked on until OCR (#239).
     public const string NoTextLayer = "no-text-layer";
+    // #730: a recognized raw image (PNG/JPEG/TIFF). Like no-text-layer, a pure
+    // refusal that routes to the OCR edge — an image has no local text layer,
+    // so it always OCRs (or is refused when OCR is unconfigured).
+    public const string ImageNeedsOcr = "image-needs-ocr";
     public const string Empty = "empty";
     public const string TooLarge = "too-large";
     public const string TooManyPages = "too-many-pages";
@@ -53,7 +57,11 @@ internal sealed record DocumentExtractionResult(
     // view of them. Recorded because taking that view drops content that was
     // in the file — correct, since the author deleted it, but still a drop,
     // and this project makes its drops visible.
-    bool TrackedChangesResolved = false)
+    bool TrackedChangesResolved = false,
+    // #730: the extracted text came from OCR'ing a raw image (not a PDF/DOCX/
+    // text), so the starter stamps the `image` origin. The server observed it
+    // — image-ness is in the bytes, unlike a transcript's assertion.
+    bool FromImage = false)
 {
     internal static DocumentExtractionResult Refused(string outcome) => new(outcome, null, null, null);
 
@@ -67,8 +75,9 @@ internal sealed record DocumentExtractionResult(
         string text,
         string extractorId,
         int? pageCount,
-        bool trackedChangesResolved = false) =>
-        new(DocumentExtractionOutcomes.Extracted, text, extractorId, pageCount, trackedChangesResolved);
+        bool trackedChangesResolved = false,
+        bool fromImage = false) =>
+        new(DocumentExtractionOutcomes.Extracted, text, extractorId, pageCount, trackedChangesResolved, fromImage);
 }
 
 /// <summary>
@@ -194,7 +203,11 @@ internal static class DocumentExtraction
         new DocumentFormat(DocxDocumentExtractor.Matches, DocxDocumentExtractor.Extract),
         // #655: before the text fallback, so HTML yields visible text rather
         // than the tag soup the decoder would return for it.
-        new DocumentFormat(HtmlDocumentExtractor.Matches, HtmlDocumentExtractor.Extract)
+        new DocumentFormat(HtmlDocumentExtractor.Matches, HtmlDocumentExtractor.Extract),
+        // #730: a recognized raw image has no local parser — it returns
+        // image-needs-ocr, and the impure edge routes it to OCR (or refuses it
+        // when OCR is unconfigured).
+        new DocumentFormat(ImageDocumentExtractor.Matches, ImageDocumentExtractor.Extract)
     ];
 
     /// <summary>
@@ -289,8 +302,15 @@ internal static class DocumentExtraction
         // is already released (the finally in the Task.Run delegate ran before
         // the await above returned), so this network call is outside the gate
         // and outside MaxParseDuration — the OCR reader owns its own clock.
-        if (ocr is { IsConfigured: true }
-            && string.Equals(result.Outcome, DocumentExtractionOutcomes.NoTextLayer, StringComparison.Ordinal)
+        // #730: a recognized raw image (image-needs-ocr) routes here too — it
+        // has no local text layer, so it always OCRs. Its `fromImage` marks the
+        // extracted result so the starter stamps the `image` origin.
+        var fromImage = string.Equals(result.Outcome, DocumentExtractionOutcomes.ImageNeedsOcr, StringComparison.Ordinal);
+        var needsOcr = fromImage
+            || string.Equals(result.Outcome, DocumentExtractionOutcomes.NoTextLayer, StringComparison.Ordinal);
+
+        if (needsOcr
+            && ocr is { IsConfigured: true }
             && result.PageCount is int pages
             && pages <= OcrMaxPages)
         {
@@ -299,12 +319,20 @@ internal static class DocumentExtraction
             return ocrResult.Status switch
             {
                 DocumentOcrStatus.Extracted =>
-                    AcceptOrGateOcr(ocrResult, result.PageCount, ocrMinConfidence),
+                    AcceptOrGateOcr(ocrResult, result.PageCount, ocrMinConfidence, fromImage),
                 DocumentOcrStatus.Empty =>
                     DocumentExtractionResult.Refused(DocumentExtractionOutcomes.Empty),
                 _ =>
                     DocumentExtractionResult.Refused(DocumentExtractionOutcomes.OcrUnavailable),
             };
+        }
+
+        // #730: an image the engine cannot OCR (no OCR configured, or over the
+        // page cap) is unprocessable — there is no local image parser. A
+        // no-text-layer PDF without OCR keeps its own outcome (today's behaviour).
+        if (fromImage)
+        {
+            return DocumentExtractionResult.Refused(DocumentExtractionOutcomes.UnsupportedType);
         }
 
         return result;
@@ -319,14 +347,14 @@ internal static class DocumentExtraction
     /// whitespace-only OCR output still folds to <c>empty</c>.
     /// </summary>
     private static DocumentExtractionResult AcceptOrGateOcr(
-        DocumentOcrResult ocr, int? pageCount, double? minConfidence)
+        DocumentOcrResult ocr, int? pageCount, double? minConfidence, bool fromImage = false)
     {
         if (minConfidence is double min && ocr.MeanConfidence is double mean && mean < min)
         {
             return DocumentExtractionResult.Refused(DocumentExtractionOutcomes.OcrLowConfidence, pageCount);
         }
 
-        return Normalize(DocumentExtractionResult.Extracted(ocr.Text!, ocr.ExtractorId!, pageCount));
+        return Normalize(DocumentExtractionResult.Extracted(ocr.Text!, ocr.ExtractorId!, pageCount, fromImage: fromImage));
     }
 
     internal static DocumentExtractionResult Extract(byte[] bytes)

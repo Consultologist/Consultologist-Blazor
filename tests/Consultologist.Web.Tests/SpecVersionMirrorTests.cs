@@ -165,7 +165,7 @@ public class SpecVersionMirrorTests
         Assert.Equal(
             WorkflowExpectedContent.All,
             Consultologist.Web.Services.Workflow.WorkflowExpectedContent.All);
-        foreach (var version in new[] { 12, 13 })
+        foreach (var version in new[] { 12, 13, 15, 16 })
         {
             Assert.Equal(
                 WorkflowExpectedContent.ForSpecVersion(version),
@@ -221,5 +221,24 @@ public class V13VocabularyMirrorTests
             new[] { "transcript", "form" },
             Consultologist.PackageFormat.WorkflowExpectedContent.ForSpecVersion(13));
         Assert.Empty(Consultologist.PackageFormat.WorkflowExpectedContent.ForSpecVersion(12));
+    }
+}
+
+/// <summary>
+/// v16 (#730): the image content channel the setup form assumes, pinned so the
+/// next format change fails loudly here rather than drifting silently.
+/// </summary>
+public class V16VocabularyMirrorTests
+{
+    [Fact]
+    public void TheImageChannel_ArrivesAtSixteen()
+    {
+        Assert.Equal(
+            new[] { "transcript", "form", "image" },
+            Consultologist.PackageFormat.WorkflowExpectedContent.ForSpecVersion(16));
+        // 15 still knows only the two v13 channels — image is not yet in the set.
+        Assert.Equal(
+            new[] { "transcript", "form" },
+            Consultologist.PackageFormat.WorkflowExpectedContent.ForSpecVersion(15));
     }
 }
