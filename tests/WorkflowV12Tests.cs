@@ -62,17 +62,17 @@ public class WorkflowV12GateTests
         // last rung, after the registry's one-version v12 publication.
         Assert.Contains(12, WorkflowPackageValidator.AcceptedSpecVersions);
         Assert.Contains(12, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions);
-        Assert.Equal(12, Consultologist.Api.Workflow.WorkflowPackageStore.SupportedSpecVersions.Max());
 
         var result = V12Fixtures.Validate(V12Fixtures.Minimal());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
 
     [Fact]
-    public void ThirteenIsRefused_NamingTheSet()
+    public void FourteenIsRefused_NamingTheSet()
     {
-        Assert.Contains(V12Fixtures.Validate(V12Fixtures.Minimal() with { SpecVersion = 13 }).Errors,
-            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10, 11 or 12"));
+        // 13 is accepted since #728; the version after it is what the set refuses.
+        Assert.Contains(V12Fixtures.Validate(V12Fixtures.Minimal() with { SpecVersion = 14 }).Errors,
+            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10, 11, 12 or 13"));
     }
 
     [Fact]
