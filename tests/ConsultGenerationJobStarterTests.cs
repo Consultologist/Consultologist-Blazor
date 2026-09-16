@@ -2349,6 +2349,77 @@ public class ConsultGenerationJobStarterTests
         Assert.Null(captured.OrchestrationInput!.Request.TranscriptInputs);
     }
 
+    // #729: an optional "notes" slot accepting text OR an array of text.
+    private static WorkflowInputSpec UnionNotes() =>
+        new("notes", "Notes", Required: false,
+            Type: new WorkflowTypeSet(new[] { WorkflowInputTypes.Text, WorkflowInputTypes.Array }),
+            Items: WorkflowInputTypes.Text);
+
+    [Fact]
+    public void MatchUnionArm_TakesTheFirstFittingArm()
+    {
+        var notes = UnionNotes();
+
+        Assert.Equal(("text", (string?)null),
+            ConsultGenerationJobStarter.MatchUnionArm(notes, ConsultInputValue.OfText("a single note")));
+        Assert.Equal(("array", (string?)null),
+            ConsultGenerationJobStarter.MatchUnionArm(notes,
+                ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("one"), ConsultInputValue.OfText("two") })));
+
+        var (arm, complaint) = ConsultGenerationJobStarter.MatchUnionArm(notes, ConsultInputValue.OfNumber("42"));
+        Assert.Null(arm);
+        Assert.Equal("accepts a text or an array of text; got a number.", complaint);
+    }
+
+    [Fact]
+    public void ResolveEffectiveInputs_RecordsTheMatchedUnionArm()
+    {
+        var minimal = V7Fixtures.Minimal();
+        var manifest = minimal with
+        {
+            SpecVersion = 14,
+            Inputs = new List<WorkflowInputSpec>(minimal.Inputs!) { UnionNotes() }
+        };
+
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue>
+            {
+                ["consult_draft"] = ConsultInputValue.OfText("A referral."),
+                ["notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("one"), ConsultInputValue.OfText("two") })
+            });
+
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(request, manifest);
+
+        Assert.Null(resolution.Error);
+        Assert.Equal("array", resolution.ResolvedInputTypes!["notes"]);
+        // A single-type slot is never recorded — only the union.
+        Assert.DoesNotContain("consult_draft", resolution.ResolvedInputTypes.Keys);
+    }
+
+    [Fact]
+    public void ResolveEffectiveInputs_RefusesAUnionValueMatchingNoArm()
+    {
+        var minimal = V7Fixtures.Minimal();
+        var manifest = minimal with
+        {
+            SpecVersion = 14,
+            Inputs = new List<WorkflowInputSpec>(minimal.Inputs!) { UnionNotes() }
+        };
+
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue>
+            {
+                ["consult_draft"] = ConsultInputValue.OfText("A referral."),
+                ["notes"] = ConsultInputValue.OfNumber("42")
+            });
+
+        var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(request, manifest);
+
+        Assert.Contains("accepts a text or an array of text; got a number", resolution.Error);
+    }
+
     [Fact]
     public async Task ADeclaredTranscriptSlot_StampsTheTranscriptOrigin_WithoutACallerAssertion()
     {

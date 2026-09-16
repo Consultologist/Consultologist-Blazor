@@ -853,6 +853,44 @@ public class ConformanceFixtureExport
                 Fields: new List<WorkflowFieldSpec> { new("age", "Age") },
                 ExpectedContent: WorkflowExpectedContent.Form)));
 
+        // ----- v14 (#729): union input types — a slot accepts one of several
+        // value types. Generated with the gate flipped; published with the v14 prose. -----
+
+        var v13Minimal = V13Fixtures.Minimal();
+
+        // The § 7 control: one edit, nothing of v14 used.
+        Bundle("v14-minimal-is-v13-plus-a-line", 14,
+            "The migration v14 promises: a valid v13 manifest with specVersion 14 and nothing else changed.",
+            (v13Minimal with { SpecVersion = 14 }, V6Fixtures.Files(v13Minimal)));
+
+        WorkflowPackageManifest V14(WorkflowInputSpec input) => V14Fixtures.WithInput(input);
+
+        cases.Add(new Case("v14-union-text-or-array", 14,
+            "A slot accepting a text OR an array of text — the one-or-many union; the slot's items serves the array arm.",
+            V14(new("notes", "Notes", Required: false,
+                Type: V14Fixtures.Union(WorkflowInputTypes.Text, WorkflowInputTypes.Array),
+                Items: WorkflowInputTypes.Text)),
+            V6Fixtures.Files(V14(new("notes", "Notes", Required: false,
+                Type: V14Fixtures.Union(WorkflowInputTypes.Text, WorkflowInputTypes.Array),
+                Items: WorkflowInputTypes.Text)))));
+
+        Invalid("invalid-union-below-14", 13,
+            "A union type on a v13 manifest. Unions arrive at 14; before it, a known field is an error, never ignored.",
+            V14(new("notes", "Notes", Required: false,
+                Type: V14Fixtures.Union(WorkflowInputTypes.Text, WorkflowInputTypes.Number))) with { SpecVersion = 13 });
+
+        Invalid("invalid-union-unknown-arm", 14,
+            "A union naming a type the format does not define.",
+            V14(new("notes", "Notes", Required: false,
+                Type: V14Fixtures.Union(WorkflowInputTypes.Text, "timestamp"))));
+
+        Invalid("invalid-union-two-structured-arms", 14,
+            "A union pairing array and object; a union carries at most one type that needs a sub-declaration.",
+            V14(new("either", "Either", Required: false,
+                Type: V14Fixtures.Union(WorkflowInputTypes.Array, WorkflowInputTypes.Object),
+                Items: WorkflowInputTypes.Text,
+                Fields: new List<WorkflowFieldSpec> { new("a", "A") })));
+
         return cases;
     }
 

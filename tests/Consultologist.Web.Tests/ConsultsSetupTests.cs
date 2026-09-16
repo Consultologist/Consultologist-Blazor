@@ -449,6 +449,24 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void AUnionSlot_RendersItsPrimaryArmControl_AndNamesTheAlternatives()
+    {
+        // #729: a union renders the first arm's control (text -> textarea) and a
+        // chip naming the alternatives; a caller may send another arm as JSON.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: new[]
+        {
+            new WorkflowPackageInputResponse("notes", "Notes", false, WorkflowInputTypes.Text,
+                Types: new[] { WorkflowInputTypes.Text, WorkflowInputTypes.Array })
+        });
+
+        var page = Render<Consults>();
+
+        Assert.Single(page.FindAll("fluent-text-area"));
+        Assert.Contains("accepts text or array",
+            page.FindAll(".input-field__channel").Select(c => c.TextContent.Trim()));
+    }
+
+    [Fact]
     public void AnEnumOffersNoSelectionUntilOneIsMade()
     {
         // Explicit initialisation: a plausible default is still a value nobody
