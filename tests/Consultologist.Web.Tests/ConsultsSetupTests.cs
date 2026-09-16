@@ -449,6 +449,24 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void AnImageChannel_LabelsTheSlot_AndKeepsItsUpload()
+    {
+        // #730: an image slot is a text slot marked with the "Image" chip; it
+        // still offers the file upload — the uploaded image is OCR'd into text.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: new[]
+        {
+            new WorkflowPackageInputResponse("referral_letter", "Referral letter", false,
+                WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.Image)
+        });
+
+        var page = Render<Consults>();
+
+        var chips = page.FindAll(".input-field__channel").Select(c => c.TextContent.Trim()).ToList();
+        Assert.Contains("Image", chips);
+        Assert.NotEmpty(page.FindAll("input[type=file]"));
+    }
+
+    [Fact]
     public void AUnionSlot_RendersItsPrimaryArmControl_AndNamesTheAlternatives()
     {
         // #729: a union renders the first arm's control (text -> textarea) and a
