@@ -318,7 +318,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         Assert.Empty(page.FindAll("[aria-label^='Add condition clause']"));
         Publish(page);
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
-        Assert.Contains("Document 'consult_note' declares a condition expression that requires specVersion 10. Use \"Upgrade to specVersion 14\" and publish.", Refusals(page));
+        Assert.Contains("Document 'consult_note' declares a condition expression that requires specVersion 10. Use \"Upgrade to specVersion 15\" and publish.", Refusals(page));
     }
 
     // ----- the desk --------------------------------------------------------

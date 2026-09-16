@@ -492,6 +492,42 @@ public static class EditorFixtures
     }
 
     /// <summary>The v7 shape: declared inputs and a results list.</summary>
+    /// <summary>
+    /// v15 (#731): a package with a variable-free `disclaimer` prompt rendered
+    /// by a template node — the shape the raw toggle is offered on — beside the
+    /// ordinary variable-bearing `draft-section` prompt (which it is not).
+    /// </summary>
+    public static WorkflowPackageContentResponse V15Raw() => Package("""
+        {
+          "name": "acct-1234567890ab",
+          "version": "v2026.07.1",
+          "specVersion": 15,
+          "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
+          "tags": [],
+          "inputs": [
+            { "id": "consult_draft", "label": "Consult draft", "required": true }
+          ],
+          "data": { "standards": "data/standards/" },
+          "prompts": [
+            { "id": "draft-section", "file": "prompts/draft-section.md",
+              "variables": ["section_name", "consult_draft"] },
+            { "id": "disclaimer", "file": "prompts/disclaimer.md", "variables": [] }
+          ],
+          "results": [
+            { "id": "consult_note", "node": "node:assemble-note", "label": "Consultation note" }
+          ],
+          "nodes": [
+            { "id": "draft-section", "forEach": "data:standards", "label": "Drafting section",
+              "prompt": "draft-section",
+              "bindings": { "section_name": "item:name", "consult_draft": "input:consult_draft" } },
+            { "id": "disclaimer-block", "label": "Disclaimer", "kind": "template",
+              "prompt": "disclaimer", "bindings": {} },
+            { "id": "assemble-note", "label": "Assembling note",
+              "aggregate": ["node:draft-section", "node:disclaimer-block"] }
+          ]
+        }
+        """, 15, ("prompts/disclaimer.md", "Not medical advice."));
+
     public static WorkflowPackageContentResponse V7() => Package("""
         {
           "name": "acct-1234567890ab",

@@ -1383,6 +1383,21 @@
                                             Text="@GetText(prompt.File)"
                                             Modified="@(edits.ContainsKey(prompt.File) || AddedNodeForPromptFile(prompt.File) != null || AddedPromptForFile(prompt.File) != null)"
                                             TextChanged="@(value => OnTextChangedAsync(prompt.File, value))">
+                            @* #731: the raw toggle — sent verbatim, no Scriban. Offered once
+                               the prompt has no variables (a raw prompt interpolates nothing;
+                               the server refuses a raw prompt that declares any). *@
+                            @if (EffectiveSpecVersion >= 15 && IsDeclaredPrompt(prompt.Id) && !EffectiveVariables(prompt).Any())
+                            {
+                                <div class="prompt-raw-row">
+                                    <label class="prompt-raw">
+                                        <input type="checkbox"
+                                               checked="@EffectivePromptRaw(prompt.Id)"
+                                               @onchange="args => SetPromptRawAsync(prompt.Id, args.Value is bool isChecked && isChecked)"
+                                               aria-label="@($"Raw for prompt {prompt.Id}")" />
+                                        <span>raw — sent verbatim (no templating)</span>
+                                    </label>
+                                </div>
+                            }
                             <div class="prompt-variables">
                                 <span class="muted-text">Variables</span>
                                 <ul class="prompt-variables__list">
@@ -2011,7 +2026,7 @@
     /// can prove the mirror still matches. Not necessarily runnable: see
     /// RunnableSpecVersion.
     /// </summary>
-    internal const int NewestSpecVersion = 14;
+    internal const int NewestSpecVersion = 15;
 
     /// <summary>
     /// Mirrors WorkflowPackageStore.SupportedSpecVersions' maximum — the
@@ -2024,7 +2039,7 @@
     /// (#500), eleven (#566) and now twelve (#623). The mechanism stays
     /// for the next format.
     /// </summary>
-    internal const int RunnableSpecVersion = 14;
+    internal const int RunnableSpecVersion = 15;
 
     /// <summary>The version this publish will carry: the bump, or what is loaded.</summary>
     /// <summary>
@@ -2184,6 +2199,9 @@
             // v12 § 3 (#621): pending optional/default edits on declared macros.
             new("macroEdits", () => macroEdits.Count, macroEdits.Clear,
                 () => $"{macroEdits.Count} macro {Plural(macroEdits.Count, "choice")}", () => macroEdits.Count > 0),
+            // v15 (#731): pending raw toggles on declared prompts.
+            new("promptRawEdits", () => promptRawEdits.Count, promptRawEdits.Clear,
+                () => $"{promptRawEdits.Count} raw {Plural(promptRawEdits.Count, "prompt")}", () => promptRawEdits.Count > 0),
             // #571: declared macros marked for removal.
             new("removedMacroIds", () => removedMacroIds.Count, removedMacroIds.Clear,
                 () => $"−{removedMacroIds.Count} {Plural(removedMacroIds.Count, "macro")}", () => removedMacroIds.Count > 0),
@@ -2646,6 +2664,34 @@
 
     // v12 § 3 (#621): pending optional/default edits on DECLARED macros,
     // keyed by id; an entry equal to the manifest removes itself.
+    // v15 (#731): the raw toggle on a declared prompt — verbatim, no Scriban.
+    // Rides promptRawEdits, self-removing when it equals the manifest again
+    // (the macroEdits idiom).
+    private readonly Dictionary<string, bool> promptRawEdits = new(StringComparer.Ordinal);
+
+    private async Task SetPromptRawAsync(string promptId, bool raw)
+    {
+        var declared = prompts.FirstOrDefault(p => p.Id == promptId)?.Raw ?? false;
+        if (declared == raw)
+        {
+            promptRawEdits.Remove(promptId);
+        }
+        else
+        {
+            promptRawEdits[promptId] = raw;
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    private bool EffectivePromptRaw(string promptId) =>
+        promptRawEdits.TryGetValue(promptId, out var raw)
+            ? raw
+            : prompts.FirstOrDefault(p => p.Id == promptId)?.Raw ?? false;
+
+    /// <summary>Whether the raw toggle applies to this prompt — a declared (loaded) prompt only.</summary>
+    private bool IsDeclaredPrompt(string promptId) => prompts.Any(p => p.Id == promptId);
+
     private readonly Dictionary<string, (bool Optional, bool? Default)> macroEdits = new(StringComparer.Ordinal);
 
     private readonly List<AddedMacro> addedMacros = new();
@@ -3180,6 +3226,16 @@
         errors.AddRange(results
             .Where(result => !aggregatorIds.Contains(result.Node))
             .Select(result => $"Result '{result.Id}' must reference an aggregator node ('{result.Node}' is not one)."));
+
+        // v15 (#731): the desk's mirror — a raw prompt (from a fork or draft)
+        // below 15 is refused by name, the validator's sentence plus the pointer.
+        if (EffectiveSpecVersion < 15)
+        {
+            errors.AddRange(EffectivePrompts
+                .Where(p => EffectivePromptRaw(p.Id))
+                .Select(p => $"Prompt '{p.Id}' declares raw, which requires specVersion 15. "
+                    + $"Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish."));
+        }
 
         // ----- v11 #564: the desk's mirror of the validator's macro rules -----
 
@@ -6417,6 +6473,9 @@
 
     private sealed record DraftMacroEdit(string Id, bool Optional, bool? Default = null);
 
+    // v15 (#731): a pending raw toggle on a declared prompt.
+    private sealed record DraftPromptRawEdit(string Id, bool Raw);
+
     private sealed record DraftPayload(
         int Version,
         Dictionary<string, string>? Edits,
@@ -6453,7 +6512,9 @@
         List<string>? RemovedMacros = null,
         // v12 § 3 (#621): pending optional/default edits on declared macros.
         // Trailing optional — a draft written before restores with none.
-        List<DraftMacroEdit>? MacroEdits = null);
+        List<DraftMacroEdit>? MacroEdits = null,
+        // v15 (#731): pending raw toggles on declared prompts. Trailing optional.
+        List<DraftPromptRawEdit>? PromptRawEdits = null);
 
     // #316: Type and Values ride here or a typed input is silently untyped on
     // reload. Trailing optionals — a draft written before v8 restores with null.
@@ -6520,6 +6581,7 @@
         List<DraftAddedMacro>? draftAddedMacros = null;
         List<string>? draftRemovedMacros = null;
         List<DraftMacroEdit>? draftMacroEdits = null;
+        List<DraftPromptRawEdit>? draftPromptRawEdits = null;
         int? draftSpecVersionBump = null;
         string? draftTitle = null;
         string? draftDescription = null;
@@ -6550,6 +6612,7 @@
                 draftAddedMacros = payload?.AddedMacros;
                 draftRemovedMacros = payload?.RemovedMacros;
                 draftMacroEdits = payload?.MacroEdits;
+                draftPromptRawEdits = payload?.PromptRawEdits;
                 draftInputs = payload?.Inputs;
                 draftResults = payload?.Results;
                 draftAddedScalars = payload?.AddedScalars;
@@ -6695,6 +6758,16 @@
             if (WorkflowManifestReader.ReadMacros(content!.Manifest).Any(m => m.Id == draftMacroEdit.Id))
             {
                 macroEdits[draftMacroEdit.Id] = (draftMacroEdit.Optional, draftMacroEdit.Default);
+            }
+        }
+
+        // v15 (#731): a drafted raw toggle is kept only while the prompt is
+        // still declared — the same stale-id idiom.
+        foreach (var draftPromptRawEdit in draftPromptRawEdits ?? new List<DraftPromptRawEdit>())
+        {
+            if (prompts.Any(p => p.Id == draftPromptRawEdit.Id))
+            {
+                promptRawEdits[draftPromptRawEdit.Id] = draftPromptRawEdit.Raw;
             }
         }
 
@@ -6935,7 +7008,8 @@
             tagsEdit,
             addedMacros.Select(m => new DraftAddedMacro(m.Id, m.Label, m.Text, m.Optional, m.Default)).ToList(),
             removedMacroIds.ToList(),
-            macroEdits.Select(pair => new DraftMacroEdit(pair.Key, pair.Value.Optional, pair.Value.Default)).ToList());
+            macroEdits.Select(pair => new DraftMacroEdit(pair.Key, pair.Value.Optional, pair.Value.Default)).ToList(),
+            promptRawEdits.Select(pair => new DraftPromptRawEdit(pair.Key, pair.Value)).ToList());
         await JS.InvokeVoidAsync("localStorage.setItem", DraftKey, JsonSerializer.Serialize(payload));
     }
 
@@ -7519,6 +7593,34 @@
                     EffectiveVariables(prompt)
                         .Select(v => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(v))
                         .ToArray());
+            }
+        }
+
+        // v15 (#731): write or remove `raw` on each edited prompt — the node
+        // reproducible write-or-remove idiom. Offered only for variable-free
+        // prompts, so no binding cascade.
+        if (promptRawEdits.Count > 0 && (root["prompts"] ?? root["Prompts"]) is System.Text.Json.Nodes.JsonArray rawPromptsArray)
+        {
+            foreach (var (rawPromptId, raw) in promptRawEdits)
+            {
+                var promptObject = rawPromptsArray
+                    .OfType<System.Text.Json.Nodes.JsonObject>()
+                    .FirstOrDefault(p => (p["id"] ?? p["Id"])?.GetValue<string>() == rawPromptId);
+
+                if (promptObject == null)
+                {
+                    continue;
+                }
+
+                if (raw)
+                {
+                    promptObject[promptObject.ContainsKey("Raw") ? "Raw" : "raw"] = true;
+                }
+                else
+                {
+                    promptObject.Remove("raw");
+                    promptObject.Remove("Raw");
+                }
             }
         }
 

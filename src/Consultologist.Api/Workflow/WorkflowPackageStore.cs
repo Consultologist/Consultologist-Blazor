@@ -22,7 +22,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     // published the v12 document, schema and conformance suite as one
     // version.
     // v13 (#728): declarable input content channels — transcript and form.
-    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 };
+    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
     private static readonly TimeSpan LatestPointerCacheDuration = TimeSpan.FromSeconds(60);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -194,7 +194,9 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
                 prompt.Id,
                 files[prompt.File],
                 prompt.Variables,
-                prompt.Prelude is null ? null : files[manifest.Preludes![prompt.Prelude]]),
+                prompt.Prelude is null ? null : files[manifest.Preludes![prompt.Prelude]],
+                // v15 (#731): a raw prompt renders verbatim.
+                prompt.Raw == true),
             StringComparer.Ordinal);
 
         var schemaContracts = ResolveContracts(packageRef, manifest, files, stamp, _catalog);

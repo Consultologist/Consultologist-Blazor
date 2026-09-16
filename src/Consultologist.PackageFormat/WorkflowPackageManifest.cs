@@ -483,7 +483,12 @@ public sealed record WorkflowPromptSpec(
     string Id,
     string File,
     List<string> Variables,
-    string? Prelude = null);
+    string? Prelude = null,
+    // v15 (#731): the text is sent verbatim — no Scriban parse/render, no
+    // strict variable check. A raw prompt declares no variables. Trailing
+    // optional (bool?, the Reproducible precedent), omitted when null so a
+    // v≤14 manifest writes the bytes it always wrote.
+    bool? Raw = null);
 
 /// <summary>
 /// One node of the workflow DAG: one kind, with ForEach as the multiplicity
@@ -661,7 +666,9 @@ public sealed record WorkflowPromptTemplate(
     string Id,
     string TemplateText,
     IReadOnlyList<string> Variables,
-    string? PreludeText);
+    string? PreludeText,
+    // v15 (#731): render verbatim, skipping Scriban entirely.
+    bool Raw = false);
 
 /// <summary>
 /// A package reference of the form "name@vYYYY.MM.N" or "name@latest". Since
