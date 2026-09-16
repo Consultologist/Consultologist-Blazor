@@ -891,6 +891,32 @@ public class ConformanceFixtureExport
                 Items: WorkflowInputTypes.Text,
                 Fields: new List<WorkflowFieldSpec> { new("a", "A") })));
 
+        // ----- v15 (#731): plain-text prompts — a `raw` toggle that sends the
+        // text verbatim, skipping Scriban. Generated with the gate flipped;
+        // published with the v15 prose. -----
+
+        var v14Minimal = V14Fixtures.Minimal();
+
+        // The § 7 control: one edit, nothing of v15 used.
+        Bundle("v15-minimal-is-v14-plus-a-line", 15,
+            "The migration v15 promises: a valid v14 manifest with specVersion 15 and nothing else changed.",
+            (v14Minimal with { SpecVersion = 15 }, V6Fixtures.Files(v14Minimal)));
+
+        Bundle("v15-raw-template-node", 15,
+            "A raw template node: its text — literal JSON and braces that would fail Scriban — is emitted verbatim as a deliverable block.",
+            V15Fixtures.WithRawTemplateNode());
+
+        {
+            var (manifest, files) = V15Fixtures.WithRawTemplateNode();
+            Bundle("invalid-raw-below-15", 14,
+                "A raw prompt on a v14 manifest. The toggle arrives at 15; before it, a known field is an error, never ignored.",
+                (manifest with { SpecVersion = 14 }, files));
+        }
+
+        Bundle("invalid-raw-with-variables", 15,
+            "A raw prompt declaring variables. A verbatim prompt interpolates nothing, so it declares none.",
+            V15Fixtures.WithRawTemplateNode(variables: new List<string> { "seen_on" }));
+
         return cases;
     }
 
