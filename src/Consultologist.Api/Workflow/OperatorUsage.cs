@@ -10,8 +10,9 @@ namespace Consultologist.Api.Workflow;
 /// GET Operator/Usage — usage per user for a window, for an account listed
 /// in Operators__AppUserIds (#553). Reads only the derived AccountUsage
 /// store, never job records; serves numbers, account ids, and the display
-/// name the account already carries. Per-user totals — the day-level detail
-/// stays the profile's; the client groups by tenant.
+/// name the account already carries. Per-user totals for the table (the client
+/// groups by tenant), plus an aggregate-across-all-accounts daily series (#732)
+/// for the time-series chart — both from the same store read, no new storage.
 /// </summary>
 public sealed class OperatorUsage
 {
@@ -70,7 +71,7 @@ public sealed class OperatorUsage
         var response = req.CreateResponse(HttpStatusCode.OK);
         FunctionCors.Apply(req, response);
         response.Headers.Add("Cache-Control", "no-store");
-        await response.WriteAsJsonAsync(new OperatorUsageResponse(from, to, RowsOf(usage, directory, tenants)), cancellationToken);
+        await response.WriteAsJsonAsync(new OperatorUsageResponse(from, to, RowsOf(usage, directory, tenants), DaysOf(usage)), cancellationToken);
         return response;
     }
 
@@ -105,6 +106,23 @@ public sealed class OperatorUsage
             .OrderBy(row => row.AppUserId, StringComparer.Ordinal)
             .ToList();
     }
+
+    /// <summary>
+    /// #732: the same day rows summed <em>across all accounts</em> — one total
+    /// per day for the operators' time-series chart. Days without any activity
+    /// are absent (the client fills the window's gaps at zero). Extracted so it
+    /// can be asserted directly.
+    /// </summary>
+    internal static IReadOnlyList<OperatorUsageDayResponse> DaysOf(IReadOnlyList<AccountUsageDay> usage) =>
+        usage
+            .GroupBy(day => day.Day, StringComparer.Ordinal)
+            .Select(group => new OperatorUsageDayResponse(
+                group.Key,
+                group.Sum(day => day.ConsultsCompleted),
+                group.Sum(day => day.TokensIn),
+                group.Sum(day => day.TokensOut)))
+            .OrderBy(day => day.Day, StringComparer.Ordinal)
+            .ToList();
 }
 
 /// <summary>#553: one account's window totals — numbers, its id, and the display name it already carries.</summary>
@@ -117,7 +135,15 @@ public sealed record OperatorUsageRowResponse(
     int TokensIn,
     int TokensOut);
 
+/// <summary>#732: one day's totals across all accounts — the operators' time-series point.</summary>
+public sealed record OperatorUsageDayResponse(
+    string Day,
+    int ConsultsCompleted,
+    int TokensIn,
+    int TokensOut);
+
 public sealed record OperatorUsageResponse(
     string From,
     string To,
-    IReadOnlyList<OperatorUsageRowResponse> Rows);
+    IReadOnlyList<OperatorUsageRowResponse> Rows,
+    IReadOnlyList<OperatorUsageDayResponse> Days);

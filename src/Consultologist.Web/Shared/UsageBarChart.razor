@@ -1,0 +1,63 @@
+@* #732: a usage bar chart as inline SVG — one categorical/temporal stacked-bar
+   chart used for both the profile's per-day series and the operators' per-org
+   comparison. The SVG markup is built by a pure helper (an SVG <text> element
+   can't be authored in a .razor — Razor reserves the tag) and injected; its
+   colours are CSS classes (var(--consultologist-*)), so it recolours with the
+   theme, and being DOM not script it needs no CSP allowance. The table beside
+   it stays the accessible data source, so the SVG is role="img" with a one-line
+   summary rather than re-encoding every number. *@
+@using Consultologist.Web.Services.Charts
+
+<div class="usage-chart">
+    <h4 class="usage-chart__title">@Title</h4>
+
+    @if (IsEmpty)
+    {
+        <p class="usage-chart__empty muted-text">No usage in this window.</p>
+    }
+    else
+    {
+        @((MarkupString)Svg())
+
+        @if (Legend is { Count: > 0 })
+        {
+            <ul class="usage-chart__legend">
+                @foreach (var (role, label) in Legend)
+                {
+                    <li class="usage-chart__legend-item">
+                        <span class="@($"usage-chart__swatch usage-chart__seg--{role}")" aria-hidden="true"></span>
+                        @label
+                    </li>
+                }
+            </ul>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>The chart's heading, e.g. "Consults per day".</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>The categories to draw (a day or an organisation), each with its stacked role/value segments.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<UsageChartGeometry.Category> Categories { get; set; } = Array.Empty<UsageChartGeometry.Category>();
+
+    /// <summary>Role → legend label, in draw order (in below out). A swatch reuses the role's fill class.</summary>
+    [Parameter] public IReadOnlyList<(string Role, string Label)> Legend { get; set; } = Array.Empty<(string, string)>();
+
+    /// <summary>The numeric format for axis and tooltip values.</summary>
+    [Parameter] public string ValueFormat { get; set; } = "N0";
+
+    /// <summary>The unit named in the accessible summary (e.g. "consults", "tokens").</summary>
+    [Parameter] public string Unit { get; set; } = "";
+
+    private bool IsEmpty => Categories.Count == 0 || Categories.All(category => category.Segments.Sum(segment => segment.Value) == 0);
+
+    private string Svg()
+    {
+        var geometry = UsageChartGeometry.Build(Categories);
+        var peak = geometry.Bars.Count == 0 ? 0 : geometry.Bars.Max(bar => bar.Total);
+        var unit = string.IsNullOrEmpty(Unit) ? "" : $" {Unit}";
+        var aria = $"{Title}: {geometry.Bars.Count} bars, peak {peak.ToString(ValueFormat)}{unit}. The table below has the exact figures.";
+        return UsageChartSvg.Build(geometry, ValueFormat, Legend, aria);
+    }
+}

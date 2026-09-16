@@ -11,11 +11,22 @@ public sealed record OperatorUsageRowResponse(
     int TokensIn,
     int TokensOut);
 
-// #553: mirrors the Api's OperatorUsageResponse.
+// #732: mirrors the Api's OperatorUsageDayResponse — one day's totals across
+// all accounts, for the time-series chart.
+public sealed record OperatorUsageDayResponse(
+    string Day,
+    int ConsultsCompleted,
+    int TokensIn,
+    int TokensOut);
+
+// #553: mirrors the Api's OperatorUsageResponse. Days added in #732 — nullable
+// on the client because the frontend and API deploy independently, so a new
+// client can meet an API build that predates the field (then no daily series).
 public sealed record OperatorUsageResponse(
     string From,
     string To,
-    IReadOnlyList<OperatorUsageRowResponse> Rows);
+    IReadOnlyList<OperatorUsageRowResponse> Rows,
+    IReadOnlyList<OperatorUsageDayResponse>? Days);
 
 /// <summary>
 /// #553: the caller is signed in but not on Operators__AppUserIds — the 403

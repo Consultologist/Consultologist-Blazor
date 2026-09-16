@@ -18,6 +18,11 @@ public class OperatorsPageTests : ClientRenderTestContext
         string id, string name, string? tenantId, int consults, int tokensIn, int tokensOut) =>
         new(id, name, "organisation", tenantId, consults, tokensIn, tokensOut);
 
+    private static OperatorUsageDayResponse Day(string day, int consults, int tokensIn, int tokensOut) =>
+        new(day, consults, tokensIn, tokensOut);
+
+    private static readonly IReadOnlyList<OperatorUsageDayResponse> NoDays = Array.Empty<OperatorUsageDayResponse>();
+
     // ----- the rollup, pure -----
 
     [Fact]
@@ -68,7 +73,8 @@ public class OperatorsPageTests : ClientRenderTestContext
             {
                 Row("u1", "Dr One", "tenant-a", 3, 3000, 900),
                 Row("u3", "Dr Personal", OperatorUsageRollup.ConsumersTenantId, 1, 800, 200)
-            }));
+            },
+            NoDays));
 
         var page = Render<OperatorsPage>();
 
@@ -77,6 +83,55 @@ public class OperatorsPageTests : ClientRenderTestContext
         Assert.Contains("Personal accounts", labels);
         Assert.Contains("3 consults · 3,000 in · 900 out tokens", page.FindAll(".operators-org__totals").Select(t => t.TextContent.Trim()));
         Assert.Contains("Dr One", page.Find(".operators__table").TextContent);
+    }
+
+    [Fact]
+    public void ServedUsage_DrawsTheChartsAboveTheTables()
+    {
+        OperatorService.GetUsageAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(new OperatorUsageResponse(
+            "2026-09-01", "2026-09-03",
+            new[]
+            {
+                Row("u1", "Dr One", "tenant-a", 3, 3000, 900),
+                Row("u2", "Dr Two", "tenant-b", 5, 9000, 2500)
+            },
+            new[]
+            {
+                Day("2026-09-01", 4, 6000, 1600),
+                Day("2026-09-03", 4, 6000, 1800)
+            }));
+
+        var page = Render<OperatorsPage>();
+
+        // Four charts: consults/day, tokens/day, consults by org, tokens by org.
+        var titles = page.FindAll(".usage-chart__title").Select(t => t.TextContent).ToList();
+        Assert.Contains("Consults per day", titles);
+        Assert.Contains("Tokens per day", titles);
+        Assert.Contains("Consults by organisation", titles);
+        Assert.Contains("Tokens by organisation", titles);
+        Assert.NotEmpty(page.FindAll("svg.usage-chart__svg"));
+        // The tables stay as the exact-numbers source.
+        Assert.NotEmpty(page.FindAll(".operators__table"));
+    }
+
+    [Fact]
+    public void AnOlderApiWithoutDays_ShowsOnlyThePerOrgCharts_NeverCrashes()
+    {
+        // The frontend and API deploy independently: a new client can meet an
+        // API build that predates the Days field. The page must not crash, and
+        // simply omits the daily series until the API catches up.
+        OperatorService.GetUsageAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(new OperatorUsageResponse(
+            "2026-09-01", "2026-09-03",
+            new[] { Row("u1", "Dr One", "tenant-a", 3, 3000, 900) },
+            Days: null));
+
+        var page = Render<OperatorsPage>();
+
+        var titles = page.FindAll(".usage-chart__title").Select(t => t.TextContent).ToList();
+        Assert.DoesNotContain("Consults per day", titles);
+        Assert.DoesNotContain("Tokens per day", titles);
+        Assert.Contains("Consults by organisation", titles);
+        Assert.NotEmpty(page.FindAll(".operators__table"));
     }
 
     [Fact]
@@ -94,7 +149,7 @@ public class OperatorsPageTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".operators__table"));
 
         gate.SetResult(new OperatorUsageResponse(
-            "2026-08-03", "2026-09-01", new[] { Row("u1", "Dr One", "tenant-a", 3, 3000, 900) }));
+            "2026-08-03", "2026-09-01", new[] { Row("u1", "Dr One", "tenant-a", 3, 3000, 900) }, NoDays));
 
         // #691: an explicit timeout — the default 1s flaked under CI load.
         page.WaitForState(() => page.FindAll(".loading-state").Count == 0, TimeSpan.FromSeconds(5));
@@ -117,7 +172,7 @@ public class OperatorsPageTests : ClientRenderTestContext
     public void AnEmptyWindow_SaysSo()
     {
         OperatorService.GetUsageAsync(Arg.Any<string>(), Arg.Any<string>())
-            .Returns(new OperatorUsageResponse("2026-08-03", "2026-09-01", Array.Empty<OperatorUsageRowResponse>()));
+            .Returns(new OperatorUsageResponse("2026-08-03", "2026-09-01", Array.Empty<OperatorUsageRowResponse>(), NoDays));
 
         var page = Render<OperatorsPage>();
 
@@ -133,7 +188,8 @@ public class OperatorsPageTests : ClientRenderTestContext
             {
                 Row("u1", "Beta", "t", 5, 100, 50),
                 Row("u2", "Alpha", "t", 3, 9000, 100)
-            }));
+            },
+            NoDays));
         var page = Render<OperatorsPage>();
 
         // Default: consults descending — u1 first.

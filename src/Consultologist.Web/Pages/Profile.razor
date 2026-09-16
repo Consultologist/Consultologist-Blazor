@@ -2,6 +2,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
 @using Consultologist.Web.Services.AppUpdate
+@using Consultologist.Web.Services.Charts
 @using Consultologist.Web.Services.Locations
 @inject IApiLocations Locations
 @inject IAccountEndpointService AccountService
@@ -1164,6 +1165,29 @@
                                 <strong class="usage-per-day">@($"{usageFigures.ConsultsPerDay:0.##} consults · {usageFigures.TokensPerDay:N0} tokens")</strong>
                                 <span class="muted-text">Average tokens per consult</span>
                                 <strong class="usage-average">@UsageSummary.DescribeAverage(usageFigures.AverageTokensPerConsult)</strong>
+                            </div>
+                            @* #732: the same window as graphs, above the exact-numbers table.
+                               Days are sparse, so fill the window before drawing. *@
+                            var denseDays = UsageSeries.DenseDays(usageData.From, usageData.To,
+                                usageData.Days.Select(day => new UsageSeries.DayPoint(day.Day, day.ConsultsCompleted, day.TokensIn, day.TokensOut)));
+                            var consultCategories = denseDays
+                                .Select(day => new UsageChartGeometry.Category(day.Day,
+                                    new[] { new UsageChartGeometry.CategorySegment("consults", day.ConsultsCompleted) }))
+                                .ToList();
+                            var tokenCategories = denseDays
+                                .Select(day => new UsageChartGeometry.Category(day.Day, new[]
+                                {
+                                    new UsageChartGeometry.CategorySegment("tokens-in", day.TokensIn),
+                                    new UsageChartGeometry.CategorySegment("tokens-out", day.TokensOut)
+                                }))
+                                .ToList();
+                            <div class="usage-charts">
+                                <UsageBarChart Title="Consults per day" Unit="consults"
+                                               Categories="consultCategories"
+                                               Legend="@(new[] { ("consults", "Consults") })" />
+                                <UsageBarChart Title="Tokens per day" Unit="tokens"
+                                               Categories="tokenCategories"
+                                               Legend="@(new[] { ("tokens-in", "Tokens in"), ("tokens-out", "Tokens out") })" />
                             </div>
                             <div class="usage__scroll">
                                 <table class="usage__table">
