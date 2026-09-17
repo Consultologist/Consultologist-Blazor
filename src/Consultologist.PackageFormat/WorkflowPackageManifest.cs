@@ -348,6 +348,10 @@ public static class WorkflowInputTypes
 /// slot's declared value type. Transcript and form arrive at specVersion 13.
 /// v16 (#730): <c>image</c> — an uploaded image OCR'd into a text slot; its
 /// origin is stamped `image`, observed from the bytes (unlike transcript).
+/// v17 (#673): <c>ambient-note</c> — a clinical note from an ambient scribe
+/// (Dragon Copilot); like transcript it is a text channel and a submitter
+/// assertion, but a distinct origin kind so the SaMD/anti-ambient boundary
+/// stays legible.
 /// </summary>
 public static class WorkflowExpectedContent
 {
@@ -357,22 +361,29 @@ public static class WorkflowExpectedContent
     // v16 (#730): the image channel.
     public const string Image = "image";
 
+    // v17 (#673): the ambient-scribe note channel.
+    public const string AmbientNote = "ambient-note";
+
     /// <summary>Every content channel the format has, as of the newest version.</summary>
-    public static readonly IReadOnlyList<string> All = new[] { Transcript, Form, Image };
+    public static readonly IReadOnlyList<string> All = new[] { Transcript, Form, Image, AmbientNote };
 
     // The v13 set — transcript and form — kept so a v13–v15 manifest's refusal
     // reads exactly as the conformance suite recorded it.
     private static readonly IReadOnlyList<string> V13Channels = new[] { Transcript, Form };
+
+    // The v16 set — transcript, form, image — kept so a v16 manifest's refusal
+    // reads exactly as the conformance suite recorded it.
+    private static readonly IReadOnlyList<string> V16Channels = new[] { Transcript, Form, Image };
 
     private static readonly IReadOnlyList<string> None = Array.Empty<string>();
 
     /// <summary>
     /// The channels one specVersion admits, keyed by version (the
     /// WorkflowInputTypes.ForSpecVersion precedent): none before 13, transcript
-    /// and form at 13, image joining at 16.
+    /// and form at 13, image joining at 16, ambient-note at 17.
     /// </summary>
     public static IReadOnlyList<string> ForSpecVersion(int specVersion) =>
-        specVersion >= 16 ? All : specVersion >= 13 ? V13Channels : None;
+        specVersion >= 17 ? All : specVersion >= 16 ? V16Channels : specVersion >= 13 ? V13Channels : None;
 }
 
 /// <summary>

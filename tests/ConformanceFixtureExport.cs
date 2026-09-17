@@ -948,6 +948,38 @@ public class ConformanceFixtureExport
             V16(new("length_of_stay", "Length of stay", Required: false,
                 Type: WorkflowInputTypes.Number, ExpectedContent: WorkflowExpectedContent.Image)));
 
+        // ----- v17 (#673): an `ambient-note` content channel — a slot expecting
+        // an ambient-scribe clinical note (Dragon Copilot). Like transcript, a
+        // text channel and a submitter assertion; a distinct kind so the
+        // SaMD/anti-ambient boundary stays legible. Generated with the gate
+        // flipped; published with the v17 prose. -----
+
+        var v16Minimal = V16Fixtures.Minimal();
+
+        // The § 7 control: one edit, nothing of v17 used.
+        Bundle("v17-minimal-is-v16-plus-a-line", 17,
+            "The migration v17 promises: a valid v16 manifest with specVersion 17 and nothing else changed.",
+            (v16Minimal with { SpecVersion = 17 }, V6Fixtures.Files(v16Minimal)));
+
+        WorkflowPackageManifest V17(WorkflowInputSpec input) => V17Fixtures.WithInput(input);
+
+        cases.Add(new Case("v17-ambient-note-slot", 17,
+            "A slot expecting an ambient-scribe clinical note; its text fills the text slot, and the engine stamps the ambient-note origin.",
+            V17(new("encounter_note", "Encounter note", Required: false,
+                Type: WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.AmbientNote)),
+            V6Fixtures.Files(V17(new("encounter_note", "Encounter note", Required: false,
+                Type: WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.AmbientNote)))));
+
+        Invalid("invalid-expected-content-ambient-note-below-17", 16,
+            "expectedContent 'ambient-note' on a v16 manifest. The channel arrives at 17; before it, it is outside the closed set.",
+            V17(new("encounter_note", "Encounter note", Required: false,
+                Type: WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.AmbientNote)) with { SpecVersion = 16 });
+
+        Invalid("invalid-expected-content-ambient-note-on-number", 17,
+            "expectedContent 'ambient-note' on a number slot. An ambient note is read into a text slot, never a scalar.",
+            V17(new("length_of_stay", "Length of stay", Required: false,
+                Type: WorkflowInputTypes.Number, ExpectedContent: WorkflowExpectedContent.AmbientNote)));
+
         return cases;
     }
 

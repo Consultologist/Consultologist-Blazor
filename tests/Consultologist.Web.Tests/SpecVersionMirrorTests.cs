@@ -165,7 +165,7 @@ public class SpecVersionMirrorTests
         Assert.Equal(
             WorkflowExpectedContent.All,
             Consultologist.Web.Services.Workflow.WorkflowExpectedContent.All);
-        foreach (var version in new[] { 12, 13, 15, 16 })
+        foreach (var version in new[] { 12, 13, 15, 16, 17 })
         {
             Assert.Equal(
                 WorkflowExpectedContent.ForSpecVersion(version),
@@ -240,5 +240,24 @@ public class V16VocabularyMirrorTests
         Assert.Equal(
             new[] { "transcript", "form" },
             Consultologist.PackageFormat.WorkflowExpectedContent.ForSpecVersion(15));
+    }
+}
+
+/// <summary>
+/// v17 (#673): the ambient-note content channel the setup form assumes, pinned
+/// so the next format change fails loudly here rather than drifting silently.
+/// </summary>
+public class V17VocabularyMirrorTests
+{
+    [Fact]
+    public void TheAmbientNoteChannel_ArrivesAtSeventeen()
+    {
+        Assert.Equal(
+            new[] { "transcript", "form", "image", "ambient-note" },
+            Consultologist.PackageFormat.WorkflowExpectedContent.ForSpecVersion(17));
+        // 16 still knows only the three v13/v16 channels — ambient-note not yet in the set.
+        Assert.Equal(
+            new[] { "transcript", "form", "image" },
+            Consultologist.PackageFormat.WorkflowExpectedContent.ForSpecVersion(16));
     }
 }

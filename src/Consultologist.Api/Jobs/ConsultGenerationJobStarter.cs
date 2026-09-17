@@ -1765,10 +1765,17 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // flag still serves an undeclared slot (the Zoom satellite). Only
             // the label changes — the observed digests, extractor and page
             // count below are computed identically.
+            // #673: an ambient-scribe note is the transcript's twin — a package
+            // declaration (expectedContent) or a caller flag, same as transcript,
+            // but its own origin kind. Transcript is checked first; a slot is one
+            // or the other, never both.
             var kind = spec?.ExpectedContent == WorkflowExpectedContent.Transcript
                     || request.TranscriptInputs?.Contains(id) == true
                 ? ConsultInputOriginKinds.Transcript
-                : ConsultInputOriginKinds.Document;
+                : spec?.ExpectedContent == WorkflowExpectedContent.AmbientNote
+                    || request.AmbientNoteInputs?.Contains(id) == true
+                    ? ConsultInputOriginKinds.AmbientNote
+                    : ConsultInputOriginKinds.Document;
 
             var texts = new List<ConsultInputValue>(documents.Count);
             var slotOrigins = new List<ConsultInputOrigin>(documents.Count);
@@ -1844,8 +1851,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // TranscriptInputs is cleared for the same reason InputFormRefs is —
         // it has done its work here (the transcript origins are stamped) and
         // must not ride the durable payload a sleeping instance re-reads.
+        // #673: AmbientNoteInputs is cleared for the same reason.
         return new InputFileExtraction(
-            request with { Inputs = inputs, InputFiles = null, TranscriptInputs = null },
+            request with { Inputs = inputs, InputFiles = null, TranscriptInputs = null, AmbientNoteInputs = null },
             origins,
             null,
             null);

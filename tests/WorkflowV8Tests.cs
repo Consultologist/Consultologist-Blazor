@@ -428,9 +428,9 @@ public class WorkflowV8ValidationTests
         // and the unmigrated example-two-documents package is the standing
         // evidence that v7 still runs.
         // #500 moved it to ten, #566 to eleven, #623 to twelve, #728 to
-        // thirteen, #729 to fourteen, #731 to fifteen, #730 to sixteen — each
-        // the ladder's last rung.
-        Assert.Equal(new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 }, WorkflowPackageStore.SupportedSpecVersions);
+        // thirteen, #729 to fourteen, #731 to fifteen, #730 to sixteen, #673 to
+        // seventeen — each the ladder's last rung.
+        Assert.Equal(new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 }, WorkflowPackageStore.SupportedSpecVersions);
     }
 
     [Fact]
@@ -442,11 +442,11 @@ public class WorkflowV8ValidationTests
             e => e.Contains("is not supported"));
 
         // #424 moved the gate to 9, #492 to 10, #563 to 11, #617 to 12, #728
-        // to 13, #729 to 14, #731 to 15 and #730 to 16; the version after it is
-        // what the gate refuses now.
+        // to 13, #729 to 14, #731 to 15, #730 to 16 and #673 to 17; the version
+        // after it is what the gate refuses now.
         Assert.Contains(
-            V8Fixtures.Validate(V8Fixtures.Minimal() with { SpecVersion = 17 }).Errors,
-            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 or 16"));
+            V8Fixtures.Validate(V8Fixtures.Minimal() with { SpecVersion = 18 }).Errors,
+            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 or 17"));
     }
 }
 

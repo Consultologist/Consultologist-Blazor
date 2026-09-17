@@ -63,7 +63,16 @@ public record ConsultGenerationRequest(
     // origin (ConsultInputOriginKinds.Transcript) instead of `document`.
     // Cleared once origins are stamped, so it never rides the durable payload
     // (the InputFiles/InputFormRefs precedent). Appended last, wire-compat.
-    IReadOnlyCollection<string>? TranscriptInputs = null);
+    IReadOnlyCollection<string>? TranscriptInputs = null,
+    // #673: the file slots whose supplied documents are ambient-scribe clinical
+    // notes (Dragon Copilot) rather than referral documents — the TranscriptInputs
+    // shape exactly, a caller assertion beside the value needing no verification
+    // (the bytes ride InputFiles inline). A slot named here must appear in
+    // InputFiles; its extracted elements stamp the `ambient-note` origin
+    // (ConsultInputOriginKinds.AmbientNote) instead of `document`. A distinct kind
+    // from transcript keeps the SaMD/anti-ambient boundary legible. Cleared once
+    // origins are stamped. Appended last, wire-compat.
+    IReadOnlyCollection<string>? AmbientNoteInputs = null);
 
 /// <summary>#510: one deliverable of one of the account's completed runs.</summary>
 public sealed record ConsultInputRef(string JobId, string ResultId);
@@ -167,6 +176,17 @@ public static class ConsultInputOriginKinds
     // unlike a transcript, image-ness IS observed: the parser recognized the
     // image's bytes, so this label is a server fact, not a submitter assertion.
     public const string Image = "image";
+
+    // #673 (provenance@v2026.09.11): an uploaded file the caller declared — or a
+    // package declared via expectedContent — to be an ambient-scribe clinical
+    // note (Dragon Copilot). Its server-observed fields are a Document's
+    // (Extractor, PageCount, FileSha256, TextSha256); only this label differs,
+    // and like a transcript it is the submitter's assertion, not something the
+    // server observed — whether a text is an ambient note cannot be read from
+    // its bytes. A distinct kind from transcript so the SaMD/anti-ambient
+    // boundary stays legible. Recorded beside the effective-input hash, never
+    // inside it, like every kind above.
+    public const string AmbientNote = "ambient-note";
 }
 
 public record ConsultGenerationJobStartResponse(

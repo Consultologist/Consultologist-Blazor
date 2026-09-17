@@ -900,6 +900,11 @@
         // what it is, so the record does not read it as a referral.
         "transcript" => $"read from a transcript by {origin.Extractor ?? "—"}"
             + (origin.PageCount is { } tpages ? $" · {tpages} page{(tpages == 1 ? "" : "s")}" : ""),
+        // #673: an ambient-scribe clinical note (Dragon Copilot), read like a
+        // document but named for what it is — a distinct kind from transcript so
+        // the SaMD/anti-ambient boundary stays legible in the record.
+        "ambient-note" => $"read from an ambient note by {origin.Extractor ?? "—"}"
+            + (origin.PageCount is { } apages ? $" · {apages} page{(apages == 1 ? "" : "s")}" : ""),
         _ => $"read from a document by {origin.Extractor ?? "—"}"
             + (origin.PageCount is { } pages ? $" · {pages} page{(pages == 1 ? "" : "s")}" : "")
             + (origin.TrackedChangesResolved ? " · tracked changes resolved to the accepted view" : "")

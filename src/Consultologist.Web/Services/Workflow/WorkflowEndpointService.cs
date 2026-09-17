@@ -180,15 +180,18 @@ public static class WorkflowExpectedContent
     public const string Form = "form";
     // v16 (#730): the image channel.
     public const string Image = "image";
+    // v17 (#673): the ambient-scribe note channel.
+    public const string AmbientNote = "ambient-note";
 
     /// <summary>Every content channel the format has. Mirrors the server's; pinned.</summary>
-    public static readonly IReadOnlyList<string> All = new[] { Transcript, Form, Image };
+    public static readonly IReadOnlyList<string> All = new[] { Transcript, Form, Image, AmbientNote };
 
     private static readonly IReadOnlyList<string> V13Channels = new[] { Transcript, Form };
+    private static readonly IReadOnlyList<string> V16Channels = new[] { Transcript, Form, Image };
 
-    /// <summary>The channels one specVersion admits — none before 13, image at 16. Mirrors the server's; pinned.</summary>
+    /// <summary>The channels one specVersion admits — none before 13, image at 16, ambient-note at 17. Mirrors the server's; pinned.</summary>
     public static IReadOnlyList<string> ForSpecVersion(int specVersion) =>
-        specVersion >= 16 ? All : specVersion >= 13 ? V13Channels : Array.Empty<string>();
+        specVersion >= 17 ? All : specVersion >= 16 ? V16Channels : specVersion >= 13 ? V13Channels : Array.Empty<string>();
 }
 
 /// <summary>One declared deliverable — blocks and result tabs group by these.</summary>
