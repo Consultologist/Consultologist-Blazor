@@ -28,7 +28,7 @@ public static class WorkflowPackageValidator
     /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
     /// are checked against the published spec-versions.json there too.
     /// </summary>
-    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 };
 
     /// <summary>
     /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
@@ -1169,6 +1169,12 @@ public static class WorkflowPackageValidator
                 && !(type == WorkflowInputTypes.Array && WorkflowInputTypes.ElementTypeOf(input) == WorkflowInputTypes.Text))
             {
                 errors.Add($"Input '{input.Id}' declares expectedContent 'image', which is only for a text slot or an array of text.");
+            }
+            else if (content == WorkflowExpectedContent.AmbientNote
+                && type != WorkflowInputTypes.Text
+                && !(type == WorkflowInputTypes.Array && WorkflowInputTypes.ElementTypeOf(input) == WorkflowInputTypes.Text))
+            {
+                errors.Add($"Input '{input.Id}' declares expectedContent 'ambient-note', which is only for a text slot or an array of text.");
             }
         }
 
