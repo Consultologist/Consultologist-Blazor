@@ -467,6 +467,24 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void AnAmbientNoteChannel_LabelsTheSlot_AndKeepsItsUpload()
+    {
+        // #673: an ambient-note slot is a text slot marked with the "Ambient note"
+        // chip; it still offers the file upload — the note's text fills the slot.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: new[]
+        {
+            new WorkflowPackageInputResponse("encounter_note", "Encounter note", false,
+                WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.AmbientNote)
+        });
+
+        var page = Render<Consults>();
+
+        var chips = page.FindAll(".input-field__channel").Select(c => c.TextContent.Trim()).ToList();
+        Assert.Contains("Ambient note", chips);
+        Assert.NotEmpty(page.FindAll("input[type=file]"));
+    }
+
+    [Fact]
     public void AUnionSlot_RendersItsPrimaryArmControl_AndNamesTheAlternatives()
     {
         // #729: a union renders the first arm's control (text -> textarea) and a

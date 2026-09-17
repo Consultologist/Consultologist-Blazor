@@ -193,6 +193,6 @@ public class TemplatesV10FieldsTests : ClientRenderTestContext
         Publish(page);
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
-        Assert.Contains("Input 'patient' declares structure deeper than one level, which requires specVersion 10. Use \"Upgrade to specVersion 16\" and publish.", Refusals(page));
+        Assert.Contains("Input 'patient' declares structure deeper than one level, which requires specVersion 10. Use \"Upgrade to specVersion 17\" and publish.", Refusals(page));
     }
 }
