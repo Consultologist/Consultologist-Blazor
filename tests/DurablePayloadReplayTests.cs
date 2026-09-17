@@ -101,7 +101,7 @@ public class DurablePayloadReplayTests
         // v11 #513: each stored result descriptor re-serialises with its own
         // trailing null too — Macros, appended last on the record it rides.
         var withRefs = stored
-            .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null,\"MacroChoices\":null,\"TranscriptInputs\":null}", StringComparison.Ordinal)
+            .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null,\"MacroChoices\":null,\"TranscriptInputs\":null,\"AmbientNoteInputs\":null}", StringComparison.Ordinal)
             .Replace("\"Label\":\"Consultation note\"}", "\"Label\":\"Consultation note\",\"Macros\":null,\"Signature\":null,\"MacroPlacements\":null,\"Check\":null}", StringComparison.Ordinal);
         Assert.Equal(withRefs[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null}", JsonSerializer.Serialize(input, Durable));
         // v11 #513/#516: the macro and signature slots and the descriptor's
@@ -151,7 +151,7 @@ public class DurablePayloadReplayTests
         // #512 appended two digests to the origin record itself, so each
         // stored origin re-serialises with its own two trailing nulls too.
         var expected = stored
-            .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null,\"MacroChoices\":null,\"TranscriptInputs\":null}", StringComparison.Ordinal)
+            .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null,\"MacroChoices\":null,\"TranscriptInputs\":null,\"AmbientNoteInputs\":null}", StringComparison.Ordinal)
             .Replace("\"TrackedChangesResolved\":false}", "\"TrackedChangesResolved\":false,\"FileSha256\":null,\"TextSha256\":null,\"SourceJobId\":null,\"SourceResultId\":null,\"SourceFormId\":null,\"SourceResponseId\":null}", StringComparison.Ordinal)
             .Replace("\"TrackedChangesResolved\":true}", "\"TrackedChangesResolved\":true,\"FileSha256\":null,\"TextSha256\":null,\"SourceJobId\":null,\"SourceResultId\":null,\"SourceFormId\":null,\"SourceResponseId\":null}", StringComparison.Ordinal);
         Assert.Equal(expected[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null}", JsonSerializer.Serialize(input, Durable));
@@ -182,8 +182,9 @@ public class DurablePayloadReplayTests
     {
         // v12 #618: the request is itself a durable payload (it rides the
         // orchestration input) — a stored pre-v12 request binds the choices
-        // null. #671 appended TranscriptInputs after it, so a pre-v12 request
-        // now re-serialises with exactly two more trailing nulls, in order.
+        // null. #671 appended TranscriptInputs and #673 AmbientNoteInputs after
+        // it, so a pre-v12 request now re-serialises with three more trailing
+        // nulls, in order.
         const string stored = """
             {"ConsultDraft":null,"WorkflowPackage":null,"ScheduledAtUtc":null,"Inputs":null,"InputFiles":null,"InputRefs":null,"InputFormRefs":null}
             """;
@@ -192,7 +193,7 @@ public class DurablePayloadReplayTests
 
         Assert.Null(request.MacroChoices);
         Assert.Null(request.TranscriptInputs);
-        Assert.Equal(stored[..^1] + ",\"MacroChoices\":null,\"TranscriptInputs\":null}", JsonSerializer.Serialize(request, Durable));
+        Assert.Equal(stored[..^1] + ",\"MacroChoices\":null,\"TranscriptInputs\":null,\"AmbientNoteInputs\":null}", JsonSerializer.Serialize(request, Durable));
     }
 
     [Fact]

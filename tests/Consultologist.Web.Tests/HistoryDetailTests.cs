@@ -723,6 +723,23 @@ public class HistoryDetailTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void AnAmbientNoteOrigin_ReadsAsAnAmbientNote_NotADocument()
+    {
+        // #673: an ambient-scribe note reads like a document but is named for
+        // what it is — a distinct kind from transcript in the record.
+        WithJob(3, inputOrigins: new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
+        {
+            ["consult_draft"] = new[] { new ConsultInputOrigin(Consultologist.Api.Models.ConsultInputOriginKinds.AmbientNote, "pdfpig/0.1.15", 3) }
+        });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var row = page.Find(".provenance-list__nested + dd");
+        Assert.Equal("read from an ambient note by pdfpig/0.1.15 · 3 pages", row.TextContent.Trim());
+        Assert.DoesNotContain("read from a document", row.TextContent);
+    }
+
+    [Fact]
     public void ADocumentsDigests_AreShownShortened_WithTheFullValueInTheTitle()
     {
         // #512: the file and its reading, beside the extractor — shortened in

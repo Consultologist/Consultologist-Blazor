@@ -1425,6 +1425,24 @@ public sealed class ConsultGenerationJobs
             }
         }
 
+        // #673: the ambient-note marker is the transcript marker's twin — an
+        // assertion beside a file in InputFiles, so every id must be a file slot.
+        if (request.AmbientNoteInputs is { Count: > 0 })
+        {
+            foreach (var id in request.AmbientNoteInputs)
+            {
+                if (string.IsNullOrWhiteSpace(id))
+                {
+                    return "AmbientNoteInputs contains a blank id.";
+                }
+
+                if (request.InputFiles?.ContainsKey(id) != true)
+                {
+                    return $"Input '{id}' is marked an ambient note but was not supplied as a file.";
+                }
+            }
+        }
+
         if (hasInputs)
         {
             foreach (var (id, value) in request.Inputs!)

@@ -2543,6 +2543,116 @@ public class ConsultGenerationJobStarterTests
             TranscriptInputs: new[] { "consult_draft" })));
     }
 
+    // ----- #673: a file the caller/package declared an ambient-scribe note -----
+
+    [Fact]
+    public async Task AnAmbientNoteMarkedSlot_IsReadLikeADocument_ButRecordedAsAnAmbientNote()
+    {
+        var request = new ConsultGenerationRequest(
+            null,
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
+            {
+                ["consult_draft"] = [new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))]
+            },
+            AmbientNoteInputs: new[] { "consult_draft" });
+
+        var captured = await StartV7AndCaptureAsync(request);
+
+        Assert.Null(captured.Outcome.Error);
+        var origin = Assert.Single(Assert.Contains("consult_draft", captured.Initialize!.InputDocumentOrigins));
+        Assert.Equal(ConsultInputOriginKinds.AmbientNote, origin.Kind);
+        // The server-observed fields are exactly a document's — only the label
+        // differs, and like a transcript it is the caller's assertion.
+        Assert.Equal("text/1", origin.Extractor);
+        Assert.NotNull(origin.FileSha256);
+        Assert.NotNull(origin.TextSha256);
+        // The marker has done its work and does not ride the durable payload.
+        Assert.Null(captured.OrchestrationInput!.Request.AmbientNoteInputs);
+    }
+
+    [Fact]
+    public async Task ADeclaredAmbientNoteSlot_StampsTheAmbientNoteOrigin_WithoutACallerAssertion()
+    {
+        // The package DECLARES the slot an ambient note (expectedContent), so the
+        // origin is right even though the request carries no AmbientNoteInputs.
+        var minimal = V7Fixtures.Minimal();
+        var manifest = minimal with
+        {
+            SpecVersion = 17,
+            Inputs = minimal.Inputs!.Select(input => input.Id == "consult_draft"
+                ? input with { Type = WorkflowInputTypes.Text, ExpectedContent = WorkflowExpectedContent.AmbientNote }
+                : input).ToList()
+        };
+
+        var request = new ConsultGenerationRequest(
+            null,
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
+            {
+                ["consult_draft"] = [new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))]
+            });
+
+        var captured = await StartAndCaptureAsync(manifest, request);
+
+        Assert.Null(captured.Outcome.Error);
+        var origin = Assert.Single(Assert.Contains("consult_draft", captured.Initialize!.InputDocumentOrigins));
+        Assert.Equal(ConsultInputOriginKinds.AmbientNote, origin.Kind);
+        Assert.NotNull(origin.FileSha256);
+        Assert.Null(captured.OrchestrationInput!.Request.AmbientNoteInputs);
+    }
+
+    [Fact]
+    public async Task AnAmbientNote_HashesLikeTheSameTextAsADocument_DifferingOnlyInOrigin()
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(Referral);
+        ConsultGenerationRequest Make(bool asAmbient) => new(
+            null,
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
+            {
+                ["consult_draft"] = [new("text/plain", bytes)]
+            },
+            AmbientNoteInputs: asAmbient ? new[] { "consult_draft" } : null);
+
+        var asDocument = await StartV7AndCaptureAsync(Make(false));
+        var asAmbient = await StartV7AndCaptureAsync(Make(true));
+
+        Assert.Null(asDocument.Outcome.Error);
+        Assert.Null(asAmbient.Outcome.Error);
+        // Origin is recorded beside the effective-input hash, never inside it:
+        // identical text, identical hash — only the recorded kind differs.
+        Assert.Equal(
+            asDocument.OrchestrationInput!.EffectiveInputHash,
+            asAmbient.OrchestrationInput!.EffectiveInputHash);
+        Assert.Equal(ConsultInputOriginKinds.Document, Assert.Single(asDocument.Initialize!.InputDocumentOrigins!["consult_draft"]).Kind);
+        Assert.Equal(ConsultInputOriginKinds.AmbientNote, Assert.Single(asAmbient.Initialize!.InputDocumentOrigins!["consult_draft"]).Kind);
+    }
+
+    [Fact]
+    public void TheAmbientNoteKind_IsTheKebabWord()
+    {
+        // #673: the registry grammar's word (provenance@v2026.09.11), verbatim.
+        Assert.Equal("ambient-note", ConsultInputOriginKinds.AmbientNote);
+    }
+
+    [Fact]
+    public void TheAmbientNoteMarkerShape_IsCheckedAtTheDoor()
+    {
+        // The ambient-note marker is the transcript marker's twin: every id must
+        // be a file slot; a blank or unmatched id is a 400 here.
+        Assert.Contains("was not supplied as a file", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = ConsultInputValue.OfText(Referral) },
+            AmbientNoteInputs: new[] { "consult_draft" })));
+        Assert.Contains("blank id", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null,
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))] },
+            AmbientNoteInputs: new[] { " " })));
+        // A marker that names its file slot is well formed.
+        Assert.Null(ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null,
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))] },
+            AmbientNoteInputs: new[] { "consult_draft" })));
+    }
+
     // ----- #510: an input copied from a previous run -----
 
     private const string SourceJob = "0123456789abcdef0123456789abcdef";
