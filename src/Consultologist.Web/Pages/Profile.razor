@@ -9,6 +9,7 @@
 @inject IWorkflowEndpointService WorkflowService
 @inject IConfiguration Configuration
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 @attribute [Authorize]
 
 @page "/profile"
@@ -1181,12 +1182,16 @@
                                     new UsageChartGeometry.CategorySegment("tokens-out", day.TokensOut)
                                 }))
                                 .ToList();
+                            @* #743: the per-day charts switch bars↔lines. *@
+                            <div class="usage-charts__toolbar">
+                                <UsageChartModeToggle Mode="_chartMode" ModeChanged="OnChartModeChangedAsync" />
+                            </div>
                             <div class="usage-charts">
                                 <UsageBarChart Title="Consults per day" Unit="consults"
-                                               Categories="consultCategories"
+                                               Categories="consultCategories" Mode="_chartMode"
                                                Legend="@(new[] { ("consults", "Consults") })" />
                                 <UsageBarChart Title="Tokens per day" Unit="tokens"
-                                               Categories="tokenCategories"
+                                               Categories="tokenCategories" Mode="_chartMode"
                                                Legend="@(new[] { ("tokens-in", "Tokens in"), ("tokens-out", "Tokens out") })" />
                             </div>
                             <div class="usage__scroll">
@@ -1233,6 +1238,47 @@
 @code {
     [CascadingParameter]
     private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    // #743: the per-day usage chart style, remembered per viewer.
+    private UsageChartMode _chartMode = UsageChartMode.Bar;
+    private const string ChartModeStorageKey = "consultologist-usage-chart-mode";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        // Read the remembered chart style once; localStorage may be unavailable
+        // (private window, blocked site data), so a failure just keeps bars.
+        try
+        {
+            var saved = await JS.InvokeAsync<string?>("localStorage.getItem", ChartModeStorageKey);
+            if (saved == UsageChartMode.Line.ToString() && _chartMode != UsageChartMode.Line)
+            {
+                _chartMode = UsageChartMode.Line;
+                StateHasChanged();
+            }
+        }
+        catch
+        {
+            // keep the default
+        }
+    }
+
+    private async Task OnChartModeChangedAsync(UsageChartMode mode)
+    {
+        _chartMode = mode;
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", ChartModeStorageKey, mode.ToString());
+        }
+        catch
+        {
+            // a remembered preference is a convenience, not a requirement
+        }
+    }
 
     [SupplyParameterFromQuery(Name = "linkedin")]
     private string? LinkedInResult { get; set; }

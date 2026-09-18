@@ -36,6 +36,13 @@
     margin-block: 0.5rem;
 }
 
+/* #743: the bars/lines toggle sits above the chart grid, trailing edge. */
+.usage-charts__toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.5rem;
+}
+
 /* #682: titled groups that organise the profile cards (activation first). The
    groups are the flex children of .content-shell; cards stack within each. */
 .profile-group {

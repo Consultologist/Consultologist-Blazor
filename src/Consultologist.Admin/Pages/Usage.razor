@@ -1,6 +1,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
 @inject IOperatorEndpointService OperatorService
+@inject IJSRuntime JS
 @attribute [Authorize]
 
 @page "/"
@@ -101,14 +102,22 @@
                         }))
                         .ToList();
 
+                    @* #743: the per-day charts switch bars↔lines; the per-org
+                       charts are categorical and stay bars. *@
+                    @if (days.Count > 0)
+                    {
+                        <div class="usage-charts__toolbar">
+                            <UsageChartModeToggle Mode="_chartMode" ModeChanged="OnChartModeChangedAsync" />
+                        </div>
+                    }
                     <div class="operators-charts">
                         @if (days.Count > 0)
                         {
                             <UsageBarChart Title="Consults per day" Unit="consults"
-                                           Categories="dailyConsults"
+                                           Categories="dailyConsults" Mode="_chartMode"
                                            Legend="@(new[] { ("consults", "Consults") })" />
                             <UsageBarChart Title="Tokens per day" Unit="tokens"
-                                           Categories="dailyTokens"
+                                           Categories="dailyTokens" Mode="_chartMode"
                                            Legend="@(new[] { ("tokens-in", "Tokens in"), ("tokens-out", "Tokens out") })" />
                         }
                         <UsageBarChart Title="Consults by organisation" Unit="consults"
@@ -170,7 +179,48 @@
     private string sortKey = OperatorUsageRollup.SortByConsults;
     private bool sortDescending = true;
 
+    // #743: the per-day chart style, remembered per viewer.
+    private UsageChartMode _chartMode = UsageChartMode.Bar;
+    private const string ChartModeStorageKey = "consultologist-usage-chart-mode";
+
     protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        // Read the remembered chart style once; localStorage may be unavailable
+        // (private window, blocked site data), so a failure just keeps bars.
+        try
+        {
+            var saved = await JS.InvokeAsync<string?>("localStorage.getItem", ChartModeStorageKey);
+            if (saved == UsageChartMode.Line.ToString() && _chartMode != UsageChartMode.Line)
+            {
+                _chartMode = UsageChartMode.Line;
+                StateHasChanged();
+            }
+        }
+        catch
+        {
+            // keep the default
+        }
+    }
+
+    private async Task OnChartModeChangedAsync(UsageChartMode mode)
+    {
+        _chartMode = mode;
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", ChartModeStorageKey, mode.ToString());
+        }
+        catch
+        {
+            // a remembered preference is a convenience, not a requirement
+        }
+    }
 
     private async Task LoadAsync()
     {
