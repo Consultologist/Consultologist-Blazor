@@ -2329,6 +2329,9 @@
             // #571: declared macros marked for removal.
             new("removedMacroIds", () => removedMacroIds.Count, removedMacroIds.Clear,
                 () => $"−{removedMacroIds.Count} {Plural(removedMacroIds.Count, "macro")}", () => removedMacroIds.Count > 0),
+            // #746: declared output-contract schemas marked for removal.
+            new("removedSchemaIds", () => removedSchemaIds.Count, removedSchemaIds.Clear,
+                () => $"−{removedSchemaIds.Count} {Plural(removedSchemaIds.Count, "schema")}", () => removedSchemaIds.Count > 0),
 
             new("resultEdit", () => resultEdit != null ? 1 : 0, () => resultEdit = null,
                 () => "deliverable", () => resultEdit != null),
@@ -2693,6 +2696,55 @@
     // itself, like binding rows.
     private readonly Dictionary<string, WorkflowNodeSummary.NodeChange> nodeEdits = new(StringComparer.Ordinal);
     private IReadOnlyList<string> schemaIds = Array.Empty<string>();
+
+    // #746: declared output-contract schemas marked for removal. The body is a
+    // catalog match the author cannot design, so the pane only views and drops
+    // them; removal drops the manifest map entry (at compose) and the file (via
+    // removedFiles), and is refused while a node's output reads the contract.
+    private readonly HashSet<string> removedSchemaIds = new(StringComparer.Ordinal);
+
+    private IReadOnlyList<WorkflowManifestReader.SchemaView> DeclaredSchemas =>
+        content == null
+            ? Array.Empty<WorkflowManifestReader.SchemaView>()
+            : WorkflowManifestReader.ReadSchemas(content.Manifest);
+
+    /// <summary>The schemas the pane still shows — declared, less those marked for removal.</summary>
+    private IEnumerable<WorkflowManifestReader.SchemaView> LiveSchemas =>
+        DeclaredSchemas.Where(schema => !removedSchemaIds.Contains(schema.Id));
+
+    private IEnumerable<WorkflowManifestReader.SchemaView> RemovedSchemaViews =>
+        DeclaredSchemas.Where(schema => removedSchemaIds.Contains(schema.Id));
+
+    /// <summary>The nodes whose output contract reads a schema id — removal is refused while any exist.</summary>
+    private IReadOnlyList<string> SchemaReferencedBy(string schemaId) =>
+        EffectiveNodes.Where(node => node.OutputSchema == schemaId).Select(node => node.Id).ToList();
+
+    private async Task RemoveSchemaAsync(WorkflowManifestReader.SchemaView schema)
+    {
+        if (SchemaReferencedBy(schema.Id).Count > 0)
+        {
+            return;
+        }
+
+        removedSchemaIds.Add(schema.Id);
+        if (schema.File.Length > 0)
+        {
+            removedFiles.Add(schema.File);
+        }
+
+        await PendingChangedAsync();
+    }
+
+    private async Task RestoreSchemaAsync(WorkflowManifestReader.SchemaView schema)
+    {
+        removedSchemaIds.Remove(schema.Id);
+        if (schema.File.Length > 0)
+        {
+            removedFiles.Remove(schema.File);
+        }
+
+        await PendingChangedAsync();
+    }
 
     // Pending new nodes (#117): a prompt node carries its 1:1 prompt's text —
     // a prompt is only publishable referenced by exactly one node, so node and
@@ -7984,6 +8036,17 @@
             foreach (var scalarId in RemovedScalarIds)
             {
                 dataObject.Remove(scalarId);
+            }
+        }
+
+        // #746: schemas marked for removal drop from the schemas map (their
+        // files drop via removedFiles). The map otherwise rides through as read.
+        if (removedSchemaIds.Count > 0
+            && (root["schemas"] ?? root["Schemas"]) is System.Text.Json.Nodes.JsonObject schemasObject)
+        {
+            foreach (var schemaId in removedSchemaIds)
+            {
+                schemasObject.Remove(schemaId);
             }
         }
 

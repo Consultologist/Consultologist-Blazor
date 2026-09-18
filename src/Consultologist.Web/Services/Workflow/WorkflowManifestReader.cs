@@ -134,6 +134,9 @@ public static class WorkflowManifestReader
     /// v12 § 3 (#621): optional and its default, carried as read.</summary>
     public sealed record MacroView(string Id, string Label, string File, bool? Optional = null, bool? Default = null);
 
+    /// <summary>One declared output-contract schema: its id and the package file its JSON body lives in.</summary>
+    public sealed record SchemaView(string Id, string File);
+
     public sealed record DataItemView(string Id, string Name, string File);
 
     public sealed record CollectionView(string Id, string Directory, IReadOnlyList<DataItemView> Items);
@@ -233,6 +236,19 @@ public static class WorkflowManifestReader
         }
 
         return schemas.EnumerateObject().Select(entry => entry.Name).ToList();
+    }
+
+    /// <summary>The declared schemas with their file paths, which viewing and removal need.</summary>
+    public static IReadOnlyList<SchemaView> ReadSchemas(JsonElement manifest)
+    {
+        if (!TryGetProperty(manifest, "schemas", out var schemas) || schemas.ValueKind != JsonValueKind.Object)
+        {
+            return Array.Empty<SchemaView>();
+        }
+
+        return schemas.EnumerateObject()
+            .Select(entry => new SchemaView(entry.Name, entry.Value.ValueKind == JsonValueKind.String ? entry.Value.GetString() ?? string.Empty : string.Empty))
+            .ToList();
     }
 
     /// <summary>
