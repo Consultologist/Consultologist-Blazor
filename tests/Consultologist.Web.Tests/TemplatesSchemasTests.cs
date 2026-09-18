@@ -58,7 +58,8 @@ public class TemplatesSchemasTests : ClientRenderTestContext
 
         var row = page.Find("div[data-schema='concept-list']");
         Assert.Contains("schemas/concept-list.json", row.TextContent);
-        Assert.Contains("\"concepts\"", page.Find("div[data-schema='concept-list'] pre.schema-body").TextContent);
+        // #760: a declared body is shown in an editable text area.
+        Assert.Contains("\"concepts\"", page.Find("textarea[aria-label='Schema body for concept-list']").GetAttribute("value"));
     }
 
     [Fact]
