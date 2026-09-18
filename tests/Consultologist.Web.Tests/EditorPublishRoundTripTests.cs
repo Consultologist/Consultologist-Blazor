@@ -389,6 +389,80 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
 
+    // ----- #745: expectedContent + union types round-trip and author -----
+
+    [Fact]
+    public async Task AChannelAndUnionPackage_KeepsThemThroughAnUnrelatedRelabel()
+    {
+        // #745: the composer rebuilds the whole inputs list from the editor's
+        // records. Before this, editing one input dropped every slot's
+        // expectedContent and flattened unions to their first arm.
+        var (result, sent) = await PublishAndCaptureAsync(page =>
+        {
+            Navigate(page, "Inputs");
+            page.FindAll("li.declared-row input")[1].Change("Referral draft");
+            return Task.CompletedTask;
+        }, EditorFixtures.V17ChannelAndUnion());
+
+        var inputs = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement.GetProperty("inputs").EnumerateArray().ToList();
+
+        Assert.Equal("Referral draft", inputs[0].GetProperty("label").GetString());
+        // The channel survived, untouched, on a different input.
+        Assert.Equal("ambient-note", inputs[1].GetProperty("expectedContent").GetString());
+        // The union survived as an array — not flattened to its first arm.
+        var unionType = inputs[2].GetProperty("type");
+        Assert.Equal(JsonValueKind.Array, unionType.ValueKind);
+        Assert.Equal(new[] { "text", "array" }, unionType.EnumerateArray().Select(t => t.GetString()));
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public async Task SettingAContentChannel_ComposesExpectedContent()
+    {
+        var (result, sent) = await PublishAndCaptureAsync(page =>
+        {
+            Navigate(page, "Inputs");
+            // consult_draft (a text slot, first row) → mark it an image channel.
+            page.FindAll("select.declared-row__channel")[0].Change(WorkflowExpectedContent.Image);
+            return Task.CompletedTask;
+        }, EditorFixtures.V17ChannelAndUnion());
+
+        var inputs = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement.GetProperty("inputs").EnumerateArray().ToList();
+        Assert.Equal("image", inputs[0].GetProperty("expectedContent").GetString());
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public async Task AddingAUnionArm_ComposesATypeArray()
+    {
+        var (result, sent) = await PublishAndCaptureAsync(page =>
+        {
+            Navigate(page, "Inputs");
+            // consult_draft (bare text, first row) → also accept a number.
+            page.FindAll("select.declared-row__add-arm")[0].Change(WorkflowInputTypes.Number);
+            return Task.CompletedTask;
+        }, EditorFixtures.V17ChannelAndUnion());
+
+        var inputs = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement.GetProperty("inputs").EnumerateArray().ToList();
+        var type = inputs[0].GetProperty("type");
+        Assert.Equal(JsonValueKind.Array, type.ValueKind);
+        Assert.Equal(new[] { "text", "number" }, type.EnumerateArray().Select(t => t.GetString()));
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void BelowTheVersionGates_NeitherSelectorRenders()
+    {
+        // v7: no channel selector (arrives at 13), no union add-arm (arrives at 14).
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
+        var page = Render<Templates>();
+        Navigate(page, "Inputs");
+
+        Assert.Empty(page.FindAll("select.declared-row__channel"));
+        Assert.Empty(page.FindAll("select.declared-row__add-arm"));
+    }
+
     [Fact]
     public async Task AV10NestedPackage_KeepsItsDepthThroughAnUnrelatedRelabel()
     {
