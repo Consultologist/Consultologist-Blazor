@@ -5080,17 +5080,7 @@
                         operands.Add(new ConditionOperand(input.Id, type, null));
                         break;
                     case WorkflowInputTypes.Object when v9:
-                        // 'field' is a keyword inside a property accessor (C# 14).
-                        foreach (var member in input.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>())
-                        {
-                            var fieldType = WorkflowInputTypes.Of(member);
-
-                            if (fieldType is WorkflowInputTypes.Enum or WorkflowInputTypes.Boolean or WorkflowInputTypes.Number or WorkflowInputTypes.Date)
-                            {
-                                operands.Add(new ConditionOperand($"{input.Id}.{member.Id}", fieldType, member.Values));
-                            }
-                        }
-
+                        AddFieldOperands(operands, input.Id, input.Fields);
                         break;
                     case WorkflowInputTypes.Array when v9:
                         operands.Add(new ConditionOperand($"count({input.Id})", CountType, null));
@@ -5100,6 +5090,33 @@
             }
 
             return operands;
+        }
+    }
+
+    /// <summary>
+    /// The testable fields an object holds, as condition operands. A scalar
+    /// field (enum/boolean/number/date) is a leaf, keyed by its dotted path.
+    /// v10 (#498/#754): a field that is itself an object is walked deeper — the
+    /// server reads a path of any length, gating depth ≥2 behind specVersion 10,
+    /// so the deeper walk is offered only at 10. An array is never descended:
+    /// its element fields are not read by path ('field' is a keyword inside a
+    /// property accessor in C# 14).
+    /// </summary>
+    private void AddFieldOperands(List<ConditionOperand> operands, string prefix, IReadOnlyList<WorkflowManifestReader.FieldView>? fields)
+    {
+        foreach (var member in fields ?? Array.Empty<WorkflowManifestReader.FieldView>())
+        {
+            var fieldType = WorkflowInputTypes.Of(member);
+            var key = $"{prefix}.{member.Id}";
+
+            if (fieldType is WorkflowInputTypes.Enum or WorkflowInputTypes.Boolean or WorkflowInputTypes.Number or WorkflowInputTypes.Date)
+            {
+                operands.Add(new ConditionOperand(key, fieldType, member.Values));
+            }
+            else if (fieldType == WorkflowInputTypes.Object && EffectiveSpecVersion >= 10)
+            {
+                AddFieldOperands(operands, key, member.Fields);
+            }
         }
     }
 
