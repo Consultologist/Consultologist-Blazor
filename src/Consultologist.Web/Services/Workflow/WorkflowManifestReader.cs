@@ -90,7 +90,12 @@ public static class WorkflowManifestReader
         string? Type = null,
         IReadOnlyList<string>? Values = null,
         ElementView? Items = null,
-        IReadOnlyList<FieldView>? Fields = null);
+        IReadOnlyList<FieldView>? Fields = null,
+        // #745: carried so an inputs recompose does not silently drop them.
+        // Types is the union arms (#729·v14) — Type stays the primary/first arm;
+        // ExpectedContent is the content channel (#728·v13/#730·v16/#673·v17).
+        IReadOnlyList<string>? Types = null,
+        string? ExpectedContent = null);
 
     /// <summary>
     /// One declared deliverable: authored id and label over an aggregator node.
@@ -364,14 +369,22 @@ public static class WorkflowManifestReader
                 || requiredElement.ValueKind != JsonValueKind.False;
 
             var (items, fields, values) = Hoist(ReadItems(input), ReadFields(input), ReadStringArray(input, "values"));
+
+            // #745: a union `type: [a, b]` (#729) is a JSON array — read the arms,
+            // keeping the first as the primary type the structure editors key off.
+            // A string `type` yields null arms and the single-string read.
+            var typeArms = ReadStringArray(input, "type");
+
             inputs.Add(new InputView(
                 id,
                 ReadString(input, "label") ?? id,
                 required,
-                ReadString(input, "type"),
+                typeArms is { Count: > 0 } ? typeArms[0] : ReadString(input, "type"),
                 values,
                 items,
-                fields));
+                fields,
+                typeArms,
+                ReadString(input, "expectedContent")));
         }
 
         return inputs;

@@ -248,6 +248,42 @@ public static class EditorFixtures
         """, 9);
 
     /// <summary>
+    /// #745: a v17 package with an input carrying a content channel
+    /// (`expectedContent: ambient-note`) and a union-typed input
+    /// (`type: [text, array]`) — the two input features the editor used to drop
+    /// on any inputs edit. The first input is the one tests relabel to prove the
+    /// others survive untouched.
+    /// </summary>
+    public static WorkflowPackageContentResponse V17ChannelAndUnion() => Package("""
+        {
+          "name": "acct-1234567890ab",
+          "version": "v2026.08.1",
+          "specVersion": 17,
+          "tags": [],
+          "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
+          "inputs": [
+            { "id": "consult_draft", "label": "Consult draft", "required": true },
+            { "id": "encounter_note", "label": "Encounter note", "required": false, "type": "text", "expectedContent": "ambient-note" },
+            { "id": "notes", "label": "Notes", "required": false, "type": ["text", "array"], "items": "text" }
+          ],
+          "data": { "standards": "data/standards/" },
+          "prompts": [
+            { "id": "draft-section", "file": "prompts/draft-section.md",
+              "variables": ["section_name", "consult_draft"] }
+          ],
+          "results": [
+            { "id": "consult_note", "node": "node:assemble-note", "label": "Consultation note" }
+          ],
+          "nodes": [
+            { "id": "draft-section", "forEach": "data:standards", "label": "Drafting section",
+              "prompt": "draft-section",
+              "bindings": { "section_name": "item:name", "consult_draft": "input:consult_draft" } },
+            { "id": "assemble-note", "label": "Assembling note", "aggregate": ["node:draft-section"] }
+          ]
+        }
+        """, 17);
+
+    /// <summary>
     /// v10 (#498): V9Structured at 10 with structure below one level — an
     /// array of objects whose fields are an array and an object, and an array
     /// of arrays written as a spec.
