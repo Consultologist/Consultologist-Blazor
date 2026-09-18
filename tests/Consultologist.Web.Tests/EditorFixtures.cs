@@ -707,4 +707,40 @@ public static class EditorFixtures
           ]
         }
         """, 7);
+
+    /// <summary>
+    /// #747: a package with a preludes map — `guidance` referenced by the
+    /// draft-section prompt and `unused` an orphan — for the preludes pane.
+    /// </summary>
+    public static WorkflowPackageContentResponse V7Preludes() => Package("""
+        {
+          "name": "acct-1234567890ab",
+          "version": "v2026.07.1",
+          "specVersion": 7,
+          "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
+          "preludes": {
+            "guidance": "preludes/guidance.md",
+            "unused": "preludes/unused.md"
+          },
+          "inputs": [
+            { "id": "consult_draft", "label": "Consult draft", "required": true }
+          ],
+          "data": { "standards": "data/standards/" },
+          "prompts": [
+            { "id": "draft-section", "file": "prompts/draft-section.md",
+              "variables": ["section_name", "consult_draft"], "prelude": "guidance" }
+          ],
+          "results": [
+            { "id": "consult_note", "node": "node:assemble-note", "label": "Consultation note" }
+          ],
+          "nodes": [
+            { "id": "draft-section", "forEach": "data:standards", "label": "Drafting section",
+              "prompt": "draft-section",
+              "bindings": { "section_name": "item:name", "consult_draft": "input:consult_draft" } },
+            { "id": "assemble-note", "label": "Assembling note", "aggregate": ["node:draft-section"] }
+          ]
+        }
+        """, 7,
+        ("preludes/guidance.md", "Use short SNOMED search terms."),
+        ("preludes/unused.md", "An unused prelude."));
 }
