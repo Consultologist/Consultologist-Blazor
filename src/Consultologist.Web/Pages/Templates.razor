@@ -7424,7 +7424,9 @@
         // #747: shared preludes — pending additions, removals, and prompt choices.
         List<DraftAddedPrelude>? AddedPreludes = null,
         List<string>? RemovedPreludes = null,
-        List<DraftPromptPreludeEdit>? PromptPreludeEdits = null);
+        List<DraftPromptPreludeEdit>? PromptPreludeEdits = null,
+        // #759: catalog contracts added. Trailing optional — an older draft restores with none.
+        List<string>? AddedSchemas = null);
 
     // #316: Type and Values ride here or a typed input is silently untyped on
     // reload. Trailing optionals — a draft written before v8 restores with null.
@@ -7494,6 +7496,7 @@
         List<DraftPromptRawEdit>? draftPromptRawEdits = null;
         List<string>? draftRemovedSchemas = null;
         List<DraftAddedPrelude>? draftAddedPreludes = null;
+        List<string>? draftAddedSchemas = null;
         List<string>? draftRemovedPreludes = null;
         List<DraftPromptPreludeEdit>? draftPromptPreludeEdits = null;
         int? draftSpecVersionBump = null;
@@ -7529,6 +7532,7 @@
                 draftPromptRawEdits = payload?.PromptRawEdits;
                 draftRemovedSchemas = payload?.RemovedSchemas;
                 draftAddedPreludes = payload?.AddedPreludes;
+                draftAddedSchemas = payload?.AddedSchemas;
                 draftRemovedPreludes = payload?.RemovedPreludes;
                 draftPromptPreludeEdits = payload?.PromptPreludeEdits;
                 draftInputs = payload?.Inputs;
@@ -7706,6 +7710,17 @@
                 {
                     removedFiles.Add(schema.File);
                 }
+            }
+        }
+
+        // #759: a drafted schema add is kept only when it is still a declarable
+        // catalog contract and not already live (the stale-id idiom).
+        foreach (var draftAddedSchema in draftAddedSchemas ?? new List<string>())
+        {
+            if (WorkflowOutputContracts.Declarable.ContainsKey(draftAddedSchema)
+                && LiveSchemas.All(schema => schema.Id != draftAddedSchema))
+            {
+                addedSchemas.Add(draftAddedSchema);
             }
         }
 
@@ -7974,7 +7989,8 @@
             removedSchemaIds.ToList(),
             addedPreludes.Select(prelude => new DraftAddedPrelude(prelude.Id, prelude.Text)).ToList(),
             removedPreludeIds.ToList(),
-            promptPreludeEdits.Select(pair => new DraftPromptPreludeEdit(pair.Key, pair.Value)).ToList());
+            promptPreludeEdits.Select(pair => new DraftPromptPreludeEdit(pair.Key, pair.Value)).ToList(),
+            addedSchemas.ToList());
         await JS.InvokeVoidAsync("localStorage.setItem", DraftKey, JsonSerializer.Serialize(payload));
     }
 
