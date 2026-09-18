@@ -453,6 +453,38 @@ public static class EditorFixtures
         }
         """, 10);
 
+    /// <summary>
+    /// #746: a package that declares an output-contract schema no node uses — an
+    /// orphan the Schemas pane can remove. The body is the catalog concept-list.
+    /// </summary>
+    public static WorkflowPackageContentResponse V10OrphanSchema() => Package("""
+        {
+          "name": "acct-1234567890ab",
+          "version": "v2026.08.1",
+          "specVersion": 10,
+          "tags": [],
+          "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
+          "schemas": { "report": "schemas/report.json" },
+          "inputs": [
+            { "id": "consult_draft", "label": "Consult draft", "required": true }
+          ],
+          "data": { "standards": "data/standards/" },
+          "prompts": [
+            { "id": "draft-section", "file": "prompts/draft-section.md",
+              "variables": ["section_name", "consult_draft"] }
+          ],
+          "results": [
+            { "id": "consult_note", "node": "node:assemble-note", "label": "Consultation note" }
+          ],
+          "nodes": [
+            { "id": "draft-section", "forEach": "data:standards", "label": "Drafting section",
+              "prompt": "draft-section",
+              "bindings": { "section_name": "item:name", "consult_draft": "input:consult_draft" } },
+            { "id": "assemble-note", "label": "Assembling note", "aggregate": ["node:draft-section"] }
+          ]
+        }
+        """, 10, ("schemas/report.json", EditorCatalogSchemas.ConceptListSchema));
+
     /// <summary>v11 (#564): the classifier package at 11 with a macro wired end to end — declared, referenced, signed, and a reproducible classifier.</summary>
     public static WorkflowPackageContentResponse V11Macro() => Package("""
         {

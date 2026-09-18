@@ -329,6 +329,19 @@
                             </button>
                         }
                     }
+                    @* #746: declared output-contract schemas — the pane views
+                       them and removes an unused one; the group shows only when
+                       the package declares at least one. *@
+                    @if (DeclaredSchemas.Count > 0)
+                    {
+                        <span class="editor-nav__group">Schemas</span>
+                        <button type="button"
+                                class="editor-nav__item @(selectedKey == SchemasKey ? "editor-nav__item--selected" : "")"
+                                @onclick="() => Select(SchemasKey)">
+                            <span class="editor-nav__dot">@(removedSchemaIds.Count > 0 ? "●" : "")</span>
+                            <span>Schemas</span>
+                        </button>
+                    }
                     <span class="editor-nav__group">Data</span>
                     @foreach (var collection in EffectiveCollections)
                     {
@@ -737,6 +750,56 @@
                             @* The server clears all three on a fork across names, so the
                                fields do not accept what it would strip. *@
                             <p class="muted-text">A fork starts with no title and no tags. Publish your version first, then name it here.</p>
+                        }
+                    }
+                    else if (selectedKey == SchemasKey)
+                    {
+                        <div class="pane-header">
+                            <div>
+                                <h3 class="panel-title">Output schemas</h3>
+                                <p class="muted-text">
+                                    The output contracts this package declares. A schema body must match an
+                                    engine catalog contract, so it is shown as published rather than edited
+                                    here; an unused one can be removed. A node chooses a contract in its
+                                    output field.
+                                </p>
+                            </div>
+                        </div>
+                        @if (!LiveSchemas.Any() && !RemovedSchemaViews.Any())
+                        {
+                            <p class="muted-text">This package declares no output schemas.</p>
+                        }
+                        @foreach (var schema in LiveSchemas)
+                        {
+                            var declaredSchema = schema;
+                            var readers = SchemaReferencedBy(schema.Id);
+                            <div class="package-field" data-schema="@schema.Id">
+                                <div class="pane-header">
+                                    <div>
+                                        <span class="panel-title">@schema.Id</span>
+                                        <span class="muted-text">@schema.File</span>
+                                    </div>
+                                    <button type="button" class="aggregate-row__button" title="Remove schema"
+                                            aria-label="@($"Remove schema {schema.Id}")"
+                                            disabled="@(readers.Count > 0)"
+                                            @onclick="() => RemoveSchemaAsync(declaredSchema)">Remove</button>
+                                </div>
+                                @if (readers.Count > 0)
+                                {
+                                    <span class="muted-text">Used by @(string.Join(", ", readers.Select(reader => $"'{reader}'"))); change its output contract first.</span>
+                                }
+                                <pre class="schema-body">@GetText(schema.File)</pre>
+                            </div>
+                        }
+                        @foreach (var removed in RemovedSchemaViews)
+                        {
+                            var restoreSchema = removed;
+                            <div class="package-field editor-nav__item--removed" data-schema-removed="@removed.Id">
+                                <span class="editor-nav__strike">@removed.Id</span>
+                                <button type="button" class="editor-nav__restore"
+                                        aria-label="@($"Restore schema {removed.Id}")"
+                                        @onclick="() => RestoreSchemaAsync(restoreSchema)">(restore)</button>
+                            </div>
                         }
                     }
                     else if (selectedKey == InputsKey)
@@ -2048,6 +2111,8 @@
     private const string InputsKey = "inputs";
     // #432: the package's own pane — its title and description (v9 § 4).
     private const string PackageKey = "package";
+    // #746: the output-contract schemas pane (view + remove an unused one).
+    private const string SchemasKey = "schemas";
     private const string ResultsKey = "results";
     private const string NewKeyPrefix = "new:";
     private const string AddCollectionKey = "add-collection";
@@ -2329,6 +2394,9 @@
             // #571: declared macros marked for removal.
             new("removedMacroIds", () => removedMacroIds.Count, removedMacroIds.Clear,
                 () => $"−{removedMacroIds.Count} {Plural(removedMacroIds.Count, "macro")}", () => removedMacroIds.Count > 0),
+            // #746: declared output-contract schemas marked for removal.
+            new("removedSchemaIds", () => removedSchemaIds.Count, removedSchemaIds.Clear,
+                () => $"−{removedSchemaIds.Count} {Plural(removedSchemaIds.Count, "schema")}", () => removedSchemaIds.Count > 0),
 
             new("resultEdit", () => resultEdit != null ? 1 : 0, () => resultEdit = null,
                 () => "deliverable", () => resultEdit != null),
@@ -2394,6 +2462,8 @@
         key is GraphKey or InputsKey or ResultsKey
             or AddCollectionKey or AddScalarKey or AddNodeKey or AddPromptKey
         || (key == PackageKey && EffectiveSpecVersion >= 9)
+        // #746: the schemas pane shows only while the package declares one.
+        || (key == SchemasKey && DeclaredSchemas.Count > 0)
         || (key.StartsWith(NewKeyPrefix, StringComparison.Ordinal)
             && EffectiveCollections.Any(c => NewKeyFor(c.Id) == key))
         || (key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)
@@ -2693,6 +2763,66 @@
     // itself, like binding rows.
     private readonly Dictionary<string, WorkflowNodeSummary.NodeChange> nodeEdits = new(StringComparer.Ordinal);
     private IReadOnlyList<string> schemaIds = Array.Empty<string>();
+
+    // #746: declared output-contract schemas marked for removal. The body is a
+    // catalog match the author cannot design, so the pane only views and drops
+    // them; removal drops the manifest map entry (at compose) and the file (via
+    // removedFiles), and is refused while a node's output reads the contract.
+    private readonly HashSet<string> removedSchemaIds = new(StringComparer.Ordinal);
+
+    private IReadOnlyList<WorkflowManifestReader.SchemaView> DeclaredSchemas =>
+        content == null
+            ? Array.Empty<WorkflowManifestReader.SchemaView>()
+            : WorkflowManifestReader.ReadSchemas(content.Manifest);
+
+    /// <summary>The schemas the pane still shows — declared, less those marked for removal.</summary>
+    private IEnumerable<WorkflowManifestReader.SchemaView> LiveSchemas =>
+        DeclaredSchemas.Where(schema => !removedSchemaIds.Contains(schema.Id));
+
+    private IEnumerable<WorkflowManifestReader.SchemaView> RemovedSchemaViews =>
+        DeclaredSchemas.Where(schema => removedSchemaIds.Contains(schema.Id));
+
+    /// <summary>The nodes whose output contract reads a schema id — removal is refused while any exist.</summary>
+    private IReadOnlyList<string> SchemaReferencedBy(string schemaId) =>
+        EffectiveNodes.Where(node => node.OutputSchema == schemaId).Select(node => node.Id).ToList();
+
+    private async Task RemoveSchemaAsync(WorkflowManifestReader.SchemaView schema)
+    {
+        if (SchemaReferencedBy(schema.Id).Count > 0)
+        {
+            return;
+        }
+
+        removedSchemaIds.Add(schema.Id);
+        if (schema.File.Length > 0)
+        {
+            removedFiles.Add(schema.File);
+        }
+
+        await PendingChangedAsync();
+    }
+
+    private async Task RestoreSchemaAsync(WorkflowManifestReader.SchemaView schema)
+    {
+        removedSchemaIds.Remove(schema.Id);
+        if (schema.File.Length > 0)
+        {
+            removedFiles.Remove(schema.File);
+        }
+
+        await PendingChangedAsync();
+    }
+
+    /// <summary>
+    /// #746: a schema marked for removal must not still be a node's output
+    /// contract — the server would refuse the missing schema, said here first.
+    /// The pane refuses the removal itself, so this only catches a node retyped
+    /// onto a pending-removed contract after the fact.
+    /// </summary>
+    private IEnumerable<string> SchemaErrors() =>
+        removedSchemaIds
+            .SelectMany(id => SchemaReferencedBy(id).Select(nodeId => (id, nodeId)))
+            .Select(pair => $"Schema '{pair.id}' is removed but node '{pair.nodeId}' still reads it as its output contract; change that node's output first.");
 
     // Pending new nodes (#117): a prompt node carries its 1:1 prompt's text —
     // a prompt is only publishable referenced by exactly one node, so node and
@@ -6933,7 +7063,10 @@
         // Trailing optional — a draft written before restores with none.
         List<DraftMacroEdit>? MacroEdits = null,
         // v15 (#731): pending raw toggles on declared prompts. Trailing optional.
-        List<DraftPromptRawEdit>? PromptRawEdits = null);
+        List<DraftPromptRawEdit>? PromptRawEdits = null,
+        // #746: output-contract schemas marked for removal. Trailing optional —
+        // a draft written before restores with none.
+        List<string>? RemovedSchemas = null);
 
     // #316: Type and Values ride here or a typed input is silently untyped on
     // reload. Trailing optionals — a draft written before v8 restores with null.
@@ -7001,6 +7134,7 @@
         List<string>? draftRemovedMacros = null;
         List<DraftMacroEdit>? draftMacroEdits = null;
         List<DraftPromptRawEdit>? draftPromptRawEdits = null;
+        List<string>? draftRemovedSchemas = null;
         int? draftSpecVersionBump = null;
         string? draftTitle = null;
         string? draftDescription = null;
@@ -7032,6 +7166,7 @@
                 draftRemovedMacros = payload?.RemovedMacros;
                 draftMacroEdits = payload?.MacroEdits;
                 draftPromptRawEdits = payload?.PromptRawEdits;
+                draftRemovedSchemas = payload?.RemovedSchemas;
                 draftInputs = payload?.Inputs;
                 draftResults = payload?.Results;
                 draftAddedScalars = payload?.AddedScalars;
@@ -7195,6 +7330,18 @@
             if (WorkflowManifestReader.ReadMacros(content!.Manifest).Any(m => m.Id == draftRemovedMacro))
             {
                 removedMacroIds.Add(draftRemovedMacro);
+            }
+        }
+
+        foreach (var draftRemovedSchema in draftRemovedSchemas ?? new List<string>())
+        {
+            if (DeclaredSchemas.FirstOrDefault(schema => schema.Id == draftRemovedSchema) is { } schema)
+            {
+                removedSchemaIds.Add(schema.Id);
+                if (schema.File.Length > 0)
+                {
+                    removedFiles.Add(schema.File);
+                }
             }
         }
 
@@ -7428,7 +7575,8 @@
             addedMacros.Select(m => new DraftAddedMacro(m.Id, m.Label, m.Text, m.Optional, m.Default)).ToList(),
             removedMacroIds.ToList(),
             macroEdits.Select(pair => new DraftMacroEdit(pair.Key, pair.Value.Optional, pair.Value.Default)).ToList(),
-            promptRawEdits.Select(pair => new DraftPromptRawEdit(pair.Key, pair.Value)).ToList());
+            promptRawEdits.Select(pair => new DraftPromptRawEdit(pair.Key, pair.Value)).ToList(),
+            removedSchemaIds.ToList());
         await JS.InvokeVoidAsync("localStorage.setItem", DraftKey, JsonSerializer.Serialize(payload));
     }
 
@@ -7630,6 +7778,7 @@
 
             unbound.AddRange(DeclaredSectionErrors());
             unbound.AddRange(PackageMetadataErrors());
+            unbound.AddRange(SchemaErrors());
 
             if (unbound.Count > 0)
             {
@@ -7984,6 +8133,17 @@
             foreach (var scalarId in RemovedScalarIds)
             {
                 dataObject.Remove(scalarId);
+            }
+        }
+
+        // #746: schemas marked for removal drop from the schemas map (their
+        // files drop via removedFiles). The map otherwise rides through as read.
+        if (removedSchemaIds.Count > 0
+            && (root["schemas"] ?? root["Schemas"]) is System.Text.Json.Nodes.JsonObject schemasObject)
+        {
+            foreach (var schemaId in removedSchemaIds)
+            {
+                schemasObject.Remove(schemaId);
             }
         }
 
