@@ -814,20 +814,26 @@
                                         @if (slot.Items?.Type == WorkflowInputTypes.Array)
                                         {
                                             @* v10 (#498): an array of arrays says what the inner
-                                               entries are — a scalar; deeper is authored elsewhere. *@
+                                               entries are, and if those are structure the editor
+                                               draws itself again beneath, to any depth. *@
                                             <select class="node-field__input declared-row__inner-items"
                                                     value="@(slot.Items.Items?.Type ?? string.Empty)"
-                                                    @onchange="args => SetInputInnerItemsAsync(slot, args.Value?.ToString())"
+                                                    @onchange="args => SetElementTypeAsync(InnerElementPath(slot.Id), args.Value?.ToString())"
                                                     aria-label="@($"Inner items for input {slot.Id}")">
                                                 @if (slot.Items.Items is null)
                                                 {
                                                     <option value="">entries of entries of…</option>
                                                 }
-                                                @foreach (var element in WorkflowInputTypes.Scalars)
+                                                else if (!WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion).Contains(slot.Items.Items.Type))
+                                                {
+                                                    <option value="@slot.Items.Items.Type">@slot.Items.Items.Type</option>
+                                                }
+                                                @foreach (var element in WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion))
                                                 {
                                                     <option value="@element">@element</option>
                                                 }
                                             </select>
+                                            @ElementChildren(new ElementScope(InnerElementPath(slot.Id), slot.Items.Items))
                                         }
                                     }
                                     @* #745: the content channel (#728/#730/#673). Version-gated —
@@ -1911,17 +1917,22 @@
                           {
                               <select class="node-field__input declared-field__inner-items"
                                       value="@(member.Items.Items?.Type ?? string.Empty)"
-                                      @onchange="args => SetFieldInnerItemsAsync(owner, member, args.Value?.ToString())"
+                                      @onchange="args => SetElementTypeAsync(InnerElementPath(path), args.Value?.ToString())"
                                       aria-label="@($"Inner items for field {path}")">
                                   @if (member.Items.Items is null)
                                   {
                                       <option value="">entries of entries of…</option>
                                   }
-                                  @foreach (var element in WorkflowInputTypes.Scalars)
+                                  else if (!WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion).Contains(member.Items.Items.Type))
+                                  {
+                                      <option value="@member.Items.Items.Type">@member.Items.Items.Type</option>
+                                  }
+                                  @foreach (var element in WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion))
                                   {
                                       <option value="@element">@element</option>
                                   }
                               </select>
+                              @ElementChildren(new ElementScope(InnerElementPath(path), member.Items.Items))
                           }
                       }
                       <button type="button" class="aggregate-row__button" title="Remove field"
@@ -1969,6 +1980,68 @@
 
   /// <summary>Where a fields editor draws: the owner's path and the fields it holds.</summary>
   private sealed record FieldsScope(string Owner, IReadOnlyList<WorkflowManifestReader.FieldView> Fields);
+
+  /// <summary>Where an element editor draws: the element's own path and the element (null until chosen).</summary>
+  private sealed record ElementScope(string Path, WorkflowManifestReader.ElementView? Element);
+
+  /// <summary>
+  /// v10 (#498): an array element that is itself structure — its type select
+  /// and, beneath it, whatever it holds. It draws itself again for an array
+  /// element (any depth), a fields editor for an object, and a values editor
+  /// for an enum, so an array of arrays of objects is authored, not hand-edited.
+  /// </summary>
+  private RenderFragment<ElementScope> ElementEditor => scope =>
+    @<text>
+      <select class="node-field__input declared-element__type"
+              value="@(scope.Element?.Type ?? string.Empty)"
+              @onchange="args => SetElementTypeAsync(scope.Path, args.Value?.ToString())"
+              aria-label="@($"Inner items for element {scope.Path}")">
+          @if (scope.Element is null)
+          {
+              <option value="">entries of entries of…</option>
+          }
+          else if (!WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion).Contains(scope.Element.Type))
+          {
+              <option value="@scope.Element.Type">@scope.Element.Type</option>
+          }
+          @foreach (var element in WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion))
+          {
+              <option value="@element">@element</option>
+          }
+      </select>
+      @ElementChildren(scope)
+    </text>;
+
+  /// <summary>What an array element holds, drawn beneath its type: the recursion the two editors share.</summary>
+  private RenderFragment<ElementScope> ElementChildren => scope =>
+    @<text>
+      @if (scope.Element?.Type == WorkflowInputTypes.Array)
+      {
+          @ElementEditor(new ElementScope(ElementChildPath(scope.Path), scope.Element.Items))
+      }
+      else if (scope.Element?.Type == WorkflowInputTypes.Object)
+      {
+          @FieldsEditor(new FieldsScope(scope.Path, scope.Element.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>()))
+      }
+      else if (scope.Element?.Type == WorkflowInputTypes.Enum)
+      {
+          <li class="declared-field__values" data-values-for="@scope.Path">
+              @foreach (var value in scope.Element.Values ?? Array.Empty<string>())
+              {
+                  var declaredValue = value;
+                  <span class="input-field__chip" data-field-enum-value="@declaredValue">
+                      @declaredValue
+                      <button type="button" class="aggregate-row__button" title="Remove value"
+                              aria-label="Remove value @declaredValue"
+                              @onclick="() => RemoveElementValueAsync(scope.Path, declaredValue)">×</button>
+                  </span>
+              }
+              <input class="node-field__input" placeholder="female"
+                     @onchange="args => AddElementValueAsync(scope.Path, args.Value?.ToString())"
+                     aria-label="@($"Add a value to {scope.Path}")" />
+          </li>
+      }
+    </text>;
 
     private const string DraftKeyPrefix = "workflow-editor-draft:";
     private const string GraphKey = "graph";
@@ -3097,9 +3170,7 @@
                 .Where(input => WorkflowInputTypes.DeclaresObject(input) && input.Fields is not { Count: > 0 })
                 .Select(input => $"Input '{input.Id}' is an object and must declare at least one field."));
 
-            errors.AddRange(inputs
-                .Where(input => input.Items?.Type == WorkflowInputTypes.Array && input.Items.Items is null)
-                .Select(input => $"Input '{input.Id}' is an array of arrays and must declare what the inner entries are."));
+            errors.AddRange(inputs.SelectMany(input => ElementChainErrors($"Input '{input.Id}'", input.Items)));
 
             errors.AddRange(FieldTreeErrors(inputs));
 
@@ -4421,6 +4492,19 @@
 
     private string NewFieldId(string owner) => newFieldIds.GetValueOrDefault(owner, string.Empty);
 
+    /// <summary>
+    /// The path segment that descends into an array element (v10, #498). Never a
+    /// field id — "[]" fails the snake_case rule — so the walk stays unambiguous
+    /// even beside a field literally named "items".
+    /// </summary>
+    private const string ElementStep = "[]";
+
+    /// <summary>The element an array owner holds: "grid" → "grid.[]" (one step down).</summary>
+    private static string ElementChildPath(string owner) => $"{owner}.{ElementStep}";
+
+    /// <summary>The element an owner's inner array holds, two steps down: "grid" → "grid.[].[]".</summary>
+    private static string InnerElementPath(string owner) => $"{owner}.{ElementStep}.{ElementStep}";
+
     /// <summary>v10 (#498): a field's owner is a path — the input, or a field below it ("patient.contact").</summary>
     private static string InputIdOf(string owner) => owner.Split('.')[0];
 
@@ -4455,29 +4539,105 @@
         UpdateFields(owner, fields => fields.Select(field => field.Id == fieldId ? change(field) : field).ToList());
 
     /// <summary>The fields list under an owner path, replaced whole.</summary>
-    private bool UpdateFields(string owner, Func<IReadOnlyList<WorkflowManifestReader.FieldView>, List<WorkflowManifestReader.FieldView>> change)
+    private bool UpdateFields(string owner, Func<IReadOnlyList<WorkflowManifestReader.FieldView>, List<WorkflowManifestReader.FieldView>> change) =>
+        MutateNode(owner, node => (node.Items, change(node.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>())));
+
+    /// <summary>
+    /// The element an owner path names (it ends in "[]"), replaced whole — and
+    /// created from null the first time an inner entry type is chosen.
+    /// </summary>
+    private bool UpdateElement(string owner, Func<WorkflowManifestReader.ElementView?, WorkflowManifestReader.ElementView?> change) =>
+        MutateNode(ParentElementOwner(owner), node => (change(node.Items), node.Fields));
+
+    /// <summary>The owner one step up from an element path: "grid.[].[]" → "grid.[]".</summary>
+    private static string ParentElementOwner(string owner) =>
+        owner.EndsWith($".{ElementStep}", StringComparison.Ordinal) ? owner[..^(ElementStep.Length + 1)] : owner;
+
+    /// <summary>
+    /// Walk an owner path — an "[]" segment descends into an array element's
+    /// items, any other segment into the fields by id — and rewrite the node it
+    /// names (its items and its fields), to any depth (v10, #498). Input, field
+    /// and element all carry the same two, so the walk is one shape throughout.
+    /// </summary>
+    private bool MutateNode(
+        string owner,
+        Func<(WorkflowManifestReader.ElementView? Items, IReadOnlyList<WorkflowManifestReader.FieldView>? Fields),
+             (WorkflowManifestReader.ElementView? Items, IReadOnlyList<WorkflowManifestReader.FieldView>? Fields)> terminal)
     {
         var segments = owner.Split('.');
-        return UpdateInput(segments[0], input => input with { Fields = Rewrite(input.Fields, 1) });
-
-        List<WorkflowManifestReader.FieldView> Rewrite(IReadOnlyList<WorkflowManifestReader.FieldView>? fields, int depth)
+        return UpdateInput(segments[0], input =>
         {
-            var present = fields ?? Array.Empty<WorkflowManifestReader.FieldView>();
-            return depth == segments.Length
-                ? change(present)
-                : present.Select(field => field.Id == segments[depth] ? field with { Fields = Rewrite(field.Fields, depth + 1) } : field).ToList();
+            var (items, fields) = Step(input.Items, input.Fields, 1);
+            return input with { Items = items, Fields = fields };
+        });
+
+        (WorkflowManifestReader.ElementView? Items, IReadOnlyList<WorkflowManifestReader.FieldView>? Fields) Step(
+            WorkflowManifestReader.ElementView? items,
+            IReadOnlyList<WorkflowManifestReader.FieldView>? fields,
+            int depth)
+        {
+            if (depth == segments.Length)
+            {
+                return terminal((items, fields));
+            }
+
+            if (segments[depth] == ElementStep)
+            {
+                var element = items ?? new WorkflowManifestReader.ElementView(WorkflowInputTypes.Array);
+                var (childItems, childFields) = Step(element.Items, element.Fields, depth + 1);
+                return (element with { Items = childItems, Fields = childFields }, fields);
+            }
+
+            var stepped = (fields ?? Array.Empty<WorkflowManifestReader.FieldView>())
+                .Select(field =>
+                {
+                    if (field.Id != segments[depth])
+                    {
+                        return field;
+                    }
+
+                    var (childItems, childFields) = Step(field.Items, field.Fields, depth + 1);
+                    return field with { Items = childItems, Fields = childFields };
+                })
+                .ToList();
+            return (items, stepped);
         }
     }
 
-    private async Task SetInputInnerItemsAsync(WorkflowManifestReader.InputView input, string? value)
+    /// <summary>The element an owner path names, or null — the read twin of <see cref="UpdateElement"/>.</summary>
+    private WorkflowManifestReader.ElementView? ElementAt(string owner)
     {
-        var inner = string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
-        UpdateInput(input.Id, existing => existing with
+        var segments = owner.Split('.');
+        var input = EffectiveInputs.FirstOrDefault(candidate => candidate.Id == segments[0]);
+        if (input is null)
         {
-            Items = new WorkflowManifestReader.ElementView(WorkflowInputTypes.Array, inner is null ? null : new WorkflowManifestReader.ElementView(inner))
-        });
-        declaredError = null;
-        await CommitDeclarationAsync();
+            return null;
+        }
+
+        WorkflowManifestReader.ElementView? items = input.Items;
+        IReadOnlyList<WorkflowManifestReader.FieldView>? fields = input.Fields;
+        WorkflowManifestReader.ElementView? element = null;
+
+        for (var depth = 1; depth < segments.Length; depth++)
+        {
+            if (segments[depth] == ElementStep)
+            {
+                element = items;
+            }
+            else
+            {
+                element = null;
+                var field = fields?.FirstOrDefault(candidate => candidate.Id == segments[depth]);
+                items = field?.Items;
+                fields = field?.Fields;
+                continue;
+            }
+
+            items = element?.Items;
+            fields = element?.Fields;
+        }
+
+        return element;
     }
 
     /// <summary>v10 (#498): an array field says what its entries are — the input's rule, one level down.</summary>
@@ -4494,14 +4654,54 @@
         await CommitDeclarationAsync();
     }
 
-    private async Task SetFieldInnerItemsAsync(string owner, WorkflowManifestReader.FieldView field, string? value)
+    /// <summary>
+    /// v10 (#498): the type of a nested array element, at "&lt;owner&gt;.[]…[]".
+    /// It starts empty when it becomes structure and carries none when it stops
+    /// — an array element's twin of <see cref="RetypeFieldAsync"/>. Subsumes the
+    /// old scalar-only inner-items handlers now that array elements recurse.
+    /// </summary>
+    private async Task SetElementTypeAsync(string owner, string? value)
     {
-        var inner = string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
-        UpdateField(owner, field.Id, existing => existing with
-        {
-            Items = new WorkflowManifestReader.ElementView(WorkflowInputTypes.Array, inner is null ? null : new WorkflowManifestReader.ElementView(inner))
-        });
+        var type = string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
+        UpdateElement(owner, existing => type is null
+            ? null
+            : new WorkflowManifestReader.ElementView(
+                type,
+                Items: type == WorkflowInputTypes.Array && existing?.Type == WorkflowInputTypes.Array ? existing.Items : null,
+                Fields: type == WorkflowInputTypes.Object ? existing?.Fields ?? new List<WorkflowManifestReader.FieldView>() : null,
+                Values: type == WorkflowInputTypes.Enum ? existing?.Values ?? new List<string>() : null));
         declaredError = null;
+        await CommitDeclarationAsync();
+    }
+
+    private async Task AddElementValueAsync(string owner, string? value)
+    {
+        var candidate = (value ?? string.Empty).Trim();
+
+        if (!DeclaredIdPattern.IsMatch(candidate))
+        {
+            declaredError = $"Value '{candidate}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
+            return;
+        }
+
+        if (ElementAt(owner)?.Values?.Contains(candidate, StringComparer.Ordinal) == true)
+        {
+            declaredError = $"Entries of '{owner}' already declare '{candidate}'.";
+            return;
+        }
+
+        UpdateElement(owner, existing => existing is null
+            ? null
+            : existing with { Values = (existing.Values ?? Array.Empty<string>()).Append(candidate).ToList() });
+        declaredError = null;
+        await CommitDeclarationAsync();
+    }
+
+    private async Task RemoveElementValueAsync(string owner, string value)
+    {
+        UpdateElement(owner, existing => existing is null
+            ? null
+            : existing with { Values = (existing.Values ?? Array.Empty<string>()).Where(entry => entry != value).ToList() });
         await CommitDeclarationAsync();
     }
 
@@ -4781,9 +4981,9 @@
                     yield return $"Input '{inputId}' field '{path}' is an array and must declare what its entries are.";
                 }
 
-                if (field.Items?.Type == WorkflowInputTypes.Array && field.Items.Items is null)
+                foreach (var error in ElementChainErrors($"Input '{inputId}' field '{path}'", field.Items))
                 {
-                    yield return $"Input '{inputId}' field '{path}' is an array of arrays and must declare what the inner entries are.";
+                    yield return error;
                 }
 
                 if (WorkflowInputTypes.DeclaresObject(field) && field.Fields is not { Count: > 0 })
@@ -4799,6 +4999,41 @@
                     }
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// The shapes a nested array element must finish before it can publish,
+    /// walking the items chain to any depth (v10, #498) — an array level with no
+    /// inner entry type, or an inner enum with fewer than two values. Said here,
+    /// beside the control; the server refuses them too. An object element's own
+    /// fields are drawn by <see cref="FieldsEditor"/> and checked as fields.
+    /// </summary>
+    private static IEnumerable<string> ElementChainErrors(string subject, WorkflowManifestReader.ElementView? element)
+    {
+        for (var current = element; current is not null; current = current.Items)
+        {
+            if (current.Type == WorkflowInputTypes.Array)
+            {
+                if (current.Items is null)
+                {
+                    yield return $"{subject} is an array of arrays and must declare what the inner entries are.";
+                    yield break;
+                }
+
+                continue;
+            }
+
+            if (current.Type == WorkflowInputTypes.Enum)
+            {
+                var count = current.Values?.Count ?? 0;
+                if (count < 2)
+                {
+                    yield return $"{subject} is an array of enums that declares {count} value{(count == 1 ? string.Empty : "s")}; an enum needs at least two.";
+                }
+            }
+
+            yield break;
         }
     }
 

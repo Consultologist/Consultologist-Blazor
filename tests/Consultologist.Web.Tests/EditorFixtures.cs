@@ -328,6 +328,48 @@ public static class EditorFixtures
         """, 10);
 
     /// <summary>
+    /// v10 (#498): array elements nested past a scalar — an array of arrays of
+    /// objects, a three-level array of numbers, and an array of arrays of enums.
+    /// The shapes the editor must author beyond array-of-array-of-scalar (#748).
+    /// </summary>
+    public static WorkflowPackageContentResponse V10DeepArrays() => Package("""
+        {
+          "name": "acct-1234567890ab",
+          "version": "v2026.08.1",
+          "specVersion": 10,
+          "tags": [],
+          "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
+          "inputs": [
+            { "id": "consult_draft", "label": "Consult draft", "required": true },
+            { "id": "matrix", "label": "Matrix", "required": false, "type": "array",
+              "items": { "type": "array", "items": { "type": "object",
+                "fields": [
+                  { "id": "name", "label": "Name", "required": true },
+                  { "id": "scores", "label": "Scores", "required": false, "type": "array", "items": "number" }
+                ] } } },
+            { "id": "cube", "label": "Cube", "required": false, "type": "array",
+              "items": { "type": "array", "items": { "type": "array", "items": "number" } } },
+            { "id": "labels", "label": "Labels", "required": false, "type": "array",
+              "items": { "type": "array", "items": { "type": "enum", "values": ["low", "high"] } } }
+          ],
+          "data": { "standards": "data/standards/" },
+          "prompts": [
+            { "id": "draft-section", "file": "prompts/draft-section.md",
+              "variables": ["section_name", "consult_draft"] }
+          ],
+          "results": [
+            { "id": "consult_note", "node": "node:assemble-note", "label": "Consultation note" }
+          ],
+          "nodes": [
+            { "id": "draft-section", "forEach": "data:standards", "label": "Drafting section",
+              "prompt": "draft-section",
+              "bindings": { "section_name": "item:name", "consult_draft": "input:consult_draft" } },
+            { "id": "assemble-note", "label": "Assembling note", "aggregate": ["node:draft-section"] }
+          ]
+        }
+        """, 10);
+
+    /// <summary>
     /// v10 (#498): V9Structured at 10 with a classifier over the draft —
     /// "scope" answering in_scope or out_of_scope — and a document conditioned
     /// on its answer.
