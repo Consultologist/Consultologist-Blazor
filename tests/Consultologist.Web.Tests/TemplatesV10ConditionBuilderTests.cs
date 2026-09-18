@@ -394,4 +394,67 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         page.Find("li.declared-field__values[data-values-for='patient.sex'] button[title='Remove value']").Click();
         Assert.Contains("is what 'Consultation note' tests for", page.Find("p.editor-warning").TextContent);
     }
+
+    // ----- deeper (multi-level) field-path operands (#754) -----------------
+
+    private static IReadOnlyList<string?> Options(IRenderedComponent<Templates> page, string selector) =>
+        page.Find(selector).QuerySelectorAll("option").Select(option => option.GetAttribute("value")).ToList();
+
+    [Fact]
+    public void At10_TheOperandPicker_OffersNestedObjectPaths_ButNotArrayElementFields()
+    {
+        var page = RenderEditor(EditorFixtures.V10DeepConditionObject());
+        Navigate(page, "Documents");
+
+        var operands = Options(page, Sel("operand"));
+        Assert.Contains("patient.age", operands);
+        Assert.Contains("patient.contact.preferred", operands);
+        Assert.Contains("patient.contact.zone", operands);
+        // meds is an array field — its element fields are not read by path.
+        Assert.DoesNotContain(operands, operand => operand is not null && operand.Contains("meds"));
+    }
+
+    [Fact]
+    public void At10_ADeepPathCondition_PublishesThroughTheValidator()
+    {
+        var page = RenderEditor(EditorFixtures.V10DeepConditionObject());
+        CapturePublish();
+        Navigate(page, "Documents");
+
+        page.Find(Sel("operand")).Change("patient.contact.preferred");
+        page.Find(Sel("operator")).Change("==");
+        page.Find(Sel("value")).Change("email");
+
+        PublishAndExpect(page, "patient.contact.preferred == email");
+    }
+
+    [Fact]
+    public void Below10_ADeepPathIsNotOffered_ThoughDirectFieldsAre()
+    {
+        // A draft can carry structure the editor at 9 cannot compose; the deeper
+        // walk is gated at 10, so a nested field is not offered as an operand
+        // there, only the object's direct fields.
+        var package = EditorFixtures.V9Structured();
+        JSInterop.Setup<string?>("localStorage.getItem", $"workflow-editor-draft:{package.Ref}")
+            .SetResult("""
+                {
+                  "Version": 11,
+                  "Inputs": [
+                    { "Id": "consult_draft", "Label": "Consult draft", "Required": true },
+                    { "Id": "patient", "Label": "Patient", "Required": true, "Type": "object",
+                      "Fields": [
+                        { "Id": "age", "Label": "Age", "Required": true, "Type": "number" },
+                        { "Id": "contact", "Label": "Contact", "Required": false, "Type": "object",
+                          "Fields": [ { "Id": "preferred", "Label": "Preferred", "Required": false, "Type": "enum", "Values": ["phone", "email"] } ] }
+                      ] }
+                  ]
+                }
+                """);
+        var page = RenderEditor(package);
+        Navigate(page, "Documents");
+
+        var operands = Options(page, Sel("operand"));
+        Assert.Contains("patient.age", operands);
+        Assert.DoesNotContain("patient.contact.preferred", operands);
+    }
 }

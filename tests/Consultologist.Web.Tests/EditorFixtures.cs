@@ -410,6 +410,49 @@ public static class EditorFixtures
         }
         """, 10, ("prompts/classify.md", "Is this in scope? {{ referral }}"));
 
+    /// <summary>
+    /// v10 (#498/#754): an object input with a nested object holding testable
+    /// scalars (patient.contact.preferred) and an array field (meds) whose
+    /// element fields are not read by path. The shape a deep-path condition
+    /// reads; its result has no `when` so a test composes one.
+    /// </summary>
+    public static WorkflowPackageContentResponse V10DeepConditionObject() => Package("""
+        {
+          "name": "acct-1234567890ab",
+          "version": "v2026.08.1",
+          "specVersion": 10,
+          "tags": [],
+          "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
+          "inputs": [
+            { "id": "consult_draft", "label": "Consult draft", "required": true },
+            { "id": "patient", "label": "Patient", "required": true, "type": "object",
+              "fields": [
+                { "id": "age", "label": "Age", "required": true, "type": "number" },
+                { "id": "contact", "label": "Contact", "required": false, "type": "object",
+                  "fields": [
+                    { "id": "preferred", "label": "Preferred", "required": false, "type": "enum", "values": ["phone", "email"] },
+                    { "id": "zone", "label": "Zone", "required": false, "type": "enum", "values": ["north", "south"] }
+                  ] },
+                { "id": "meds", "label": "Meds", "required": false, "type": "array", "items": "text" }
+              ] }
+          ],
+          "data": { "standards": "data/standards/" },
+          "prompts": [
+            { "id": "draft-section", "file": "prompts/draft-section.md",
+              "variables": ["section_name", "consult_draft"] }
+          ],
+          "results": [
+            { "id": "consult_note", "node": "node:assemble-note", "label": "Consultation note" }
+          ],
+          "nodes": [
+            { "id": "draft-section", "forEach": "data:standards", "label": "Drafting section",
+              "prompt": "draft-section",
+              "bindings": { "section_name": "item:name", "consult_draft": "input:consult_draft" } },
+            { "id": "assemble-note", "label": "Assembling note", "aggregate": ["node:draft-section"] }
+          ]
+        }
+        """, 10);
+
     /// <summary>v11 (#564): the classifier package at 11 with a macro wired end to end — declared, referenced, signed, and a reproducible classifier.</summary>
     public static WorkflowPackageContentResponse V11Macro() => Package("""
         {
