@@ -47,6 +47,32 @@
     fill: var(--consultologist-success);
 }
 
+/* #743: the line rendering — a stroked polyline per role, filled dot markers.
+   Same theme tokens as the bars, keyed off dedicated line/dot role classes so a
+   polyline is never given a bar's fill. */
+.usage-chart ::deep .usage-chart__line {
+    fill: none;
+    stroke-width: 2;
+}
+
+.usage-chart ::deep .usage-chart__line--consults,
+.usage-chart ::deep .usage-chart__line--tokens-in {
+    stroke: var(--consultologist-accent);
+}
+
+.usage-chart ::deep .usage-chart__line--tokens-out {
+    stroke: var(--consultologist-success);
+}
+
+.usage-chart ::deep .usage-chart__dot--consults,
+.usage-chart ::deep .usage-chart__dot--tokens-in {
+    fill: var(--consultologist-accent);
+}
+
+.usage-chart ::deep .usage-chart__dot--tokens-out {
+    fill: var(--consultologist-success);
+}
+
 .usage-chart__legend {
     display: flex;
     flex-wrap: wrap;

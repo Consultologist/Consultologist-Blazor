@@ -122,4 +122,78 @@ public static class UsageChartGeometry
 
     /// <summary>A coordinate as invariant text for an SVG attribute (never the current culture's comma).</summary>
     public static string N(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
+
+    // ----- #743: the line rendering of the same categories -----
+
+    /// <summary>One plotted point of a line — its position, the value, and the category label (for the tooltip).</summary>
+    public sealed record LinePoint(double X, double Y, long Value, string Label);
+
+    /// <summary>One role's line across the categories (e.g. the tokens-in line), left to right.</summary>
+    public sealed record Line(string Role, IReadOnlyList<LinePoint> Points);
+
+    public sealed record LineGeometry(
+        double Width,
+        double Height,
+        double PlotLeft,
+        double PlotRight,
+        double PlotTop,
+        double PlotBottom,
+        long Max,
+        IReadOnlyList<Line> Lines,
+        IReadOnlyList<Tick> Ticks);
+
+    /// <summary>
+    /// The same categories as one line per role rather than stacked bars.
+    /// Reuses the bar chart's plot rect, ticks and nice-rounding; the one
+    /// difference is the axis top: lines are <em>unstacked</em>, so the scale
+    /// reaches the largest single role value (not the summed bar height), and
+    /// each line uses the full plot. Emits roles and coordinates only — never a
+    /// colour — so the theme keeps the colours in CSS, exactly as the bars do.
+    /// </summary>
+    public static LineGeometry BuildLines(IReadOnlyList<Category> categories)
+    {
+        var plotLeft = PadLeft;
+        var plotRight = Width - PadRight;
+        var plotTop = PadTop;
+        var plotBottom = Height - PadBottom;
+        var plotWidth = plotRight - plotLeft;
+        var plotHeight = plotBottom - plotTop;
+
+        var rawMax = categories.Count == 0
+            ? 0L
+            : categories.SelectMany(category => category.Segments).Select(segment => segment.Value).DefaultIfEmpty(0L).Max();
+        var max = NiceCeil(rawMax);
+
+        var count = categories.Count;
+        var step = count > 0 ? plotWidth / count : plotWidth;
+
+        // Roles in first-seen order (the legend's order), one line each.
+        var roles = categories.SelectMany(category => category.Segments.Select(segment => segment.Role))
+            .Distinct(StringComparer.Ordinal).ToList();
+
+        var lines = new List<Line>(roles.Count);
+        foreach (var role in roles)
+        {
+            var points = new List<LinePoint>(count);
+            for (var index = 0; index < count; index++)
+            {
+                var category = categories[index];
+                var value = category.Segments.FirstOrDefault(segment => segment.Role == role)?.Value ?? 0L;
+                var x = plotLeft + (index * step) + (step / 2);
+                var y = max > 0 ? plotBottom - ((double)value / max * plotHeight) : plotBottom;
+                points.Add(new LinePoint(x, y, value, category.Label));
+            }
+
+            lines.Add(new Line(role, points));
+        }
+
+        var ticks = new List<Tick>
+        {
+            new(plotBottom, 0),
+            new(plotBottom - (plotHeight / 2), max / 2.0),
+            new(plotTop, max),
+        };
+
+        return new LineGeometry(Width, Height, plotLeft, plotRight, plotTop, plotBottom, max, lines, ticks);
+    }
 }

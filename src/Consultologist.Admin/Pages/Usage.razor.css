@@ -55,3 +55,10 @@
     gap: 1rem 1.5rem;
     margin-bottom: 1.5rem;
 }
+
+/* #743: the bars/lines toggle sits above the chart grid, trailing edge. */
+.usage-charts__toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.5rem;
+}

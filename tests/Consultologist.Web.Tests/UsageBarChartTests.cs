@@ -48,6 +48,34 @@ public class UsageBarChartTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void LineMode_Renders_APolylinePerRole_NotRects()
+    {
+        // #743: the same categories in line mode — a polyline per role, dot
+        // markers, the legend intact, and no bar rects.
+        var chart = Render<UsageBarChart>(parameters => parameters
+            .Add(p => p.Title, "Tokens per day")
+            .Add(p => p.Unit, "tokens")
+            .Add(p => p.Mode, UsageChartMode.Line)
+            .Add(p => p.Categories, new[]
+            {
+                Cat("2026-09-01", ("tokens-in", 1000), ("tokens-out", 300)),
+                Cat("2026-09-02", ("tokens-in", 2000), ("tokens-out", 500)),
+            })
+            .Add(p => p.Legend, new[] { ("tokens-in", "Tokens in"), ("tokens-out", "Tokens out") }));
+
+        var svg = chart.Find("svg.usage-chart__svg");
+        Assert.Equal("img", svg.GetAttribute("role"));
+        // Two roles → two polylines, four point markers; no bars.
+        Assert.Equal(2, chart.FindAll("polyline.usage-chart__line").Count);
+        Assert.Equal(4, chart.FindAll("circle.usage-chart__dot").Count);
+        Assert.Empty(chart.FindAll("rect.usage-chart__seg"));
+        // The legend still names both series.
+        var legend = chart.Find(".usage-chart__legend").TextContent;
+        Assert.Contains("Tokens in", legend);
+        Assert.Contains("Tokens out", legend);
+    }
+
+    [Fact]
     public void EmptyCategories_SayTheEmptyState_NoSvg()
     {
         var chart = Render<UsageBarChart>(parameters => parameters

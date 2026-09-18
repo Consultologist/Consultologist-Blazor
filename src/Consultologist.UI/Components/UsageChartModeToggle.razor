@@ -1,0 +1,35 @@
+@* #743: the bars↔lines switch for a page's per-day usage charts. Pure UI and
+   two-way bindable (@bind-Mode); each app owns persistence. Shared so the
+   clinician Profile and the admin Usage page look identical. *@
+@namespace Consultologist.UI.Components
+@using Consultologist.UI.Charts
+
+<div class="usage-chart-toggle" role="group" aria-label="Chart style">
+    <FluentButton Appearance="@(Mode == UsageChartMode.Bar ? Appearance.Accent : Appearance.Neutral)"
+                  aria-pressed="@(Mode == UsageChartMode.Bar)"
+                  @onclick="@(() => SetAsync(UsageChartMode.Bar))">
+        Bars
+    </FluentButton>
+    <FluentButton Appearance="@(Mode == UsageChartMode.Line ? Appearance.Accent : Appearance.Neutral)"
+                  aria-pressed="@(Mode == UsageChartMode.Line)"
+                  @onclick="@(() => SetAsync(UsageChartMode.Line))">
+        Lines
+    </FluentButton>
+</div>
+
+@code {
+    [Parameter] public UsageChartMode Mode { get; set; } = UsageChartMode.Bar;
+
+    [Parameter] public EventCallback<UsageChartMode> ModeChanged { get; set; }
+
+    private async Task SetAsync(UsageChartMode mode)
+    {
+        if (mode == Mode)
+        {
+            return;
+        }
+
+        Mode = mode;
+        await ModeChanged.InvokeAsync(mode);
+    }
+}

@@ -1,0 +1,6 @@
+/* #743: the two buttons read as one segmented control. */
+.usage-chart-toggle {
+    display: inline-flex;
+    gap: 0.25rem;
+    align-items: center;
+}
