@@ -52,13 +52,27 @@
     /// <summary>The unit named in the accessible summary (e.g. "consults", "tokens").</summary>
     [Parameter] public string Unit { get; set; } = "";
 
+    /// <summary>#743: stacked bars (the default) or a line per role. The per-day
+    /// series can render either; the per-organisation charts stay bars.</summary>
+    [Parameter] public UsageChartMode Mode { get; set; } = UsageChartMode.Bar;
+
     private bool IsEmpty => Categories.Count == 0 || Categories.All(category => category.Segments.Sum(segment => segment.Value) == 0);
 
     private string Svg()
     {
+        var unit = string.IsNullOrEmpty(Unit) ? "" : $" {Unit}";
+
+        if (Mode == UsageChartMode.Line)
+        {
+            var lineGeometry = UsageChartGeometry.BuildLines(Categories);
+            var days = lineGeometry.Lines.Count == 0 ? 0 : lineGeometry.Lines[0].Points.Count;
+            var linePeak = lineGeometry.Lines.SelectMany(line => line.Points).Select(point => point.Value).DefaultIfEmpty(0L).Max();
+            var lineAria = $"{Title}: a line over {days} day{(days == 1 ? "" : "s")}, peak {linePeak.ToString(ValueFormat)}{unit}. The table below has the exact figures.";
+            return UsageChartLineSvg.Build(lineGeometry, ValueFormat, Legend, lineAria);
+        }
+
         var geometry = UsageChartGeometry.Build(Categories);
         var peak = geometry.Bars.Count == 0 ? 0 : geometry.Bars.Max(bar => bar.Total);
-        var unit = string.IsNullOrEmpty(Unit) ? "" : $" {Unit}";
         var aria = $"{Title}: {geometry.Bars.Count} bars, peak {peak.ToString(ValueFormat)}{unit}. The table below has the exact figures.";
         return UsageChartSvg.Build(geometry, ValueFormat, Legend, aria);
     }
