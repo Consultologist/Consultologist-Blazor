@@ -7063,7 +7063,10 @@
         // Trailing optional — a draft written before restores with none.
         List<DraftMacroEdit>? MacroEdits = null,
         // v15 (#731): pending raw toggles on declared prompts. Trailing optional.
-        List<DraftPromptRawEdit>? PromptRawEdits = null);
+        List<DraftPromptRawEdit>? PromptRawEdits = null,
+        // #746: output-contract schemas marked for removal. Trailing optional —
+        // a draft written before restores with none.
+        List<string>? RemovedSchemas = null);
 
     // #316: Type and Values ride here or a typed input is silently untyped on
     // reload. Trailing optionals — a draft written before v8 restores with null.
@@ -7131,6 +7134,7 @@
         List<string>? draftRemovedMacros = null;
         List<DraftMacroEdit>? draftMacroEdits = null;
         List<DraftPromptRawEdit>? draftPromptRawEdits = null;
+        List<string>? draftRemovedSchemas = null;
         int? draftSpecVersionBump = null;
         string? draftTitle = null;
         string? draftDescription = null;
@@ -7162,6 +7166,7 @@
                 draftRemovedMacros = payload?.RemovedMacros;
                 draftMacroEdits = payload?.MacroEdits;
                 draftPromptRawEdits = payload?.PromptRawEdits;
+                draftRemovedSchemas = payload?.RemovedSchemas;
                 draftInputs = payload?.Inputs;
                 draftResults = payload?.Results;
                 draftAddedScalars = payload?.AddedScalars;
@@ -7325,6 +7330,18 @@
             if (WorkflowManifestReader.ReadMacros(content!.Manifest).Any(m => m.Id == draftRemovedMacro))
             {
                 removedMacroIds.Add(draftRemovedMacro);
+            }
+        }
+
+        foreach (var draftRemovedSchema in draftRemovedSchemas ?? new List<string>())
+        {
+            if (DeclaredSchemas.FirstOrDefault(schema => schema.Id == draftRemovedSchema) is { } schema)
+            {
+                removedSchemaIds.Add(schema.Id);
+                if (schema.File.Length > 0)
+                {
+                    removedFiles.Add(schema.File);
+                }
             }
         }
 
@@ -7558,7 +7575,8 @@
             addedMacros.Select(m => new DraftAddedMacro(m.Id, m.Label, m.Text, m.Optional, m.Default)).ToList(),
             removedMacroIds.ToList(),
             macroEdits.Select(pair => new DraftMacroEdit(pair.Key, pair.Value.Optional, pair.Value.Default)).ToList(),
-            promptRawEdits.Select(pair => new DraftPromptRawEdit(pair.Key, pair.Value)).ToList());
+            promptRawEdits.Select(pair => new DraftPromptRawEdit(pair.Key, pair.Value)).ToList(),
+            removedSchemaIds.ToList());
         await JS.InvokeVoidAsync("localStorage.setItem", DraftKey, JsonSerializer.Serialize(payload));
     }
 
