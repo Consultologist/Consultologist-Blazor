@@ -418,6 +418,52 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
     }
 
     [Fact]
+    public async Task SettingAContentChannel_ComposesExpectedContent()
+    {
+        var (result, sent) = await PublishAndCaptureAsync(page =>
+        {
+            Navigate(page, "Inputs");
+            // consult_draft (a text slot, first row) → mark it an image channel.
+            page.FindAll("select.declared-row__channel")[0].Change(WorkflowExpectedContent.Image);
+            return Task.CompletedTask;
+        }, EditorFixtures.V17ChannelAndUnion());
+
+        var inputs = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement.GetProperty("inputs").EnumerateArray().ToList();
+        Assert.Equal("image", inputs[0].GetProperty("expectedContent").GetString());
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public async Task AddingAUnionArm_ComposesATypeArray()
+    {
+        var (result, sent) = await PublishAndCaptureAsync(page =>
+        {
+            Navigate(page, "Inputs");
+            // consult_draft (bare text, first row) → also accept a number.
+            page.FindAll("select.declared-row__add-arm")[0].Change(WorkflowInputTypes.Number);
+            return Task.CompletedTask;
+        }, EditorFixtures.V17ChannelAndUnion());
+
+        var inputs = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement.GetProperty("inputs").EnumerateArray().ToList();
+        var type = inputs[0].GetProperty("type");
+        Assert.Equal(JsonValueKind.Array, type.ValueKind);
+        Assert.Equal(new[] { "text", "number" }, type.EnumerateArray().Select(t => t.GetString()));
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void BelowTheVersionGates_NeitherSelectorRenders()
+    {
+        // v7: no channel selector (arrives at 13), no union add-arm (arrives at 14).
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
+        var page = Render<Templates>();
+        Navigate(page, "Inputs");
+
+        Assert.Empty(page.FindAll("select.declared-row__channel"));
+        Assert.Empty(page.FindAll("select.declared-row__add-arm"));
+    }
+
+    [Fact]
     public async Task AV10NestedPackage_KeepsItsDepthThroughAnUnrelatedRelabel()
     {
         // v10 (#498): before this, any pending input edit rebuilt the inputs

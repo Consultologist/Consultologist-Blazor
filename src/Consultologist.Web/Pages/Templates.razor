@@ -830,6 +830,27 @@
                                             </select>
                                         }
                                     }
+                                    @* #745: the content channel (#728/#730/#673). Version-gated —
+                                       ForSpecVersion is empty below 13, gains image at 16, ambient-note
+                                       at 17. The server validates channel/type fit. *@
+                                    @{ var channels = WorkflowExpectedContent.ForSpecVersion(EffectiveSpecVersion); }
+                                    @if (channels.Count > 0)
+                                    {
+                                        <select class="node-field__input declared-row__channel"
+                                                value="@(slot.ExpectedContent ?? string.Empty)"
+                                                @onchange="args => SetExpectedContentAsync(slot, args.Value?.ToString())"
+                                                aria-label="@($"Content channel for input {slot.Id}")">
+                                            <option value="">— no channel —</option>
+                                            @if (!string.IsNullOrEmpty(slot.ExpectedContent) && !channels.Contains(slot.ExpectedContent))
+                                            {
+                                                <option value="@slot.ExpectedContent">@slot.ExpectedContent</option>
+                                            }
+                                            @foreach (var channel in channels)
+                                            {
+                                                <option value="@channel">@ChannelLabel(channel)</option>
+                                            }
+                                        </select>
+                                    }
                                     <button type="button" class="aggregate-row__button" title="Remove input"
                                             aria-label="Remove input"
                                             disabled="@(EffectiveInputs.Count == 1 || ConditionLock(slot) != null)"
@@ -858,6 +879,36 @@
                                 @if (WorkflowInputTypes.DeclaresObject(slot))
                                 {
                                     @FieldsEditor(new FieldsScope(slot.Id, slot.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>()))
+                                }
+
+                                @* #745: a union type (#729) — the primary type above is the first arm;
+                                   these are the additional accepted types. v14+. `type` composes as a
+                                   JSON array; the server enforces at most one structured arm. *@
+                                @if (EffectiveSpecVersion >= 14)
+                                {
+                                    <li class="declared-row__union">
+                                        <span class="muted-text">also accepts:</span>
+                                        @foreach (var arm in UnionExtraArms(slot))
+                                        {
+                                            var armValue = arm;
+                                            <span class="input-field__chip" data-union-arm="@armValue">
+                                                @armValue
+                                                <button type="button" class="aggregate-row__button" title="Remove type"
+                                                        aria-label="Remove type @armValue"
+                                                        @onclick="() => RemoveTypeArmAsync(slot, armValue)">×</button>
+                                            </span>
+                                        }
+                                        <select class="node-field__input declared-row__add-arm"
+                                                value=""
+                                                @onchange="args => AddTypeArmAsync(slot, args.Value?.ToString())"
+                                                aria-label="@($"Add an accepted type to {slot.Id}")">
+                                            <option value="">add a type…</option>
+                                            @foreach (var type in WorkflowInputTypes.All)
+                                            {
+                                                <option value="@type">@type</option>
+                                            }
+                                        </select>
+                                    </li>
                                 }
 
                                 @if (ConditionLock(slot) is { } lockedBy)
@@ -4175,7 +4226,121 @@
                 // An array starts with no entry type (explicit initialisation);
                 // an object starts with no fields, which the desk refuses.
                 Items = keepsItems ? inputs[index].Items : null,
-                Fields = keepsFields ? inputs[index].Fields ?? new List<WorkflowManifestReader.FieldView>() : null
+                Fields = keepsFields ? inputs[index].Fields ?? new List<WorkflowManifestReader.FieldView>() : null,
+                // #745: the primary type IS the union's first arm — keep them in
+                // step so retyping a union slot does not desync the composed set.
+                Types = inputs[index].Types is { Count: > 1 } arms
+                    ? new[] { type }.Concat(arms.Skip(1)).ToList()
+                    : inputs[index].Types
+            };
+            declaredError = null;
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    // #745: the content channel (#728/#730/#673). The friendly label matches the
+    // read-side chip in Consults.razor; the stored value is the raw kebab token.
+    private static string ChannelLabel(string channel) => channel switch
+    {
+        WorkflowExpectedContent.Transcript => "Transcript",
+        WorkflowExpectedContent.Form => "From a form",
+        WorkflowExpectedContent.Image => "Image",
+        WorkflowExpectedContent.AmbientNote => "Ambient note",
+        _ => channel
+    };
+
+    private async Task SetExpectedContentAsync(WorkflowManifestReader.InputView input, string? value)
+    {
+        var channel = string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
+
+        if (channel == input.ExpectedContent)
+        {
+            return;
+        }
+
+        var inputs = MutableInputs();
+        var index = inputs.FindIndex(existing => existing.Id == input.Id);
+
+        if (index >= 0)
+        {
+            inputs[index] = inputs[index] with { ExpectedContent = channel };
+            declaredError = null;
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    // #745: a union (#729) is the primary type plus these additional arms.
+    private static IReadOnlyList<string> UnionExtraArms(WorkflowManifestReader.InputView input) =>
+        input.Types is { Count: > 1 } arms ? arms.Skip(1).ToList() : Array.Empty<string>();
+
+    private async Task AddTypeArmAsync(WorkflowManifestReader.InputView input, string? value)
+    {
+        var arm = string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
+
+        if (arm is null)
+        {
+            return;
+        }
+
+        // A union's arms are typed like a single type; an arm change under a
+        // condition is refused the same way a retype is (#429).
+        if (ConditionLock(input) is { } locked)
+        {
+            declaredError = locked;
+            return;
+        }
+
+        var inputs = MutableInputs();
+        var index = inputs.FindIndex(existing => existing.Id == input.Id);
+
+        if (index >= 0)
+        {
+            var primary = WorkflowInputTypes.Of(inputs[index]);
+            var arms = new List<string>(inputs[index].Types ?? new[] { primary });
+            if (!arms.Contains(primary))
+            {
+                arms.Insert(0, primary);
+            }
+
+            if (!arms.Contains(arm))
+            {
+                arms.Add(arm);
+            }
+
+            inputs[index] = inputs[index] with
+            {
+                Type = arms[0] == WorkflowInputTypes.Text ? null : arms[0],
+                Types = arms.Count > 1 ? arms : null
+            };
+            declaredError = null;
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    private async Task RemoveTypeArmAsync(WorkflowManifestReader.InputView input, string arm)
+    {
+        if (ConditionLock(input) is { } locked)
+        {
+            declaredError = locked;
+            return;
+        }
+
+        var inputs = MutableInputs();
+        var index = inputs.FindIndex(existing => existing.Id == input.Id);
+
+        if (index >= 0 && inputs[index].Types is { } arms)
+        {
+            var remaining = arms.Where(existing => existing != arm).ToList();
+            inputs[index] = inputs[index] with
+            {
+                Type = (remaining.Count > 0 ? remaining[0] : WorkflowInputTypes.Text) == WorkflowInputTypes.Text
+                    ? null
+                    : remaining[0],
+                // Back to a bare type once only one arm remains.
+                Types = remaining.Count > 1 ? remaining : null
             };
             declaredError = null;
         }
@@ -7771,9 +7936,27 @@
 
                         // Omitted when absent, so a v7 package composes exactly
                         // the bytes it composes today: type null means text.
-                        if (input.Type != null)
+                        // #745: a union (#729) writes `type` as a JSON array of
+                        // its arms, in order; one arm (or none) stays a bare
+                        // string — mirroring WorkflowTypeSetConverter.Write, so a
+                        // union survives an unrelated input edit instead of
+                        // flattening to its first arm.
+                        if (input.Types is { Count: > 1 })
+                        {
+                            node["type"] = new System.Text.Json.Nodes.JsonArray(
+                                input.Types.Select(t => (System.Text.Json.Nodes.JsonNode?)t).ToArray());
+                        }
+                        else if (input.Type != null)
                         {
                             node["type"] = input.Type;
+                        }
+
+                        // #745: the content channel (#728/#730/#673), carried as
+                        // read. Omitted when absent so a channel-less package is
+                        // byte-identical; without this an inputs edit dropped it.
+                        if (!string.IsNullOrEmpty(input.ExpectedContent))
+                        {
+                            node["expectedContent"] = input.ExpectedContent;
                         }
 
                         if (input.Values is { Count: > 0 })
