@@ -117,4 +117,74 @@ public class UsageChartGeometryTests
         Assert.DoesNotContain("rgb", text);
         Assert.DoesNotContain("var(", text);
     }
+
+    // ----- #743: the line geometry (unstacked) -----
+
+    [Fact]
+    public void BuildLines_ScalesToTheLargestSingleValue_NotTheStackedSum()
+    {
+        // tokens-in peaks at 3000, tokens-out at 1500 — the axis tops at the
+        // largest single value (3000 → 5000), NOT the summed bar height.
+        var geometry = UsageChartGeometry.BuildLines(new[]
+        {
+            Cat("Mon", ("tokens-in", 2000), ("tokens-out", 1000)),
+            Cat("Tue", ("tokens-in", 3000), ("tokens-out", 1500)),
+        });
+
+        Assert.Equal(5000, geometry.Max);
+        Assert.Equal(2, geometry.Lines.Count);
+        // One point per category on each line.
+        Assert.All(geometry.Lines, line => Assert.Equal(2, line.Points.Count));
+        // The 3000 point sits at 3000/5000 of the plot height above the baseline.
+        var plotHeight = geometry.PlotBottom - geometry.PlotTop;
+        var peakPoint = geometry.Lines[0].Points[1];
+        Assert.Equal(geometry.PlotBottom - (3000.0 / 5000.0 * plotHeight), peakPoint.Y, precision: 6);
+    }
+
+    [Fact]
+    public void BuildLines_PointsSitAtCategoryCentres_InsideThePlot()
+    {
+        var geometry = UsageChartGeometry.BuildLines(new[]
+        {
+            Cat("A", ("consults", 4)),
+            Cat("B", ("consults", 2)),
+            Cat("C", ("consults", 5)),
+        });
+
+        foreach (var point in geometry.Lines.SelectMany(line => line.Points))
+        {
+            Assert.True(point.X >= geometry.PlotLeft);
+            Assert.True(point.X <= geometry.PlotRight + 0.0001);
+            Assert.True(point.Y >= geometry.PlotTop - 0.0001);
+            Assert.True(point.Y <= geometry.PlotBottom + 0.0001);
+        }
+    }
+
+    [Fact]
+    public void BuildLines_IsEmptyAndZeroSafe()
+    {
+        var empty = UsageChartGeometry.BuildLines(Array.Empty<UsageChartGeometry.Category>());
+        Assert.Empty(empty.Lines);
+        Assert.Equal(0, empty.Max);
+        Assert.All(empty.Ticks, tick => Assert.False(double.IsNaN(tick.Y)));
+
+        var zero = UsageChartGeometry.BuildLines(new[] { Cat("Mon", ("consults", 0)) });
+        Assert.Equal(0, zero.Max);
+        // No division by zero: a zero value plots on the baseline.
+        Assert.Equal(zero.PlotBottom, zero.Lines[0].Points[0].Y, precision: 6);
+    }
+
+    [Fact]
+    public void BuildLines_EmitsNoColourLiteral()
+    {
+        var geometry = UsageChartGeometry.BuildLines(new[]
+        {
+            Cat("Mon", ("tokens-in", 2000), ("tokens-out", 3000)),
+        });
+
+        var text = System.Text.Json.JsonSerializer.Serialize(geometry);
+        Assert.DoesNotContain("#", text);
+        Assert.DoesNotContain("rgb", text);
+        Assert.DoesNotContain("var(", text);
+    }
 }

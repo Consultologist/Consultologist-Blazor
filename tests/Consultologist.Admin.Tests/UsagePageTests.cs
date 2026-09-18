@@ -114,6 +114,32 @@ public class UsagePageTests : AdminRenderTestContext
     }
 
     [Fact]
+    public async Task TogglingToLines_DrawsThePerDayChartsAsLines_PerOrgStaysBars()
+    {
+        // #743: the bars↔lines toggle flips the per-day charts; the per-org
+        // comparison is categorical and stays bars.
+        OperatorService.GetUsageAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(new OperatorUsageResponse(
+            "2026-09-01", "2026-09-03",
+            new[] { Row("u1", "Dr One", "tenant-a", 3, 3000, 900) },
+            new[]
+            {
+                Day("2026-09-01", 4, 6000, 1600),
+                Day("2026-09-03", 4, 6000, 1800)
+            }));
+
+        var page = Render<Usage>();
+
+        // Default is bars — no lines yet.
+        Assert.Empty(page.FindAll("polyline.usage-chart__line"));
+
+        await page.Find(".usage-chart-toggle fluent-button:last-child").ClickAsync(new()); // "Lines"
+
+        // The two per-day charts now draw lines; the per-org charts keep their bars.
+        Assert.NotEmpty(page.FindAll("polyline.usage-chart__line"));
+        Assert.NotEmpty(page.FindAll("rect.usage-chart__seg"));
+    }
+
+    [Fact]
     public void AnOlderApiWithoutDays_ShowsOnlyThePerOrgCharts_NeverCrashes()
     {
         // The frontend and API deploy independently: a new client can meet an
