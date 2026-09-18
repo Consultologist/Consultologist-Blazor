@@ -194,6 +194,52 @@ public static class WorkflowExpectedContent
         specVersion >= 17 ? All : specVersion >= 16 ? V16Channels : specVersion >= 13 ? V13Channels : Array.Empty<string>();
 }
 
+/// <summary>
+/// The engine catalog's declarable output contracts, bundled here because the
+/// client (unlike the server) has no runtime catalog and the Schemas pane (#759)
+/// must write a canonical body when it adds one. The server validator stays the
+/// authority — it canonically matches the published body against the catalog.
+/// Only concept-list is declarable today (classification is implied by a
+/// classifier's kind and refused when declared; text is the no-output default).
+/// Pinned against the catalog in SchemaCatalogMirrorTests.
+/// </summary>
+public static class WorkflowOutputContracts
+{
+    /// <summary>The concept-list contract body — canonically equal to the catalog's (key order and title/description do not matter).</summary>
+    public const string ConceptListBody = """
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["concepts"],
+          "properties": {
+            "concepts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["term", "type", "id", "isSnomedConcept", "isActive", "support"],
+                "properties": {
+                  "term": { "type": "string" },
+                  "type": { "type": "string" },
+                  "id": { "type": ["string", "null"] },
+                  "isSnomedConcept": { "type": "boolean" },
+                  "isActive": { "type": "boolean" },
+                  "support": { "type": ["string", "null"] }
+                }
+              }
+            }
+          }
+        }
+        """;
+
+    /// <summary>Declarable contract id → canonical body. Mirrors the catalog's declarable set; pinned.</summary>
+    public static readonly IReadOnlyDictionary<string, string> Declarable =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [Consultologist.PackageFormat.WorkflowNodeDefaults.ConceptListSchemaId] = ConceptListBody,
+        };
+}
+
 /// <summary>One declared deliverable — blocks and result tabs group by these.</summary>
 public record WorkflowPackageResultResponse(string Id, string Label);
 
