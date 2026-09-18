@@ -4173,8 +4173,10 @@
                 continue;
             }
 
-            // #427: carried as written, so a v9 form the editor cannot yet
-            // compose (a field, a count, an ordering) survives the rename.
+            // RenameInput re-spells the whole condition through the shared
+            // parser/writer, so every form it carries -- a field, a count, an
+            // ordering, or a verbatim expression the builder holds as text --
+            // follows the id through the rename.
             results[index] = results[index] with
             {
                 When = ConditionText.RenameInput(results[index].When!, oldId, newId)
