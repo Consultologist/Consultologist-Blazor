@@ -22,4 +22,18 @@ public class HelpPageTests : ClientRenderTestContext
         Assert.NotNull(page.Find("#verify"));
         Assert.NotNull(page.Find("#glossary"));
     }
+
+    [Fact]
+    public void Help_StatesTheCopyBackPath_IntoAnyEmr()
+    {
+        // #188: the copy-back parity, surfaced plainly — the note copies to the
+        // clipboard and pastes into any EMR, no integration required.
+        var page = Render<Consultologist.Web.Pages.Help>();
+
+        Assert.NotNull(page.Find("#chart"));
+        Assert.Contains("Copy note", page.Markup);
+        Assert.Contains("any EMR", page.Markup);
+        // The head-to-head comparison stays on the marketing site, not in-app.
+        Assert.DoesNotContain("cleverconsult", page.Markup, StringComparison.OrdinalIgnoreCase);
+    }
 }

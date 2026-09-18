@@ -192,3 +192,30 @@ workflows over the *same* consult input and analysis outputs, so M4 covers them.
 a pasted draft and becomes structured payloads (FHIR bundles, referral document
 packets), the fixed input model starts to pinch and this becomes a real milestone
 rather than a footnote. Until then it is the honest, defensible edge of the decoupling.
+
+## EMR interoperability positioning (#188)
+
+Strategy record from the 2026-07-23 competitive review. It governs how EMR integration is
+*claimed* while it stays the footnote above.
+
+**Copy-back parity, claimable today.** The produced note copies to the clipboard as plain
+text (the **Copy note** button, `Consults.razor`) and pastes into any EMR or document — no
+integration, no setup. That already matches the incumbent claim "works with every EMR": the
+sentence is true today at zero engineering cost and should be stated wherever the product is
+evaluated. Its user-facing home in this repo is the public Help page's "Getting the note into
+your chart" section; the head-to-head competitor comparison lives on the marketing site
+(out of this repo).
+
+**Fax parity, already unblocked.** A referral can arrive by email (#158 intake), and — since
+#239 built OCR — a faxed or scanned image-only PDF is read and answered rather than rejected
+wherever OCR is configured. A fax-to-email bridge turns a fax number into the #158 intake
+mailbox with no fax-specific code. See `ASYNC_DELIVERY.md`, `DOCUMENT_INPUT.md`, and
+`CONFIGURATION.md` (the OCR section) — recorded there, not re-derived here.
+
+**Native integration is deliberately deferred** until beta-user demand picks a target. Racing
+a funded competitor through per-EMR partner programs (QHR/Accuro, Telus/PS Suite) spends the
+differentiation window building their moat. When demand arrives, **OSCAR** is the likely first
+native candidate: open-source, Ontario-heavy, no partner-program gatekeeper — and an open EMR
+pairs naturally with a publicly-auditable pipeline, which is the product's actual edge. The
+Epic/Cerner hospital segment is tracked separately (the SMART-on-FHIR satellites, #654/#662):
+different intake, different buyer, different politics.

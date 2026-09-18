@@ -3,7 +3,9 @@
 Recorded 2026-07-09. Question considered: from an app / consult-generation perspective,
 is the app complete once the customizable-workflow vision (packages, DAG, provenance) is
 implemented? Answer: no — it is stage 1 of roughly four, and a well-chosen stage 1.
-EMR integration and scheduling are planned separately and bracketed out here.
+EMR integration and scheduling are planned separately and bracketed out here (the
+copy-back-parity-now / native-integration-deferred positioning is recorded in
+`decoupling-roadmap.md` § "EMR interoperability positioning", #188).
 
 The recurring theme: the SNOMED-validated concept layer — which most competing
 documentation tools do not have — is the asset that the later stages cash in on.
