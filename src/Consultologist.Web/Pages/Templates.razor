@@ -342,6 +342,51 @@
                             <span>Schemas</span>
                         </button>
                     }
+                    @* #747: shared preludes — named text prepended to a prompt.
+                       Create/edit/remove here; a prompt picks one in its pane. *@
+                    <span class="editor-nav__group">Preludes</span>
+                    @foreach (var prelude in LivePreludes)
+                    {
+                        var livePrelude = prelude;
+                        var readers = PreludeReferencedBy(prelude.Id);
+                        <button type="button"
+                                class="editor-nav__item @(selectedKey == prelude.File ? "editor-nav__item--selected" : "")"
+                                @onclick="() => Select(livePrelude.File)">
+                            <span class="editor-nav__dot">@(edits.ContainsKey(prelude.File) || AddedPreludeForFile(prelude.File) != null ? "●" : "")</span>
+                            <span>@prelude.Id</span>
+                        </button>
+                        <div class="editor-nav__item editor-nav__item--nested">
+                            <span class="editor-nav__dot"></span>
+                            @if (readers.Count > 0)
+                            {
+                                <span class="muted-text">used by @(string.Join(", ", readers.Select(reader => $"'{reader}'")))</span>
+                            }
+                            else if (AddedPreludeForFile(prelude.File) is { } pendingPrelude)
+                            {
+                                <button type="button" class="editor-nav__restore" @onclick="() => RemoveAddedPreludeAsync(pendingPrelude)">(remove)</button>
+                            }
+                            else
+                            {
+                                var declaredPrelude = new WorkflowManifestReader.PreludeView(livePrelude.Id, livePrelude.File);
+                                <button type="button" class="editor-nav__restore" @onclick="() => RemovePreludeAsync(declaredPrelude)">(remove)</button>
+                            }
+                        </div>
+                    }
+                    @foreach (var removed in RemovedPreludeViews)
+                    {
+                        var restorePrelude = removed;
+                        <div class="editor-nav__item editor-nav__item--removed">
+                            <span class="editor-nav__dot"></span>
+                            <span class="editor-nav__strike">@removed.Id</span>
+                            <button type="button" class="editor-nav__restore" @onclick="() => RestorePreludeAsync(restorePrelude)">(restore)</button>
+                        </div>
+                    }
+                    <button type="button"
+                            class="editor-nav__item editor-nav__add @(selectedKey == AddPreludeKey ? "editor-nav__item--selected" : "")"
+                            @onclick="() => Select(AddPreludeKey)">
+                        <span class="editor-nav__dot"></span>
+                        <span>+ Prelude</span>
+                    </button>
                     <span class="editor-nav__group">Data</span>
                     @foreach (var collection in EffectiveCollections)
                     {
@@ -1309,6 +1354,33 @@
                             </FluentButton>
                         </div>
                     }
+                    else if (selectedKey == AddPreludeKey)
+                    {
+                        <div class="pane-header">
+                            <div>
+                                <h3 class="panel-title">New prelude</h3>
+                                <p class="muted-text">
+                                    A named shared text. When a prompt selects it (on the prompt's pane), the
+                                    prelude is prepended to that prompt, so common guidance lives in one place.
+                                </p>
+                            </div>
+                        </div>
+                        @if (newPreludeError != null)
+                        {
+                            <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false">@newPreludeError</FluentMessageBar>
+                        }
+                        <div class="new-item-fields">
+                            <label class="input-field">
+                                <span>id (snake_case)</span>
+                                <FluentTextField @bind-Value="newPreludeId" Placeholder="snomed_tool_guidance" />
+                            </label>
+                        </div>
+                        <div class="action-row">
+                            <FluentButton Appearance="Appearance.Accent" @onclick="AddPreludeAsync">
+                                Create prelude
+                            </FluentButton>
+                        </div>
+                    }
                     else if (selectedKey == AddNodeKey)
                     {
                         <div class="pane-header">
@@ -1587,10 +1659,43 @@
                             <p class="muted-text">
                                 Declared placeholders are usable in the text; a new variable's source can be
                                 set here or in Graph — publish waits until every variable has one.
-                                @if (prompt.Prelude != null)
-                                {
-                                    <span> · shared prelude: @prompt.Prelude (read-only)</span>
-                                }
+                            </p>
+                            @* #747: the prompt's shared prelude — prepended to it. Offered for a declared
+                               prompt when the package has a prelude (or this prompt already names one). *@
+                            @if (IsDeclaredPrompt(prompt.Id) && (LivePreludes.Any() || EffectivePromptPrelude(prompt.Id) != null))
+                            {
+                                var chosenPrelude = EffectivePromptPrelude(prompt.Id);
+                                <label class="prompt-prelude node-field">
+                                    <span>shared prelude</span>
+                                    <select class="binding-row__select"
+                                            value="@(chosenPrelude ?? string.Empty)"
+                                            @onchange="args => SetPromptPreludeAsync(prompt.Id, args.Value?.ToString())"
+                                            aria-label="@($"Prelude for prompt {prompt.Id}")">
+                                        <option value="">— none —</option>
+                                        @if (chosenPrelude != null && !LivePreludes.Any(option => option.Id == chosenPrelude))
+                                        {
+                                            <option value="@chosenPrelude">@chosenPrelude</option>
+                                        }
+                                        @foreach (var option in LivePreludes)
+                                        {
+                                            <option value="@option.Id">@option.Id</option>
+                                        }
+                                    </select>
+                                </label>
+                            }
+                        </WorkflowEditorPane>
+                    }
+                    else if (SelectedPrelude() is { } prelude)
+                    {
+                        <WorkflowEditorPane Title="@prelude.Id"
+                                            Subtitle="@prelude.File"
+                                            EditLabel="Prelude text"
+                                            Text="@GetText(prelude.File)"
+                                            Modified="@(edits.ContainsKey(prelude.File) || AddedPreludeForFile(prelude.File) != null)"
+                                            TextChanged="@(value => OnTextChangedAsync(prelude.File, value))">
+                            <p class="muted-text">
+                                Prepended to any prompt that selects this prelude (on the prompt's pane), with one
+                                blank line. Free-form text; not rendered through the template engine.
                             </p>
                         </WorkflowEditorPane>
                     }
@@ -2475,16 +2580,19 @@
             && EffectiveCollections.Any(c => NewKeyFor(c.Id) == key))
         || (key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)
             && EffectiveNodes.Any(n => NodeKeyFor(n.Id) == key))
-        // #571: a removed declared macro's file is still published, so the
-        // Files clause would keep its pane alive despite the EffectiveMacros
-        // filter below — exclude it explicitly.
-        || (content!.Files.ContainsKey(key) && RemovedMacros.All(m => m.File != key))
+        // #571/#747: a removed declared macro or prelude's file is still
+        // published, so the Files clause would keep its pane alive — exclude
+        // them explicitly.
+        || (content!.Files.ContainsKey(key) && RemovedMacros.All(m => m.File != key) && RemovedPreludeViews.All(p => p.File != key))
         || EffectiveScalars.Any(scalar => scalar.Path == key)
         || EffectivePrompts.Any(prompt => prompt.File == key)
         // v11 #564: the macro panes; the add form only where it renders —
         // a remembered pane on a v10 package must not restore blank.
         || (key == AddMacroKey && EffectiveSpecVersion >= 11)
         || EffectiveMacros.Any(m => m.File == key)
+        // #747: the preludes add form and each pending prelude's body pane.
+        || key == AddPreludeKey
+        || addedPreludes.Any(prelude => AddedPreludeFile(prelude.Id) == key)
         || addedItems.Any(added => added.Key == key);
 
     private string AddedPath(AddedItem item) => $"data/{item.Collection}/{item.Id}.md";
@@ -7960,6 +8068,7 @@
             unbound.AddRange(DeclaredSectionErrors());
             unbound.AddRange(PackageMetadataErrors());
             unbound.AddRange(SchemaErrors());
+            unbound.AddRange(PreludeErrors());
 
             if (unbound.Count > 0)
             {
