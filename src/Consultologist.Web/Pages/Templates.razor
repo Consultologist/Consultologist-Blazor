@@ -7307,6 +7307,10 @@
     // v15 (#731): a pending raw toggle on a declared prompt.
     private sealed record DraftPromptRawEdit(string Id, bool Raw);
 
+    // #747: a pending prelude (id + text) and a prompt's pending prelude choice.
+    private sealed record DraftAddedPrelude(string Id, string Text);
+    private sealed record DraftPromptPreludeEdit(string Id, string? Prelude);
+
     private sealed record DraftPayload(
         int Version,
         Dictionary<string, string>? Edits,
@@ -7348,7 +7352,11 @@
         List<DraftPromptRawEdit>? PromptRawEdits = null,
         // #746: output-contract schemas marked for removal. Trailing optional —
         // a draft written before restores with none.
-        List<string>? RemovedSchemas = null);
+        List<string>? RemovedSchemas = null,
+        // #747: shared preludes — pending additions, removals, and prompt choices.
+        List<DraftAddedPrelude>? AddedPreludes = null,
+        List<string>? RemovedPreludes = null,
+        List<DraftPromptPreludeEdit>? PromptPreludeEdits = null);
 
     // #316: Type and Values ride here or a typed input is silently untyped on
     // reload. Trailing optionals — a draft written before v8 restores with null.
@@ -7417,6 +7425,9 @@
         List<DraftMacroEdit>? draftMacroEdits = null;
         List<DraftPromptRawEdit>? draftPromptRawEdits = null;
         List<string>? draftRemovedSchemas = null;
+        List<DraftAddedPrelude>? draftAddedPreludes = null;
+        List<string>? draftRemovedPreludes = null;
+        List<DraftPromptPreludeEdit>? draftPromptPreludeEdits = null;
         int? draftSpecVersionBump = null;
         string? draftTitle = null;
         string? draftDescription = null;
@@ -7449,6 +7460,9 @@
                 draftMacroEdits = payload?.MacroEdits;
                 draftPromptRawEdits = payload?.PromptRawEdits;
                 draftRemovedSchemas = payload?.RemovedSchemas;
+                draftAddedPreludes = payload?.AddedPreludes;
+                draftRemovedPreludes = payload?.RemovedPreludes;
+                draftPromptPreludeEdits = payload?.PromptPreludeEdits;
                 draftInputs = payload?.Inputs;
                 draftResults = payload?.Results;
                 draftAddedScalars = payload?.AddedScalars;
@@ -7624,6 +7638,37 @@
                 {
                     removedFiles.Add(schema.File);
                 }
+            }
+        }
+
+        // #747: pending preludes — an addition kept only when its id is free, a
+        // removal only while the package still declares it, a prompt's choice
+        // only while the prompt is still declared (the stale-id idiom).
+        foreach (var draftAddedPrelude in draftAddedPreludes ?? new List<DraftAddedPrelude>())
+        {
+            if (LivePreludes.All(prelude => prelude.Id != draftAddedPrelude.Id))
+            {
+                addedPreludes.Add(new AddedPrelude { Id = draftAddedPrelude.Id, Text = draftAddedPrelude.Text });
+            }
+        }
+
+        foreach (var draftRemovedPrelude in draftRemovedPreludes ?? new List<string>())
+        {
+            if (DeclaredPreludes.FirstOrDefault(prelude => prelude.Id == draftRemovedPrelude) is { } prelude)
+            {
+                removedPreludeIds.Add(prelude.Id);
+                if (prelude.File.Length > 0)
+                {
+                    removedFiles.Add(prelude.File);
+                }
+            }
+        }
+
+        foreach (var draftPromptPreludeEdit in draftPromptPreludeEdits ?? new List<DraftPromptPreludeEdit>())
+        {
+            if (prompts.Any(p => p.Id == draftPromptPreludeEdit.Id))
+            {
+                promptPreludeEdits[draftPromptPreludeEdit.Id] = draftPromptPreludeEdit.Prelude;
             }
         }
 
@@ -7858,7 +7903,10 @@
             removedMacroIds.ToList(),
             macroEdits.Select(pair => new DraftMacroEdit(pair.Key, pair.Value.Optional, pair.Value.Default)).ToList(),
             promptRawEdits.Select(pair => new DraftPromptRawEdit(pair.Key, pair.Value)).ToList(),
-            removedSchemaIds.ToList());
+            removedSchemaIds.ToList(),
+            addedPreludes.Select(prelude => new DraftAddedPrelude(prelude.Id, prelude.Text)).ToList(),
+            removedPreludeIds.ToList(),
+            promptPreludeEdits.Select(pair => new DraftPromptPreludeEdit(pair.Key, pair.Value)).ToList());
         await JS.InvokeVoidAsync("localStorage.setItem", DraftKey, JsonSerializer.Serialize(payload));
     }
 
