@@ -109,4 +109,61 @@ public class TemplatesSchemasTests : ClientRenderTestContext
         Assert.NotNull(page.Find("div[data-schema='report']"));
         Assert.Empty(page.FindAll("div[data-schema-removed='report']"));
     }
+
+    // ----- catalog-backed add (#759) ---------------------------------------
+
+    [Fact]
+    public void AddingConceptList_DeclaresItAndWritesTheCanonicalBody()
+    {
+        var page = RenderEditor(EditorFixtures.V7());
+        CapturePublish();
+        Navigate(page, "Schemas");
+
+        page.Find("button[aria-label='Add output contract concept-list']").Click();
+        Publish(page);
+
+        Assert.True(sent != null, string.Join(" | ", Refusals(page)));
+        var schemas = JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement.GetProperty("schemas");
+        Assert.Equal("schemas/concept-list.json", schemas.GetProperty("concept-list").GetString());
+        Assert.Contains("\"concepts\"", sent.Files["schemas/concept-list.json"]);
+        // Unreferenced but a canonical catalog match, so the validator accepts it.
+        var result = Validated();
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AfterAdding_ANodeOutputPickerOffersTheContract()
+    {
+        var page = RenderEditor(EditorFixtures.V7());
+        Navigate(page, "Schemas");
+        page.Find("button[aria-label='Add output contract concept-list']").Click();
+
+        Navigate(page, "Graph");
+        var options = page.FindAll("select[aria-label='Node output contract']")
+            .SelectMany(select => select.QuerySelectorAll("option").Select(option => option.GetAttribute("value")));
+        Assert.Contains("concept-list", options);
+    }
+
+    [Fact]
+    public void AnAlreadyDeclaredContract_IsNotOfferedToAdd()
+    {
+        var page = RenderEditor(EditorFixtures.V12Full());
+        Navigate(page, "Schemas");
+
+        Assert.Empty(page.FindAll("button[aria-label='Add output contract concept-list']"));
+    }
+
+    [Fact]
+    public void RemovingAJustAddedSchema_ReturnsTheAddAffordance()
+    {
+        var page = RenderEditor(EditorFixtures.V7());
+        Navigate(page, "Schemas");
+
+        page.Find("button[aria-label='Add output contract concept-list']").Click();
+        Assert.NotNull(page.Find("div[data-schema='concept-list']"));
+
+        page.Find("button[aria-label='Remove schema concept-list']").Click();
+        Assert.Empty(page.FindAll("div[data-schema='concept-list']"));
+        Assert.NotEmpty(page.FindAll("button[aria-label='Add output contract concept-list']"));
+    }
 }
