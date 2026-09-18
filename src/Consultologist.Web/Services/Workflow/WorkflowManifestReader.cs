@@ -137,6 +137,9 @@ public static class WorkflowManifestReader
     /// <summary>One declared output-contract schema: its id and the package file its JSON body lives in.</summary>
     public sealed record SchemaView(string Id, string File);
 
+    /// <summary>One declared shared prelude: its id and the package file its text lives in.</summary>
+    public sealed record PreludeView(string Id, string File);
+
     public sealed record DataItemView(string Id, string Name, string File);
 
     public sealed record CollectionView(string Id, string Directory, IReadOnlyList<DataItemView> Items);
@@ -248,6 +251,19 @@ public static class WorkflowManifestReader
 
         return schemas.EnumerateObject()
             .Select(entry => new SchemaView(entry.Name, entry.Value.ValueKind == JsonValueKind.String ? entry.Value.GetString() ?? string.Empty : string.Empty))
+            .ToList();
+    }
+
+    /// <summary>The declared shared preludes with their file paths, which viewing, editing and removal need.</summary>
+    public static IReadOnlyList<PreludeView> ReadPreludes(JsonElement manifest)
+    {
+        if (!TryGetProperty(manifest, "preludes", out var preludes) || preludes.ValueKind != JsonValueKind.Object)
+        {
+            return Array.Empty<PreludeView>();
+        }
+
+        return preludes.EnumerateObject()
+            .Select(entry => new PreludeView(entry.Name, entry.Value.ValueKind == JsonValueKind.String ? entry.Value.GetString() ?? string.Empty : string.Empty))
             .ToList();
     }
 
