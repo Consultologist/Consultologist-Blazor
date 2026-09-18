@@ -814,7 +814,8 @@
                                         @if (slot.Items?.Type == WorkflowInputTypes.Array)
                                         {
                                             @* v10 (#498): an array of arrays says what the inner
-                                               entries are — a scalar; deeper is authored elsewhere. *@
+                                               entries are, and if those are structure the editor
+                                               draws itself again beneath, to any depth. *@
                                             <select class="node-field__input declared-row__inner-items"
                                                     value="@(slot.Items.Items?.Type ?? string.Empty)"
                                                     @onchange="args => SetElementTypeAsync(InnerElementPath(slot.Id), args.Value?.ToString())"
@@ -823,11 +824,16 @@
                                                 {
                                                     <option value="">entries of entries of…</option>
                                                 }
-                                                @foreach (var element in WorkflowInputTypes.Scalars)
+                                                else if (!WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion).Contains(slot.Items.Items.Type))
+                                                {
+                                                    <option value="@slot.Items.Items.Type">@slot.Items.Items.Type</option>
+                                                }
+                                                @foreach (var element in WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion))
                                                 {
                                                     <option value="@element">@element</option>
                                                 }
                                             </select>
+                                            @ElementChildren(new ElementScope(InnerElementPath(slot.Id), slot.Items.Items))
                                         }
                                     }
                                     @* #745: the content channel (#728/#730/#673). Version-gated —
@@ -1917,11 +1923,16 @@
                                   {
                                       <option value="">entries of entries of…</option>
                                   }
-                                  @foreach (var element in WorkflowInputTypes.Scalars)
+                                  else if (!WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion).Contains(member.Items.Items.Type))
+                                  {
+                                      <option value="@member.Items.Items.Type">@member.Items.Items.Type</option>
+                                  }
+                                  @foreach (var element in WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion))
                                   {
                                       <option value="@element">@element</option>
                                   }
                               </select>
+                              @ElementChildren(new ElementScope(InnerElementPath(path), member.Items.Items))
                           }
                       }
                       <button type="button" class="aggregate-row__button" title="Remove field"
@@ -1969,6 +1980,68 @@
 
   /// <summary>Where a fields editor draws: the owner's path and the fields it holds.</summary>
   private sealed record FieldsScope(string Owner, IReadOnlyList<WorkflowManifestReader.FieldView> Fields);
+
+  /// <summary>Where an element editor draws: the element's own path and the element (null until chosen).</summary>
+  private sealed record ElementScope(string Path, WorkflowManifestReader.ElementView? Element);
+
+  /// <summary>
+  /// v10 (#498): an array element that is itself structure — its type select
+  /// and, beneath it, whatever it holds. It draws itself again for an array
+  /// element (any depth), a fields editor for an object, and a values editor
+  /// for an enum, so an array of arrays of objects is authored, not hand-edited.
+  /// </summary>
+  private RenderFragment<ElementScope> ElementEditor => scope =>
+    @<text>
+      <select class="node-field__input declared-element__type"
+              value="@(scope.Element?.Type ?? string.Empty)"
+              @onchange="args => SetElementTypeAsync(scope.Path, args.Value?.ToString())"
+              aria-label="@($"Inner items for element {scope.Path}")">
+          @if (scope.Element is null)
+          {
+              <option value="">entries of entries of…</option>
+          }
+          else if (!WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion).Contains(scope.Element.Type))
+          {
+              <option value="@scope.Element.Type">@scope.Element.Type</option>
+          }
+          @foreach (var element in WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion))
+          {
+              <option value="@element">@element</option>
+          }
+      </select>
+      @ElementChildren(scope)
+    </text>;
+
+  /// <summary>What an array element holds, drawn beneath its type: the recursion the two editors share.</summary>
+  private RenderFragment<ElementScope> ElementChildren => scope =>
+    @<text>
+      @if (scope.Element?.Type == WorkflowInputTypes.Array)
+      {
+          @ElementEditor(new ElementScope(ElementChildPath(scope.Path), scope.Element.Items))
+      }
+      else if (scope.Element?.Type == WorkflowInputTypes.Object)
+      {
+          @FieldsEditor(new FieldsScope(scope.Path, scope.Element.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>()))
+      }
+      else if (scope.Element?.Type == WorkflowInputTypes.Enum)
+      {
+          <li class="declared-field__values" data-values-for="@scope.Path">
+              @foreach (var value in scope.Element.Values ?? Array.Empty<string>())
+              {
+                  var declaredValue = value;
+                  <span class="input-field__chip" data-field-enum-value="@declaredValue">
+                      @declaredValue
+                      <button type="button" class="aggregate-row__button" title="Remove value"
+                              aria-label="Remove value @declaredValue"
+                              @onclick="() => RemoveElementValueAsync(scope.Path, declaredValue)">×</button>
+                  </span>
+              }
+              <input class="node-field__input" placeholder="female"
+                     @onchange="args => AddElementValueAsync(scope.Path, args.Value?.ToString())"
+                     aria-label="@($"Add a value to {scope.Path}")" />
+          </li>
+      }
+    </text>;
 
     private const string DraftKeyPrefix = "workflow-editor-draft:";
     private const string GraphKey = "graph";
