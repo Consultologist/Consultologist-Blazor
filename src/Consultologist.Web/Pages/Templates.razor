@@ -2502,6 +2502,9 @@
             // #746: declared output-contract schemas marked for removal.
             new("removedSchemaIds", () => removedSchemaIds.Count, removedSchemaIds.Clear,
                 () => $"−{removedSchemaIds.Count} {Plural(removedSchemaIds.Count, "schema")}", () => removedSchemaIds.Count > 0),
+            // #759: catalog contracts added.
+            new("addedSchemas", () => addedSchemas.Count, addedSchemas.Clear,
+                () => $"+{addedSchemas.Count} {Plural(addedSchemas.Count, "schema")}", () => addedSchemas.Count > 0),
             // #747: shared preludes — pending additions, removals and a prompt's choice.
             new("addedPreludes", () => addedPreludes.Count, addedPreludes.Clear,
                 () => $"+{addedPreludes.Count} {Plural(addedPreludes.Count, "prelude")}", () => addedPreludes.Count > 0),
@@ -2574,8 +2577,8 @@
         key is GraphKey or InputsKey or ResultsKey
             or AddCollectionKey or AddScalarKey or AddNodeKey or AddPromptKey
         || (key == PackageKey && EffectiveSpecVersion >= 9)
-        // #746: the schemas pane shows only while the package declares one.
-        || (key == SchemasKey && DeclaredSchemas.Count > 0)
+        // #746/#759: the schemas pane is always reachable now that a contract can be added.
+        || key == SchemasKey
         || (key.StartsWith(NewKeyPrefix, StringComparison.Ordinal)
             && EffectiveCollections.Any(c => NewKeyFor(c.Id) == key))
         || (key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)
@@ -2885,21 +2888,60 @@
     // removedFiles), and is refused while a node's output reads the contract.
     private readonly HashSet<string> removedSchemaIds = new(StringComparer.Ordinal);
 
+    // #759: catalog contracts the author has added — each id is both the schema
+    // id and the key into WorkflowOutputContracts.Declarable for its canonical
+    // body. The pane picks a contract (id and body follow); the body is fixed,
+    // not edited, so this only ever holds a declarable contract id.
+    private readonly List<string> addedSchemas = new();
+
+    private static string AddedSchemaFile(string schemaId) => $"schemas/{schemaId}.json";
+
+    private bool IsAddedSchema(string schemaId) => addedSchemas.Contains(schemaId);
+
+    /// <summary>The added contract for a package file path, or null.</summary>
+    private string? AddedSchemaForFile(string path) =>
+        addedSchemas.FirstOrDefault(id => AddedSchemaFile(id) == path);
+
     private IReadOnlyList<WorkflowManifestReader.SchemaView> DeclaredSchemas =>
         content == null
             ? Array.Empty<WorkflowManifestReader.SchemaView>()
             : WorkflowManifestReader.ReadSchemas(content.Manifest);
 
-    /// <summary>The schemas the pane still shows — declared, less those marked for removal.</summary>
+    /// <summary>The schemas the pane shows — declared less removed, plus pending additions.</summary>
     private IEnumerable<WorkflowManifestReader.SchemaView> LiveSchemas =>
-        DeclaredSchemas.Where(schema => !removedSchemaIds.Contains(schema.Id));
+        DeclaredSchemas.Where(schema => !removedSchemaIds.Contains(schema.Id))
+            .Concat(addedSchemas.Select(id => new WorkflowManifestReader.SchemaView(id, AddedSchemaFile(id))));
 
     private IEnumerable<WorkflowManifestReader.SchemaView> RemovedSchemaViews =>
         DeclaredSchemas.Where(schema => removedSchemaIds.Contains(schema.Id));
 
+    /// <summary>Declarable catalog contracts not already live — what the add picker offers.</summary>
+    private IReadOnlyList<string> AddableContracts =>
+        WorkflowOutputContracts.Declarable.Keys
+            .Where(id => LiveSchemas.All(schema => schema.Id != id))
+            .ToList();
+
     /// <summary>The nodes whose output contract reads a schema id — removal is refused while any exist.</summary>
     private IReadOnlyList<string> SchemaReferencedBy(string schemaId) =>
         EffectiveNodes.Where(node => node.OutputSchema == schemaId).Select(node => node.Id).ToList();
+
+    private async Task AddSchemaAsync(string? contractId)
+    {
+        var id = contractId?.Trim() ?? string.Empty;
+
+        if (!WorkflowOutputContracts.Declarable.ContainsKey(id) || !AddableContracts.Contains(id))
+        {
+            return;
+        }
+
+        if (content!.Files.ContainsKey(AddedSchemaFile(id)))
+        {
+            return;
+        }
+
+        addedSchemas.Add(id);
+        await PendingChangedAsync();
+    }
 
     private async Task RemoveSchemaAsync(WorkflowManifestReader.SchemaView schema)
     {
@@ -2908,10 +2950,19 @@
             return;
         }
 
-        removedSchemaIds.Add(schema.Id);
-        if (schema.File.Length > 0)
+        // A pending add just pops off; a declared one drops its map entry (at
+        // compose) and its file (via removedFiles).
+        if (IsAddedSchema(schema.Id))
         {
-            removedFiles.Add(schema.File);
+            addedSchemas.Remove(schema.Id);
+        }
+        else
+        {
+            removedSchemaIds.Add(schema.Id);
+            if (schema.File.Length > 0)
+            {
+                removedFiles.Add(schema.File);
+            }
         }
 
         await PendingChangedAsync();
@@ -6311,9 +6362,10 @@
     private IReadOnlyList<string> ScalarIds =>
         EffectiveScalars.Where(s => !ScalarIsRemoved(s)).Select(s => s.Id).ToList();
 
-    // Output-contract choices are the package's own schema ids — their files
-    // are present and already validated as canonical catalog matches.
-    private IReadOnlyList<string> ContractOptions => schemaIds;
+    // Output-contract choices are the package's own live schema ids — declared
+    // less removed, plus pending additions (#759) — so a node can pick a
+    // just-added contract and never a pending-removed one.
+    private IReadOnlyList<string> ContractOptions => LiveSchemas.Select(schema => schema.Id).ToList();
 
     private static string NodeKeyFor(string nodeId) => NodeKeyPrefix + nodeId;
 
@@ -7212,6 +7264,7 @@
         : AddedPromptForFile(path) is { } addedPrompt ? addedPrompt.Text
         : AddedMacroForFile(path) is { } addedMacro ? addedMacro.Text
         : AddedPreludeForFile(path) is { } addedPrelude ? addedPrelude.Text
+        : AddedSchemaForFile(path) is { } addedSchema ? WorkflowOutputContracts.Declarable[addedSchema]
         : AddedScalarIdForPath(path) is { } pendingScalar ? addedScalars[pendingScalar]
         : edits.TryGetValue(path, out var edited) ? edited : content!.Files.GetValueOrDefault(path, string.Empty);
 
@@ -8172,6 +8225,12 @@
                 files[AddedPreludeFile(pendingPrelude.Id)] = pendingPrelude.Text;
             }
 
+            // #759: each added schema's canonical contract body (removed schemas drop via removedFiles).
+            foreach (var addedSchemaId in addedSchemas)
+            {
+                files[AddedSchemaFile(addedSchemaId)] = WorkflowOutputContracts.Declarable[addedSchemaId];
+            }
+
             // #571: a removed declared macro takes its template file with it.
             foreach (var removedMacro in RemovedMacros)
             {
@@ -8480,14 +8539,26 @@
             }
         }
 
-        // #746: schemas marked for removal drop from the schemas map (their
-        // files drop via removedFiles). The map otherwise rides through as read.
-        if (removedSchemaIds.Count > 0
-            && (root["schemas"] ?? root["Schemas"]) is System.Text.Json.Nodes.JsonObject schemasObject)
+        // #746/#759: schemas marked for removal drop from the schemas map (their
+        // files drop via removedFiles); added schemas are declared here, the map
+        // created when absent. Their bodies fold into the publish files.
+        if (addedSchemas.Count > 0 || removedSchemaIds.Count > 0)
         {
+            var schemasKey = root["Schemas"] is not null ? "Schemas" : "schemas";
+            if (root[schemasKey] is not System.Text.Json.Nodes.JsonObject schemasObject)
+            {
+                schemasObject = new System.Text.Json.Nodes.JsonObject();
+                root[schemasKey] = schemasObject;
+            }
+
             foreach (var schemaId in removedSchemaIds)
             {
                 schemasObject.Remove(schemaId);
+            }
+
+            foreach (var addedSchemaId in addedSchemas)
+            {
+                schemasObject[addedSchemaId] = AddedSchemaFile(addedSchemaId);
             }
         }
 
