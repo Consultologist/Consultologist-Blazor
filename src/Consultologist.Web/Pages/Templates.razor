@@ -738,6 +738,16 @@
                                     : $"{EffectiveDescription.Length}/{WorkflowPackageMetadata.MaxDescriptionLength} characters")
                             </span>
                         </label>
+                        @* #750: the templating engine and pinned version. Read-only — the engine is fixed
+                           (scriban) and the version is render-affecting, so the platform sets it (via engine
+                           releases / specVersion work), not per-package authoring. *@
+                        @if (Templating is { } templating)
+                        {
+                            <div class="package-field">
+                                <span>Templating</span>
+                                <span class="muted-text" aria-label="Package templating">@templating.Engine @templating.EngineVersion — set by the platform</span>
+                            </div>
+                        }
                         @* #453: the labels the package is found by. Required at 9
                            — the empty set is a stated answer, shown as such — and
                            never suggested. Order is the author's: the buttons move
@@ -2381,6 +2391,10 @@
     // every test. The set (mine) decides only whether the account has any
     // package yet.
     private bool EditingOwnPackage => WorkflowPackageNames.IsAccountPackage(content?.Name);
+
+    // #750: the package's templating engine + pinned version, shown read-only in the Package pane.
+    private WorkflowManifestReader.TemplatingView? Templating =>
+        content is null ? null : WorkflowManifestReader.ReadTemplating(content.Manifest);
 
     /// <summary>
     /// #447: an account with no package yet publishes its first without naming
