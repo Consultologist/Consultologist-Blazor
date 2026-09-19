@@ -118,12 +118,33 @@ public class HistoryRunViewLinkTests : ClientRenderTestContext
     }
 
     [Fact]
+    public async Task TheFirstCancelClick_Arms_TheSecondCancels()
+    {
+        // #770: cancelling a scheduled run is not reversible, so one stray click
+        // must not do it. The first click arms (label flips, endpoint untouched);
+        // the second cancels.
+        WithJobStatus("Scheduled");
+        var page = RenderList();
+
+        await RowButton(page, "cancel").ClickAsync(new MouseEventArgs());
+
+        await AIService.DidNotReceive().CancelConsultGenerationJobAsync(JobId);
+        Assert.Equal("confirm cancel", RowButton(page, "confirm cancel").TextContent.Trim());
+
+        await RowButton(page, "confirm cancel").ClickAsync(new MouseEventArgs());
+
+        await AIService.Received(1).CancelConsultGenerationJobAsync(JobId);
+    }
+
+    [Fact]
     public async Task Cancelling_CallsTheEndpointAndUpdatesTheRowInPlace()
     {
         WithJobStatus("Scheduled");
         var page = RenderList();
 
+        // #770: cancel is armed in two clicks.
         await RowButton(page, "cancel").ClickAsync(new MouseEventArgs());
+        await RowButton(page, "confirm cancel").ClickAsync(new MouseEventArgs());
 
         await AIService.Received(1).CancelConsultGenerationJobAsync(JobId);
         // The row stays — a consult that was submitted and stopped is a fact
@@ -140,7 +161,9 @@ public class HistoryRunViewLinkTests : ClientRenderTestContext
             .Returns<Task>(_ => throw new InvalidOperationException("This consult has already started, so it can no longer be cancelled."));
 
         var page = RenderList();
+        // #770: cancel is armed in two clicks.
         await RowButton(page, "cancel").ClickAsync(new MouseEventArgs());
+        await RowButton(page, "confirm cancel").ClickAsync(new MouseEventArgs());
 
         Assert.Contains("already started", page.Markup, StringComparison.Ordinal);
     }

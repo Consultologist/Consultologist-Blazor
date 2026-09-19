@@ -137,7 +137,10 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
         Assert.Equal("Seeded", page.Find("input[aria-label='Package title']").GetAttribute("value"));
         Assert.Equal("Seeded description.", page.Find("textarea[aria-label='Package description']").GetAttribute("value"));
 
-        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Discard")).Click();
+        // #770: Discard arms on the first click and clears on the second (the
+        // label flips to "Confirm discard").
+        page.FindAll("fluent-button").First(button => button.TextContent.Trim() == "Discard").Click();
+        page.FindAll("fluent-button").First(button => button.TextContent.Trim() == "Confirm discard").Click();
         Assert.Equal("", page.Find("input[aria-label='Package title']").GetAttribute("value"));
     }
 
