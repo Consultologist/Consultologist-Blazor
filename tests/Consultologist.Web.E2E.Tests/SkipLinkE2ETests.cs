@@ -6,11 +6,14 @@ namespace Consultologist.Web.E2E.Tests;
 
 /// <summary>
 /// #707/#688: the skip-link reveals on focus and moves focus into the main
-/// landmark when activated — real focus movement bUnit can't assert. Runs
-/// against the served app at BaseUrl; the home page renders its shell
-/// anonymously, so no sign-in is needed. (Focus is driven directly rather than
-/// by Tab count: App.razor's FocusOnNavigate lands initial focus on the h1, so
-/// the raw tab order from load isn't a stable thing to assert.)
+/// landmark when activated — real focus movement bUnit can't assert. The
+/// skip-link and main landmark live in MainLayout, so any served page exercises
+/// them; this uses the public /help page. (#766: the E2E harness is
+/// authenticated, and `/` now redirects a signed-in user to /consults, so the
+/// root is no longer a stable, non-navigating target for a focus test.) Focus
+/// is driven directly rather than by Tab count: App.razor's FocusOnNavigate
+/// lands initial focus on the h1, so the raw tab order from load isn't a stable
+/// thing to assert.
 /// </summary>
 [Collection(BrowserCollection.Name)]
 public class SkipLinkE2ETests
@@ -19,11 +22,12 @@ public class SkipLinkE2ETests
 
     public SkipLinkE2ETests(BrowserFixture fixture) => _fixture = fixture;
 
-    private async Task<IPage> HomeAsync()
+    private async Task<IPage> ShellPageAsync()
     {
         var page = await _fixture.Browser.NewPageAsync();
-        await page.GotoAsync(_fixture.BaseUrl, new() { WaitUntil = WaitUntilState.DOMContentLoaded });
-        // The app boots and renders MainLayout (skip-link + main) even signed out.
+        // /help is public and never redirects, so the layout shell settles once.
+        await page.GotoAsync($"{_fixture.BaseUrl}/help", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+        // The app boots and renders MainLayout (skip-link + main).
         await page.WaitForSelectorAsync("a.skip-link", new() { Timeout = 30_000 });
         return page;
     }
@@ -31,7 +35,7 @@ public class SkipLinkE2ETests
     [Fact]
     public async Task SkipLink_IsFirstInTheDom_AndRevealsOnFocus()
     {
-        var page = await HomeAsync();
+        var page = await ShellPageAsync();
 
         // It is the first focusable element in the document (before the header nav).
         var isFirst = await page.EvaluateAsync<bool>(
@@ -53,7 +57,7 @@ public class SkipLinkE2ETests
     [Fact]
     public async Task ActivatingTheSkipLink_MovesFocusIntoMain()
     {
-        var page = await HomeAsync();
+        var page = await ShellPageAsync();
 
         await page.FocusAsync("a.skip-link");
         await page.Keyboard.PressAsync("Enter");   // activate the in-page anchor

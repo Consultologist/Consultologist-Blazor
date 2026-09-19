@@ -3,10 +3,16 @@
 <FluentLayout Class="app-shell">
     @* #688: the first focusable element, so a keyboard user can jump the header
        nav and land in the content instead of tabbing it on every page. The href
-       scrolls (and is the no-JS fallback); the click also moves focus into main,
-       because Blazor intercepts the fragment navigation and would otherwise only
-       scroll — leaving keyboard focus stranded on the link (#707). *@
-    <a class="skip-link" href="#main-content" @onclick="FocusMainAsync">Skip to main content</a>
+       is the no-JS fallback; once interactive the click moves focus into main
+       (focusing the tabindex=-1 landmark also scrolls it into view), because
+       otherwise keyboard focus is left stranded on the link (#707).
+
+       #766: preventDefault the click. A bare "#main-content" href resolves
+       against <base href="/">, so Blazor's intercepted navigation went to the
+       root route (`/#main-content`) — a no-op only on the home page, and a full
+       route change (losing the focus move) on every other page. Suppressing the
+       navigation makes the skip-link land focus on whatever page it is used. *@
+    <a class="skip-link" href="#main-content" @onclick="FocusMainAsync" @onclick:preventDefault="true">Skip to main content</a>
 	<Header />
     <main class="content" id="main-content" tabindex="-1" @ref="_main">
         <div class="content-shell">
