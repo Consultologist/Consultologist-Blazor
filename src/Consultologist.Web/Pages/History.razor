@@ -58,7 +58,17 @@
                 }
                 else if (jobs.Count == 0)
                 {
-                    <p class="muted-text">No consult jobs found.</p>
+                    @* #772: a first-run empty state, not a dead-end line — since
+                       #766 a newly-activated account's first stop can be here. *@
+                    <div class="content-card">
+                        <div class="form-stack">
+                            <h2 class="panel-title">No consults yet</h2>
+                            <p class="panel-description">Every consult you run — completed or scheduled — shows up here with its full provenance. Draft your first one to get started.</p>
+                            <div class="action-row">
+                                <FluentAnchor Appearance="Appearance.Accent" Href="consults">Draft a consult</FluentAnchor>
+                            </div>
+                        </div>
+                    </div>
                 }
                 else
                 {

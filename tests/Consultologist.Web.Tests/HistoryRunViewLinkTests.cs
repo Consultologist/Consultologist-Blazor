@@ -46,6 +46,23 @@ public class HistoryRunViewLinkTests : ClientRenderTestContext
     private static IElement RowButton(IRenderedComponent<History> page, string label) =>
         page.FindAll(".cancel-run-button").First(button => button.TextContent.Trim() == label);
 
+    [Fact]
+    public void WithNoJobs_ShowsAFirstRunEmptyStateLinkingToConsults()
+    {
+        // #772: since #766 a newly-activated account's first stop can be here;
+        // guide it to drafting rather than showing a bare "none found" line.
+        AccountService.GetJobsAsync(Arg.Any<int>(), Arg.Any<string?>())
+            .Returns(new AccountJobsResponse(Array.Empty<AccountJobSummaryResponse>(), null));
+
+        var page = RenderList();
+
+        Assert.Contains("No consults yet", page.Markup);
+        Assert.DoesNotContain("No consult jobs found.", page.Markup);
+        Assert.Contains(
+            page.FindAll("fluent-anchor"),
+            anchor => anchor.GetAttribute("href")?.TrimEnd('/').EndsWith("consults") == true);
+    }
+
     [Theory]
     [InlineData("Completed")]
     [InlineData("Failed")]
