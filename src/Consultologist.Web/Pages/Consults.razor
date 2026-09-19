@@ -585,9 +585,25 @@
                                                 Rerun
                                             </FluentButton>
                                         }
-                                        <FluentButton Appearance="Appearance.Accent" @onclick="CopyNoteAsync">
-                                            @CopyButtonLabel
-                                        </FluentButton>
+                                @* #768: on a multi-document run the panel shows one
+                                   tab per deliverable, so a single "Copy note" would
+                                   silently copy only the tab in view. Scope it to the
+                                   document in view and offer a "Copy all". *@
+                                @if (assembledDocuments.Count > 1)
+                                {
+                                    <FluentButton Appearance="Appearance.Accent" @onclick="CopyActiveDocumentAsync">
+                                        @CopyThisDocumentLabel
+                                    </FluentButton>
+                                    <FluentButton Appearance="Appearance.Outline" @onclick="CopyAllDocumentsAsync">
+                                        @CopyAllLabel
+                                    </FluentButton>
+                                }
+                                else
+                                {
+                                    <FluentButton Appearance="Appearance.Accent" @onclick="CopyActiveDocumentAsync">
+                                        @CopyNoteLabel
+                                    </FluentButton>
+                                }
                                     </div>
                                 </div>
 
@@ -679,8 +695,8 @@
                                         </FluentBadge>
                                         @if (!isAiRequestLoading || runTerminalStatus != null)
                                         {
-                                            <FluentButton Appearance="Appearance.Accent" @onclick="CopyNoteAsync">
-                                                @CopyButtonLabel
+                                            <FluentButton Appearance="Appearance.Accent" @onclick="CopyActiveDocumentAsync">
+                                                @CopyNoteLabel
                                             </FluentButton>
                                         }
                                     </div>
@@ -1172,6 +1188,11 @@
   private string? runTerminalStatus;
   private string? copyFeedback;
   private int copyFeedbackToken;
+  // #768: which copy button the transient feedback belongs to, so "Copied ✓"
+  // shows on the button that was clicked rather than on both.
+  private CopyTarget copyFeedbackTarget;
+
+  private enum CopyTarget { None, Document, All }
   private IReadOnlyList<ConsultGenerationResultDocumentResponse> assembledDocuments = Array.Empty<ConsultGenerationResultDocumentResponse>();
   // #368: set when the record says its text was deleted under the retention policy.
   private DateTimeOffset? textDroppedAtUtc;
@@ -2700,17 +2721,39 @@
     assembledDocuments.FirstOrDefault(document => document.ResultId == activeDocumentId)
       ?? assembledDocuments.FirstOrDefault();
 
-  private string CopyButtonLabel => copyFeedback ?? "Copy note";
+  // #768: labels for the copy buttons. Transient feedback ("Copied ✓" / "Copy
+  // failed") shows only on the button that was clicked; the others keep their
+  // resting label. "Copy note" and "Copy this document" share the Document
+  // target (they never render together — the latter is the multi-document case).
+  private string CopyNoteLabel => copyFeedbackTarget == CopyTarget.Document && copyFeedback is not null ? copyFeedback : "Copy note";
+  private string CopyThisDocumentLabel => copyFeedbackTarget == CopyTarget.Document && copyFeedback is not null ? copyFeedback : "Copy this document";
+  private string CopyAllLabel => copyFeedbackTarget == CopyTarget.All && copyFeedback is not null ? copyFeedback : "Copy all";
 
-  // Copies the finished note as plain text: the document in view verbatim (the
-  // active tab when a package declares several), or note-ordered sections —
-  // name on its own line, prose below, blank line between (v5).
-  private async Task CopyNoteAsync()
+  // The document in view verbatim (the active tab when a package declares
+  // several), or note-ordered sections — name on its own line, prose below,
+  // blank line between (v5).
+  private Task CopyActiveDocumentAsync()
   {
     var text = ActiveDocument?.Text ?? string.Join("\n\n", packageBlocks
       .Where(standard => generatedBlocks.TryGetValue(standard.Id, out var prose) && !string.IsNullOrWhiteSpace(prose))
       .Select(standard => $"{standard.Name}\n{generatedBlocks[standard.Id].Trim()}"));
 
+    return CopyTextAsync(text, CopyTarget.Document);
+  }
+
+  // #768: every deliverable in result-set order, each under its label (authored
+  // package content, no clinical detail), blank line between — so a physician
+  // can lift the whole set rather than silently getting only the tab in view.
+  private Task CopyAllDocumentsAsync()
+  {
+    var text = string.Join("\n\n", assembledDocuments
+      .Select(document => $"{document.Label}\n{(document.Text ?? string.Empty).Trim()}"));
+
+    return CopyTextAsync(text, CopyTarget.All);
+  }
+
+  private async Task CopyTextAsync(string text, CopyTarget target)
+  {
     try
     {
       await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
@@ -2721,12 +2764,14 @@
       copyFeedback = "Copy failed";
     }
 
+    copyFeedbackTarget = target;
     var token = ++copyFeedbackToken;
     await Task.Delay(TimeSpan.FromSeconds(2));
 
     if (token == copyFeedbackToken)
     {
       copyFeedback = null;
+      copyFeedbackTarget = CopyTarget.None;
       await InvokeAsync(StateHasChanged);
     }
   }

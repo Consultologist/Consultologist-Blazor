@@ -1,8 +1,11 @@
+using System.Linq;
+using AngleSharp.Dom;
 using Bunit;
 using Consultologist.Web.Pages;
 using Consultologist.Web.Services.AI;
 using Consultologist.Web.Services.Workflow;
 using NSubstitute;
+using Xunit;
 
 namespace Consultologist.Web.Tests;
 
@@ -224,6 +227,76 @@ public class ConsultsResultTests : ClientRenderTestContext
             tabs.Select(tab => tab.GetAttribute("id")).ToArray());
         Assert.Contains("Consultation note", tabs[0].TextContent);
         Assert.Contains("Patient letter", tabs[1].TextContent);
+    }
+
+    // ----- #768: the Copy control's scope on multi-document runs -----
+
+    private static readonly ConsultGenerationResultDocumentResponse[] TwoNotes =
+    {
+        new("consult_note", "Consultation note", "The assembled note."),
+        new("patient_letter", "Patient letter", "Dear patient,")
+    };
+
+    private string? LastCopiedText() =>
+        JSInterop.Invocations["navigator.clipboard.writeText"].Last().Arguments[0] as string;
+
+    private static IElement CopyButton(IRenderedComponent<Consults> page, string label) =>
+        page.FindAll("fluent-button").Single(button => button.TextContent.Trim() == label);
+
+    [Fact]
+    public void SeveralDocuments_ScopeTheCopyButton_AndOfferCopyAll()
+    {
+        WithCompletedJob(documents: TwoNotes);
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var labels = page.FindAll("fluent-button").Select(button => button.TextContent.Trim()).ToArray();
+        Assert.Contains("Copy this document", labels);
+        Assert.Contains("Copy all", labels);
+        Assert.DoesNotContain("Copy note", labels);
+    }
+
+    [Fact]
+    public void CopyThisDocument_CopiesOnlyTheDocumentInView()
+    {
+        WithCompletedJob(documents: TwoNotes);
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+        CopyButton(page, "Copy this document").Click();
+
+        // The active tab defaults to the first deliverable.
+        Assert.Equal("The assembled note.", LastCopiedText());
+    }
+
+    [Fact]
+    public void CopyAll_CopiesEveryDocumentUnderItsLabel()
+    {
+        WithCompletedJob(documents: TwoNotes);
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+        CopyButton(page, "Copy all").Click();
+
+        var copied = LastCopiedText();
+        Assert.NotNull(copied);
+        Assert.Contains("Consultation note", copied);
+        Assert.Contains("The assembled note.", copied);
+        Assert.Contains("Patient letter", copied);
+        Assert.Contains("Dear patient,", copied);
+    }
+
+    [Fact]
+    public void ASingleDocument_KeepsCopyNote_AndNoCopyAll()
+    {
+        WithCompletedJob(documents: OneNote);
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var labels = page.FindAll("fluent-button").Select(button => button.TextContent.Trim()).ToArray();
+        Assert.Contains("Copy note", labels);
+        Assert.DoesNotContain("Copy all", labels);
+
+        CopyButton(page, "Copy note").Click();
+        Assert.Equal("The assembled note.", LastCopiedText());
     }
 
     [Fact]
