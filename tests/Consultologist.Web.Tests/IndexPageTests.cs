@@ -1,6 +1,12 @@
 using Bunit;
+using Bunit.TestDoubles;
 
-using Consultologist.Web.Services.Accounts;
+using Consultologist.Web.Services.Workflow;
+
+using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.FluentUI.AspNetCore.Components;
 
 using NSubstitute;
 
@@ -9,38 +15,47 @@ using Xunit;
 namespace Consultologist.Web.Tests;
 
 /// <summary>
-/// #679: the Home page's primary card routes a not-yet-active account to
-/// activation instead of inviting a consult it cannot run.
+/// #766: `/` redirects a signed-in clinician to the Consults page (their real
+/// landing); the account-status nudge that used to live here moved onto
+/// Consults (see <see cref="ConsultsPageTests"/>).
 /// </summary>
 public class IndexPageTests : ClientRenderTestContext
 {
-    private static AccountMeResponse Me(string status) => new(
-        "user-1", "A Clinician", "clinician@example.com", status,
-        new AccountIdentity("entra-external-id", "https://login.microsoftonline.com/x", "sub-1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
-        new[] { new AccountIdentity("entra-external-id", "https://login.microsoftonline.com/x", "sub-1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow) });
-
     [Fact]
-    public void PendingAccount_ShowsActivateCta_NotCreateConsult()
+    public void SignedIn_RedirectsToConsults()
     {
-        AccountService.GetCurrentAccountAsync().Returns(Me("Pending"));
+        Render<Consultologist.Web.Pages.Index>();
 
-        var page = Render<Consultologist.Web.Pages.Index>();
+        Assert.EndsWith("/consults", Services.GetRequiredService<NavigationManager>().Uri);
+    }
+}
 
-        Assert.Contains("Activate your account", page.Markup);
-        Assert.Contains("href=\"profile\"", page.Markup);
-        Assert.DoesNotContain("Create Consult", page.Markup);
-        // The read cards still stand.
-        Assert.Contains("Open history", page.Markup);
+/// <summary>
+/// #685/#766: signed out, `/` stays the public marketing / verifiability
+/// landing. Rendered in a not-authorized context, so it needs its own host.
+/// </summary>
+public class IndexSignedOutTests : BunitContext
+{
+    public IndexSignedOutTests()
+    {
+        Services.AddFluentUIComponents();
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        AddAuthorization().SetNotAuthorized();
+
+        var workflow = Substitute.For<IWorkflowEndpointService>();
+        workflow.GetPublicChainAsync().Returns((PublicChainView?)null);
+        Services.AddSingleton(workflow);
+        Services.AddSingleton<IConfiguration>(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["AzureFunction:PublicRegistryBaseUrl"] = "https://consultpubcaeast.blob.core.windows.net" })
+            .Build());
     }
 
     [Fact]
-    public void ActiveAccount_ShowsCreateConsult()
+    public void SignedOut_ShowsTheLandingHeroAndLogIn()
     {
-        AccountService.GetCurrentAccountAsync().Returns(Me("Active"));
-
         var page = Render<Consultologist.Web.Pages.Index>();
 
-        Assert.Contains("Create Consult", page.Markup);
-        Assert.DoesNotContain("Activate your account", page.Markup);
+        Assert.Contains("Consult drafting with traceable clinical context.", page.Markup);
+        Assert.Contains("Log in", page.Markup);
     }
 }
