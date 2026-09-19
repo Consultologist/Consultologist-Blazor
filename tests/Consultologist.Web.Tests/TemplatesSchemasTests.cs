@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Bunit;
 using Consultologist.Web.Pages;
 using Consultologist.Web.Services.Workflow;
@@ -59,8 +58,7 @@ public class TemplatesSchemasTests : ClientRenderTestContext
 
         var row = page.Find("div[data-schema='concept-list']");
         Assert.Contains("schemas/concept-list.json", row.TextContent);
-        // #760: a declared body is shown in an editable text area.
-        Assert.Contains("\"concepts\"", page.Find("textarea[aria-label='Schema body for concept-list']").GetAttribute("value"));
+        Assert.Contains("\"concepts\"", page.Find("div[data-schema='concept-list'] pre.schema-body").TextContent);
     }
 
     [Fact]
@@ -167,72 +165,5 @@ public class TemplatesSchemasTests : ClientRenderTestContext
         page.Find("button[aria-label='Remove schema concept-list']").Click();
         Assert.Empty(page.FindAll("div[data-schema='concept-list']"));
         Assert.NotEmpty(page.FindAll("button[aria-label='Add output contract concept-list']"));
-    }
-
-    // ----- editable declared bodies (#760) ---------------------------------
-
-    [Fact]
-    public void ACosmeticBodyEdit_PublishesAndStaysValid()
-    {
-        var page = RenderEditor(EditorFixtures.V12Full());
-        CapturePublish();
-        Navigate(page, "Schemas");
-
-        // A title is stripped by canonicalization, so the body still matches the catalog.
-        var edited = JsonNode.Parse(EditorCatalogSchemas.ConceptListSchema)!.AsObject();
-        edited["title"] = "Clinical concepts";
-        var body = edited.ToJsonString();
-
-        page.Find("textarea[aria-label='Schema body for concept-list']").Change(body);
-        Publish(page);
-
-        Assert.True(sent != null, string.Join(" | ", Refusals(page)));
-        Assert.Equal(body, sent!.Files["schemas/concept-list.json"]);
-        var result = Validated();
-        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
-    }
-
-    [Fact]
-    public async Task AMalformedBody_IsRefusedAtTheDesk()
-    {
-        var page = RenderEditor(EditorFixtures.V12Full());
-        CapturePublish();
-        Navigate(page, "Schemas");
-
-        page.Find("textarea[aria-label='Schema body for concept-list']").Change("{ not json");
-        Publish(page);
-
-        await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
-        Assert.Contains("Schema 'concept-list' body is not valid JSON.", Refusals(page));
-    }
-
-    [Fact]
-    public void AStructuralBodyEdit_IsWellFormedButTheServerWouldRefuseIt()
-    {
-        var page = RenderEditor(EditorFixtures.V12Full());
-        CapturePublish();
-        Navigate(page, "Schemas");
-
-        // Well-formed JSON, so the desk lets it through — but it no longer matches
-        // the catalog, so the real validator (the server's authority) refuses it.
-        page.Find("textarea[aria-label='Schema body for concept-list']").Change("{ \"type\": \"object\" }");
-        Publish(page);
-
-        Assert.NotNull(sent);
-        var result = Validated();
-        Assert.False(result.IsValid);
-        Assert.Contains(result.Errors, error => error.Contains("canonically match a catalog output contract"));
-    }
-
-    [Fact]
-    public void AnAddedContractsBody_StaysReadOnly()
-    {
-        var page = RenderEditor(EditorFixtures.V7());
-        Navigate(page, "Schemas");
-        page.Find("button[aria-label='Add output contract concept-list']").Click();
-
-        // The added contract's body is the fixed catalog match — no editable control.
-        Assert.Empty(page.FindAll("textarea[aria-label='Schema body for concept-list']"));
-        Assert.NotNull(page.Find("div[data-schema='concept-list'] pre.schema-body"));
     }
 }

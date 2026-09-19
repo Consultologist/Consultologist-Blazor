@@ -848,22 +848,7 @@
                                 {
                                     <span class="muted-text">Used by @(string.Join(", ", readers.Select(reader => $"'{reader}'"))); change its output contract first.</span>
                                 }
-                                @* #760: a declared body is editable in place (it rides edits→publish); an
-                                   added contract's body is the fixed catalog match, so it stays read-only.
-                                   The server refuses any edit that stops canonically matching a catalog
-                                   contract — cosmetic title/description tweaks are what survives. *@
-                                @if (AddedSchemaForFile(schema.File) is null)
-                                {
-                                    <textarea class="node-field__input schema-body"
-                                              rows="12"
-                                              value="@GetText(schema.File)"
-                                              @onchange="args => OnTextChangedAsync(declaredSchema.File, args.Value?.ToString() ?? string.Empty)"
-                                              aria-label="@($"Schema body for {schema.Id}")"></textarea>
-                                }
-                                else
-                                {
-                                    <pre class="schema-body">@GetText(schema.File)</pre>
-                                }
+                                <pre class="schema-body">@GetText(schema.File)</pre>
                             </div>
                         }
                         @foreach (var removed in RemovedSchemaViews)
@@ -3011,41 +2996,14 @@
 
     /// <summary>
     /// #746: a schema marked for removal must not still be a node's output
-    /// contract — the server would refuse the missing schema, said here first
-    /// (the pane refuses the removal itself, so this only catches a node retyped
-    /// onto a pending-removed contract after the fact). #760: an edited declared
-    /// body must be well-formed JSON — the well-formedness the client can judge;
-    /// the server's canonical-catalog match stays the authority on publish.
+    /// contract — the server would refuse the missing schema, said here first.
+    /// The pane refuses the removal itself, so this only catches a node retyped
+    /// onto a pending-removed contract after the fact.
     /// </summary>
-    private IEnumerable<string> SchemaErrors()
-    {
-        foreach (var id in removedSchemaIds)
-        {
-            foreach (var nodeId in SchemaReferencedBy(id))
-            {
-                yield return $"Schema '{id}' is removed but node '{nodeId}' still reads it as its output contract; change that node's output first.";
-            }
-        }
-
-        foreach (var schema in DeclaredSchemas.Where(schema => edits.ContainsKey(schema.File)))
-        {
-            var body = GetText(schema.File);
-            var wellFormed = true;
-            try
-            {
-                System.Text.Json.Nodes.JsonNode.Parse(body);
-            }
-            catch (System.Text.Json.JsonException)
-            {
-                wellFormed = false;
-            }
-
-            if (!wellFormed)
-            {
-                yield return $"Schema '{schema.Id}' body is not valid JSON.";
-            }
-        }
-    }
+    private IEnumerable<string> SchemaErrors() =>
+        removedSchemaIds
+            .SelectMany(id => SchemaReferencedBy(id).Select(nodeId => (id, nodeId)))
+            .Select(pair => $"Schema '{pair.id}' is removed but node '{pair.nodeId}' still reads it as its output contract; change that node's output first.");
 
     // #747: shared preludes — a `preludes` map (id -> file) whose free-form text
     // is prepended to a prompt that names it. Authored in full: create/edit/
