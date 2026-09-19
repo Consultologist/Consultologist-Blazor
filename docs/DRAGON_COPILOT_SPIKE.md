@@ -9,10 +9,12 @@ delegated token** (the #610 bridge is missing — OBO cannot mint one from an ap
 So the direct "AI apps and agents" extension is **deferred** — a narrow
 note-in→letter-out fit, blocked on a clinician-identity bridge; the recommended path is
 **EHR-mediated** (Epic #654 / Cerner #662, where the clinician is interactively signed in
-and holds a delegated token). The **`ambient-note` origin kind and the satellite are NOT
-built** — deferred until a Dragon-note-in delivery path has a real consumer. The
-extensibility-surface map (§ 3) was recorded 2026-09-09; this pass folds in the gate
-outcome. Design of record.**
+and holds a delegated token). The **direct extension / satellite is NOT built** (deferred
+until a clinician-identity bridge exists). The **`ambient-note` origin kind was since built
+and released** — it shipped with the v17 spec bump, mirroring the live `transcript` kind
+(#671), so § 8's inventory is now the record of what was done, not pending work; only the
+Dragon consumer that would exercise it is deferred. The extensibility-surface map (§ 3) was
+recorded 2026-09-09; this pass folds in the gate outcome. Design of record.**
 
 ## 1. What this is — and the anti-ambient boundary, in Dragon's own presence
 
@@ -155,17 +157,16 @@ does not justify the US-only, sales-led onboarding — § 7).
   US-only, sales-led Partner Center onboarding is not justified. Revisit only if the
   clinician-identity bridge is solved and the US market is in scope.
 
-## 8. Engine-change inventory (DEFERRED — not built; waits for a note-in consumer)
+## 8. Engine-change inventory (BUILT + released; the Dragon consumer stays deferred)
 
-**One input origin kind, registry-first — a DISTINCT kind, not `transcript`** — but
-**deferred**: it is only worth adding once a Dragon-note-in path is committed and has a
-consumer (the EHR-mediated document road, or a future direct extension once the
-clinician-identity bridge exists). A Dragon *ambient* note's provenance differs from a
-Zoom speaker-labeled transcript (an AI-summarized visit draft vs. speaker turns), so it
-warrants its own kind. Recommend **`ambient-note`** — the name keeps the SaMD/anti-ambient
-boundary legible in the record and in `History.razor` — adding `dictation` only if a
-verbatim-dictation path appears. When built, it mirrors the now-live `transcript` kind
-(#671) exactly:
+**One input origin kind, registry-first — a DISTINCT kind, not `transcript`.** Originally
+deferred, this was **since built and released** (v17 spec bump), because a note-in consumer
+does exist independent of Dragon — the EHR-mediated document road and the ambient-note
+content channel — and a Dragon *ambient* note's provenance differs from a Zoom
+speaker-labeled transcript (an AI-summarized visit draft vs. speaker turns), so it warrants
+its own kind. The name **`ambient-note`** keeps the SaMD/anti-ambient boundary legible in
+the record and in `History.razor` (adding `dictation` only if a verbatim-dictation path
+appears). It mirrors the live `transcript` kind (#671) exactly, as built:
 
 1. Bump `consultologist-provenance@v…` — add the `ambient-note` sentence to the
    `inputOrigins` narrative in `provenance-record.md` and bump `provenance-versions.json`
@@ -190,8 +191,9 @@ identical to the Zoom transcript.
 - **Recommended path: EHR-mediated** — Epic (#654) / Cerner (#662, leg-2 #665) SMART on
   FHIR, where the clinician holds a delegated token and documents flow through the EHR.
 - **Partner-program application: NOT pursued** (§ 7).
-- **`ambient-note` origin kind: deferred, not built** (§ 8) — added when a note-in path has
-  a consumer; it then mirrors the live `transcript` kind (#671).
+- **`ambient-note` origin kind: built + released** (§ 8) — shipped with the v17 spec bump,
+  mirroring the live `transcript` kind (#671); the Dragon extension that would consume it
+  stays deferred.
 
 Build precedent for a delegated-token satellite (if the identity bridge is ever solved):
 `consultologist-copilot-agent` (#667) and the Zoom satellite (#613/#671/#675). The
