@@ -112,4 +112,20 @@ public class EmailPdfProfileTests : ClientRenderTestContext
         await AccountService.Received(1).DeleteSettingAsync(EmailPdfPreference.SettingKey);
         Assert.Equal("Not chosen — PDFs are sent, as today", State(page));
     }
+
+    [Fact]
+    public async Task ARefusedSave_ShowsFriendlyCopy_NotTheRawStatusString()
+    {
+        // #778: the setting-save endpoint throws a synthetic "…endpoint failed:
+        // BadRequest"; the clinician sees plain copy, not that string.
+        WithChoice(null);
+        AccountService.SaveSettingAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>())
+            .Returns(Task.FromException(new HttpRequestException("Account setting save endpoint failed: BadRequest")));
+        var page = RenderProfile();
+
+        await page.Find(".email-pdf-no").ClickAsync(new());
+
+        Assert.Contains("We couldn't save your email preference", page.Find(".email-pdf-message").TextContent);
+        Assert.DoesNotContain("endpoint failed", page.Markup);
+    }
 }

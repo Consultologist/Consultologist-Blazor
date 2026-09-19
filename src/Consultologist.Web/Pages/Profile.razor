@@ -1435,9 +1435,11 @@
         {
             exception.Redirect();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            accountErrorMessage = $"Unable to load account information: {ex.Message}";
+            // #778: the detail is already logged by the endpoint service; the
+            // clinician gets a plain, actionable line, not a raw status string.
+            accountErrorMessage = "We couldn't load your account details. Please refresh to try again.";
         }
     }
 
@@ -1498,9 +1500,9 @@
         {
             exception.Redirect();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            scheduleMessage = ex.Message;
+            scheduleMessage = "We couldn't save your schedule default. Please try again.";
             scheduleMessageIntent = MessageIntent.Error;
         }
         finally
@@ -1525,9 +1527,9 @@
         {
             exception.Redirect();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            scheduleMessage = ex.Message;
+            scheduleMessage = "We couldn't save your schedule default. Please try again.";
             scheduleMessageIntent = MessageIntent.Error;
         }
         finally
@@ -1594,9 +1596,9 @@
             // Every session holder (job, editor) belongs to the old location.
             Navigation.NavigateTo("/profile", forceLoad: true);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            locationMessage = ex.Message;
+            locationMessage = "We couldn't save your region. Please try again.";
             locationMessageIntent = MessageIntent.Error;
         }
         finally
@@ -1628,9 +1630,9 @@
             locationMessageIntent = MessageIntent.Success;
             Navigation.NavigateTo("/profile", forceLoad: true);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            locationMessage = ex.Message;
+            locationMessage = "We couldn't save your region. Please try again.";
             locationMessageIntent = MessageIntent.Error;
         }
         finally
@@ -1680,9 +1682,9 @@
         {
             exception.Redirect();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            emailPdfMessage = ex.Message;
+            emailPdfMessage = "We couldn't save your email preference. Please try again.";
             emailPdfMessageIntent = MessageIntent.Error;
         }
         finally
@@ -1706,9 +1708,9 @@
         {
             exception.Redirect();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            emailPdfMessage = ex.Message;
+            emailPdfMessage = "We couldn't save your email preference. Please try again.";
             emailPdfMessageIntent = MessageIntent.Error;
         }
         finally
@@ -1758,9 +1760,9 @@
         {
             exception.Redirect();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            formsModeMessage = ex.Message;
+            formsModeMessage = "We couldn't save your intake setting. Please try again.";
             formsModeMessageIntent = MessageIntent.Error;
         }
         finally
@@ -1784,9 +1786,9 @@
         {
             exception.Redirect();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            formsModeMessage = ex.Message;
+            formsModeMessage = "We couldn't save your intake setting. Please try again.";
             formsModeMessageIntent = MessageIntent.Error;
         }
         finally
@@ -1892,9 +1894,9 @@
         {
             exception.Redirect();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            retentionMessage = ex.Message;
+            retentionMessage = "We couldn't save your retention setting. Please try again.";
             retentionMessageIntent = MessageIntent.Error;
         }
         finally
@@ -1931,9 +1933,9 @@
         {
             exception.Redirect();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            retentionMessage = ex.Message;
+            retentionMessage = "We couldn't save your retention setting. Please try again.";
             retentionMessageIntent = MessageIntent.Error;
         }
         finally
@@ -2003,9 +2005,9 @@
         {
             exception.Redirect();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            ocrMessage = ex.Message;
+            ocrMessage = "We couldn't save your OCR setting. Please try again.";
             ocrMessageIntent = MessageIntent.Error;
         }
         finally
@@ -2032,9 +2034,9 @@
         {
             exception.Redirect();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            ocrMessage = ex.Message;
+            ocrMessage = "We couldn't save your OCR setting. Please try again.";
             ocrMessageIntent = MessageIntent.Error;
         }
         finally
@@ -2083,9 +2085,9 @@
         {
             exception.Redirect();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            usageError = ex.Message;
+            usageError = "We couldn't load your usage. Please try again.";
         }
     }
 
@@ -2163,9 +2165,9 @@
         {
             exception.Redirect();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            signatureMessage = ex.Message;
+            signatureMessage = "We couldn't save your signature. Please try again.";
             signatureMessageIntent = MessageIntent.Error;
         }
         finally
@@ -2334,9 +2336,9 @@
         {
             exception.Redirect();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            snippetMessage = ex.Message;
+            snippetMessage = "We couldn't save your snippets. Please try again.";
             snippetMessageIntent = MessageIntent.Error;
         }
         finally
@@ -2576,9 +2578,9 @@
         {
             exception.Redirect();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            passwordMessage = ex.Message;
+            passwordMessage = "We couldn't clear your delivery password. Please try again.";
             passwordMessageIntent = MessageIntent.Error;
         }
         finally

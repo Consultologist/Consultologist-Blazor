@@ -131,4 +131,20 @@ public class UsageProfileTests : ClientRenderTestContext
 
         await AccountService.Received(1).GetUsageAsync("2026-09-01", "2026-09-07");
     }
+
+    [Fact]
+    public void ARefusedUsageLoad_ShowsFriendlyCopy_NotTheRawStatusString()
+    {
+        // #778: GetUsageAsync throws a synthetic "…endpoint failed: X"; the user
+        // sees plain copy, not that string.
+        AccountService.GetCurrentAccountAsync().Returns(new AccountMeResponse(
+            "user-1", "A Clinician", "clinician@example.com", "Active", Entra(), new[] { Entra() }));
+        AccountService.GetUsageAsync(Arg.Any<string>(), Arg.Any<string>())
+            .Returns(Task.FromException<AccountUsageResponse>(new HttpRequestException("Account usage endpoint failed: BadGateway")));
+
+        var page = Render<Profile>();
+
+        Assert.Contains("We couldn't load your usage", page.Markup);
+        Assert.DoesNotContain("endpoint failed", page.Markup);
+    }
 }
