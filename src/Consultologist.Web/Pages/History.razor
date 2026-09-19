@@ -41,6 +41,13 @@
                     <FluentMessageBar Intent="MessageIntent.Error">@_cancelError</FluentMessageBar>
                 }
 
+                @* #770: the first click arms; this names the destructive second
+                   click, since cancelling a scheduled run cannot be undone. *@
+                @if (_cancelArmedId != null)
+                {
+                    <FluentMessageBar Intent="MessageIntent.Warning">Cancelling a scheduled run can't be undone — click "confirm cancel" on that run to proceed.</FluentMessageBar>
+                }
+
                 @if (jobsLoading && jobs.Count == 0)
                 {
                     <LoadingState>Loading job history...</LoadingState>
@@ -167,7 +174,7 @@
                                                     disabled="@(_cancelling == job.JobId)"
                                                     @onclick:stopPropagation="true"
                                                     @onclick="() => CancelScheduledRunAsync(job.JobId)">
-                                                @(_cancelling == job.JobId ? "cancelling…" : "cancel")
+                                                @(_cancelling == job.JobId ? "cancelling…" : (_cancelArmedId == job.JobId ? "confirm cancel" : "cancel"))
                                             </button>
                                         }
                                     </div>
@@ -1010,6 +1017,10 @@
 
     private string? _cancelling;
     private string? _cancelError;
+    // #770: the run whose cancel is armed — the first click arms it, the
+    // second cancels. Holds the job id (not a bool) so only that row reads
+    // "confirm cancel"; the #195/#561 arming pattern, no dialog in this app.
+    private string? _cancelArmedId;
 
     // #390: which row is being edited, and the datetime-local value it holds.
     private string? _editing;
@@ -1024,6 +1035,8 @@
     {
         _editing = job.JobId;
         _cancelError = null;
+        // #770: changing the time is a competing action — disarm any pending cancel.
+        _cancelArmedId = null;
         ResetEdit(job);
     }
 
@@ -1151,6 +1164,16 @@
             return;
         }
 
+        // #770: the first click arms this row (the label reads "confirm cancel"
+        // and a warning shows); only the second click cancels. Cancellation is
+        // not reversible — a cancelled run stays cancelled (#202).
+        if (_cancelArmedId != jobId)
+        {
+            _cancelArmedId = jobId;
+            return;
+        }
+
+        _cancelArmedId = null;
         _cancelling = jobId;
         _cancelError = null;
 
