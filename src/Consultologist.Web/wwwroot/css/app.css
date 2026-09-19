@@ -701,6 +701,10 @@ header.header.app-header {
 		margin-left: 0;
 		width: 100%;
 		padding-top: 0.1rem;
+		/* #773: wrap to a second row instead of scrolling behind a hidden
+		   scrollbar, which clipped trailing links (incl. Profile) at ~320px. */
+		flex-wrap: wrap;
+		overflow-x: visible;
 	}
 
 	.top-nav a {
