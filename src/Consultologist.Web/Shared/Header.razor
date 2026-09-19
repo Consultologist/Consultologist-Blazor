@@ -12,18 +12,31 @@
             <span class="brand-name">Consultologist</span>
         </a>
         <nav class="top-nav" aria-label="Workspace navigation">
-            <FluentNavLink Href="/" Match="NavLinkMatch.All">Home</FluentNavLink>
-            @* #685: public — the verifiability/help story is for signed-out visitors too. *@
-            <FluentNavLink Href="help">Help</FluentNavLink>
+            @* #766: Home is signed-out only — a signed-in clinician's landing is
+               the Consults page (`/` redirects there), so Home would just bounce.
+               Order across both audiences: Home | Consults | History | Workflow |
+               Help | Profile, with Home shown only signed-out and the workspace
+               links only signed-in; Help is public and sits between them. *@
+            <AuthorizeView>
+                <NotAuthorized>
+                    <FluentNavLink Href="/" Match="NavLinkMatch.All">Home</FluentNavLink>
+                </NotAuthorized>
+            </AuthorizeView>
             <AuthorizeView>
                 <Authorized>
                     <FluentNavLink Href="consults">Consults</FluentNavLink>
                     <FluentNavLink Href="history">History</FluentNavLink>
                     <FluentNavLink Href="templates">Workflow</FluentNavLink>
-                    <FluentNavLink Href="profile">Profile</FluentNavLink>
                     @* #733: the Operators link moved to the standalone admin
                        app (its own origin), so the clinician bundle no longer
                        ships an admin route or the Me read that gated the link. *@
+                </Authorized>
+            </AuthorizeView>
+            @* #685: public — the verifiability/help story is for signed-out visitors too. *@
+            <FluentNavLink Href="help">Help</FluentNavLink>
+            <AuthorizeView>
+                <Authorized>
+                    <FluentNavLink Href="profile">Profile</FluentNavLink>
                 </Authorized>
             </AuthorizeView>
         </nav>

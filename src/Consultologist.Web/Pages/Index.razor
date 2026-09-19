@@ -1,171 +1,87 @@
 @page "/"
 @using Microsoft.AspNetCore.Components.Authorization
-@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
-@using Consultologist.Web.Services.Workflow
-@inject IWorkflowEndpointService WorkflowService
-@inject IAccountEndpointService AccountService
+@inject NavigationManager Navigation
 
 <PageTitle>Consultologist Clinical Workspace</PageTitle>
 
-<section class="landing-hero">
-    <div class="landing-hero__copy">
-        <span class="section-eyebrow">Clinical workspace</span>
-        <h1 class="landing-hero__title">Consult drafting with traceable clinical context.</h1>
-        <p class="page-description">
-            Build structured specialist consults from referral details, review the generated note,
-            and keep the physician in control before anything reaches the chart. Every consult
-            resolves to versioned, inspectable artifacts — the workflow, its rules, and each
-            step's provenance.
-        </p>
-        <div class="action-row">
-            <AuthorizeView>
-                <NotAuthorized>
+@* #766: `/` is the public landing for signed-out visitors — the marketing /
+   verifiability story (#685). A signed-in clinician's landing is the Consults
+   page, so they are redirected there (see OnInitializedAsync) and never see
+   this hero; the account-status nudge that once lived here moved onto Consults. *@
+<AuthorizeView>
+    <NotAuthorized>
+        <section class="landing-hero">
+            <div class="landing-hero__copy">
+                <span class="section-eyebrow">Clinical workspace</span>
+                <h1 class="landing-hero__title">Consult drafting with traceable clinical context.</h1>
+                <p class="page-description">
+                    Build structured specialist consults from referral details, review the generated note,
+                    and keep the physician in control before anything reaches the chart. Every consult
+                    resolves to versioned, inspectable artifacts — the workflow, its rules, and each
+                    step's provenance.
+                </p>
+                <div class="action-row">
                     <FluentAnchor Appearance="Appearance.Accent" Href="authentication/login">
                         Log in
                     </FluentAnchor>
-                </NotAuthorized>
-                <Authorized>
-                    <FluentAnchor Appearance="Appearance.Accent" Href="consults">
-                        Start a consult
-                    </FluentAnchor>
-                </Authorized>
-            </AuthorizeView>
-        </div>
-    </div>
-    <figure class="note-artifact" aria-label="Example consult note with provenance annotations">
-        <div class="note-artifact__paper">
-            <div class="note-artifact__section">
-                <h2 class="note-artifact__heading">History of present illness</h2>
-                <p class="note-artifact__line">
-                    62-year-old presenting with progressive exertional dyspnea over three
-                    months, now limiting a single flight of stairs…
-                </p>
-            </div>
-            <div class="note-artifact__section">
-                <h2 class="note-artifact__heading">Allergies</h2>
-                <p class="note-artifact__line">No known drug allergies documented in the referral.</p>
-            </div>
-            <div class="note-artifact__section">
-                <h2 class="note-artifact__heading">Assessment</h2>
-                <p class="note-artifact__line">
-                    New-onset atrial fibrillation, rate-controlled; outpatient
-                    echocardiography arranged.
-                </p>
-            </div>
-        </div>
-        <figcaption class="note-artifact__annotations">
-            <span class="note-annotation" style="--at: 10%">general@v2026.07.6</span>
-            <span class="note-annotation" style="--at: 46%">text → test-json v47</span>
-            <span class="note-annotation note-annotation--verified" style="--at: 76%">6f52afd0… ✓</span>
-        </figcaption>
-        <div class="note-pipeline" role="img" aria-label="The seven workflow stages that produce the note, running in sequence">
-            <span class="note-pipeline__dot" style="--i: 0" title="Extracting clinical concepts" aria-hidden="true"></span>
-            <span class="note-pipeline__link" style="--i: 0" aria-hidden="true"></span>
-            <span class="note-pipeline__dot" style="--i: 1" title="Identifying primary problem" aria-hidden="true"></span>
-            <span class="note-pipeline__link" style="--i: 1" aria-hidden="true"></span>
-            <span class="note-pipeline__dot" style="--i: 2" title="Building reference trajectory" aria-hidden="true"></span>
-            <span class="note-pipeline__link" style="--i: 2" aria-hidden="true"></span>
-            <span class="note-pipeline__dot" style="--i: 3" title="Building patient trajectory" aria-hidden="true"></span>
-            <span class="note-pipeline__link" style="--i: 3" aria-hidden="true"></span>
-            <span class="note-pipeline__dot" style="--i: 4" title="Drafting section" aria-hidden="true"></span>
-            <span class="note-pipeline__link" style="--i: 4" aria-hidden="true"></span>
-            <span class="note-pipeline__dot" style="--i: 5" title="Applying patient information" aria-hidden="true"></span>
-            <span class="note-pipeline__link" style="--i: 5" aria-hidden="true"></span>
-            <span class="note-pipeline__dot" style="--i: 6" title="Applying section instructions" aria-hidden="true"></span>
-        </div>
-    </figure>
-</section>
-
-<AuthorizeView>
-    <NotAuthorized>
-        <PublicChainStrip />
-    </NotAuthorized>
-    <Authorized>
-        <section class="workflow-grid">
-            <div class="content-card">
-                <div class="form-stack">
-                    @if (accountStatus == "Disabled")
-                    {
-                        <h2 class="panel-title">Account disabled</h2>
-                        <p class="panel-description muted-text">
-                            This account has been disabled and cannot start consults.
-                        </p>
-                    }
-                    else if (accountStatus is not null and not "Active")
-                    {
-                        @* #679: not activated yet — route to Profile rather than
-                           invite a consult the account cannot run. *@
-                        <h2 class="panel-title">Activate your account</h2>
-                        <p class="panel-description">
-                            Your account isn't active yet — connect an activation method to start generating consults.
-                        </p>
-                        <div class="action-row">
-                            <FluentAnchor Appearance="Appearance.Accent" Href="profile">
-                                Go to your profile
-                            </FluentAnchor>
-                        </div>
-                    }
-                    else
-                    {
-                        <h2 class="panel-title">Start a consult</h2>
-                        <p class="panel-description">
-                            Enter referral context and generate a draft consultation note for review.
-                        </p>
-                        <div class="action-row">
-                            <FluentAnchor Appearance="Appearance.Accent" Href="consults">
-                                Create Consult
-                            </FluentAnchor>
-                        </div>
-                    }
                 </div>
             </div>
-            <div class="content-card">
-                <div class="form-stack">
-                    <h2 class="panel-title">Edit your workflow</h2>
-                    <p class="panel-description">
-                        Fork the workflow package behind your consults — prompts and section
-                        standards — with every version published and traceable.
-                    </p>
-                    @if (currentRef != null)
-                    {
-                        <p class="muted-text">currently: <code>@currentRef</code></p>
-                    }
-                    <div class="action-row">
-                        <FluentAnchor Appearance="Appearance.Outline" Href="templates">
-                            Open workflow editor
-                        </FluentAnchor>
+            <figure class="note-artifact" aria-label="Example consult note with provenance annotations">
+                <div class="note-artifact__paper">
+                    <div class="note-artifact__section">
+                        <h2 class="note-artifact__heading">History of present illness</h2>
+                        <p class="note-artifact__line">
+                            62-year-old presenting with progressive exertional dyspnea over three
+                            months, now limiting a single flight of stairs…
+                        </p>
+                    </div>
+                    <div class="note-artifact__section">
+                        <h2 class="note-artifact__heading">Allergies</h2>
+                        <p class="note-artifact__line">No known drug allergies documented in the referral.</p>
+                    </div>
+                    <div class="note-artifact__section">
+                        <h2 class="note-artifact__heading">Assessment</h2>
+                        <p class="note-artifact__line">
+                            New-onset atrial fibrillation, rate-controlled; outpatient
+                            echocardiography arranged.
+                        </p>
                     </div>
                 </div>
-            </div>
-            <div class="content-card">
-                <div class="form-stack">
-                    <h2 class="panel-title">Review history</h2>
-                    <p class="panel-description">
-                        Every consult job with its full provenance: the package, the catalog,
-                        the input and output hashes, and the per-step chain.
-                    </p>
-                    <div class="action-row">
-                        <FluentAnchor Appearance="Appearance.Outline" Href="history">
-                            Open history
-                        </FluentAnchor>
-                    </div>
+                <figcaption class="note-artifact__annotations">
+                    <span class="note-annotation" style="--at: 10%">general@v2026.07.6</span>
+                    <span class="note-annotation" style="--at: 46%">text → test-json v47</span>
+                    <span class="note-annotation note-annotation--verified" style="--at: 76%">6f52afd0… ✓</span>
+                </figcaption>
+                <div class="note-pipeline" role="img" aria-label="The seven workflow stages that produce the note, running in sequence">
+                    <span class="note-pipeline__dot" style="--i: 0" title="Extracting clinical concepts" aria-hidden="true"></span>
+                    <span class="note-pipeline__link" style="--i: 0" aria-hidden="true"></span>
+                    <span class="note-pipeline__dot" style="--i: 1" title="Identifying primary problem" aria-hidden="true"></span>
+                    <span class="note-pipeline__link" style="--i: 1" aria-hidden="true"></span>
+                    <span class="note-pipeline__dot" style="--i: 2" title="Building reference trajectory" aria-hidden="true"></span>
+                    <span class="note-pipeline__link" style="--i: 2" aria-hidden="true"></span>
+                    <span class="note-pipeline__dot" style="--i: 3" title="Building patient trajectory" aria-hidden="true"></span>
+                    <span class="note-pipeline__link" style="--i: 3" aria-hidden="true"></span>
+                    <span class="note-pipeline__dot" style="--i: 4" title="Drafting section" aria-hidden="true"></span>
+                    <span class="note-pipeline__link" style="--i: 4" aria-hidden="true"></span>
+                    <span class="note-pipeline__dot" style="--i: 5" title="Applying patient information" aria-hidden="true"></span>
+                    <span class="note-pipeline__link" style="--i: 5" aria-hidden="true"></span>
+                    <span class="note-pipeline__dot" style="--i: 6" title="Applying section instructions" aria-hidden="true"></span>
                 </div>
-            </div>
+            </figure>
         </section>
         <PublicChainStrip />
-    </Authorized>
+    </NotAuthorized>
 </AuthorizeView>
 
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthenticationState { get; set; }
 
-    private string? currentRef;
-    private string? accountStatus;
-
     protected override async Task OnInitializedAsync()
     {
-        // The pin line and the status-aware CTA are signed-in only: an
-        // unauthenticated fetch would redirect a visitor to login.
+        // #766: a signed-in clinician's landing is the Consults page. Redirect
+        // there (replace, so Back does not trap them on a bouncing `/`) rather
+        // than show a second dashboard. Signed-out visitors fall through to the
+        // public landing above.
         if (AuthenticationState == null)
         {
             return;
@@ -173,34 +89,9 @@
 
         var state = await AuthenticationState;
 
-        if (state.User.Identity?.IsAuthenticated != true)
+        if (state.User.Identity?.IsAuthenticated == true)
         {
-            return;
-        }
-
-        // #679: the primary card routes a not-yet-active account to activation.
-        // On failure it stays null — fail open to the normal "Create Consult"
-        // CTA; the status banner still carries the real message.
-        try
-        {
-            accountStatus = (await AccountService.GetCurrentAccountAsync()).Status;
-        }
-        catch
-        {
-            // Advisory only.
-        }
-
-        try
-        {
-            currentRef = (await WorkflowService.GetCurrentPackageAsync()).Ref;
-        }
-        catch (AccessTokenNotAvailableException)
-        {
-            // Token expired mid-session: the line is decoration, not worth a redirect.
-        }
-        catch
-        {
-            // Unreachable package endpoint hides the line; the cards stand alone.
+            Navigation.NavigateTo("consults", replace: true);
         }
     }
 }
