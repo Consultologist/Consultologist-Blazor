@@ -388,4 +388,31 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
         Assert.True(page.Find("input[aria-label='New tag']").HasAttribute("disabled"));
         Assert.True(page.Find("button[aria-label='Remove tag theirs']").HasAttribute("disabled"));
     }
+
+    // ----- templating (#750): read-only display -----------------------------
+
+    [Fact]
+    public void ThePackagePane_ShowsTheTemplatingEngineAndVersion_ReadOnly()
+    {
+        var page = RenderEditor(EditorFixtures.V12Full());
+        Navigate(page, "Package");
+
+        var templating = page.Find("[aria-label='Package templating']");
+        Assert.Contains("scriban", templating.TextContent);
+        Assert.Contains("7.2.5", templating.TextContent);
+        // Read-only: it is a plain display, not an input the author can change.
+        Assert.Equal("SPAN", templating.TagName);
+        Assert.Empty(page.FindAll("input[aria-label='Package templating'], textarea[aria-label='Package templating']"));
+    }
+
+    [Fact]
+    public void OnAForeignPackage_TheTemplatingLine_IsStillShown()
+    {
+        var page = RenderEditor(EditorFixtures.NotMine() with { SpecVersion = 9 });
+        Navigate(page, "Package");
+
+        var templating = page.Find("[aria-label='Package templating']");
+        Assert.Contains("scriban", templating.TextContent);
+        Assert.Contains("7.2.5", templating.TextContent);
+    }
 }

@@ -140,6 +140,9 @@ public static class WorkflowManifestReader
     /// <summary>One declared shared prelude: its id and the package file its text lives in.</summary>
     public sealed record PreludeView(string Id, string File);
 
+    /// <summary>The package's templating engine and pinned version (Scriban) — set by the platform, shown read-only.</summary>
+    public sealed record TemplatingView(string Engine, string EngineVersion);
+
     public sealed record DataItemView(string Id, string Name, string File);
 
     public sealed record CollectionView(string Id, string Directory, IReadOnlyList<DataItemView> Items);
@@ -265,6 +268,21 @@ public static class WorkflowManifestReader
         return preludes.EnumerateObject()
             .Select(entry => new PreludeView(entry.Name, entry.Value.ValueKind == JsonValueKind.String ? entry.Value.GetString() ?? string.Empty : string.Empty))
             .ToList();
+    }
+
+    /// <summary>The package's templating engine + pinned version, or null when absent — shown read-only.</summary>
+    public static TemplatingView? ReadTemplating(JsonElement manifest)
+    {
+        if (!TryGetProperty(manifest, "templating", out var templating) || templating.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var engine = ReadString(templating, "engine");
+        var engineVersion = ReadString(templating, "engineVersion");
+        return engine is null && engineVersion is null
+            ? null
+            : new TemplatingView(engine ?? string.Empty, engineVersion ?? string.Empty);
     }
 
     /// <summary>
