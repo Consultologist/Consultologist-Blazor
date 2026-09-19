@@ -40,6 +40,42 @@
     <Authorized>
         @if (!IsRunPhase)
         {
+            @if (accountStatus == "Disabled")
+            {
+                <div class="consult-setup">
+                    <section class="workflow-panel">
+                        <div class="form-stack">
+                            <h2 class="panel-title">Account disabled</h2>
+                            <p class="panel-description muted-text">
+                                This account has been disabled and cannot start consults.
+                            </p>
+                        </div>
+                    </section>
+                </div>
+            }
+            else if (accountStatus is not null and not "Active")
+            {
+                @* #766/#679: not activated yet — route to Profile rather than
+                   offer a consult the account cannot run. The nudge lives here
+                   now that Consults is the signed-in landing (`/` redirects here). *@
+                <div class="consult-setup">
+                    <section class="workflow-panel">
+                        <div class="form-stack">
+                            <h2 class="panel-title">Activate your account</h2>
+                            <p class="panel-description">
+                                Your account isn't active yet — connect an activation method to start generating consults.
+                            </p>
+                            <div class="action-row">
+                                <FluentAnchor Appearance="Appearance.Accent" Href="profile">
+                                    Go to your profile
+                                </FluentAnchor>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            }
+            else
+            {
             <div class="consult-setup">
                 <section class="workflow-panel">
                     <div class="form-stack">
@@ -472,6 +508,7 @@
                     </div>
                 </section>
             </div>
+            }
         }
         else
         {
@@ -1247,6 +1284,11 @@
   private string? accountDeliveryAddress;
   private bool accountDeliveryAddressKnown;
   private string? accountSignInKind;
+  // #766: the account's activation status, read from the same fetch the schedule
+  // defaults use. Consults is the signed-in landing (`/` redirects here), so a
+  // not-yet-active or disabled account must meet an activation nudge here rather
+  // than a consult form it cannot run. Null = unknown (fail open to the form).
+  private string? accountStatus;
   // #561: the snippet library for the pickers on text inputs.
   private Snippets.SnippetSet snippetSet = Snippets.Empty();
   // #518: the account's choice on emailing app-initiated runs; false = not emailed.
@@ -1455,6 +1497,8 @@
       var me = await AccountService.GetCurrentAccountAsync();
       accountDeliveryAddress = me.DeliveryAddress;
       accountDeliveryAddressKnown = true;
+      // #766: the activation gate below reads this; fail open to the form on error.
+      accountStatus = me.Status;
       // #615: the link affordance is organisation-only (OBO does not exist
       // for consumer accounts) — the kind decides shown-live vs
       // shown-disabled-with-the-reason, never a silent hide.
