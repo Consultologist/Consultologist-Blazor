@@ -59,3 +59,18 @@
     letter-spacing: 0.06em;
     color: var(--consultologist-text-muted);
 }
+
+/* #771: the typed controls are styled only inside Consults/WorkflowNodeSummary,
+   whose scoped rules never reach this page — mirror the #429 fix here so the
+   Profile inputs match the Fluent controls beside them. */
+.node-field__input {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--consultologist-border, #d0d0d0);
+    border-radius: var(--consultologist-radius-sm, 4px);
+    background: var(--consultologist-surface, #fff);
+    font: inherit;
+    font-weight: 400;
+}
