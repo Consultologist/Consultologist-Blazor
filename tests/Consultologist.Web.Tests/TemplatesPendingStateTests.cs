@@ -43,6 +43,13 @@ public class TemplatesPendingStateTests : ClientRenderTestContext
     private static Task Invoke(IRenderedComponent<Templates> page, string method) =>
         page.InvokeAsync(() => (Task)typeof(Templates).GetMethod(method, Members)!.Invoke(page.Instance, null)!);
 
+    // #770: Discard now arms on the first call and clears on the second.
+    private static async Task Discard(IRenderedComponent<Templates> page)
+    {
+        await Invoke(page, "DiscardAsync");
+        await Invoke(page, "DiscardAsync");
+    }
+
     // ---- discovery -------------------------------------------------------
 
     /// <summary>
@@ -312,7 +319,7 @@ public class TemplatesPendingStateTests : ClientRenderTestContext
                 moved.Count == 1,
                 $"{field.Name} moved {moved.Count} registry entries ({string.Join(", ", moved)}); expected exactly one");
 
-            await Invoke(page, "DiscardAsync");
+            await Discard(page);
         }
     }
 
@@ -326,10 +333,38 @@ public class TemplatesPendingStateTests : ClientRenderTestContext
             TryMakePending(page.Instance, field);
             Assert.True(PendingCount(page.Instance) > 0, field.Name);
 
-            await Invoke(page, "DiscardAsync");
+            await Discard(page);
 
             Assert.Equal(0, PendingCount(page.Instance));
         }
+    }
+
+    [Fact]
+    public async Task Discard_ArmsOnTheFirstClick_ClearsOnTheSecond()
+    {
+        // #770: one stray click must not wipe every unpublished edit.
+        var page = RenderEditor();
+        TryMakePending(page.Instance, CountedFields(page.Instance).First());
+        Assert.True(PendingCount(page.Instance) > 0);
+
+        await Invoke(page, "DiscardAsync");
+        Assert.True(PendingCount(page.Instance) > 0, "the first click should only arm, not discard");
+
+        await Invoke(page, "DiscardAsync");
+        Assert.Equal(0, PendingCount(page.Instance));
+    }
+
+    [Fact]
+    public async Task Revert_ArmsOnTheFirstClick_RemovesThePinOnTheSecond()
+    {
+        // #770: Revert deletes the pin and discards edits, so it arms too.
+        var page = RenderEditor();
+
+        await Invoke(page, "RevertToDefaultAsync");
+        await AccountService.DidNotReceiveWithAnyArgs().DeleteSettingAsync(default!);
+
+        await Invoke(page, "RevertToDefaultAsync");
+        await AccountService.Received(1).DeleteSettingAsync(Arg.Any<string>());
     }
 
     [Fact]

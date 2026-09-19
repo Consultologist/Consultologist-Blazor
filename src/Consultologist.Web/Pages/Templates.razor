@@ -167,15 +167,17 @@
                             <FluentButton Appearance="Appearance.Outline" Disabled="@isPublishing" @onclick="() => newPackageOpen = false">Cancel</FluentButton>
                         </span>
                     }
+                    @* #770: both wipe unpublished work on one click, so arm them
+                       — the first click warns, the second acts (the #195 pattern). *@
                     <FluentButton Appearance="Appearance.Outline"
                                   Disabled="@(PendingCount == 0 || isPublishing)"
                                   @onclick="DiscardAsync">
-                        Discard
+                        @(discardArmed ? "Confirm discard" : "Discard")
                     </FluentButton>
                     <FluentButton Appearance="Appearance.Outline"
                                   Disabled="@isPublishing"
                                   @onclick="RevertToDefaultAsync">
-                        Revert to default
+                        @(revertArmed ? "Confirm revert" : "Revert to default")
                     </FluentButton>
                 </div>
             </div>
@@ -6927,6 +6929,12 @@
     private string? publishSuccess;
     private List<string> publishErrors = new();
 
+    // #770: the danger-zone buttons arm on the first click and act on the
+    // second (the #195 pattern; no dialog in this app). Only one is armed at
+    // a time, and both reset when their action completes.
+    private bool discardArmed;
+    private bool revertArmed;
+
     // Advisory, and only readable at the moment of a successful
     // publish — the version it describes is already immutable (#310).
     private List<string> publishWarnings = new();
@@ -8364,6 +8372,17 @@
             return;
         }
 
+        // #770: the first click arms; only the second wipes every unpublished
+        // change. Arming disarms Revert — one danger action armed at a time.
+        if (!discardArmed)
+        {
+            discardArmed = true;
+            revertArmed = false;
+            publishWarnings = new List<string> { "Discarding clears every unpublished change and can't be undone. Click Confirm discard to proceed." };
+            return;
+        }
+
+        discardArmed = false;
         ClearPending();
         ResetFormScratch();
         ResetPublishFeedback();
@@ -9281,6 +9300,17 @@
             return;
         }
 
+        // #770: the first click arms; only the second removes the pin and
+        // discards unpublished changes. Arming disarms Discard.
+        if (!revertArmed)
+        {
+            revertArmed = true;
+            discardArmed = false;
+            publishWarnings = new List<string> { "Reverting removes your package pin and discards unpublished changes. Your published versions are kept. Click Confirm revert to proceed." };
+            return;
+        }
+
+        revertArmed = false;
         ResetPublishFeedback();
 
         try
