@@ -239,6 +239,79 @@ public class ConsultsSetupTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void AThinFile_WarnsButStaysAttached()
+    {
+        // #800: read, but below the referral floor — the file is kept (chip and
+        // preview show) and Create is not blocked, but the slot says so.
+        WithPinnedPackage(blocks: NineSections());
+        WithExtraction("Too short.");
+
+        var page = Render<Consults>();
+        FileInput(page, 0).UploadFiles(InputFileContent.CreateFromText("%PDF-1.7", "referral.pdf"));
+
+        Assert.Contains("referral.pdf", page.Find(".input-field__chip").TextContent);
+        Assert.Equal("Too short.", page.Find(".input-field__preview").TextContent);
+        Assert.Contains("little or no readable text", page.Find(".input-field__file-warning").TextContent);
+        Assert.Empty(page.FindAll(".input-field__file-error"));
+    }
+
+    [Fact]
+    public void ACloudLinkShortcut_WarnsToAttachTheRealFile()
+    {
+        // A .gdoc/.url shortcut holds only a link, so it reads to nothing; the
+        // warning names that cause rather than the generic one.
+        WithPinnedPackage(blocks: NineSections());
+        WithExtraction("https://docs.google.com/document/d/abc123/edit");
+
+        var page = Render<Consults>();
+        FileInput(page, 0).UploadFiles(InputFileContent.CreateFromText("{}", "referral.gdoc"));
+
+        Assert.Contains("cloud-link shortcut", page.Find(".input-field__file-warning").TextContent);
+    }
+
+    [Fact]
+    public void AUrlOnlyBody_Warns()
+    {
+        // The #290 failing shape: a body that is one long URL reduces to no
+        // prose once the client strips it, so it trips the floor.
+        WithPinnedPackage(blocks: NineSections());
+        WithExtraction("https://contoso.sharepoint.com/sites/x/Shared%20Documents/referral.docx");
+
+        var page = Render<Consults>();
+        FileInput(page, 0).UploadFiles(InputFileContent.CreateFromText("%PDF-1.7", "referral.pdf"));
+
+        Assert.Single(page.FindAll(".input-field__file-warning"));
+    }
+
+    [Fact]
+    public void AFileWithEnoughText_DoesNotWarn()
+    {
+        WithPinnedPackage(blocks: NineSections());
+        WithExtraction(
+            "65M, newly diagnosed adenocarcinoma of the lung, stage IIIA, for chemoradiation. PMHx HTN.");
+
+        var page = Render<Consults>();
+        FileInput(page, 0).UploadFiles(InputFileContent.CreateFromText("%PDF-1.7", "referral.pdf"));
+
+        Assert.Empty(page.FindAll(".input-field__file-warning"));
+    }
+
+    [Fact]
+    public void RemovingAThinFile_ClearsTheWarning()
+    {
+        WithPinnedPackage(blocks: NineSections());
+        WithExtraction("Too short.");
+
+        var page = Render<Consults>();
+        FileInput(page, 0).UploadFiles(InputFileContent.CreateFromText("%PDF-1.7", "referral.pdf"));
+        Assert.Single(page.FindAll(".input-field__file-warning"));
+
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Remove")).Click();
+
+        Assert.Empty(page.FindAll(".input-field__file-warning"));
+    }
+
+    [Fact]
     public void UploadingAnOversizeFile_IsRefusedBeforeAnyBytesAreSent()
     {
         WithPinnedPackage(blocks: NineSections());
