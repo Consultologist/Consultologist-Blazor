@@ -751,3 +751,17 @@ header.header.app-header {
 		width: 100%;
 	}
 }
+
+/* #775: honour the OS "reduce motion" setting app-wide. A global backstop —
+   the landing's pipeline animation also has its own rest-state guard in
+   Index.razor.css. As a plain (non-isolated) sheet, this * rule also reaches
+   transitions declared in scoped .razor.css files and Consultologist.UI. */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		transition-duration: 0.01ms !important;
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+	}
+}
