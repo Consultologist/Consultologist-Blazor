@@ -1,0 +1,10 @@
+@page "/templates"
+@inject NavigationManager Navigation
+
+@* #788: the editor moved to /editor. Keep the old /templates route alive as a
+   redirect so existing bookmarks and deep links still land on the editor
+   (replace, so the old URL does not sit in the back-history). *@
+
+@code {
+    protected override void OnInitialized() => Navigation.NavigateTo("editor", replace: true);
+}
