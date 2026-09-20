@@ -74,3 +74,15 @@
     font: inherit;
     font-weight: 400;
 }
+
+/* #777: the delivery-password length hint, turning affirmative once the
+   16-character minimum is met. */
+.password-hint {
+    margin: 0.35rem 0 0;
+    font-size: 0.85rem;
+}
+
+.password-hint--ready {
+    color: var(--consultologist-success);
+    font-weight: 600;
+}
