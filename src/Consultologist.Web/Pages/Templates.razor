@@ -179,6 +179,14 @@
                                   @onclick="RevertToDefaultAsync">
                         @(revertArmed ? "Confirm revert" : "Revert to default")
                     </FluentButton>
+                    @* #808: download the package being edited as a zip of the real
+                       directory tree (current edits applied), interchangeable with the
+                       GitOps repo and local editing. No gate — an unedited package downloads too. *@
+                    <FluentButton Appearance="Appearance.Stealth"
+                                  Class="download-package-button"
+                                  @onclick="DownloadPackageAsync">
+                        Download package
+                    </FluentButton>
                 </div>
             </div>
 
@@ -8230,87 +8238,7 @@
                 return;
             }
 
-            var files = new Dictionary<string, string>(content.Files, StringComparer.Ordinal);
-            foreach (var (path, text) in edits)
-            {
-                files[path] = text;
-            }
-
-            foreach (var path in removedFiles)
-            {
-                files.Remove(path);
-            }
-
-            foreach (var added in addedItems)
-            {
-                files[AddedPath(added)] = added.Content;
-            }
-
-            // A pending value is one file at its derived path. Edits to a
-            // published one already arrived through `edits` above.
-            foreach (var (scalarId, text) in addedScalars)
-            {
-                files[ScalarPath(scalarId)] = text;
-            }
-
-            // Pending fresh prompts and standalone pending prompts bring their
-            // files; a removed node takes its prompt's file away only when no
-            // other effective node still uses the prompt.
-            foreach (var addedNode in addedNodes.Where(a => a.Aggregate == null && a.PromptRef == null))
-            {
-                files[AddedPromptFile(addedNode.Id)] = addedNode.PromptText;
-            }
-
-            foreach (var pending in addedPrompts)
-            {
-                files[AddedStandalonePromptFile(pending.Id)] = pending.Text;
-            }
-
-            // v11 #564: each pending macro's template file.
-            foreach (var pendingMacro in addedMacros)
-            {
-                files[AddedMacroFile(pendingMacro.Id)] = pendingMacro.Text;
-            }
-
-            // #747: each pending prelude's text file (removed preludes drop via removedFiles).
-            foreach (var pendingPrelude in addedPreludes)
-            {
-                files[AddedPreludeFile(pendingPrelude.Id)] = pendingPrelude.Text;
-            }
-
-            // #759: each added schema's canonical contract body (removed schemas drop via removedFiles).
-            foreach (var addedSchemaId in addedSchemas)
-            {
-                files[AddedSchemaFile(addedSchemaId)] = WorkflowOutputContracts.Declarable[addedSchemaId];
-            }
-
-            // #571: a removed declared macro takes its template file with it.
-            foreach (var removedMacro in RemovedMacros)
-            {
-                files.Remove(removedMacro.File);
-            }
-
-            foreach (var removedNodeId in removedNodeIds)
-            {
-                var promptId = nodes.FirstOrDefault(n => n.Id == removedNodeId)?.Prompt;
-                var promptFile = promptId != null ? prompts.FirstOrDefault(p => p.Id == promptId)?.File : null;
-
-                if (promptFile != null && !EffectiveNodes.Any(n => n.Prompt == promptId))
-                {
-                    files.Remove(promptFile);
-                }
-            }
-
-            // Membership changed => the collection's index.json is recomposed
-            // (new folders always compose theirs); the server validator remains
-            // the authority on the result.
-            foreach (var collection in EffectiveCollections)
-            {
-                if (CollectionHasMembershipChanges(collection) || addedCollections.Contains(collection.Id))
-                {
-                    files[collection.Directory + "index.json"] = ComposeIndexJson(collection);
-                }
-            }
+            var files = AssembleFiles();
 
             var composed = ComposeManifest();
             var outcome = await WorkflowService.PublishPackageAsync(
@@ -8512,6 +8440,129 @@
 
             return (System.Text.Json.Nodes.JsonNode?)fieldNode;
         }).ToArray());
+
+    // The package body as it would publish: the loaded files with every pending
+    // edit, addition and removal applied, and each changed collection's
+    // index.json recomposed. Shared by Publish and by #808's download, so what
+    // you download is exactly what you'd publish.
+    private Dictionary<string, string> AssembleFiles()
+    {
+        var files = new Dictionary<string, string>(content!.Files, StringComparer.Ordinal);
+        foreach (var (path, text) in edits)
+        {
+            files[path] = text;
+        }
+
+        foreach (var path in removedFiles)
+        {
+            files.Remove(path);
+        }
+
+        foreach (var added in addedItems)
+        {
+            files[AddedPath(added)] = added.Content;
+        }
+
+        // A pending value is one file at its derived path. Edits to a
+        // published one already arrived through `edits` above.
+        foreach (var (scalarId, text) in addedScalars)
+        {
+            files[ScalarPath(scalarId)] = text;
+        }
+
+        // Pending fresh prompts and standalone pending prompts bring their
+        // files; a removed node takes its prompt's file away only when no
+        // other effective node still uses the prompt.
+        foreach (var addedNode in addedNodes.Where(a => a.Aggregate == null && a.PromptRef == null))
+        {
+            files[AddedPromptFile(addedNode.Id)] = addedNode.PromptText;
+        }
+
+        foreach (var pending in addedPrompts)
+        {
+            files[AddedStandalonePromptFile(pending.Id)] = pending.Text;
+        }
+
+        // v11 #564: each pending macro's template file.
+        foreach (var pendingMacro in addedMacros)
+        {
+            files[AddedMacroFile(pendingMacro.Id)] = pendingMacro.Text;
+        }
+
+        // #747: each pending prelude's text file (removed preludes drop via removedFiles).
+        foreach (var pendingPrelude in addedPreludes)
+        {
+            files[AddedPreludeFile(pendingPrelude.Id)] = pendingPrelude.Text;
+        }
+
+        // #759: each added schema's canonical contract body (removed schemas drop via removedFiles).
+        foreach (var addedSchemaId in addedSchemas)
+        {
+            files[AddedSchemaFile(addedSchemaId)] = WorkflowOutputContracts.Declarable[addedSchemaId];
+        }
+
+        // #571: a removed declared macro takes its template file with it.
+        foreach (var removedMacro in RemovedMacros)
+        {
+            files.Remove(removedMacro.File);
+        }
+
+        foreach (var removedNodeId in removedNodeIds)
+        {
+            var promptId = nodes.FirstOrDefault(n => n.Id == removedNodeId)?.Prompt;
+            var promptFile = promptId != null ? prompts.FirstOrDefault(p => p.Id == promptId)?.File : null;
+
+            if (promptFile != null && !EffectiveNodes.Any(n => n.Prompt == promptId))
+            {
+                files.Remove(promptFile);
+            }
+        }
+
+        // Membership changed => the collection's index.json is recomposed
+        // (new folders always compose theirs); the server validator remains
+        // the authority on the result.
+        foreach (var collection in EffectiveCollections)
+        {
+            if (CollectionHasMembershipChanges(collection) || addedCollections.Contains(collection.Id))
+            {
+                files[collection.Directory + "index.json"] = ComposeIndexJson(collection);
+            }
+        }
+
+        return files;
+    }
+
+    // #808: the manifest + files zipped as the real package directory tree
+    // (current edits applied), so a download drops straight into the GitOps repo
+    // or local editing. dag.mmd is derived and omitted, exactly as a publish
+    // omits it.
+    private async Task DownloadPackageAsync()
+    {
+        if (content is null)
+        {
+            return;
+        }
+
+        var files = AssembleFiles();
+        files["manifest.json"] = JsonSerializer.Serialize(ComposeManifest(), new JsonSerializerOptions { WriteIndented = true });
+        await DownloadZipAsync(files, $"{content.Ref}.zip");
+    }
+
+    private async Task DownloadZipAsync(IReadOnlyDictionary<string, string> files, string fileName)
+    {
+        using var buffer = new MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(buffer, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (path, text) in files.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            {
+                var entry = archive.CreateEntry(path, System.IO.Compression.CompressionLevel.Optimal);
+                await using var writer = new StreamWriter(entry.Open());
+                await writer.WriteAsync(text);
+            }
+        }
+
+        await JS.InvokeVoidAsync("consultologistDownload", fileName, "application/zip", Convert.ToBase64String(buffer.ToArray()));
+    }
 
     private JsonElement ComposeManifest()
     {
