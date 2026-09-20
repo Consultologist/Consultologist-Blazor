@@ -1655,10 +1655,12 @@
           ?? ScheduleDefault.NextOccurrenceUtc(accountScheduleTime, DateTime.Now);
         var job = await AIService.StartConsultGenerationJobAsync(
           SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles(), SuppliedRefs(), SuppliedFormRefs(), SuppliedMacroChoices());
-        scheduleConfirmation = ScheduleConfirmationFor(scheduledAtUtc, accountDeliveryAddress, accountEmailPdf);
         runOvernight = false;
         scheduledAtLocal = string.Empty;
         ClearInputs();
+        // #793: set the confirmation AFTER ClearInputs, which nulls it — otherwise
+        // the scheduled-run confirmation was wiped and never shown.
+        scheduleConfirmation = ScheduleConfirmationFor(scheduledAtUtc, accountDeliveryAddress, accountEmailPdf);
       }
       // #348: the server's own words, unprefixed. "Error scheduling consult"
       // in front of "no document applies to these inputs" describes a fault

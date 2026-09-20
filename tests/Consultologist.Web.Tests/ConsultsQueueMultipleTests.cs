@@ -62,6 +62,27 @@ public class ConsultsQueueMultipleTests : ClientRenderTestContext
     }
 
     [Fact]
+    public async Task Overnight_ShowsItsConfirmation_AfterClearing()
+    {
+        // #793: the scheduled-run confirmation is set after ClearInputs (which
+        // nulls it), so it survives and renders instead of being wiped.
+        WithPinnedPackage(blocks: Sections);
+        CaptureSubmit();
+        var page = Render<Consults>();
+
+        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        Set(page, "runOvernight", true);
+        Set(page, "scheduledAtLocal", DateTime.Now.AddDays(1).ToString("yyyy-MM-ddTHH:mm"));
+        await Submit(page).ClickAsync(new());
+
+        var confirmation = (string?)typeof(Consults)
+            .GetField("scheduleConfirmation", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(page.Instance);
+        Assert.False(string.IsNullOrEmpty(confirmation));
+        Assert.Contains(confirmation!, page.Markup);
+    }
+
+    [Fact]
     public void RunOvernight_DisablesQueueMultiple()
     {
         WithPinnedPackage(blocks: Sections);
