@@ -80,7 +80,7 @@ public class AIEndpointRefusalTests
         service.StartConsultGenerationJobAsync(
             new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
             {
-                ["consult_draft"] = ConsultInputValue.OfText("Chest pain, rule out ACS."),
+                ["consult_draft"] = ConsultInputValue.OfText("Chest pain, rule out ACS; 58M, exertional onset, for review."),
                 ["billable"] = ConsultInputValue.OfBoolean(false)
             },
             "acct-1234567890ab@v2026.08.8");

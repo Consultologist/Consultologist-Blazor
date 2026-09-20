@@ -1,4 +1,5 @@
 using System.Net;
+using System.Reflection;
 using AngleSharp.Dom;
 using Bunit;
 using Consultologist.Web.Pages;
@@ -115,7 +116,7 @@ public class ConsultsSetupTests : ClientRenderTestContext
         Assert.NotEmpty(page.FindAll(".input-field__required-hint"));
 
         // Filling it clears the inline hint.
-        page.FindAll("fluent-text-area")[0].Change("Chest pain, rule out ACS.");
+        page.FindAll("fluent-text-area")[0].Change("Chest pain, rule out ACS; 58M, exertional onset, for review.");
         Assert.Empty(page.FindAll(".input-field__required-hint"));
     }
 
@@ -311,6 +312,91 @@ public class ConsultsSetupTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".input-field__file-warning"));
     }
 
+    // #802: a required input below the referral floor blocks Create until the
+    // clinician acknowledges it as intentionally short.
+
+    [Fact]
+    public void AShortRequiredInput_ShowsTheToggleAndDisablesCreate()
+    {
+        WithPinnedPackage(blocks: NineSections());
+
+        var page = Render<Consults>();
+        page.Find("fluent-text-area").Change("Chest pain.");
+
+        Assert.NotEmpty(page.FindAll(".input-field__short"));
+        Assert.NotEmpty(page.FindAll("fluent-switch"));
+        Assert.Contains("very short for a referral", page.Markup);
+        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+    }
+
+    // FluentSwitch keeps its state in the component, not the DOM, so bUnit
+    // cannot flip it by dispatching a DOM event (the bUnit+Fluent gotcha the
+    // Queue-multiple test hits too). Set the bound AcknowledgedShort directly,
+    // as that test sets its page field, then re-render.
+    private static void AcknowledgeEveryShortSlot(IRenderedComponent<Consults> page)
+    {
+        var fields = (System.Collections.IEnumerable)typeof(Consults)
+            .GetField("inputFields", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(page.Instance)!;
+        foreach (var field in fields)
+        {
+            field.GetType().GetProperty("AcknowledgedShort")!.SetValue(field, true);
+        }
+        page.Render();
+    }
+
+    [Fact]
+    public void AcknowledgingAShortInput_EnablesCreate()
+    {
+        WithPinnedPackage(blocks: NineSections());
+
+        var page = Render<Consults>();
+        page.Find("fluent-text-area").Change("Chest pain.");
+        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+
+        AcknowledgeEveryShortSlot(page);
+
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void ARealLengthReferral_ShowsNoToggle_AndCreateIsEnabled()
+    {
+        WithPinnedPackage(blocks: NineSections());
+
+        var page = Render<Consults>();
+        page.Find("fluent-text-area").Change(
+            "65M, newly diagnosed adenocarcinoma of the lung, for chemoradiation. PMHx HTN.");
+
+        Assert.Empty(page.FindAll(".input-field__short"));
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void AnAcknowledgedShortInput_IsSentToTheService()
+    {
+        WithPinnedPackage(blocks: NineSections());
+
+        IReadOnlyCollection<string>? sentAck = null;
+        AIService.StartConsultGenerationJobAsync(
+                Arg.Any<IReadOnlyDictionary<string, ConsultInputValue>>(),
+                Arg.Any<string?>(),
+                Arg.Any<DateTimeOffset?>(),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>?>(),
+                Arg.Any<IReadOnlyDictionary<string, IReadOnlyList<ConsultInputRef>>?>(),
+                Arg.Any<IReadOnlyDictionary<string, ConsultInputFormRef>?>(),
+                Arg.Any<IReadOnlyDictionary<string, bool>?>(),
+                Arg.Do<IReadOnlyCollection<string>?>(value => sentAck = value))
+            .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
+
+        var page = Render<Consults>();
+        page.Find("fluent-text-area").Change("Chest pain.");
+        AcknowledgeEveryShortSlot(page);
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.Equal(new[] { "consult_draft" }, sentAck?.ToArray());
+    }
+
     [Fact]
     public void UploadingAnOversizeFile_IsRefusedBeforeAnyBytesAreSent()
     {
@@ -370,13 +456,13 @@ public class ConsultsSetupTests : ClientRenderTestContext
             .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
 
         var page = Render<Consults>();
-        page.Find("fluent-text-area").Change("Typed referral.");
+        page.Find("fluent-text-area").Change("Typed: 62F, cough and weight loss, for assessment.");
         FileInput(page, 1).UploadFiles(InputFileContent.CreateFromText("Old records.", "records.txt"));
         page.FindAll("fluent-button").Last().Click();
 
         Assert.NotNull(sentInputs);
         Assert.Equal(new[] { "consult_draft" }, sentInputs!.Keys.ToArray());
-        Assert.Equal("Typed referral.", sentInputs["consult_draft"]);
+        Assert.Equal("Typed: 62F, cough and weight loss, for assessment.", sentInputs["consult_draft"]);
 
         Assert.NotNull(sentFiles);
         Assert.Equal(new[] { "prior_notes" }, sentFiles!.Keys.ToArray());
@@ -421,7 +507,7 @@ public class ConsultsSetupTests : ClientRenderTestContext
             inputs: new[] { new WorkflowPackageInputResponse("consult_draft", "Consult draft", true) });
 
         var page = Render<Consults>();
-        page.FindAll("fluent-text-area")[0].Change("Chest pain, rule out ACS.");
+        page.FindAll("fluent-text-area")[0].Change("Chest pain, rule out ACS; 58M, exertional onset, for review.");
         page.FindAll("fluent-button").Last().Click();
 
         return page;
@@ -618,7 +704,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
             .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
 
         var page = Render<Consults>();
-        page.Find("fluent-text-area").Change("Referral.");
+        page.Find("fluent-text-area").Change("62F, cough and weight loss over three months, for assessment.");
         page.Find("input[type=date]").Change("2026-08-10");
         page.FindAll("select.node-field__input")[0].Change("follow_up");
         page.FindAll("select.node-field__input")[1].Change("true");
@@ -648,7 +734,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
             .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
 
         var page = Render<Consults>();
-        page.Find("fluent-text-area").Change("Referral.");
+        page.Find("fluent-text-area").Change("62F, cough and weight loss over three months, for assessment.");
         page.Find("input[type=date]").Change("2026-08-10");
         page.FindAll("select.node-field__input")[0].Change("follow_up");
         page.FindAll("fluent-button").Last().Click();
@@ -666,7 +752,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: TypedInputs());
 
         var page = Render<Consults>();
-        page.Find("fluent-text-area").Change("Referral.");
+        page.Find("fluent-text-area").Change("62F, cough and weight loss over three months, for assessment.");
         page.Find("input[type=date]").Change("2026-08-10");
 
         // Enabled with the enum still unchosen.
@@ -711,7 +797,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNumber(), specVersion: 9);
 
         var page = Render<Consults>();
-        page.Find("fluent-text-area").Change("Referral.");
+        page.Find("fluent-text-area").Change("62F, cough and weight loss over three months, for assessment.");
         Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
 
         page.Find("input[inputmode=decimal]").Change("about a week");
@@ -739,7 +825,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
             .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
 
         var page = Render<Consults>();
-        page.Find("fluent-text-area").Change("Referral.");
+        page.Find("fluent-text-area").Change("62F, cough and weight loss over three months, for assessment.");
         page.Find("input[inputmode=decimal]").Change("1.50");
         page.FindAll("fluent-button").Last().Click();
 
@@ -760,7 +846,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
             .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
 
         var page = Render<Consults>();
-        page.Find("fluent-text-area").Change("Referral.");
+        page.Find("fluent-text-area").Change("62F, cough and weight loss over three months, for assessment.");
         page.FindAll("fluent-button").Last().Click();
 
         Assert.Equal(new[] { "consult_draft" }, sent!.Keys);
@@ -800,7 +886,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithPatient(), specVersion: 9);
 
         var page = Render<Consults>();
-        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
 
         // Untouched: required but nothing is wrong yet, so the button is enabled
         // (#683 — no silent disable) and no per-field error shows.
@@ -830,7 +916,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
             .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
 
         var page = Render<Consults>();
-        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
         page.FindAll("fluent-text-area")[1].Change("Smith");
         page.Find("input[inputmode=decimal]").Change("41");
         page.FindAll("fluent-button").Last().Click();
@@ -854,7 +940,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
             .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
 
         var page = Render<Consults>();
-        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
         Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
         page.FindAll("fluent-button").Last().Click();
 
@@ -918,7 +1004,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         CaptureSubmit();
 
         var page = Render<Consults>();
-        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
         page.Find(".input-field__add").Click();
         page.Find(".input-field__add").Click();
         page.Find(".input-field__add").Click();
@@ -949,7 +1035,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(required: true), specVersion: 9);
 
         var page = Render<Consults>();
-        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
 
         // Enabled, and nothing is wrong yet (an absent array is not a problem).
         Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
@@ -967,7 +1053,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         CaptureSubmit();
 
         var page = Render<Consults>();
-        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
         Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
         page.FindAll("fluent-button").Last().Click();
 
@@ -980,7 +1066,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
 
         var page = Render<Consults>();
-        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
         page.Find(".input-field__add").Click();
         page.Find(".input-field__add").Click();
         page.FindAll("fluent-text-area")[1].Change("One.");
@@ -1000,7 +1086,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         CaptureSubmit();
 
         var page = Render<Consults>();
-        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
         page.Find(".input-field__add").Click();
         page.Find(".input-field__add").Click();
 
@@ -1098,7 +1184,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         CaptureSubmitWithFiles();
 
         var page = Render<Consults>();
-        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
         FileInput(page, 1).UploadFiles(
             InputFileContent.CreateFromText("First note.", "first.txt"),
             InputFileContent.CreateFromText("Second note.", "second.txt"));
@@ -1195,11 +1281,11 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithLabs(), specVersion: 9);
         JobSession.Current = new ConsultJobMemento(
             JobId,
-            new Dictionary<string, string>(StringComparer.Ordinal) { ["consult_draft"] = "Referral.", ["labs"] = "Test: Sodium\nValue: 138" },
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["consult_draft"] = "62F, cough and weight loss over three months, for assessment.", ["labs"] = "Test: Sodium\nValue: 138" },
             new[] { new ConsultJobBlock("s:hpi", "History") },
             new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
             {
-                ["consult_draft"] = ConsultInputValue.OfText("Referral."),
+                ["consult_draft"] = ConsultInputValue.OfText("62F, cough and weight loss over three months, for assessment."),
                 ["labs"] = ConsultInputValue.OfArray(new[]
                 {
                     ConsultInputValue.OfObject(new[] { new ConsultInputEntry("name", ConsultInputValue.OfText("Sodium")), new ConsultInputEntry("value", ConsultInputValue.OfNumber("138")) }),
@@ -1225,9 +1311,9 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") });
         JobSession.Current = new ConsultJobMemento(
             JobId,
-            new Dictionary<string, string>(StringComparer.Ordinal) { ["consult_draft"] = "Referral." },
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["consult_draft"] = "62F, cough and weight loss over three months, for assessment." },
             new[] { new ConsultJobBlock("s:hpi", "History") },
-            new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal) { ["consult_draft"] = ConsultInputValue.OfText("Referral.") });
+            new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal) { ["consult_draft"] = ConsultInputValue.OfText("62F, cough and weight loss over three months, for assessment.") });
         AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
             JobId, "user-1", status, TotalBlockCount: 1, CompletedBlockCount: status == "Completed" ? 1 : 0,
             FailedBlockCount: status == "Failed" ? 1 : 0,
@@ -1340,7 +1426,7 @@ public class ConsultsPackageRefTests : ClientRenderTestContext
     {
         JobSession.Current = new ConsultJobMemento(
             EarlierJobId,
-            new Dictionary<string, string>(StringComparer.Ordinal) { ["consult_draft"] = "Chest pain, rule out ACS." },
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["consult_draft"] = "Chest pain, rule out ACS; 58M, exertional onset, for review." },
             new[] { new ConsultJobBlock("consult:hpi", "History") });
 
         AIService.GetConsultGenerationJobAsync(EarlierJobId).Returns(new ConsultGenerationJobResponse(
@@ -1391,7 +1477,7 @@ public class ConsultsPackageRefTests : ClientRenderTestContext
             .Returns(new ConsultGenerationJobStartResponse("job-2", "https://example/status"));
 
         var page = Render<Consults>();
-        page.Find("fluent-text-area").Change("Chest pain, rule out ACS.");
+        page.Find("fluent-text-area").Change("Chest pain, rule out ACS; 58M, exertional onset, for review.");
         page.FindAll("fluent-button").Last().Click();
 
         Assert.Equal(CurrentRef, sentRef);
@@ -1417,7 +1503,7 @@ public class ConsultsPackageRefTests : ClientRenderTestContext
         // form. One declared input, so the control reads "Edit draft".
         page.FindAll("fluent-button").First(button => button.TextContent.Contains("Edit draft")).Click();
 
-        page.Find("fluent-text-area").Change("Chest pain, rule out ACS.");
+        page.Find("fluent-text-area").Change("Chest pain, rule out ACS; 58M, exertional onset, for review.");
         page.FindAll("fluent-button").Last().Click();
 
         Assert.Equal(CurrentRef, sentRef);
@@ -1443,7 +1529,7 @@ public class ConsultsPackageRefTests : ClientRenderTestContext
 
         var page = Render<Consults>();
         page.FindAll("fluent-button").First(button => button.TextContent.Contains("Edit draft")).Click();
-        page.Find("fluent-text-area").Change("Chest pain, rule out ACS.");
+        page.Find("fluent-text-area").Change("Chest pain, rule out ACS; 58M, exertional onset, for review.");
         // FluentSwitch raises onswitchcheckedchange carrying Fluent's own
         // CheckboxChangeEventArgs — .Change() and a plain ChangeEventArgs both
         // throw rather than silently doing nothing, which is why this is
@@ -1537,7 +1623,7 @@ public class ConsultsPackageRefTests : ClientRenderTestContext
 
         var page = Render<Consults>();
         page.FindAll("fluent-button").First(button => button.TextContent.Contains("Edit draft")).Click();
-        page.Find("fluent-text-area").Change("Chest pain, rule out ACS.");
+        page.Find("fluent-text-area").Change("Chest pain, rule out ACS; 58M, exertional onset, for review.");
         page.Find("fluent-switch").TriggerEvent(
             "onswitchcheckedchange",
             new Microsoft.FluentUI.AspNetCore.Components.CheckboxChangeEventArgs { Checked = true });
@@ -1613,14 +1699,14 @@ public class ConsultsMacroChoiceTests : ClientRenderTestContext
             .Returns(new ConsultGenerationJobStartResponse("job-1", "Queued"));
 
         var page = Render<Consults>();
-        page.Find("fluent-text-area").Change("65M, adenocarcinoma of the lung.");
+        page.Find("fluent-text-area").Change("65M, newly diagnosed adenocarcinoma of the lung, for review.");
         await page.FindAll("fluent-button").Last().ClickAsync(new());
         Assert.Null(sentChoices);
 
         // One deviation on a fresh page (the first submit left the setup
         // phase): the default-true macro unchecked → exactly that id.
         var second = Render<Consults>();
-        second.Find("fluent-text-area").Change("65M, adenocarcinoma of the lung.");
+        second.Find("fluent-text-area").Change("65M, newly diagnosed adenocarcinoma of the lung, for review.");
         second.FindAll(".macro-choice input[type=checkbox]")[0].Change(false);
         await second.FindAll("fluent-button").Last().ClickAsync(new());
         Assert.NotNull(sentChoices);

@@ -91,7 +91,7 @@ public class ConsultsNestedIntakeTests : ClientRenderTestContext
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithFamilyHistory(), specVersion: 10);
         CaptureSubmit();
         var page = Render<Consults>();
-        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
         page.Find(".input-field__add").Click();
 
         // An empty row names itself; a filled one with its nested structure
@@ -130,7 +130,7 @@ public class ConsultsNestedIntakeTests : ClientRenderTestContext
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithFamilyHistory(), specVersion: 10);
         CaptureSubmit();
         var page = Render<Consults>();
-        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
         page.Find(".input-field__add").Click();
         page.FindAll("fluent-text-area")[1].Change("Mother");
 
@@ -146,7 +146,7 @@ public class ConsultsNestedIntakeTests : ClientRenderTestContext
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithGrid(), specVersion: 10);
         CaptureSubmit();
         var page = Render<Consults>();
-        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
         page.Find(".input-field__add").Click();
         Assert.Equal("Grid row 1 is empty; fill it in or remove it.", Error(page));
 
@@ -171,11 +171,11 @@ public class ConsultsNestedIntakeTests : ClientRenderTestContext
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithFamilyHistory(), specVersion: 10);
         JobSession.Current = new ConsultJobMemento(
             JobId,
-            new Dictionary<string, string>(StringComparer.Ordinal) { ["consult_draft"] = "Referral.", ["family_history"] = "Relative: Mother" },
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["consult_draft"] = "62F, cough and weight loss over three months, for assessment.", ["family_history"] = "Relative: Mother" },
             new[] { new ConsultJobBlock("s:hpi", "History") },
             new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
             {
-                ["consult_draft"] = ConsultInputValue.OfText("Referral."),
+                ["consult_draft"] = ConsultInputValue.OfText("62F, cough and weight loss over three months, for assessment."),
                 ["family_history"] = ConsultInputValue.OfArray(new[]
                 {
                     ConsultInputValue.OfObject(new[]
@@ -196,7 +196,7 @@ public class ConsultsNestedIntakeTests : ClientRenderTestContext
 
         Assert.Equal(3, page.FindAll(".input-field__row").Count);
         Assert.Equal(2, page.FindAll(".input-field__group--nested .input-field__row").Count);
-        Assert.Equal(new[] { "Referral.", "Mother", "Diabetes", "Asthma", "555-0100" },
+        Assert.Equal(new[] { "62F, cough and weight loss over three months, for assessment.", "Mother", "Diabetes", "Asthma", "555-0100" },
             page.FindAll("fluent-text-area").Select(area => area.GetAttribute("current-value") ?? area.GetAttribute("value")));
         Assert.Equal("email", page.Find("select.node-field__input").GetAttribute("value"));
     }
