@@ -33,7 +33,7 @@ public class AIEndpointRefusalTests
 
     private sealed class TestNavigation : NavigationManager
     {
-        public TestNavigation() => Initialize("https://app.example/", "https://app.example/consults");
+        public TestNavigation() => Initialize("https://app.example/", "https://app.example/create");
 
         protected override void NavigateToCore(string uri, bool forceLoad)
         {

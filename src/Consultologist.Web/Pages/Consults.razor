@@ -21,14 +21,14 @@
 @attribute [Authorize]
 @implements IAsyncDisposable
 
-@page "/consults"
-@page "/consults/{JobId}"
+@page "/create"
+@page "/create/{JobId}"
 
-<PageTitle>Consults · Consultologist</PageTitle>
+<PageTitle>Create · Consultologist</PageTitle>
 
 <section class="page-header">
     <div class="page-header__content">
-        <span class="section-eyebrow">Consults</span>
+        <span class="section-eyebrow">Create</span>
         <h1 class="page-title">Draft and review specialist consult notes.</h1>
         <p class="page-description">
             Paste the source consult draft and generate each note section from the active writing standards.
@@ -57,7 +57,7 @@
             {
                 @* #766/#679: not activated yet — route to Profile rather than
                    offer a consult the account cannot run. The nudge lives here
-                   now that Consults is the signed-in landing (`/` redirects here). *@
+                   now that this page is the signed-in landing (`/` redirects here). *@
                 <div class="consult-setup">
                     <section class="workflow-panel">
                         <div class="form-stack">
@@ -1306,7 +1306,7 @@
   private bool accountDeliveryAddressKnown;
   private string? accountSignInKind;
   // #766: the account's activation status, read from the same fetch the schedule
-  // defaults use. Consults is the signed-in landing (`/` redirects here), so a
+  // defaults use. This page is the signed-in landing (`/` redirects here), so a
   // not-yet-active or disabled account must meet an activation nudge here rather
   // than a consult form it cannot run. Null = unknown (fail open to the form).
   private string? accountStatus;
@@ -2108,7 +2108,7 @@
     try
     {
       var newJobId = await AIService.RerunConsultGenerationJobAsync(lastAppliedJobId);
-      Navigation.NavigateTo($"/consults/{Uri.EscapeDataString(newJobId)}", forceLoad: true);
+      Navigation.NavigateTo($"/create/{Uri.EscapeDataString(newJobId)}", forceLoad: true);
     }
     catch (AccessTokenNotAvailableException exception)
     {

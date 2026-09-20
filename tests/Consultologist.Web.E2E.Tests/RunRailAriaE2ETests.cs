@@ -24,7 +24,7 @@ public class RunRailAriaE2ETests
         await ApiMock.InstallAsync(page);
 
         // The re-attach route renders the run rail from the (mocked) job.
-        await page.GotoAsync($"{_fixture.BaseUrl}/consults/{ApiMock.JobId}", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
+        await page.GotoAsync($"{_fixture.BaseUrl}/create/{ApiMock.JobId}", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
 
         await page.WaitForSelectorAsync(".node-grid", new() { Timeout = 30_000 });
 

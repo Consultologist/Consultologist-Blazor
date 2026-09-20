@@ -1,0 +1,15 @@
+@page "/consults"
+@page "/consults/{JobId}"
+@inject NavigationManager Navigation
+
+@* #790: the consults area moved to /create. Keep the old /consults routes alive
+   as redirects (preserving the run id) so existing bookmarks and shared run links
+   still land on the page — replace, so the old URL does not sit in back-history. *@
+
+@code {
+    [Parameter] public string? JobId { get; set; }
+
+    protected override void OnInitialized() => Navigation.NavigateTo(
+        string.IsNullOrWhiteSpace(JobId) ? "create" : $"create/{Uri.EscapeDataString(JobId)}",
+        replace: true);
+}

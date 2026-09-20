@@ -65,7 +65,7 @@
                             <h2 class="panel-title">No consults yet</h2>
                             <p class="panel-description">Every consult you run — completed or scheduled — shows up here with its full provenance. Draft your first one to get started.</p>
                             <div class="action-row">
-                                <FluentAnchor Appearance="Appearance.Accent" Href="consults">Draft a consult</FluentAnchor>
+                                <FluentAnchor Appearance="Appearance.Accent" Href="create">Draft a consult</FluentAnchor>
                             </div>
                         </div>
                     </div>
@@ -130,9 +130,9 @@
                                         @* stopPropagation is load-bearing: the row is the summary of an
                                            expandable panel, so without it the click toggles the panel
                                            instead of navigating. *@
-                                        <a class="run-view-link" href="/consults/@job.JobId"
+                                        <a class="run-view-link" href="/create/@job.JobId"
                                            @onclick:stopPropagation="true"
-                                           title="@(IsTerminal(job.Status) ? "Open this run's steps in Consults" : "Open the live run view in Consults")">@(IsTerminal(job.Status) ? "view run" : "watch live")</a>
+                                           title="@(IsTerminal(job.Status) ? "Open this run's steps" : "Open the live run view")">@(IsTerminal(job.Status) ? "view run" : "watch live")</a>
                                         @* #202: only a run that has not started. stopPropagation for the
                                            same reason as the link above — the row is a summary. *@
                                         @if (job.Status == "Scheduled")
@@ -1146,7 +1146,7 @@
         {
             var newJobId = await AIService.RerunConsultGenerationJobAsync(jobId);
             // The run view shows the replay live, as a fresh submit would.
-            Navigation.NavigateTo($"/consults/{newJobId}");
+            Navigation.NavigateTo($"/create/{newJobId}");
         }
         catch (AccessTokenNotAvailableException exception)
         {
