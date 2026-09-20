@@ -355,6 +355,14 @@
 	color: var(--warning-foreground, #7a5c00);
 }
 
+/* #802: the short-input warning and its acknowledgement toggle, stacked. */
+.input-field__short {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	margin-top: 0.25rem;
+}
+
 /* #236: an attached document replaces this slot's text area — the chip names
    the file, the panel shows what the server read from it. */
 .input-field__chip {

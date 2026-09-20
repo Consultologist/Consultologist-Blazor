@@ -31,7 +31,10 @@ public interface IAIEndpointService
         // v12 § 3 (#621): the run's optional-macro choices — only the ids
         // whose checkbox differs from the declared default; null when none
         // differ, so every pre-v12 request is byte-identical.
-        IReadOnlyDictionary<string, bool>? macroChoices = null);
+        IReadOnlyDictionary<string, bool>? macroChoices = null,
+        // #802: required ids the clinician acknowledged as intentionally short,
+        // waiving the content floor for them; null when none.
+        IReadOnlyCollection<string>? acknowledgedShortInputs = null);
 
     Task<ConsultGenerationJobResponse> GetConsultGenerationJobAsync(string jobId);
 
@@ -166,7 +169,8 @@ public class AIEndpointService : IAIEndpointService
         IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>? files = null,
         IReadOnlyDictionary<string, IReadOnlyList<ConsultInputRef>>? refs = null,
         IReadOnlyDictionary<string, ConsultInputFormRef>? formRefs = null,
-        IReadOnlyDictionary<string, bool>? macroChoices = null)
+        IReadOnlyDictionary<string, bool>? macroChoices = null,
+        IReadOnlyCollection<string>? acknowledgedShortInputs = null)
     {
         var stopwatch = Stopwatch.StartNew();
 
@@ -189,6 +193,11 @@ public class AIEndpointService : IAIEndpointService
                     : null,
                 macroChoices is { Count: > 0 }
                     ? macroChoices.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
+                    : null,
+                // #802: the short-input acknowledgements. Named, since the wire
+                // record's TranscriptInputs sits between this and MacroChoices.
+                AcknowledgedShortInputs: acknowledgedShortInputs is { Count: > 0 }
+                    ? acknowledgedShortInputs.ToList()
                     : null);
 
             _logger.LogInformation(
@@ -489,7 +498,11 @@ public record ConsultGenerationRequest(
     // whose supplied documents are transcripts. The setup form does not send
     // it (the SPA has no transcript intake); the Zoom satellite, a separate
     // client, is what populates it. Kept here so the mirror stays faithful.
-    IReadOnlyCollection<string>? TranscriptInputs = null);
+    IReadOnlyCollection<string>? TranscriptInputs = null,
+    // #802: mirrors the API record's trailing member — the required ids the
+    // clinician acknowledged as intentionally short, waiving the content floor.
+    // The Create page's short-input toggle populates it.
+    IReadOnlyCollection<string>? AcknowledgedShortInputs = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultInputRef.</summary>
 public sealed record ConsultInputRef(string JobId, string ResultId);

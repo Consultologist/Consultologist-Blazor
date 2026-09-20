@@ -440,6 +440,20 @@
                                     @* #800: read, but likely no referral — warn, don't block. *@
                                     <span class="input-field__file-warning">@field.FileWarning</span>
                                 }
+                                @if (IsBelowFloor(field))
+                                {
+                                    @* #802: below the referral floor — the engine would refuse it.
+                                       A genuinely terse referral is legitimate, so block Create
+                                       until the clinician acknowledges it (or adds more). *@
+                                    <div class="input-field__short">
+                                        @if (field.FileWarning is null)
+                                        {
+                                            <span class="input-field__file-warning">This is very short for a referral.</span>
+                                        }
+                                        <FluentSwitch @bind-Value="field.AcknowledgedShort"
+                                                      Label="It really is this short — send it anyway" />
+                                    </div>
+                                }
                             </label>
                         }
 
@@ -511,7 +525,7 @@
                             }
                             <FluentButton Appearance="Appearance.Accent"
                                           @onclick="CreateConsultAsync"
-                                          Disabled="@(isBlocksLoading || isAiRequestLoading || isSchedulingRequest || !HasNoInputProblems || packageBlocks.Count == 0)">
+                                          Disabled="@(isBlocksLoading || isAiRequestLoading || isSchedulingRequest || !HasNoInputProblems || HasUnacknowledgedShortInput || packageBlocks.Count == 0)">
                                 @(runOvernight ? "Schedule consult" : (queueMultiple ? "Create & next" : "Create consult"))
                             </FluentButton>
                         </div>
@@ -1652,6 +1666,14 @@
       return;
     }
 
+    // #802: the button disables on this, but guard it too — a below-floor
+    // required slot the clinician has not acknowledged would 422 at the engine.
+    if (inputFields.FirstOrDefault(field => IsBelowFloor(field) && !field.AcknowledgedShort) is { } shortField)
+    {
+      aiRequestError = $"{shortField.Label} is very short. If it really is this brief, acknowledge it to send.";
+      return;
+    }
+
     if (packageBlocks.Count == 0)
     {
       aiRequestError = "No section standards are available.";
@@ -1670,7 +1692,8 @@
         var scheduledAtUtc = ScheduleDefault.FromLocalInputValue(scheduledAtLocal)
           ?? ScheduleDefault.NextOccurrenceUtc(accountScheduleTime, DateTime.Now);
         var job = await AIService.StartConsultGenerationJobAsync(
-          SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles(), SuppliedRefs(), SuppliedFormRefs(), SuppliedMacroChoices());
+          SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles(), SuppliedRefs(), SuppliedFormRefs(), SuppliedMacroChoices(),
+          SuppliedAcknowledgedShortInputs());
         runOvernight = false;
         scheduledAtLocal = string.Empty;
         ClearInputs();
@@ -1709,7 +1732,8 @@
       {
         isSchedulingRequest = true;
         await AIService.StartConsultGenerationJobAsync(
-          SuppliedInputs(), currentPackageRef, files: SuppliedFiles(), refs: SuppliedRefs(), formRefs: SuppliedFormRefs(), macroChoices: SuppliedMacroChoices());
+          SuppliedInputs(), currentPackageRef, files: SuppliedFiles(), refs: SuppliedRefs(), formRefs: SuppliedFormRefs(), macroChoices: SuppliedMacroChoices(),
+          acknowledgedShortInputs: SuppliedAcknowledgedShortInputs());
         ClearInputs();
         queuedThisSession++;
         // Set AFTER ClearInputs — ClearInputs nulls scheduleConfirmation — so the
@@ -1740,6 +1764,8 @@
       BeginElapsedReadout();
       var inputSnapshot = SuppliedInputs();
       var fileSnapshot = SuppliedFiles();
+      // #802: captured before the run phase changes the fields, like the others.
+      var acknowledgedShortSnapshot = SuppliedAcknowledgedShortInputs();
       // What the run displays and what re-attach restores: the text, however
       // the slot was filled. The request itself carries the files.
       var textSnapshot = EffectiveInputTexts();
@@ -1750,7 +1776,8 @@
       // Sections are package data resolved server-side; the request carries only
       // the declared inputs (and the resolved package ref).
       var job = await AIService.StartConsultGenerationJobAsync(
-        inputSnapshot, currentPackageRef, files: fileSnapshot, refs: SuppliedRefs(), formRefs: SuppliedFormRefs(), macroChoices: SuppliedMacroChoices());
+        inputSnapshot, currentPackageRef, files: fileSnapshot, refs: SuppliedRefs(), formRefs: SuppliedFormRefs(), macroChoices: SuppliedMacroChoices(),
+        acknowledgedShortInputs: acknowledgedShortSnapshot);
 
       // #207: remember the job per-tab so navigating away and back re-attaches.
       JobSession.Current = new ConsultJobMemento(
@@ -2735,6 +2762,18 @@
     return deviations.Count > 0 ? deviations : null;
   }
 
+  // #802: the required ids the clinician acknowledged as intentionally short —
+  // only those actually below the floor, so a stale acknowledgement (the text
+  // since grew) never travels. Null when none, byte-identical to before.
+  private IReadOnlyCollection<string>? SuppliedAcknowledgedShortInputs()
+  {
+    var acknowledged = inputFields
+      .Where(field => IsBelowFloor(field) && field.AcknowledgedShort)
+      .Select(field => field.Id)
+      .ToList();
+    return acknowledged.Count > 0 ? acknowledged : null;
+  }
+
   private Dictionary<string, ConsultInputValue> SuppliedInputs() =>
     inputFields
       .Where(field => !field.HasFile && !field.HasLoaded && field.Supplied is not null)
@@ -2784,6 +2823,18 @@
   private bool HasNoInputProblems => inputFields.All(entry => entry.Problem is null);
 
   private bool HasAnyInput => inputFields.Any(entry => entry.IsFilled);
+
+  // #802: a filled required slot whose text falls below the engine's referral
+  // floor — the server would 422 it. EffectiveText unifies typed, file and
+  // loaded, so one predicate covers every fill road; the floor is required
+  // prose only, matching the engine.
+  private static bool IsBelowFloor(ConsultInputField entry) =>
+    entry.Required && entry.IsFilled && InputTextFloor.IsBelowFloor(entry.EffectiveText);
+
+  // The run is blocked while a below-floor required slot is not acknowledged:
+  // the toggle to acknowledge sits on the slot, so the remedy is inline.
+  private bool HasUnacknowledgedShortInput =>
+    inputFields.Any(entry => IsBelowFloor(entry) && !entry.AcknowledgedShort);
 
   // The draft bar summarizes the first supplied input — the primary slot in
   // every package shape we ship.
@@ -3648,6 +3699,10 @@
     // Warn-only: the file stays attached and Create is not blocked; the engine's
     // floor is what actually governs.
     public string? FileWarning { get; set; }
+    // #802: the clinician acknowledged this required slot as intentionally short,
+    // waiving the referral floor for it. Only meaningful while the slot is below
+    // the floor; reset when the slot is cleared.
+    public bool AcknowledgedShort { get; set; }
     public bool IsReading { get; set; }
 
     // #615: the OneDrive/SharePoint link affordance's state.
@@ -3732,6 +3787,7 @@
       Loaded.Clear();
       FileError = null;
       FileWarning = null;
+      AcknowledgedShort = false;
     }
 
     /// <summary>
