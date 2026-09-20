@@ -1,4 +1,4 @@
-// #806: trigger a browser download of bytes produced in .NET (base64-encoded),
+// #808: trigger a browser download of bytes produced in .NET (base64-encoded),
 // e.g. a zip of the package being edited. No library — an object URL on a
 // transient anchor, revoked once the click is dispatched.
 window.consultologistDownload = (fileName, mimeType, base64) => {

@@ -11,11 +11,11 @@ using Xunit;
 namespace Consultologist.Web.Tests;
 
 /// <summary>
-/// #806: the Editor downloads the package (or one data folder) as a zip of the
-/// real directory tree — the same artifact it would publish. The download rides
-/// the `consultologistDownload` JS shim as base64; these decode that back into a
-/// zip and assert its entries. (JSInterop runs Loose, so the shim call is
-/// recorded, not executed.)
+/// #808: the Editor downloads the package being edited as a zip of the real
+/// directory tree — the same artifact it would publish. The download rides the
+/// `consultologistDownload` JS shim as base64; these decode that back into a zip
+/// and assert its entries. (JSInterop runs Loose, so the shim call is recorded,
+/// not executed.)
 /// </summary>
 public class TemplatesDownloadTests : ClientRenderTestContext
 {
@@ -80,21 +80,5 @@ public class TemplatesDownloadTests : ClientRenderTestContext
         await page.Find(".download-package-button").ClickAsync(new());
 
         Assert.Equal("Edited prompt body.", LastDownload().Files["prompts/draft-section.md"]);
-    }
-
-    [Fact]
-    public async Task DownloadFolder_ZipsOnlyThatFolder()
-    {
-        var page = RenderEditor(EditorFixtures.V7());
-
-        // V7 declares one collection, `standards`.
-        await page.Find(".download-folder-button").ClickAsync(new());
-
-        var (fileName, files) = LastDownload();
-        Assert.Equal("standards.zip", fileName);
-        Assert.All(files.Keys, key => Assert.StartsWith("data/standards/", key));
-        Assert.Contains("data/standards/index.json", files.Keys);
-        Assert.Contains("data/standards/hpi.md", files.Keys);
-        Assert.DoesNotContain("manifest.json", files.Keys);
     }
 }
