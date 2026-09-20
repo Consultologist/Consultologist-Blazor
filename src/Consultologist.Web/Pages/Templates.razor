@@ -8548,21 +8548,9 @@
         await DownloadZipAsync(files, $"{content.Ref}.zip");
     }
 
-    private async Task DownloadZipAsync(IReadOnlyDictionary<string, string> files, string fileName)
-    {
-        using var buffer = new MemoryStream();
-        using (var archive = new System.IO.Compression.ZipArchive(buffer, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
-        {
-            foreach (var (path, text) in files.OrderBy(pair => pair.Key, StringComparer.Ordinal))
-            {
-                var entry = archive.CreateEntry(path, System.IO.Compression.CompressionLevel.Optimal);
-                await using var writer = new StreamWriter(entry.Open());
-                await writer.WriteAsync(text);
-            }
-        }
-
-        await JS.InvokeVoidAsync("consultologistDownload", fileName, "application/zip", Convert.ToBase64String(buffer.ToArray()));
-    }
+    private async Task DownloadZipAsync(IReadOnlyDictionary<string, string> files, string fileName) =>
+        await JS.InvokeVoidAsync("consultologistDownload", fileName, "application/zip",
+            Convert.ToBase64String(WorkflowPackageArchive.Zip(files)));
 
     private JsonElement ComposeManifest()
     {
