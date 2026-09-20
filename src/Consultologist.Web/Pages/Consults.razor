@@ -543,6 +543,17 @@
                                               Disabled="@isAiRequestLoading">
                                     @(inputFields.Count == 1 ? "Edit draft" : "Edit inputs")
                                 </FluentButton>
+                                @* #794: on a finished run, start a fresh empty consult (Edit,
+                                   by contrast, returns to this run's inputs). *@
+                                @if (IsRunFinished)
+                                {
+                                    <FluentButton Appearance="Appearance.Stealth"
+                                                  Class="new-consult-button"
+                                                  @onclick="StartNewConsult"
+                                                  Disabled="@isAiRequestLoading">
+                                        New consult
+                                    </FluentButton>
+                                }
                             </span>
                         }
                     </summary>
@@ -2762,6 +2773,20 @@
   private void BackToRun()
   {
     editingDraft = false;
+  }
+
+  // #794: the run is over (any terminal status) — the point at which "New
+  // consult" is offered beside Edit.
+  private bool IsRunFinished => runTerminalStatus is "Completed" or "Failed" or "Cancelled";
+
+  // #794: start a fresh, empty consult. Null the per-tab memento first, or
+  // TryReattachAsync would pull straight back into the finished run; the
+  // forceLoad to /create gives a guaranteed-clean form (the component attaches
+  // to its route job only at init) — the same reset RerunCurrentAsync uses.
+  private void StartNewConsult()
+  {
+    JobSession.Current = null;
+    Navigation.NavigateTo("/create", forceLoad: true);
   }
 
   // The tab in view: the selected deliverable, else the first (result-set order).

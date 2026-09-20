@@ -1146,6 +1146,54 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         Assert.Equal(new[] { "138", "4.1" }, page.FindAll("input[inputmode=decimal]").Select(input => input.GetAttribute("value")));
     }
 
+    // #794: a finished run's draft bar offers "New consult" beside Edit.
+    private void WithReattachedRun(string JobId, string status)
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") });
+        JobSession.Current = new ConsultJobMemento(
+            JobId,
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["consult_draft"] = "Referral." },
+            new[] { new ConsultJobBlock("s:hpi", "History") },
+            new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal) { ["consult_draft"] = ConsultInputValue.OfText("Referral.") });
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
+            JobId, "user-1", status, TotalBlockCount: 1, CompletedBlockCount: status == "Completed" ? 1 : 0,
+            FailedBlockCount: status == "Failed" ? 1 : 0,
+            GeneratedBlocks: new Dictionary<string, string> { ["s:hpi"] = "Section prose." },
+            FailedBlocks: new Dictionary<string, string>(), Success: status == "Completed", AssembledDocument: "The note."));
+    }
+
+    [Fact]
+    public void AFinishedRun_OffersNewConsultBesideEdit_AndItResets()
+    {
+        const string JobId = "0123456789abcdef0123456789abcdef";
+        WithReattachedRun(JobId, "Completed");
+
+        var page = Render<Consults>();
+
+        // Edit (single input → "Edit draft") and "New consult" sit together.
+        var labels = page.FindAll("fluent-button").Select(b => b.TextContent.Trim()).ToList();
+        Assert.Contains("Edit draft", labels);
+        Assert.Contains("New consult", labels);
+
+        page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "New consult").Click();
+
+        // Fresh start: the per-tab memento is cleared and we reload /create.
+        Assert.Null(JobSession.Current);
+        var navigation = (Microsoft.AspNetCore.Components.NavigationManager)Services
+            .GetService(typeof(Microsoft.AspNetCore.Components.NavigationManager))!;
+        Assert.EndsWith("/create", navigation.Uri);
+    }
+
+    [Fact]
+    public void AFailedRun_AlsoOffersNewConsult()
+    {
+        WithReattachedRun("0123456789abcdef0123456789abcdef", "Failed");
+
+        var page = Render<Consults>();
+
+        Assert.Contains(page.FindAll("fluent-button").Select(b => b.TextContent.Trim()), t => t == "New consult");
+    }
+
     [Fact]
     public async Task SwitchingPackages_CarriesAChosenBoolean()
     {
