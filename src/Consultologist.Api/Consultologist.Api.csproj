@@ -73,6 +73,10 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Consultologist.Api.Tests" />
+    <!-- #800: so the client's content-floor replica (InputTextFloor) can be
+         proven against the authoritative InputContent, the way the input-value
+         mirror is (ConsultInputValueMirrorTests). -->
+    <InternalsVisibleTo Include="Consultologist.Web.Tests" />
   </ItemGroup>
   <ItemGroup>
     <!-- #159: PDFsharp's Core build resolves no system fonts on Linux — the
