@@ -39,7 +39,7 @@ public class NavResponsiveE2ETests
         var labels = (await page.Locator(".top-nav a").AllTextContentsAsync())
             .Select(text => text.Trim())
             .ToList();
-        foreach (var expected in new[] { "Consults", "History", "Workflow", "Help", "Profile" })
+        foreach (var expected in new[] { "Consults", "History", "Editor", "Help", "Profile" })
         {
             Assert.Contains(expected, labels);
         }

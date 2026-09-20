@@ -51,13 +51,13 @@ public class HeaderTests : ClientRenderTestContext
     public void TheNav_SignedIn_OrdersTheWorkspaceLinksAndOmitsHome()
     {
         // #766: signed in, Home is dropped (the `/` landing redirects to
-        // Consults) and the nav reads Consults | History | Workflow | Help |
+        // Consults) and the nav reads Consults | History | Editor | Help |
         // Profile, with the public Help link sitting between the workspace
-        // links and Profile.
+        // links and Profile. (#788: the editor tab is "Editor".)
         var page = Render<Header>();
 
         Assert.Equal(
-            new[] { "Consults", "History", "Workflow", "Help", "Profile" },
+            new[] { "Consults", "History", "Editor", "Help", "Profile" },
             HeaderNav.Labels(page.Find("nav.top-nav")));
     }
 }

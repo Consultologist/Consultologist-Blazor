@@ -14,7 +14,7 @@
         <nav class="top-nav" aria-label="Workspace navigation">
             @* #766: Home is signed-out only — a signed-in clinician's landing is
                the Consults page (`/` redirects there), so Home would just bounce.
-               Order across both audiences: Home | Consults | History | Workflow |
+               Order across both audiences: Home | Consults | History | Editor |
                Help | Profile, with Home shown only signed-out and the workspace
                links only signed-in; Help is public and sits between them. *@
             <AuthorizeView>
@@ -26,7 +26,7 @@
                 <Authorized>
                     <FluentNavLink Href="consults">Consults</FluentNavLink>
                     <FluentNavLink Href="history">History</FluentNavLink>
-                    <FluentNavLink Href="templates">Workflow</FluentNavLink>
+                    <FluentNavLink Href="editor">Editor</FluentNavLink>
                     @* #733: the Operators link moved to the standalone admin
                        app (its own origin), so the clinician bundle no longer
                        ships an admin route or the Me read that gated the link. *@
