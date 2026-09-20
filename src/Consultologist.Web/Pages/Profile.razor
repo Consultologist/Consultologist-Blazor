@@ -601,10 +601,21 @@
                     </div>
 
                     <div class="action-row">
+                        @* #777: Immediate so the counter and the Set button react to each
+                           keystroke (not on blur); reveal toggles only the not-yet-submitted
+                           input — the stored password stays write-only. *@
                         <FluentTextField @bind-Value="deliveryPasswordInput"
-                                         TextFieldType="TextFieldType.Password"
+                                         Immediate="true"
+                                         Class="delivery-password-input"
+                                         TextFieldType="@(deliveryPasswordRevealed ? TextFieldType.Text : TextFieldType.Password)"
                                          Placeholder="At least 16 characters"
                                          Disabled="@passwordRequestInProgress" />
+                        <FluentButton Appearance="Appearance.Lightweight"
+                                      Disabled="@passwordRequestInProgress"
+                                      aria-label="@(deliveryPasswordRevealed ? "Hide password" : "Show password")"
+                                      @onclick="() => deliveryPasswordRevealed = !deliveryPasswordRevealed">
+                            @(deliveryPasswordRevealed ? "Hide" : "Show")
+                        </FluentButton>
                         <FluentButton Appearance="Appearance.Accent"
                                       Disabled="@(passwordRequestInProgress || (deliveryPasswordInput?.Length ?? 0) < 16)"
                                       @onclick="SetDeliveryPasswordAsync">
@@ -619,6 +630,10 @@
                             </FluentButton>
                         }
                     </div>
+                    @{ var passwordLength = deliveryPasswordInput?.Length ?? 0; }
+                    <p class="password-hint @(passwordLength >= 16 ? "password-hint--ready" : "muted-text")">
+                        @(passwordLength >= 16 ? "Length looks good ✓" : $"{passwordLength} of 16 characters minimum")
+                    </p>
                 </div>
             </section>
             </section>
@@ -2525,6 +2540,8 @@
     }
 
     private string? deliveryPasswordInput;
+    // #777: reveals only the value being typed, so a 16-char entry can be checked.
+    private bool deliveryPasswordRevealed;
     private bool passwordRequestInProgress;
     private string? passwordMessage;
     private MessageIntent passwordMessageIntent = MessageIntent.Info;
