@@ -435,6 +435,11 @@
                                 {
                                     <span class="input-field__file-error">@field.FileError</span>
                                 }
+                                @if (field.FileWarning != null)
+                                {
+                                    @* #800: read, but likely no referral — warn, don't block. *@
+                                    <span class="input-field__file-warning">@field.FileWarning</span>
+                                }
                             </label>
                         }
 
