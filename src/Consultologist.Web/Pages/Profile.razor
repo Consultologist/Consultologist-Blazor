@@ -1,3 +1,4 @@
+@using System.Text.Json
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
@@ -1045,6 +1046,47 @@
                     </div>
                 </div>
             </section>
+
+            @* #806: export every package this account owns as one zip, a
+               subfolder per package (its latest version) — a backup, and the
+               way to move packages out to the GitOps repo or local editing. *@
+            <section class="content-card packages-card">
+                <div class="form-stack">
+                    <h3 class="panel-title">Your packages</h3>
+
+                    <p class="panel-description">
+                        Download every workflow package you own as a single zip — one folder per
+                        package (its latest version), each a complete package tree. A backup, and
+                        how you move a package out to edit or share it.
+                    </p>
+
+                    @if (packagesMessage != null)
+                    {
+                        <FluentMessageBar Intent="@packagesMessageIntent" AllowDismiss="false" Class="packages-message">
+                            @packagesMessage
+                        </FluentMessageBar>
+                    }
+
+                    <div class="state-panel">
+                        <span class="muted-text">Packages</span>
+                        <strong class="packages-state">@(myPackages.Count == 1 ? "1 package" : $"{myPackages.Count} packages")</strong>
+                    </div>
+
+                    <div class="action-row">
+                        <FluentButton Appearance="Appearance.Accent"
+                                      Class="download-packages-button"
+                                      Disabled="@(packagesBusy || myPackages.Count == 0)"
+                                      @onclick="DownloadMyPackagesAsync">
+                            @(packagesBusy ? "Preparing…" : "Download my packages")
+                        </FluentButton>
+                    </div>
+
+                    @if (myPackages.Count == 0)
+                    {
+                        <p class="muted-text">No packages yet — publishing in the editor creates your first.</p>
+                    }
+                </div>
+            </section>
             </section>
             <section class="profile-group">
                 <h2 class="profile-group__title">Account</h2>
@@ -1407,6 +1449,80 @@
         // #412: anonymous attestation; null when unreachable, shown as such.
         var engine = await WorkflowService.GetEngineAsync();
         engineCommit = string.IsNullOrWhiteSpace(engine?.Commit) ? null : engine.Commit;
+
+        // #806: the account's own packages, for the registry export.
+        myPackages = await WorkflowService.GetMyPackagesAsync() ?? [];
+    }
+
+    // #806: the account's own packages and the registry-export state.
+    private IReadOnlyList<PublicPackageView> myPackages = [];
+    private bool packagesBusy;
+    private string? packagesMessage;
+    private MessageIntent packagesMessageIntent = MessageIntent.Info;
+
+    // #806: every owned package's latest version, zipped one subfolder per
+    // package. Client-side: list (already loaded) → fetch each → zip. Each
+    // response's Manifest + Files are the whole package tree; dag.mmd is derived
+    // and omitted, as a publish omits it.
+    private async Task DownloadMyPackagesAsync()
+    {
+        if (packagesBusy || myPackages.Count == 0)
+        {
+            return;
+        }
+
+        packagesBusy = true;
+        packagesMessage = null;
+
+        try
+        {
+            var files = new Dictionary<string, string>(StringComparer.Ordinal);
+            var failed = new List<string>();
+
+            foreach (var package in myPackages)
+            {
+                var version = package.Latest ?? package.Versions?.LastOrDefault();
+                if (string.IsNullOrWhiteSpace(package.Name) || string.IsNullOrWhiteSpace(version))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var content = await WorkflowService.GetCurrentPackageContentAsync($"{package.Name}@{version}");
+                    files[$"{package.Name}/manifest.json"] =
+                        JsonSerializer.Serialize(content.Manifest, new JsonSerializerOptions { WriteIndented = true });
+                    foreach (var (path, text) in content.Files)
+                    {
+                        files[$"{package.Name}/{path}"] = text;
+                    }
+                }
+                catch (Exception)
+                {
+                    // A pruned version 404s (the client throws); name it, keep going.
+                    failed.Add(package.Name);
+                }
+            }
+
+            if (files.Count == 0)
+            {
+                (packagesMessage, packagesMessageIntent) = ("No packages could be read.", MessageIntent.Error);
+                return;
+            }
+
+            await JS.InvokeVoidAsync("consultologistDownload", "packages.zip", "application/zip",
+                Convert.ToBase64String(WorkflowPackageArchive.Zip(files)));
+
+            if (failed.Count > 0)
+            {
+                (packagesMessage, packagesMessageIntent) =
+                    ($"Downloaded, but {failed.Count} package(s) could not be read: {string.Join(", ", failed)}.", MessageIntent.Warning);
+            }
+        }
+        finally
+        {
+            packagesBusy = false;
+        }
     }
 
     private void CaptureLinkedInResultFromQuery()
