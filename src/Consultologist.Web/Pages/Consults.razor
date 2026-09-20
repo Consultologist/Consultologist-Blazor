@@ -2826,10 +2826,19 @@
 
   // #802: a filled required slot whose text falls below the engine's referral
   // floor — the server would 422 it. EffectiveText unifies typed, file and
-  // loaded, so one predicate covers every fill road; the floor is required
-  // prose only, matching the engine.
+  // loaded, so one predicate covers every fill road. Prose only (text or an
+  // array of text), mirroring InputContent.IsProse: a date, enum, boolean or
+  // number is short by nature and its own type constrains it — the engine does
+  // not floor it, and neither do we.
   private static bool IsBelowFloor(ConsultInputField entry) =>
-    entry.Required && entry.IsFilled && InputTextFloor.IsBelowFloor(entry.EffectiveText);
+    entry.Required
+    && entry.IsFilled
+    && IsProseSlot(entry)
+    && InputTextFloor.IsBelowFloor(entry.EffectiveText);
+
+  private static bool IsProseSlot(ConsultInputField entry) =>
+    entry.Type == WorkflowInputTypes.Text
+    || (entry.Type == WorkflowInputTypes.Array && entry.Items == WorkflowInputTypes.Text);
 
   // The run is blocked while a below-floor required slot is not acknowledged:
   // the toggle to acknowledge sits on the slot, so the remedy is inline.
