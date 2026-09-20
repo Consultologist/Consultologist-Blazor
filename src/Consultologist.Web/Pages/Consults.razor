@@ -2407,6 +2407,14 @@
   // same bound server-side (ConsultGenerationJobs.MaxInputFileBytes).
   private const int MaxUploadBytes = 10 * 1024 * 1024;
 
+  // #800: shown on a slot when an attached document reads below the referral
+  // floor. The shortcut form names the likeliest cause; the general form covers
+  // a scan needing OCR or an all-but-empty document.
+  private const string ShortcutFileWarning =
+    "This looks like a cloud-link shortcut. Attach the actual document file instead of a link.";
+  private const string LowReadableTextWarning =
+    "This file contained little or no readable text. If it's a scan it may need OCR; if it was attached as a link, attach the actual file.";
+
   private async Task LoadFileAsync(ConsultInputField field, InputFileChangeEventArgs args)
   {
     if (args.FileCount == 0)
@@ -2424,11 +2432,13 @@
     // Attaching a file is an edit like any other: a stale confirmation would
     // outlive what it described.
     field.FileError = null;
+    field.FileWarning = null;
     scheduleConfirmation = null;
     field.IsReading = true;
     await InvokeAsync(StateHasChanged);
 
     var refusals = new List<string>();
+    var warnings = new List<string>();
 
     try
     {
@@ -2477,6 +2487,16 @@
             content,
             outcome.PageCount,
             outcome.Text!));
+
+          // #800: read, but too little prose to be a referral. The file stays
+          // attached — this warns, it does not refuse — and names the cloud-link
+          // shortcut case when the filename gives it away.
+          if (InputTextFloor.IsBelowFloor(outcome.Text))
+          {
+            warnings.Add(Refused(InputTextFloor.LooksLikeShortcut(file.Name)
+              ? ShortcutFileWarning
+              : LowReadableTextWarning));
+          }
         }
         catch (Exception ex)
         {
@@ -2488,6 +2508,7 @@
     {
       field.IsReading = false;
       field.FileError = refusals.Count > 0 ? string.Join(" ", refusals) : null;
+      field.FileWarning = warnings.Count > 0 ? string.Join(" ", warnings) : null;
     }
   }
 
@@ -2507,6 +2528,7 @@
     }
 
     field.FileError = null;
+    field.FileWarning = null;
     scheduleConfirmation = null;
     field.IsFetchingLink = true;
     await InvokeAsync(StateHasChanged);
@@ -2535,6 +2557,15 @@
         outcome.PageCount,
         outcome.Text!));
       field.LinkUrl = "";
+
+      // #800: the link resolved to a document, but one carrying too little prose
+      // to be a referral — warn without discarding it.
+      if (InputTextFloor.IsBelowFloor(outcome.Text))
+      {
+        field.FileWarning = InputTextFloor.LooksLikeShortcut(outcome.Name)
+          ? ShortcutFileWarning
+          : LowReadableTextWarning;
+      }
     }
     catch (AccessTokenNotAvailableException exception)
     {
@@ -2668,6 +2699,7 @@
   {
     field.Documents.Clear();
     field.FileError = null;
+    field.FileWarning = null;
     scheduleConfirmation = null;
   }
 
@@ -3606,6 +3638,11 @@
     // #208: why a load was refused. Per-field so a failed upload names the
     // field the user aimed at.
     public string? FileError { get; set; }
+    // #800: an attached file was read, but carries too little prose to be a
+    // referral (a cloud-link shortcut, a scan needing OCR, a near-empty doc).
+    // Warn-only: the file stays attached and Create is not blocked; the engine's
+    // floor is what actually governs.
+    public string? FileWarning { get; set; }
     public bool IsReading { get; set; }
 
     // #615: the OneDrive/SharePoint link affordance's state.
@@ -3689,6 +3726,7 @@
       Documents.Clear();
       Loaded.Clear();
       FileError = null;
+      FileWarning = null;
     }
 
     /// <summary>
