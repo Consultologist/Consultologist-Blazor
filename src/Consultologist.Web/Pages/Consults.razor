@@ -477,6 +477,11 @@
                             <FluentSwitch @bind-Value="RunOvernight"
                                           Label="Run overnight"
                                           Disabled="@(isAiRequestLoading || isSchedulingRequest)" />
+                            @* #793: submit and stay for the next consult. Disabled while
+                               Run overnight is on — overnight already clears and stays. *@
+                            <FluentSwitch @bind-Value="queueMultiple"
+                                          Label="Queue multiple"
+                                          Disabled="@(isAiRequestLoading || isSchedulingRequest || runOvernight)" />
                             @* #390: the time is shown only once the switch is on, seeded from the
                                account default. The common case stays one click — turn it on, press
                                Schedule — and the control is there for the case that is not.
@@ -502,7 +507,7 @@
                             <FluentButton Appearance="Appearance.Accent"
                                           @onclick="CreateConsultAsync"
                                           Disabled="@(isBlocksLoading || isAiRequestLoading || isSchedulingRequest || !HasNoInputProblems || packageBlocks.Count == 0)">
-                                @(runOvernight ? "Schedule consult" : "Create consult")
+                                @(runOvernight ? "Schedule consult" : (queueMultiple ? "Create & next" : "Create consult"))
                             </FluentButton>
                         </div>
                     </div>
@@ -1300,6 +1305,11 @@
   private bool runOvernight;
   private string scheduledAtLocal = string.Empty;
   private string? accountScheduleTime;
+  // #793: "Queue multiple" — start the job now, then clear and stay on the setup
+  // form for the next one (instead of opening the run view). queuedThisSession
+  // counts the immediate queues so the confirmation can say how many.
+  private bool queueMultiple;
+  private int queuedThisSession;
   // #486: the verified delivery address, or null — told before submit, and in
   // the schedule confirmation, rather than promising an email that will not come.
   private string? accountDeliveryAddress;
@@ -1645,10 +1655,12 @@
           ?? ScheduleDefault.NextOccurrenceUtc(accountScheduleTime, DateTime.Now);
         var job = await AIService.StartConsultGenerationJobAsync(
           SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles(), SuppliedRefs(), SuppliedFormRefs(), SuppliedMacroChoices());
-        scheduleConfirmation = ScheduleConfirmationFor(scheduledAtUtc, accountDeliveryAddress, accountEmailPdf);
         runOvernight = false;
         scheduledAtLocal = string.Empty;
         ClearInputs();
+        // #793: set the confirmation AFTER ClearInputs, which nulls it — otherwise
+        // the scheduled-run confirmation was wiped and never shown.
+        scheduleConfirmation = ScheduleConfirmationFor(scheduledAtUtc, accountDeliveryAddress, accountEmailPdf);
       }
       // #348: the server's own words, unprefixed. "Error scheduling consult"
       // in front of "no document applies to these inputs" describes a fault
@@ -1661,6 +1673,42 @@
       catch (Exception ex)
       {
         aiRequestError = $"Error scheduling consult: {ex.Message}";
+      }
+      finally
+      {
+        isSchedulingRequest = false;
+      }
+
+      return;
+    }
+
+    // #793: "Queue multiple" — start the job now but stay on the setup form with
+    // emptied fields, so several consults can be submitted in a row. Like the
+    // overnight branch, it never enters the run view (no totalBlockCount /
+    // isAiRequestLoading, no memento, no RunAttachedJobAsync); the job runs
+    // server-side and appears in History.
+    if (queueMultiple)
+    {
+      try
+      {
+        isSchedulingRequest = true;
+        await AIService.StartConsultGenerationJobAsync(
+          SuppliedInputs(), currentPackageRef, files: SuppliedFiles(), refs: SuppliedRefs(), formRefs: SuppliedFormRefs(), macroChoices: SuppliedMacroChoices());
+        ClearInputs();
+        queuedThisSession++;
+        // Set AFTER ClearInputs — ClearInputs nulls scheduleConfirmation — so the
+        // success line survives to tell the user the queue took.
+        scheduleConfirmation = "Consult started — it's running now; find it in History."
+          + (queuedThisSession > 1 ? $" ({queuedThisSession} started this session.)" : string.Empty);
+      }
+      catch (ConsultGenerationRefusedException refusal)
+      {
+        aiRequestError = refusal.Message;
+        refusedJobId = refusal.JobId;
+      }
+      catch (Exception ex)
+      {
+        aiRequestError = $"Error starting consult: {ex.Message}";
       }
       finally
       {
