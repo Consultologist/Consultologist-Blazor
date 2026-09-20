@@ -27,7 +27,10 @@
                 </div>
             </div>
             <figure class="note-artifact" aria-label="Example consult note with provenance annotations">
-                <div class="note-artifact__paper">
+                @* #776: the mock note is decorative — the figure's aria-label
+                   describes it — so hide its subtree, or its <h2>s show up as
+                   phantom sections in a screen reader's heading outline. *@
+                <div class="note-artifact__paper" aria-hidden="true">
                     <div class="note-artifact__section">
                         <h2 class="note-artifact__heading">History of present illness</h2>
                         <p class="note-artifact__line">

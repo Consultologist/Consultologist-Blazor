@@ -58,4 +58,14 @@ public class IndexSignedOutTests : BunitContext
         Assert.Contains("Consult drafting with traceable clinical context.", page.Markup);
         Assert.Contains("Log in", page.Markup);
     }
+
+    [Fact]
+    public void TheDecorativeSampleNote_IsHiddenFromAssistiveTech()
+    {
+        // #776: the mock note's <h2>s would otherwise show up as phantom sections
+        // in a screen reader's heading outline; the figure's aria-label describes it.
+        var page = Render<Consultologist.Web.Pages.Index>();
+
+        Assert.Equal("true", page.Find(".note-artifact__paper").GetAttribute("aria-hidden"));
+    }
 }
