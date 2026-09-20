@@ -462,7 +462,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             request,
             package.Manifest,
             inputs.Supplied,
-            InputContent.MinimumCharacters);
+            InputContent.MinimumCharacters,
+            // #802: a slot the submitter acknowledged as intentionally short is
+            // not refused here — the length floor only; the cloud-link guard
+            // below is untouched.
+            request.AcknowledgedShortInputs);
 
         if (withoutContent != null)
         {
@@ -487,6 +491,21 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // the thing that was too short — is never quoted.
                 SenderSafeDetail: withoutContentDetail);
         }
+
+        // #802: the floor passed; record which required ids were below it and
+        // acknowledged, so the record shows the override was conscious. Only the
+        // ids actually overridden — a spurious acknowledgement of a fine slot
+        // records nothing.
+        var acknowledgedShort = InputContent.AcknowledgedBelowFloor(
+            request,
+            package.Manifest,
+            inputs.Supplied,
+            InputContent.MinimumCharacters,
+            request.AcknowledgedShortInputs);
+
+        // Its work is done at the floor; like InputFormRefs, it must not ride the
+        // durable payload a sleeping instance re-reads. The record keeps it.
+        request = request with { AcknowledgedShortInputs = null };
 
         // #291: #290's content floor is necessary but not sufficient. A body
         // holding only a OneDrive link and a signature cleared forty
@@ -841,6 +860,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 ScheduledAtUtc: request.ScheduledAtUtc,
                 InputDocumentOrigins: inputOrigins,
                 ResolvedInputTypes: inputs.ResolvedInputTypes,
+                // #802: the short-input acknowledgements this job honoured.
+                AcknowledgedShortInputs: acknowledgedShort.Count > 0 ? acknowledgedShort : null,
                 SkippedDocuments: skipped.Count > 0 ? skipped : null,
                 Collections: collectionRosters,
                 // #373: what the manifest was written against, recorded rather
@@ -1159,6 +1180,15 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var specVersion = package.Manifest.SpecVersion;
         var (effectiveInputHash, effectiveInputHashVersion) = EffectiveInputHashOf(specVersion, request, inputs);
 
+        // #802: a job born Failed still records the short-input overrides it
+        // honoured to get this far — the same fact the started path records.
+        var acknowledgedShort = InputContent.AcknowledgedBelowFloor(
+            request,
+            package.Manifest,
+            inputs.Supplied,
+            InputContent.MinimumCharacters,
+            request.AcknowledgedShortInputs);
+
         var terminology = await _terminology.GetAsync(CancellationToken.None);
         await client.Entities.SignalEntityAsync(
             entityId,
@@ -1178,6 +1208,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     PackageSpecVersion: specVersion,
                     InputDocumentOrigins: inputOrigins,
                     ResolvedInputTypes: inputs.ResolvedInputTypes,
+                    AcknowledgedShortInputs: acknowledgedShort.Count > 0 ? acknowledgedShort : null,
                     PackageTitle: package.Manifest.Title,
                     PackageTags: package.Manifest.Tags,
                     PackageFormatRef: EngineAttestation.RefOf(EngineAttestation.PackageFormatRegistry, _engine.PackageFormat),

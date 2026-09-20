@@ -213,6 +213,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             pair => pair.Key,
             pair => pair.Value,
             StringComparer.Ordinal);
+        State.AcknowledgedShortInputs ??= input.AcknowledgedShortInputs?.ToList();
         State.SkippedDocuments ??= input.SkippedDocuments?.ToList();
         State.MacroChoices ??= input.MacroChoices?.ToDictionary(
             pair => pair.Key,
@@ -1064,7 +1065,10 @@ public sealed record ConsultGenerationJobInitialize(
     string? TerminologyServerRelease = null,
     // #729: for each union slot, the arm the supplied value matched. Null when
     // no slot is a union. Appended last — the engine calls Initialize positionally.
-    IReadOnlyDictionary<string, string>? ResolvedInputTypes = null);
+    IReadOnlyDictionary<string, string>? ResolvedInputTypes = null,
+    // #802: the required ids overridden by the submitter's short-input
+    // acknowledgement. Null when none. Appended last, same positional rule.
+    IReadOnlyList<string>? AcknowledgedShortInputs = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -1343,6 +1347,9 @@ public sealed class ConsultGenerationJobState
     // #729: for each union slot, the arm the supplied value matched. Null for
     // every job with no union slot and every job predating this field.
     public Dictionary<string, string>? ResolvedInputTypes { get; set; }
+    // #802: the required ids the submitter acknowledged as short, overriding the
+    // content floor. Null for every job that overrode none and every job predating this.
+    public List<string>? AcknowledgedShortInputs { get; set; }
     // The effective-input hash definition this job used: null/1 = draft+sections
     // (pre-v5, historical); 2 = draft only (v5/v6); 3 = the declared inputs as
     // strings (v7); 4 = the typed scalars (v8); 5 = structured values with
@@ -1701,6 +1708,7 @@ public sealed class ConsultGenerationJobState
             EffectiveInputHash: EffectiveInputHash,
             InputOrigins: ProjectInputOrigins(),
             ResolvedInputTypes: ResolvedInputTypes,
+            AcknowledgedShortInputs: AcknowledgedShortInputs,
             SkippedDocuments: SkippedDocuments,
             FailedDocuments: FailedDocuments,
             ExcludedMacros: ExcludedMacros,

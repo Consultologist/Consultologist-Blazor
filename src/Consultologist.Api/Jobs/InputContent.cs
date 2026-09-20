@@ -195,8 +195,48 @@ internal static class InputContent
     /// The id of the first required input carrying no referral, or null when
     /// every one of them does. Declaration order, so the message names the
     /// same input every time for the same request.
+    ///
+    /// #802: an id the submitter <paramref name="acknowledged"/> as
+    /// intentionally short is not returned — a genuinely terse referral, sent
+    /// on purpose. The acknowledgement waives this length floor only; the
+    /// cloud-link guard (<see cref="FindInputBehindACloudLink"/>) is separate
+    /// and still refuses a link. Which ids were actually overridden is
+    /// <see cref="AcknowledgedBelowFloor"/>, recorded on the job.
     /// </summary>
     internal static string? FindInputWithoutContent(
+        ConsultGenerationRequest request,
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, ConsultInputValue>? supplied,
+        int minimum,
+        IReadOnlyCollection<string>? acknowledged = null) =>
+        BelowFloorInputs(request, manifest, supplied, minimum)
+            .FirstOrDefault(id => acknowledged?.Contains(id) != true);
+
+    /// <summary>
+    /// #802: the required ids that were both below the floor and acknowledged —
+    /// the overrides that actually happened, recorded on the job so a reviewer
+    /// sees the floor was consciously bypassed. A caller acknowledging a slot
+    /// that was fine records nothing (the floor never applied to it).
+    /// </summary>
+    internal static IReadOnlyList<string> AcknowledgedBelowFloor(
+        ConsultGenerationRequest request,
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, ConsultInputValue>? supplied,
+        int minimum,
+        IReadOnlyCollection<string>? acknowledged) =>
+        acknowledged is not { Count: > 0 }
+            ? []
+            : BelowFloorInputs(request, manifest, supplied, minimum)
+                .Where(acknowledged.Contains)
+                .ToList();
+
+    /// <summary>
+    /// The required prose inputs whose supplied value falls below the floor, in
+    /// declaration order — the one place the rule lives, so "what is refused"
+    /// (<see cref="FindInputWithoutContent"/>) and "what was overridden"
+    /// (<see cref="AcknowledgedBelowFloor"/>) can never disagree.
+    /// </summary>
+    private static IEnumerable<string> BelowFloorInputs(
         ConsultGenerationRequest request,
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, ConsultInputValue>? supplied,
@@ -204,15 +244,18 @@ internal static class InputContent
     {
         if (minimum <= 0)
         {
-            return null;
+            yield break;
         }
 
         // v5/v6 declare no inputs: the draft is the input.
         if (manifest.SpecVersion < 7 || supplied == null)
         {
-            return MeaningfulLength(request.ConsultDraft) < minimum
-                ? ConsultGenerationJobStarter.ConsultDraftInputId
-                : null;
+            if (MeaningfulLength(request.ConsultDraft) < minimum)
+            {
+                yield return ConsultGenerationJobStarter.ConsultDraftInputId;
+            }
+
+            yield break;
         }
 
         foreach (var declared in manifest.Inputs ?? [])
@@ -240,10 +283,8 @@ internal static class InputContent
 
             if (MeaningfulLength(supplied.GetValueOrDefault(declared.Id)) < minimum)
             {
-                return declared.Id;
+                yield return declared.Id;
             }
         }
-
-        return null;
     }
 }
