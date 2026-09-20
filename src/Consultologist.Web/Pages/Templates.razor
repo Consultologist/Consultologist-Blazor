@@ -257,6 +257,63 @@
 
             <div class="editor-layout">
                 <nav class="editor-nav" aria-label="Package contents">
+                    <span class="editor-nav__group">Workflow</span>
+                    @if (EffectiveSpecVersion >= 9)
+                    {
+                        @* #432: the package's own pane arrives with v9. *@
+                        <button type="button"
+                                class="editor-nav__item @(selectedKey == PackageKey ? "editor-nav__item--selected" : "")"
+                                @onclick="() => Select(PackageKey)">
+                            <span class="editor-nav__dot">@(titleEdit != null || descriptionEdit != null || tagsEdit != null ? "●" : "")</span>
+                            <span>Package</span>
+                        </button>
+                    }
+                    @if (IsV7)
+                    {
+                        @* Declared sections are v7-only: v5/v6 have a frozen
+                           single input and a string result, neither authored. *@
+                        <button type="button"
+                                class="editor-nav__item @(selectedKey == InputsKey ? "editor-nav__item--selected" : "")"
+                                @onclick="() => Select(InputsKey)">
+                            <span class="editor-nav__dot">@(inputsEdit != null ? "●" : "")</span>
+                            <span>Inputs</span>
+                        </button>
+                        <button type="button"
+                                class="editor-nav__item @(selectedKey == ResultsKey ? "editor-nav__item--selected" : "")"
+                                @onclick="() => Select(ResultsKey)">
+                            <span class="editor-nav__dot">@(resultsEdit != null ? "●" : "")</span>
+                            <span>Documents</span>
+                        </button>
+                    }
+                    <button type="button"
+                            class="editor-nav__item @(selectedKey == GraphKey ? "editor-nav__item--selected" : "")"
+                            @onclick="() => Select(GraphKey)">
+                        <span class="editor-nav__dot">@(bindingEdits.Count > 0 || nodeEdits.Count > 0 ? "●" : "")</span>
+                        <span>Graph</span>
+                    </button>
+                    @foreach (var navNode in EffectiveNodes)
+                    {
+                        <button type="button"
+                                class="editor-nav__item editor-nav__item--nested @(selectedKey == NodeKeyFor(navNode.Id) ? "editor-nav__item--selected" : "")"
+                                @onclick="() => Select(NodeKeyFor(navNode.Id))">
+                            <span class="editor-nav__dot">@(NodeHasPending(navNode) ? "●" : "")</span>
+                            <span>@navNode.Label</span>
+                        </button>
+                    }
+                    @foreach (var removedNode in RemovedNodes)
+                    {
+                        <div class="editor-nav__item editor-nav__item--nested editor-nav__item--removed">
+                            <span class="editor-nav__dot"></span>
+                            <span class="editor-nav__strike">@removedNode.Label</span>
+                            <button type="button" class="editor-nav__restore" @onclick="() => RestoreNodeAsync(removedNode.Id)">(restore)</button>
+                        </div>
+                    }
+                    <button type="button"
+                            class="editor-nav__item editor-nav__item--nested editor-nav__add @(selectedKey == AddNodeKey ? "editor-nav__item--selected" : "")"
+                            @onclick="() => Select(AddNodeKey)">
+                        <span class="editor-nav__dot"></span>
+                        <span>+ Node</span>
+                    </button>
                     <span class="editor-nav__group">Prompts</span>
                     @foreach (var prompt in EffectivePrompts)
                     {
@@ -331,16 +388,6 @@
                             </button>
                         }
                     }
-                    @* #746/#759: output-contract schemas — the pane views declared
-                       ones, adds a catalog contract, and removes an unused one.
-                       Always shown so the first contract can be added. *@
-                    <span class="editor-nav__group">Schemas</span>
-                    <button type="button"
-                            class="editor-nav__item @(selectedKey == SchemasKey ? "editor-nav__item--selected" : "")"
-                            @onclick="() => Select(SchemasKey)">
-                        <span class="editor-nav__dot">@(removedSchemaIds.Count > 0 || addedSchemas.Count > 0 ? "●" : "")</span>
-                        <span>Schemas</span>
-                    </button>
                     @* #747: shared preludes — named text prepended to a prompt.
                        Create/edit/remove here; a prompt picks one in its pane. *@
                     <span class="editor-nav__group">Preludes</span>
@@ -386,7 +433,52 @@
                         <span class="editor-nav__dot"></span>
                         <span>+ Prelude</span>
                     </button>
+                    @* #746/#759: output-contract schemas — the pane views declared
+                       ones, adds a catalog contract, and removes an unused one.
+                       Always shown so the first contract can be added. *@
+                    <span class="editor-nav__group">Schemas</span>
+                    <button type="button"
+                            class="editor-nav__item @(selectedKey == SchemasKey ? "editor-nav__item--selected" : "")"
+                            @onclick="() => Select(SchemasKey)">
+                        <span class="editor-nav__dot">@(removedSchemaIds.Count > 0 || addedSchemas.Count > 0 ? "●" : "")</span>
+                        <span>Schemas</span>
+                    </button>
                     <span class="editor-nav__group">Data</span>
+                    @* A value has no items, so it sits flat in the same Data
+                       group rather than as a folder with nothing inside. *@
+                    @foreach (var scalar in EffectiveScalars)
+                    {
+                        @if (ScalarIsRemoved(scalar))
+                        {
+                            <div class="editor-nav__item editor-nav__value editor-nav__item--removed">
+                                <span class="editor-nav__dot"></span>
+                                <span class="editor-nav__strike">@scalar.Id</span>
+                                <button type="button" class="editor-nav__restore" @onclick="() => RestoreScalarAsync(scalar.Id)">(restore)</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <button type="button"
+                                    class="editor-nav__item editor-nav__value @(selectedKey == scalar.Path ? "editor-nav__item--selected" : "")"
+                                    @onclick="() => Select(scalar.Path)">
+                                <span class="editor-nav__dot">@(ScalarHasPending(scalar) ? "●" : "")</span>
+                                <span>@scalar.Id</span>
+                            </button>
+                            @if (ScalarIsUnused(scalar.Id))
+                            {
+                                <div class="editor-nav__item editor-nav__item--nested">
+                                    <span class="editor-nav__dot"></span>
+                                    <span class="muted-text">not bound by any workflow node yet</span>
+                                </div>
+                            }
+                        }
+                    }
+                    <button type="button"
+                            class="editor-nav__item editor-nav__add @(selectedKey == AddScalarKey ? "editor-nav__item--selected" : "")"
+                            @onclick="() => Select(AddScalarKey)">
+                        <span class="editor-nav__dot"></span>
+                        <span>+ Data value</span>
+                    </button>
                     @foreach (var collection in EffectiveCollections)
                     {
                         <details class="editor-nav__folder" open>
@@ -451,98 +543,6 @@
                             @onclick="() => Select(AddCollectionKey)">
                         <span class="editor-nav__dot"></span>
                         <span>+ Data folder</span>
-                    </button>
-                    @* A value has no items, so it sits flat in the same Data
-                       group rather than as a folder with nothing inside. *@
-                    @foreach (var scalar in EffectiveScalars)
-                    {
-                        @if (ScalarIsRemoved(scalar))
-                        {
-                            <div class="editor-nav__item editor-nav__value editor-nav__item--removed">
-                                <span class="editor-nav__dot"></span>
-                                <span class="editor-nav__strike">@scalar.Id</span>
-                                <button type="button" class="editor-nav__restore" @onclick="() => RestoreScalarAsync(scalar.Id)">(restore)</button>
-                            </div>
-                        }
-                        else
-                        {
-                            <button type="button"
-                                    class="editor-nav__item editor-nav__value @(selectedKey == scalar.Path ? "editor-nav__item--selected" : "")"
-                                    @onclick="() => Select(scalar.Path)">
-                                <span class="editor-nav__dot">@(ScalarHasPending(scalar) ? "●" : "")</span>
-                                <span>@scalar.Id</span>
-                            </button>
-                            @if (ScalarIsUnused(scalar.Id))
-                            {
-                                <div class="editor-nav__item editor-nav__item--nested">
-                                    <span class="editor-nav__dot"></span>
-                                    <span class="muted-text">not bound by any workflow node yet</span>
-                                </div>
-                            }
-                        }
-                    }
-                    <button type="button"
-                            class="editor-nav__item editor-nav__add @(selectedKey == AddScalarKey ? "editor-nav__item--selected" : "")"
-                            @onclick="() => Select(AddScalarKey)">
-                        <span class="editor-nav__dot"></span>
-                        <span>+ Data value</span>
-                    </button>
-                    <span class="editor-nav__group">Workflow</span>
-                    @if (EffectiveSpecVersion >= 9)
-                    {
-                        @* #432: the package's own pane arrives with v9. *@
-                        <button type="button"
-                                class="editor-nav__item @(selectedKey == PackageKey ? "editor-nav__item--selected" : "")"
-                                @onclick="() => Select(PackageKey)">
-                            <span class="editor-nav__dot">@(titleEdit != null || descriptionEdit != null || tagsEdit != null ? "●" : "")</span>
-                            <span>Package</span>
-                        </button>
-                    }
-                    @if (IsV7)
-                    {
-                        @* Declared sections are v7-only: v5/v6 have a frozen
-                           single input and a string result, neither authored. *@
-                        <button type="button"
-                                class="editor-nav__item @(selectedKey == InputsKey ? "editor-nav__item--selected" : "")"
-                                @onclick="() => Select(InputsKey)">
-                            <span class="editor-nav__dot">@(inputsEdit != null ? "●" : "")</span>
-                            <span>Inputs</span>
-                        </button>
-                        <button type="button"
-                                class="editor-nav__item @(selectedKey == ResultsKey ? "editor-nav__item--selected" : "")"
-                                @onclick="() => Select(ResultsKey)">
-                            <span class="editor-nav__dot">@(resultsEdit != null ? "●" : "")</span>
-                            <span>Documents</span>
-                        </button>
-                    }
-                    <button type="button"
-                            class="editor-nav__item @(selectedKey == GraphKey ? "editor-nav__item--selected" : "")"
-                            @onclick="() => Select(GraphKey)">
-                        <span class="editor-nav__dot">@(bindingEdits.Count > 0 || nodeEdits.Count > 0 ? "●" : "")</span>
-                        <span>Graph</span>
-                    </button>
-                    @foreach (var navNode in EffectiveNodes)
-                    {
-                        <button type="button"
-                                class="editor-nav__item editor-nav__item--nested @(selectedKey == NodeKeyFor(navNode.Id) ? "editor-nav__item--selected" : "")"
-                                @onclick="() => Select(NodeKeyFor(navNode.Id))">
-                            <span class="editor-nav__dot">@(NodeHasPending(navNode) ? "●" : "")</span>
-                            <span>@navNode.Label</span>
-                        </button>
-                    }
-                    @foreach (var removedNode in RemovedNodes)
-                    {
-                        <div class="editor-nav__item editor-nav__item--nested editor-nav__item--removed">
-                            <span class="editor-nav__dot"></span>
-                            <span class="editor-nav__strike">@removedNode.Label</span>
-                            <button type="button" class="editor-nav__restore" @onclick="() => RestoreNodeAsync(removedNode.Id)">(restore)</button>
-                        </div>
-                    }
-                    <button type="button"
-                            class="editor-nav__item editor-nav__item--nested editor-nav__add @(selectedKey == AddNodeKey ? "editor-nav__item--selected" : "")"
-                            @onclick="() => Select(AddNodeKey)">
-                        <span class="editor-nav__dot"></span>
-                        <span>+ Node</span>
                     </button>
                 </nav>
 
