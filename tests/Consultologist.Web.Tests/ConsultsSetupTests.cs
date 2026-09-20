@@ -40,6 +40,19 @@ public class ConsultsSetupTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ThePackageContext_RendersAboveTheIntakeFields()
+    {
+        // #792: the picker/title + "Sections it will generate" (the setup-context
+        // panel) sits at the top of the form, before the intake fields.
+        WithPinnedPackage(blocks: NineSections());
+
+        var page = Render<Consults>();
+
+        var first = page.FindAll(".setup-context, .input-field").First();
+        Assert.Contains("setup-context", first.ClassName);
+    }
+
+    [Fact]
     public void DeclaredInputs_RenderOneFieldEachWithTheOptionalMarker()
     {
         WithPinnedPackage(

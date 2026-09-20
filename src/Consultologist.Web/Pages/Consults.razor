@@ -79,6 +79,102 @@
             <div class="consult-setup">
                 <section class="workflow-panel">
                     <div class="form-stack">
+                        @if (isBlocksLoading)
+                        {
+                            <LoadingState>Loading section standards...</LoadingState>
+                        }
+                        else if (!string.IsNullOrEmpty(blocksLoadError))
+                        {
+                            <FluentMessageBar Intent="MessageIntent.Error">@blocksLoadError</FluentMessageBar>
+                            @* Escape hatch: a pin to an unloadable package must stay
+                               correctable from here — the picker loads independently. *@
+                            <div class="setup-context">
+                                <span class="setup-context__line">
+                                    Switch to another package:
+                                    <WorkflowPackagePicker OnPinned="OnPackagePinnedAsync" />
+                                </span>
+                            </div>
+                        }
+                        else if (packageBlocks.Count > 0)
+                        {
+                            <div class="setup-context">
+                                <span class="setup-context__line">
+                                    Runs
+                                    @if (!string.IsNullOrWhiteSpace(currentPackageTitle))
+                                    {
+                                        @* v9 § 4 (#432): the title when there is one; the
+                                           picker beside it always shows the ref. *@
+                                        <span class="setup-context__title">@currentPackageTitle</span>
+                                    }
+                                    <WorkflowPackagePicker @key="currentPackageRef"
+                                                           Disabled="@isAiRequestLoading"
+                                                           OnPinned="OnPackagePinnedAsync" />
+                                    <span class="muted-text">· @SectionSummary</span>
+                                </span>
+                                @* #540: fill the whole form from a held response —
+                                   form-level, unlike the per-slot run picker, because
+                                   a response answers every declared input it carries. *@
+                                <span class="setup-context__line">
+                                    <FormResponsePicker Disabled="@isAiRequestLoading" OnChosen="ApplyFormResponse" />
+                                    @if (formFillNote != null)
+                                    {
+                                        <span class="muted-text">@formFillNote</span>
+                                    }
+                                </span>
+                                @if (formFillMisfits.Count > 0)
+                                {
+                                    @* Spike § 4.2: named, not filled. *@
+                                    <FluentMessageBar Intent="MessageIntent.Warning">Not filled: @string.Join("; ", formFillMisfits)</FluentMessageBar>
+                                }
+                                @if (macroChoiceSlots.Count > 0)
+                                {
+                                    <fieldset class="macro-choices">
+                                        <legend class="muted-text">Optional additions</legend>
+                                        @foreach (var slot in macroChoiceSlots)
+                                        {
+                                            <label class="macro-choice" @key="slot.Id">
+                                                <input type="checkbox"
+                                                       checked="@slot.Value"
+                                                       @onchange="args => slot.Value = args.Value is bool isChecked && isChecked"
+                                                       aria-label="@slot.Label" />
+                                                <span>@slot.Label</span>
+                                            </label>
+                                        }
+                                    </fieldset>
+                                }
+                                <details class="setup-sections">
+                                    <summary>Sections it will generate</summary>
+                                    @if (IsMultiDeliverable)
+                                    {
+                                        @* Each section is generated once per deliverable, so
+                                           the roster groups under the authored document labels
+                                           rather than repeating names in one flat list. *@
+                                        @foreach (var deliverable in declaredResults!)
+                                        {
+                                            <div class="setup-sections__group">
+                                                <span class="setup-sections__group-label">@deliverable.Label</span>
+                                                <ul>
+                                                    @foreach (var standard in BlocksFor(deliverable.Id))
+                                                    {
+                                                        <li>@standard.Name</li>
+                                                    }
+                                                </ul>
+                                            </div>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <ul>
+                                            @foreach (var standard in packageBlocks)
+                                            {
+                                                <li>@standard.Name</li>
+                                            }
+                                        </ul>
+                                    }
+                                </details>
+                            </div>
+                        }
+
                         <h2 class="panel-title">Consult details</h2>
                         <p class="panel-description">
                             Paste the referral, history, or draft note. Each output section uses this draft as the source of truth.
@@ -340,102 +436,6 @@
                                     <span class="input-field__file-error">@field.FileError</span>
                                 }
                             </label>
-                        }
-
-                        @if (isBlocksLoading)
-                        {
-                            <LoadingState>Loading section standards...</LoadingState>
-                        }
-                        else if (!string.IsNullOrEmpty(blocksLoadError))
-                        {
-                            <FluentMessageBar Intent="MessageIntent.Error">@blocksLoadError</FluentMessageBar>
-                            @* Escape hatch: a pin to an unloadable package must stay
-                               correctable from here — the picker loads independently. *@
-                            <div class="setup-context">
-                                <span class="setup-context__line">
-                                    Switch to another package:
-                                    <WorkflowPackagePicker OnPinned="OnPackagePinnedAsync" />
-                                </span>
-                            </div>
-                        }
-                        else if (packageBlocks.Count > 0)
-                        {
-                            <div class="setup-context">
-                                <span class="setup-context__line">
-                                    Runs
-                                    @if (!string.IsNullOrWhiteSpace(currentPackageTitle))
-                                    {
-                                        @* v9 § 4 (#432): the title when there is one; the
-                                           picker beside it always shows the ref. *@
-                                        <span class="setup-context__title">@currentPackageTitle</span>
-                                    }
-                                    <WorkflowPackagePicker @key="currentPackageRef"
-                                                           Disabled="@isAiRequestLoading"
-                                                           OnPinned="OnPackagePinnedAsync" />
-                                    <span class="muted-text">· @SectionSummary</span>
-                                </span>
-                                @* #540: fill the whole form from a held response —
-                                   form-level, unlike the per-slot run picker, because
-                                   a response answers every declared input it carries. *@
-                                <span class="setup-context__line">
-                                    <FormResponsePicker Disabled="@isAiRequestLoading" OnChosen="ApplyFormResponse" />
-                                    @if (formFillNote != null)
-                                    {
-                                        <span class="muted-text">@formFillNote</span>
-                                    }
-                                </span>
-                                @if (formFillMisfits.Count > 0)
-                                {
-                                    @* Spike § 4.2: named, not filled. *@
-                                    <FluentMessageBar Intent="MessageIntent.Warning">Not filled: @string.Join("; ", formFillMisfits)</FluentMessageBar>
-                                }
-                                @if (macroChoiceSlots.Count > 0)
-                                {
-                                    <fieldset class="macro-choices">
-                                        <legend class="muted-text">Optional additions</legend>
-                                        @foreach (var slot in macroChoiceSlots)
-                                        {
-                                            <label class="macro-choice" @key="slot.Id">
-                                                <input type="checkbox"
-                                                       checked="@slot.Value"
-                                                       @onchange="args => slot.Value = args.Value is bool isChecked && isChecked"
-                                                       aria-label="@slot.Label" />
-                                                <span>@slot.Label</span>
-                                            </label>
-                                        }
-                                    </fieldset>
-                                }
-                                <details class="setup-sections">
-                                    <summary>Sections it will generate</summary>
-                                    @if (IsMultiDeliverable)
-                                    {
-                                        @* Each section is generated once per deliverable, so
-                                           the roster groups under the authored document labels
-                                           rather than repeating names in one flat list. *@
-                                        @foreach (var deliverable in declaredResults!)
-                                        {
-                                            <div class="setup-sections__group">
-                                                <span class="setup-sections__group-label">@deliverable.Label</span>
-                                                <ul>
-                                                    @foreach (var standard in BlocksFor(deliverable.Id))
-                                                    {
-                                                        <li>@standard.Name</li>
-                                                    }
-                                                </ul>
-                                            </div>
-                                        }
-                                    }
-                                    else
-                                    {
-                                        <ul>
-                                            @foreach (var standard in packageBlocks)
-                                            {
-                                                <li>@standard.Name</li>
-                                            }
-                                        </ul>
-                                    }
-                                </details>
-                            </div>
                         }
 
                         @if (!string.IsNullOrEmpty(aiRequestError))
