@@ -281,4 +281,82 @@ public class InputContentTests
             null,
             0));
     }
+
+    // --- #802: acknowledging a legitimately short input ---
+
+    private static Dictionary<string, ConsultInputValue> ShortDraft() =>
+        new() { ["consult_draft"] = "Chest pain.", ["prior_notes"] = TerseReferral };
+
+    [Fact]
+    public void V7_AnAcknowledgedShortRequiredInput_IsNotNamed()
+    {
+        // The clinician said "yes, it really is that short" — the floor waives it.
+        Assert.Null(InputContent.FindInputWithoutContent(
+            new ConsultGenerationRequest(null),
+            V7(),
+            ShortDraft(),
+            40,
+            acknowledged: new[] { "consult_draft" }));
+    }
+
+    [Fact]
+    public void V7_AnUnacknowledgedShortRequiredInput_IsStillNamed()
+    {
+        // Acknowledging a different slot does not waive this one.
+        Assert.Equal("consult_draft", InputContent.FindInputWithoutContent(
+            new ConsultGenerationRequest(null),
+            V7(),
+            ShortDraft(),
+            40,
+            acknowledged: new[] { "prior_notes" }));
+    }
+
+    [Fact]
+    public void V5_AnAcknowledgedShortDraft_IsNotNamed()
+    {
+        Assert.Null(InputContent.FindInputWithoutContent(
+            new ConsultGenerationRequest("Chest pain."),
+            V5Fixtures.Manifest(),
+            null,
+            40,
+            acknowledged: new[] { "consult_draft" }));
+    }
+
+    [Fact]
+    public void AnAcknowledgement_DoesNotWaiveTheCloudLinkGuard()
+    {
+        // The length floor is waived; a body that IS a cloud link is a missing
+        // document, not a terse one, and stays refused (#291).
+        var body = $"Hi, here is the referral. {OneDriveLink} Regards, Dr X, Oncology";
+        var request = new ConsultGenerationRequest(body, AcknowledgedShortInputs: new[] { "consult_draft" });
+
+        Assert.Equal("consult_draft", InputContent.FindInputBehindACloudLink(
+            request, V5Fixtures.Manifest(), null, null));
+    }
+
+    [Fact]
+    public void AcknowledgedBelowFloor_RecordsOnlyTheIdsActuallyOverridden()
+    {
+        // consult_draft is below the floor and acknowledged → recorded.
+        Assert.Equal(
+            new[] { "consult_draft" },
+            InputContent.AcknowledgedBelowFloor(
+                new ConsultGenerationRequest(null),
+                V7(),
+                ShortDraft(),
+                40,
+                acknowledged: new[] { "consult_draft", "prior_notes" }));
+
+        // Acknowledging a slot that was never below the floor records nothing.
+        Assert.Empty(InputContent.AcknowledgedBelowFloor(
+            new ConsultGenerationRequest(null),
+            V7(),
+            new Dictionary<string, ConsultInputValue> { ["consult_draft"] = TerseReferral },
+            40,
+            acknowledged: new[] { "consult_draft" }));
+
+        // No acknowledgement, nothing recorded.
+        Assert.Empty(InputContent.AcknowledgedBelowFloor(
+            new ConsultGenerationRequest(null), V7(), ShortDraft(), 40, acknowledged: null));
+    }
 }

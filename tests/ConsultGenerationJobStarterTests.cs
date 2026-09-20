@@ -2543,6 +2543,23 @@ public class ConsultGenerationJobStarterTests
             TranscriptInputs: new[] { "consult_draft" })));
     }
 
+    [Fact]
+    public void TheShortInputAcknowledgement_RefusesOnlyABlankId()
+    {
+        // #802: unlike the transcript marker, an acknowledgement is not tied to a
+        // file slot (a typed slot can be acknowledged), so only a blank id is a
+        // 400 — an id matching no below-floor slot simply overrides nothing.
+        Assert.Contains("blank id", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = ConsultInputValue.OfText("Chest pain.") },
+            AcknowledgedShortInputs: new[] { " " })));
+
+        Assert.Null(ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = ConsultInputValue.OfText("Chest pain.") },
+            AcknowledgedShortInputs: new[] { "consult_draft" })));
+    }
+
     // ----- #673: a file the caller/package declared an ambient-scribe note -----
 
     [Fact]
@@ -3633,6 +3650,38 @@ public class ConsultGenerationJobStarterTests
         Assert.Equal(outcome.ErrorDetail, outcome.SenderSafeDetail);
         await _client.DidNotReceiveWithAnyArgs().ScheduleNewOrchestrationInstanceAsync(
             default, default, default, default);
+    }
+
+    [Fact]
+    public async Task AnAcknowledgedShortInput_StartsAndRecordsTheOverride()
+    {
+        // #802: a genuinely terse referral, acknowledged as short — it starts,
+        // and the override is stamped on the record so a reviewer sees it was
+        // conscious, not a silently-absent referral.
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal) { ["consult_draft"] = ConsultInputValue.OfText("Chest pain.") },
+            AcknowledgedShortInputs: new[] { "consult_draft" });
+
+        var captured = await StartAndCaptureAsync(V7Fixtures.MultiDeliverable(), request);
+
+        Assert.Null(captured.Outcome.Error);
+        Assert.Equal(new[] { "consult_draft" }, captured.Initialize!.AcknowledgedShortInputs);
+        // Consumed at the floor; like InputFormRefs it does not ride the durable payload.
+        Assert.Null(captured.OrchestrationInput!.Request.AcknowledgedShortInputs);
+    }
+
+    [Fact]
+    public async Task AShortInputWithoutAcknowledgement_IsStillRefused()
+    {
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal) { ["consult_draft"] = ConsultInputValue.OfText("Chest pain.") });
+
+        var captured = await StartAndCaptureAsync(V7Fixtures.MultiDeliverable(), request);
+
+        Assert.Equal(ConsultGenerationJobStartError.InputWithoutContent, captured.Outcome.Error);
+        Assert.Null(captured.Initialize);
     }
 
     [Fact]
