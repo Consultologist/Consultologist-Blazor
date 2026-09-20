@@ -113,6 +113,44 @@ public class ConsultsResultTests : ClientRenderTestContext
         Assert.Contains("inputs deleted", page.Find(".rerun-blocked-line").TextContent);
     }
 
+    // ----- #803: New consult beside Rerun on the completed panel -----
+
+    [Fact]
+    public void ACompletedRun_OffersNewConsult_BesideRerun()
+    {
+        WithCompletedJob(documents: OneNote, heldInputs: new Dictionary<string, string> { ["consult_draft"] = "The referral." });
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.NotEmpty(page.FindAll(".result-header__actions .new-consult-button"));
+    }
+
+    [Fact]
+    public void ADroppedRun_StillOffersNewConsult_ThoughRerunIsGreyed()
+    {
+        // The New consult button does not share Rerun's held-inputs guard.
+        WithCompletedJob(documents: OneNote, inputsDroppedAtUtc: new DateTimeOffset(2026, 9, 8, 3, 0, 0, TimeSpan.Zero));
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.True(page.Find(".rerun-button").HasAttribute("disabled"));
+        Assert.NotEmpty(page.FindAll(".result-header__actions .new-consult-button"));
+    }
+
+    [Fact]
+    public async Task NewConsult_FromTheResultHeader_Resets()
+    {
+        WithCompletedJob(documents: OneNote, heldInputs: new Dictionary<string, string> { ["consult_draft"] = "The referral." });
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+        await page.Find(".result-header__actions .new-consult-button").ClickAsync(new());
+
+        Assert.Null(JobSession.Current);
+        var navigation = (Microsoft.AspNetCore.Components.NavigationManager)Services
+            .GetService(typeof(Microsoft.AspNetCore.Components.NavigationManager))!;
+        Assert.EndsWith("/create", navigation.Uri);
+    }
+
     [Fact]
     public async Task Rerun_StartsTheReplay_FromTheShownRun()
     {

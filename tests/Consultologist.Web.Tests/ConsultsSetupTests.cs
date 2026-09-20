@@ -1354,6 +1354,20 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ARunningRun_OffersNewConsult_InTheDraftBar_AndEnabled()
+    {
+        // #803: New consult is offered throughout the run phase, not only when
+        // finished — and stays enabled, since it is non-destructive (the
+        // in-flight run keeps going in History).
+        WithReattachedRun("0123456789abcdef0123456789abcdef", "Running");
+
+        var page = Render<Consults>();
+
+        var newConsult = page.Find(".draft-bar .new-consult-button");
+        Assert.False(newConsult.HasAttribute("disabled"));
+    }
+
+    [Fact]
     public async Task SwitchingPackages_CarriesAChosenBoolean()
     {
         // #429: the whole answer carries into a slot the next package still

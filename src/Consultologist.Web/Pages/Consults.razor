@@ -562,17 +562,15 @@
                                               Disabled="@isAiRequestLoading">
                                     @(inputFields.Count == 1 ? "Edit draft" : "Edit inputs")
                                 </FluentButton>
-                                @* #794: on a finished run, start a fresh empty consult (Edit,
-                                   by contrast, returns to this run's inputs). *@
-                                @if (IsRunFinished)
-                                {
-                                    <FluentButton Appearance="Appearance.Stealth"
-                                                  Class="new-consult-button"
-                                                  @onclick="StartNewConsult"
-                                                  Disabled="@isAiRequestLoading">
-                                        New consult
-                                    </FluentButton>
-                                }
+                                @* #794/#803: start a fresh empty consult — offered throughout the
+                                   run phase (running as well as finished), and always enabled: unlike
+                                   Edit it is non-destructive (the in-flight run keeps going in History),
+                                   so it must not grey out while the request is loading. *@
+                                <FluentButton Appearance="Appearance.Stealth"
+                                              Class="new-consult-button"
+                                              @onclick="StartNewConsult">
+                                    New consult
+                                </FluentButton>
                             </span>
                         }
                     </summary>
@@ -620,6 +618,14 @@
                                                 Rerun
                                             </FluentButton>
                                         }
+                                        @* #803: start a fresh consult from the finished panel, beside
+                                           Rerun. Unconditional — even a run whose inputs were dropped
+                                           (Rerun greyed) can still start a new one. *@
+                                        <FluentButton Appearance="Appearance.Stealth"
+                                                      Class="new-consult-button"
+                                                      @onclick="StartNewConsult">
+                                            New consult
+                                        </FluentButton>
                                 @* #768: on a multi-document run the panel shows one
                                    tab per deliverable, so a single "Copy note" would
                                    silently copy only the tab in view. Scope it to the
