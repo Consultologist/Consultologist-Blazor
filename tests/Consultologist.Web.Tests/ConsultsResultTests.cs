@@ -125,7 +125,7 @@ public class ConsultsResultTests : ClientRenderTestContext
         await AIService.Received(1).RerunConsultGenerationJobAsync(JobId);
         var navigation = (Microsoft.AspNetCore.Components.NavigationManager)Services
             .GetService(typeof(Microsoft.AspNetCore.Components.NavigationManager))!;
-        Assert.EndsWith("/consults/new-job-1", navigation.Uri);
+        Assert.EndsWith("/create/new-job-1", navigation.Uri);
     }
 
     [Fact]

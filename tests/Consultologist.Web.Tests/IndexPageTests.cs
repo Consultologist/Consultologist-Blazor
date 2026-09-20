@@ -15,18 +15,18 @@ using Xunit;
 namespace Consultologist.Web.Tests;
 
 /// <summary>
-/// #766: `/` redirects a signed-in clinician to the Consults page (their real
-/// landing); the account-status nudge that used to live here moved onto
-/// Consults (see <see cref="ConsultsPageTests"/>).
+/// #766: `/` redirects a signed-in clinician to the Create page (their real
+/// landing, at /create since #790); the account-status nudge that used to live
+/// here moved onto that page (see <see cref="ConsultsPageTests"/>).
 /// </summary>
 public class IndexPageTests : ClientRenderTestContext
 {
     [Fact]
-    public void SignedIn_RedirectsToConsults()
+    public void SignedIn_RedirectsToCreate()
     {
         Render<Consultologist.Web.Pages.Index>();
 
-        Assert.EndsWith("/consults", Services.GetRequiredService<NavigationManager>().Uri);
+        Assert.EndsWith("/create", Services.GetRequiredService<NavigationManager>().Uri);
     }
 }
 

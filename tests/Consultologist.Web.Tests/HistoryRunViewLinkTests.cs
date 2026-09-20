@@ -47,7 +47,7 @@ public class HistoryRunViewLinkTests : ClientRenderTestContext
         page.FindAll(".cancel-run-button").First(button => button.TextContent.Trim() == label);
 
     [Fact]
-    public void WithNoJobs_ShowsAFirstRunEmptyStateLinkingToConsults()
+    public void WithNoJobs_ShowsAFirstRunEmptyStateLinkingToCreate()
     {
         // #772: since #766 a newly-activated account's first stop can be here;
         // guide it to drafting rather than showing a bare "none found" line.
@@ -60,7 +60,7 @@ public class HistoryRunViewLinkTests : ClientRenderTestContext
         Assert.DoesNotContain("No consult jobs found.", page.Markup);
         Assert.Contains(
             page.FindAll("fluent-anchor"),
-            anchor => anchor.GetAttribute("href")?.TrimEnd('/').EndsWith("consults") == true);
+            anchor => anchor.GetAttribute("href")?.TrimEnd('/').EndsWith("create") == true);
     }
 
     [Theory]
@@ -74,7 +74,7 @@ public class HistoryRunViewLinkTests : ClientRenderTestContext
 
         var link = Link(RenderList());
 
-        Assert.Equal($"/consults/{JobId}", link.GetAttribute("href"));
+        Assert.Equal($"/create/{JobId}", link.GetAttribute("href"));
         Assert.Equal("view run", link.TextContent.Trim());
     }
 
@@ -87,7 +87,7 @@ public class HistoryRunViewLinkTests : ClientRenderTestContext
 
         var link = Link(RenderList());
 
-        Assert.Equal($"/consults/{JobId}", link.GetAttribute("href"));
+        Assert.Equal($"/create/{JobId}", link.GetAttribute("href"));
         Assert.Equal("watch live", link.TextContent.Trim());
     }
 

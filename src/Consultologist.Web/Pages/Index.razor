@@ -81,7 +81,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // #766: a signed-in clinician's landing is the Consults page. Redirect
+        // #766: a signed-in clinician's landing is the Create page. Redirect
         // there (replace, so Back does not trap them on a bouncing `/`) rather
         // than show a second dashboard. Signed-out visitors fall through to the
         // public landing above.
@@ -94,7 +94,7 @@
 
         if (state.User.Identity?.IsAuthenticated == true)
         {
-            Navigation.NavigateTo("consults", replace: true);
+            Navigation.NavigateTo("create", replace: true);
         }
     }
 }
