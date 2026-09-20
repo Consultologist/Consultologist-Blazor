@@ -46,7 +46,7 @@ public class ConsultsQueueMultipleTests : ClientRenderTestContext
         CaptureSubmit();
         var page = Render<Consults>();
 
-        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
         Set(page, "queueMultiple", true);
         await Submit(page).ClickAsync(new());
 
@@ -70,7 +70,7 @@ public class ConsultsQueueMultipleTests : ClientRenderTestContext
         CaptureSubmit();
         var page = Render<Consults>();
 
-        page.FindAll("fluent-text-area")[0].Change("Referral.");
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
         Set(page, "runOvernight", true);
         Set(page, "scheduledAtLocal", DateTime.Now.AddDays(1).ToString("yyyy-MM-ddTHH:mm"));
         await Submit(page).ClickAsync(new());

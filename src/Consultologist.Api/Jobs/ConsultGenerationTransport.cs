@@ -1443,6 +1443,22 @@ public sealed class ConsultGenerationJobs
             }
         }
 
+        // #802: an acknowledgement waives the content floor for a required input,
+        // whichever way it was filled (typed, file, loaded), so — unlike the
+        // transcript/ambient markers — it is not tied to InputFiles. Only a blank
+        // id is refused; an id that matches no below-floor slot simply overrides
+        // nothing (the floor never applied to it), so it needs no rejection here.
+        if (request.AcknowledgedShortInputs is { Count: > 0 })
+        {
+            foreach (var id in request.AcknowledgedShortInputs)
+            {
+                if (string.IsNullOrWhiteSpace(id))
+                {
+                    return "AcknowledgedShortInputs contains a blank id.";
+                }
+            }
+        }
+
         if (hasInputs)
         {
             foreach (var (id, value) in request.Inputs!)

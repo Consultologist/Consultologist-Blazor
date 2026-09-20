@@ -72,7 +72,16 @@ public record ConsultGenerationRequest(
     // (ConsultInputOriginKinds.AmbientNote) instead of `document`. A distinct kind
     // from transcript keeps the SaMD/anti-ambient boundary legible. Cleared once
     // origins are stamped. Appended last, wire-compat.
-    IReadOnlyCollection<string>? AmbientNoteInputs = null);
+    IReadOnlyCollection<string>? AmbientNoteInputs = null,
+    // #802: the required input ids the submitter acknowledged as intentionally
+    // short, waiving the content floor (#290) for them — a genuinely terse
+    // referral, sent on purpose. A caller assertion, like TranscriptInputs; it
+    // waives the LENGTH floor only, never the cloud-link guard (#291). Consumed
+    // at the floor guard (which runs after extraction), so it must survive there;
+    // the ids actually overridden are recorded on the job as AcknowledgedShortInputs
+    // (attribution, beside the input hash — provenance@v2026.09.12). Appended
+    // last, wire-compat.
+    IReadOnlyCollection<string>? AcknowledgedShortInputs = null);
 
 /// <summary>#510: one deliverable of one of the account's completed runs.</summary>
 public sealed record ConsultInputRef(string JobId, string ResultId);
@@ -370,7 +379,13 @@ public record ConsultGenerationJobResponse(
     // — the type and stack only, the message discipline unchanged. Appended
     // last, positional rule.
     string? FailureStack = null,
-    IReadOnlyDictionary<string, string>? FailedBlockStacks = null);
+    IReadOnlyDictionary<string, string>? FailedBlockStacks = null,
+    // #802 (provenance@v2026.09.12): the required inputs whose content fell below
+    // the referral floor and which the submitter acknowledged as intentionally
+    // short — the overrides that let this job start instead of being refused.
+    // Recorded beside the input hash, never inside it (attribution). Null when no
+    // slot was overridden and on records predating the field. Appended last.
+    IReadOnlyList<string>? AcknowledgedShortInputs = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
