@@ -348,6 +348,13 @@
 	color: var(--error-foreground, #a4262c);
 }
 
+/* #800: a read file that likely carries no referral — a warning, not a
+   refusal, so the amber warning token rather than the red error one. */
+.input-field__file-warning {
+	font-size: 0.8rem;
+	color: var(--warning-foreground, #7a5c00);
+}
+
 /* #236: an attached document replaces this slot's text area — the chip names
    the file, the panel shows what the server read from it. */
 .input-field__chip {
