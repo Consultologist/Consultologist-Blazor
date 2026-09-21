@@ -181,36 +181,27 @@
                         Redo
                     </FluentButton>
                     @* #770: both wipe unpublished work on one click, so arm them
-                       — the first click warns, the second acts (the #195 pattern). *@
-                    @* #817: back out of an armed Discard/Revert without acting —
-                       right beside whichever is armed (they are mutually exclusive),
-                       matching its Outline style. *@
-                    <FluentButton Appearance="Appearance.Outline"
-                                  Disabled="@(PendingCount == 0 || isPublishing)"
-                                  @onclick="DiscardAsync">
-                        @(discardArmed ? "Confirm discard" : "Discard")
-                    </FluentButton>
-                    @if (discardArmed)
-                    {
-                        <FluentButton Appearance="Appearance.Outline"
-                                      Class="cancel-armed-button"
-                                      @onclick="CancelToolbarArm">
-                            Cancel
-                        </FluentButton>
-                    }
-                    <FluentButton Appearance="Appearance.Outline"
-                                  Disabled="@isPublishing"
-                                  @onclick="RevertToDefaultAsync">
-                        @(revertArmed ? "Confirm revert" : "Revert to default")
-                    </FluentButton>
-                    @if (revertArmed)
-                    {
-                        <FluentButton Appearance="Appearance.Outline"
-                                      Class="cancel-armed-button"
-                                      @onclick="CancelToolbarArm">
-                            Cancel
-                        </FluentButton>
-                    }
+                       — the first click warns, the second acts (the #195 pattern).
+                       #817/#820: an Outline Cancel sits beside whichever is armed
+                       (they are mutually exclusive). *@
+                    <ConfirmButton Armed="discardArmed"
+                                   RestingLabel="Discard"
+                                   ArmedLabel="Confirm discard"
+                                   MainAppearance="Appearance.Outline"
+                                   BackOutAppearance="Appearance.Outline"
+                                   BackOutClass="cancel-armed-button"
+                                   Disabled="@(PendingCount == 0 || isPublishing)"
+                                   OnClick="DiscardAsync"
+                                   OnBackOut="CancelToolbarArm" />
+                    <ConfirmButton Armed="revertArmed"
+                                   RestingLabel="Revert to default"
+                                   ArmedLabel="Confirm revert"
+                                   MainAppearance="Appearance.Outline"
+                                   BackOutAppearance="Appearance.Outline"
+                                   BackOutClass="cancel-armed-button"
+                                   Disabled="@isPublishing"
+                                   OnClick="RevertToDefaultAsync"
+                                   OnBackOut="CancelToolbarArm" />
                     @* #808: download the package being edited as a zip of the real
                        directory tree (current edits applied), interchangeable with the
                        GitOps repo and local editing. No gate — an unedited package downloads too. *@
@@ -8647,32 +8638,23 @@
     private bool DocumentsCanDiscard => resultsEdit != null || resultEdit != null || conditionDrafts.Count > 0;
     private bool SchemasCanDiscard => addedSchemas.Count > 0 || removedSchemaIds.Count > 0;
 
-    // The button label; the pane's own key is armed at most.
-    private string PaneDiscardLabel(string paneKey) =>
-        paneDiscardArmedKey == paneKey ? "Confirm discard" : "Discard changes in this pane";
-
     // #812: the one per-pane discard button, rendered in each pane's header.
     // Shown only when the pane has edits to discard; arm→confirm via
-    // ArmOrDiscardPaneAsync; disabled while a publish is in flight.
+    // ArmOrDiscardPaneAsync; disabled while a publish is in flight. #820: the
+    // shared ConfirmButton renders the arm/confirm label and the back-out.
     private RenderFragment PaneDiscardButton(string paneKey, bool show, Action revert) =>
         @<text>
             @if (show)
             {
-                <FluentButton Appearance="Appearance.Outline"
-                              Class="pane-discard-button"
-                              Disabled="@isPublishing"
-                              @onclick="@(() => ArmOrDiscardPaneAsync(paneKey, revert))">
-                    @PaneDiscardLabel(paneKey)
-                </FluentButton>
-                @* #817: back out of the armed per-pane discard. *@
-                @if (paneDiscardArmedKey == paneKey)
-                {
-                    <FluentButton Appearance="Appearance.Stealth"
-                                  Class="pane-discard-cancel-button"
-                                  @onclick="@(() => paneDiscardArmedKey = null)">
-                        Cancel
-                    </FluentButton>
-                }
+                <ConfirmButton Armed="@(paneDiscardArmedKey == paneKey)"
+                               RestingLabel="Discard changes in this pane"
+                               ArmedLabel="Confirm discard"
+                               MainAppearance="Appearance.Outline"
+                               MainClass="pane-discard-button"
+                               BackOutClass="pane-discard-cancel-button"
+                               Disabled="@isPublishing"
+                               OnClick="@(() => ArmOrDiscardPaneAsync(paneKey, revert))"
+                               OnBackOut="@(() => paneDiscardArmedKey = null)" />
             }
         </text>;
 
