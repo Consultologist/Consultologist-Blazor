@@ -37,7 +37,7 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
             {
                 new AccountJobSummaryResponse(HeldRun, "Completed", Completed, Completed, Completed, TotalBlockCount: 2, CompletedBlockCount: 2, FailedBlockCount: 0),
                 new AccountJobSummaryResponse(DroppedRun, "Completed", Completed, Completed, Completed, TotalBlockCount: 2, CompletedBlockCount: 2, FailedBlockCount: 0, TextDroppedAtUtc: Dropped),
-                new AccountJobSummaryResponse("aaaa", "Failed", Completed, Completed, Completed, TotalBlockCount: 2, CompletedBlockCount: 0, FailedBlockCount: 2)
+                new AccountJobSummaryResponse("failed-run-omitted", "Failed", Completed, Completed, Completed, TotalBlockCount: 2, CompletedBlockCount: 0, FailedBlockCount: 2)
             },
             null));
         AIService.GetConsultGenerationJobAsync(HeldRun).Returns(new ConsultGenerationJobResponse(
@@ -93,7 +93,10 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
         var deleted = page.Find(".run-picker__run--deleted .run-picker__run-toggle");
         Assert.True(deleted.HasAttribute("disabled"));
         Assert.Contains("text deleted Sep 2, 2026", deleted.TextContent);
-        Assert.DoesNotContain("aaaa", page.Markup);
+        // The failed run's id must not appear — the picker lists completed runs
+        // only. A non-hex sentinel: an all-hex id (the old "aaaa") collides with
+        // Blazor's random r:elementReference GUIDs in the raw markup.
+        Assert.DoesNotContain("failed-run-omitted", page.Markup);
     }
 
     [Fact]
