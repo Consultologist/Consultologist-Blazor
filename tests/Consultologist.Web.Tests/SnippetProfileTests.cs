@@ -72,6 +72,21 @@ public class SnippetProfileTests : ClientRenderTestContext
             Snippets.ContentType);
     }
 
+    // #817: Cancel beside an armed snippet remove backs out without removing.
+    [Fact]
+    public async Task Remove_Cancel_DisarmsWithoutRemoving()
+    {
+        WithSnippets(SnippetsModelTests.Wire);
+        var page = RenderProfile();
+
+        await page.Find(".snippet-remove").ClickAsync(new());
+        await page.Find(".snippet-remove-cancel").ClickAsync(new());
+
+        await AccountService.DidNotReceiveWithAnyArgs().DeleteSettingAsync(default!);
+        Assert.Contains("Remove", page.Find(".snippet-remove").TextContent);
+        Assert.DoesNotContain("Confirm remove", page.Find(".snippet-remove").TextContent);
+    }
+
     [Fact]
     public async Task Remove_IsArmedInTwoClicks_AndTheLastRemovalDeletesTheKey()
     {

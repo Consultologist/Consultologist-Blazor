@@ -153,6 +153,21 @@ public class HistoryRunViewLinkTests : ClientRenderTestContext
         await AIService.Received(1).CancelConsultGenerationJobAsync(JobId);
     }
 
+    // #817: "keep" beside an armed cancel backs out without cancelling.
+    [Fact]
+    public async Task Keep_DisarmsWithoutCancelling()
+    {
+        WithJobStatus("Scheduled");
+        var page = RenderList();
+
+        await RowButton(page, "cancel").ClickAsync(new MouseEventArgs());
+        await page.Find(".cancel-run-keep-button").ClickAsync(new MouseEventArgs());
+
+        await AIService.DidNotReceive().CancelConsultGenerationJobAsync(JobId);
+        Assert.Empty(page.FindAll(".cancel-run-keep-button"));
+        Assert.Equal("cancel", RowButton(page, "cancel").TextContent.Trim());
+    }
+
     [Fact]
     public async Task Cancelling_CallsTheEndpointAndUpdatesTheRowInPlace()
     {

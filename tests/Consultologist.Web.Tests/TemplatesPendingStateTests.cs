@@ -50,6 +50,30 @@ public class TemplatesPendingStateTests : ClientRenderTestContext
         await Invoke(page, "DiscardAsync");
     }
 
+    // #817: Cancel beside an armed Discard disarms without discarding.
+    [Fact]
+    public async Task Discard_Cancel_DisarmsWithoutDiscarding()
+    {
+        var page = RenderEditor();
+        // A real pending edit, so the Discard button is enabled and the count
+        // has something to lose if Cancel misfired.
+        await page.InvokeAsync(() => typeof(Templates).GetField("titleEdit", Members)!.SetValue(page.Instance, "Edited"));
+        await Invoke(page, "PendingChangedAsync");
+        Assert.Equal(1, PendingCount(page.Instance));
+
+        // Arm the toolbar Discard (the file's convention — the DOM button is
+        // disabled until a render observes the pending count).
+        await Invoke(page, "DiscardAsync");
+        page.Render();
+        Assert.Contains("Confirm discard", page.FindAll("fluent-button").Select(b => b.TextContent.Trim()));
+
+        await page.Find(".cancel-armed-button").ClickAsync(new());
+
+        Assert.DoesNotContain("Confirm discard", page.FindAll("fluent-button").Select(b => b.TextContent.Trim()));
+        Assert.Empty(page.FindAll(".cancel-armed-button")); // the Cancel is gone once disarmed
+        Assert.Equal(1, PendingCount(page.Instance)); // nothing was discarded
+    }
+
     // ---- discovery -------------------------------------------------------
 
     /// <summary>

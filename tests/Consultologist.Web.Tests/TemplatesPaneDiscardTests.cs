@@ -97,6 +97,20 @@ public class TemplatesPaneDiscardTests : ClientRenderTestContext
     }
 
     [Fact]
+    public async Task Cancel_DisarmsThePaneDiscard_KeepingEdits()
+    {
+        var page = RenderEditor();
+        await page.InvokeAsync(() => Dict(page, "aggregateEdits")["draft-section"] = new List<string> { "node:draft-section" });
+        ShowPane(page, "node:draft-section");
+
+        await page.Find(".pane-discard-button").ClickAsync(new()); // arm
+        await page.Find(".pane-discard-cancel-button").ClickAsync(new()); // cancel
+
+        Assert.NotEmpty(Dict(page, "aggregateEdits"));                 // edit kept
+        Assert.Empty(page.FindAll(".pane-discard-cancel-button"));     // disarmed
+    }
+
+    [Fact]
     public void WithNoPendingInThePane_NoDiscardButtonShows()
     {
         var page = RenderEditor();
