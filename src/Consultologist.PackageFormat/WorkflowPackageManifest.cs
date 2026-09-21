@@ -541,7 +541,14 @@ public sealed record WorkflowNodeSpec(
     string? Op = null,
     string? Of = null,
     string? In = null,
-    string? FailWith = null);
+    string? FailWith = null,
+    // v18 (#822): a node's own condition gate — the deliverable-level `when`
+    // grammar written on a node. When it does not hold the node is dropped,
+    // and cascade drops every deliverable/node that depends on its output;
+    // a gated check simply does not run and its deliverable still fires. A
+    // classifier may not carry one (it always runs to make its decision).
+    // Trailing optional, omitted when null; below 18 refused by name.
+    string? When = null);
 
 /// <summary>
 /// The node kinds a manifest may spell (v10 § 4; check since v12 § 13).
