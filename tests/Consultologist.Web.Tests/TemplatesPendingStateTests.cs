@@ -74,6 +74,22 @@ public class TemplatesPendingStateTests : ClientRenderTestContext
         Assert.Equal(1, PendingCount(page.Instance)); // nothing was discarded
     }
 
+    // #817: the Cancel sits beside Revert too — the two arms share one back-out.
+    [Fact]
+    public async Task Revert_Cancel_DisarmsWithoutReverting()
+    {
+        var page = RenderEditor();
+
+        await Invoke(page, "RevertToDefaultAsync");
+        page.Render();
+        Assert.Contains("Confirm revert", page.FindAll("fluent-button").Select(b => b.TextContent.Trim()));
+
+        await page.Find(".cancel-armed-button").ClickAsync(new());
+
+        Assert.DoesNotContain("Confirm revert", page.FindAll("fluent-button").Select(b => b.TextContent.Trim()));
+        Assert.Empty(page.FindAll(".cancel-armed-button"));
+    }
+
     // ---- discovery -------------------------------------------------------
 
     /// <summary>
