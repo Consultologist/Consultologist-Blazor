@@ -180,21 +180,22 @@
                                                     change time
                                                 </button>
                                             }
-                                            <button type="button" class="cancel-run-button"
-                                                    disabled="@(_cancelling == job.JobId)"
-                                                    @onclick:stopPropagation="true"
-                                                    @onclick="() => CancelScheduledRunAsync(job.JobId)">
-                                                @(_cancelling == job.JobId ? "cancelling…" : (_cancelArmedId == job.JobId ? "confirm cancel" : "cancel"))
-                                            </button>
-                                            @* #817: back out of the armed cancel — "keep" (not "cancel", which is the action here). *@
-                                            @if (_cancelArmedId == job.JobId && _cancelling != job.JobId)
-                                            {
-                                                <button type="button" class="cancel-run-keep-button"
-                                                        @onclick:stopPropagation="true"
-                                                        @onclick="() => _cancelArmedId = null">
-                                                    keep
-                                                </button>
-                                            }
+                                            @* #817/#820: arm→confirm; back out reads "keep" ("cancel"
+                                               is the action here). Native so it stays a plain row button
+                                               and its click doesn't toggle the surrounding row. *@
+                                            <ConfirmButton Native="true"
+                                                           StopPropagation="true"
+                                                           Armed="@(_cancelArmedId == job.JobId)"
+                                                           Busy="@(_cancelling == job.JobId)"
+                                                           RestingLabel="cancel"
+                                                           ArmedLabel="confirm cancel"
+                                                           BusyLabel="cancelling…"
+                                                           BackOutLabel="keep"
+                                                           MainClass="cancel-run-button"
+                                                           BackOutClass="cancel-run-keep-button"
+                                                           Disabled="@(_cancelling == job.JobId)"
+                                                           OnClick="() => CancelScheduledRunAsync(job.JobId)"
+                                                           OnBackOut="() => _cancelArmedId = null" />
                                         }
                                     </div>
                                     <div class="job-history-item__id">

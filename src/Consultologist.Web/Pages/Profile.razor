@@ -100,20 +100,15 @@
                            that the second click is the destructive one. *@
                         @if (LinkedInIdentity != null)
                         {
-                            <FluentButton Appearance="Appearance.Neutral"
-                                          Disabled="@linkedInDisconnectInProgress"
-                                          @onclick="DisconnectLinkedInAsync">
-                                @(disconnectArmed ? "Confirm disconnect" : "Disconnect")
-                            </FluentButton>
-                            @* #817: back out of the armed disconnect without acting. *@
-                            @if (disconnectArmed)
-                            {
-                                <FluentButton Appearance="Appearance.Stealth"
-                                              Class="linkedin-disconnect-cancel"
-                                              @onclick="@(() => { disconnectArmed = false; linkedInMessage = null; })">
-                                    Cancel
-                                </FluentButton>
-                            }
+                            @* #817/#820: arm→confirm with a back-out beside it. *@
+                            <ConfirmButton Armed="disconnectArmed"
+                                           RestingLabel="Disconnect"
+                                           ArmedLabel="Confirm disconnect"
+                                           MainAppearance="Appearance.Neutral"
+                                           BackOutClass="linkedin-disconnect-cancel"
+                                           Disabled="@linkedInDisconnectInProgress"
+                                           OnClick="DisconnectLinkedInAsync"
+                                           OnBackOut="@(() => { disconnectArmed = false; linkedInMessage = null; })" />
                         }
                     </div>
                 </div>
@@ -149,19 +144,14 @@
                         </div>
 
                         <div class="action-row">
-                            <FluentButton Appearance="Appearance.Neutral"
-                                          Disabled="@epicDisconnectInProgress"
-                                          @onclick="DisconnectEpicAsync">
-                                @(epicDisconnectArmed ? "Confirm disconnect" : "Disconnect")
-                            </FluentButton>
-                            @if (epicDisconnectArmed)
-                            {
-                                <FluentButton Appearance="Appearance.Stealth"
-                                              Class="epic-disconnect-cancel"
-                                              @onclick="@(() => { epicDisconnectArmed = false; epicMessage = null; })">
-                                    Cancel
-                                </FluentButton>
-                            }
+                            <ConfirmButton Armed="epicDisconnectArmed"
+                                           RestingLabel="Disconnect"
+                                           ArmedLabel="Confirm disconnect"
+                                           MainAppearance="Appearance.Neutral"
+                                           BackOutClass="epic-disconnect-cancel"
+                                           Disabled="@epicDisconnectInProgress"
+                                           OnClick="DisconnectEpicAsync"
+                                           OnBackOut="@(() => { epicDisconnectArmed = false; epicMessage = null; })" />
                         </div>
                     }
                     else
@@ -203,19 +193,14 @@
                         </div>
 
                         <div class="action-row">
-                            <FluentButton Appearance="Appearance.Neutral"
-                                          Disabled="@cernerDisconnectInProgress"
-                                          @onclick="DisconnectCernerAsync">
-                                @(cernerDisconnectArmed ? "Confirm disconnect" : "Disconnect")
-                            </FluentButton>
-                            @if (cernerDisconnectArmed)
-                            {
-                                <FluentButton Appearance="Appearance.Stealth"
-                                              Class="cerner-disconnect-cancel"
-                                              @onclick="@(() => { cernerDisconnectArmed = false; cernerMessage = null; })">
-                                    Cancel
-                                </FluentButton>
-                            }
+                            <ConfirmButton Armed="cernerDisconnectArmed"
+                                           RestingLabel="Disconnect"
+                                           ArmedLabel="Confirm disconnect"
+                                           MainAppearance="Appearance.Neutral"
+                                           BackOutClass="cerner-disconnect-cancel"
+                                           Disabled="@cernerDisconnectInProgress"
+                                           OnClick="DisconnectCernerAsync"
+                                           OnBackOut="@(() => { cernerDisconnectArmed = false; cernerMessage = null; })" />
                         </div>
                     }
                     else
@@ -707,20 +692,15 @@
                                               @onclick="() => EditSnippet(snippet.Id)">
                                     Edit
                                 </FluentButton>
-                                <FluentButton Appearance="Appearance.Neutral"
-                                              Class="snippet-remove"
-                                              Disabled="@snippetRequestInProgress"
-                                              @onclick="() => RemoveSnippetAsync(snippet.Id)">
-                                    @(snippetRemoveArmedId == snippet.Id ? "Confirm remove" : "Remove")
-                                </FluentButton>
-                                @if (snippetRemoveArmedId == snippet.Id)
-                                {
-                                    <FluentButton Appearance="Appearance.Stealth"
-                                                  Class="snippet-remove-cancel"
-                                                  @onclick="@(() => { snippetRemoveArmedId = null; snippetMessage = null; })">
-                                        Cancel
-                                    </FluentButton>
-                                }
+                                <ConfirmButton Armed="@(snippetRemoveArmedId == snippet.Id)"
+                                               RestingLabel="Remove"
+                                               ArmedLabel="Confirm remove"
+                                               MainAppearance="Appearance.Neutral"
+                                               MainClass="snippet-remove"
+                                               BackOutClass="snippet-remove-cancel"
+                                               Disabled="@snippetRequestInProgress"
+                                               OnClick="() => RemoveSnippetAsync(snippet.Id)"
+                                               OnBackOut="@(() => { snippetRemoveArmedId = null; snippetMessage = null; })" />
                             </div>
                         </div>
                     }
@@ -813,20 +793,15 @@
                                               @onclick="() => EditSignature(block.Id)">
                                     Edit
                                 </FluentButton>
-                                <FluentButton Appearance="Appearance.Neutral"
-                                              Class="signature-remove"
-                                              Disabled="@signatureRequestInProgress"
-                                              @onclick="() => RemoveSignatureAsync(block.Id)">
-                                    @(signatureRemoveArmedId == block.Id ? "Confirm remove" : "Remove")
-                                </FluentButton>
-                                @if (signatureRemoveArmedId == block.Id)
-                                {
-                                    <FluentButton Appearance="Appearance.Stealth"
-                                                  Class="signature-remove-cancel"
-                                                  @onclick="@(() => { signatureRemoveArmedId = null; signatureMessage = null; })">
-                                        Cancel
-                                    </FluentButton>
-                                }
+                                <ConfirmButton Armed="@(signatureRemoveArmedId == block.Id)"
+                                               RestingLabel="Remove"
+                                               ArmedLabel="Confirm remove"
+                                               MainAppearance="Appearance.Neutral"
+                                               MainClass="signature-remove"
+                                               BackOutClass="signature-remove-cancel"
+                                               Disabled="@signatureRequestInProgress"
+                                               OnClick="() => RemoveSignatureAsync(block.Id)"
+                                               OnBackOut="@(() => { signatureRemoveArmedId = null; signatureMessage = null; })" />
                             </div>
                         </div>
                     }
