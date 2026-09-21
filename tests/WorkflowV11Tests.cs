@@ -68,10 +68,10 @@ public class WorkflowV11GateTests
     }
 
     [Fact]
-    public void EighteenIsRefused_NamingTheSet()
+    public void NineteenIsRefused_NamingTheSet()
     {
-        Assert.Contains(V11Fixtures.Validate(V11Fixtures.Minimal() with { SpecVersion = 18 }).Errors,
-            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 or 17"));
+        Assert.Contains(V11Fixtures.Validate(V11Fixtures.Minimal() with { SpecVersion = 19 }).Errors,
+            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 or 18"));
     }
 
     [Theory]

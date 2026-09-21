@@ -378,6 +378,46 @@ public class DecideActivityTests
         Assert.Equal(atStart.Firing.Select(r => r.Id), atBoundary.Results.Select(r => r.Id));
         Assert.Equal(ConsultGenerationJobStarter.ResolveSkeleton(atStart.Package, Supplied).Items.Select(i => i["id"]), atBoundary.Items.Select(i => i["id"]));
     }
+
+    // #822: a node's own when, set on the resolved package (DecideFireSet is
+    // pure over the package, so the specVersion the fixture carries does not
+    // matter to it — the validator gates authoring, exercised in WorkflowV18Tests).
+    private static WorkflowPackage WithNodeWhen(WorkflowPackage package, string nodeId, string? when)
+    {
+        var nodes = package.Nodes!.Select(node => node.Id == nodeId ? node with { When = when } : node).ToList();
+        return package with { Manifest = package.Manifest with { Nodes = nodes }, Nodes = nodes };
+    }
+
+    [Fact]
+    public void ANodeWhen_OnACheck_ThatDoesNotHold_DropsTheCheck_ButTheResultFires()
+    {
+        // #822: a check is an assertion off the result, not consumed content, so
+        // gating it with a when removes only the check (and the node that fed
+        // only it) — the deliverable still fires.
+        var package = WithCheckChain(ClassifierPackage("node:scope == in_scope"), onFiring: true);
+        // Supplied has encounter_kind = follow_up, so this does not hold.
+        package = WithNodeWhen(package, "coverage", "encounter_kind == new_patient");
+
+        var decision = DecideActivity.Decide(package, Supplied, new Dictionary<string, string> { ["scope"] = "in_scope" });
+
+        Assert.Equal("consult", Assert.Single(decision.Results).Id);
+        Assert.Empty(decision.Skipped);
+        Assert.DoesNotContain(decision.Nodes, node => node.Id == "coverage");
+        Assert.DoesNotContain(decision.Nodes, node => node.Id == "extract-document-terms");
+    }
+
+    [Fact]
+    public void ANodeWhen_OnACheck_ThatHolds_KeepsTheCheck()
+    {
+        var package = WithCheckChain(ClassifierPackage("node:scope == in_scope"), onFiring: true);
+        package = WithNodeWhen(package, "coverage", "encounter_kind == follow_up"); // holds
+
+        var decision = DecideActivity.Decide(package, Supplied, new Dictionary<string, string> { ["scope"] = "in_scope" });
+
+        Assert.Equal("consult", Assert.Single(decision.Results).Id);
+        Assert.Contains(decision.Nodes, node => node.Id == "coverage");
+        Assert.Contains(decision.Nodes, node => node.Id == "extract-document-terms");
+    }
 }
 
 /// <summary>

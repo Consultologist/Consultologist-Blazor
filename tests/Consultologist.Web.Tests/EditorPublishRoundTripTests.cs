@@ -596,7 +596,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains("requires specVersion 8", page.Markup, StringComparison.Ordinal);
         // #430: the hint names the one rung on offer — 12 since #623.
-        Assert.Contains("Upgrade to specVersion 17", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Upgrade to specVersion 18", page.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -618,7 +618,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         var root = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement;
 
         // #430: the one offered rung was 9; #500 made it 10; #566, 11; #623, 12.
-        Assert.Equal(17, root.GetProperty("specVersion").GetInt32());
+        Assert.Equal(18, root.GetProperty("specVersion").GetInt32());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
 
@@ -634,7 +634,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V9Structured());
 
         var page = Render<Templates>();
-        UpgradeTo(page, 17);
+        UpgradeTo(page, 18);
 
         Assert.DoesNotContain("Upgrade to specVersion", page.Markup, StringComparison.Ordinal);
     }
@@ -649,7 +649,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
 
         var page = Render<Templates>();
 
-        Assert.Contains("Upgrade to specVersion 17", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Upgrade to specVersion 18", page.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Upgrade to specVersion 11", page.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Upgrade to specVersion 10", page.Markup, StringComparison.Ordinal);
     }
@@ -666,13 +666,13 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         // two ceilings meet and #429's second button retires — one button,
         // naming twelve, whatever version is loaded.
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
-        Assert.Equal(new[] { "Upgrade to specVersion 17" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 18" }, UpgradeButtons(Render<Templates>()));
 
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V9Structured());
-        Assert.Equal(new[] { "Upgrade to specVersion 17" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 18" }, UpgradeButtons(Render<Templates>()));
 
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V11());
-        Assert.Equal(new[] { "Upgrade to specVersion 17" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 18" }, UpgradeButtons(Render<Templates>()));
     }
 
     [Fact]
@@ -683,7 +683,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         // every upgrade button (the CanUpgradeTo clause).
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V10Nested());
         var page = Render<Templates>();
-        UpgradeTo(page, 17);
+        UpgradeTo(page, 18);
 
         Assert.DoesNotContain("not yet runnable", page.Markup, StringComparison.Ordinal);
         Assert.Empty(UpgradeButtons(page));
@@ -702,7 +702,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
                 new ClientWorkflow.WorkflowPackagePublishResponse("acct-1234567890ab", "v2026.09.1", "acct-1234567890ab@v2026.09.1"),
                 Array.Empty<string>()));
         var page = Render<Templates>();
-        UpgradeTo(page, 17);
+        UpgradeTo(page, 18);
         page.FindAll("fluent-button").First(button => button.TextContent.Contains("Publish")).Click();
 
         var success = page.FindAll(".fluent-messagebar-message").Select(bar => bar.TextContent.Trim())
@@ -711,11 +711,11 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
     }
 
     [Theory]
-    [InlineData(7, 17)]
-    [InlineData(8, 17)]
-    [InlineData(9, 17)]
-    [InlineData(10, 17)]
-    [InlineData(11, 17)]
+    [InlineData(7, 18)]
+    [InlineData(8, 18)]
+    [InlineData(9, 18)]
+    [InlineData(10, 18)]
+    [InlineData(11, 18)]
     public async Task AnUpgradeAlone_ChangesOnlyTheSpecVersion(int from, int to)
     {
         // The proving migration, in the editor: package-format-v8.md's own
@@ -823,7 +823,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
 
         // #430: the one offered rung was 9 (and the migration adds tags);
         // #500 made it 10; #566, 11; #623, 12.
-        Assert.Equal(17, root.GetProperty("specVersion").GetInt32());
+        Assert.Equal(18, root.GetProperty("specVersion").GetInt32());
         Assert.Equal(0, root.GetProperty("tags").GetArrayLength());
         Assert.Equal("consult_draft", root.GetProperty("inputs")[0].GetProperty("id").GetString());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));

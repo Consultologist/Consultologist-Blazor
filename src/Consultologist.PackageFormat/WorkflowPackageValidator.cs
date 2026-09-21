@@ -28,7 +28,7 @@ public static class WorkflowPackageValidator
     /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
     /// are checked against the published spec-versions.json there too.
     /// </summary>
-    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 };
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 };
 
     /// <summary>
     /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
@@ -725,6 +725,21 @@ public static class WorkflowPackageValidator
             if (manifest.SpecVersion < 11 && node.Reproducible != null)
             {
                 errors.Add($"Node '{node.Id}' declares reproducible, which requires specVersion 11.");
+            }
+
+            // v18 (#822): a node's own when arrives at 18 — refused by name
+            // below it, the posture every gated member has had since v8. A
+            // classifier may not carry one; it always runs to make its
+            // decision (the closure keeps it even when it reaches no result).
+            // The condition grammar itself is validated with the classifiers
+            // in hand — see ValidateNodeCondition.
+            if (manifest.SpecVersion < 18 && node.When != null)
+            {
+                errors.Add($"Node '{node.Id}' declares when, which requires specVersion 18.");
+            }
+            else if (manifest.SpecVersion >= 18 && node.When != null && WorkflowNodeKinds.IsClassifier(node))
+            {
+                errors.Add($"Node '{node.Id}' declares when but is a classifier; a classifier always runs to make its decision.");
             }
 
             // v12 (§ 13): the check node and its members arrive at 12 — below
@@ -1489,6 +1504,14 @@ public static class WorkflowPackageValidator
             ValidateResultCheck(manifest, result, checks, namedChecks, errors);
         }
 
+        // v18 (#822): a node's own when speaks the same grammar; validate it
+        // with the classifiers in hand (the field-presence gate and the
+        // classifier rejection already spoke in the node loop).
+        foreach (var node in nodesById.Values)
+        {
+            ValidateNodeCondition(manifest, node, declaredInputs, classifiers, errors);
+        }
+
         foreach (var orphan in checks.Keys.Where(id => !namedChecks.Contains(id)).Order(StringComparer.Ordinal))
         {
             errors.Add($"Check '{orphan}' is not named by any result; a check gates a deliverable, or it is dead weight.");
@@ -1608,6 +1631,45 @@ public static class WorkflowPackageValidator
                     ValidateV9Condition($"Result '{result.Id}' condition", condition, input, errors);
                 }
             }
+
+            if (errors.Count > before)
+            {
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// v18 (#822): a node's own when speaks exactly the result-level grammar —
+    /// same parser, same clause validator, a node-shaped prefix. One error per
+    /// node, first wrong clause. The below-18 gate and the classifier rejection
+    /// spoke in the node loop, so this validates the grammar at 18 only, for a
+    /// non-classifier node.
+    /// </summary>
+    private static void ValidateNodeCondition(
+        WorkflowPackageManifest manifest,
+        WorkflowNodeSpec node,
+        IReadOnlyDictionary<string, WorkflowInputSpec> declaredInputs,
+        IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
+        List<string> errors)
+    {
+        if (node.When is null || manifest.SpecVersion < 18 || WorkflowNodeKinds.IsClassifier(node))
+        {
+            return;
+        }
+
+        var prefix = $"Node '{node.Id}' condition";
+
+        if (!WorkflowResultConditions.TryParseExpression(node.When, out var expression, out var syntaxError))
+        {
+            errors.Add($"{prefix} {syntaxError}");
+            return;
+        }
+
+        foreach (var condition in expression!.Leaves)
+        {
+            var before = errors.Count;
+            ValidateV10Clause(prefix, condition, declaredInputs, classifiers, errors);
 
             if (errors.Count > before)
             {
