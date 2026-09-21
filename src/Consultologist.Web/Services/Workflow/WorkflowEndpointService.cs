@@ -238,6 +238,20 @@ public static class WorkflowOutputContracts
         {
             [Consultologist.PackageFormat.WorkflowNodeDefaults.ConceptListSchemaId] = ConceptListBody,
         };
+
+    /// <summary>
+    /// #827: contracts a model ANSWERS from a value set rather than a
+    /// prompt/template PRODUCES — so a template (which renders, it does not
+    /// answer) may not declare them. Mirrors the engine's template refusal
+    /// (WorkflowPackageValidator.CheckTemplateNode → DeclaresClassification):
+    /// these are filtered out of a template node's output options. None is
+    /// declarable today, so the filter is a no-op until the catalog grows.
+    /// </summary>
+    public static readonly IReadOnlySet<string> AnswerOnly =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            Consultologist.PackageFormat.WorkflowNodeDefaults.ClassificationSchemaId,
+        };
 }
 
 /// <summary>One declared deliverable — blocks and result tabs group by these.</summary>

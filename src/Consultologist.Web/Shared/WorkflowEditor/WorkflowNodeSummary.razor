@@ -184,17 +184,17 @@
                                 value="@(node.OutputSchema ?? string.Empty)"
                                 @onchange="args => EmitNodeChangeAsync(node, outputSchema: args.Value?.ToString())"
                                 aria-label="Node output contract">
-                            @* #825: a template renders its output, so the empty
-                               (no-contract) option reads "— rendered —", not the
-                               model-produced "prose (text)". *@
-                            <option value="">@(node.IsTemplate ? "— rendered —" : "prose (text)")</option>
+                            @* #825/#827: the empty (no-contract) row and the offered
+                               contracts are kind-filtered — "— rendered —" for a template
+                               (no model), answer-only contracts excluded from it. *@
+                            @foreach (var (value, label) in NodeOutputOptions(node.IsTemplate, ContractOptions))
+                            {
+                                <option value="@value">@label</option>
+                            }
                             @if (node.OutputSchema != null && !ContractOptions.Contains(node.OutputSchema))
                             {
+                                @* A carried/invalid current value stays visible so it is changeable. *@
                                 <option value="@node.OutputSchema">@node.OutputSchema</option>
-                            }
-                            @foreach (var contract in ContractOptions)
-                            {
-                                <option value="@contract">@contract</option>
                             }
                         </select>
                     </label>
@@ -451,6 +451,32 @@
         collections.Select(collectionId => $"data:{collectionId}")
             .Concat(arrayInputs.Select(inputId => $"{WorkflowInputFans.Prefix}{inputId}"))
             .ToList();
+
+    /// <summary>
+    /// #827: the output-contract options for a node kind — the empty
+    /// (no-contract) row plus the offered contracts, filtered per kind. A
+    /// template renders its output (no model), so the empty row reads
+    /// "— rendered —" and answer-only contracts (a model answers them from a
+    /// value set) are excluded; a prompt reads "prose (text)" and is offered
+    /// every contract. The engine's template refusal is the authority
+    /// (WorkflowPackageValidator.DeclaresClassification); this mirrors it.
+    /// </summary>
+    internal static IReadOnlyList<(string Value, string Label)> NodeOutputOptions(bool isTemplate, IReadOnlyList<string> contracts)
+    {
+        var options = new List<(string Value, string Label)> { (string.Empty, isTemplate ? "— rendered —" : "prose (text)") };
+
+        foreach (var id in contracts)
+        {
+            if (isTemplate && WorkflowOutputContracts.AnswerOnly.Contains(id))
+            {
+                continue;
+            }
+
+            options.Add((id, id));
+        }
+
+        return options;
+    }
 
     // Each field edit emits the node's complete effective tuple; the host
     // compares it against the manifest original (self-removing edits, like

@@ -1565,13 +1565,11 @@
                                 <label class="input-field">
                                     <span>output</span>
                                     <select class="binding-row__select" @bind="newNodeOutput">
-                                        @* #825: a template renders its output, so the empty
-                                           (no-contract) option reads "— rendered —", not the
-                                           model-produced "prose (text)". *@
-                                        <option value="">@(newNodeKind == TemplateKind ? "— rendered —" : "prose (text)")</option>
-                                        @foreach (var contract in ContractOptions)
+                                        @* #825/#827: kind-filtered options — "— rendered —" for a
+                                           template (no model), answer-only contracts excluded from it. *@
+                                        @foreach (var (value, label) in WorkflowNodeSummary.NodeOutputOptions(newNodeKind == TemplateKind, ContractOptions))
                                         {
-                                            <option value="@contract">@contract</option>
+                                            <option value="@value">@label</option>
                                         }
                                     </select>
                                 </label>
