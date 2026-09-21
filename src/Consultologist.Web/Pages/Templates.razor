@@ -662,6 +662,7 @@
                                             TextChanged="@(value => OnTextChangedAsync(scalar.Path, value))">
                             <HeaderActions>
                                 @{ var holders = NodesBinding(scalar.Id); }
+                                @PaneDiscardButton(scalar.Path, ScalarCanDiscard(scalar), () => RevertFileEdits(scalar.Path))
                                 <FluentButton Appearance="Appearance.Outline"
                                               Disabled="@(holders.Count > 0)"
                                               @onclick="() => RemoveScalarAsync(scalar.Id)">
@@ -717,6 +718,7 @@
                                     title when there is one and the ref <code>@content.Ref</code> when there is not.
                                 </p>
                             </div>
+                            @PaneDiscardButton(PackageKey, PackageCanDiscard, RevertPackageEdits)
                         </div>
                         <label class="package-field">
                             <span>Title</span>
@@ -826,6 +828,7 @@
                                     chooses a contract in its output field.
                                 </p>
                             </div>
+                            @PaneDiscardButton(SchemasKey, SchemasCanDiscard, RevertSchemasEdits)
                         </div>
                         @* #759: add a declarable catalog contract — the editor writes the id, the
                            canonical body, and the schemas map entry; a node can then read it. *@
@@ -893,6 +896,7 @@
                                     An object declares its fields here; an array says what its entries are.
                                 </p>
                             </div>
+                            @PaneDiscardButton(InputsKey, InputsCanDiscard, RevertInputsEdits)
                         </div>
 
                         <ul class="declared-list">
@@ -1088,6 +1092,7 @@
                                     node, and its id becomes the delivered file's name.
                                 </p>
                             </div>
+                            @PaneDiscardButton(ResultsKey, DocumentsCanDiscard, RevertDocumentsEdits)
                         </div>
 
                         @if (EffectiveResults.Count == 0)
@@ -1560,6 +1565,7 @@
                                 <h3 class="panel-title">@selectedNode.Label</h3>
                                 <p class="muted-text">One workflow node — the same card as the Graph pane's Node details.</p>
                             </div>
+                            @PaneDiscardButton(NodeKeyFor(selectedNode.Id), NodeCanDiscard(selectedNode), () => RevertNodeEdits(selectedNode.Id, selectedNode.Prompt))
                         </div>
                         <WorkflowNodeSummary Inputs="@DeclaredInputIds"
                                              Nodes="@EffectiveNodes"
@@ -1591,6 +1597,7 @@
                                             Modified="@edits.ContainsKey(standard.File)"
                                             TextChanged="@(value => OnTextChangedAsync(standard.File, value))">
                             <HeaderActions>
+                                @PaneDiscardButton(standard.File, edits.ContainsKey(standard.File), () => RevertFileEdits(standard.File))
                                 <FluentButton Appearance="Appearance.Outline" @onclick="() => RemoveItemAsync(standard.File)">
                                     Remove
                                 </FluentButton>
@@ -1610,6 +1617,7 @@
                                             Text="@GetText(prompt.File)"
                                             Modified="@(edits.ContainsKey(prompt.File) || AddedNodeForPromptFile(prompt.File) != null || AddedPromptForFile(prompt.File) != null)"
                                             TextChanged="@(value => OnTextChangedAsync(prompt.File, value))">
+                            @PaneDiscardButton(prompt.File, PromptCanDiscard(prompt), () => RevertPromptEdits(prompt.File, prompt.Id))
                             @* #731: the raw toggle — sent verbatim, no Scriban. Offered once
                                the prompt has no variables (a raw prompt interpolates nothing;
                                the server refuses a raw prompt that declares any). *@
@@ -1728,6 +1736,7 @@
                                             Text="@GetText(prelude.File)"
                                             Modified="@(edits.ContainsKey(prelude.File) || AddedPreludeForFile(prelude.File) != null)"
                                             TextChanged="@(value => OnTextChangedAsync(prelude.File, value))">
+                            @PaneDiscardButton(prelude.File, PreludeCanDiscard(prelude), () => RevertFileEdits(prelude.File))
                             <p class="muted-text">
                                 Prepended to any prompt that selects this prelude (on the prompt's pane), with one
                                 blank line. Free-form text; not rendered through the template engine.
@@ -1742,6 +1751,7 @@
                                             Text="@GetText(macro.File)"
                                             Modified="@(edits.ContainsKey(macro.File) || AddedMacroForFile(macro.File) != null)"
                                             TextChanged="@(value => OnTextChangedAsync(macro.File, value))">
+                            @PaneDiscardButton(macro.File, MacroCanDiscard(macro), () => RevertMacroEdits(macro.File, macro.Id))
                             @if (EffectiveSpecVersion >= 12)
                             {
                                 var effectiveMacro = EffectiveMacros.First(m => m.Id == macro.Id);
@@ -6942,6 +6952,9 @@
     // a time, and both reset when their action completes.
     private bool discardArmed;
     private bool revertArmed;
+    // #812: the pane whose per-pane "Discard changes in this pane" is armed —
+    // one pane at a time, and it disarms when a pane is left or anything changes.
+    private string? paneDiscardArmedKey;
 
     // Advisory, and only readable at the moment of a successful
     // publish — the version it describes is already immutable (#310).
@@ -7041,6 +7054,8 @@
     private void Select(string key)
     {
         selectedKey = key;
+        // #812: leaving a pane disarms its pending per-pane discard.
+        paneDiscardArmedKey = null;
 
         if (key == GraphKey && diagramText == null)
         {
@@ -7970,6 +7985,9 @@
     {
         publishSuccess = null;
         publishWarnings.Clear();
+        // #812: any change (an edit, or a scoped discard) disarms a pending
+        // per-pane discard — a stale "Confirm" never carries across an edit.
+        paneDiscardArmedKey = null;
 
         if (PendingCount == 0)
         {
@@ -8306,6 +8324,7 @@
         {
             discardArmed = true;
             revertArmed = false;
+            paneDiscardArmedKey = null;
             publishWarnings = new List<string> { "Discarding clears every unpublished change and can't be undone. Click Confirm discard to proceed." };
             return;
         }
@@ -8327,6 +8346,138 @@
             kind.Clear();
         }
     }
+
+    // #812: per-pane "Discard changes in this pane" — arm on the first click,
+    // revert on the second (the global Discard's #770 pattern, scoped to one
+    // pane). `revert` removes exactly the pending entries that pane owns; the
+    // trailing PendingChangedAsync disarms every pane and re-persists the draft.
+    private async Task ArmOrDiscardPaneAsync(string paneKey, Action revert)
+    {
+        if (paneDiscardArmedKey != paneKey)
+        {
+            paneDiscardArmedKey = paneKey;
+            discardArmed = false;
+            revertArmed = false;
+            return;
+        }
+
+        revert();
+        await PendingChangedAsync();
+    }
+
+    // The per-pane reverts: each removes only the keys its pane's dirty
+    // indicator tracks, so the "Discard changes in this pane" button and the
+    // nav dot always agree. Edits to EXISTING content only — a pending-added
+    // node/prompt/macro/prelude/scalar is reverted by its own Remove affordance,
+    // and specVersionBump has no pane, so a scoped discard never touches it.
+    private void RevertNodeEdits(string nodeId, string? promptId)
+    {
+        nodeEdits.Remove(nodeId);
+        aggregateEdits.Remove(nodeId);
+        foreach (var key in bindingEdits.Keys.Where(k => k.StartsWith(nodeId + "\n", StringComparison.Ordinal)).ToList())
+        {
+            bindingEdits.Remove(key);
+        }
+
+        // NodeHasPending counts the node's prompt-variable edits as making it
+        // dirty, so a node discard clears them too — whichever pane clears them,
+        // the shared state is gone.
+        if (promptId != null)
+        {
+            variableAdds.Remove(promptId);
+            variableRemovals.Remove(promptId);
+        }
+    }
+
+    private void RevertPromptEdits(string file, string promptId)
+    {
+        edits.Remove(file);
+        variableAdds.Remove(promptId);
+        variableRemovals.Remove(promptId);
+        promptRawEdits.Remove(promptId);
+        promptPreludeEdits.Remove(promptId);
+    }
+
+    private void RevertMacroEdits(string file, string macroId)
+    {
+        edits.Remove(file);
+        macroEdits.Remove(macroId);
+    }
+
+    private void RevertDocumentsEdits()
+    {
+        resultsEdit = null;
+        resultEdit = null;
+        conditionDrafts.Clear();
+    }
+
+    private void RevertSchemasEdits()
+    {
+        addedSchemas.Clear();
+        removedSchemaIds.Clear();
+    }
+
+    // Prelude, published scalar and published data-item panes each edit one file.
+    private void RevertFileEdits(string file) => edits.Remove(file);
+
+    private void RevertPackageEdits()
+    {
+        titleEdit = null;
+        descriptionEdit = null;
+        tagsEdit = null;
+    }
+
+    private void RevertInputsEdits() => inputsEdit = null;
+
+    // #812: whether each pane has EXISTING-content edits to discard. A pending-
+    // added node/prompt/macro/prelude/scalar is reverted by its own Remove
+    // affordance, so it is excluded here — discard reverts edits, it does not
+    // duplicate removal.
+    private bool NodeCanDiscard(WorkflowManifestReader.NodeView node) =>
+        !addedNodes.Any(a => a.Id == node.Id) && NodeHasPending(node);
+
+    private bool PromptCanDiscard(WorkflowManifestReader.PromptView prompt) =>
+        AddedPromptForFile(prompt.File) == null
+        && AddedNodeForPromptFile(prompt.File) == null
+        && (edits.ContainsKey(prompt.File)
+            || HasVariableEdits(prompt.Id)
+            || promptRawEdits.ContainsKey(prompt.Id)
+            || promptPreludeEdits.ContainsKey(prompt.Id));
+
+    private bool MacroCanDiscard(WorkflowManifestReader.MacroView macro) =>
+        AddedMacroForFile(macro.File) == null
+        && (edits.ContainsKey(macro.File) || macroEdits.ContainsKey(macro.Id));
+
+    private bool PreludeCanDiscard(WorkflowManifestReader.PreludeView prelude) =>
+        AddedPreludeForFile(prelude.File) == null && edits.ContainsKey(prelude.File);
+
+    private bool ScalarCanDiscard(WorkflowManifestReader.ScalarView scalar) =>
+        !addedScalars.ContainsKey(scalar.Id) && edits.ContainsKey(scalar.Path);
+
+    private bool PackageCanDiscard => titleEdit != null || descriptionEdit != null || tagsEdit != null;
+    private bool InputsCanDiscard => inputsEdit != null;
+    private bool DocumentsCanDiscard => resultsEdit != null || resultEdit != null || conditionDrafts.Count > 0;
+    private bool SchemasCanDiscard => addedSchemas.Count > 0 || removedSchemaIds.Count > 0;
+
+    // The button label; the pane's own key is armed at most.
+    private string PaneDiscardLabel(string paneKey) =>
+        paneDiscardArmedKey == paneKey ? "Confirm discard" : "Discard changes in this pane";
+
+    // #812: the one per-pane discard button, rendered in each pane's header.
+    // Shown only when the pane has edits to discard; arm→confirm via
+    // ArmOrDiscardPaneAsync; disabled while a publish is in flight.
+    private RenderFragment PaneDiscardButton(string paneKey, bool show, Action revert) =>
+        @<text>
+            @if (show)
+            {
+                <FluentButton Appearance="Appearance.Outline"
+                              Class="pane-discard-button"
+                              Disabled="@isPublishing"
+                              @onclick="@(() => ArmOrDiscardPaneAsync(paneKey, revert))">
+                    @PaneDiscardLabel(paneKey)
+                </FluentButton>
+            }
+        </text>;
 
     /// <summary>
     /// The half-typed contents of the "new item", "new folder", "new value",
