@@ -22,6 +22,7 @@ public class TemplatesNodeOutputLabelTests : ClientRenderTestContext
           "tags": [],
           "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
           "inputs": [ { "id": "consult_draft", "label": "Consult draft", "required": true } ],
+          "schemas": { "concept-list": "schemas/concept-list.json", "classification": "schemas/classification.json" },
           "data": { "standards": "data/standards/" },
           "prompts": [
             { "id": "draft-section", "file": "prompts/draft-section.md", "variables": ["consult_draft"] },
@@ -43,7 +44,9 @@ public class TemplatesNodeOutputLabelTests : ClientRenderTestContext
         WorkflowService.GetCurrentPackageContentAsync().Returns(
             EditorFixtures.Package(Manifest, 18,
                 ("prompts/draft-section.md", "{{ consult_draft }}"),
-                ("prompts/render-letter.md", "Dear colleague — {{ consult_draft }}")));
+                ("prompts/render-letter.md", "Dear colleague — {{ consult_draft }}"),
+                ("schemas/concept-list.json", "{}"),
+                ("schemas/classification.json", "{}")));
         return Render<Templates>();
     }
 
@@ -58,6 +61,12 @@ public class TemplatesNodeOutputLabelTests : ClientRenderTestContext
             .QuerySelectorAll("option")
             .First(option => option.GetAttribute("value") == string.Empty)
             .TextContent.Trim();
+
+    private static IReadOnlyList<string> OutputOptionValues(IRenderedComponent<Templates> page) =>
+        page.Find("select[aria-label='Node output contract']")
+            .QuerySelectorAll("option")
+            .Select(option => option.GetAttribute("value") ?? string.Empty)
+            .ToList();
 
     // ----- node card -------------------------------------------------------
 
@@ -79,6 +88,33 @@ public class TemplatesNodeOutputLabelTests : ClientRenderTestContext
 
         Assert.Equal("prose (text)", EmptyOutputOptionText(page));
         Assert.DoesNotContain("— rendered —", page.Markup);
+    }
+
+    // ----- per-kind option filtering (#827) --------------------------------
+
+    [Fact]
+    public void ATemplateNodesCard_ExcludesAnswerOnlyContracts()
+    {
+        // The package declares both concept-list and (contrived) classification.
+        // A template renders, it does not answer, so the classification contract
+        // is filtered out of its options; concept-list stays.
+        var page = RenderEditor();
+        Show(page, "node:render-letter");
+
+        var values = OutputOptionValues(page);
+        Assert.Contains("concept-list", values);
+        Assert.DoesNotContain("classification", values);
+    }
+
+    [Fact]
+    public void APromptNodesCard_OffersEveryContract()
+    {
+        var page = RenderEditor();
+        Show(page, "node:draft-section");
+
+        var values = OutputOptionValues(page);
+        Assert.Contains("concept-list", values);
+        Assert.Contains("classification", values);
     }
 
     // ----- add-node form ---------------------------------------------------
