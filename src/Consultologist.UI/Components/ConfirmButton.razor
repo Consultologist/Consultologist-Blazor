@@ -1,0 +1,93 @@
+@* #820: the app's arm→confirm affordance (the #195/#770 pattern) as one
+   controlled, presentational button. First click arms, second acts, and a
+   back-out sits beside the armed button. The parent owns the armed state and
+   does the arm-vs-act branching in OnClick, so every page keeps its existing
+   handler; this component only renders and raises callbacks. Fluent by
+   default; Native renders a plain <button> (History's row-click cancel). *@
+@namespace Consultologist.UI.Components
+
+@if (Native)
+{
+    <button type="button"
+            class="@MainClass"
+            disabled="@(Disabled || Busy)"
+            @onclick:stopPropagation="StopPropagation"
+            @onclick="HandleClick">
+        @MainLabel
+    </button>
+    @if (Armed && !Busy)
+    {
+        <button type="button"
+                class="@BackOutClass"
+                @onclick:stopPropagation="StopPropagation"
+                @onclick="HandleBackOut">
+            @BackOutLabel
+        </button>
+    }
+}
+else
+{
+    <FluentButton Appearance="@MainAppearance"
+                  Class="@MainClass"
+                  Disabled="@(Disabled || Busy)"
+                  @onclick="HandleClick">
+        @MainLabel
+    </FluentButton>
+    @if (Armed && !Busy)
+    {
+        <FluentButton Appearance="@BackOutAppearance"
+                      Class="@BackOutClass"
+                      @onclick="HandleBackOut">
+            @BackOutLabel
+        </FluentButton>
+    }
+}
+
+@code {
+    /// <summary>Whether the action is armed — the parent computes this (a bool
+    /// flag, or <c>key == thisRowsKey</c> for a button inside a loop).</summary>
+    [Parameter, EditorRequired] public bool Armed { get; set; }
+
+    [Parameter, EditorRequired] public string RestingLabel { get; set; } = "";
+    [Parameter, EditorRequired] public string ArmedLabel { get; set; } = "";
+    [Parameter] public string BackOutLabel { get; set; } = "Cancel";
+
+    /// <summary>The arm-or-confirm click. The parent's handler decides which,
+    /// exactly as it did before this component existed.</summary>
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    /// <summary>Back out of the armed state without acting. Shown only while
+    /// armed; the parent clears its own flag and any paired warning here.</summary>
+    [Parameter] public EventCallback OnBackOut { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    [Parameter] public Appearance MainAppearance { get; set; } = Appearance.Neutral;
+    [Parameter] public Appearance BackOutAppearance { get; set; } = Appearance.Stealth;
+
+    /// <summary>CSS class on the main / back-out button — carries each site's
+    /// existing selector so styling and tests are unchanged.</summary>
+    [Parameter] public string? MainClass { get; set; }
+    [Parameter] public string? BackOutClass { get; set; }
+
+    /// <summary>Render a plain &lt;button&gt; instead of a FluentButton — for a
+    /// row whose styling is native CSS and whose click must not bubble.</summary>
+    [Parameter] public bool Native { get; set; }
+
+    /// <summary>Stop the click bubbling (a Native button inside a clickable
+    /// row). Ignored on the Fluent path.</summary>
+    [Parameter] public bool StopPropagation { get; set; }
+
+    /// <summary>An action is in flight: shows <see cref="BusyLabel"/>, disables
+    /// the button, and hides the back-out.</summary>
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public string? BusyLabel { get; set; }
+
+    private string MainLabel =>
+        Busy && BusyLabel is not null ? BusyLabel
+        : Armed ? ArmedLabel
+        : RestingLabel;
+
+    private Task HandleClick() => OnClick.InvokeAsync();
+    private Task HandleBackOut() => OnBackOut.InvokeAsync();
+}
