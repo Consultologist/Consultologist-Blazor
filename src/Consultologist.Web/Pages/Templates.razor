@@ -192,6 +192,15 @@
                                   @onclick="RevertToDefaultAsync">
                         @(revertArmed ? "Confirm revert" : "Revert to default")
                     </FluentButton>
+                    @* #817: back out of an armed Discard/Revert without acting. *@
+                    @if (discardArmed || revertArmed)
+                    {
+                        <FluentButton Appearance="Appearance.Stealth"
+                                      Class="cancel-armed-button"
+                                      @onclick="CancelToolbarArm">
+                            Cancel
+                        </FluentButton>
+                    }
                     @* #808: download the package being edited as a zip of the real
                        directory tree (current edits applied), interchangeable with the
                        GitOps repo and local editing. No gate — an unedited package downloads too. *@
@@ -8507,6 +8516,15 @@
         }
     }
 
+    // #817: disarm the toolbar Discard/Revert without acting, clearing the arm
+    // warning. (Per-pane discard disarms inline via paneDiscardArmedKey = null.)
+    private void CancelToolbarArm()
+    {
+        discardArmed = false;
+        revertArmed = false;
+        publishWarnings.Clear();
+    }
+
     // #812: per-pane "Discard changes in this pane" — arm on the first click,
     // revert on the second (the global Discard's #770 pattern, scoped to one
     // pane). `revert` removes exactly the pending entries that pane owns; the
@@ -8636,6 +8654,15 @@
                               @onclick="@(() => ArmOrDiscardPaneAsync(paneKey, revert))">
                     @PaneDiscardLabel(paneKey)
                 </FluentButton>
+                @* #817: back out of the armed per-pane discard. *@
+                @if (paneDiscardArmedKey == paneKey)
+                {
+                    <FluentButton Appearance="Appearance.Stealth"
+                                  Class="pane-discard-cancel-button"
+                                  @onclick="@(() => paneDiscardArmedKey = null)">
+                        Cancel
+                    </FluentButton>
+                }
             }
         </text>;
 

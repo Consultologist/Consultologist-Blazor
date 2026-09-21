@@ -67,6 +67,20 @@ public class ProfileDisconnectTests : ClientRenderTestContext
         Assert.Contains("Confirm disconnect", ButtonLabels(page));
     }
 
+    // #817: Cancel beside an armed Disconnect backs out without disconnecting.
+    [Fact]
+    public async Task Cancel_DisarmsWithoutDisconnecting()
+    {
+        WithAccount("Active", linkedIn: true);
+        var page = RenderProfile();
+
+        await page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "Disconnect").ClickAsync(new());
+        await page.Find(".linkedin-disconnect-cancel").ClickAsync(new());
+
+        await AccountService.DidNotReceive().DisconnectLinkedInAsync();
+        Assert.DoesNotContain("Confirm disconnect", ButtonLabels(page));
+    }
+
     [Fact]
     public async Task TheSecondClickDisconnects()
     {

@@ -186,6 +186,15 @@
                                                     @onclick="() => CancelScheduledRunAsync(job.JobId)">
                                                 @(_cancelling == job.JobId ? "cancelling…" : (_cancelArmedId == job.JobId ? "confirm cancel" : "cancel"))
                                             </button>
+                                            @* #817: back out of the armed cancel — "keep" (not "cancel", which is the action here). *@
+                                            @if (_cancelArmedId == job.JobId && _cancelling != job.JobId)
+                                            {
+                                                <button type="button" class="cancel-run-keep-button"
+                                                        @onclick:stopPropagation="true"
+                                                        @onclick="() => _cancelArmedId = null">
+                                                    keep
+                                                </button>
+                                            }
                                         }
                                     </div>
                                     <div class="job-history-item__id">

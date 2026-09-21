@@ -105,6 +105,15 @@
                                           @onclick="DisconnectLinkedInAsync">
                                 @(disconnectArmed ? "Confirm disconnect" : "Disconnect")
                             </FluentButton>
+                            @* #817: back out of the armed disconnect without acting. *@
+                            @if (disconnectArmed)
+                            {
+                                <FluentButton Appearance="Appearance.Stealth"
+                                              Class="linkedin-disconnect-cancel"
+                                              @onclick="@(() => { disconnectArmed = false; linkedInMessage = null; })">
+                                    Cancel
+                                </FluentButton>
+                            }
                         }
                     </div>
                 </div>
@@ -145,6 +154,14 @@
                                           @onclick="DisconnectEpicAsync">
                                 @(epicDisconnectArmed ? "Confirm disconnect" : "Disconnect")
                             </FluentButton>
+                            @if (epicDisconnectArmed)
+                            {
+                                <FluentButton Appearance="Appearance.Stealth"
+                                              Class="epic-disconnect-cancel"
+                                              @onclick="@(() => { epicDisconnectArmed = false; epicMessage = null; })">
+                                    Cancel
+                                </FluentButton>
+                            }
                         </div>
                     }
                     else
@@ -191,6 +208,14 @@
                                           @onclick="DisconnectCernerAsync">
                                 @(cernerDisconnectArmed ? "Confirm disconnect" : "Disconnect")
                             </FluentButton>
+                            @if (cernerDisconnectArmed)
+                            {
+                                <FluentButton Appearance="Appearance.Stealth"
+                                              Class="cerner-disconnect-cancel"
+                                              @onclick="@(() => { cernerDisconnectArmed = false; cernerMessage = null; })">
+                                    Cancel
+                                </FluentButton>
+                            }
                         </div>
                     }
                     else
@@ -688,6 +713,14 @@
                                               @onclick="() => RemoveSnippetAsync(snippet.Id)">
                                     @(snippetRemoveArmedId == snippet.Id ? "Confirm remove" : "Remove")
                                 </FluentButton>
+                                @if (snippetRemoveArmedId == snippet.Id)
+                                {
+                                    <FluentButton Appearance="Appearance.Stealth"
+                                                  Class="snippet-remove-cancel"
+                                                  @onclick="@(() => { snippetRemoveArmedId = null; snippetMessage = null; })">
+                                        Cancel
+                                    </FluentButton>
+                                }
                             </div>
                         </div>
                     }
@@ -786,6 +819,14 @@
                                               @onclick="() => RemoveSignatureAsync(block.Id)">
                                     @(signatureRemoveArmedId == block.Id ? "Confirm remove" : "Remove")
                                 </FluentButton>
+                                @if (signatureRemoveArmedId == block.Id)
+                                {
+                                    <FluentButton Appearance="Appearance.Stealth"
+                                                  Class="signature-remove-cancel"
+                                                  @onclick="@(() => { signatureRemoveArmedId = null; signatureMessage = null; })">
+                                        Cancel
+                                    </FluentButton>
+                                }
                             </div>
                         </div>
                     }
