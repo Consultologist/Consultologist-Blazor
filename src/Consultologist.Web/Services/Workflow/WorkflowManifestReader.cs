@@ -34,7 +34,10 @@ public static class WorkflowManifestReader
         bool Reproducible = false,
         // v12 § 13 (#621): the check node's members — carried whole so no
         // editor pass can erase them; surfaced by rung (e)'s node card.
-        string? Op = null, string? Of = null, string? In = null, string? FailWith = null)
+        string? Op = null, string? Of = null, string? In = null, string? FailWith = null,
+        // v18 (#822): the node's own condition gate. Null on every node
+        // before 18 and on any node without one.
+        string? When = null)
     {
         public bool IsClassifier => Kind == Consultologist.PackageFormat.WorkflowNodeKinds.Classifier;
 
@@ -227,7 +230,8 @@ public static class WorkflowManifestReader
                 ReadString(node, "op"),
                 ReadString(node, "of"),
                 ReadString(node, "in"),
-                ReadString(node, "failWith")));
+                ReadString(node, "failWith"),
+                ReadString(node, "when")));
         }
 
         return nodes;

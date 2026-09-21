@@ -1346,7 +1346,7 @@
                                              AllowPromptChange="@(EffectiveSpecVersion >= 6)"
                                              OfferReproducible="@(EffectiveSpecVersion >= 11)"
                                              CheckOperandOptions="@CheckOperandChoices"
-                                             NodeModified="@(id => nodeEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id))"
+                                             NodeModified="@(id => nodeEdits.ContainsKey(id) || nodeWhenEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id))"
                                              RemovedNodes="@RemovedNodes"
                                              RowsFor="@RowsFor"
                                              ValidateVariableName="@ValidateVariableNameForNode"
@@ -1602,7 +1602,7 @@
                                              AllowPromptChange="@(EffectiveSpecVersion >= 6)"
                                              OfferReproducible="@(EffectiveSpecVersion >= 11)"
                                              CheckOperandOptions="@CheckOperandChoices"
-                                             NodeModified="@(id => nodeEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id))"
+                                             NodeModified="@(id => nodeEdits.ContainsKey(id) || nodeWhenEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id))"
                                              RowsFor="@RowsFor"
                                              ValidateVariableName="@ValidateVariableNameForNode"
                                              OnBindingChanged="OnBindingChangedAsync"
@@ -1610,6 +1610,16 @@
                                              OnNodeChanged="OnNodeChangedAsync"
                                              OnAggregateChanged="OnAggregateChangedAsync"
                                              OnNodeRemoved="RemoveNodeAsync" />
+                        @* #822 (v18): the node's own condition gate. A classifier
+                           always runs to make its decision, so it carries none. *@
+                        @if (EffectiveSpecVersion >= 18 && !selectedNode.IsClassifier)
+                        {
+                            <div class="node-when-editor">
+                                <h4 class="panel-subtitle">Runs when</h4>
+                                <p class="muted-text">Leave empty to always run. When the condition does not hold, this node — and every deliverable that needs it — is skipped.</p>
+                                @ConditionEditor(NodeConditionTarget(selectedNode))
+                            </div>
+                        }
                     }
                     else if (SelectedStandard() is { } standard)
                     {
@@ -2547,6 +2557,10 @@
                 () => $"{bindingEdits.Count} rebound", () => bindingEdits.Count > 0),
             new("nodeEdits", () => nodeEdits.Count, nodeEdits.Clear,
                 () => $"{nodeEdits.Count} {Plural(nodeEdits.Count, "node")}", () => nodeEdits.Count > 0),
+            // v18 (#822): a node's own when condition — its own dict, so it
+            // never touches nodeEdits' NodeChange.
+            new("nodeWhenEdits", () => nodeWhenEdits.Count, nodeWhenEdits.Clear,
+                () => $"{nodeWhenEdits.Count} node {Plural(nodeWhenEdits.Count, "condition")}", () => nodeWhenEdits.Count > 0),
             // v10 (#498): a condition with a clause not yet chosen — held, never
             // written, and named until it is.
             new("conditionDrafts", () => conditionDrafts.Count, conditionDrafts.Clear,
@@ -3843,6 +3857,79 @@
                 }
 
                 if (V9ConditionComplaint($"Result '{conditioned.Id}' condition", clause, tested) is { } complaint)
+                {
+                    errors.Add(complaint);
+                }
+            }
+        }
+
+        // v18 (#822): the node's own when — the same grammar mirrored at the
+        // desk, the incomplete-draft guard the builder needs, gated below 18,
+        // and refused on a classifier (the editor hides it there, but a carried
+        // manifest can still declare one).
+        foreach (var node in EffectiveNodes)
+        {
+            var nodePrefix = $"Node '{node.Id}' condition";
+
+            if (conditionDrafts.TryGetValue($"node-when:{node.Id}", out var nodeDraft) && IsUnwritable(nodeDraft))
+            {
+                errors.Add(ConditionBuilderModel.IsComplete(nodeDraft)
+                    ? $"Node '{node.Id}' condition has a clause the format cannot read; finish it or remove it."
+                    : $"Node '{node.Id}' condition has a clause with no operand chosen.");
+                continue;
+            }
+
+            var nodeWhen = NodeWhenValue(node);
+
+            if (string.IsNullOrWhiteSpace(nodeWhen))
+            {
+                continue;
+            }
+
+            if (EffectiveSpecVersion < 18)
+            {
+                errors.Add($"Node '{node.Id}' declares when, which requires specVersion 18. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.");
+                continue;
+            }
+
+            if (node.IsClassifier)
+            {
+                errors.Add($"Node '{node.Id}' declares when but is a classifier; a classifier always runs to make its decision.");
+                continue;
+            }
+
+            if (!PF.WorkflowResultConditions.TryParseExpression(nodeWhen, out var nodeExpression, out var nodeParseError) || nodeExpression is null)
+            {
+                errors.Add($"{nodePrefix} {nodeParseError}");
+                continue;
+            }
+
+            foreach (var clause in nodeExpression.Leaves)
+            {
+                if (clause.IsNodeValue)
+                {
+                    if (NodeClauseComplaint(nodePrefix, clause) is { Length: > 0 } nodeComplaint)
+                    {
+                        errors.Add(nodeComplaint);
+                    }
+
+                    continue;
+                }
+
+                if (clause.IsArithmetic || clause.PathDepth >= 2)
+                {
+                    continue;
+                }
+
+                var tested = inputs.FirstOrDefault(input => input.Id == clause.InputId);
+
+                if (tested == null)
+                {
+                    errors.Add($"{nodePrefix} reads undeclared input '{clause.InputId}'.");
+                    continue;
+                }
+
+                if (V9ConditionComplaint(nodePrefix, clause, tested) is { } complaint)
                 {
                     errors.Add(complaint);
                 }
@@ -5691,6 +5778,39 @@
         return ConditionBuilderModel.TryFromText(target.When, out var root, out var verbatim) ? (root, null) : (root, verbatim);
     }
 
+    /// <summary>
+    /// v18 (#822): a node's own when. A completed condition rides nodeWhenEdits
+    /// (its own dict, so it never touches nodeEdits' NodeChange), self-removing
+    /// when it equals the loaded node's when; an incomplete tree rides
+    /// conditionDrafts like every other target.
+    /// </summary>
+    private readonly Dictionary<string, string?> nodeWhenEdits = new(StringComparer.Ordinal);
+
+    private ConditionTarget NodeConditionTarget(WorkflowManifestReader.NodeView node) =>
+        new($"node-when:{node.Id}", node.Id, NodeWhenValue(node), text => SetNodeWhen(node.Id, text));
+
+    private string? NodeWhenValue(WorkflowManifestReader.NodeView node) =>
+        nodeWhenEdits.TryGetValue(node.Id, out var edited) ? edited : node.When;
+
+    private void SetNodeWhen(string nodeId, string? text)
+    {
+        // Compare against the loaded manifest's node (not EffectiveNodes, which
+        // already reflects the pending edit) so the edit self-removes when it
+        // returns to what was published.
+        var loaded = content == null
+            ? null
+            : WorkflowManifestReader.ReadNodes(content.Manifest).FirstOrDefault(n => n.Id == nodeId)?.When;
+
+        if (string.IsNullOrWhiteSpace(text) ? string.IsNullOrWhiteSpace(loaded) : text == loaded)
+        {
+            nodeWhenEdits.Remove(nodeId);
+        }
+        else
+        {
+            nodeWhenEdits[nodeId] = text;
+        }
+    }
+
     /// <summary>The document's own condition — key and subject are the result id; writes land on the result's When.</summary>
     private ConditionTarget DocumentConditionTarget(WorkflowManifestReader.ResultView result) =>
         new(result.Id, result.Id, result.When, text =>
@@ -6448,6 +6568,7 @@
 
     private bool NodeHasPending(WorkflowManifestReader.NodeView node) =>
         nodeEdits.ContainsKey(node.Id)
+        || nodeWhenEdits.ContainsKey(node.Id)
         || aggregateEdits.ContainsKey(node.Id)
         || addedNodes.Any(a => a.Id == node.Id)
         || bindingEdits.Keys.Any(key => key.StartsWith(node.Id + "\n", StringComparison.Ordinal))
@@ -7442,6 +7563,10 @@
 
     private sealed record DraftMacroEdit(string Id, bool Optional, bool? Default = null);
 
+    // v18 (#822): a pending node when — its own list, mirroring how the dict is
+    // kept apart from nodeEdits. A null When is a clearing.
+    private sealed record DraftNodeWhen(string NodeId, string? When);
+
     // v15 (#731): a pending raw toggle on a declared prompt.
     private sealed record DraftPromptRawEdit(string Id, bool Raw);
 
@@ -7496,7 +7621,10 @@
         List<string>? RemovedPreludes = null,
         List<DraftPromptPreludeEdit>? PromptPreludeEdits = null,
         // #759: catalog contracts added. Trailing optional — an older draft restores with none.
-        List<string>? AddedSchemas = null);
+        List<string>? AddedSchemas = null,
+        // v18 (#822): pending node-when conditions. Trailing optional — a draft
+        // written before restores with none.
+        List<DraftNodeWhen>? NodeWhenEdits = null);
 
     // #815: the undo/redo stacks persisted beside the draft. Each entry is a
     // serialized DraftPayload (or null for the clean state); Version tracks the
@@ -7597,6 +7725,7 @@
         var draftVariableRemovals = payload.VariableRemovals;
         var draftAddedCollections = payload.AddedCollections;
         var draftNodeEdits = payload.NodeEdits;
+        var draftNodeWhenEdits = payload.NodeWhenEdits;
         var draftAddedNodes = payload.AddedNodes;
         var draftRemovedNodes = payload.RemovedNodes;
         var draftAggregateEdits = payload.AggregateEdits;
@@ -7971,6 +8100,12 @@
                 draftNodeEdit.Of, draftNodeEdit.In, draftNodeEdit.FailWith);
         }
 
+        // v18 (#822): rehydrate pending node whens (its own dict).
+        foreach (var draftNodeWhen in draftNodeWhenEdits ?? new List<DraftNodeWhen>())
+        {
+            nodeWhenEdits[draftNodeWhen.NodeId] = draftNodeWhen.When;
+        }
+
         foreach (var draftBinding in bindings ?? new List<DraftBinding>())
         {
             // Keep rebinds whose node/variable still exists and still differs —
@@ -8075,7 +8210,8 @@
             addedPreludes.Select(prelude => new DraftAddedPrelude(prelude.Id, prelude.Text)).ToList(),
             removedPreludeIds.ToList(),
             promptPreludeEdits.Select(pair => new DraftPromptPreludeEdit(pair.Key, pair.Value)).ToList(),
-            addedSchemas.ToList());
+            addedSchemas.ToList(),
+            nodeWhenEdits.Select(pair => new DraftNodeWhen(pair.Key, pair.Value)).ToList());
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -8552,6 +8688,8 @@
     private void RevertNodeEdits(string nodeId, string? promptId)
     {
         nodeEdits.Remove(nodeId);
+        nodeWhenEdits.Remove(nodeId);
+        conditionDrafts.Remove($"node-when:{nodeId}");
         aggregateEdits.Remove(nodeId);
         foreach (var key in bindingEdits.Keys.Where(k => k.StartsWith(nodeId + "\n", StringComparison.Ordinal)).ToList())
         {
@@ -9596,6 +9734,26 @@
                         nodeObject[memberKey] = memberValue;
                     }
                 }
+            }
+        }
+
+        // v18 (#822): a node's own when — write-or-remove, its own dict so it
+        // is independent of the node-field edits above. A blank clears it.
+        foreach (var pair in nodeWhenEdits)
+        {
+            if (removedNodeIds.Contains(pair.Key) || NodeFor(pair.Key) is not { } nodeObject)
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(pair.Value))
+            {
+                nodeObject.Remove("when");
+                nodeObject.Remove("When");
+            }
+            else
+            {
+                nodeObject[nodeObject.ContainsKey("When") ? "When" : "when"] = pair.Value;
             }
         }
 
