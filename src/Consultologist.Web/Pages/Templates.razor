@@ -167,6 +167,19 @@
                             <FluentButton Appearance="Appearance.Outline" Disabled="@isPublishing" @onclick="() => newPackageOpen = false">Cancel</FluentButton>
                         </span>
                     }
+                    @* #815: step back and forward through committed edits. *@
+                    <FluentButton Appearance="Appearance.Outline"
+                                  Class="undo-button"
+                                  Disabled="@(undoStack.Count == 0 || isPublishing)"
+                                  @onclick="UndoAsync">
+                        Undo
+                    </FluentButton>
+                    <FluentButton Appearance="Appearance.Outline"
+                                  Class="redo-button"
+                                  Disabled="@(redoStack.Count == 0 || isPublishing)"
+                                  @onclick="RedoAsync">
+                        Redo
+                    </FluentButton>
                     @* #770: both wipe unpublished work on one click, so arm them
                        — the first click warns, the second acts (the #195 pattern). *@
                     <FluentButton Appearance="Appearance.Outline"
@@ -7374,6 +7387,8 @@
             publishedScalarIds = scalarEntries.Select(entry => entry.Id).ToList();
             schemaIds = WorkflowManifestReader.ReadSchemaIds(content.Manifest);
             await RestoreDraftAsync();
+            // #815: restore the undo/redo history for this package (or start fresh).
+            await RestoreHistoryAsync();
 
             // Keep the selection when the pane still exists; otherwise open on
             // Graph — the overview, and the right landing for a cold load or a
@@ -7473,6 +7488,15 @@
         // #759: catalog contracts added. Trailing optional — an older draft restores with none.
         List<string>? AddedSchemas = null);
 
+    // #815: the undo/redo stacks persisted beside the draft. Each entry is a
+    // serialized DraftPayload (or null for the clean state); Version tracks the
+    // payload shape (a mismatch discards the history). Undo/Redo are top-of-list.
+    private sealed record DraftHistory(
+        int Version,
+        List<string?> Undo,
+        List<string?> Redo,
+        string? Current);
+
     // #316: Type and Values ride here or a typed input is silently untyped on
     // reload. Trailing optionals — a draft written before v8 restores with null.
     private sealed record DraftInput(
@@ -7522,81 +7546,68 @@
             return;
         }
 
-        Dictionary<string, string>? textEdits = null;
-        List<DraftAdded>? added = null;
-        List<string>? removed = null;
-        List<DraftBinding>? bindings = null;
-        Dictionary<string, List<string>>? draftVariableAdds = null;
-        Dictionary<string, List<string>>? draftVariableRemovals = null;
-        List<string>? draftAddedCollections = null;
-        List<DraftNodeEdit>? draftNodeEdits = null;
-        List<DraftAddedNode>? draftAddedNodes = null;
-        List<string>? draftRemovedNodes = null;
-        Dictionary<string, List<string>>? draftAggregateEdits = null;
-        string? draftResultEdit = null;
-        List<DraftAddedPrompt>? draftAddedPrompts = null;
-        List<DraftAddedMacro>? draftAddedMacros = null;
-        List<string>? draftRemovedMacros = null;
-        List<DraftMacroEdit>? draftMacroEdits = null;
-        List<DraftPromptRawEdit>? draftPromptRawEdits = null;
-        List<string>? draftRemovedSchemas = null;
-        List<DraftAddedPrelude>? draftAddedPreludes = null;
-        List<string>? draftAddedSchemas = null;
-        List<string>? draftRemovedPreludes = null;
-        List<DraftPromptPreludeEdit>? draftPromptPreludeEdits = null;
-        int? draftSpecVersionBump = null;
-        string? draftTitle = null;
-        string? draftDescription = null;
-        List<string>? draftTags = null;
-        List<DraftInput>? draftInputs = null;
-        List<DraftResult>? draftResults = null;
-        Dictionary<string, string>? draftAddedScalars = null;
-
+        DraftPayload? payload;
         try
         {
-            // Versioned draft (#115) first; legacy plain-dictionary drafts fall through.
-            if (stored.Contains("\"Version\"", StringComparison.OrdinalIgnoreCase) || stored.Contains("\"version\"", StringComparison.OrdinalIgnoreCase))
-            {
-                var payload = JsonSerializer.Deserialize<DraftPayload>(stored);
-                textEdits = payload?.Edits;
-                added = payload?.Added;
-                removed = payload?.Removed;
-                bindings = payload?.Bindings;
-                draftVariableAdds = payload?.VariableAdds;
-                draftVariableRemovals = payload?.VariableRemovals;
-                draftAddedCollections = payload?.AddedCollections;
-                draftNodeEdits = payload?.NodeEdits;
-                draftAddedNodes = payload?.AddedNodes;
-                draftRemovedNodes = payload?.RemovedNodes;
-                draftAggregateEdits = payload?.AggregateEdits;
-                draftResultEdit = payload?.ResultEdit;
-                draftAddedPrompts = payload?.AddedPrompts;
-                draftAddedMacros = payload?.AddedMacros;
-                draftRemovedMacros = payload?.RemovedMacros;
-                draftMacroEdits = payload?.MacroEdits;
-                draftPromptRawEdits = payload?.PromptRawEdits;
-                draftRemovedSchemas = payload?.RemovedSchemas;
-                draftAddedPreludes = payload?.AddedPreludes;
-                draftAddedSchemas = payload?.AddedSchemas;
-                draftRemovedPreludes = payload?.RemovedPreludes;
-                draftPromptPreludeEdits = payload?.PromptPreludeEdits;
-                draftInputs = payload?.Inputs;
-                draftResults = payload?.Results;
-                draftAddedScalars = payload?.AddedScalars;
-                draftSpecVersionBump = payload?.SpecVersionBump;
-                draftTitle = payload?.Title;
-                draftDescription = payload?.Description;
-                draftTags = payload?.Tags;
-            }
-            else
-            {
-                textEdits = JsonSerializer.Deserialize<Dictionary<string, string>>(stored);
-            }
+            // Versioned draft (#115) first; a legacy plain-dictionary draft is a
+            // payload carrying only Edits.
+            payload = stored.Contains("\"Version\"", StringComparison.OrdinalIgnoreCase) || stored.Contains("\"version\"", StringComparison.OrdinalIgnoreCase)
+                ? JsonSerializer.Deserialize<DraftPayload>(stored)
+                : new DraftPayload(15, JsonSerializer.Deserialize<Dictionary<string, string>>(stored), null, null);
         }
         catch (JsonException)
         {
             return;
         }
+
+        ApplyDraft(payload);
+    }
+
+    // #815: apply a snapshot to the editor's pending state — the inverse of
+    // BuildDraft, shared by draft-restore and undo/redo. Clears first (the body
+    // only appends), resets the cached diagram, and re-validates each entry
+    // against the loaded package (a harmless no-op within a session, where the
+    // package is fixed). Null is the clean state.
+    private void ApplyDraft(DraftPayload? payload)
+    {
+        ClearPending();
+        diagramText = null;
+        diagramIncludesPending = false;
+
+        if (payload is null)
+        {
+            return;
+        }
+
+        var textEdits = payload.Edits;
+        var added = payload.Added;
+        var removed = payload.Removed;
+        var bindings = payload.Bindings;
+        var draftVariableAdds = payload.VariableAdds;
+        var draftVariableRemovals = payload.VariableRemovals;
+        var draftAddedCollections = payload.AddedCollections;
+        var draftNodeEdits = payload.NodeEdits;
+        var draftAddedNodes = payload.AddedNodes;
+        var draftRemovedNodes = payload.RemovedNodes;
+        var draftAggregateEdits = payload.AggregateEdits;
+        var draftResultEdit = payload.ResultEdit;
+        var draftAddedPrompts = payload.AddedPrompts;
+        var draftAddedMacros = payload.AddedMacros;
+        var draftRemovedMacros = payload.RemovedMacros;
+        var draftMacroEdits = payload.MacroEdits;
+        var draftPromptRawEdits = payload.PromptRawEdits;
+        var draftRemovedSchemas = payload.RemovedSchemas;
+        var draftAddedPreludes = payload.AddedPreludes;
+        var draftAddedSchemas = payload.AddedSchemas;
+        var draftRemovedPreludes = payload.RemovedPreludes;
+        var draftPromptPreludeEdits = payload.PromptPreludeEdits;
+        var draftInputs = payload.Inputs;
+        var draftResults = payload.Results;
+        var draftAddedScalars = payload.AddedScalars;
+        var draftSpecVersionBump = payload.SpecVersionBump;
+        var draftTitle = payload.Title;
+        var draftDescription = payload.Description;
+        var draftTags = payload.Tags;
 
         foreach (var (path, text) in textEdits ?? new Dictionary<string, string>())
         {
@@ -7989,13 +8000,29 @@
         // per-pane discard — a stale "Confirm" never carries across an edit.
         paneDiscardArmedKey = null;
 
-        if (PendingCount == 0)
+        // #815: the pending state after this change, serialized (null when
+        // nothing is pending — the clean baseline). Serialized rather than the
+        // live payload because BuildDraft shares the live `edits` reference; a
+        // string is an immutable snapshot for the undo stack, and the same bytes
+        // the draft persists.
+        var snapshotJson = PendingCount == 0 ? null : JsonSerializer.Serialize(BuildDraft());
+        RecordHistory(snapshotJson);
+
+        if (snapshotJson is null)
         {
             await JS.InvokeVoidAsync("localStorage.removeItem", DraftKey);
-            return;
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", DraftKey, snapshotJson);
         }
 
-        var payload = new DraftPayload(
+        await PersistHistoryAsync();
+    }
+
+    // #815: a full snapshot of the current pending state.
+    private DraftPayload BuildDraft() =>
+        new DraftPayload(
             15,
             edits,
             addedItems.Select(a => new DraftAdded(a.Collection, a.Id, a.Name, a.Content)).ToList(),
@@ -8039,7 +8066,124 @@
             removedPreludeIds.ToList(),
             promptPreludeEdits.Select(pair => new DraftPromptPreludeEdit(pair.Key, pair.Value)).ToList(),
             addedSchemas.ToList());
-        await JS.InvokeVoidAsync("localStorage.setItem", DraftKey, JsonSerializer.Serialize(payload));
+
+    // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
+    // clean state) of the pending state, persisted with the draft so the history
+    // survives a reload. RecordHistory runs on every committed change except an
+    // undo/redo apply.
+    private const int HistoryCap = 50;
+    private readonly List<string?> undoStack = new();
+    private readonly List<string?> redoStack = new();
+    private string? currentSnapshotJson;
+    private bool applyingHistory;
+    private const string HistoryKeyPrefix = "workflow-editor-history:";
+    private string HistoryKey => HistoryKeyPrefix + content!.Ref;
+
+    private void RecordHistory(string? snapshotJson)
+    {
+        if (!applyingHistory)
+        {
+            undoStack.Add(currentSnapshotJson);
+            if (undoStack.Count > HistoryCap)
+            {
+                undoStack.RemoveAt(0);
+            }
+
+            redoStack.Clear();
+        }
+
+        currentSnapshotJson = snapshotJson;
+    }
+
+    private async Task PersistHistoryAsync()
+    {
+        if (undoStack.Count == 0 && redoStack.Count == 0)
+        {
+            await JS.InvokeVoidAsync("localStorage.removeItem", HistoryKey);
+            return;
+        }
+
+        var history = new DraftHistory(15, undoStack, redoStack, currentSnapshotJson);
+        await JS.InvokeVoidAsync("localStorage.setItem", HistoryKey, JsonSerializer.Serialize(history));
+    }
+
+    // Called from LoadAsync after the draft is applied: restore the stacks for
+    // this package if a compatible history was saved, else start fresh from the
+    // current state.
+    private async Task RestoreHistoryAsync()
+    {
+        undoStack.Clear();
+        redoStack.Clear();
+        currentSnapshotJson = PendingCount == 0 ? null : JsonSerializer.Serialize(BuildDraft());
+
+        var stored = await JS.InvokeAsync<string?>("localStorage.getItem", HistoryKey);
+        if (string.IsNullOrWhiteSpace(stored))
+        {
+            return;
+        }
+
+        try
+        {
+            if (JsonSerializer.Deserialize<DraftHistory>(stored) is { Version: 15 } history)
+            {
+                undoStack.AddRange(history.Undo ?? new List<string?>());
+                redoStack.AddRange(history.Redo ?? new List<string?>());
+                currentSnapshotJson = history.Current;
+            }
+        }
+        catch (JsonException)
+        {
+            // A malformed or older-shape history is dropped; the draft still restored.
+        }
+    }
+
+    private void ClearHistoryState()
+    {
+        undoStack.Clear();
+        redoStack.Clear();
+        currentSnapshotJson = null;
+    }
+
+    private async Task UndoAsync()
+    {
+        if (undoStack.Count == 0)
+        {
+            return;
+        }
+
+        redoStack.Add(currentSnapshotJson);
+        var target = undoStack[^1];
+        undoStack.RemoveAt(undoStack.Count - 1);
+        await ApplyHistoryAsync(target);
+    }
+
+    private async Task RedoAsync()
+    {
+        if (redoStack.Count == 0)
+        {
+            return;
+        }
+
+        undoStack.Add(currentSnapshotJson);
+        var target = redoStack[^1];
+        redoStack.RemoveAt(redoStack.Count - 1);
+        await ApplyHistoryAsync(target);
+    }
+
+    // Apply a history entry without recording it as a new change; PendingChangedAsync
+    // then persists the draft + history and sets currentSnapshotJson to the applied state.
+    private async Task ApplyHistoryAsync(string? targetJson)
+    {
+        applyingHistory = true;
+        try
+        {
+            ApplyDraft(targetJson is null ? null : JsonSerializer.Deserialize<DraftPayload>(targetJson));
+            await PendingChangedAsync();
+        }
+        finally
+        {
+            applyingHistory = false;
+        }
     }
 
     private async Task OnTextChangedAsync(string path, string value)
@@ -8269,6 +8413,9 @@
             }
 
             await JS.InvokeVoidAsync("localStorage.removeItem", DraftKey);
+            // #815: a published version is a fresh baseline — drop the undo history.
+            await JS.InvokeVoidAsync("localStorage.removeItem", HistoryKey);
+            ClearHistoryState();
             var publishedRef = outcome.Response!.Ref;
             // Captured before LoadAsync resets content: what this was built FROM
             // is the part a reader cannot reconstruct afterwards, and it is the
@@ -8330,13 +8477,26 @@
         }
 
         discardArmed = false;
-        ClearPending();
-        ResetFormScratch();
-        ResetPublishFeedback();
 
-        // Nothing is pending now, and that branch of PendingChangedAsync is
-        // exactly the localStorage.removeItem this used to call by hand.
-        await PendingChangedAsync();
+        // #815: Discard is the hard reset its warning promises — it clears the
+        // undo/redo history too, so it stays "can't be undone". applyingHistory
+        // stops the clearing itself from being recorded as an undoable step.
+        applyingHistory = true;
+        try
+        {
+            ClearHistoryState();
+            ClearPending();
+            ResetFormScratch();
+            ResetPublishFeedback();
+
+            // Nothing is pending now, and that branch of PendingChangedAsync is
+            // exactly the localStorage.removeItem this used to call by hand.
+            await PendingChangedAsync();
+        }
+        finally
+        {
+            applyingHistory = false;
+        }
     }
 
     private void ClearPending()
