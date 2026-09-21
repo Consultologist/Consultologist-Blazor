@@ -997,18 +997,63 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var firing = new List<WorkflowResolvedResult>();
         var skipped = new List<ConsultSkippedDocument>();
 
-        foreach (var result in package.Results ?? new List<WorkflowResolvedResult>())
+        // v18 (#822): a node's own when gates it. A gated-out CONTENT node
+        // holes every deliverable whose closure reaches it (cascade-skip); a
+        // gated-out CHECK simply does not run (dropped from the check roots
+        // below) and its deliverable still fires. A classifier never carries a
+        // when (the validator refuses it), so `gated` never holds one.
+        var nodes = package.Nodes ?? new List<WorkflowNodeSpec>();
+        var gated = new HashSet<string>(StringComparer.Ordinal);
+        var gatedWhen = new Dictionary<string, WorkflowConditionExpression>(StringComparer.Ordinal);
+        foreach (var node in nodes)
         {
-            if (WorkflowResultConditions.Holds(result.Condition, supplied, classifications))
+            // The stored package was validated at publish, so its when parses;
+            // an unparseable one is treated as no gate rather than throwing.
+            if (node.When is null
+                || !WorkflowResultConditions.TryParseExpression(node.When, out var when, out _)
+                || when is null
+                || WorkflowResultConditions.Holds(when, supplied, classifications))
             {
-                firing.Add(result);
                 continue;
             }
 
-            skipped.Add(new ConsultSkippedDocument(
-                result.Id,
-                result.Label,
-                WorkflowResultConditions.Explain(result.Condition!, supplied, classifications)));
+            gated.Add(node.Id);
+            gatedWhen[node.Id] = when;
+        }
+
+        var gatedContent = new HashSet<string>(
+            nodes.Where(node => gated.Contains(node.Id) && !WorkflowNodeKinds.IsCheck(node))
+                .Select(node => node.Id),
+            StringComparer.Ordinal);
+        var edges = WorkflowNodeClosure.Edges(nodes);
+
+        foreach (var result in package.Results ?? new List<WorkflowResolvedResult>())
+        {
+            if (!WorkflowResultConditions.Holds(result.Condition, supplied, classifications))
+            {
+                skipped.Add(new ConsultSkippedDocument(
+                    result.Id,
+                    result.Label,
+                    WorkflowResultConditions.Explain(result.Condition!, supplied, classifications)));
+                continue;
+            }
+
+            // Cascade: a gated content node the deliverable transitively
+            // consumes would leave a hole, so the deliverable itself is skipped.
+            // Checks are not reachable from a result node (of/in point
+            // check→operand), so they never trip this.
+            if (gatedContent.Count > 0
+                && WorkflowNodeClosure.Reachable(new[] { result.NodeId }, edges)
+                    .FirstOrDefault(id => gatedContent.Contains(id)) is { } holed)
+            {
+                skipped.Add(new ConsultSkippedDocument(
+                    result.Id,
+                    result.Label,
+                    $"needs node '{holed}', which {WorkflowResultConditions.Explain(gatedWhen[holed], supplied, classifications)}"));
+                continue;
+            }
+
+            firing.Add(result);
         }
 
         if (firing.Count == 0)
@@ -1026,23 +1071,30 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // an argument, and a package that slipped past that rule still runs its
         // orphan node loudly instead of having it silently pruned away. v10: a
         // classifier reaches no result and is kept — its value was the decision.
-        if (skipped.Count > 0)
+        // v18 (#822): also prune when a node was gated even if no deliverable
+        // was skipped — a gated check must be dropped, and any node that fed
+        // only it becomes an orphan the closure removes.
+        if (skipped.Count > 0 || gated.Count > 0)
         {
             // v12 #624: a check chain hangs OFF the firing result rather than
             // feeding it (of/in edges point check → operands), so the walk
             // must also root at the checks the FIRING results name — and only
             // those: skip stays skip, and a when-excluded deliverable never
-            // runs its check.
+            // runs its check. v18: a gated-out check drops from the roots, so
+            // it does not run and the nodes that fed only it prune away.
             var checkRoots = firing
                 .Select(result => result.Check)
                 .Where(check => check != null)
                 .Select(check => check!.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
                     ? check[WorkflowNodeBindingSources.NodePrefix.Length..]
-                    : check!);
+                    : check!)
+                .Where(check => !gated.Contains(check));
             var reachable = WorkflowNodeClosure.Reachable(
                 firing.Select(result => result.NodeId).Concat(checkRoots),
                 WorkflowNodeClosure.Edges(narrowed.Nodes!));
-            var live = narrowed.Nodes!.Where(node => reachable.Contains(node.Id) || WorkflowNodeKinds.IsClassifier(node)).ToList();
+            var live = narrowed.Nodes!
+                .Where(node => (reachable.Contains(node.Id) || WorkflowNodeKinds.IsClassifier(node)) && !gated.Contains(node.Id))
+                .ToList();
             narrowed = narrowed with { Nodes = live };
         }
 
