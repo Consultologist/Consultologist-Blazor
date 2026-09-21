@@ -182,20 +182,30 @@
                     </FluentButton>
                     @* #770: both wipe unpublished work on one click, so arm them
                        — the first click warns, the second acts (the #195 pattern). *@
+                    @* #817: back out of an armed Discard/Revert without acting —
+                       right beside whichever is armed (they are mutually exclusive),
+                       matching its Outline style. *@
                     <FluentButton Appearance="Appearance.Outline"
                                   Disabled="@(PendingCount == 0 || isPublishing)"
                                   @onclick="DiscardAsync">
                         @(discardArmed ? "Confirm discard" : "Discard")
                     </FluentButton>
+                    @if (discardArmed)
+                    {
+                        <FluentButton Appearance="Appearance.Outline"
+                                      Class="cancel-armed-button"
+                                      @onclick="CancelToolbarArm">
+                            Cancel
+                        </FluentButton>
+                    }
                     <FluentButton Appearance="Appearance.Outline"
                                   Disabled="@isPublishing"
                                   @onclick="RevertToDefaultAsync">
                         @(revertArmed ? "Confirm revert" : "Revert to default")
                     </FluentButton>
-                    @* #817: back out of an armed Discard/Revert without acting. *@
-                    @if (discardArmed || revertArmed)
+                    @if (revertArmed)
                     {
-                        <FluentButton Appearance="Appearance.Stealth"
+                        <FluentButton Appearance="Appearance.Outline"
                                       Class="cancel-armed-button"
                                       @onclick="CancelToolbarArm">
                             Cancel
