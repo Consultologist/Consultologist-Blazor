@@ -260,6 +260,13 @@ internal static class PackageFormatSchema
             Remove(properties, "reproducible");
         }
 
+        // v18 (#822): a node's own when arrives at 18; a string needs no
+        // enriching, and the published v5–v17 bytes must not move.
+        if (specVersion < 18)
+        {
+            Remove(properties, "when");
+        }
+
         if (specVersion < 10)
         {
             // v10 (§ 4): the classifying node. Below 10 neither member exists,

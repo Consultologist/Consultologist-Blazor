@@ -980,6 +980,31 @@ public class ConformanceFixtureExport
             V17(new("length_of_stay", "Length of stay", Required: false,
                 Type: WorkflowInputTypes.Number, ExpectedContent: WorkflowExpectedContent.AmbientNote)));
 
+        // ----- v18 (#822): a node's own `when` — condition-gated node
+        // inclusion with cascade. Same condition grammar as a deliverable's
+        // when; refused on a classifier; below 18 refused by name. -----
+
+        var v17Minimal = V17Fixtures.Minimal();
+
+        // The § control: one edit, nothing of v18 used.
+        Bundle("v18-minimal-is-v17-plus-a-line", 18,
+            "The migration v18 promises: a valid v17 manifest with specVersion 18 and nothing else changed.",
+            (v17Minimal with { SpecVersion = 18 }, V6Fixtures.Files(v17Minimal)));
+
+        var v18NodeWhen = V18Fixtures.WithNodeWhen("contextualize", "encounter_kind == follow_up");
+        cases.Add(new Case("v18-node-when", 18,
+            "A node gated by its own when: `contextualize` runs only for a follow-up, and the deliverable that consumes it cascades with it.",
+            v18NodeWhen, V6Fixtures.Files(v18NodeWhen)));
+
+        Invalid("invalid-node-when-below-18", 17,
+            "A node when on a v17 manifest. The node-level gate arrives at 18; before it, when is a deliverable's alone.",
+            V18Fixtures.WithNodeWhen("contextualize", "encounter_kind == follow_up") with { SpecVersion = 17 });
+
+        var v18ClassifierWhen = V10Fixtures.WithClassifier(V10Fixtures.Classifier() with { When = "consult_draft" }).Manifest with { SpecVersion = 18 };
+        Invalid("invalid-node-when-on-classifier", 18,
+            "A when on a classifier. A classifier always runs to make its decision, so it may not carry a gate.",
+            v18ClassifierWhen);
+
         return cases;
     }
 
