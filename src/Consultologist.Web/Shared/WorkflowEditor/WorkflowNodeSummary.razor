@@ -184,7 +184,10 @@
                                 value="@(node.OutputSchema ?? string.Empty)"
                                 @onchange="args => EmitNodeChangeAsync(node, outputSchema: args.Value?.ToString())"
                                 aria-label="Node output contract">
-                            <option value="">prose (text)</option>
+                            @* #825: a template renders its output, so the empty
+                               (no-contract) option reads "— rendered —", not the
+                               model-produced "prose (text)". *@
+                            <option value="">@(node.IsTemplate ? "— rendered —" : "prose (text)")</option>
                             @if (node.OutputSchema != null && !ContractOptions.Contains(node.OutputSchema))
                             {
                                 <option value="@node.OutputSchema">@node.OutputSchema</option>
@@ -195,6 +198,10 @@
                             }
                         </select>
                     </label>
+                    @if (node.IsTemplate)
+                    {
+                        <p class="muted-text node-field--wide">The template renders this; a contract here validates the render, it does not call a model.</p>
+                    }
                     @if (node.OutputSchema != null)
                     {
                         <label class="node-field node-field--wide">

@@ -1565,13 +1565,20 @@
                                 <label class="input-field">
                                     <span>output</span>
                                     <select class="binding-row__select" @bind="newNodeOutput">
-                                        <option value="">prose (text)</option>
+                                        @* #825: a template renders its output, so the empty
+                                           (no-contract) option reads "— rendered —", not the
+                                           model-produced "prose (text)". *@
+                                        <option value="">@(newNodeKind == TemplateKind ? "— rendered —" : "prose (text)")</option>
                                         @foreach (var contract in ContractOptions)
                                         {
                                             <option value="@contract">@contract</option>
                                         }
                                     </select>
                                 </label>
+                                @if (newNodeKind == TemplateKind)
+                                {
+                                    <p class="muted-text">The template renders this; a contract here validates the render, it does not call a model.</p>
+                                }
                                 }
                             }
                         </div>
