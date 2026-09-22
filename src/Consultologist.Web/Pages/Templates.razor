@@ -7640,9 +7640,9 @@
 
     private sealed record DraftNodeEdit(string NodeId, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string? Prompt = null, List<string>? Values = null, bool Reproducible = false, string? Of = null, string? In = null, string? FailWith = null);
 
-    private sealed record DraftAddedNode(string Id, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string PromptText, List<string>? Aggregate = null, string? PromptRef = null, string? Kind = null, List<string>? Values = null, bool Reproducible = false, string? Op = null, string? Of = null, string? In = null, string? FailWith = null);
+    private sealed record DraftAddedNode(string Id, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string PromptText, List<string>? Aggregate = null, string? PromptRef = null, string? Kind = null, List<string>? Values = null, bool Reproducible = false, string? Op = null, string? Of = null, string? In = null, string? FailWith = null, bool Raw = false);
 
-    private sealed record DraftAddedPrompt(string Id, string Text);
+    private sealed record DraftAddedPrompt(string Id, string Text, bool Raw = false);
 
     private sealed record DraftAddedMacro(string Id, string Label, string Text, bool Optional = false, bool? Default = null);
 
@@ -7935,7 +7935,7 @@
                 && nodes.All(n => n.Id != draftAddedPrompt.Id)
                 && addedPrompts.All(p => p.Id != draftAddedPrompt.Id))
             {
-                addedPrompts.Add(new AddedPrompt { Id = draftAddedPrompt.Id, Text = draftAddedPrompt.Text });
+                addedPrompts.Add(new AddedPrompt { Id = draftAddedPrompt.Id, Text = draftAddedPrompt.Text, Raw = draftAddedPrompt.Raw });
             }
         }
 
@@ -8066,7 +8066,8 @@
                     Op = draftAddedNode.Op,
                     Of = draftAddedNode.Of,
                     In = draftAddedNode.In,
-                    FailWith = draftAddedNode.FailWith
+                    FailWith = draftAddedNode.FailWith,
+                    Raw = draftAddedNode.Raw
                 });
             }
         }
@@ -8266,11 +8267,11 @@
             variableRemovals.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             addedCollections.ToList(),
             nodeEdits.Values.Select(edit => new DraftNodeEdit(edit.NodeId, edit.Label, edit.ForEach, edit.OutputSchema, edit.FailIfEmpty, edit.Prompt, edit.Values?.ToList(), edit.Reproducible, edit.Of, edit.In, edit.FailWith)).ToList(),
-            addedNodes.Select(a => new DraftAddedNode(a.Id, a.Label, a.ForEach, a.OutputSchema, a.FailIfEmpty, a.PromptText, a.Aggregate, a.PromptRef, a.Kind, a.Values, a.Reproducible, a.Op, a.Of, a.In, a.FailWith)).ToList(),
+            addedNodes.Select(a => new DraftAddedNode(a.Id, a.Label, a.ForEach, a.OutputSchema, a.FailIfEmpty, a.PromptText, a.Aggregate, a.PromptRef, a.Kind, a.Values, a.Reproducible, a.Op, a.Of, a.In, a.FailWith, a.Raw)).ToList(),
             removedNodeIds.ToList(),
             aggregateEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             resultEdit,
-            addedPrompts.Select(p => new DraftAddedPrompt(p.Id, p.Text)).ToList(),
+            addedPrompts.Select(p => new DraftAddedPrompt(p.Id, p.Text, p.Raw)).ToList(),
             inputsEdit?.Select(i => new DraftInput(
                 i.Id, i.Label, i.Required, i.Type, i.Values?.ToList(),
                 i.Items?.Type,
