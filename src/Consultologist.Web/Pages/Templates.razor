@@ -1625,6 +1625,27 @@
                                 @ConditionEditor(NodeConditionTarget(selectedNode))
                             </div>
                         }
+                        @* #831: the prompt's plain-text (raw) setting, surfaced here so a
+                           template/prompt node can be set on its own pane. raw is a PROMPT
+                           property, shared by every node using that prompt. Offered for a
+                           declared, variable-free prompt at v15+ (plain text interpolates
+                           nothing). *@
+                        @if (EffectiveSpecVersion >= 15
+                             && selectedNode.Prompt is { } nodePrompt && IsDeclaredPrompt(nodePrompt)
+                             && EffectivePrompts.FirstOrDefault(p => p.Id == nodePrompt) is { } promptView
+                             && !EffectiveVariables(promptView).Any())
+                        {
+                            <div class="node-plain-text prompt-raw-row">
+                                <label class="prompt-raw">
+                                    <input type="checkbox"
+                                           checked="@EffectivePromptRaw(nodePrompt)"
+                                           @onchange="args => SetPromptRawAsync(nodePrompt, args.Value is bool isChecked && isChecked)"
+                                           aria-label="@($"Send prompt {nodePrompt} as plain text (no Scriban)")" />
+                                    <span>Plain text — sent verbatim, no Scriban templating</span>
+                                </label>
+                                <p class="muted-text">This edits the prompt '@nodePrompt' (used by any node with that prompt). Unchecked, it is rendered with Scriban templating.</p>
+                            </div>
+                        }
                     }
                     else if (SelectedStandard() is { } standard)
                     {
