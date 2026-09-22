@@ -1631,7 +1631,7 @@
                            declared prompt at v15+; #832: disabled (not hidden) when the
                            prompt has variables, since plain text interpolates nothing. *@
                         @if (EffectiveSpecVersion >= 15
-                             && selectedNode.Prompt is { } nodePrompt && IsDeclaredPrompt(nodePrompt)
+                             && selectedNode.Prompt is { } nodePrompt && IsRawTogglablePrompt(nodePrompt)
                              && EffectivePrompts.FirstOrDefault(p => p.Id == nodePrompt) is { } promptView)
                         {
                             var hasVariables = EffectiveVariables(promptView).Any();
@@ -1690,7 +1690,7 @@
                                with Scriban. #832: shown at v15+ for a declared prompt, but
                                disabled (not hidden) when the prompt has variables, since plain
                                text interpolates nothing (the server refuses raw + variables). *@
-                            @if (EffectiveSpecVersion >= 15 && IsDeclaredPrompt(prompt.Id))
+                            @if (EffectiveSpecVersion >= 15 && IsRawTogglablePrompt(prompt.Id))
                             {
                                 var hasVariables = EffectiveVariables(prompt).Any();
                                 <div class="prompt-raw-row">
