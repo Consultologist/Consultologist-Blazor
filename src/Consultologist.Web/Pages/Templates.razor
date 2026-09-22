@@ -9381,7 +9381,7 @@
             if (addedNode.PromptRef == null
                 && (root["prompts"] ?? root["Prompts"]) is System.Text.Json.Nodes.JsonArray promptsArrayForAdd)
             {
-                promptsArrayForAdd.Add(new System.Text.Json.Nodes.JsonObject
+                var ownPromptObject = new System.Text.Json.Nodes.JsonObject
                 {
                     ["id"] = addedNode.Id,
                     ["file"] = AddedPromptFile(addedNode.Id),
@@ -9389,7 +9389,10 @@
                         AddedVariables(addedNode.Id)
                             .Select(v => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(v))
                             .ToArray())
-                });
+                };
+                // #835: the plain-text (raw) choice on the node's fresh prompt.
+                if (addedNode.Raw) { ownPromptObject["raw"] = true; }
+                promptsArrayForAdd.Add(ownPromptObject);
             }
 
             var newNodeObject = new System.Text.Json.Nodes.JsonObject
@@ -9721,7 +9724,7 @@
         {
             foreach (var pending in addedPrompts)
             {
-                promptsArrayForStandalone.Add(new System.Text.Json.Nodes.JsonObject
+                var standalonePromptObject = new System.Text.Json.Nodes.JsonObject
                 {
                     ["id"] = pending.Id,
                     ["file"] = AddedStandalonePromptFile(pending.Id),
@@ -9729,7 +9732,10 @@
                         AddedVariables(pending.Id)
                             .Select(v => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(v))
                             .ToArray())
-                });
+                };
+                // #835: the plain-text (raw) choice on a standalone added prompt.
+                if (pending.Raw) { standalonePromptObject["raw"] = true; }
+                promptsArrayForStandalone.Add(standalonePromptObject);
             }
         }
 
