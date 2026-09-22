@@ -40,16 +40,20 @@ public class TemplatesV15RawPromptTests : ClientRenderTestContext
         JsonDocument.Parse(request.Manifest.GetRawText()).RootElement
             .GetProperty("prompts").EnumerateArray().Single(p => p.GetProperty("id").GetString() == id);
 
+    // #832: enabled on a variable-free prompt; shown but disabled (with a
+    // reason) on one with variables — no longer hidden.
     [Fact]
-    public void TheRawToggle_IsOffered_OnAVariableFreePrompt_AndNotOnOneWithVariables()
+    public void TheRawToggle_IsEnabled_OnAVariableFreePrompt_AndDisabledOnOneWithVariables()
     {
         var page = RenderEditor(EditorFixtures.V15Raw());
 
         Navigate(page, "disclaimer");
-        Assert.NotEmpty(page.FindAll(".prompt-raw input[type=checkbox]"));
+        Assert.False(page.Find(".prompt-raw input[type=checkbox]").HasAttribute("disabled"));
 
         Navigate(page, "draft-section");
-        Assert.Empty(page.FindAll(".prompt-raw input[type=checkbox]"));
+        var disabled = page.Find(".prompt-raw input[type=checkbox]");
+        Assert.True(disabled.HasAttribute("disabled"));
+        Assert.Contains("uses variables", page.Find(".prompt-raw-row").TextContent, StringComparison.Ordinal);
     }
 
     // #829: the control names both sides of the choice, so its effect is legible.
@@ -99,14 +103,19 @@ public class TemplatesV15RawPromptTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void TheNodePane_OffersNothing_WhenThePromptHasVariables_OrTheNodeHasNoPrompt()
+    public void TheNodePane_DisablesPlainText_WhenThePromptHasVariables_AndShowsNothing_WithoutAPrompt()
     {
         var page = RenderEditor(EditorFixtures.V15Raw());
 
-        ShowNode(page, "draft-section"); // prompt declares variables
-        Assert.Empty(page.FindAll(".node-plain-text"));
+        // #832: draft-section's prompt declares variables — the toggle is shown
+        // but disabled, with the reason, rather than hidden.
+        ShowNode(page, "draft-section");
+        var toggle = page.Find(".node-plain-text input[type=checkbox]");
+        Assert.True(toggle.HasAttribute("disabled"));
+        Assert.Contains("uses variables", page.Find(".node-plain-text").TextContent, StringComparison.Ordinal);
 
-        ShowNode(page, "assemble-note"); // aggregator, no prompt
+        // An aggregator has no prompt, so there is nothing to render.
+        ShowNode(page, "assemble-note");
         Assert.Empty(page.FindAll(".node-plain-text"));
     }
 
