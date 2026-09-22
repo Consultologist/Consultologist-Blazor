@@ -2,6 +2,7 @@ using System.Text.Json;
 using Bunit;
 using Consultologist.Web.Pages;
 using Consultologist.Web.Services.Workflow;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 
 namespace Consultologist.Web.Tests;
@@ -61,6 +62,52 @@ public class TemplatesV15RawPromptTests : ClientRenderTestContext
         var text = page.Find(".prompt-raw-row").TextContent;
         Assert.Contains("Plain text", text, StringComparison.Ordinal);
         Assert.Contains("Scriban", text, StringComparison.Ordinal);
+    }
+
+    // #831: the same plain-text setting, surfaced on the node pane.
+    private void ShowNode(IRenderedComponent<Templates> page, string nodeId)
+    {
+        Services.GetRequiredService<WorkflowEditorSession>().SelectedKey = $"node:{nodeId}";
+        page.Render();
+    }
+
+    [Fact]
+    public void TheNodePane_OffersPlainText_ForANodeWithAVariableFreePrompt()
+    {
+        // disclaimer-block is a template node over the variable-free `disclaimer`.
+        var page = RenderEditor(EditorFixtures.V15Raw());
+        ShowNode(page, "disclaimer-block");
+
+        var toggle = page.Find(".node-plain-text");
+        Assert.Contains("Plain text", toggle.TextContent, StringComparison.Ordinal);
+        Assert.Contains("Scriban", toggle.TextContent, StringComparison.Ordinal);
+        Assert.Contains("disclaimer", toggle.TextContent, StringComparison.Ordinal); // names the shared prompt
+    }
+
+    [Fact]
+    public void TheNodePane_ComposesRaw_OnThePromptTheNodeUses()
+    {
+        var page = RenderEditor(EditorFixtures.V15Raw());
+        CapturePublish();
+        ShowNode(page, "disclaimer-block");
+
+        page.Find(".node-plain-text input[type=checkbox]").Change(true);
+        Publish(page);
+
+        Assert.NotNull(sent);
+        Assert.True(Prompt(sent!, "disclaimer").GetProperty("raw").GetBoolean());
+    }
+
+    [Fact]
+    public void TheNodePane_OffersNothing_WhenThePromptHasVariables_OrTheNodeHasNoPrompt()
+    {
+        var page = RenderEditor(EditorFixtures.V15Raw());
+
+        ShowNode(page, "draft-section"); // prompt declares variables
+        Assert.Empty(page.FindAll(".node-plain-text"));
+
+        ShowNode(page, "assemble-note"); // aggregator, no prompt
+        Assert.Empty(page.FindAll(".node-plain-text"));
     }
 
     [Fact]
