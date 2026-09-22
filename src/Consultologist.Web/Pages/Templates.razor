@@ -3314,6 +3314,11 @@
         // v11 #564: the reproducibility claim on a node born in the editor.
         public bool Reproducible { get; set; }
 
+        // #835: the plain-text (raw) choice on the fresh prompt a node mints
+        // for itself (PromptRef == null). A node reusing an existing prompt
+        // toggles that prompt's own raw flag, not this.
+        public bool Raw { get; set; }
+
         // v12 § 13 (#621): a check's four members; § 15: the template kind
         // rides Kind with the prompt family untouched.
         public string? Op { get; set; }
@@ -3355,6 +3360,10 @@
     {
         public string Id { get; set; } = string.Empty;
         public string Text { get; set; } = string.Empty;
+
+        // #835: the plain-text (raw) choice on a standalone prompt born in the
+        // editor — the declared prompt's `raw` flag, carried before publish.
+        public bool Raw { get; set; }
     }
 
     private readonly List<AddedPrompt> addedPrompts = new();
@@ -3389,14 +3398,28 @@
 
     private async Task SetPromptRawAsync(string promptId, bool raw)
     {
-        var declared = prompts.FirstOrDefault(p => p.Id == promptId)?.Raw ?? false;
-        if (declared == raw)
+        // #835: a prompt still pending (a standalone added prompt, or the
+        // fresh prompt an added node mints) owns its raw flag on its own model,
+        // like its Text and its added variables — not via promptRawEdits.
+        if (addedPrompts.FirstOrDefault(p => p.Id == promptId) is { } addedPrompt)
         {
-            promptRawEdits.Remove(promptId);
+            addedPrompt.Raw = raw;
+        }
+        else if (AddedNodeOwnPrompt(promptId) is { } addedNode)
+        {
+            addedNode.Raw = raw;
         }
         else
         {
-            promptRawEdits[promptId] = raw;
+            var declared = prompts.FirstOrDefault(p => p.Id == promptId)?.Raw ?? false;
+            if (declared == raw)
+            {
+                promptRawEdits.Remove(promptId);
+            }
+            else
+            {
+                promptRawEdits[promptId] = raw;
+            }
         }
 
         await CommitDeclarationAsync();
@@ -3405,10 +3428,26 @@
     private bool EffectivePromptRaw(string promptId) =>
         promptRawEdits.TryGetValue(promptId, out var raw)
             ? raw
-            : prompts.FirstOrDefault(p => p.Id == promptId)?.Raw ?? false;
+            : prompts.FirstOrDefault(p => p.Id == promptId)?.Raw
+                ?? addedPrompts.FirstOrDefault(p => p.Id == promptId)?.Raw
+                ?? AddedNodeOwnPrompt(promptId)?.Raw
+                ?? false;
 
     /// <summary>Whether the raw toggle applies to this prompt — a declared (loaded) prompt only.</summary>
     private bool IsDeclaredPrompt(string promptId) => prompts.Any(p => p.Id == promptId);
+
+    // #835: the added node minting its own fresh prompt (PromptRef == null,
+    // not an aggregator) whose id is this prompt — the prompt is named after
+    // the node. Returns null for a declared or standalone-added prompt.
+    private AddedNode? AddedNodeOwnPrompt(string promptId) =>
+        addedNodes.FirstOrDefault(a => a.Aggregate == null && a.PromptRef == null && a.Id == promptId);
+
+    /// <summary>Whether the raw toggle applies to this prompt — declared, or a prompt still
+    /// pending (a standalone added prompt, or the fresh prompt an added node mints).</summary>
+    private bool IsRawTogglablePrompt(string promptId) =>
+        IsDeclaredPrompt(promptId)
+        || addedPrompts.Any(p => p.Id == promptId)
+        || AddedNodeOwnPrompt(promptId) != null;
 
     private readonly Dictionary<string, (bool Optional, bool? Default)> macroEdits = new(StringComparer.Ordinal);
 
@@ -6427,9 +6466,9 @@
         prompts.Where(p => nodes.Any(n => n.Prompt == p.Id && !removedNodeIds.Contains(n.Id))
                 || !nodes.Any(n => n.Prompt == p.Id))
             .Concat(addedNodes.Where(a => a.Aggregate == null && a.PromptRef == null).Select(a => new WorkflowManifestReader.PromptView(
-                a.Id, AddedPromptFile(a.Id), Array.Empty<string>(), null)))
+                a.Id, AddedPromptFile(a.Id), Array.Empty<string>(), null, a.Raw)))
             .Concat(addedPrompts.Select(p => new WorkflowManifestReader.PromptView(
-                p.Id, AddedStandalonePromptFile(p.Id), Array.Empty<string>(), null)))
+                p.Id, AddedStandalonePromptFile(p.Id), Array.Empty<string>(), null, p.Raw)))
             .ToList();
 
     // Deliverable candidates by spec version: aggregators from v6 on (v7's
