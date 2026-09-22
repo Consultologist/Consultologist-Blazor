@@ -1656,9 +1656,11 @@
                                             Modified="@(edits.ContainsKey(prompt.File) || AddedNodeForPromptFile(prompt.File) != null || AddedPromptForFile(prompt.File) != null)"
                                             TextChanged="@(value => OnTextChangedAsync(prompt.File, value))">
                             @PaneDiscardButton(prompt.File, PromptCanDiscard(prompt), () => RevertPromptEdits(prompt.File, prompt.Id))
-                            @* #731: the raw toggle — sent verbatim, no Scriban. Offered once
-                               the prompt has no variables (a raw prompt interpolates nothing;
-                               the server refuses a raw prompt that declares any). *@
+                            @* #731/#829: the plain-text (raw) toggle — checked, the prompt is
+                               sent verbatim with no Scriban templating; unchecked, it is rendered
+                               with Scriban. Offered once the prompt has no variables (plain text
+                               interpolates nothing; the server refuses a raw prompt that declares
+                               any). *@
                             @if (EffectiveSpecVersion >= 15 && IsDeclaredPrompt(prompt.Id) && !EffectiveVariables(prompt).Any())
                             {
                                 <div class="prompt-raw-row">
@@ -1666,9 +1668,10 @@
                                         <input type="checkbox"
                                                checked="@EffectivePromptRaw(prompt.Id)"
                                                @onchange="args => SetPromptRawAsync(prompt.Id, args.Value is bool isChecked && isChecked)"
-                                               aria-label="@($"Raw for prompt {prompt.Id}")" />
-                                        <span>raw — sent verbatim (no templating)</span>
+                                               aria-label="@($"Send prompt {prompt.Id} as plain text (no Scriban)")" />
+                                        <span>Plain text — sent verbatim, no Scriban templating</span>
                                     </label>
+                                    <p class="muted-text">Unchecked, the prompt is rendered with Scriban templating.</p>
                                 </div>
                             }
                             <div class="prompt-variables">
