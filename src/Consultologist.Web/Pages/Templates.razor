@@ -1631,7 +1631,7 @@
                            declared prompt at v15+; #832: disabled (not hidden) when the
                            prompt has variables, since plain text interpolates nothing. *@
                         @if (EffectiveSpecVersion >= 15
-                             && selectedNode.Prompt is { } nodePrompt && IsDeclaredPrompt(nodePrompt)
+                             && selectedNode.Prompt is { } nodePrompt && IsRawTogglablePrompt(nodePrompt)
                              && EffectivePrompts.FirstOrDefault(p => p.Id == nodePrompt) is { } promptView)
                         {
                             var hasVariables = EffectiveVariables(promptView).Any();
@@ -1690,7 +1690,7 @@
                                with Scriban. #832: shown at v15+ for a declared prompt, but
                                disabled (not hidden) when the prompt has variables, since plain
                                text interpolates nothing (the server refuses raw + variables). *@
-                            @if (EffectiveSpecVersion >= 15 && IsDeclaredPrompt(prompt.Id))
+                            @if (EffectiveSpecVersion >= 15 && IsRawTogglablePrompt(prompt.Id))
                             {
                                 var hasVariables = EffectiveVariables(prompt).Any();
                                 <div class="prompt-raw-row">
@@ -3314,6 +3314,11 @@
         // v11 #564: the reproducibility claim on a node born in the editor.
         public bool Reproducible { get; set; }
 
+        // #835: the plain-text (raw) choice on the fresh prompt a node mints
+        // for itself (PromptRef == null). A node reusing an existing prompt
+        // toggles that prompt's own raw flag, not this.
+        public bool Raw { get; set; }
+
         // v12 § 13 (#621): a check's four members; § 15: the template kind
         // rides Kind with the prompt family untouched.
         public string? Op { get; set; }
@@ -3355,6 +3360,10 @@
     {
         public string Id { get; set; } = string.Empty;
         public string Text { get; set; } = string.Empty;
+
+        // #835: the plain-text (raw) choice on a standalone prompt born in the
+        // editor — the declared prompt's `raw` flag, carried before publish.
+        public bool Raw { get; set; }
     }
 
     private readonly List<AddedPrompt> addedPrompts = new();
@@ -3389,14 +3398,28 @@
 
     private async Task SetPromptRawAsync(string promptId, bool raw)
     {
-        var declared = prompts.FirstOrDefault(p => p.Id == promptId)?.Raw ?? false;
-        if (declared == raw)
+        // #835: a prompt still pending (a standalone added prompt, or the
+        // fresh prompt an added node mints) owns its raw flag on its own model,
+        // like its Text and its added variables — not via promptRawEdits.
+        if (addedPrompts.FirstOrDefault(p => p.Id == promptId) is { } addedPrompt)
         {
-            promptRawEdits.Remove(promptId);
+            addedPrompt.Raw = raw;
+        }
+        else if (AddedNodeOwnPrompt(promptId) is { } addedNode)
+        {
+            addedNode.Raw = raw;
         }
         else
         {
-            promptRawEdits[promptId] = raw;
+            var declared = prompts.FirstOrDefault(p => p.Id == promptId)?.Raw ?? false;
+            if (declared == raw)
+            {
+                promptRawEdits.Remove(promptId);
+            }
+            else
+            {
+                promptRawEdits[promptId] = raw;
+            }
         }
 
         await CommitDeclarationAsync();
@@ -3405,10 +3428,26 @@
     private bool EffectivePromptRaw(string promptId) =>
         promptRawEdits.TryGetValue(promptId, out var raw)
             ? raw
-            : prompts.FirstOrDefault(p => p.Id == promptId)?.Raw ?? false;
+            : prompts.FirstOrDefault(p => p.Id == promptId)?.Raw
+                ?? addedPrompts.FirstOrDefault(p => p.Id == promptId)?.Raw
+                ?? AddedNodeOwnPrompt(promptId)?.Raw
+                ?? false;
 
     /// <summary>Whether the raw toggle applies to this prompt — a declared (loaded) prompt only.</summary>
     private bool IsDeclaredPrompt(string promptId) => prompts.Any(p => p.Id == promptId);
+
+    // #835: the added node minting its own fresh prompt (PromptRef == null,
+    // not an aggregator) whose id is this prompt — the prompt is named after
+    // the node. Returns null for a declared or standalone-added prompt.
+    private AddedNode? AddedNodeOwnPrompt(string promptId) =>
+        addedNodes.FirstOrDefault(a => a.Aggregate == null && a.PromptRef == null && a.Id == promptId);
+
+    /// <summary>Whether the raw toggle applies to this prompt — declared, or a prompt still
+    /// pending (a standalone added prompt, or the fresh prompt an added node mints).</summary>
+    private bool IsRawTogglablePrompt(string promptId) =>
+        IsDeclaredPrompt(promptId)
+        || addedPrompts.Any(p => p.Id == promptId)
+        || AddedNodeOwnPrompt(promptId) != null;
 
     private readonly Dictionary<string, (bool Optional, bool? Default)> macroEdits = new(StringComparer.Ordinal);
 
@@ -6427,9 +6466,9 @@
         prompts.Where(p => nodes.Any(n => n.Prompt == p.Id && !removedNodeIds.Contains(n.Id))
                 || !nodes.Any(n => n.Prompt == p.Id))
             .Concat(addedNodes.Where(a => a.Aggregate == null && a.PromptRef == null).Select(a => new WorkflowManifestReader.PromptView(
-                a.Id, AddedPromptFile(a.Id), Array.Empty<string>(), null)))
+                a.Id, AddedPromptFile(a.Id), Array.Empty<string>(), null, a.Raw)))
             .Concat(addedPrompts.Select(p => new WorkflowManifestReader.PromptView(
-                p.Id, AddedStandalonePromptFile(p.Id), Array.Empty<string>(), null)))
+                p.Id, AddedStandalonePromptFile(p.Id), Array.Empty<string>(), null, p.Raw)))
             .ToList();
 
     // Deliverable candidates by spec version: aggregators from v6 on (v7's
@@ -7601,9 +7640,9 @@
 
     private sealed record DraftNodeEdit(string NodeId, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string? Prompt = null, List<string>? Values = null, bool Reproducible = false, string? Of = null, string? In = null, string? FailWith = null);
 
-    private sealed record DraftAddedNode(string Id, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string PromptText, List<string>? Aggregate = null, string? PromptRef = null, string? Kind = null, List<string>? Values = null, bool Reproducible = false, string? Op = null, string? Of = null, string? In = null, string? FailWith = null);
+    private sealed record DraftAddedNode(string Id, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string PromptText, List<string>? Aggregate = null, string? PromptRef = null, string? Kind = null, List<string>? Values = null, bool Reproducible = false, string? Op = null, string? Of = null, string? In = null, string? FailWith = null, bool Raw = false);
 
-    private sealed record DraftAddedPrompt(string Id, string Text);
+    private sealed record DraftAddedPrompt(string Id, string Text, bool Raw = false);
 
     private sealed record DraftAddedMacro(string Id, string Label, string Text, bool Optional = false, bool? Default = null);
 
@@ -7896,7 +7935,7 @@
                 && nodes.All(n => n.Id != draftAddedPrompt.Id)
                 && addedPrompts.All(p => p.Id != draftAddedPrompt.Id))
             {
-                addedPrompts.Add(new AddedPrompt { Id = draftAddedPrompt.Id, Text = draftAddedPrompt.Text });
+                addedPrompts.Add(new AddedPrompt { Id = draftAddedPrompt.Id, Text = draftAddedPrompt.Text, Raw = draftAddedPrompt.Raw });
             }
         }
 
@@ -8027,7 +8066,8 @@
                     Op = draftAddedNode.Op,
                     Of = draftAddedNode.Of,
                     In = draftAddedNode.In,
-                    FailWith = draftAddedNode.FailWith
+                    FailWith = draftAddedNode.FailWith,
+                    Raw = draftAddedNode.Raw
                 });
             }
         }
@@ -8227,11 +8267,11 @@
             variableRemovals.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             addedCollections.ToList(),
             nodeEdits.Values.Select(edit => new DraftNodeEdit(edit.NodeId, edit.Label, edit.ForEach, edit.OutputSchema, edit.FailIfEmpty, edit.Prompt, edit.Values?.ToList(), edit.Reproducible, edit.Of, edit.In, edit.FailWith)).ToList(),
-            addedNodes.Select(a => new DraftAddedNode(a.Id, a.Label, a.ForEach, a.OutputSchema, a.FailIfEmpty, a.PromptText, a.Aggregate, a.PromptRef, a.Kind, a.Values, a.Reproducible, a.Op, a.Of, a.In, a.FailWith)).ToList(),
+            addedNodes.Select(a => new DraftAddedNode(a.Id, a.Label, a.ForEach, a.OutputSchema, a.FailIfEmpty, a.PromptText, a.Aggregate, a.PromptRef, a.Kind, a.Values, a.Reproducible, a.Op, a.Of, a.In, a.FailWith, a.Raw)).ToList(),
             removedNodeIds.ToList(),
             aggregateEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             resultEdit,
-            addedPrompts.Select(p => new DraftAddedPrompt(p.Id, p.Text)).ToList(),
+            addedPrompts.Select(p => new DraftAddedPrompt(p.Id, p.Text, p.Raw)).ToList(),
             inputsEdit?.Select(i => new DraftInput(
                 i.Id, i.Label, i.Required, i.Type, i.Values?.ToList(),
                 i.Items?.Type,
@@ -9342,7 +9382,7 @@
             if (addedNode.PromptRef == null
                 && (root["prompts"] ?? root["Prompts"]) is System.Text.Json.Nodes.JsonArray promptsArrayForAdd)
             {
-                promptsArrayForAdd.Add(new System.Text.Json.Nodes.JsonObject
+                var ownPromptObject = new System.Text.Json.Nodes.JsonObject
                 {
                     ["id"] = addedNode.Id,
                     ["file"] = AddedPromptFile(addedNode.Id),
@@ -9350,7 +9390,10 @@
                         AddedVariables(addedNode.Id)
                             .Select(v => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(v))
                             .ToArray())
-                });
+                };
+                // #835: the plain-text (raw) choice on the node's fresh prompt.
+                if (addedNode.Raw) { ownPromptObject["raw"] = true; }
+                promptsArrayForAdd.Add(ownPromptObject);
             }
 
             var newNodeObject = new System.Text.Json.Nodes.JsonObject
@@ -9682,7 +9725,7 @@
         {
             foreach (var pending in addedPrompts)
             {
-                promptsArrayForStandalone.Add(new System.Text.Json.Nodes.JsonObject
+                var standalonePromptObject = new System.Text.Json.Nodes.JsonObject
                 {
                     ["id"] = pending.Id,
                     ["file"] = AddedStandalonePromptFile(pending.Id),
@@ -9690,7 +9733,10 @@
                         AddedVariables(pending.Id)
                             .Select(v => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(v))
                             .ToArray())
-                });
+                };
+                // #835: the plain-text (raw) choice on a standalone added prompt.
+                if (pending.Raw) { standalonePromptObject["raw"] = true; }
+                promptsArrayForStandalone.Add(standalonePromptObject);
             }
         }
 

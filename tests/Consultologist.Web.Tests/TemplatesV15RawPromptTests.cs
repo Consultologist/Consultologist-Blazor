@@ -134,4 +134,110 @@ public class TemplatesV15RawPromptTests : ClientRenderTestContext
         // draft-section, untouched, stays non-raw.
         Assert.False(Prompt(sent!, "draft-section").TryGetProperty("raw", out _));
     }
+
+    // #835: the toggle was gated on IsDeclaredPrompt, so a prompt still pending
+    // in the editor (a standalone added prompt, or the fresh prompt a node
+    // mints) never offered it. These cover both pending sources.
+
+    private IRenderedComponent<Templates> RenderWithDraft(WorkflowPackageContentResponse fixture, string draftJson)
+    {
+        JSInterop.Setup<string?>("localStorage.getItem", $"workflow-editor-draft:{fixture.Ref}").SetResult(draftJson);
+        return RenderEditor(fixture);
+    }
+
+    [Fact]
+    public void TheNodePane_OffersAndComposesPlainText_ForAnAddedNodesOwnPrompt()
+    {
+        // The reported case (#835): a template node added in the editor mints
+        // its own variable-free prompt, wired into the deliverable.
+        var page = RenderWithDraft(EditorFixtures.V15Raw(), """
+            {
+              "Version": 15,
+              "AddedNodes": [ { "Id": "footer", "Label": "Footer", "PromptText": "Standard footer.", "Kind": "template" } ],
+              "AggregateEdits": { "assemble-note": ["node:draft-section", "node:disclaimer-block", "node:footer"] }
+            }
+            """);
+        CapturePublish();
+
+        ShowNode(page, "footer");
+        var toggle = page.Find(".node-plain-text input[type=checkbox]");
+        Assert.False(toggle.HasAttribute("disabled"));
+        toggle.Change(true);
+        Publish(page);
+
+        Assert.NotNull(sent);
+        Assert.True(Prompt(sent!, "footer").GetProperty("raw").GetBoolean());
+    }
+
+    [Fact]
+    public void ThePromptPane_OffersAndComposesPlainText_ForAStandaloneAddedPrompt()
+    {
+        // A standalone prompt added via "+ Prompt", pointed at by a template node.
+        var page = RenderWithDraft(EditorFixtures.V15Raw(), """
+            {
+              "Version": 15,
+              "AddedPrompts": [ { "Id": "footer-text", "Text": "Standard footer." } ],
+              "AddedNodes": [ { "Id": "footer", "Label": "Footer", "PromptText": "", "PromptRef": "footer-text", "Kind": "template" } ],
+              "AggregateEdits": { "assemble-note": ["node:draft-section", "node:disclaimer-block", "node:footer"] }
+            }
+            """);
+        CapturePublish();
+
+        Navigate(page, "footer-text");
+        var toggle = page.Find(".prompt-raw input[type=checkbox]");
+        Assert.False(toggle.HasAttribute("disabled"));
+        toggle.Change(true);
+        Publish(page);
+
+        Assert.NotNull(sent);
+        Assert.True(Prompt(sent!, "footer-text").GetProperty("raw").GetBoolean());
+    }
+
+    [Fact]
+    public void ThePendingPromptRawChoice_SurvivesADraftRoundTrip()
+    {
+        // Raw ripples through DraftAddedNode/DraftAddedPrompt, so a reload
+        // (draft restore) keeps the plain-text choice and composes it.
+        var page = RenderWithDraft(EditorFixtures.V15Raw(), """
+            {
+              "Version": 15,
+              "AddedNodes": [ { "Id": "footer", "Label": "Footer", "PromptText": "Standard footer.", "Kind": "template", "Raw": true } ],
+              "AggregateEdits": { "assemble-note": ["node:draft-section", "node:disclaimer-block", "node:footer"] }
+            }
+            """);
+        CapturePublish();
+
+        ShowNode(page, "footer");
+        Assert.True(page.Find(".node-plain-text input[type=checkbox]").HasAttribute("checked"));
+
+        Publish(page);
+        Assert.NotNull(sent);
+        Assert.True(Prompt(sent!, "footer").GetProperty("raw").GetBoolean());
+    }
+
+    [Fact]
+    public void TheToggle_IsDisabled_WhenAPendingPromptGainsAVariable()
+    {
+        // #832's variable rule holds for pending prompts too — plain text
+        // interpolates nothing. (The variable is added through the UI: draft
+        // restore applies variable adds before the pending prompt exists.)
+        var page = RenderWithDraft(EditorFixtures.V15Raw(), """
+            {
+              "Version": 15,
+              "AddedPrompts": [ { "Id": "greeting", "Text": "Hello." } ],
+              "AddedNodes": [ { "Id": "greeter", "Label": "Greeter", "PromptText": "", "PromptRef": "greeting", "Kind": "template" } ],
+              "AggregateEdits": { "assemble-note": ["node:draft-section", "node:disclaimer-block", "node:greeter"] }
+            }
+            """);
+
+        Navigate(page, "greeting");
+        Assert.False(page.Find(".prompt-raw input[type=checkbox]").HasAttribute("disabled"));
+
+        page.Find("input[aria-label='New variable name']").Change("consult_draft");
+        page.Find("select[aria-label='New variable source']").Change("input:consult_draft");
+        page.FindAll(".prompt-variables button").First(b => b.TextContent.Trim() == "Add").Click();
+
+        Assert.True(page.Find(".prompt-raw input[type=checkbox]").HasAttribute("disabled"));
+        Assert.Contains("uses variables", page.Find(".prompt-raw-row").TextContent, StringComparison.Ordinal);
+    }
 }
