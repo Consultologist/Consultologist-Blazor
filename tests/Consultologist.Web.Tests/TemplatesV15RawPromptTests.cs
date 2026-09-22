@@ -51,6 +51,18 @@ public class TemplatesV15RawPromptTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".prompt-raw input[type=checkbox]"));
     }
 
+    // #829: the control names both sides of the choice, so its effect is legible.
+    [Fact]
+    public void TheRawToggle_NamesScribanAndPlainText()
+    {
+        var page = RenderEditor(EditorFixtures.V15Raw());
+        Navigate(page, "disclaimer");
+
+        var text = page.Find(".prompt-raw-row").TextContent;
+        Assert.Contains("Plain text", text, StringComparison.Ordinal);
+        Assert.Contains("Scriban", text, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void CheckingRaw_ComposesRawTrueOnThePrompt()
     {
