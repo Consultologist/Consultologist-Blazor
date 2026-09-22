@@ -1628,22 +1628,30 @@
                         @* #831: the prompt's plain-text (raw) setting, surfaced here so a
                            template/prompt node can be set on its own pane. raw is a PROMPT
                            property, shared by every node using that prompt. Offered for a
-                           declared, variable-free prompt at v15+ (plain text interpolates
-                           nothing). *@
+                           declared prompt at v15+; #832: disabled (not hidden) when the
+                           prompt has variables, since plain text interpolates nothing. *@
                         @if (EffectiveSpecVersion >= 15
                              && selectedNode.Prompt is { } nodePrompt && IsDeclaredPrompt(nodePrompt)
-                             && EffectivePrompts.FirstOrDefault(p => p.Id == nodePrompt) is { } promptView
-                             && !EffectiveVariables(promptView).Any())
+                             && EffectivePrompts.FirstOrDefault(p => p.Id == nodePrompt) is { } promptView)
                         {
+                            var hasVariables = EffectiveVariables(promptView).Any();
                             <div class="node-plain-text prompt-raw-row">
                                 <label class="prompt-raw">
                                     <input type="checkbox"
                                            checked="@EffectivePromptRaw(nodePrompt)"
+                                           disabled="@hasVariables"
                                            @onchange="args => SetPromptRawAsync(nodePrompt, args.Value is bool isChecked && isChecked)"
                                            aria-label="@($"Send prompt {nodePrompt} as plain text (no Scriban)")" />
                                     <span>Plain text — sent verbatim, no Scriban templating</span>
                                 </label>
-                                <p class="muted-text">This edits the prompt '@nodePrompt' (used by any node with that prompt). Unchecked, it is rendered with Scriban templating.</p>
+                                @if (hasVariables)
+                                {
+                                    <p class="muted-text">Unavailable while the prompt '@nodePrompt' uses variables — plain text is sent verbatim and can't interpolate. Remove its variables to send it as plain text.</p>
+                                }
+                                else
+                                {
+                                    <p class="muted-text">This edits the prompt '@nodePrompt' (used by any node with that prompt). Unchecked, it is rendered with Scriban templating.</p>
+                                }
                             </div>
                         }
                     }
@@ -1679,20 +1687,29 @@
                             @PaneDiscardButton(prompt.File, PromptCanDiscard(prompt), () => RevertPromptEdits(prompt.File, prompt.Id))
                             @* #731/#829: the plain-text (raw) toggle — checked, the prompt is
                                sent verbatim with no Scriban templating; unchecked, it is rendered
-                               with Scriban. Offered once the prompt has no variables (plain text
-                               interpolates nothing; the server refuses a raw prompt that declares
-                               any). *@
-                            @if (EffectiveSpecVersion >= 15 && IsDeclaredPrompt(prompt.Id) && !EffectiveVariables(prompt).Any())
+                               with Scriban. #832: shown at v15+ for a declared prompt, but
+                               disabled (not hidden) when the prompt has variables, since plain
+                               text interpolates nothing (the server refuses raw + variables). *@
+                            @if (EffectiveSpecVersion >= 15 && IsDeclaredPrompt(prompt.Id))
                             {
+                                var hasVariables = EffectiveVariables(prompt).Any();
                                 <div class="prompt-raw-row">
                                     <label class="prompt-raw">
                                         <input type="checkbox"
                                                checked="@EffectivePromptRaw(prompt.Id)"
+                                               disabled="@hasVariables"
                                                @onchange="args => SetPromptRawAsync(prompt.Id, args.Value is bool isChecked && isChecked)"
                                                aria-label="@($"Send prompt {prompt.Id} as plain text (no Scriban)")" />
                                         <span>Plain text — sent verbatim, no Scriban templating</span>
                                     </label>
-                                    <p class="muted-text">Unchecked, the prompt is rendered with Scriban templating.</p>
+                                    @if (hasVariables)
+                                    {
+                                        <p class="muted-text">Unavailable while this prompt uses variables — plain text is sent verbatim and can't interpolate. Remove its variables to send it as plain text.</p>
+                                    }
+                                    else
+                                    {
+                                        <p class="muted-text">Unchecked, the prompt is rendered with Scriban templating.</p>
+                                    }
                                 </div>
                             }
                             <div class="prompt-variables">
