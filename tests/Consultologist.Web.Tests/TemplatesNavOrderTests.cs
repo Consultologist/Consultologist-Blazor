@@ -26,7 +26,25 @@ public class TemplatesNavOrderTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V11Macro());
 
         var groups = page.FindAll(".editor-nav__group").Select(g => g.TextContent.Trim()).ToArray();
-        Assert.Equal(new[] { "Workflow", "Prompts", "Macros", "Preludes", "Schemas", "Data" }, groups);
+        Assert.Equal(new[] { "Workflow", "Nodes", "Prompts", "Macros", "Preludes", "Schemas", "Data" }, groups);
+    }
+
+    // #838: nodes are their own section (a peer to Prompts/Macros), while Graph
+    // stays its own Workflow item — not the parent the nodes nest under.
+    [Fact]
+    public void Nodes_AreTheirOwnSection_BelowGraph()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+
+        var groups = page.FindAll(".editor-nav__group").Select(g => g.TextContent.Trim()).ToArray();
+        Assert.Contains("Nodes", groups);
+
+        var items = page.FindAll(".editor-nav__item").Select(i => i.TextContent.Trim()).ToArray();
+        Assert.Contains(items, i => i == "Graph"); // Graph stays a Workflow item
+
+        // + Node now sits flat in the Nodes section, not nested under Graph.
+        var addNode = page.FindAll(".editor-nav__item").Single(i => i.TextContent.Trim() == "+ Node");
+        Assert.DoesNotContain("editor-nav__item--nested", addNode.ClassList);
     }
 
     [Fact]

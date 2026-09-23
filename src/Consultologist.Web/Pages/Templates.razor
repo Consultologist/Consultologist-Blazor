@@ -322,10 +322,14 @@
                         <span class="editor-nav__dot">@(bindingEdits.Count > 0 || nodeEdits.Count > 0 ? "●" : "")</span>
                         <span>Graph</span>
                     </button>
+                    @* #838: the graph's nodes as their own section, a peer to
+                       Prompts and Macros, not nested under the Graph page. Graph
+                       itself stays above as the whole-DAG binding view. *@
+                    <span class="editor-nav__group">Nodes</span>
                     @foreach (var navNode in EffectiveNodes)
                     {
                         <button type="button"
-                                class="editor-nav__item editor-nav__item--nested @(selectedKey == NodeKeyFor(navNode.Id) ? "editor-nav__item--selected" : "")"
+                                class="editor-nav__item @(selectedKey == NodeKeyFor(navNode.Id) ? "editor-nav__item--selected" : "")"
                                 @onclick="() => Select(NodeKeyFor(navNode.Id))">
                             <span class="editor-nav__dot">@(NodeHasPending(navNode) ? "●" : "")</span>
                             <span>@navNode.Label</span>
@@ -333,14 +337,14 @@
                     }
                     @foreach (var removedNode in RemovedNodes)
                     {
-                        <div class="editor-nav__item editor-nav__item--nested editor-nav__item--removed">
+                        <div class="editor-nav__item editor-nav__item--removed">
                             <span class="editor-nav__dot"></span>
                             <span class="editor-nav__strike">@removedNode.Label</span>
                             <button type="button" class="editor-nav__restore" @onclick="() => RestoreNodeAsync(removedNode.Id)">(restore)</button>
                         </div>
                     }
                     <button type="button"
-                            class="editor-nav__item editor-nav__item--nested editor-nav__add @(selectedKey == AddNodeKey ? "editor-nav__item--selected" : "")"
+                            class="editor-nav__item editor-nav__add @(selectedKey == AddNodeKey ? "editor-nav__item--selected" : "")"
                             @onclick="() => Select(AddNodeKey)">
                         <span class="editor-nav__dot"></span>
                         <span>+ Node</span>
