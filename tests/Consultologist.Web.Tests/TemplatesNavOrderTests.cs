@@ -26,7 +26,7 @@ public class TemplatesNavOrderTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V11Macro());
 
         var groups = page.FindAll(".editor-nav__group").Select(g => g.TextContent.Trim()).ToArray();
-        Assert.Equal(new[] { "Workflow", "Prompts", "Macros", "Preludes", "Schemas", "Data" }, groups);
+        Assert.Equal(new[] { "Workflow", "Nodes", "Prompts", "Macros", "Preludes", "Schemas", "Data" }, groups);
     }
 
     [Fact]
