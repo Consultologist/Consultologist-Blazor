@@ -135,6 +135,32 @@ public class TemplatesV15RawPromptTests : ClientRenderTestContext
         Assert.False(Prompt(sent!, "draft-section").TryGetProperty("raw", out _));
     }
 
+    // #837: a raw prompt is sent verbatim, so preview it verbatim — not as
+    // rendered Markdown, which would misrepresent what runs.
+    [Fact]
+    public void ThePreview_IsMarkdown_ForANonRawPrompt()
+    {
+        var page = RenderEditor(EditorFixtures.V15Raw());
+        Navigate(page, "disclaimer");
+
+        Assert.NotEmpty(page.FindAll(".markdown-preview"));
+        Assert.Empty(page.FindAll(".plain-preview"));
+    }
+
+    [Fact]
+    public void ThePreview_IsVerbatim_WhenThePromptIsRaw()
+    {
+        var page = RenderEditor(EditorFixtures.V15Raw());
+        Navigate(page, "disclaimer");
+
+        page.Find(".prompt-raw input[type=checkbox]").Change(true);
+
+        Assert.Empty(page.FindAll(".markdown-preview"));
+        var verbatim = page.Find(".plain-preview");
+        Assert.Contains("Not medical advice.", verbatim.TextContent, StringComparison.Ordinal); // the fixture's disclaimer text
+        Assert.Contains("Plain text (verbatim)", page.Find(".pane-preview").TextContent, StringComparison.Ordinal);
+    }
+
     // #835: the toggle was gated on IsDeclaredPrompt, so a prompt still pending
     // in the editor (a standalone added prompt, or the fresh prompt a node
     // mints) never offered it. These cover both pending sources.

@@ -496,7 +496,8 @@ header.header.app-header {
 	align-items: stretch;
 }
 
-.markdown-preview {
+.markdown-preview,
+.plain-preview {
 	min-height: 9rem;
 	max-height: 18rem;
 	overflow: auto;
@@ -506,6 +507,15 @@ header.header.app-header {
 	background: var(--consultologist-surface-muted);
 	color: var(--consultologist-text);
 	line-height: 1.55;
+}
+
+/* #837: the raw-prompt preview — the text exactly as it will be sent, no
+   Markdown rendering. Monospace, whitespace preserved, long lines wrapped. */
+.plain-preview {
+	margin: 0;
+	font-family: var(--consultologist-font-mono, ui-monospace, monospace);
+	white-space: pre-wrap;
+	word-break: break-word;
 }
 
 .markdown-preview p,
