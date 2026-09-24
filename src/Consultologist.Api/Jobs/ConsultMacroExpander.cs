@@ -156,14 +156,42 @@ internal static class ConsultMacroExpander
         {
             var sourceRef = sourceRefs[i];
 
-            foreach (var placement in active.Where(p => string.Equals(p.Before, sourceRef, StringComparison.Ordinal)))
+            // Whole-source placements (no forItem) wrap the entire part, exactly
+            // as before v19; per-item placements (forItem set) interleave between
+            // a fanned source's blocks (§ 4, #845).
+            foreach (var placement in active.Where(p => p.ForItem is null && string.Equals(p.Before, sourceRef, StringComparison.Ordinal)))
             {
                 Emit(placement);
             }
 
-            pieces.Add(ConsultAggregateRenderer.RenderPart(parts[i]));
+            if (parts[i] is ConsultAggregateRenderer.ForEachPart forEach
+                && active.Any(p => p.ForItem is not null
+                    && (string.Equals(p.Before, sourceRef, StringComparison.Ordinal) || string.Equals(p.After, sourceRef, StringComparison.Ordinal))))
+            {
+                // Render the fan block by block, interleaving item-anchored
+                // macros. The same "\n\n" join keeps a block with no item
+                // placement byte-identical to RenderPart.
+                foreach (var block in forEach.Blocks)
+                {
+                    foreach (var placement in active.Where(p => string.Equals(p.ForItem, block.Id, StringComparison.Ordinal) && string.Equals(p.Before, sourceRef, StringComparison.Ordinal)))
+                    {
+                        Emit(placement);
+                    }
 
-            foreach (var placement in active.Where(p => string.Equals(p.After, sourceRef, StringComparison.Ordinal)))
+                    pieces.Add(ConsultAggregateRenderer.RenderBlock(block));
+
+                    foreach (var placement in active.Where(p => string.Equals(p.ForItem, block.Id, StringComparison.Ordinal) && string.Equals(p.After, sourceRef, StringComparison.Ordinal)))
+                    {
+                        Emit(placement);
+                    }
+                }
+            }
+            else
+            {
+                pieces.Add(ConsultAggregateRenderer.RenderPart(parts[i]));
+            }
+
+            foreach (var placement in active.Where(p => p.ForItem is null && string.Equals(p.After, sourceRef, StringComparison.Ordinal)))
             {
                 Emit(placement);
             }

@@ -31,7 +31,7 @@ public static class V12ExportFixtures
 
     /// <summary>§ 4: a placed entry anchored on the deliverable's own aggregated section.</summary>
     public static (WorkflowPackageManifest Manifest, IReadOnlyDictionary<string, string> Files) PlacedMacro(
-        string anchor = "node:section-instructions", bool alsoAfter = false)
+        string anchor = "node:section-instructions", bool alsoAfter = false, string? forItem = null)
     {
         var (manifest, files) = V11Fixtures.WithMacro(from: V12Fixtures.Minimal());
         return (manifest with
@@ -41,7 +41,8 @@ public static class V12ExportFixtures
                 {
                     Macros = new List<WorkflowResultMacroSpec>
                     {
-                        new("disclaimer", Before: anchor, After: alsoAfter ? anchor : null)
+                        // v19 (#845): forItem anchors to one item of the fan the anchor section aggregates.
+                        new("disclaimer", Before: anchor, After: alsoAfter ? anchor : null, ForItem: forItem)
                     }
                 }
                 : r).ToList()

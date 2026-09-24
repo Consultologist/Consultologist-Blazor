@@ -426,12 +426,15 @@ public sealed record WorkflowResultMacroSpec(
     string? After = null,
     // v12 (§ 14): the entry's data gate — the result-level condition grammar,
     // written on the macro. Trailing so the placed pair keeps its positions.
-    string? When = null)
+    string? When = null,
+    // v19 (#845): anchor the placement to ONE item of a forEach data-fan the
+    // before/after source aggregates (e.g. one section). Trailing optional.
+    string? ForItem = null)
 {
-    /// <summary>An id and nothing else — the v11 form. When must count:
-    /// the writer keys the bare-string form on this, and a when-only entry
-    /// serialized bare would silently drop its clause on republish.</summary>
-    public bool IsBare => Before is null && After is null && When is null;
+    /// <summary>An id and nothing else — the v11 form. Every adornment must
+    /// count: the writer keys the bare-string form on this, so an entry that
+    /// carries only a when or a forItem would silently drop it on republish.</summary>
+    public bool IsBare => Before is null && After is null && When is null && ForItem is null;
 
     public static implicit operator WorkflowResultMacroSpec?(string? id) => id is null ? null : new(id);
 
@@ -441,7 +444,7 @@ public sealed record WorkflowResultMacroSpec(
 public sealed class WorkflowResultMacroSpecConverter : JsonConverter<WorkflowResultMacroSpec>
 {
     // The object form, read without this converter on the outer shape.
-    private sealed record Shape(string? Id, string? Before, string? After, string? When);
+    private sealed record Shape(string? Id, string? Before, string? After, string? When, string? ForItem);
 
     public override WorkflowResultMacroSpec Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
@@ -463,7 +466,7 @@ public sealed class WorkflowResultMacroSpecConverter : JsonConverter<WorkflowRes
             throw new JsonException("A placed macro entry must declare id.");
         }
 
-        return new WorkflowResultMacroSpec(shape.Id, shape.Before, shape.After, shape.When);
+        return new WorkflowResultMacroSpec(shape.Id, shape.Before, shape.After, shape.When, shape.ForItem);
     }
 
     public override void Write(Utf8JsonWriter writer, WorkflowResultMacroSpec value, JsonSerializerOptions options)
@@ -490,6 +493,11 @@ public sealed class WorkflowResultMacroSpecConverter : JsonConverter<WorkflowRes
         if (value.When != null)
         {
             writer.WriteString("when", value.When);
+        }
+
+        if (value.ForItem != null)
+        {
+            writer.WriteString("forItem", value.ForItem);
         }
 
         writer.WriteEndObject();

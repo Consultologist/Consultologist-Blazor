@@ -172,7 +172,7 @@ public class TemplatesNodeWhenTests : ClientRenderTestContext
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains(
-            "Node 'draft-section' declares when, which requires specVersion 18. Use \"Upgrade to specVersion 18\" and publish.",
+            "Node 'draft-section' declares when, which requires specVersion 18. Use \"Upgrade to specVersion 19\" and publish.",
             Refusals(page));
     }
 

@@ -591,26 +591,42 @@ internal static class PackageFormatSchema
         else
         {
             var macros = Object(properties, "macros");
-            macros["items"] = specVersion < 12
-                ? new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId }
-                : new JsonObject
+            if (specVersion < 12)
+            {
+                macros["items"] = new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId };
+            }
+            else
+            {
+                // v12 § 4 placement object; v19 (#845) adds forItem — a data-fan
+                // item id. additionalProperties is false, so the member must be
+                // present in the schema for a valid v19 manifest to pass.
+                var placed = new JsonObject
+                {
+                    ["id"] = new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId },
+                    ["before"] = new JsonObject { ["type"] = "string", ["pattern"] = NodeRef },
+                    ["after"] = new JsonObject { ["type"] = "string", ["pattern"] = NodeRef },
+                    ["when"] = new JsonObject { ["type"] = "string", ["minLength"] = 1 }
+                };
+
+                if (specVersion >= 19)
+                {
+                    placed["forItem"] = new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId };
+                }
+
+                macros["items"] = new JsonObject
                 {
                     ["oneOf"] = new JsonArray(
                         new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId },
                         new JsonObject
                         {
                             ["type"] = "object",
-                            ["properties"] = new JsonObject
-                            {
-                                ["id"] = new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId },
-                                ["before"] = new JsonObject { ["type"] = "string", ["pattern"] = NodeRef },
-                                ["after"] = new JsonObject { ["type"] = "string", ["pattern"] = NodeRef },
-                                ["when"] = new JsonObject { ["type"] = "string", ["minLength"] = 1 }
-                            },
+                            ["properties"] = placed,
                             ["required"] = Required("id"),
                             ["additionalProperties"] = false
                         })
                 };
+            }
+
             macros["minItems"] = 1;
         }
 
