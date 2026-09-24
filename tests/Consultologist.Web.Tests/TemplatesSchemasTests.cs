@@ -69,8 +69,11 @@ public class TemplatesSchemasTests : ClientRenderTestContext
 
         // V12Full's concept-list is the output of extract-input-terms / extract-note-terms.
         Assert.True(page.Find("button[aria-label='Remove schema concept-list']").HasAttribute("disabled"));
-        Assert.Contains("Used by", page.Find("div[data-schema='concept-list']").TextContent);
-        Assert.Contains("extract-input-terms", page.Find("div[data-schema='concept-list']").TextContent);
+        var card = page.Find("div[data-schema='concept-list']").TextContent;
+        Assert.Contains("Used by", card);
+        Assert.Contains("extract-input-terms", card);
+        // #843: matched to the prelude pane — names the removal precondition.
+        Assert.Contains("Change their output contract before it can be removed", card);
     }
 
     [Fact]
@@ -82,6 +85,8 @@ public class TemplatesSchemasTests : ClientRenderTestContext
 
         var remove = page.Find("button[aria-label='Remove schema report']");
         Assert.False(remove.HasAttribute("disabled"));
+        // #843: an unused schema shows the pane hint instead of a reader list.
+        Assert.Contains("Not yet used by any node", page.Find("div[data-schema='report']").TextContent);
         remove.Click();
         Publish(page);
 
