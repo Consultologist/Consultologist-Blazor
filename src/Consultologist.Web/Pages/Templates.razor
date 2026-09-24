@@ -897,9 +897,15 @@
                                             disabled="@(readers.Count > 0)"
                                             @onclick="() => RemoveSchemaAsync(declaredSchema)">Remove</button>
                                 </div>
+                                @* #843: usage line matched to the prelude pane (#841) — names the
+                                   reader nodes and the removal precondition, and hints the unused case. *@
                                 @if (readers.Count > 0)
                                 {
-                                    <span class="muted-text">Used by @(string.Join(", ", readers.Select(reader => $"'{reader}'"))); change its output contract first.</span>
+                                    <span class="muted-text">Used by @(string.Join(", ", readers.Select(reader => $"'{reader}'"))). Change their output contract before it can be removed.</span>
+                                }
+                                else
+                                {
+                                    <span class="muted-text">Not yet used by any node — a node reads it in its output field.</span>
                                 }
                                 <pre class="schema-body">@GetText(schema.File)</pre>
                             </div>
