@@ -1005,6 +1005,29 @@ public class ConformanceFixtureExport
             "A when on a classifier. A classifier always runs to make its decision, so it may not carry a gate.",
             v18ClassifierWhen);
 
+        // ----- v19 (#845): a macro anchored to ONE item of a forEach data-fan
+        // via forItem; below 19 refused; refused when the item does not exist. -----
+
+        var v18Minimal = V18Fixtures.Minimal();
+        Bundle("v19-minimal-is-v18-plus-a-line", 19,
+            "The migration v19 promises: a valid v18 manifest with specVersion 19 and nothing else changed.",
+            (v18Minimal with { SpecVersion = 19 }, V6Fixtures.Files(v18Minimal)));
+
+        var v19ForItem = V12ExportFixtures.PlacedMacro(forItem: "hpi");
+        Bundle("v19-macro-for-item", 19,
+            "A macro anchored to one item ('hpi') of the forEach data-fan its deliverable aggregates — it lands after that section's block, not around the whole fan (§ 4).",
+            (v19ForItem.Manifest with { SpecVersion = 19 }, v19ForItem.Files));
+
+        var v19Below = V12ExportFixtures.PlacedMacro(forItem: "hpi");
+        Bundle("invalid-macro-for-item-below-19", 18,
+            "forItem on a v18 manifest. The fan-item anchor arrives at 19; before it, a placement wraps the whole fanned section.",
+            (v19Below.Manifest with { SpecVersion = 18 }, v19Below.Files));
+
+        var v19Missing = V12ExportFixtures.PlacedMacro(forItem: "nonexistent");
+        Bundle("invalid-macro-for-item-missing", 19,
+            "forItem naming an item the fanned collection does not contain.",
+            (v19Missing.Manifest with { SpecVersion = 19 }, v19Missing.Files));
+
         return cases;
     }
 
