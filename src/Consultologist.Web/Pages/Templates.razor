@@ -1687,6 +1687,7 @@
                                             EditLabel="Prompt text"
                                             Text="@GetText(prompt.File)"
                                             Modified="@(edits.ContainsKey(prompt.File) || AddedNodeForPromptFile(prompt.File) != null || AddedPromptForFile(prompt.File) != null)"
+                                            Raw="@EffectivePromptRaw(prompt.Id)"
                                             TextChanged="@(value => OnTextChangedAsync(prompt.File, value))">
                             @PaneDiscardButton(prompt.File, PromptCanDiscard(prompt), () => RevertPromptEdits(prompt.File, prompt.Id))
                             @* #731/#829: the plain-text (raw) toggle — checked, the prompt is
