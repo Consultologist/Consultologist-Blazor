@@ -100,15 +100,35 @@ public class TemplatesPreludesTests : ClientRenderTestContext
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
 
+    // #841: the usage list lives in the prelude's pane, not the nav.
+    [Fact]
+    public void PreludeUsage_ShowsInThePane_NotTheNav()
+    {
+        var page = RenderEditor(EditorFixtures.V7Preludes());
+
+        // The old nav usage line ("used by '…'") is gone before a prelude is open.
+        Assert.DoesNotContain("used by '", page.Markup);
+
+        // A referenced prelude names its readers in the pane.
+        Navigate(page, "guidance");
+        Assert.Contains("Used by 'draft-section'", page.Markup);
+
+        // An unused prelude gets the pane hint instead, and keeps its nav remove link.
+        Navigate(page, "unused");
+        Assert.Contains("Not yet used by any prompt", page.Markup);
+        Assert.Contains(page.FindAll(".editor-nav__restore"), button => button.TextContent == "(remove)");
+    }
+
     [Fact]
     public async Task RemovingAReferencedPrelude_IsRefused_AndTheOrphanRemovesCleanly()
     {
         var page = RenderEditor(EditorFixtures.V7Preludes());
         CapturePublish();
 
-        // guidance is read by the draft-section prompt: the nav shows "used by",
-        // not a remove link.
-        Assert.Contains("used by", page.Markup);
+        // guidance is read by the draft-section prompt: its pane names the reader
+        // (#841 moved this off the nav), and it has no remove link.
+        Navigate(page, "guidance");
+        Assert.Contains("Used by 'draft-section'", page.Markup);
 
         // unused is an orphan: remove it, and it drops from the map and files.
         page.FindAll(".editor-nav__restore").First(button => button.TextContent == "(remove)").Click();

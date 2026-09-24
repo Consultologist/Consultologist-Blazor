@@ -436,22 +436,25 @@
                             <span class="editor-nav__dot">@(edits.ContainsKey(prelude.File) || AddedPreludeForFile(prelude.File) != null ? "●" : "")</span>
                             <span>@prelude.Id</span>
                         </button>
-                        <div class="editor-nav__item editor-nav__item--nested">
-                            <span class="editor-nav__dot"></span>
-                            @if (readers.Count > 0)
-                            {
-                                <span class="muted-text">used by @(string.Join(", ", readers.Select(reader => $"'{reader}'")))</span>
-                            }
-                            else if (AddedPreludeForFile(prelude.File) is { } pendingPrelude)
-                            {
-                                <button type="button" class="editor-nav__restore" @onclick="() => RemoveAddedPreludeAsync(pendingPrelude)">(remove)</button>
-                            }
-                            else
-                            {
-                                var declaredPrelude = new WorkflowManifestReader.PreludeView(livePrelude.Id, livePrelude.File);
-                                <button type="button" class="editor-nav__restore" @onclick="() => RemovePreludeAsync(declaredPrelude)">(remove)</button>
-                            }
-                        </div>
+                        @* #841: the "used by" list now lives in the prelude's pane, not here.
+                           The nested row is kept only for the remove affordance, shown only when
+                           the prelude is unused (a referenced prelude can't be removed until it is
+                           unlinked from its prompts). *@
+                        @if (readers.Count == 0)
+                        {
+                            <div class="editor-nav__item editor-nav__item--nested">
+                                <span class="editor-nav__dot"></span>
+                                @if (AddedPreludeForFile(prelude.File) is { } pendingPrelude)
+                                {
+                                    <button type="button" class="editor-nav__restore" @onclick="() => RemoveAddedPreludeAsync(pendingPrelude)">(remove)</button>
+                                }
+                                else
+                                {
+                                    var declaredPrelude = new WorkflowManifestReader.PreludeView(livePrelude.Id, livePrelude.File);
+                                    <button type="button" class="editor-nav__restore" @onclick="() => RemovePreludeAsync(declaredPrelude)">(remove)</button>
+                                }
+                            </div>
+                        }
                     }
                     @foreach (var removed in RemovedPreludeViews)
                     {
@@ -1825,6 +1828,18 @@
                                 Prepended to any prompt that selects this prelude (on the prompt's pane), with one
                                 blank line. Free-form text; not rendered through the template engine.
                             </p>
+                            @* #841: which prompts read this prelude — surfaced here rather than in the nav. *@
+                            @{ var preludeReaders = PreludeReferencedBy(prelude.Id); }
+                            @if (preludeReaders.Count > 0)
+                            {
+                                <p class="muted-text">
+                                    Used by @(string.Join(", ", preludeReaders.Select(reader => $"'{reader}'"))). Clear it from those prompts before it can be removed.
+                                </p>
+                            }
+                            else
+                            {
+                                <p class="muted-text">Not yet used by any prompt — select it on a prompt's pane.</p>
+                            }
                         </WorkflowEditorPane>
                     }
                     else if (SelectedMacro() is { } macro)
