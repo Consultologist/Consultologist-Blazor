@@ -28,10 +28,21 @@
                         Rows="18" />
     </label>
     <div class="pane-preview">
-        <span class="muted-text">Preview</span>
-        <div class="markdown-preview">
-            @((MarkupString)MarkdownPreview.Render(Text))
-        </div>
+        @* #837: a raw prompt is sent verbatim (no Scriban), so preview it
+           verbatim too — Markdown rendering would misrepresent what runs.
+           Every other pane leaves Raw false and keeps the Markdown preview. *@
+        @if (Raw)
+        {
+            <span class="muted-text">Plain text (verbatim)</span>
+            <pre class="plain-preview">@Text</pre>
+        }
+        else
+        {
+            <span class="muted-text">Preview</span>
+            <div class="markdown-preview">
+                @((MarkupString)MarkdownPreview.Render(Text))
+            </div>
+        }
     </div>
 </div>
 
@@ -41,6 +52,10 @@
     [Parameter] public string EditLabel { get; set; } = "Content";
     [Parameter] public string Text { get; set; } = string.Empty;
     [Parameter] public bool Modified { get; set; }
+    // #837: when true, the preview shows the text verbatim instead of rendering
+    // Markdown — for a raw (plain-text) prompt. Defaults false, so every other
+    // pane keeps the Markdown preview.
+    [Parameter] public bool Raw { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public RenderFragment? HeaderActions { get; set; }
     [Parameter] public EventCallback<string> TextChanged { get; set; }
