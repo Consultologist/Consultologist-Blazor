@@ -83,7 +83,7 @@ public class SpecVersionSetTests
         // The set became a constant and the prose became generated; this pins
         // the wording so that refactor cannot quietly reword a message an
         // author reads. Note it is NOT the store's phrasing — see below.
-        Assert.Equal("5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 or 18", WorkflowPackageValidator.DescribeAcceptedSpecVersions());
+        Assert.Equal("5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 or 19", WorkflowPackageValidator.DescribeAcceptedSpecVersions());
     }
 
     [Fact]

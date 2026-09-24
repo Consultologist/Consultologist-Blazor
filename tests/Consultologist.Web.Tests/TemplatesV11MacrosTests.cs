@@ -551,10 +551,10 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         Publish(page);
 
         var refusals = Refusals(page);
-        Assert.Contains("macros requires specVersion 11. Use \"Upgrade to specVersion 18\" and publish.", refusals);
-        Assert.Contains("Result 'consult_note' declares macros, which requires specVersion 11. Use \"Upgrade to specVersion 18\" and publish.", refusals);
-        Assert.Contains("Result 'consult_note' declares signature, which requires specVersion 11. Use \"Upgrade to specVersion 18\" and publish.", refusals);
-        Assert.Contains("Node 'scope' declares reproducible, which requires specVersion 11. Use \"Upgrade to specVersion 18\" and publish.", refusals);
+        Assert.Contains("macros requires specVersion 11. Use \"Upgrade to specVersion 19\" and publish.", refusals);
+        Assert.Contains("Result 'consult_note' declares macros, which requires specVersion 11. Use \"Upgrade to specVersion 19\" and publish.", refusals);
+        Assert.Contains("Result 'consult_note' declares signature, which requires specVersion 11. Use \"Upgrade to specVersion 19\" and publish.", refusals);
+        Assert.Contains("Node 'scope' declares reproducible, which requires specVersion 11. Use \"Upgrade to specVersion 19\" and publish.", refusals);
         Assert.Null(sent);
     }
 
@@ -626,6 +626,37 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         Publish(page);
 
         Assert.NotNull(sent);
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join(" | ", validated.Errors));
+    }
+
+    // #845: at specVersion 19, a macro placed on a forEach data-fan gains a
+    // per-item picker; choosing an item composes forItem.
+    [Fact]
+    public void TheForItemPicker_ComposesAPerSectionAnchor_AtV19()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+        CapturePublish();
+
+        // forItem is v19; upgrade the v11 fixture to the newest version.
+        page.FindAll("fluent-button")
+            .First(b => b.TextContent.Contains("Upgrade to specVersion 19", StringComparison.Ordinal))
+            .Click();
+
+        Navigate(page, "Documents");
+
+        // Place the disclaimer after the data:standards fan, then anchor it to one item.
+        page.Find("select.result-macro-placement").Change("after|node:draft-section");
+        var picker = page.Find("select.result-macro-foritem");
+        Assert.Contains("History", picker.TextContent); // the fan's item (id hpi)
+        picker.Change("hpi");
+
+        Publish(page);
+
+        Assert.NotNull(sent);
+        var macro = Result(sent!).GetProperty("macros")[0];
+        Assert.Equal("node:draft-section", macro.GetProperty("after").GetString());
+        Assert.Equal("hpi", macro.GetProperty("forItem").GetString());
         var validated = Validated();
         Assert.True(validated.IsValid, string.Join(" | ", validated.Errors));
     }
