@@ -1222,6 +1222,24 @@
                                                                 <option value="@($"after|{placementSource}")" selected="@(macroEntry.After == placementSource)">after @placementSource</option>
                                                             }
                                                         </select>
+                                                        @* v19 § 4 (#845): when the chosen section is a forEach data-fan,
+                                                           anchor the macro to one of its items instead of the whole block. *@
+                                                        @if (EffectiveSpecVersion >= 19)
+                                                        {
+                                                            var fanItems = MacroAnchorFanItems(macroEntry);
+                                                            if (fanItems.Count > 0)
+                                                            {
+                                                                <select class="binding-row__select result-macro-foritem"
+                                                                        @onchange="args => SetMacroForItemAsync(deliverable, macroId, args.Value?.ToString())"
+                                                                        aria-label="@($"Fan item for macro {macroId} in document {deliverable.Id}")">
+                                                                    <option value="" selected="@(macroEntry.ForItem == null)">— whole section —</option>
+                                                                    @foreach (var fanItem in fanItems)
+                                                                    {
+                                                                        <option value="@fanItem.Id" selected="@(macroEntry.ForItem == fanItem.Id)">@fanItem.Name</option>
+                                                                    }
+                                                                </select>
+                                                            }
+                                                        }
                                                         <span class="result-macro-when">
                                                             @ConditionEditor(MacroWhenTarget(deliverable, macroEntry))
                                                         </span>
@@ -2470,7 +2488,7 @@
     /// can prove the mirror still matches. Not necessarily runnable: see
     /// RunnableSpecVersion.
     /// </summary>
-    internal const int NewestSpecVersion = 18;
+    internal const int NewestSpecVersion = 19;
 
     /// <summary>
     /// Mirrors WorkflowPackageStore.SupportedSpecVersions' maximum — the
@@ -2483,7 +2501,7 @@
     /// (#500), eleven (#566) and now twelve (#623). The mechanism stays
     /// for the next format.
     /// </summary>
-    internal const int RunnableSpecVersion = 18;
+    internal const int RunnableSpecVersion = 19;
 
     /// <summary>The version this publish will carry: the bump, or what is loaded.</summary>
     /// <summary>
@@ -4244,6 +4262,19 @@
                         else if (!sources.Contains(anchor, StringComparer.Ordinal))
                         {
                             errors.Add($"Result '{result.Id}' places macro '{entry.Id}' {(entry.Before != null ? "before" : "after")} '{anchor}', which its aggregator '{aggregator.Id}' does not aggregate.");
+                        }
+                    }
+
+                    // v19 (#845): forItem anchors to one item of a data-fan section.
+                    if (entry.ForItem != null)
+                    {
+                        if (EffectiveSpecVersion < 19)
+                        {
+                            errors.Add($"Result '{result.Id}' anchors macro '{entry.Id}' to a fan item, which requires specVersion 19. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.");
+                        }
+                        else if (MacroAnchorFanItems(entry).All(item => item.Id != entry.ForItem))
+                        {
+                            errors.Add($"Result '{result.Id}' anchors macro '{entry.Id}' to item '{entry.ForItem}', which the section '{entry.Before ?? entry.After}' does not fan.");
                         }
                     }
 
@@ -6356,7 +6387,47 @@
 
             results[index] = results[index] with
             {
-                Macros = entries.Select(e => e.Id == macroId ? e with { Before = before, After = after } : e).ToList()
+                // Changing the section clears any forItem — an item id is only
+                // meaningful for a specific fan (#845).
+                Macros = entries.Select(e => e.Id == macroId ? e with { Before = before, After = after, ForItem = null } : e).ToList()
+            };
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    /// <summary>v19 (#845): the items of the data collection this entry's anchor section fans — the legal
+    /// forItem values (label = name, value = id). Empty when the anchor is not a forEach data-fan.</summary>
+    private IReadOnlyList<WorkflowManifestReader.DataItemView> MacroAnchorFanItems(WorkflowManifestReader.ResultMacroView entry)
+    {
+        if ((entry.Before ?? entry.After) is not { } anchor)
+        {
+            return Array.Empty<WorkflowManifestReader.DataItemView>();
+        }
+
+        var anchorNodeId = anchor.StartsWith("node:", StringComparison.Ordinal) ? anchor["node:".Length..] : anchor;
+        if (EffectiveNodes.FirstOrDefault(n => n.Id == anchorNodeId)?.ForEach is not { } forEach
+            || !forEach.StartsWith("data:", StringComparison.Ordinal))
+        {
+            return Array.Empty<WorkflowManifestReader.DataItemView>();
+        }
+
+        var collectionId = forEach["data:".Length..];
+        return EffectiveCollections.FirstOrDefault(c => c.Id == collectionId)?.Items
+            ?? (IReadOnlyList<WorkflowManifestReader.DataItemView>)Array.Empty<WorkflowManifestReader.DataItemView>();
+    }
+
+    private async Task SetMacroForItemAsync(WorkflowManifestReader.ResultView result, string macroId, string? itemId)
+    {
+        var results = MutableResults();
+        var index = results.FindIndex(existing => existing.Id == result.Id);
+
+        if (index >= 0 && results[index].Macros is { } entries)
+        {
+            var forItem = string.IsNullOrEmpty(itemId) ? null : itemId;
+            results[index] = results[index] with
+            {
+                Macros = entries.Select(e => e.Id == macroId ? e with { ForItem = forItem } : e).ToList()
             };
         }
 
@@ -9706,6 +9777,7 @@
                                     if (entry.Before != null) { adorned["before"] = entry.Before; }
                                     if (entry.After != null) { adorned["after"] = entry.After; }
                                     if (entry.When != null) { adorned["when"] = entry.When; }
+                                    if (entry.ForItem != null) { adorned["forItem"] = entry.ForItem; } // #845
                                     return (System.Text.Json.Nodes.JsonNode?)adorned;
                                 }).ToArray());
                         }

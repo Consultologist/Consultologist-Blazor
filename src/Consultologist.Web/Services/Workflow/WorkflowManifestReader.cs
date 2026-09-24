@@ -128,9 +128,9 @@ public static class WorkflowManifestReader
     /// of WorkflowResultMacroSpec, IsBare discipline included: a bare entry
     /// writes the v11 string, an adorned one the object, and When counts.
     /// </summary>
-    public sealed record ResultMacroView(string Id, string? Before = null, string? After = null, string? When = null)
+    public sealed record ResultMacroView(string Id, string? Before = null, string? After = null, string? When = null, string? ForItem = null)
     {
-        public bool IsBare => Before is null && After is null && When is null;
+        public bool IsBare => Before is null && After is null && When is null && ForItem is null;
     }
 
     /// <summary>One declared macro (v11 § 4): package-owned template text.
@@ -665,7 +665,8 @@ public static class WorkflowManifestReader
                     id.GetString()!,
                     ReadString(item, "before"),
                     ReadString(item, "after"),
-                    ReadString(item, "when")));
+                    ReadString(item, "when"),
+                    ReadString(item, "forItem")));
             }
         }
 
