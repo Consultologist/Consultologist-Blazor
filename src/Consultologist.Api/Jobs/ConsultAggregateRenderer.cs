@@ -15,8 +15,10 @@ internal static class ConsultAggregateRenderer
     /// <summary>A scalar source's output (prompt node or upstream aggregator).</summary>
     public sealed record ScalarPart(string Text) : Part;
 
-    /// <summary>A forEach source's instances, already in collection index order.</summary>
-    public sealed record ForEachPart(IReadOnlyList<(string Name, string Text)> Blocks) : Part;
+    /// <summary>A forEach source's instances, already in collection index order.
+    /// Each block carries its item Id (the stable key a v19 (#845) forItem macro
+    /// placement anchors to) alongside the display Name used in the heading.</summary>
+    public sealed record ForEachPart(IReadOnlyList<(string Id, string Name, string Text)> Blocks) : Part;
 
     public static string Render(IReadOnlyList<Part> parts)
     {
@@ -34,9 +36,16 @@ internal static class ConsultAggregateRenderer
     public static string RenderPart(Part part) => part switch
     {
         ScalarPart scalar => scalar.Text,
-        ForEachPart forEach => string.Join(
-            "\n\n",
-            forEach.Blocks.Select(block => $"## {block.Name}\n\n{block.Text}")),
+        ForEachPart forEach => string.Join("\n\n", forEach.Blocks.Select(RenderBlock)),
         _ => throw new InvalidOperationException($"Unknown aggregate part '{part.GetType().Name}'.")
     };
+
+    /// <summary>
+    /// One forEach item's labeled block — the unit a v19 (#845) forItem
+    /// placement anchors to. RenderPart joins these with "\n\n", so a composer
+    /// that interleaves a macro between blocks and joins with the same separator
+    /// is byte-identical to RenderPart when nothing is placed at the item level.
+    /// </summary>
+    public static string RenderBlock((string Id, string Name, string Text) block) =>
+        $"## {block.Name}\n\n{block.Text}";
 }

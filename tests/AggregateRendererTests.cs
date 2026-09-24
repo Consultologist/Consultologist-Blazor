@@ -25,8 +25,8 @@ public class AggregateRendererTests
         var parts = new ConsultAggregateRenderer.Part[]
         {
             new ConsultAggregateRenderer.ScalarPart("Intro."),
-            new ConsultAggregateRenderer.ForEachPart(new[] { ("A", "alpha"), ("B", "beta") }),
-            new ConsultAggregateRenderer.ForEachPart(Array.Empty<(string, string)>()),
+            new ConsultAggregateRenderer.ForEachPart(new[] { ("A", "A", "alpha"), ("B", "B", "beta") }),
+            new ConsultAggregateRenderer.ForEachPart(Array.Empty<(string, string, string)>()),
             new ConsultAggregateRenderer.ScalarPart("Outro.")
         };
 
@@ -42,8 +42,8 @@ public class AggregateRendererTests
         {
             new ConsultAggregateRenderer.ForEachPart(new[]
             {
-                ("A", "alpha"),
-                ("B", "beta")
+                ("A", "A", "alpha"),
+                ("B", "B", "beta")
             })
         });
 
@@ -66,7 +66,7 @@ public class AggregateRendererTests
     {
         var rendered = ConsultAggregateRenderer.Render(new ConsultAggregateRenderer.Part[]
         {
-            new ConsultAggregateRenderer.ForEachPart(new[] { ("A", "alpha") }),
+            new ConsultAggregateRenderer.ForEachPart(new[] { ("A", "A", "alpha") }),
             new ConsultAggregateRenderer.ScalarPart("closing remarks")
         });
 

@@ -554,7 +554,7 @@ public sealed record ConsultResultDescriptor(
 /// exactly one anchor, the aggregate source it sits before or after (the raw
 /// node:&lt;id&gt; string, as the manifest and the validator spell it).
 /// </summary>
-public sealed record ConsultMacroPlacement(string Id, string? Before = null, string? After = null);
+public sealed record ConsultMacroPlacement(string Id, string? Before = null, string? After = null, string? ForItem = null);
 
 /// <summary>
 /// A deliverable the package declared and this job did not produce, because its

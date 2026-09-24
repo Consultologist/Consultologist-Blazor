@@ -470,7 +470,7 @@ public class WorkflowV12PlacementRuntimeTests
     private static readonly IReadOnlyList<Consultologist.Api.Jobs.ConsultAggregateRenderer.Part> Parts = new Consultologist.Api.Jobs.ConsultAggregateRenderer.Part[]
     {
         new Consultologist.Api.Jobs.ConsultAggregateRenderer.ScalarPart("Intro."),
-        new Consultologist.Api.Jobs.ConsultAggregateRenderer.ForEachPart(new[] { ("History", "Unremarkable."), ("Exam", "Benign.") })
+        new Consultologist.Api.Jobs.ConsultAggregateRenderer.ForEachPart(new[] { ("history", "History", "Unremarkable."), ("exam", "Exam", "Benign.") })
     };
 
     private static (string Text, IReadOnlyList<Consultologist.Api.Models.ConsultAppendedEntry>? Appended, bool TokenCarried) Compose(

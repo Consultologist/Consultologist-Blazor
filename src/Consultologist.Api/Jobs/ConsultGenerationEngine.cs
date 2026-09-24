@@ -523,6 +523,7 @@ public sealed class ConsultGenerationOrchestrator
 
                             parts.Add(new ConsultAggregateRenderer.ForEachPart(sourceItems
                                 .Select(item => (
+                                    item["id"],
                                     item.GetValueOrDefault("name", item["id"]),
                                     outputs[ConsultNodeScheduler.InstanceKey(sourceId, item["id"])].RawOutput.Trim()))
                                 .ToList()));
