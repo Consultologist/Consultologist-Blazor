@@ -28,7 +28,7 @@ public static class WorkflowPackageValidator
     /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
     /// are checked against the published spec-versions.json there too.
     /// </summary>
-    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 };
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
 
     /// <summary>
     /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
@@ -2563,6 +2563,41 @@ public static class WorkflowPackageValidator
                         else if (!aggregate.Contains(anchor, StringComparer.Ordinal))
                         {
                             errors.Add($"Result '{result.Id}' places macro '{entry.Id}' {(entry.Before != null ? "before" : "after")} '{anchor}', which its aggregator '{aggregatorId}' does not aggregate.");
+                        }
+                    }
+                }
+
+                // v19 (§ 4, #845): forItem anchors the placement to ONE item of
+                // a forEach data-fan the before/after section aggregates. Below
+                // 19 it is refused by name; at 19 it requires a single anchor on
+                // a node that fans a data: collection, and the item must exist.
+                if (entry.ForItem != null)
+                {
+                    if (manifest.SpecVersion < 19)
+                    {
+                        errors.Add($"Result '{result.Id}' anchors macro '{entry.Id}' to a fan item, which requires specVersion 19.");
+                    }
+                    else if ((entry.Before ?? entry.After) is not { } fanAnchor || (entry.Before != null && entry.After != null))
+                    {
+                        errors.Add($"Result '{result.Id}' anchors macro '{entry.Id}' to fan item '{entry.ForItem}' but names no single before/after section.");
+                    }
+                    else
+                    {
+                        var fanNodeId = fanAnchor.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
+                            ? fanAnchor[WorkflowNodeBindingSources.NodePrefix.Length..]
+                            : fanAnchor;
+
+                        if (nodesById.GetValueOrDefault(fanNodeId)?.ForEach is null)
+                        {
+                            errors.Add($"Result '{result.Id}' anchors macro '{entry.Id}' to item '{entry.ForItem}' of '{fanAnchor}', but that section is not a forEach fan.");
+                        }
+                        else if (!TryResolveForEachSource(manifest, nodesById[fanNodeId], data, inputsById, out _, out var fanCollection, out _) || fanCollection is null)
+                        {
+                            errors.Add($"Result '{result.Id}' anchors macro '{entry.Id}' to a fan item, but '{fanAnchor}' does not fan a data: collection.");
+                        }
+                        else if (!fanCollection.Items.Any(item => string.Equals(item.Id, entry.ForItem, StringComparison.Ordinal)))
+                        {
+                            errors.Add($"Result '{result.Id}' anchors macro '{entry.Id}' to item '{entry.ForItem}', which the collection fanned by '{fanAnchor}' does not contain.");
                         }
                     }
                 }
