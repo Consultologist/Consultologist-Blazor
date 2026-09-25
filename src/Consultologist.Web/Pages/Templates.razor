@@ -9285,13 +9285,6 @@
                 return;
             }
 
-            var validation = PF.WorkflowPackageValidator.Validate(manifest, files, EmptyCatalogSchemas);
-            if (!validation.IsValid)
-            {
-                importError = "The imported package is not valid: " + string.Join(" | ", validation.Errors);
-                return;
-            }
-
             // Load it as the editor's package, exactly as a registry load projects
             // `content`. It is not a remembered registry ref, so drop editingRef;
             // EditingOwnPackage/the "not your package" banner follow from its name.
@@ -9306,8 +9299,16 @@
             ProjectLoadedContent();
             ClearHistoryState();
             selectedKey = GraphKey;
-            selectionNotice = $"Imported {content.Ref} for this session — Publish to keep it.";
             _ = LoadDiagramAsync();
+
+            // Validation is fast feedback, NOT a gate: contract-schema checks need
+            // the server's catalog (passed empty here), and the publish pipeline
+            // re-validates in full. So load the package regardless and surface any
+            // findings as a warning the author can fix in the editor before Publish.
+            var validation = PF.WorkflowPackageValidator.Validate(manifest, files, EmptyCatalogSchemas);
+            selectionNotice = validation.IsValid
+                ? $"Imported {content.Ref} for this session — Publish to keep it."
+                : $"Imported {content.Ref} for this session, but it has issues to resolve before it will publish: {string.Join(" | ", validation.Errors)}";
         }
         catch (InvalidDataException ex)
         {
