@@ -210,6 +210,12 @@
                                   @onclick="DownloadPackageAsync">
                         Download package
                     </FluentButton>
+                    @* #847: import a package .zip (the download's reverse) into the
+                       editor for this session, then Publish it as your own. *@
+                    <label class="import-package-button" title="Import a package .zip into the editor for this session">
+                        Import package…
+                        <InputFile OnChange="ImportPackageAsync" accept=".zip" />
+                    </label>
                 </div>
             </div>
 
@@ -242,6 +248,12 @@
             @if (!string.IsNullOrWhiteSpace(selectionNotice))
             {
                 <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">@selectionNotice</FluentMessageBar>
+            }
+
+            @* #847: an import refusal (bad zip / invalid package) — the editor is unchanged. *@
+            @if (!string.IsNullOrWhiteSpace(importError))
+            {
+                <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="true">@importError</FluentMessageBar>
             }
 
             @* #429 (v9 § 10), back for v10 (#492): a format the registry accepts
@@ -7693,12 +7705,7 @@
                 content = await WorkflowService.GetCurrentPackageContentAsync();
             }
 
-            prompts = WorkflowManifestReader.ReadPrompts(content.Manifest);
-            nodes = WorkflowManifestReader.ReadNodes(content.Manifest);
-            collections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files);
-            scalarEntries = WorkflowManifestReader.ReadScalarEntries(content.Manifest);
-            publishedScalarIds = scalarEntries.Select(entry => entry.Id).ToList();
-            schemaIds = WorkflowManifestReader.ReadSchemaIds(content.Manifest);
+            ProjectLoadedContent();
             await RestoreDraftAsync();
             // #815: restore the undo/redo history for this package (or start fresh).
             await RestoreHistoryAsync();
@@ -7729,6 +7736,18 @@
         {
             isLoading = false;
         }
+    }
+
+    // Derive the editor's read-only projections from the loaded `content`. Shared
+    // by LoadAsync (registry load) and ImportPackageAsync (#847, an uploaded zip).
+    private void ProjectLoadedContent()
+    {
+        prompts = WorkflowManifestReader.ReadPrompts(content!.Manifest);
+        nodes = WorkflowManifestReader.ReadNodes(content.Manifest);
+        collections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files);
+        scalarEntries = WorkflowManifestReader.ReadScalarEntries(content.Manifest);
+        publishedScalarIds = scalarEntries.Select(entry => entry.Id).ToList();
+        schemaIds = WorkflowManifestReader.ReadSchemaIds(content.Manifest);
     }
 
     private sealed record DraftAdded(string Collection, string Id, string Name, string Content);
@@ -9202,6 +9221,103 @@
     private async Task DownloadZipAsync(IReadOnlyDictionary<string, string> files, string fileName) =>
         await JS.InvokeVoidAsync("consultologistDownload", fileName, "application/zip",
             Convert.ToBase64String(WorkflowPackageArchive.Zip(files)));
+
+    // #847: import the reverse of the download — a package .zip loaded into the
+    // editor for this session, then Published as the author's own (the fork path).
+    // Client-side unzip + parse + validate is fast feedback; the server's publish
+    // pipeline re-validates and is the real gate. In-session only: a reload
+    // re-loads from the registry.
+    private const int MaxImportBytes = 4 * 1024 * 1024;
+    private static readonly IReadOnlyDictionary<string, string> EmptyCatalogSchemas =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+    private string? importError;
+
+    private async Task ImportPackageAsync(InputFileChangeEventArgs args)
+    {
+        if (args.FileCount == 0)
+        {
+            return;
+        }
+
+        importError = null;
+        selectionNotice = null;
+        var file = args.File;
+
+        try
+        {
+            if (file.Size > MaxImportBytes)
+            {
+                importError = $"That file is larger than {MaxImportBytes / (1024 * 1024)} MB.";
+                return;
+            }
+
+            byte[] bytes;
+            using (var mem = new MemoryStream())
+            {
+                await using var stream = file.OpenReadStream(MaxImportBytes);
+                await stream.CopyToAsync(mem);
+                bytes = mem.ToArray();
+            }
+
+            var files = new Dictionary<string, string>(WorkflowPackageArchive.Unzip(bytes), StringComparer.Ordinal);
+
+            if (!files.TryGetValue("manifest.json", out var manifestText))
+            {
+                importError = "That .zip has no manifest.json — it is not a package.";
+                return;
+            }
+
+            files.Remove("manifest.json");
+
+            PF.WorkflowPackageManifest manifest;
+            try
+            {
+                manifest = PF.WorkflowPackageManifestJson.Read(manifestText, "the imported package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
+            }
+            catch (JsonException ex)
+            {
+                importError = $"manifest.json is not valid JSON: {PF.WorkflowPackageManifestJson.Describe(ex)}";
+                return;
+            }
+            catch (Exception ex)
+            {
+                importError = ex.Message;
+                return;
+            }
+
+            var validation = PF.WorkflowPackageValidator.Validate(manifest, files, EmptyCatalogSchemas);
+            if (!validation.IsValid)
+            {
+                importError = "The imported package is not valid: " + string.Join(" | ", validation.Errors);
+                return;
+            }
+
+            // Load it as the editor's package, exactly as a registry load projects
+            // `content`. It is not a remembered registry ref, so drop editingRef;
+            // EditingOwnPackage/the "not your package" banner follow from its name.
+            var manifestElement = JsonDocument.Parse(manifestText).RootElement.Clone();
+            ClearPending();
+            ResetFormScratch();
+            diagramText = null;
+            diagramIncludesPending = false;
+            editingRef = null;
+            await ForgetRememberedPackageAsync();
+            content = new WorkflowPackageContentResponse(manifest.Name, manifest.Version, manifest.SpecVersion, manifestElement, files);
+            ProjectLoadedContent();
+            ClearHistoryState();
+            selectedKey = GraphKey;
+            selectionNotice = $"Imported {content.Ref} for this session — Publish to keep it.";
+            _ = LoadDiagramAsync();
+        }
+        catch (InvalidDataException ex)
+        {
+            importError = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            importError = $"Could not import the package: {ex.Message}";
+        }
+    }
 
     private JsonElement ComposeManifest()
     {

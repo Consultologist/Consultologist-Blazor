@@ -509,3 +509,30 @@
 	width: 14rem;
 	font-family: var(--consultologist-font-mono, monospace);
 }
+
+/* #847: the "Import package…" control is a label wrapping a hidden file input,
+   styled to sit beside the stealth "Download package" button. */
+.import-package-button {
+	display: inline-flex;
+	align-items: center;
+	padding: 0 0.75rem;
+	height: 2rem;
+	font-size: var(--type-ramp-base-font-size, 0.875rem);
+	color: var(--consultologist-text);
+	border-radius: var(--consultologist-radius-sm, 4px);
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.import-package-button:hover {
+	background: var(--consultologist-surface-muted, rgba(0, 0, 0, 0.05));
+}
+
+.import-package-button input[type="file"] {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	opacity: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+}
