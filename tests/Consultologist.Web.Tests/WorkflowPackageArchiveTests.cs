@@ -33,4 +33,75 @@ public class WorkflowPackageArchiveTests
 
         Assert.Equal(files, read);
     }
+
+    // #847: Unzip is the exact reverse of Zip — the import round-trip.
+    [Fact]
+    public void UnzipOfZip_ReturnsTheSameFiles()
+    {
+        var files = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["manifest.json"] = """{ "name": "acct-a", "version": "v1", "specVersion": 5 }""",
+            ["prompts/draft.md"] = "Draft {{ x }}.",
+            ["data/standards/index.json"] = """{ "items": [] }""",
+            ["data/specialty.txt"] = "cardiology"
+        };
+
+        var read = WorkflowPackageArchive.Unzip(WorkflowPackageArchive.Zip(files));
+
+        Assert.Equal(files, read);
+    }
+
+    [Fact]
+    public void Unzip_RejectsANonZip()
+    {
+        Assert.Throws<InvalidDataException>(() => WorkflowPackageArchive.Unzip(new byte[] { 1, 2, 3, 4 }));
+    }
+
+    [Fact]
+    public void Unzip_RejectsATraversalEntry()
+    {
+        var bomb = ZipOf(("../escape.md", "nope"));
+
+        var ex = Assert.Throws<InvalidDataException>(() => WorkflowPackageArchive.Unzip(bomb));
+        Assert.Contains("unsafe file path", ex.Message);
+    }
+
+    [Fact]
+    public void Unzip_RejectsAnOversizeEntry()
+    {
+        var big = ZipOf(("prompts/big.md", new string('x', 300 * 1024))); // > 256 KB per-entry cap
+
+        Assert.Throws<InvalidDataException>(() => WorkflowPackageArchive.Unzip(big));
+    }
+
+    [Fact]
+    public void Unzip_SkipsDirectoryEntries()
+    {
+        using var buffer = new MemoryStream();
+        using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            archive.CreateEntry("prompts/");                                  // a bare directory entry
+            using var writer = new StreamWriter(archive.CreateEntry("manifest.json").Open());
+            writer.Write("{}");
+        }
+
+        var read = WorkflowPackageArchive.Unzip(buffer.ToArray());
+
+        Assert.Equal(new[] { "manifest.json" }, read.Keys);
+    }
+
+    private static byte[] ZipOf(params (string Path, string Text)[] entries)
+    {
+        using var buffer = new MemoryStream();
+        using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (path, text) in entries)
+            {
+                using var writer = new StreamWriter(archive.CreateEntry(path).Open());
+                writer.Write(text);
+            }
+        }
+
+        return buffer.ToArray();
+    }
 }
