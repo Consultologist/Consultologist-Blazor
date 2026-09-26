@@ -301,7 +301,13 @@ public record WorkflowPackagePublishRequest(
     // NewPackageSlug = a package I do not have yet; both null = my first,
     // derived package (every older client). Mirrors the Api's record.
     string? Target = null,
-    string? NewPackageSlug = null);
+    string? NewPackageSlug = null,
+    // #851: the content came from an uploaded .zip — publish it as a new root
+    // without requiring an accessible fork-source. Omitted when false so an
+    // older engine (whose deserializer disallows unmapped members) never sees
+    // it: only an import publish carries it, and imports need the new engine.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    bool FromUpload = false);
 
 /// <summary>#447: mirrors the Api's AccountPackagesResponse.</summary>
 public record AccountPackagesView(List<PublicPackageView>? Packages);
