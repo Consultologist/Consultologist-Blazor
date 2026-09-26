@@ -103,7 +103,7 @@
                     @if (EditingOwnPackage)
                     {
                         <FluentButton Appearance="Appearance.Accent"
-                                      Disabled="@(PendingCount == 0 || isPublishing)"
+                                      Disabled="@(!CanPublish)"
                                       @onclick="() => PublishAsync(content.Name, null)">
                             @if (isPublishing)
                             {
@@ -119,7 +119,7 @@
                     @if (HasNoPackagesYet)
                     {
                         <FluentButton Appearance="Appearance.Accent"
-                                      Disabled="@(PendingCount == 0 || isPublishing)"
+                                      Disabled="@(!CanPublish)"
                                       @onclick="() => PublishAsync(null, null)">
                             @if (isPublishing)
                             {
@@ -135,7 +135,7 @@
                     else if (!newPackageOpen)
                     {
                         <FluentButton Appearance="@(EditingOwnPackage ? Appearance.Outline : Appearance.Accent)"
-                                      Disabled="@(PendingCount == 0 || isPublishing)"
+                                      Disabled="@(!CanPublish)"
                                       @onclick="() => newPackageOpen = true">
                             Publish as a new package&hellip;
                         </FluentButton>
@@ -152,7 +152,7 @@
                                    @oninput="args => newPackageSlug = args.Value?.ToString() ?? string.Empty"
                                    aria-label="New package path" />
                             <FluentButton Appearance="Appearance.Accent"
-                                          Disabled="@(PendingCount == 0 || isPublishing || !WorkflowPackageNames.IsValidPath(newPackageSlug.Trim()))"
+                                          Disabled="@(!CanPublish || !WorkflowPackageNames.IsValidPath(newPackageSlug.Trim()))"
                                           @onclick="() => PublishAsync(null, newPackageSlug.Trim())">
                                 @if (isPublishing)
                                 {
@@ -2562,6 +2562,13 @@
     private IReadOnlyList<PublicPackageView>? mine;
     private bool newPackageOpen;
     private string newPackageSlug = string.Empty;
+
+    // #849: the current content came from an uploaded .zip, not the registry.
+    // An imported package is publishable with no further edits (the import IS
+    // the change); a registry load clears it. See CanPublish.
+    private bool imported;
+
+    private bool CanPublish => content != null && !isPublishing && (imported || PendingCount > 0);
 
     /// <summary>
     /// The ref this editor is holding. Since #411 it is NOT the consult pin:
@@ -7689,6 +7696,7 @@
             mine = await WorkflowService.GetMyPackagesAsync();
             newPackageOpen = false;
             newPackageSlug = string.Empty;
+            imported = false; // #849: a registry load is not an import.
 
             try
             {
@@ -8631,7 +8639,7 @@
     /// </summary>
     private async Task PublishAsync(string? target, string? newPackageSlug)
     {
-        if (content == null || PendingCount == 0 || isPublishing)
+        if (!CanPublish)
         {
             return;
         }
@@ -9299,6 +9307,12 @@
             ProjectLoadedContent();
             ClearHistoryState();
             selectedKey = GraphKey;
+            // #849: an imported package is publishable as-is — the import is the
+            // change. Open the name field ready (empty; the author names it) so
+            // import → view → name → Publish reads as one flow.
+            imported = true;
+            newPackageOpen = true;
+            newPackageSlug = string.Empty;
             _ = LoadDiagramAsync();
 
             // Validation is fast feedback, NOT a gate: contract-schema checks need
@@ -9307,8 +9321,8 @@
             // findings as a warning the author can fix in the editor before Publish.
             var validation = PF.WorkflowPackageValidator.Validate(manifest, files, EmptyCatalogSchemas);
             selectionNotice = validation.IsValid
-                ? $"Imported {content.Ref} for this session — Publish to keep it."
-                : $"Imported {content.Ref} for this session, but it has issues to resolve before it will publish: {string.Join(" | ", validation.Errors)}";
+                ? $"Imported {content.Ref} — name it below and Publish as a new package to keep it."
+                : $"Imported {content.Ref}, but it has issues to resolve before it will publish: {string.Join(" | ", validation.Errors)}";
         }
         catch (InvalidDataException ex)
         {

@@ -27,6 +27,14 @@ public class TemplatesImportTests : ClientRenderTestContext
     private static void Upload(IRenderedComponent<Templates> page, byte[] bytes, string name) =>
         page.FindComponent<InputFile>().UploadFiles(InputFileContent.CreateFromBinary(bytes, name));
 
+    private WorkflowPackagePublishRequest? sent;
+
+    private void CapturePublish() =>
+        WorkflowService.PublishPackageAsync(Arg.Do<WorkflowPackagePublishRequest>(request => sent = request))
+            .Returns(new WorkflowPublishOutcome(
+                new WorkflowPackagePublishResponse("acct-1234567890ab", "v2026.08.2", "acct-1234567890ab@v2026.08.2"),
+                Array.Empty<string>()));
+
     // A package .zip in the shape "Download package" emits: content files + manifest.json.
     private static byte[] PackageZip(WorkflowPackageContentResponse fixture, params (string Path, string Text)[] overrides)
     {
@@ -84,5 +92,37 @@ public class TemplatesImportTests : ClientRenderTestContext
 
         Assert.Contains("no manifest.json", page.Markup);
         Assert.DoesNotContain("Imported", page.Markup);
+    }
+
+    // #849: an imported package is saveable as a new package with no further edit.
+    [Fact]
+    public void AnImportedPackage_CanBeNamedAndPublishedAsANewPackage_WithoutAnEdit()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+        CapturePublish();
+
+        var zip = PackageZip(EditorFixtures.V11Macro(),
+            ("prompts/draft-section.md", "IMPORTED-MARKER {{ consult_draft }}"));
+        Upload(page, zip, "imported.zip");
+
+        // The name field is open and ready right after import.
+        var slug = page.Find("input[aria-label='New package path']");
+        slug.Input("my/imported-copy");
+
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish as new package")).Click();
+
+        Assert.NotNull(sent);
+        Assert.Equal("my/imported-copy", sent!.NewPackageSlug);
+        Assert.Equal("IMPORTED-MARKER {{ consult_draft }}", sent.Files["prompts/draft-section.md"]);
+    }
+
+    // Guard: a normal (non-imported) edit-free package keeps publish disabled.
+    [Fact]
+    public void ANormalEditFreePackage_KeepsPublishDisabled()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+
+        var publish = page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish new version"));
+        Assert.True(publish.HasAttribute("disabled"));
     }
 }
