@@ -20,6 +20,9 @@ public interface IWorkflowEndpointService
     /// <summary>#447: every package the account owns — a set, since an account holds many.</summary>
     Task<IReadOnlyList<PublicPackageView>?> GetMyPackagesAsync();
     Task<Dictionary<string, PublicCatalogEntry>?> GetCatalogAsync(string version);
+    /// <summary>#852: the latest catalog's output-contract schemas (contractId -> schema JSON), for
+    /// validating an imported package client-side the way the server does. Null when unavailable.</summary>
+    Task<IReadOnlyDictionary<string, string>?> GetCatalogSchemasAsync();
     Task<IReadOnlyList<string>?> GetLineageAsync(string packageRef);
     Task<string?> GetCurrentDiagramAsync(string? packageRef = null);
     Task<string?> GetDiagramForManifestAsync(JsonElement manifest);
@@ -29,7 +32,7 @@ public interface IWorkflowEndpointService
 public record EngineView(string? Commit, string? PackageFormat, string? Provenance, string? ApiHost = null, string? Release = null);
 
 /// <summary>One entry of a specific catalog version's document (public registry blob).</summary>
-public record PublicCatalogEntry(string? AgentName, string? AgentVersion);
+public record PublicCatalogEntry(string? AgentName, string? AgentVersion, string? SchemaFile = null);
 
 /// <summary>
 /// Minimal mirror of the anonymous Public/Chain document: the repo-owned
@@ -521,6 +524,68 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
         }
     }
 
+    private IReadOnlyDictionary<string, string>? _catalogSchemasCache;
+
+    public async Task<IReadOnlyDictionary<string, string>?> GetCatalogSchemasAsync()
+    {
+        if (_catalogSchemasCache is not null)
+        {
+            return _catalogSchemasCache;
+        }
+
+        var baseUrl = _configuration["AzureFunction:PublicRegistryBaseUrl"]?.TrimEnd('/');
+
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            return null;
+        }
+
+        try
+        {
+            // Anonymous, immutable, CORS-open registry blobs — the same catalog the
+            // server validates against. Latest pointer -> catalog index (each contract
+            // names a schemaFile) -> the schema documents themselves.
+            var pointer = await _httpClient.GetFromJsonAsync<CatalogPointer>($"{baseUrl}/output-contracts/latest.json");
+
+            if (string.IsNullOrWhiteSpace(pointer?.Version))
+            {
+                return null;
+            }
+
+            var version = Uri.EscapeDataString(pointer.Version);
+            var catalog = await _httpClient.GetFromJsonAsync<CatalogDocument>(
+                $"{baseUrl}/output-contracts/{version}/output-contracts.json");
+
+            if (catalog?.Contracts is null)
+            {
+                return null;
+            }
+
+            var schemas = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            foreach (var (contractId, entry) in catalog.Contracts)
+            {
+                if (string.IsNullOrWhiteSpace(entry.SchemaFile))
+                {
+                    continue; // an unstructured contract (e.g. text) declares no schema.
+                }
+
+                // schemaFile is a controlled relative path (e.g. schemas/concept-list.json);
+                // its slash is a path separator, so it is not escaped.
+                schemas[contractId] = await _httpClient.GetStringAsync(
+                    $"{baseUrl}/output-contracts/{version}/{entry.SchemaFile}");
+            }
+
+            _catalogSchemasCache = schemas;
+            return schemas;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Output-contract catalog schemas unavailable; import schema validation falls back.");
+            return null;
+        }
+    }
+
     public async Task<IReadOnlyList<string>?> GetLineageAsync(string packageRef)
     {
         var lineageUrl = _locations.Url(ApiRoutes.WorkflowPackageLineage);
@@ -616,6 +681,8 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
     private sealed record LineagePayload(List<string>? Chain);
 
     private sealed record CatalogDocument(Dictionary<string, PublicCatalogEntry>? Contracts);
+
+    private sealed record CatalogPointer(string? Version);
 
     private sealed record PublishErrorPayload(List<string>? Errors);
 
