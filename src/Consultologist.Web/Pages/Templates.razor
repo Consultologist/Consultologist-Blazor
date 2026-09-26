@@ -2545,7 +2545,11 @@
     // prefix" and "is mine" coincide — a mutant using the prefix alone passed
     // every test. The set (mine) decides only whether the account has any
     // package yet.
-    private bool EditingOwnPackage => WorkflowPackageNames.IsAccountPackage(content?.Name);
+    // #851: an imported acct-… package is another account's — the client can't
+    // tell whose by the prefix — so an import is never "your existing package".
+    // This routes imports to new-package / first-package publishing (never a
+    // new version of a foreign Target, which the server would refuse).
+    private bool EditingOwnPackage => !imported && WorkflowPackageNames.IsAccountPackage(content?.Name);
 
     // #750: the package's templating engine + pinned version, shown read-only in the Package pane.
     private WorkflowManifestReader.TemplatingView? Templating =>
@@ -8760,7 +8764,7 @@
 
             var composed = ComposeManifest();
             var outcome = await WorkflowService.PublishPackageAsync(
-                new WorkflowPackagePublishRequest(content.Ref, composed, files, target, newPackageSlug));
+                new WorkflowPackagePublishRequest(content.Ref, composed, files, target, newPackageSlug, FromUpload: imported));
 
             if (!outcome.Succeeded)
             {
@@ -8779,6 +8783,9 @@
             var sourceRef = content.Ref;
             var sourceWasForeign = !EditingOwnPackage;
             var asNewPackage = newPackageSlug != null || sourceWasForeign;
+            // #851: an imported package records no derivedFrom, so name the file
+            // it came from rather than a foreign ref the chain does not carry.
+            var wasImported = imported;
             // The published version is the pin now (the server flipped it);
             // the editor follows it rather than reloading the source.
             editingRef = null;
@@ -8795,7 +8802,7 @@
             var notYetRunnable = NotYetRunnable;
             await LoadAsync();
             publishSuccess = (asNewPackage
-                ? $"Published {publishedRef}{named} as a new package from {sourceRef} and switched your consults to it."
+                ? $"Published {publishedRef}{named} as a new package from {(wasImported ? "an imported file" : sourceRef)} and switched your consults to it."
                 : $"Published {publishedRef}{named} and switched your consults to it.")
                 + (notYetRunnable ? " It is not yet runnable." : string.Empty);
             publishWarnings = warnings;

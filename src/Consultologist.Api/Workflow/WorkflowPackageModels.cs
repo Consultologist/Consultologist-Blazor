@@ -166,7 +166,12 @@ public sealed record WorkflowPackagePublishRequest(
     // both null is every older client — the account's first, derived name.
     // Both set is refused.
     string? Target = null,
-    string? NewPackageSlug = null);
+    string? NewPackageSlug = null,
+    // #851: the content came from an uploaded .zip, not a live registry fork.
+    // The uploaded files are the body, so the Source need not be accessible or
+    // resolvable; the package publishes as a new ROOT (no derivedFrom) under the
+    // caller's account, with the same server-side validation as any publish.
+    bool FromUpload = false);
 
 public sealed record WorkflowPackagePublishResponse(
     string Name,

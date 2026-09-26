@@ -513,6 +513,61 @@ public class WorkflowPackagePublisherTests
         Assert.Contains("\"tags\": []", raw);
     }
 
+    // ----- #851: an imported package publishes without an accessible source ----
+
+    private const string ForeignSource = "acct-ffffffffffff/test/general@v2026.09.5";
+
+    [Fact]
+    public async Task Publish_FromUpload_SkipsSourceAccessAndResolve_StampingNoDerivedFrom()
+    {
+        // A .zip from another account: its source is neither accessible nor in
+        // this registry, yet it publishes as a new root under the caller's account.
+        var (publisher, writer, _) = CreatePublisher(sourceRef: ForeignSource);
+        var manifest = V5Fixtures.Manifest();
+        var files = V5Fixtures.Files(manifest);
+
+        var request = new WorkflowPackagePublishRequest(ForeignSource, manifest, files, NewPackageSlug: "test/general", FromUpload: true);
+        var result = await publisher.PublishAsync(OwnerId, null, request, CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        Assert.StartsWith(AccountName, result.Response!.Name);
+        var stored = writer.ReadManifest(result.Response.Name, result.Response.Version);
+        Assert.Null(stored.DerivedFrom); // a new root, not the unverifiable foreign origin
+    }
+
+    [Fact]
+    public async Task Publish_WithoutFromUpload_StillRefusesAnInaccessibleSource()
+    {
+        var (publisher, _, _) = CreatePublisher(sourceRef: ForeignSource);
+        var manifest = V5Fixtures.Manifest();
+
+        var request = new WorkflowPackagePublishRequest(ForeignSource, manifest, V5Fixtures.Files(manifest), NewPackageSlug: "test/general");
+        var result = await publisher.PublishAsync(OwnerId, null, request, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.True(result.Forbidden);
+        Assert.Contains(result.Errors, e => e.Contains("not accessible from this account"));
+    }
+
+    [Fact]
+    public async Task Publish_FromUpload_KeepsTheUploadedTitleDescriptionAndTags()
+    {
+        // An import is a complete package the author is saving — its own metadata
+        // is kept, unlike a cross-name fork which clears the parent's words.
+        var (publisher, writer, _) = CreatePublisher();
+        var manifest = Titled();
+
+        var request = Request(manifest: manifest, files: V5Fixtures.Files(manifest)) with { FromUpload = true };
+        var result = await publisher.PublishAsync(OwnerId, null, request, CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        var stored = writer.ReadManifest(AccountName, "v2026.07.1");
+        Assert.Equal("Breast oncology consults", stored.Title);
+        Assert.Equal("Referral triage and consult notes for the breast clinic.", stored.Description);
+        Assert.Equal(new[] { "oncology", "breast" }, stored.Tags);
+        Assert.Null(stored.DerivedFrom);
+    }
+
     [Fact]
     public async Task Publish_AForkAcrossNames_OfAPreV9Package_LeavesTagsAbsent()
     {

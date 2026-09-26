@@ -128,7 +128,9 @@ public sealed class WorkflowPackagePublisher
             return new WorkflowPackagePublishResult(null, errors);
         }
 
-        if (!await _ownership.CanAccessAsync(sourceRef!.Name, appUserId, cancellationToken))
+        // #851: an uploaded package carries its own body, so the Source need not
+        // be a package this account can access (there is no live source to fork).
+        if (!request.FromUpload && !await _ownership.CanAccessAsync(sourceRef!.Name, appUserId, cancellationToken))
         {
             return new WorkflowPackagePublishResult(
                 null,
@@ -156,19 +158,24 @@ public sealed class WorkflowPackagePublisher
 
         // The fork origin must actually exist and be executable — resolving it
         // applies the registry 404, spec-floor, and validation gates (and is
-        // usually a cache hit, since the editor just loaded it).
-        WorkflowPackage parent;
+        // usually a cache hit, since the editor just loaded it). #851: an
+        // uploaded package has no live source to resolve, so skip it — the
+        // uploaded files are validated in full below regardless.
+        WorkflowPackage? parent = null;
 
-        try
+        if (!request.FromUpload)
         {
-            parent = await _packageStore.ResolveAsync(sourceRef, cancellationToken);
-        }
-        catch (InvalidOperationException ex)
-        {
-            _logger.LogWarning(ex, "Publish rejected: source package could not be resolved. Source={Source}", sourceRef);
-            return new WorkflowPackagePublishResult(
-                null,
-                new[] { $"Source package {sourceRef} could not be resolved: it is not in the registry or is not executable." });
+            try
+            {
+                parent = await _packageStore.ResolveAsync(sourceRef, cancellationToken);
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Publish rejected: source package could not be resolved. Source={Source}", sourceRef);
+                return new WorkflowPackagePublishResult(
+                    null,
+                    new[] { $"Source package {sourceRef} could not be resolved: it is not in the registry or is not executable." });
+            }
         }
 
         var name = target.Name!;
@@ -185,14 +192,20 @@ public sealed class WorkflowPackagePublisher
         {
             Name = name,
             Version = version.ToString(),
-            DerivedFrom = sourceRef.ToString()
+            // #851: an uploaded package is a new ROOT — its declared origin is
+            // another account's package we cannot verify, and stamping it would
+            // strand the lineage walker. A live fork records its source as ever.
+            DerivedFrom = request.FromUpload ? null : sourceRef.ToString()
         };
 
         // v9 § 4 (#432): a fork across names starts with no title — and no
         // description, both being the parent's words about the parent. A
         // republish of the same package keeps them. Decided on the validated
         // source, never the client's manifest name, which is ignored above.
-        if (!string.Equals(sourceRef.Name, name, StringComparison.Ordinal))
+        // #851: an uploaded package keeps its own title/description/tags — it is
+        // a complete package the author is saving, not a fork masquerading as a
+        // parent's words. The clearing is only for a live cross-name fork.
+        if (!request.FromUpload && !string.Equals(sourceRef.Name, name, StringComparison.Ordinal))
         {
             // #453: tags likewise — cleared to the empty set, not to null,
             // because a v9 manifest must state them and the stamped manifest
@@ -211,7 +224,12 @@ public sealed class WorkflowPackagePublisher
             return new WorkflowPackagePublishResult(null, validation.Errors);
         }
 
-        validation.Warnings.AddRange(RelabelledWithoutContentChange(parent, stamped, files));
+        // #851: the relabel warning compares against the live source; an upload
+        // has none, so there is nothing to compare.
+        if (parent is not null)
+        {
+            validation.Warnings.AddRange(RelabelledWithoutContentChange(parent, stamped, files));
+        }
 
         // #433: the publication stamp — what each declared schema resolved to,
         // under this catalog — recorded once, here, where the match is first
