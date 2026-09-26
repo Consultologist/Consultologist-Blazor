@@ -16,6 +16,12 @@ public class TemplatesImportTests : ClientRenderTestContext
     private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse fixture)
     {
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture);
+        // The account already owns a package, so an import offers "Publish as a
+        // new package…" (name it) rather than the first-package path (#851).
+        WorkflowService.GetMyPackagesAsync().Returns(new[]
+        {
+            new PublicPackageView("acct-1234567890ab-existing", "v2026.08.1", new List<string> { "v2026.08.1" })
+        });
         return Render<Templates>();
     }
 
@@ -114,6 +120,27 @@ public class TemplatesImportTests : ClientRenderTestContext
         Assert.NotNull(sent);
         Assert.Equal("my/imported-copy", sent!.NewPackageSlug);
         Assert.Equal("IMPORTED-MARKER {{ consult_draft }}", sent.Files["prompts/draft-section.md"]);
+    }
+
+    // #851: an imported package is never treated as "your existing package" — no
+    // "Publish new version" (which would fail the server's target-ownership check);
+    // publishing sends FromUpload so the server skips the fork-source gate.
+    [Fact]
+    public void AnImportedPackage_HidesPublishNewVersion_AndSendsFromUpload()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+        CapturePublish();
+
+        Upload(page, PackageZip(EditorFixtures.V11Macro()), "imported.zip");
+
+        Assert.DoesNotContain(page.FindAll("fluent-button"), b => b.TextContent.Contains("Publish new version"));
+
+        page.Find("input[aria-label='New package path']").Input("my/imported-copy");
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish as new package")).Click();
+
+        Assert.NotNull(sent);
+        Assert.True(sent!.FromUpload);
+        Assert.Equal("my/imported-copy", sent.NewPackageSlug);
     }
 
     // Guard: a normal (non-imported) edit-free package keeps publish disabled.
