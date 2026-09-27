@@ -1,6 +1,8 @@
+using System.Text.Json;
 using Bunit;
 using Consultologist.Web.Pages;
 using Consultologist.Web.Services.Workflow;
+using Consultologist.Web.Shared.WorkflowEditor;
 using Microsoft.AspNetCore.Components.Forms;
 using NSubstitute;
 
@@ -173,6 +175,42 @@ public class TemplatesImportTests : ClientRenderTestContext
 
         Assert.Contains("Imported", page.Markup);
         Assert.DoesNotContain("must canonically match a catalog output contract", page.Markup);
+    }
+
+    // #855: the Workflow graph is drawn from the IMPORTED manifest (via the server
+    // generator), not fetched by ref — an import has no registry ref, so a by-ref
+    // fetch would return the pinned/default package's stale diagram.
+    [Fact]
+    public void ImportingAPackage_DrawsTheGraphFromTheImportedManifest_NotByRef()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+        WorkflowService.GetDiagramForManifestAsync(Arg.Any<JsonElement>()).Returns("graph TD; imported");
+        WorkflowService.GetCurrentDiagramAsync(Arg.Any<string?>()).Returns("graph TD; pinned");
+
+        Upload(page, PackageZip(EditorFixtures.V11Macro()), "imported.zip");
+
+        // LoadDiagramAsync is fired as `_ = …` on import, so wait for it to settle.
+        page.WaitForAssertion(() =>
+            Assert.Equal("graph TD; imported", page.FindComponent<WorkflowDagView>().Instance.Diagram));
+    }
+
+    // #855: Refresh on an unedited import also redraws from the manifest (no by-ref
+    // fetch, no pending decoration — the import IS the content).
+    [Fact]
+    public void RefreshingAnImportedPackage_KeepsTheManifestDiagram()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+        WorkflowService.GetDiagramForManifestAsync(Arg.Any<JsonElement>()).Returns("graph TD; imported");
+        WorkflowService.GetCurrentDiagramAsync(Arg.Any<string?>()).Returns("graph TD; pinned");
+
+        Upload(page, PackageZip(EditorFixtures.V11Macro()), "imported.zip");
+        page.WaitForAssertion(() =>
+            Assert.Equal("graph TD; imported", page.FindComponent<WorkflowDagView>().Instance.Diagram));
+
+        page.FindAll("button").First(b => b.TextContent.Contains("Refresh")).Click();
+
+        page.WaitForAssertion(() =>
+            Assert.Equal("graph TD; imported", page.FindComponent<WorkflowDagView>().Instance.Diagram));
     }
 
     // Guard: a normal (non-imported) edit-free package keeps publish disabled.
