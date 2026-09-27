@@ -19,6 +19,7 @@ public sealed class WorkflowPackages
     private readonly IWorkflowPackageStore _packageStore;
     private readonly IWorkflowPackagePinResolver _pinResolver;
     private readonly WorkflowPackagePublisher _publisher;
+    private readonly WorkflowPackageIngestor _ingestor;
     private readonly WorkflowPackageLineageResolver _lineage;
     private readonly WorkflowPackageBlobContainerFactory _containerFactory;
     private readonly IAccountAuthorizer _authorizer;
@@ -29,6 +30,7 @@ public sealed class WorkflowPackages
         IWorkflowPackageStore packageStore,
         IWorkflowPackagePinResolver pinResolver,
         WorkflowPackagePublisher publisher,
+        WorkflowPackageIngestor ingestor,
         WorkflowPackageLineageResolver lineage,
         WorkflowPackageBlobContainerFactory containerFactory,
         IAccountAuthorizer authorizer,
@@ -39,6 +41,7 @@ public sealed class WorkflowPackages
         _packageStore = packageStore;
         _pinResolver = pinResolver;
         _publisher = publisher;
+        _ingestor = ingestor;
         _lineage = lineage;
         _containerFactory = containerFactory;
         _authorizer = authorizer;
@@ -696,6 +699,71 @@ public sealed class WorkflowPackages
         }
 
         return await CreateJsonResponseAsync(req, HttpStatusCode.OK, result.Response!, cancellationToken);
+    }
+
+    // #858: the import ingest cap on the raw upload — matches the client's own
+    // import guard; the unzip enforces the per-file/total caps once decompressed.
+    private const int MaxUploadBytes = 4 * 1024 * 1024;
+
+    /// <summary>
+    /// #858: accept an uploaded package .zip, validate it in full server-side
+    /// (the same content checks publish runs, against the real catalog), and return
+    /// the normalized content plus advisory findings. The editor calls this instead
+    /// of unzipping in the browser; it does not publish/store anything.
+    /// </summary>
+    [Function("WorkflowPackageIngest")]
+    public async Task<HttpResponseData> IngestAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", "options", Route = "WorkflowPackages/Ingest")] HttpRequestData req)
+    {
+        var cancellationToken = req.FunctionContext.CancellationToken;
+
+        if (string.Equals(req.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        {
+            var optionsResponse = req.CreateResponse(HttpStatusCode.OK);
+            FunctionCors.Apply(req, optionsResponse);
+            return optionsResponse;
+        }
+
+        var account = await _authorizer.AuthorizeAsync(req, cancellationToken);
+
+        if (account == null)
+        {
+            return AccountAuthorizer.CreateUnauthorizedResponse(req);
+        }
+
+        if (!AccountAuthorizer.CanUseApp(account))
+        {
+            return AccountAuthorizer.CreateForbiddenResponse(req);
+        }
+
+        // The uploaded .zip is the raw request body (like DocumentExtractions —
+        // no multipart, no filename).
+        using var buffer = new MemoryStream();
+        await req.Body.CopyToAsync(buffer, cancellationToken);
+        var bytes = buffer.ToArray();
+
+        if (bytes.Length == 0)
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest, new { error = "An uploaded .zip is required." }, cancellationToken);
+        }
+
+        if (bytes.Length > MaxUploadBytes)
+        {
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest, new { error = $"That file is larger than {MaxUploadBytes / (1024 * 1024)} MB." }, cancellationToken);
+        }
+
+        var result = _ingestor.Ingest(bytes);
+
+        if (!result.Parsed)
+        {
+            // The bytes are not a readable package (bad zip, no manifest.json,
+            // unreadable manifest). Advisory content findings are NOT an error —
+            // those come back with a 200 for the editor to show.
+            return await CreateJsonResponseAsync(req, HttpStatusCode.BadRequest, new { error = result.Error }, cancellationToken);
+        }
+
+        return await CreateJsonResponseAsync(req, HttpStatusCode.OK,
+            new WorkflowPackageIngestResponse(result.Content!, result.Findings), cancellationToken);
     }
 
     /// <summary>

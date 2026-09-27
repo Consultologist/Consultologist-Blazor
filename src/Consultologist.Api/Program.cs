@@ -107,6 +107,7 @@ builder.Services.AddSingleton<WorkflowPackageBlobContainerFactory>();
 builder.Services.AddSingleton<IWorkflowPackageStore, WorkflowPackageStore>();
 builder.Services.AddSingleton<IWorkflowPackageRegistryWriter, WorkflowPackageRegistryWriter>();
 builder.Services.AddSingleton<WorkflowPackagePublisher>();
+builder.Services.AddSingleton<WorkflowPackageIngestor>();
 builder.Services.AddSingleton<WorkflowPackageLineageResolver>();
 builder.Services.AddSingleton<IWorkflowPackageOwnership, WorkflowPackageOwnership>();
 builder.Services.AddSingleton<IWorkflowPackagePinResolver, WorkflowPackagePinResolver>();
