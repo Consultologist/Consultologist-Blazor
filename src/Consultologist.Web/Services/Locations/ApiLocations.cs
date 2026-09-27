@@ -142,6 +142,7 @@ public static class ApiRoutes
     public const string WorkflowPackageCurrent = "WorkflowPackages/Current";
     public const string WorkflowPackageContent = "WorkflowPackages/Current/Content";
     public const string WorkflowPackagePublish = "WorkflowPackages/Publish";
+    public const string WorkflowPackageIngest = "WorkflowPackages/Ingest";
     public const string WorkflowPackageDiagram = "WorkflowPackages/Current/Diagram";
     public const string WorkflowPackageMinePackages = "WorkflowPackages/MinePackages";
     public const string WorkflowPackageDiagramPreview = "WorkflowPackages/Diagram";

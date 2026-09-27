@@ -9357,7 +9357,7 @@
 
     private async Task DownloadZipAsync(IReadOnlyDictionary<string, string> files, string fileName) =>
         await JS.InvokeVoidAsync("consultologistDownload", fileName, "application/zip",
-            Convert.ToBase64String(WorkflowPackageArchive.Zip(files)));
+            Convert.ToBase64String(PF.WorkflowPackageArchive.Zip(files)));
 
     // #847: import the reverse of the download — a package .zip loaded into the
     // editor for this session, then Published as the author's own (the fork path).
@@ -9396,6 +9396,28 @@
                 bytes = mem.ToArray();
             }
 
+            // #858: validate + normalize on the server, which runs the full
+            // content validation against the real catalog (the same as publish).
+            // Null means the endpoint is unavailable (e.g. before its engine
+            // release) — fall back to the local unzip + partial validation below.
+            var outcome = await WorkflowService.IngestPackageAsync(bytes);
+
+            if (outcome is { Error: not null })
+            {
+                // The server read the bytes and says they are not a package — a
+                // local unzip would only fail the same way. Leave the editor as is.
+                importError = outcome.Error;
+                return;
+            }
+
+            if (outcome?.Content is not null)
+            {
+                await ApplyImportedPackageAsync(outcome.Content, bytes, outcome.Findings);
+                return;
+            }
+
+            // Fallback: unzip + parse locally (throws on a bad zip / missing or
+            // invalid manifest → the catches below; the editor is left unchanged).
             ImportedPackage built;
             try
             {
@@ -9406,52 +9428,18 @@
                 importError = $"manifest.json is not valid JSON: {PF.WorkflowPackageManifestJson.Describe(ex)}";
                 return;
             }
-            // A bad .zip or a missing manifest.json throws InvalidDataException,
-            // and other manifest errors a plain Exception — both fall to the outer
-            // catches below. No editor state has changed yet, so the editor is left
-            // unchanged on any of these.
 
-            // Load it as the editor's package, exactly as a registry load projects
-            // `content`. It is not a remembered registry ref, so drop editingRef;
-            // EditingOwnPackage/the "not your package" banner follow from its name.
-            ClearPending();
-            ResetFormScratch();
-            diagramText = null;
-            diagramIncludesPending = false;
-            editingRef = null;
-            await ForgetRememberedPackageAsync();
-            content = built.Content;
-            // #857: hold the uploaded .zip so the import survives a reload.
-            importZipBase64 = Convert.ToBase64String(bytes);
-            ProjectLoadedContent();
-            ClearHistoryState();
-            selectedKey = GraphKey;
-            // #849: an imported package is publishable as-is — the import is the
-            // change. Open the name field ready (empty; the author names it) so
-            // import → view → name → Publish reads as one flow.
-            imported = true;
-            newPackageOpen = true;
-            newPackageSlug = string.Empty;
-            await PersistImportAsync();
-            _ = LoadDiagramAsync();
-
-            var manifest = built.Manifest;
-            var files = built.Files;
-
-            // Validation is fast feedback, NOT a gate — the publish pipeline
-            // re-validates in full. #852: schema checks need the output-contract
-            // catalog, so fetch the real one and validate against it (the way the
-            // server does); with it, a declared schema that matches the catalog
-            // passes. If the catalog can't be fetched we can't judge schemas, so
-            // drop the catalog-match findings rather than show a false positive.
+            // #852: schema checks need the output-contract catalog, so fetch the
+            // real one and validate against it (as the server does); if it can't
+            // be fetched we can't judge schemas, so drop the catalog-match findings
+            // rather than show a false positive.
             var catalogSchemas = await WorkflowService.GetCatalogSchemasAsync();
-            var validation = PF.WorkflowPackageValidator.Validate(manifest, files, catalogSchemas ?? EmptyCatalogSchemas);
+            var validation = PF.WorkflowPackageValidator.Validate(built.Manifest, built.Files, catalogSchemas ?? EmptyCatalogSchemas);
             var findings = catalogSchemas is not null
                 ? validation.Errors
                 : validation.Errors.Where(e => !e.Contains("must canonically match a catalog output contract", StringComparison.Ordinal)).ToList();
-            selectionNotice = findings.Count == 0
-                ? $"Imported {content.Ref} — held locally in this browser. Name it below and Publish as a new package to keep it."
-                : $"Imported {content.Ref}, but it has issues to resolve before it will publish: {string.Join(" | ", findings)}";
+
+            await ApplyImportedPackageAsync(built.Content, bytes, findings);
         }
         catch (InvalidDataException ex)
         {
@@ -9463,6 +9451,36 @@
         }
     }
 
+    // #847/#857/#858: load an imported package into the editor — the state block a
+    // fresh upload sets, shared by the server-ingest and local-fallback paths so
+    // they never diverge. Loads it exactly as a registry load projects `content`,
+    // but with no remembered ref (EditingOwnPackage / the "not your package" banner
+    // follow from its name), holds the .zip for reload persistence (#857), and
+    // opens the name field ready (#849). Findings are advisory — publish is the gate.
+    private async Task ApplyImportedPackageAsync(WorkflowPackageContentResponse importedContent, byte[] zipBytes, IReadOnlyList<string> findings)
+    {
+        ClearPending();
+        ResetFormScratch();
+        diagramText = null;
+        diagramIncludesPending = false;
+        editingRef = null;
+        await ForgetRememberedPackageAsync();
+        content = importedContent;
+        importZipBase64 = Convert.ToBase64String(zipBytes);
+        ProjectLoadedContent();
+        ClearHistoryState();
+        selectedKey = GraphKey;
+        imported = true;
+        newPackageOpen = true;
+        newPackageSlug = string.Empty;
+        await PersistImportAsync();
+        _ = LoadDiagramAsync();
+
+        selectionNotice = findings.Count == 0
+            ? $"Imported {content.Ref} — held locally in this browser. Name it below and Publish as a new package to keep it."
+            : $"Imported {content.Ref}, but it has issues to resolve before it will publish: {string.Join(" | ", findings)}";
+    }
+
     // #847/#857: the split-and-parse an import shares — a fresh upload and a
     // reload-restore both build `content` from the same bytes, so the two paths
     // never diverge. Throws InvalidDataException (bad zip / no manifest.json),
@@ -9471,7 +9489,7 @@
 
     private static ImportedPackage BuildImportedContent(byte[] zipBytes)
     {
-        var files = new Dictionary<string, string>(WorkflowPackageArchive.Unzip(zipBytes), StringComparer.Ordinal);
+        var files = new Dictionary<string, string>(PF.WorkflowPackageArchive.Unzip(zipBytes), StringComparer.Ordinal);
 
         if (!files.TryGetValue("manifest.json", out var manifestText))
         {

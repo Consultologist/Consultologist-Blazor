@@ -14,6 +14,10 @@ public interface IWorkflowEndpointService
     /// <summary>The pinned package, or a named one since #411 split editing from pinning.</summary>
     Task<WorkflowPackageContentResponse> GetCurrentPackageContentAsync(string? packageRef = null);
     Task<WorkflowPublishOutcome> PublishPackageAsync(WorkflowPackagePublishRequest request);
+    /// <summary>#858: server-side import — POST the uploaded .zip, get back normalized content and
+    /// full catalog-backed findings. Null when the endpoint is unavailable (the editor falls back to
+    /// a local unzip); an outcome with Error is a definite "not a package" verdict from the server.</summary>
+    Task<WorkflowIngestOutcome?> IngestPackageAsync(byte[] zipBytes);
     Task<PublicChainView?> GetPublicChainAsync();
     /// <summary>#402: what the deployed engine attests (Public/Engine) — the versions History links a record's numbers to.</summary>
     Task<EngineView?> GetEngineAsync();
@@ -327,6 +331,20 @@ public record WorkflowPublishOutcome(
     IReadOnlyList<string> Errors)
 {
     public bool Succeeded => Response != null;
+}
+
+/// <summary>
+/// #858: the server ingest result. Content+Findings on a parseable package (the
+/// editor loads it and shows Findings); Error set on a definite "not a package"
+/// (400) verdict (show it, don't fall back). The method returns null (not this)
+/// when the endpoint is unavailable, so the editor falls back to a local unzip.
+/// </summary>
+public record WorkflowIngestOutcome(
+    WorkflowPackageContentResponse? Content,
+    IReadOnlyList<string> Findings,
+    string? Error)
+{
+    public bool Parsed => Content != null;
 }
 
 public sealed class WorkflowEndpointService : IWorkflowEndpointService
@@ -675,6 +693,58 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
             return null;
         }
     }
+
+    public async Task<WorkflowIngestOutcome?> IngestPackageAsync(byte[] zipBytes)
+    {
+        var url = _locations.Url(ApiRoutes.WorkflowPackageIngest);
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new ByteArrayContent(zipBytes)
+            };
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
+            await AddAuthorizationAsync(request);
+            using var response = await _httpClient.SendAsync(request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var payload = await response.Content.ReadFromJsonAsync<IngestPayload>();
+
+                // A 200 with no content is not something this endpoint returns;
+                // treat it as unavailable so the caller falls back locally.
+                return payload?.Content is null
+                    ? null
+                    : new WorkflowIngestOutcome(payload.Content, payload.Findings ?? new List<string>(), null);
+            }
+
+            // A 400 is the server's definite "these bytes are not a package"
+            // verdict — surface it; a local unzip would only fail the same way.
+            if (response.StatusCode == HttpStatusCode.BadRequest)
+            {
+                var error = await response.Content.ReadFromJsonAsync<IngestErrorPayload>();
+                return new WorkflowIngestOutcome(null, new List<string>(), error?.Error ?? "That file could not be imported.");
+            }
+
+            // Anything else (endpoint not deployed yet, 5xx, auth-shape issues):
+            // unavailable → fall back to the local unzip.
+            _logger.LogWarning("Package ingest failed with status {StatusCode}; falling back to local import.", response.StatusCode);
+            return null;
+        }
+        catch (AccessTokenNotAvailableException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Package ingest unavailable; falling back to local import.");
+            return null;
+        }
+    }
+
+    private sealed record IngestPayload(WorkflowPackageContentResponse? Content, List<string>? Findings);
+
+    private sealed record IngestErrorPayload(string? Error);
 
     private sealed record DiagramPayload(string? Diagram);
 
