@@ -10020,6 +10020,18 @@
                         continue;
                     }
 
+                    // The loaded manifest's keys may be PascalCase (the Functions
+                    // worker's default serializer) or lowercase (repo sources);
+                    // JsonObject.Remove is case-sensitive, so clear both spellings
+                    // before (re)writing the lowercase canonical form — otherwise a
+                    // PascalCase "Optional" survives an un-check (#864), or lingers
+                    // beside a freshly written lowercase key when only the default
+                    // changes.
+                    declaration.Remove("optional");
+                    declaration.Remove("Optional");
+                    declaration.Remove("default");
+                    declaration.Remove("Default");
+
                     if (edit.Optional)
                     {
                         declaration["optional"] = true;
@@ -10027,15 +10039,6 @@
                         {
                             declaration["default"] = chosenDefault;
                         }
-                        else
-                        {
-                            declaration.Remove("default");
-                        }
-                    }
-                    else
-                    {
-                        declaration.Remove("optional");
-                        declaration.Remove("default");
                     }
                 }
             }
