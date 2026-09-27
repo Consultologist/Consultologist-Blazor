@@ -23,7 +23,8 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     // version.
     // v13 (#728): declarable input content channels — transcript and form.
     // v18 (#822): a node's own when — condition-gated node inclusion, cascade.
-    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
+    // v20 (#863): inline macro slots — a section may emit [[slot:id]], filled at assembly.
+    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 };
     private static readonly TimeSpan LatestPointerCacheDuration = TimeSpan.FromSeconds(60);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -396,9 +397,15 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         // against nothing, and the held arm silently left the document
         // (#623's demo caught it live). Gated-and-appended stays the § 14
         // contract: when alone appends after the sections like the bare form.
+        //
+        // #863 (v20): a slot entry (Slot == true, no anchor) also carries a
+        // placement — the slot filler needs to know which macros this
+        // deliverable authorized for inline [[slot:<id>]] filling. It is not
+        // "placed" in the composer's sense (Compose skips it); it rides here
+        // only to reach the assembly-time filler.
         var placed = entries?
-            .Where(entry => entry.Before != null || entry.After != null)
-            .Select(entry => new ConsultMacroPlacement(entry.Id, entry.Before, entry.After, entry.ForItem))
+            .Where(entry => entry.Before != null || entry.After != null || entry.Slot == true)
+            .Select(entry => new ConsultMacroPlacement(entry.Id, entry.Before, entry.After, entry.ForItem, entry.Slot == true ? true : null))
             .ToList();
         return placed is { Count: > 0 } ? placed : null;
     }

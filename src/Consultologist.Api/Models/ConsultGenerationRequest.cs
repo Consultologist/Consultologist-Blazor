@@ -427,6 +427,11 @@ public static class ConsultAppendedKinds
     public const string Macro = "macro";
 
     public const string Signature = "signature";
+
+    // #863 (v20): a macro's text substituted in place of a model-emitted
+    // [[slot:<id>]] marker at document assembly. Attributed exactly like an
+    // appended macro — outside the node hashes, inside the document hash.
+    public const string Slot = "slot";
 }
 
 /// <summary>
@@ -554,7 +559,11 @@ public sealed record ConsultResultDescriptor(
 /// exactly one anchor, the aggregate source it sits before or after (the raw
 /// node:&lt;id&gt; string, as the manifest and the validator spell it).
 /// </summary>
-public sealed record ConsultMacroPlacement(string Id, string? Before = null, string? After = null, string? ForItem = null);
+// #863 (v20): Slot marks a macro the model may place inline via a
+// [[slot:<id>]] marker in a section's output — mutually exclusive with the
+// Before/After/ForItem anchors (a slot has no static anchor). Only true or
+// null, never false. Appended last, this is a durable payload.
+public sealed record ConsultMacroPlacement(string Id, string? Before = null, string? After = null, string? ForItem = null, bool? Slot = null);
 
 /// <summary>
 /// A deliverable the package declared and this job did not produce, because its

@@ -378,6 +378,14 @@ public sealed class ConsultGenerationOrchestrator
             IReadOnlyList<string> sourceRefs,
             List<ConsultAggregateRenderer.Part> parts)
         {
+            var facts = new ConsultMacroExpander.RunFacts(
+                context.CurrentUtcDateTime,
+                context.InstanceId,
+                input.WorkflowPackage ?? string.Empty,
+                input.ApiHost,
+                input.ProfileName,
+                input.Signature);
+
             var (text, appended, tokenCarried) = ConsultMacroExpander.Compose(
                 sourceRefs,
                 parts,
@@ -387,16 +395,37 @@ public sealed class ConsultGenerationOrchestrator
                 effectiveInputs,
                 input.DataScalars,
                 Classifications(),
-                new ConsultMacroExpander.RunFacts(
-                    context.CurrentUtcDateTime,
-                    context.InstanceId,
-                    input.WorkflowPackage ?? string.Empty,
-                    input.ApiHost,
-                    input.ProfileName,
-                    input.Signature));
+                facts);
+
+            // #863 (v20): fill the model's inline [[slot:<id>]] markers over the
+            // COMPOSED document (never the node output — the marker stays in the
+            // node hash), before the signature/hash. The slot-mode placements are
+            // the allow-list, already gate-filtered; a slot entry attributes the
+            // fill outside node hashes, exactly like an appended macro.
+            var authorizedSlotIds = (deliverable.MacroPlacements ?? Array.Empty<ConsultMacroPlacement>())
+                .Where(placement => placement.Slot == true)
+                .Select(placement => placement.Id)
+                .ToHashSet(StringComparer.Ordinal);
+
+            var (slotFilledText, slotEntries) = ConsultSlotFiller.Fill(
+                text,
+                authorizedSlotIds,
+                input.MacroTexts,
+                effectiveInputs,
+                input.DataScalars,
+                Classifications(),
+                facts);
+
+            // Slot fills sit inside the section bodies, ahead of the trailing
+            // appended macros — a slot entry precedes the composed appends in the
+            // provenance list. The document text is the authority; the appended
+            // list is attribution, so this is order enough (§ 6).
+            var appendedWithSlots = slotEntries is { Count: > 0 }
+                ? (appended is { Count: > 0 } ? slotEntries.Concat(appended).ToList() : slotEntries)
+                : appended;
 
             var (finalText, finalAppended, unsigned) = ConsultSignatureAppend.Finish(
-                text, appended, deliverable.Signature == true, tokenCarried, input.Signature);
+                slotFilledText, appendedWithSlots, deliverable.Signature == true, tokenCarried, input.Signature);
             recordedTexts[deliverable.ResultId!] = finalText;
 
             await context.Entities.CallEntityAsync(

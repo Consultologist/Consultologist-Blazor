@@ -119,6 +119,16 @@ internal static class ConsultMacroExpander
             .ToList();
         var placedIds = active.Select(placement => placement.Id).ToHashSet(StringComparer.Ordinal);
 
+        // #863 (v20): a slot-mode macro is placed inline by the model's
+        // [[slot:<id>]] marker and filled at assembly (ConsultSlotFiller), not
+        // appended here. It carries no anchor, so it never enters `active`;
+        // subtract it from the trailing "unplaced → append" set too, or a slot
+        // macro would be both appended AND filled inline.
+        var slotIds = (placements ?? Array.Empty<ConsultMacroPlacement>())
+            .Where(placement => placement.Slot == true)
+            .Select(placement => placement.Id)
+            .ToHashSet(StringComparer.Ordinal);
+
         var pieces = new List<string>(parts.Count + macroIds.Count);
         var appended = new List<ConsultAppendedEntry>(macroIds.Count);
         var tokenCarried = false;
@@ -197,7 +207,7 @@ internal static class ConsultMacroExpander
             }
         }
 
-        foreach (var macroId in macroIds.Where(id => !placedIds.Contains(id)))
+        foreach (var macroId in macroIds.Where(id => !placedIds.Contains(id) && !slotIds.Contains(id)))
         {
             EmitMacro(macroId);
         }
