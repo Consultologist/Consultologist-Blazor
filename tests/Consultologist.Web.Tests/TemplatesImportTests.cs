@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Bunit;
+using Consultologist.PackageFormat;
 using Consultologist.Web.Pages;
 using Consultologist.Web.Services.Workflow;
 using Consultologist.Web.Shared.WorkflowEditor;
@@ -319,6 +320,52 @@ public class TemplatesImportTests : ClientRenderTestContext
             // Back on the registry package: the imported marker is gone.
             Assert.DoesNotContain("IMPORTED-MARKER", page.Markup);
         });
+    }
+
+    // #858: when the server ingest endpoint returns content, the editor loads that
+    // server-normalized content and shows the server's (full, catalog-backed) findings.
+    [Fact]
+    public void ImportingAPackage_LoadsServerContent_AndShowsServerFindings()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+        WorkflowService.IngestPackageAsync(Arg.Any<byte[]>())
+            .Returns(new WorkflowIngestOutcome(EditorFixtures.V11Macro(), new List<string> { "server-finding-xyz" }, null));
+
+        Upload(page, PackageZip(EditorFixtures.V11Macro()), "imported.zip");
+
+        Assert.Contains("but it has issues to resolve", page.Markup);
+        Assert.Contains("server-finding-xyz", page.Markup);
+    }
+
+    // #858: when the endpoint is unavailable (null), the editor falls back to the
+    // local unzip — the import still works, reading the uploaded file's own content.
+    [Fact]
+    public void ImportingAPackage_FallsBackToLocal_WhenIngestUnavailable()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+        WorkflowService.IngestPackageAsync(Arg.Any<byte[]>()).Returns((WorkflowIngestOutcome?)null);
+
+        Upload(page, PackageZip(EditorFixtures.V11Macro(),
+            ("prompts/draft-section.md", "LOCAL-FALLBACK-MARKER {{ consult_draft }}")), "imported.zip");
+
+        Assert.Contains("Imported", page.Markup);
+        Navigate(page, "draft-section");
+        Assert.Contains("LOCAL-FALLBACK-MARKER", page.Markup);
+    }
+
+    // #858: a "not a package" verdict (400) from the server is shown, and the editor
+    // is left unchanged — no local re-parse that would only fail the same way.
+    [Fact]
+    public void ImportingAPackage_ShowsServerError_AndLeavesEditorUnchanged()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+        WorkflowService.IngestPackageAsync(Arg.Any<byte[]>())
+            .Returns(new WorkflowIngestOutcome(null, new List<string>(), "That .zip has no manifest.json — it is not a package."));
+
+        Upload(page, PackageZip(EditorFixtures.V11Macro()), "imported.zip");
+
+        Assert.Contains("no manifest.json", page.Markup);
+        Assert.DoesNotContain("Imported ", page.Markup);
     }
 
     // Guard: a normal (non-imported) edit-free package keeps publish disabled.
