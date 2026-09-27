@@ -431,6 +431,23 @@ public class TemplatesV12OptionalMacroTests : ClientRenderTestContext
                 new WorkflowPackagePublishResponse("acct-1234567890ab", "v2026.08.2", "acct-1234567890ab@v2026.08.2"),
                 Array.Empty<string>()));
 
+    // #864: the live content endpoint (the Functions worker) serializes the loaded
+    // manifest PascalCase, while the V12Full fixture is lowercase. Recase just the
+    // closing macro's optional/default keys to PascalCase to reproduce the shape the
+    // editor actually receives — the case the lowercase fixture never exercises.
+    private static WorkflowPackageContentResponse WithPascalCaseOptionalClosing(WorkflowPackageContentResponse content)
+    {
+        var root = System.Text.Json.Nodes.JsonNode.Parse(content.Manifest.GetRawText())!.AsObject();
+        var closing = root["macros"]!.AsArray()
+            .OfType<System.Text.Json.Nodes.JsonObject>()
+            .Single(m => m["id"]?.GetValue<string>() == "closing");
+        closing.Remove("optional");
+        closing.Remove("default");
+        closing["Optional"] = true;
+        closing["Default"] = true;
+        return content with { Manifest = System.Text.Json.JsonSerializer.SerializeToElement(root) };
+    }
+
     [Fact]
     public void OptionalAlone_IsRefused_UntilADefaultIsChosen_ThenComposes()
     {
@@ -471,6 +488,49 @@ public class TemplatesV12OptionalMacroTests : ClientRenderTestContext
             .GetProperty("macros").EnumerateArray().Single(m => m.GetProperty("id").GetString() == "closing");
         Assert.False(declaration.TryGetProperty("optional", out _));
         Assert.False(declaration.TryGetProperty("default", out _));
+    }
+
+    // #864: on a worker-serialized (PascalCase) manifest, un-checking optional must
+    // still drop the declaration — the case-sensitive removes used to no-op and leave
+    // "Optional": true behind. Fails on main, passes with the fix.
+    [Fact]
+    public void UntogglingOptional_OnAWorkerSerializedManifest_DropsBothKeys_EitherCasing()
+    {
+        var page = RenderEditor(WithPascalCaseOptionalClosing(EditorFixtures.V12Full()));
+        CapturePublish();
+        Navigate(page, "closing");
+
+        page.Find(".macro-optional input[type=checkbox]").Change(false);
+        Publish(page);
+
+        Assert.NotNull(sent);
+        var declaration = JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement
+            .GetProperty("macros").EnumerateArray().Single(m => m.GetProperty("id").GetString() == "closing");
+        Assert.False(declaration.TryGetProperty("optional", out _));
+        Assert.False(declaration.TryGetProperty("Optional", out _));
+        Assert.False(declaration.TryGetProperty("default", out _));
+        Assert.False(declaration.TryGetProperty("Default", out _));
+    }
+
+    // #864 guard: changing only the default on a PascalCase-optional macro must not
+    // leave a stale PascalCase key beside the freshly written lowercase one.
+    [Fact]
+    public void ChangingOnlyTheDefault_OnAWorkerSerializedManifest_LeavesNoStalePascalCaseKey()
+    {
+        var page = RenderEditor(WithPascalCaseOptionalClosing(EditorFixtures.V12Full()));
+        CapturePublish();
+        Navigate(page, "closing");
+
+        page.Find(".macro-default").Change("false");
+        Publish(page);
+
+        Assert.NotNull(sent);
+        var declaration = JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement
+            .GetProperty("macros").EnumerateArray().Single(m => m.GetProperty("id").GetString() == "closing");
+        Assert.False(declaration.TryGetProperty("Optional", out _));
+        Assert.False(declaration.TryGetProperty("Default", out _));
+        Assert.True(declaration.GetProperty("optional").GetBoolean());
+        Assert.False(declaration.GetProperty("default").GetBoolean());
     }
 
     [Fact]
