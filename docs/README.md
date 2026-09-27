@@ -78,6 +78,9 @@ would otherwise have carried it (#397).
   [package format v11 design](customizable-workflow/package-format-v11-design.md)
   (macros as templates with namespaced placeholders, the signature flag,
   reproducible stages),
+  [macro classifier-gating recipe](customizable-workflow/macro-classifier-gating.md)
+  (conditionally append a macro on a model judgment — the classifier node, the
+  `node:<id> == <value>` gate, and the gotchas; verified with the letrozole block),
   [Forms intake spike](customizable-workflow/forms-intake-spike.md)
   (#511: what the documentation and the engine establish about a Microsoft
   Forms door, the staged design, and the operator-run experiments),
