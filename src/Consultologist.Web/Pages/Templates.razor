@@ -149,7 +149,7 @@
                                    value="@newPackageSlug"
                                    placeholder="folder/name"
                                    disabled="@isPublishing"
-                                   @oninput="args => newPackageSlug = args.Value?.ToString() ?? string.Empty"
+                                   @oninput="OnNewPackageSlugInput"
                                    aria-label="New package path" />
                             <FluentButton Appearance="Appearance.Accent"
                                           Disabled="@(!CanPublish || !WorkflowPackageNames.IsValidPath(newPackageSlug.Trim()))"
@@ -184,13 +184,14 @@
                        — the first click warns, the second acts (the #195 pattern).
                        #817/#820: an Outline Cancel sits beside whichever is armed
                        (they are mutually exclusive). *@
+                    @* #857: an unedited import has nothing pending but is itself discardable. *@
                     <ConfirmButton Armed="discardArmed"
                                    RestingLabel="Discard"
                                    ArmedLabel="Confirm discard"
                                    MainAppearance="Appearance.Outline"
                                    BackOutAppearance="Appearance.Outline"
                                    BackOutClass="cancel-armed-button"
-                                   Disabled="@(PendingCount == 0 || isPublishing)"
+                                   Disabled="@((!imported && PendingCount == 0) || isPublishing)"
                                    OnClick="DiscardAsync"
                                    OnBackOut="CancelToolbarArm" />
                     <ConfirmButton Armed="revertArmed"
@@ -2392,6 +2393,11 @@
     </text>;
 
     private const string DraftKeyPrefix = "workflow-editor-draft:";
+    // #857: the in-progress import, held across reload. One key (only one import
+    // is loaded at a time) carrying the uploaded .zip and the name typed for it —
+    // an import has no registry ref to key on, and IS the content, not a diff.
+    private const string ImportKey = "workflow-editor-import";
+    private const int ImportDraftVersion = 1;
     private const string GraphKey = "graph";
     private const string InputsKey = "inputs";
     // #432: the package's own pane — its title and description (v9 § 4).
@@ -2571,6 +2577,10 @@
     // An imported package is publishable with no further edits (the import IS
     // the change); a registry load clears it. See CanPublish.
     private bool imported;
+
+    // #857: the base64 .zip of the loaded import, so it can be re-persisted (e.g.
+    // when the name is typed) and survives reload. Null when not an import.
+    private string? importZipBase64;
 
     private bool CanPublish => content != null && !isPublishing && (imported || PendingCount > 0);
 
@@ -7323,7 +7333,9 @@
     protected override async Task OnInitializedAsync()
     {
         editingRef = await ReadRememberedPackageAsync();
-        await LoadAsync();
+        // #857: only a cold load restores a held import; every other LoadAsync
+        // (package switch, revert, post-publish) is an explicit registry load.
+        await LoadAsync(allowImportRestore: true);
     }
 
     /// <summary>
@@ -7385,6 +7397,63 @@
         {
             // No memory is a fine state: the pin is the landing.
             return null;
+        }
+    }
+
+    // #857: the persisted form of an in-progress import — the uploaded .zip (as
+    // base64, so it compresses well under the localStorage quota) plus the name
+    // typed for it. Versioned like the draft payloads.
+    private sealed record ImportDraft(int Version, string ZipBase64, string NewPackageSlug);
+
+    private async Task PersistImportAsync()
+    {
+        if (importZipBase64 == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var json = JsonSerializer.Serialize(new ImportDraft(ImportDraftVersion, importZipBase64, newPackageSlug));
+            await JS.InvokeVoidAsync("localStorage.setItem", ImportKey, json);
+        }
+        catch
+        {
+            // Persisting is a convenience (the import still works this session);
+            // a full/blocked store is not worth a message.
+        }
+    }
+
+    private async Task<ImportDraft?> ReadStoredImportAsync()
+    {
+        try
+        {
+            var stored = await JS.InvokeAsync<string?>("localStorage.getItem", ImportKey);
+
+            if (string.IsNullOrWhiteSpace(stored))
+            {
+                return null;
+            }
+
+            var draft = JsonSerializer.Deserialize<ImportDraft>(stored);
+            return draft is { Version: ImportDraftVersion } ? draft : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task ForgetImportAsync()
+    {
+        importZipBase64 = null;
+
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.removeItem", ImportKey);
+        }
+        catch
+        {
         }
     }
 
@@ -7699,7 +7768,7 @@
     private string? AddedScalarIdForPath(string path) =>
         addedScalars.Keys.FirstOrDefault(id => ScalarPath(id) == path);
 
-    private async Task LoadAsync()
+    private async Task LoadAsync(bool allowImportRestore = false)
     {
         isLoading = true;
         loadError = null;
@@ -7718,21 +7787,42 @@
             mine = await WorkflowService.GetMyPackagesAsync();
             newPackageOpen = false;
             newPackageSlug = string.Empty;
-            imported = false; // #849: a registry load is not an import.
 
-            try
+            // #857: on a cold load, an unpublished import held in this browser
+            // takes the place of the registry package. A corrupt stored import
+            // must never wedge the editor, so drop it and fall through.
+            var storedImport = allowImportRestore ? await ReadStoredImportAsync() : null;
+            if (storedImport != null)
             {
-                content = await WorkflowService.GetCurrentPackageContentAsync(editingRef);
+                try
+                {
+                    ApplyStoredImport(storedImport);
+                }
+                catch (Exception ex) when (ex is not AccessTokenNotAvailableException)
+                {
+                    await ForgetImportAsync();
+                    storedImport = null;
+                }
             }
-            catch (Exception ex) when (editingRef != null && ex is not AccessTokenNotAvailableException)
+
+            if (storedImport == null)
             {
-                // A remembered package that no longer resolves — pruned, or a
-                // pin that moved out from under it. Fall back to what IS
-                // loadable rather than leaving a dead editor, and say why.
-                selectionNotice = $"Could not open {editingRef}: {ex.Message} Showing the pinned package instead.";
-                editingRef = null;
-                await ForgetRememberedPackageAsync();
-                content = await WorkflowService.GetCurrentPackageContentAsync();
+                imported = false; // #849: a registry load is not an import.
+
+                try
+                {
+                    content = await WorkflowService.GetCurrentPackageContentAsync(editingRef);
+                }
+                catch (Exception ex) when (editingRef != null && ex is not AccessTokenNotAvailableException)
+                {
+                    // A remembered package that no longer resolves — pruned, or a
+                    // pin that moved out from under it. Fall back to what IS
+                    // loadable rather than leaving a dead editor, and say why.
+                    selectionNotice = $"Could not open {editingRef}: {ex.Message} Showing the pinned package instead.";
+                    editingRef = null;
+                    await ForgetRememberedPackageAsync();
+                    content = await WorkflowService.GetCurrentPackageContentAsync();
+                }
             }
 
             ProjectLoadedContent();
@@ -8808,6 +8898,8 @@
             // the editor follows it rather than reloading the source.
             editingRef = null;
             await ForgetRememberedPackageAsync();
+            // #857: the import is now a published package — drop the held copy.
+            await ForgetImportAsync();
             // Warnings arrive with a *successful* publish and the version is
             // immutable, so this is the only moment they can be read. Held
             // across LoadAsync, which resets the rest of the page state.
@@ -8858,6 +8950,18 @@
         }
 
         discardArmed = false;
+
+        // #857: an unedited import has no pending edits to clear — discarding it
+        // means dropping the held import and returning to the pinned package.
+        if (imported && PendingCount == 0)
+        {
+            ResetPublishFeedback();
+            await ForgetImportAsync();
+            editingRef = null;
+            await LoadAsync();
+            selectionNotice = $"Discarded the imported package. Showing {content?.Ref}.";
+            return;
+        }
 
         // #815: Discard is the hard reset its warning promises — it clears the
         // undo/redo history too, so it stays "can't be undone". applyingHistory
@@ -9292,43 +9396,33 @@
                 bytes = mem.ToArray();
             }
 
-            var files = new Dictionary<string, string>(WorkflowPackageArchive.Unzip(bytes), StringComparer.Ordinal);
-
-            if (!files.TryGetValue("manifest.json", out var manifestText))
-            {
-                importError = "That .zip has no manifest.json — it is not a package.";
-                return;
-            }
-
-            files.Remove("manifest.json");
-
-            PF.WorkflowPackageManifest manifest;
+            ImportedPackage built;
             try
             {
-                manifest = PF.WorkflowPackageManifestJson.Read(manifestText, "the imported package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
+                built = BuildImportedContent(bytes);
             }
             catch (JsonException ex)
             {
                 importError = $"manifest.json is not valid JSON: {PF.WorkflowPackageManifestJson.Describe(ex)}";
                 return;
             }
-            catch (Exception ex)
-            {
-                importError = ex.Message;
-                return;
-            }
+            // A bad .zip or a missing manifest.json throws InvalidDataException,
+            // and other manifest errors a plain Exception — both fall to the outer
+            // catches below. No editor state has changed yet, so the editor is left
+            // unchanged on any of these.
 
             // Load it as the editor's package, exactly as a registry load projects
             // `content`. It is not a remembered registry ref, so drop editingRef;
             // EditingOwnPackage/the "not your package" banner follow from its name.
-            var manifestElement = JsonDocument.Parse(manifestText).RootElement.Clone();
             ClearPending();
             ResetFormScratch();
             diagramText = null;
             diagramIncludesPending = false;
             editingRef = null;
             await ForgetRememberedPackageAsync();
-            content = new WorkflowPackageContentResponse(manifest.Name, manifest.Version, manifest.SpecVersion, manifestElement, files);
+            content = built.Content;
+            // #857: hold the uploaded .zip so the import survives a reload.
+            importZipBase64 = Convert.ToBase64String(bytes);
             ProjectLoadedContent();
             ClearHistoryState();
             selectedKey = GraphKey;
@@ -9338,7 +9432,11 @@
             imported = true;
             newPackageOpen = true;
             newPackageSlug = string.Empty;
+            await PersistImportAsync();
             _ = LoadDiagramAsync();
+
+            var manifest = built.Manifest;
+            var files = built.Files;
 
             // Validation is fast feedback, NOT a gate — the publish pipeline
             // re-validates in full. #852: schema checks need the output-contract
@@ -9352,7 +9450,7 @@
                 ? validation.Errors
                 : validation.Errors.Where(e => !e.Contains("must canonically match a catalog output contract", StringComparison.Ordinal)).ToList();
             selectionNotice = findings.Count == 0
-                ? $"Imported {content.Ref} — name it below and Publish as a new package to keep it."
+                ? $"Imported {content.Ref} — held locally in this browser. Name it below and Publish as a new package to keep it."
                 : $"Imported {content.Ref}, but it has issues to resolve before it will publish: {string.Join(" | ", findings)}";
         }
         catch (InvalidDataException ex)
@@ -9362,6 +9460,58 @@
         catch (Exception ex)
         {
             importError = $"Could not import the package: {ex.Message}";
+        }
+    }
+
+    // #847/#857: the split-and-parse an import shares — a fresh upload and a
+    // reload-restore both build `content` from the same bytes, so the two paths
+    // never diverge. Throws InvalidDataException (bad zip / no manifest.json),
+    // JsonException (bad manifest JSON), or the manifest reader's own exception.
+    private sealed record ImportedPackage(WorkflowPackageContentResponse Content, PF.WorkflowPackageManifest Manifest, Dictionary<string, string> Files);
+
+    private static ImportedPackage BuildImportedContent(byte[] zipBytes)
+    {
+        var files = new Dictionary<string, string>(WorkflowPackageArchive.Unzip(zipBytes), StringComparer.Ordinal);
+
+        if (!files.TryGetValue("manifest.json", out var manifestText))
+        {
+            throw new InvalidDataException("That .zip has no manifest.json — it is not a package.");
+        }
+
+        files.Remove("manifest.json");
+
+        var manifest = PF.WorkflowPackageManifestJson.Read(manifestText, "the imported package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
+        var manifestElement = JsonDocument.Parse(manifestText).RootElement.Clone();
+        var content = new WorkflowPackageContentResponse(manifest.Name, manifest.Version, manifest.SpecVersion, manifestElement, files);
+        return new ImportedPackage(content, manifest, files);
+    }
+
+    // #857: restore a persisted import as the editor's package — the reload-time
+    // counterpart of ImportPackageAsync's state block. The caller wraps this so a
+    // corrupt stored import falls back to the registry rather than wedging.
+    private void ApplyStoredImport(ImportDraft draft)
+    {
+        var built = BuildImportedContent(Convert.FromBase64String(draft.ZipBase64));
+        content = built.Content;
+        importZipBase64 = draft.ZipBase64;
+        editingRef = null;
+        imported = true;
+        newPackageOpen = true;
+        newPackageSlug = draft.NewPackageSlug ?? string.Empty;
+        selectedKey = GraphKey;
+        selectionNotice = $"Resumed your imported {content.Ref}, held locally in this browser — name it below and Publish as a new package to keep it.";
+    }
+
+    // #857: while a held import is being named, keep the typed name with it so a
+    // reload restores the name too. A registry package's slug isn't persisted
+    // (its edits are the draft), so only re-persist when this is an import.
+    private async Task OnNewPackageSlugInput(ChangeEventArgs args)
+    {
+        newPackageSlug = args.Value?.ToString() ?? string.Empty;
+
+        if (imported)
+        {
+            await PersistImportAsync();
         }
     }
 
@@ -10160,6 +10310,8 @@
     {
         editingRef = packageRef;
         await RememberPackageAsync(packageRef);
+        // #857: choosing a registry package abandons a held import for good.
+        await ForgetImportAsync();
         await LoadAsync();
     }
 
@@ -10169,6 +10321,7 @@
     {
         editingRef = null;
         await ForgetRememberedPackageAsync();
+        await ForgetImportAsync(); // #857: back to the pin abandons a held import.
         await LoadAsync();
     }
 
@@ -10200,6 +10353,7 @@
             // whatever happened to be loaded (#411).
             editingRef = null;
             await ForgetRememberedPackageAsync();
+            await ForgetImportAsync(); // #857: reverting abandons a held import.
             await LoadAsync();
             publishSuccess = $"Reverted to the default package ({content?.Ref}). Your published versions are kept.";
         }
