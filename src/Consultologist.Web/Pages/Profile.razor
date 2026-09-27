@@ -1,4 +1,5 @@
 @using System.Text.Json
+@using PF = Consultologist.PackageFormat
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
@@ -1095,7 +1096,71 @@
                                       @onclick="DownloadMyPackagesAsync">
                             @(packagesBusy ? "Preparing…" : "Download my packages")
                         </FluentButton>
+
+                        @* #859: the reverse — bring packages (a single .zip or the
+                           multi-package export) back into your account. *@
+                        <label class="import-packages-button" title="Import a package .zip, or the multi-package export, into your account">
+                            Import packages…
+                            <InputFile OnChange="StageImportAsync" accept=".zip" multiple />
+                        </label>
                     </div>
+
+                    @if (!string.IsNullOrWhiteSpace(importError))
+                    {
+                        <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="true" Class="import-error">@importError</FluentMessageBar>
+                    }
+
+                    @if (stagedImports.Count > 0)
+                    {
+                        <div class="staged-imports">
+                            <p class="panel-description">
+                                Name each package under your account, then import — publishing creates each as a new
+                                package of your own. Your active package is not changed.
+                            </p>
+                            @foreach (var staged in stagedImports)
+                            {
+                                <div class="staged-import-row">
+                                    <span class="muted-text staged-import-source">@staged.SourceName</span>
+                                    <input class="node-field__input"
+                                           maxlength="@WorkflowPackageNames.MaxPathLength"
+                                           value="@staged.Slug"
+                                           placeholder="folder/name"
+                                           disabled="@packagesBusy"
+                                           @oninput="args => staged.Slug = args.Value?.ToString() ?? string.Empty"
+                                           aria-label="@($"Name for {staged.SourceName}")" />
+                                </div>
+                            }
+                            <div class="action-row">
+                                <FluentButton Appearance="Appearance.Accent"
+                                              Class="import-packages-submit"
+                                              Disabled="@(packagesBusy || !AllSlugsValid)"
+                                              @onclick="ImportStagedAsync">
+                                    @(packagesBusy ? "Importing…" : $"Import {stagedImports.Count} package(s)")
+                                </FluentButton>
+                                <FluentButton Appearance="Appearance.Outline"
+                                              Disabled="@packagesBusy"
+                                              @onclick="() => stagedImports = []">
+                                    Cancel
+                                </FluentButton>
+                            </div>
+                        </div>
+                    }
+
+                    @if (importOutcomes.Count > 0)
+                    {
+                        <ul class="import-outcomes">
+                            @foreach (var outcome in importOutcomes)
+                            {
+                                <li class="@(outcome.Ok ? "import-ok" : "import-failed")">
+                                    @outcome.Label
+                                    @if (!outcome.Ok && outcome.Errors.Count > 0)
+                                    {
+                                        <span class="import-outcome-errors"> — @string.Join(" | ", outcome.Errors)</span>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
 
                     @if (myPackages.Count == 0)
                     {
@@ -1476,6 +1541,31 @@
     private string? packagesMessage;
     private MessageIntent packagesMessageIntent = MessageIntent.Info;
 
+    // #859: bulk import state. Uploaded packages are staged (each named under the
+    // account) before publishing; outcomes are shown per package afterwards.
+    private const int MaxImportBytes = 4 * 1024 * 1024;
+    private const int MaxImportFiles = 50;
+    // Mirrors WorkflowPackagePinResolver.PackagePinSettingKey (and Templates.razor):
+    // the account's consult pin, snapshotted and restored so a restore never moves it.
+    private const string WorkflowPackagePinSettingKey = "consult.workflowPackage";
+    private List<StagedImport> stagedImports = [];
+    private List<ImportOutcomeRow> importOutcomes = [];
+    private string? importError;
+
+    private bool AllSlugsValid =>
+        stagedImports.Count > 0 && stagedImports.All(staged => WorkflowPackageNames.IsValidPath(staged.Slug.Trim()));
+
+    private sealed class StagedImport
+    {
+        public required string SourceName { get; init; }         // "<Name>@<Version>" for display
+        public required string Source { get; init; }             // the ref the publish request carries
+        public required JsonElement Manifest { get; init; }      // the uploaded manifest, verbatim
+        public required Dictionary<string, string> Files { get; init; }
+        public string Slug { get; set; } = string.Empty;         // editable target under the account
+    }
+
+    private sealed record ImportOutcomeRow(string Label, bool Ok, IReadOnlyList<string> Errors);
+
     // #806: every owned package's latest version, zipped one subfolder per
     // package. Client-side: list (already loaded) → fetch each → zip. Each
     // response's Manifest + Files are the whole package tree; dag.mmd is derived
@@ -1537,6 +1627,164 @@
         }
         finally
         {
+            packagesBusy = false;
+        }
+    }
+
+    // #859: the reverse of the multi-package export — unzip each uploaded file,
+    // split it into packages (WorkflowPackageBundle), and stage each with an
+    // editable slug pre-filled from its exported leaf. Nothing is published here;
+    // a bad zip leaves the staging list untouched and shows why.
+    private async Task StageImportAsync(InputFileChangeEventArgs args)
+    {
+        importError = null;
+        importOutcomes = [];
+        var staged = new List<StagedImport>();
+
+        try
+        {
+            foreach (var file in args.GetMultipleFiles(MaxImportFiles))
+            {
+                if (file.Size > MaxImportBytes)
+                {
+                    importError = $"{file.Name} is larger than {MaxImportBytes / (1024 * 1024)} MB.";
+                    return;
+                }
+
+                byte[] bytes;
+                using (var mem = new MemoryStream())
+                {
+                    await using var stream = file.OpenReadStream(MaxImportBytes);
+                    await stream.CopyToAsync(mem);
+                    bytes = mem.ToArray();
+                }
+
+                var entries = PF.WorkflowPackageArchive.Unzip(bytes);
+                var packages = WorkflowPackageBundle.Split(entries, out _);
+
+                if (packages.Count == 0)
+                {
+                    importError = $"{file.Name} has no manifest.json — it is not a package (or an export of packages).";
+                    return;
+                }
+
+                foreach (var package in packages)
+                {
+                    PF.WorkflowPackageManifest manifest;
+                    try
+                    {
+                        manifest = PF.WorkflowPackageManifestJson.Read(package.ManifestJson, "an imported package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
+                    }
+                    catch (Exception ex)
+                    {
+                        importError = $"A package in {file.Name} could not be read: {ex.Message}";
+                        return;
+                    }
+
+                    var element = JsonDocument.Parse(package.ManifestJson).RootElement.Clone();
+                    staged.Add(new StagedImport
+                    {
+                        SourceName = $"{manifest.Name}@{manifest.Version}",
+                        Source = $"{manifest.Name}@{manifest.Version}",
+                        Manifest = element,
+                        Files = package.Files,
+                        Slug = DeriveSlug(manifest.Name)
+                    });
+                }
+            }
+
+            stagedImports = staged;
+        }
+        catch (InvalidDataException ex)
+        {
+            importError = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            importError = $"Could not read the upload: {ex.Message}";
+        }
+    }
+
+    // The exported name embeds the origin account's root (acct-<root>/rest); strip
+    // it so the pre-fill is a slug the user can re-home under their own account.
+    // Left empty when it doesn't reduce to a valid path — explicit-init: the user
+    // must then type one before importing.
+    private static string DeriveSlug(string name)
+    {
+        var slash = name.IndexOf('/');
+        var leaf = slash >= 0 && name.StartsWith("acct-", StringComparison.Ordinal) ? name[(slash + 1)..] : name;
+        return WorkflowPackageNames.IsValidPath(leaf) ? leaf : string.Empty;
+    }
+
+    // #859: publish each staged package as a new package of the account's own
+    // (FromUpload — new root, full server validation, per-package outcome). The
+    // consult pin is snapshotted and restored around the batch, so a restore never
+    // changes what the account's consults run (publish otherwise flips it).
+    private async Task ImportStagedAsync()
+    {
+        if (packagesBusy || stagedImports.Count == 0 || !AllSlugsValid)
+        {
+            return;
+        }
+
+        packagesBusy = true;
+        packagesMessage = null;
+        importError = null;
+        importOutcomes = [];
+        AccountSettingResponse? pin = null;
+
+        try
+        {
+            pin = await AccountService.GetSettingAsync(WorkflowPackagePinSettingKey);
+
+            var outcomes = new List<ImportOutcomeRow>();
+
+            foreach (var staged in stagedImports)
+            {
+                var slug = staged.Slug.Trim();
+                var outcome = await WorkflowService.PublishPackageAsync(
+                    new WorkflowPackagePublishRequest(staged.Source, staged.Manifest, staged.Files, Target: null, NewPackageSlug: slug, FromUpload: true));
+
+                outcomes.Add(outcome.Succeeded
+                    ? new ImportOutcomeRow($"{staged.SourceName} → {outcome.Response!.Ref}", true, [])
+                    : new ImportOutcomeRow($"{staged.SourceName} → {slug}", false, outcome.Errors));
+            }
+
+            importOutcomes = outcomes;
+            var ok = outcomes.Count(outcome => outcome.Ok);
+            (packagesMessage, packagesMessageIntent) = ok == outcomes.Count
+                ? ($"Imported {ok} package(s). Your active package is unchanged.", MessageIntent.Success)
+                : ($"Imported {ok} of {outcomes.Count} package(s); the rest have issues to resolve.", MessageIntent.Warning);
+
+            stagedImports = [];
+            myPackages = await WorkflowService.GetMyPackagesAsync() ?? [];
+        }
+        catch (AccessTokenNotAvailableException ex)
+        {
+            ex.Redirect();
+        }
+        catch (Exception ex)
+        {
+            (packagesMessage, packagesMessageIntent) = ($"Import failed: {ex.Message}", MessageIntent.Error);
+        }
+        finally
+        {
+            // Restore the pin any publish flipped — best-effort, never fatal.
+            try
+            {
+                if (pin != null)
+                {
+                    await AccountService.SaveSettingAsync(WorkflowPackagePinSettingKey, pin.Value, pin.ContentType);
+                }
+                else
+                {
+                    await AccountService.DeleteSettingAsync(WorkflowPackagePinSettingKey);
+                }
+            }
+            catch
+            {
+            }
+
             packagesBusy = false;
         }
     }
