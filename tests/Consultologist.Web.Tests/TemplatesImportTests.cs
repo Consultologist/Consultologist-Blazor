@@ -143,6 +143,38 @@ public class TemplatesImportTests : ClientRenderTestContext
         Assert.Equal("my/imported-copy", sent.NewPackageSlug);
     }
 
+    // #852: with the real catalog fetched, an imported package whose schema matches
+    // the catalog validates cleanly — no false-positive "must canonically match" warning.
+    [Fact]
+    public void ImportingASchemaPackage_WithTheCatalog_ShowsNoSchemaWarning()
+    {
+        var page = RenderEditor(EditorFixtures.V12Full());
+        WorkflowService.GetCatalogSchemasAsync().Returns(
+            (IReadOnlyDictionary<string, string>?)new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["concept-list"] = EditorCatalogSchemas.ConceptListSchema
+            });
+
+        Upload(page, PackageZip(EditorFixtures.V12Full()), "schema-pkg.zip");
+
+        Assert.Contains("Imported", page.Markup);
+        Assert.DoesNotContain("must canonically match a catalog output contract", page.Markup);
+    }
+
+    // #852: if the catalog can't be fetched, the schema check can't be judged, so the
+    // false-positive warning is suppressed (not shown) — the server publish is the gate.
+    [Fact]
+    public void ImportingASchemaPackage_WithoutTheCatalog_SuppressesTheSchemaWarning()
+    {
+        var page = RenderEditor(EditorFixtures.V12Full());
+        WorkflowService.GetCatalogSchemasAsync().Returns((IReadOnlyDictionary<string, string>?)null);
+
+        Upload(page, PackageZip(EditorFixtures.V12Full()), "schema-pkg.zip");
+
+        Assert.Contains("Imported", page.Markup);
+        Assert.DoesNotContain("must canonically match a catalog output contract", page.Markup);
+    }
+
     // Guard: a normal (non-imported) edit-free package keeps publish disabled.
     [Fact]
     public void ANormalEditFreePackage_KeepsPublishDisabled()

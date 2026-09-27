@@ -9322,14 +9322,20 @@
             newPackageSlug = string.Empty;
             _ = LoadDiagramAsync();
 
-            // Validation is fast feedback, NOT a gate: contract-schema checks need
-            // the server's catalog (passed empty here), and the publish pipeline
-            // re-validates in full. So load the package regardless and surface any
-            // findings as a warning the author can fix in the editor before Publish.
-            var validation = PF.WorkflowPackageValidator.Validate(manifest, files, EmptyCatalogSchemas);
-            selectionNotice = validation.IsValid
+            // Validation is fast feedback, NOT a gate — the publish pipeline
+            // re-validates in full. #852: schema checks need the output-contract
+            // catalog, so fetch the real one and validate against it (the way the
+            // server does); with it, a declared schema that matches the catalog
+            // passes. If the catalog can't be fetched we can't judge schemas, so
+            // drop the catalog-match findings rather than show a false positive.
+            var catalogSchemas = await WorkflowService.GetCatalogSchemasAsync();
+            var validation = PF.WorkflowPackageValidator.Validate(manifest, files, catalogSchemas ?? EmptyCatalogSchemas);
+            var findings = catalogSchemas is not null
+                ? validation.Errors
+                : validation.Errors.Where(e => !e.Contains("must canonically match a catalog output contract", StringComparison.Ordinal)).ToList();
+            selectionNotice = findings.Count == 0
                 ? $"Imported {content.Ref} — name it below and Publish as a new package to keep it."
-                : $"Imported {content.Ref}, but it has issues to resolve before it will publish: {string.Join(" | ", validation.Errors)}";
+                : $"Imported {content.Ref}, but it has issues to resolve before it will publish: {string.Join(" | ", findings)}";
         }
         catch (InvalidDataException ex)
         {
