@@ -213,6 +213,114 @@ public class TemplatesImportTests : ClientRenderTestContext
             Assert.Equal("graph TD; imported", page.FindComponent<WorkflowDagView>().Instance.Diagram));
     }
 
+    // #857: importing persists the uploaded .zip to localStorage so it survives a
+    // reload (keyed by a dedicated import key, since an import has no registry ref).
+    [Fact]
+    public void ImportingAPackage_PersistsItToLocalStorage()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+
+        Upload(page, PackageZip(EditorFixtures.V11Macro()), "imported.zip");
+
+        var setItems = JSInterop.Invocations["localStorage.setItem"];
+        Assert.Contains(setItems, i => (i.Arguments[0] as string) == "workflow-editor-import");
+        var importSet = setItems.Last(i => (i.Arguments[0] as string) == "workflow-editor-import");
+        Assert.Contains("ZipBase64", importSet.Arguments[1] as string ?? string.Empty);
+    }
+
+    // #857: on a cold load, a held import is restored in place of the registry
+    // package — the reason the feature exists.
+    [Fact]
+    public void AStoredImport_IsRestoredOnLoad_NotTheRegistryPackage()
+    {
+        // The registry would serve V11Macro; the held import is the same package
+        // but carrying a marker only the uploaded copy has.
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V11Macro());
+        WorkflowService.GetMyPackagesAsync().Returns(new[]
+        {
+            new PublicPackageView("acct-1234567890ab-existing", "v2026.08.1", new List<string> { "v2026.08.1" })
+        });
+
+        var zip = PackageZip(EditorFixtures.V11Macro(),
+            ("prompts/draft-section.md", "IMPORTED-MARKER {{ consult_draft }}"));
+        var draftJson = JsonSerializer.Serialize(new
+        {
+            Version = 1,
+            ZipBase64 = Convert.ToBase64String(zip),
+            NewPackageSlug = string.Empty
+        });
+        JSInterop.Setup<string?>("localStorage.getItem", "workflow-editor-import").SetResult(draftJson);
+
+        var page = Render<Templates>();
+
+        Assert.Contains("held locally in this browser", page.Markup);
+        // The name field is open (an import is ready to be named and published).
+        Assert.NotNull(page.Find("input[aria-label='New package path']"));
+        // The editor is reading the imported files, not the registry copy.
+        Navigate(page, "draft-section");
+        Assert.Contains("IMPORTED-MARKER", page.Markup);
+    }
+
+    // #857: a corrupt stored import must never wedge the editor — it falls back to
+    // the registry package.
+    [Fact]
+    public void ACorruptStoredImport_FallsBackToTheRegistry()
+    {
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V11Macro());
+        WorkflowService.GetMyPackagesAsync().Returns(new[]
+        {
+            new PublicPackageView("acct-1234567890ab-existing", "v2026.08.1", new List<string> { "v2026.08.1" })
+        });
+        JSInterop.Setup<string?>("localStorage.getItem", "workflow-editor-import").SetResult("not json at all");
+
+        var page = Render<Templates>();
+
+        Assert.DoesNotContain("held locally in this browser", page.Markup);
+        Assert.DoesNotContain("Imported", page.Markup);
+    }
+
+    // #857: publishing a held import turns it into a package — the held copy is dropped.
+    [Fact]
+    public void PublishingAnImport_ClearsTheStoredImport()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+        CapturePublish();
+
+        Upload(page, PackageZip(EditorFixtures.V11Macro()), "imported.zip");
+        page.Find("input[aria-label='New package path']").Input("my/imported-copy");
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish as new package")).Click();
+
+        page.WaitForAssertion(() => Assert.Contains(
+            JSInterop.Invocations["localStorage.removeItem"],
+            i => (i.Arguments[0] as string) == "workflow-editor-import"));
+    }
+
+    // #857: Discard is enabled for an unedited import (which has nothing "pending")
+    // and drops the held import, returning to the registry package.
+    [Fact]
+    public void DiscardingAnUneditedImport_ClearsTheStoredImport_AndReturnsToRegistry()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+
+        Upload(page, PackageZip(EditorFixtures.V11Macro(),
+            ("prompts/draft-section.md", "IMPORTED-MARKER {{ consult_draft }}")), "imported.zip");
+        Navigate(page, "draft-section");
+        Assert.Contains("IMPORTED-MARKER", page.Markup);
+
+        // #770: Discard arms on the first click, acts on the second.
+        page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "Discard").Click();
+        page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "Confirm discard").Click();
+
+        page.WaitForAssertion(() =>
+        {
+            Assert.Contains(
+                JSInterop.Invocations["localStorage.removeItem"],
+                i => (i.Arguments[0] as string) == "workflow-editor-import");
+            // Back on the registry package: the imported marker is gone.
+            Assert.DoesNotContain("IMPORTED-MARKER", page.Markup);
+        });
+    }
+
     // Guard: a normal (non-imported) edit-free package keeps publish disabled.
     [Fact]
     public void ANormalEditFreePackage_KeepsPublishDisabled()

@@ -40,8 +40,15 @@ public class TemplatesPendingStateTests : ClientRenderTestContext
     private static int PendingCount(Templates editor) =>
         (int)typeof(Templates).GetProperty("PendingCount", Members)!.GetValue(editor)!;
 
-    private static Task Invoke(IRenderedComponent<Templates> page, string method) =>
-        page.InvokeAsync(() => (Task)typeof(Templates).GetMethod(method, Members)!.Invoke(page.Instance, null)!);
+    private static Task Invoke(IRenderedComponent<Templates> page, string method)
+    {
+        var target = typeof(Templates).GetMethod(method, Members)!;
+        // Optional parameters (e.g. LoadAsync's #857 allowImportRestore) get their
+        // declared default; reflection does not fill them in.
+        var args = target.GetParameters();
+        var values = args.Length == 0 ? null : args.Select(p => p.DefaultValue).ToArray();
+        return page.InvokeAsync(() => (Task)target.Invoke(page.Instance, values)!);
+    }
 
     // #770: Discard now arms on the first call and clears on the second.
     private static async Task Discard(IRenderedComponent<Templates> page)
