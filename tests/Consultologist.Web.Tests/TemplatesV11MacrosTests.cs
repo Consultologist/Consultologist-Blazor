@@ -551,10 +551,10 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         Publish(page);
 
         var refusals = Refusals(page);
-        Assert.Contains("macros requires specVersion 11. Use \"Upgrade to specVersion 19\" and publish.", refusals);
-        Assert.Contains("Result 'consult_note' declares macros, which requires specVersion 11. Use \"Upgrade to specVersion 19\" and publish.", refusals);
-        Assert.Contains("Result 'consult_note' declares signature, which requires specVersion 11. Use \"Upgrade to specVersion 19\" and publish.", refusals);
-        Assert.Contains("Node 'scope' declares reproducible, which requires specVersion 11. Use \"Upgrade to specVersion 19\" and publish.", refusals);
+        Assert.Contains("macros requires specVersion 11. Use \"Upgrade to specVersion 20\" and publish.", refusals);
+        Assert.Contains("Result 'consult_note' declares macros, which requires specVersion 11. Use \"Upgrade to specVersion 20\" and publish.", refusals);
+        Assert.Contains("Result 'consult_note' declares signature, which requires specVersion 11. Use \"Upgrade to specVersion 20\" and publish.", refusals);
+        Assert.Contains("Node 'scope' declares reproducible, which requires specVersion 11. Use \"Upgrade to specVersion 20\" and publish.", refusals);
         Assert.Null(sent);
     }
 
@@ -640,7 +640,7 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
 
         // forItem is v19; upgrade the v11 fixture to the newest version.
         page.FindAll("fluent-button")
-            .First(b => b.TextContent.Contains("Upgrade to specVersion 19", StringComparison.Ordinal))
+            .First(b => b.TextContent.Contains("Upgrade to specVersion 20", StringComparison.Ordinal))
             .Click();
 
         Navigate(page, "Documents");
