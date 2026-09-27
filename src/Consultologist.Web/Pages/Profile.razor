@@ -1527,7 +1527,7 @@
             }
 
             await JS.InvokeVoidAsync("consultologistDownload", "packages.zip", "application/zip",
-                Convert.ToBase64String(WorkflowPackageArchive.Zip(files)));
+                Convert.ToBase64String(Consultologist.PackageFormat.WorkflowPackageArchive.Zip(files)));
 
             if (failed.Count > 0)
             {

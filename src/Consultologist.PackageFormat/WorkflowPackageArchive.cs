@@ -1,18 +1,20 @@
 using System.IO;
 using System.IO.Compression;
 
-namespace Consultologist.Web.Services.Workflow;
+namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// #808/#806: zips a package's files — a path → text map — into the bytes a
-/// browser download saves. One entry per file at its own path, ordered, UTF-8.
-/// Shared by the editor's single-package download and Profile's registry export
-/// (which prefixes each package's paths with a per-package subfolder), so the
-/// zip building lives in one testable place rather than on the editor component.
+/// browser download saves, and (#847) reads a package zip back into that map.
+/// One entry per file at its own path, ordered, UTF-8. Shared by the editor's
+/// single-package download, Profile's registry export (which prefixes each
+/// package's paths with a per-package subfolder), the client import, and (#858)
+/// the server ingest endpoint — so the zip building/reading lives in one testable
+/// place in the shared format library rather than on the editor component.
 /// </summary>
-internal static class WorkflowPackageArchive
+public static class WorkflowPackageArchive
 {
-    internal static byte[] Zip(IReadOnlyDictionary<string, string> files)
+    public static byte[] Zip(IReadOnlyDictionary<string, string> files)
     {
         using var buffer = new MemoryStream();
         using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
@@ -40,9 +42,9 @@ internal static class WorkflowPackageArchive
     /// #847: the reverse of <see cref="Zip"/> — reads a package zip's entries
     /// (path → UTF-8 text) into an ordinal map. Throws <see cref="InvalidDataException"/>
     /// with a caller-surfaceable message on a directory/traversal entry or a cap
-    /// breach; the caller (the editor import) shows it at the desk.
+    /// breach; the caller (the editor import, or #858's server ingest) surfaces it.
     /// </summary>
-    internal static IReadOnlyDictionary<string, string> Unzip(byte[] bytes)
+    public static IReadOnlyDictionary<string, string> Unzip(byte[] bytes)
     {
         var files = new Dictionary<string, string>(StringComparer.Ordinal);
         using var buffer = new MemoryStream(bytes);

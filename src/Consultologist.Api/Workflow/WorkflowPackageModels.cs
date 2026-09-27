@@ -178,3 +178,13 @@ public sealed record WorkflowPackagePublishResponse(
     string Version,
     string Ref,
     IReadOnlyList<string> Warnings);
+
+/// <summary>
+/// #858: the successful (200) result of the import ingest endpoint — the
+/// normalized package content (as the content endpoint returns) plus the advisory
+/// validation findings from the server's full, catalog-backed validation. A
+/// package that cannot be parsed at all returns 400 with { error } instead.
+/// </summary>
+public sealed record WorkflowPackageIngestResponse(
+    WorkflowPackageContentResponse Content,
+    IReadOnlyList<string> Findings);

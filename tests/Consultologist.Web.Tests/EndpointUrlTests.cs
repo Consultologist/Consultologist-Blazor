@@ -99,6 +99,10 @@ public class EndpointUrlTests
 
         try { await service.GetCurrentPackageAsync(); } catch { }
         Assert.Equal("https://west.ca.api.consultologist.ai/api/WorkflowPackages/Current", handler.Requested?.ToString());
+
+        // #858: the import ingest endpoint (raw .zip POST) resolves to the chosen location.
+        try { await service.IngestPackageAsync(new byte[] { 1 }); } catch { }
+        Assert.Equal("https://west.ca.api.consultologist.ai/api/WorkflowPackages/Ingest", handler.Requested?.ToString());
     }
 
     [Fact]
