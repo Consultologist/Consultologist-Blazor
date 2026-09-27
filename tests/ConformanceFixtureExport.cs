@@ -1028,6 +1028,32 @@ public class ConformanceFixtureExport
             "forItem naming an item the fanned collection does not contain.",
             (v19Missing.Manifest with { SpecVersion = 19 }, v19Missing.Files));
 
+        // ----- v20 (#863): a deliverable's macro reference may be `slot: true`.
+        // The model places it inline via a `[[slot:<id>]]` marker in a section's
+        // output; the engine fills the marker at assembly. Below 20 refused; a
+        // slot names no anchor; a slot macro may not carry the signature. -----
+
+        var v19MinimalForV20 = V18Fixtures.Minimal() with { SpecVersion = 19 };
+        Bundle("v20-minimal-is-v19-plus-a-line", 20,
+            "The migration v20 promises: a valid v19 manifest with specVersion 20 and nothing else changed.",
+            (v19MinimalForV20 with { SpecVersion = 20 }, V6Fixtures.Files(v19MinimalForV20)));
+
+        Bundle("v20-macro-slot", 20,
+            "A macro referenced as a slot: the model places it inline via a [[slot:<id>]] marker it emits, and the engine fills the marker at assembly.",
+            V20Fixtures.SlotMacro());
+
+        Bundle("invalid-slot-below-20", 19,
+            "A slot macro reference on a v19 manifest. The inline slot arrives at 20.",
+            V20Fixtures.SlotMacro(specVersion: 19));
+
+        Bundle("invalid-slot-with-placement", 20,
+            "A slot reference that also anchors with before/after/forItem. The model owns a slot's position, so it names no anchor.",
+            V20Fixtures.SlotMacro(alsoAnchor: true));
+
+        Bundle("invalid-slot-with-signature", 20,
+            "A slot macro carrying {{profile:signature}}. A deliverable is signed once, not wherever the model drops a marker.",
+            V20Fixtures.SlotMacro(text: "Sincerely,\n\n{{profile:signature}}"));
+
         return cases;
     }
 

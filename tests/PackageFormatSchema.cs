@@ -613,6 +613,15 @@ internal static class PackageFormatSchema
                     placed["forItem"] = new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId };
                 }
 
+                // v20 (#863): the model places this macro inline via a
+                // [[slot:<id>]] marker it emits; mutually exclusive with the
+                // anchors, so only the boolean is expressed here (the validator
+                // enforces the exclusion).
+                if (specVersion >= 20)
+                {
+                    placed["slot"] = new JsonObject { ["type"] = "boolean" };
+                }
+
                 macros["items"] = new JsonObject
                 {
                     ["oneOf"] = new JsonArray(
