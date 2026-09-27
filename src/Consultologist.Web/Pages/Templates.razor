@@ -7414,7 +7414,13 @@
 
     private async Task LoadDiagramAsync()
     {
-        diagramText = await WorkflowService.GetCurrentDiagramAsync(editingRef);
+        // #855: an imported package has no registry ref (editingRef is null), so
+        // fetch-by-ref would return the pinned package's diagram. Draw it from the
+        // uploaded manifest via the server generator instead (ComposeManifest is the
+        // imported content unchanged when nothing is pending).
+        diagramText = imported
+            ? await WorkflowService.GetDiagramForManifestAsync(ComposeManifest())
+            : await WorkflowService.GetCurrentDiagramAsync(editingRef);
         diagramIncludesPending = false;
         await InvokeAsync(StateHasChanged);
     }
@@ -7439,6 +7445,18 @@
                     var (changed, removedEdges, pendingNodes) = CollectDiagramChanges();
                     diagramText = DecoratePendingDiagram(diagram, changed, removedEdges, pendingNodes, removedNodeIds.ToList());
                     diagramIncludesPending = true;
+                }
+            }
+            else if (imported)
+            {
+                // #855: an unedited import has no pending decoration — it IS the
+                // content. Draw it from the manifest (no registry ref exists).
+                var diagram = await WorkflowService.GetDiagramForManifestAsync(ComposeManifest());
+
+                if (diagram != null)
+                {
+                    diagramText = diagram;
+                    diagramIncludesPending = false;
                 }
             }
             else
