@@ -3543,6 +3543,57 @@ public class ConsultGenerationJobStarterTests
             merged!["x"].Select(o => o.Kind).ToArray());
     }
 
+    [Fact]
+    public void MergeOrigins_OverwritesRatherThanConcatenating_ForAnIdInOverwriteForIds()
+    {
+        // #872 round 1: a ref/rerun/form-resolved id is descoped from the
+        // combine — a shared key named in overwriteForIds means "the second
+        // side is the whole record", the pre-#872 overwrite, not a
+        // concatenation of both sides.
+        var loaded = OneOrigin(ConsultInputOriginKinds.PreviousRun);
+        var docs = OneOrigin(ConsultInputOriginKinds.Document);
+
+        var merged = ConsultGenerationJobStarter.MergeOriginsForTest(
+            new Dictionary<string, IReadOnlyList<ConsultInputOrigin>> { ["x"] = loaded },
+            new Dictionary<string, IReadOnlyList<ConsultInputOrigin>> { ["x"] = docs },
+            overwriteForIds: new[] { "x" });
+
+        Assert.Equal(
+            new[] { ConsultInputOriginKinds.Document },
+            merged!["x"].Select(o => o.Kind).ToArray());
+    }
+
+    [Fact]
+    public async Task ARefAndAFileForTheSameArraySlot_OverwritesRatherThanDoublingOrigins()
+    {
+        // #872 round 1 (Critical fix): previous-run is descoped from the
+        // mixed array entirely. An id that is BOTH ref-resolved (InputRefs)
+        // AND has a file (InputFiles) must NOT combine the two — the file
+        // extraction keeps the pre-#872 overwrite: its value and its origins
+        // are the whole record, with no phantom doubled origin and no ref
+        // element mislabeled `typed`.
+        WithSourceRun(SourceRun(text: "Earlier note."));
+        var manifest = V9Fixtures.WithInput(new WorkflowInputSpec(
+            "prior_notes", "Prior notes", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
+
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: V9Typed(),
+            InputRefs: new Dictionary<string, List<ConsultInputRef>> { ["prior_notes"] = new() { new ConsultInputRef(SourceJob, "consult") } },
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["prior_notes"] = [Text("doc text")] });
+
+        var captured = await StartAndCaptureAsync(manifest, request);
+
+        Assert.Null(captured.Outcome.Error);
+        var value = captured.OrchestrationInput!.Request.Inputs!["prior_notes"];
+        var origins = captured.OrchestrationInput.InputDocumentOrigins!["prior_notes"];
+
+        Assert.Equal(value.Elements!.Count, origins.Count);
+        Assert.DoesNotContain(origins, o => o.Kind == ConsultInputOriginKinds.Typed);
+        Assert.All(origins, o => Assert.Equal(ConsultInputOriginKinds.Document, o.Kind));
+        Assert.Equal(new[] { "doc text" }, value.Elements!.Select(e => e.Canonical).ToArray());
+    }
+
     private Task<StartCapture> StartV7AndCaptureAsync(
         ConsultGenerationRequest request,
         ILogger<ConsultGenerationJobStarter>? logger = null) =>

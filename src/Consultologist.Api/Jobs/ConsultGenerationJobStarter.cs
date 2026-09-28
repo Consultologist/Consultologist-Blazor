@@ -379,8 +379,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var ocrMin = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.OcrMinConfidence, cancellationToken);
         var ocrMinConfidence = OcrConfidenceSettings.EffectiveMinConfidence(ocrGate?.Value, ocrMin?.Value);
 
+        // #872 round 1: previous-run-resolved ids are descoped from the
+        // typed+documents combine — ResolveInputRefsAsync above already wrote
+        // their value and origin, and ExtractInputFilesAsync must not treat
+        // that value's elements as typed rows to prepend.
+        var refResolvedIds = resolution.Origins?.Keys.ToHashSet(StringComparer.Ordinal);
+
         var extraction = await ExtractInputFilesAsync(
-            request, package.Manifest, GateWaitFor(origin), _ocr, ocrMinConfidence, cancellationToken);
+            request, package.Manifest, GateWaitFor(origin), _ocr, ocrMinConfidence, cancellationToken, refResolvedIds);
         if (extraction.Error != null)
         {
             _logger.LogWarning(
@@ -397,7 +403,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         }
 
         request = NormalizeInputs(extraction.Request);
-        var inputOrigins = MergeOrigins(resolution.Origins, extraction.Origins);
+        // The same exclusion set: a ref-resolved id that also had documents
+        // keeps the pre-#872 overwrite (extraction's origin wins whole),
+        // never concatenated with the ref's origin it already discarded.
+        var inputOrigins = MergeOrigins(resolution.Origins, extraction.Origins, refResolvedIds);
 
         var inputs = ResolveEffectiveInputs(request, package.Manifest);
         if (inputs.Error != null)
@@ -1735,17 +1744,26 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
     private static IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? MergeOrigins(
         IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? first,
-        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? second)
+        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? second,
+        // #872 round 1: ids for which a shared key means "the second side
+        // fully replaces the first", the pre-#872 overwrite — a previous-run
+        // reference ExtractInputFilesAsync also found documents for (round 1
+        // descoped combining refs into the array; its inputs[id] already
+        // overwrote to documents-only, so the origin record must match).
+        // Null/empty preserves the concatenating behaviour below for every
+        // other shared id.
+        IReadOnlyCollection<string>? overwriteForIds = null)
     {
         if (first is not { Count: > 0 }) return second;
         if (second is not { Count: > 0 }) return first;
         var merged = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>(first, StringComparer.Ordinal);
         // #872: a shared id's lists are positional (typed rows, then previous
         // runs/documents, in the order they were folded in) — overwriting
-        // would drop whichever side merged first, so concatenate instead.
+        // would drop whichever side merged first, so concatenate instead,
+        // except for an id named in overwriteForIds (above).
         foreach (var (id, list) in second)
         {
-            merged[id] = merged.TryGetValue(id, out var existing)
+            merged[id] = merged.TryGetValue(id, out var existing) && overwriteForIds?.Contains(id) != true
                 ? existing.Concat(list).ToList()
                 : list;
         }
@@ -1755,8 +1773,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// <summary>#872 test seam: MergeOrigins is private; the tests reach it here.</summary>
     internal static IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? MergeOriginsForTest(
         IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? first,
-        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? second)
-        => MergeOrigins(first, second);
+        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? second,
+        IReadOnlyCollection<string>? overwriteForIds = null)
+        => MergeOrigins(first, second, overwriteForIds);
 
     /// <summary>
     /// #546: the lineage edges this start creates, from the final origins.
@@ -1805,7 +1824,15 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         TimeSpan gateWait,
         IDocumentOcr ocr,
         double? ocrMinConfidence,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        // #872 round 1: ids ResolveInputRefsAsync already resolved (a
+        // previous-run reference) — descoped from the typed+documents combine.
+        // Such an id keeps the pre-#872 overwrite below: the documents ARE the
+        // whole value and the whole origin record, the ref's contribution
+        // discarded exactly as it was before this feature existed. Passing
+        // none (the other caller, and every existing test) is the same as
+        // before.
+        IReadOnlyCollection<string>? excludeFromCombine = null)
     {
         if (request.InputFiles is not { Count: > 0 })
         {
@@ -1934,11 +1961,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
             // #872: for a mixed array<text> slot the request may already carry
             // typed rows in inputs[id]; keep them, in order, ahead of the
-            // documents, each with a positional `typed` origin. A single
-            // document into a text slot is unchanged (the else arm) — one
-            // document into a text slot is the text it always was, so hash
-            // definitions 3 and 4 see the same bytes they did.
-            if (several)
+            // documents, each with a positional `typed` origin. Round 1: an id
+            // ResolveInputRefsAsync already resolved is excluded from this —
+            // its inputs[id] holds previous-run elements, not typed rows, and
+            // combining them here would mislabel a PreviousRun element `typed`
+            // and (via MergeOrigins) double its origin. The else arm below is
+            // the single-document-into-a-text-slot path AND the excluded-id
+            // path: both keep the pre-#872 overwrite.
+            if (several && excludeFromCombine?.Contains(id) != true)
             {
                 var typedElements = inputs.TryGetValue(id, out var existing)
                     && existing.Kind == ConsultInputKind.Array
@@ -1963,7 +1993,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             }
             else
             {
-                inputs[id] = texts[0];
+                // A single document into a text slot is the text it always
+                // was, so hash definitions 3 and 4 see the same bytes they
+                // did. A several/array id excluded above (ref-resolved) is
+                // the documents alone, the same shape a several id always
+                // took before #872.
+                inputs[id] = several ? ConsultInputValue.OfArray(texts) : texts[0];
                 origins[id] = slotOrigins;
             }
         }
