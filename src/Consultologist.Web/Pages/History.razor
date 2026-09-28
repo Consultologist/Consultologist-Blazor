@@ -516,6 +516,15 @@
                                                         <dt class="provenance-list__nested"></dt>
                                                         <dd class="document-unsigned">produced unsigned — signature requested by the package; none chosen on the profile</dd>
                                                     }
+                                                    @* #869 (v11 #513 / #863): what was appended to this document after
+                                                       the sections, in applied order — an appended macro, a slot the
+                                                       model placed inline, or the signature block. Inside the document
+                                                       hash, attributed outside the node hashes. *@
+                                                    @foreach (var appended in document.Appended ?? Array.Empty<ConsultAppendedEntryResponse>())
+                                                    {
+                                                        <dt class="provenance-list__nested">@appended.Id</dt>
+                                                        <dd class="document-appended">@AppendedEntryText(appended)</dd>
+                                                    }
                                                 }
                                                 @* #315: a deliverable the package
                                                    declared and this job's inputs
@@ -935,6 +944,16 @@
         _ => $"read from a document by {origin.Extractor ?? "—"}"
             + (origin.PageCount is { } pages ? $" · {pages} page{(pages == 1 ? "" : "s")}" : "")
             + (origin.TrackedChangesResolved ? " · tracked changes resolved to the accepted view" : "")
+    };
+
+    // #869 (v11 #513 / #863): how one appended block reads in the provenance
+    // list. The kinds mirror ConsultAppendedKinds; a signature carries its
+    // as-of date, a macro/slot only its id (shown in the dt).
+    private static string AppendedEntryText(ConsultAppendedEntryResponse entry) => entry.Kind switch
+    {
+        "slot" => "placed inline by the model — a slot",
+        "signature" => entry.AsOf is { Length: > 0 } asOf ? $"the signature block, as of {asOf}" : "the signature block",
+        _ => "an appended macro"
     };
 
     // #546: the issue's other half of "links both ways" — a copied-from line

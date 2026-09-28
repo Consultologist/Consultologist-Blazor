@@ -382,6 +382,34 @@ public class HistoryDetailTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void AppendedEntries_AreShownWithTheirKind_BesideTheDocument()
+    {
+        // #869: what was appended after the sections, in applied order — an
+        // appended macro, a slot the model placed inline (#863), and the
+        // signature block with its as-of date.
+        var documents = new[]
+        {
+            new ConsultGenerationResultDocumentResponse("consult", "Consultation note", "Note.", "hash-note",
+                Appended: new[]
+                {
+                    new ConsultAppendedEntryResponse("slot", "side_effects"),
+                    new ConsultAppendedEntryResponse("macro", "closing"),
+                    new ConsultAppendedEntryResponse("signature", "clinic-block", "2026-09-27")
+                })
+        };
+        WithJob(3, documents, packageSpecVersion: 20);
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var text = page.Find(".provenance-list").TextContent;
+        Assert.Contains("placed inline by the model — a slot", text);
+        Assert.Contains("an appended macro", text);
+        Assert.Contains("the signature block, as of 2026-09-27", text);
+        // The block's id names each row (the dt term).
+        Assert.Contains("side_effects", text);
+        Assert.Contains("closing", text);
+    }
+
+    [Fact]
     public void TheRail_NamesEachNodesHashDefinition_OrSaysItPredatesTheLadder()
     {
         // #375: a stamped node links its number to the published ladder; a
