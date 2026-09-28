@@ -37,7 +37,9 @@ Let one `array<text>` input hold **typed rows + one or more uploaded documents +
 ## Design
 
 ### Element order (defined)
-The combined array is assembled in a **fixed order**: **typed rows (as entered) → uploaded documents (in chosen order) → previous-run deliverables (in chosen order)**. The UI renders the sources in this same top-to-bottom order so what the clinician sees matches what runs. Within each source, existing ↑/↓/× reordering applies.
+The combined array is assembled in a **fixed order**: **typed rows (as entered) → uploaded documents (in chosen order)**. The UI renders the sources in this same top-to-bottom order so what the clinician sees matches what runs. Within each source, existing ↑/↓/× reordering applies.
+
+> **Scope revision (2026-09-28, during implementation):** previous-run deliverables are **descoped from the mix** — they stay their own mutually-exclusive mode (as today), not a third source combined into the array. Reason: `ResolveInputRefsAsync` overwrites `inputs[id]` and runs *before* `ExtractInputFilesAsync`, so combining refs correctly (preserving `PreviousRun` origins and order) needs pipeline reordering out of proportion to the user's need (typed + documents). The engine combines/`MergeOrigins`-concats **only** ids with no previous-run/rerun/form origin; a ref-resolved id keeps its standalone, aligned behavior. Mixing previous-run deliverables into an array is a **deferred follow-up**.
 
 ### Provenance: the key decision
 `InputOrigins[id]` is a **positional list, one origin per array element** (`History.razor` :470 "one row per document, positionally"). It is display metadata, *not* part of the input hash. Today typed elements have **no** origin, and origins only exist for document/loaded/form/rerun sources. A mixed array in **typed-first** order therefore leaves the leading (typed) elements without positional origins, which would misalign the document rows in History.
@@ -89,5 +91,5 @@ No new fields expected: `Inputs`, `InputFiles`, and refs are separate maps and m
 
 ## Decisions (confirmed 2026-09-28)
 1. Provenance: **`typed` origin kind + provenance-registry bump** (not documents-first).
-2. Element order: **typed → documents → previous-run**.
+2. Element order: **typed → documents**. (Previous-run deliverables descoped from the mix — see the Scope revision under *Element order*; deferred follow-up.)
 3. `expectedContent` (transcript/ambient) stamps its kind on the *document* elements only; typed rows are `typed`.
