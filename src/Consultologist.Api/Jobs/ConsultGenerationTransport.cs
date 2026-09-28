@@ -1350,13 +1350,13 @@ public sealed class ConsultGenerationJobs
                     return "InputFiles contains a blank id.";
                 }
 
-                // Same slot from both directions is ambiguous in the way the
-                // v7 contract already refuses: nobody needs both, and
-                // choosing one would drop the other silently.
-                if (request.Inputs?.ContainsKey(id) == true)
-                {
-                    return $"Input '{id}' was supplied as both text and a file.";
-                }
+                // #872 (task 3.5): the same-id-in-both-maps refusal used to
+                // live here, unconditionally. It moved to the manifest-aware
+                // layer (ConsultGenerationJobStarter.ExtractInputFilesAsync)
+                // because only there is a declared array<text> (several) id
+                // distinguishable from a scalar one — an array<text> id in
+                // both maps is the mixed feature's combine, not an ambiguity;
+                // this wire door has no manifest to tell the two apart.
 
                 // v9 (#428): a slot lists its documents. An empty list says
                 // nothing about the slot; it is refused rather than read as

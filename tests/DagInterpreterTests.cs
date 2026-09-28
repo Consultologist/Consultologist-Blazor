@@ -437,11 +437,15 @@ public class StartRequestValidationTests
     [Fact]
     public void ValidateRequest_ChecksAttachedDocuments()
     {
-        // #238: a slot filled from both directions is the same ambiguity the
-        // v7 contract already refuses for ConsultDraft-vs-Inputs — nobody
-        // needs both, and picking one would drop the other in silence.
-        Assert.Equal(
-            "Input 'consult_draft' was supplied as both text and a file.",
+        // #238 originally refused a slot filled from both directions here,
+        // unconditionally — the same ambiguity the v7 contract already
+        // refuses for ConsultDraft-vs-Inputs. #872 (task 3.5) moved that
+        // refusal down to the manifest-aware layer (ExtractInputFilesAsync),
+        // because only there is a declared array<text> (several) id
+        // distinguishable from a scalar one — an array<text> id in both maps
+        // is now accepted (and combined), so the wire door — which has no
+        // manifest — no longer refuses either shape by itself.
+        Assert.Null(
             ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
                 null,
                 Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = "Typed." },
