@@ -3511,10 +3511,15 @@ public class ConsultGenerationJobStarterTests
     public async Task ExtractInputFiles_ScalarSlotWithOneFile_KeepsTheSingleDocumentOverwrite()
     {
         // A text (non-array) slot's one document is still the text itself —
-        // the else arm, unaffected by the combine logic above.
+        // the else arm, unaffected by the combine logic above. No Inputs
+        // entry shares the id, so the both-maps refusal below never fires.
         var request = new ConsultGenerationRequest(
             null,
-            Inputs: V9Typed(),
+            Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["seen_on"] = "2026-08-10",
+                ["encounter_kind"] = "follow_up"
+            },
             InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [Text(Referral)] });
 
         var extraction = await ConsultGenerationJobStarter.ExtractInputFilesAsync(
@@ -3524,6 +3529,63 @@ public class ConsultGenerationJobStarterTests
         Assert.Equal(ConsultInputValue.OfText(Referral), extraction.Request.Inputs!["consult_draft"]);
         Assert.Single(extraction.Origins!["consult_draft"]);
         Assert.Equal(ConsultInputOriginKinds.Document, extraction.Origins!["consult_draft"][0].Kind);
+    }
+
+    [Fact]
+    public async Task ExtractInputFiles_ScalarIdInBothMaps_IsRefused()
+    {
+        // #872 (task 3.5): the refusal ValidateRequest used to give
+        // unconditionally now lives here, where the declared type is known —
+        // consult_draft is a text (scalar), not array<text>, so the same
+        // sentence is refused, just from this layer instead of the door.
+        const string expected = "Input 'consult_draft' was supplied as both text and a file.";
+
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: V9Typed(),
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [Text(Referral)] });
+
+        var extraction = await ConsultGenerationJobStarter.ExtractInputFilesAsync(
+            request, V9Fixtures.Structured(), TimeSpan.Zero, ocr: null!, ocrMinConfidence: 0, CancellationToken.None);
+
+        Assert.Equal(expected, extraction.Error);
+        Assert.Equal(expected, extraction.SenderSafeError);
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, extraction.ErrorKind);
+    }
+
+    [Fact]
+    public async Task MixedTypedAndFileArraySlot_ThroughFullStart_IsAcceptedAndCombines()
+    {
+        // The full pipeline's own proof, not just ExtractInputFilesAsync in
+        // isolation: with the wire door's refusal gone (#872 task 3.5), an
+        // array<text> id supplied in both Inputs and InputFiles reaches the
+        // manifest-aware layer and combines rather than being rejected at
+        // either door.
+        var manifest = V9Fixtures.WithInput(new WorkflowInputSpec(
+            "prior_notes", "Prior notes", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
+
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["consult_draft"] = Referral,
+                ["seen_on"] = "2026-08-10",
+                ["encounter_kind"] = "follow_up",
+                ["prior_notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("typed one") })
+            },
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["prior_notes"] = [Text("doc one text")] });
+
+        var captured = await StartAndCaptureAsync(manifest, request);
+
+        Assert.Null(captured.Outcome.Error);
+        var value = captured.OrchestrationInput!.Request.Inputs!["prior_notes"];
+        Assert.Equal(
+            new[] { "typed one", "doc one text" },
+            value.Elements!.Select(e => e.Canonical).ToArray());
+
+        var origins = captured.OrchestrationInput.InputDocumentOrigins!["prior_notes"];
+        Assert.Equal(ConsultInputOriginKinds.Typed, origins[0].Kind);
+        Assert.Equal(ConsultInputOriginKinds.Document, origins[1].Kind);
     }
 
     private static IReadOnlyList<ConsultInputOrigin> OneOrigin(string kind) => new[] { new ConsultInputOrigin(kind) };
@@ -3592,6 +3654,52 @@ public class ConsultGenerationJobStarterTests
         Assert.DoesNotContain(origins, o => o.Kind == ConsultInputOriginKinds.Typed);
         Assert.All(origins, o => Assert.Equal(ConsultInputOriginKinds.Document, o.Kind));
         Assert.Equal(new[] { "doc text" }, value.Elements!.Select(e => e.Canonical).ToArray());
+    }
+
+    [Fact]
+    public async Task AFormRefAndAFileForTheSameArraySlot_OverwritesRatherThanDoublingOrigins()
+    {
+        // #872 task 3.5 (defensive): a form-ref'd id is the same hazard as a
+        // previous-run-resolved one (the ref/file test just above), now that
+        // the manifest-aware layer allows a several id in both maps. Without
+        // unioning formRefs' ids into the exclude/overwrite treatment, this
+        // would fold the coerced form value in as a `typed` row, then
+        // concatenate the FormResponse origin on top of it — two origins for
+        // a one-element array. The whole record must be the form response's
+        // origin alone, not doubled against the file's.
+        var manifest = V9Fixtures.WithInput(new WorkflowInputSpec(
+            "prior_notes", "Prior notes", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
+
+        var row = new Consultologist.Api.Forms.FormResponseRow(
+            "user-1", "triage-intake", "17", new DateTimeOffset(2026, 9, 1, 14, 2, 11, TimeSpan.Zero),
+            new[] { "prior_notes" }, "org-form-responses", "user-1/triage-intake-17.json", null);
+        _formResponses.TryGetAsync("user-1", "triage-intake", "17", Arg.Any<CancellationToken>()).Returns(row);
+        _formResponseBlobs.ReadAsync(Arg.Any<Consultologist.Api.Forms.FormResponseBlobPointer>(), Arg.Any<CancellationToken>())
+            .Returns(new Consultologist.Api.Forms.FormResponsePayload(
+                1, "triage-intake", "17", new DateTimeOffset(2026, 9, 1, 14, 2, 11, TimeSpan.Zero),
+                new Dictionary<string, string> { ["prior_notes"] = "[\"held one\"]" }));
+
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["consult_draft"] = Referral,
+                ["seen_on"] = "2026-08-10",
+                ["encounter_kind"] = "follow_up",
+                ["prior_notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("held one") })
+            },
+            InputFormRefs: new Dictionary<string, ConsultInputFormRef> { ["prior_notes"] = new("triage-intake", "17") },
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["prior_notes"] = [Text("doc text")] });
+
+        var captured = await StartAndCaptureAsync(manifest, request);
+
+        Assert.Null(captured.Outcome.Error);
+        var value = captured.OrchestrationInput!.Request.Inputs!["prior_notes"];
+        var origins = captured.OrchestrationInput.InputDocumentOrigins!["prior_notes"];
+
+        Assert.Equal(value.Elements!.Count, origins.Count);
+        Assert.Single(origins);
+        Assert.Equal(ConsultInputOriginKinds.FormResponse, origins[0].Kind);
     }
 
     private Task<StartCapture> StartV7AndCaptureAsync(

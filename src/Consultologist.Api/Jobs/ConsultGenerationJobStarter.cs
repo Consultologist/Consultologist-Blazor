@@ -383,7 +383,19 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // typed+documents combine — ResolveInputRefsAsync above already wrote
         // their value and origin, and ExtractInputFilesAsync must not treat
         // that value's elements as typed rows to prepend.
+        // #872 task 3.5 (defensive): a form-ref'd id is under the same
+        // hazard now that the manifest-aware layer allows a several id in
+        // both Inputs and InputFiles — its Inputs[id] is the value the form
+        // response verified, not a typed row to prepend, and its own origin
+        // below must replace rather than concatenate onto a combined record.
+        // Union formRefs' ids into the same exclude/overwrite treatment.
         var refResolvedIds = resolution.Origins?.Keys.ToHashSet(StringComparer.Ordinal);
+        if (formRefs is { Count: > 0 })
+        {
+            refResolvedIds = refResolvedIds is { Count: > 0 }
+                ? new HashSet<string>(refResolvedIds.Concat(formRefs.Keys), StringComparer.Ordinal)
+                : new HashSet<string>(formRefs.Keys, StringComparer.Ordinal);
+        }
 
         var extraction = await ExtractInputFilesAsync(
             request, package.Manifest, GateWaitFor(origin), _ocr, ocrMinConfidence, cancellationToken, refResolvedIds);
@@ -427,6 +439,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // #540: the verified form fills, each naming its held response; the
         // digest is over the value as it entered the effective map, the
         // rerun origin's own convention.
+        // #872 task 3.5 (defensive): overwriteForIds so a form-ref'd id that
+        // ALSO combined typed rows with documents above gets this
+        // FormResponse origin as the whole record, not concatenated onto the
+        // combine's typed/document origins.
         if (formRefs is { Count: > 0 } && inputs.Effective != null)
         {
             inputOrigins = MergeOrigins(inputOrigins, formRefs
@@ -441,13 +457,18 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                             SourceFormId: pair.Value.FormId,
                             SourceResponseId: pair.Value.ResponseId)
                     },
-                    StringComparer.Ordinal));
+                    StringComparer.Ordinal),
+                refResolvedIds);
         }
 
         // #549: a rerun replays the source's held inputs, so every effective
         // slot names the run it came from. Built server-side like every
         // origin; the digest is over the effective value verbatim, equal to
         // the source's slot values by construction.
+        // #872 task 3.5 (defensive): same overwriteForIds, so a ref/form-ref'd
+        // id a rerun replays cannot double its origin against a combine
+        // either — never observed to reach this state today, but the gate
+        // that made it reachable at all just opened.
         if (origin.RerunOfJobId is { } rerunOf && inputs.Effective != null)
         {
             inputOrigins = MergeOrigins(inputOrigins, inputs.Effective.ToDictionary(
@@ -459,7 +480,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                         TextSha256: ConsultGenerationProvenance.Sha256Hex(pair.Value),
                         SourceJobId: rerunOf)
                 },
-                StringComparer.Ordinal));
+                StringComparer.Ordinal),
+                refResolvedIds);
         }
 
         // #290: present is not the same as filled. ResolveEffectiveInputs has
@@ -1865,6 +1887,21 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             var several = spec != null
                 && WorkflowInputTypes.Of(spec) == WorkflowInputTypes.Array
                 && WorkflowInputTypes.ElementTypeOf(spec) == WorkflowInputTypes.Text;
+
+            // #872 (task 3.5): the same-id-in-both-maps refusal moved here
+            // from the wire door (ConsultGenerationTransport.ValidateRequest),
+            // which has no manifest and so cannot tell an array<text> id from
+            // a scalar one. A several id in both is the mixed feature's
+            // combine (typed rows then documents, below) — allowed. Every
+            // other type keeps the door's old, unconditional refusal: nobody
+            // needs both, and choosing one would drop the other silently.
+            if (!several && request.Inputs?.ContainsKey(id) == true)
+            {
+                var bothSentence = $"Input '{id}' was supplied as both text and a file.";
+
+                return new InputFileExtraction(
+                    request, null, bothSentence, null, ConsultGenerationJobStartError.InputsMismatch, SenderSafeError: bothSentence);
+            }
 
             if (documents.Count > 1 && !several)
             {
