@@ -49,7 +49,7 @@ The combined array is assembled in a **fixed order**: **typed rows (as entered) 
 
 **Alternative considered (documents-first, no bump).** Order the array documents-first so `origins[id]` (document origins only) aligns to the leading elements, with typed rows trailing and un-originned. Avoids the provenance bump but (a) reorders the array away from the typed-first mental model and (b) leaves typed elements without positional provenance, which reads as a gap in a provenance-first product. Rejected unless the reviewer prefers to avoid the provenance bump.
 
-> **Reviewer decision needed:** confirm the `typed`-origin-kind approach (with the provenance bump) vs. the documents-first no-bump alternative. The rest of the design assumes the recommended approach.
+> **Decision (confirmed 2026-09-28):** the `typed`-origin-kind approach with the provenance bump. The documents-first alternative is not taken.
 
 ### Engine (`ConsultGenerationJobStarter.ExtractInputFilesAsync`)
 - Instead of `inputs[id] = OfArray(fileTexts)` (overwrite), **combine**: read the typed value already in `request.Inputs[id]` (if present and an array), and build `OfArray(typedElements ++ documentTexts)` in the defined order. Non-array/single-doc inputs keep the current overwrite path unchanged.
@@ -87,7 +87,7 @@ No new fields expected: `Inputs`, `InputFiles`, and refs are separate maps and m
 - If the `typed` origin kind is adopted: a **provenance-registry** version bump (third repo) — additive, no record-field/replay-golden churn — plus the engine stamping it. Same three-repo shape as #671/#730/#673.
 - Frontend ships on the SWA (path-filtered) on merge; the mixed submit degrades safely against the pre-release engine only in that the server would still overwrite — so the frontend change should land with or after the engine release, not before. Sequence: engine (+ provenance) first, then frontend, or same PR train with the release cut before the SWA relies on mixing.
 
-## Open questions
-1. Provenance approach (the reviewer decision above): `typed` origin kind + bump (recommended) vs. documents-first no-bump.
-2. Element order confirmation: typed → documents → previous-run (recommended) acceptable?
-3. Should `expectedContent` (transcript/ambient) on a mixed slot stamp its kind on the *document* elements only (yes — typed rows are `typed`)? Assumed yes.
+## Decisions (confirmed 2026-09-28)
+1. Provenance: **`typed` origin kind + provenance-registry bump** (not documents-first).
+2. Element order: **typed → documents → previous-run**.
+3. `expectedContent` (transcript/ambient) stamps its kind on the *document* elements only; typed rows are `typed`.
