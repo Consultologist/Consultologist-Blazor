@@ -695,6 +695,14 @@ public record ConsultFailedDocumentResponse(
     IReadOnlyList<string>? Uncovered = null,
     IReadOnlyList<string>? Untested = null);
 
+/// <summary>
+/// Mirrors Consultologist.Api.Models.ConsultAppendedEntry (v11 #513, #863):
+/// one block appended to a deliverable's document after the sections — an
+/// appended macro, a slot the model placed inline (#863), or the signature
+/// block (AsOf carries its as-of date; null on macro/slot entries).
+/// </summary>
+public record ConsultAppendedEntryResponse(string Kind, string Id, string? AsOf = null);
+
 /// <summary>One v7 deliverable: authored identity, the document, and its digest.</summary>
 public record ConsultGenerationResultDocumentResponse(
     string ResultId,
@@ -703,9 +711,11 @@ public record ConsultGenerationResultDocumentResponse(
     string? Text,
     string? DocumentHash = null,
     // v11 #516: produced unsigned although the package requested a signature —
-    // true or absent, never false. (Appended[] is deliberately not mirrored;
-    // unknown JSON properties are ignored on deserialize.)
-    bool? Unsigned = null);
+    // true or absent, never false.
+    bool? Unsigned = null,
+    // #869 (v11 #513 / #863): what was appended after the sections, in applied
+    // order — appended macros, model-placed slots, and the signature block.
+    IReadOnlyList<ConsultAppendedEntryResponse>? Appended = null);
 
 /// <summary>
 /// One node of the job's workflow DAG (v5: one kind, ForEach as multiplicity).
