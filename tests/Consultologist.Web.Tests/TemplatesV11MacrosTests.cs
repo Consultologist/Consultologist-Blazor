@@ -660,4 +660,94 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         var validated = Validated();
         Assert.True(validated.IsValid, string.Join(" | ", validated.Errors));
     }
+
+    // #863: at specVersion 20, a macro's placement may be "slot" — the model
+    // places it inline via a [[slot:<id>]] marker; the entry names no anchor.
+    private static WorkflowPackageContentResponse V20Slot()
+    {
+        var package = EditorFixtures.V11Macro();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["specVersion"] = 20;
+        root["results"]!.AsArray()[0]!.AsObject()["macros"] = new System.Text.Json.Nodes.JsonArray(
+            new System.Text.Json.Nodes.JsonObject { ["id"] = "disclaimer", ["slot"] = true });
+        return package with { SpecVersion = 20, Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
+
+    [Fact]
+    public void TheSlotPlacement_ComposesASlotEntry_AtV20()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+        CapturePublish();
+
+        page.FindAll("fluent-button")
+            .First(b => b.TextContent.Contains("Upgrade to specVersion 20", StringComparison.Ordinal))
+            .Click();
+
+        Navigate(page, "Documents");
+
+        page.Find("select.result-macro-placement").Change("slot");
+
+        // A slot has no anchor, so the fan-item picker is not offered for it.
+        Assert.Empty(page.FindAll("select.result-macro-foritem"));
+
+        Publish(page);
+
+        Assert.NotNull(sent);
+        var macro = Result(sent!).GetProperty("macros")[0];
+        Assert.Equal(JsonValueKind.Object, macro.ValueKind);
+        Assert.True(macro.GetProperty("slot").GetBoolean());
+        Assert.False(macro.TryGetProperty("before", out _));
+        Assert.False(macro.TryGetProperty("after", out _));
+        Assert.False(macro.TryGetProperty("forItem", out _));
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join(" | ", validated.Errors));
+    }
+
+    [Fact]
+    public void SwitchingFromSlot_BackToAppended_DropsTheSlotKey()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+        CapturePublish();
+
+        page.FindAll("fluent-button")
+            .First(b => b.TextContent.Contains("Upgrade to specVersion 20", StringComparison.Ordinal))
+            .Click();
+        Navigate(page, "Documents");
+
+        page.Find("select.result-macro-placement").Change("slot");
+        page.Find("select.result-macro-placement").Change(string.Empty);
+
+        Publish(page);
+
+        // Back to the bare v11 string form — no slot, no anchor.
+        Assert.Equal(JsonValueKind.String, Result(sent!).GetProperty("macros")[0].ValueKind);
+    }
+
+    [Fact]
+    public void BelowTwenty_TheSlotOption_IsNotOffered()
+    {
+        // v12 shows the placement select, but slot arrives at 20.
+        var page = RenderEditor(EditorFixtures.V12());
+        Navigate(page, "Documents");
+
+        var values = page.FindAll("select.result-macro-placement option")
+            .Select(option => option.GetAttribute("value"))
+            .ToList();
+
+        Assert.DoesNotContain("slot", values);
+    }
+
+    [Fact]
+    public void ALoadedSlotMacro_ShowsAsTheSelectedPlacement()
+    {
+        // Guards the reader (ReadMacroEntries): a loaded v20 slot entry must
+        // read back as Slot — or the select shows "appended" and the first
+        // edit would silently drop slot (the #398 class the reader warns of).
+        var page = RenderEditor(V20Slot());
+        Navigate(page, "Documents");
+
+        Assert.Contains(
+            page.FindAll("select.result-macro-placement option"),
+            option => option.GetAttribute("value") == "slot" && option.HasAttribute("selected"));
+    }
 }

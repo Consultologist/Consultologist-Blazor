@@ -1228,16 +1228,23 @@
                                                         <select class="binding-row__select result-macro-placement"
                                                                 @onchange="args => SetMacroPlacementAsync(deliverable, macroId, args.Value?.ToString())"
                                                                 aria-label="@($"Placement for macro {macroId} in document {deliverable.Id}")">
-                                                            <option value="" selected="@(macroEntry.Before == null && macroEntry.After == null)">appended</option>
+                                                            <option value="" selected="@(macroEntry.Before == null && macroEntry.After == null && !macroEntry.IsSlot)">appended</option>
                                                             @foreach (var placementSource in DeliverableAggregateSources(deliverable))
                                                             {
                                                                 <option value="@($"before|{placementSource}")" selected="@(macroEntry.Before == placementSource)">before @placementSource</option>
                                                                 <option value="@($"after|{placementSource}")" selected="@(macroEntry.After == placementSource)">after @placementSource</option>
                                                             }
+                                                            @* v20 § (#863): the model places the macro inline via a
+                                                               [[slot:<id>]] marker it emits; a slot names no anchor. *@
+                                                            @if (EffectiveSpecVersion >= 20)
+                                                            {
+                                                                <option value="slot" selected="@macroEntry.IsSlot">slot (the model places it)</option>
+                                                            }
                                                         </select>
                                                         @* v19 § 4 (#845): when the chosen section is a forEach data-fan,
-                                                           anchor the macro to one of its items instead of the whole block. *@
-                                                        @if (EffectiveSpecVersion >= 19)
+                                                           anchor the macro to one of its items instead of the whole block.
+                                                           A slot has no anchor (§ #863), so the fan-item picker is hidden. *@
+                                                        @if (EffectiveSpecVersion >= 19 && !macroEntry.IsSlot)
                                                         {
                                                             var fanItems = MacroAnchorFanItems(macroEntry);
                                                             if (fanItems.Count > 0)
@@ -1827,6 +1834,16 @@
                                 Declared placeholders are usable in the text; a new variable's source can be
                                 set here or in Graph — publish waits until every variable has one.
                             </p>
+                            @* v20 (#863): once a macro is set to "slot", a section prompt's output can place it
+                               inline. The hint appears only when a slot-mode macro exists, so it stays actionable. *@
+                            @if (EffectiveSpecVersion >= 20 && EffectiveResults.Any(r => r.Macros?.Any(m => m.IsSlot) == true))
+                            {
+                                <p class="muted-text">
+                                    Instruct the model to write <code>[[slot:&lt;macro-id&gt;]]</code> where a slot-mode
+                                    macro should land — a distinct marker (not <code>{{ }}</code>), filled with the
+                                    macro's text at assembly wherever the model places it.
+                                </p>
+                            }
                             @* #747: the prompt's shared prelude — prepended to it. Offered for a declared
                                prompt when the package has a prelude (or this prompt already names one). *@
                             @if (IsDeclaredPrompt(prompt.Id) && (LivePreludes.Any() || EffectivePromptPrelude(prompt.Id) != null))
@@ -4311,6 +4328,22 @@
                         }
                     }
 
+                    // v20 (#863): slot is the model-placed choice — it names no
+                    // anchor. The server validator is the real gate; these mirror
+                    // its two rules so the desk refuses before the round-trip.
+                    if (entry.Slot == true)
+                    {
+                        if (EffectiveSpecVersion < 20)
+                        {
+                            errors.Add($"Result '{result.Id}' declares macro '{entry.Id}' as a slot, which requires specVersion 20. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.");
+                        }
+
+                        if (entry.Before != null || entry.After != null || entry.ForItem != null)
+                        {
+                            errors.Add($"Result '{result.Id}' declares macro '{entry.Id}' as a slot and also anchors it with before/after/forItem; a slot is placed by the model, so it names no anchor.");
+                        }
+                    }
+
                     if (conditionDrafts.TryGetValue($"{result.Id}\n{entry.Id}", out var entryDraft) && IsUnwritable(entryDraft))
                     {
                         errors.Add(ConditionBuilderModel.IsComplete(entryDraft)
@@ -6410,9 +6443,12 @@
 
         if (index >= 0 && results[index].Macros is { } entries)
         {
+            // v20 (#863): "slot" is the model-placed choice — it names no anchor,
+            // so it is mutually exclusive with before/after/forItem.
+            var slot = raw == "slot";
             string? before = null, after = null;
 
-            if (!string.IsNullOrEmpty(raw) && raw.Split('|', 2) is [var side, var anchor])
+            if (!slot && !string.IsNullOrEmpty(raw) && raw.Split('|', 2) is [var side, var anchor])
             {
                 before = side == "before" ? anchor : null;
                 after = side == "after" ? anchor : null;
@@ -6420,9 +6456,12 @@
 
             results[index] = results[index] with
             {
-                // Changing the section clears any forItem — an item id is only
-                // meaningful for a specific fan (#845).
-                Macros = entries.Select(e => e.Id == macroId ? e with { Before = before, After = after, ForItem = null } : e).ToList()
+                // Changing the placement clears any forItem — an item id is only
+                // meaningful for a specific fan (#845) — and sets/clears slot so
+                // the mutually-exclusive choices never coexist (#863).
+                Macros = entries.Select(e => e.Id == macroId
+                    ? e with { Before = before, After = after, ForItem = null, Slot = slot ? true : null }
+                    : e).ToList()
             };
         }
 
@@ -10111,6 +10150,7 @@
                                     if (entry.After != null) { adorned["after"] = entry.After; }
                                     if (entry.When != null) { adorned["when"] = entry.When; }
                                     if (entry.ForItem != null) { adorned["forItem"] = entry.ForItem; } // #845
+                                    if (entry.Slot == true) { adorned["slot"] = true; } // #863 — last key, per the converter's member order
                                     return (System.Text.Json.Nodes.JsonNode?)adorned;
                                 }).ToArray());
                         }
