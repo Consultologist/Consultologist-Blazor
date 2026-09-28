@@ -3445,6 +3445,104 @@ public class ConsultGenerationJobStarterTests
         Assert.DoesNotContain(Sentinel, log.Everything, StringComparison.Ordinal);
     }
 
+    // ----- #872: typed rows + documents combine into one array ----------
+
+    [Fact]
+    public async Task ExtractInputFiles_CombinesTypedRowsThenDocuments_WithAlignedOrigins()
+    {
+        var manifest = V9Fixtures.WithInput(new WorkflowInputSpec(
+            "prior_notes", "Prior notes", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["prior_notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("typed one") })
+            },
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
+            {
+                ["prior_notes"] = [Text("doc one text")]
+            });
+
+        var extraction = await ConsultGenerationJobStarter.ExtractInputFilesAsync(
+            request, manifest, TimeSpan.Zero, ocr: null!, ocrMinConfidence: 0, CancellationToken.None);
+
+        Assert.Null(extraction.Error);
+        var value = extraction.Request.Inputs!["prior_notes"];
+        Assert.Equal(
+            new[] { "typed one", "doc one text" },
+            value.Elements!.Select(e => e.Canonical).ToArray());
+
+        var origins = extraction.Origins!["prior_notes"];
+        Assert.Equal(2, origins.Count);
+        Assert.Equal(ConsultInputOriginKinds.Typed, origins[0].Kind);
+        Assert.Null(origins[0].Extractor);
+        Assert.NotNull(origins[0].TextSha256);
+        Assert.Equal(ConsultInputOriginKinds.Document, origins[1].Kind);
+        Assert.NotNull(origins[1].Extractor);
+    }
+
+    [Fact]
+    public async Task ExtractInputFiles_FilesOnly_IsUnchanged()
+    {
+        // No typed rows at all for the id: the array is exactly the
+        // documents, and no `typed` origin appears.
+        var manifest = V9Fixtures.WithInput(new WorkflowInputSpec(
+            "prior_notes", "Prior notes", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
+        var request = new ConsultGenerationRequest(
+            null,
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
+            {
+                ["prior_notes"] = [Text("doc one text")]
+            });
+
+        var extraction = await ConsultGenerationJobStarter.ExtractInputFilesAsync(
+            request, manifest, TimeSpan.Zero, ocr: null!, ocrMinConfidence: 0, CancellationToken.None);
+
+        Assert.Null(extraction.Error);
+        var value = extraction.Request.Inputs!["prior_notes"];
+        Assert.Equal(new[] { "doc one text" }, value.Elements!.Select(e => e.Canonical).ToArray());
+
+        var origins = extraction.Origins!["prior_notes"];
+        Assert.Single(origins);
+        Assert.Equal(ConsultInputOriginKinds.Document, origins[0].Kind);
+    }
+
+    [Fact]
+    public async Task ExtractInputFiles_ScalarSlotWithOneFile_KeepsTheSingleDocumentOverwrite()
+    {
+        // A text (non-array) slot's one document is still the text itself —
+        // the else arm, unaffected by the combine logic above.
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: V9Typed(),
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [Text(Referral)] });
+
+        var extraction = await ConsultGenerationJobStarter.ExtractInputFilesAsync(
+            request, V9Fixtures.Structured(), TimeSpan.Zero, ocr: null!, ocrMinConfidence: 0, CancellationToken.None);
+
+        Assert.Null(extraction.Error);
+        Assert.Equal(ConsultInputValue.OfText(Referral), extraction.Request.Inputs!["consult_draft"]);
+        Assert.Single(extraction.Origins!["consult_draft"]);
+        Assert.Equal(ConsultInputOriginKinds.Document, extraction.Origins!["consult_draft"][0].Kind);
+    }
+
+    private static IReadOnlyList<ConsultInputOrigin> OneOrigin(string kind) => new[] { new ConsultInputOrigin(kind) };
+
+    [Fact]
+    public void MergeOrigins_ConcatenatesForASharedId_InElementOrder()
+    {
+        var loaded = OneOrigin(ConsultInputOriginKinds.PreviousRun);
+        var docs = OneOrigin(ConsultInputOriginKinds.Document);
+
+        var merged = ConsultGenerationJobStarter.MergeOriginsForTest(
+            new Dictionary<string, IReadOnlyList<ConsultInputOrigin>> { ["x"] = loaded },
+            new Dictionary<string, IReadOnlyList<ConsultInputOrigin>> { ["x"] = docs });
+
+        Assert.Equal(
+            new[] { ConsultInputOriginKinds.PreviousRun, ConsultInputOriginKinds.Document },
+            merged!["x"].Select(o => o.Kind).ToArray());
+    }
+
     private Task<StartCapture> StartV7AndCaptureAsync(
         ConsultGenerationRequest request,
         ILogger<ConsultGenerationJobStarter>? logger = null) =>

@@ -1740,9 +1740,23 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         if (first is not { Count: > 0 }) return second;
         if (second is not { Count: > 0 }) return first;
         var merged = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>(first, StringComparer.Ordinal);
-        foreach (var (id, list) in second) merged[id] = list;
+        // #872: a shared id's lists are positional (typed rows, then previous
+        // runs/documents, in the order they were folded in) — overwriting
+        // would drop whichever side merged first, so concatenate instead.
+        foreach (var (id, list) in second)
+        {
+            merged[id] = merged.TryGetValue(id, out var existing)
+                ? existing.Concat(list).ToList()
+                : list;
+        }
         return merged;
     }
+
+    /// <summary>#872 test seam: MergeOrigins is private; the tests reach it here.</summary>
+    internal static IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? MergeOriginsForTest(
+        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? first,
+        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? second)
+        => MergeOrigins(first, second);
 
     /// <summary>
     /// #546: the lineage edges this start creates, from the final origins.
@@ -1918,10 +1932,40 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     TextSha256: ConsultGenerationProvenance.Sha256Hex(CanonicalText.Normalize(result.Text!))));
             }
 
-            // One document into a text slot is the text it always was, so hash
+            // #872: for a mixed array<text> slot the request may already carry
+            // typed rows in inputs[id]; keep them, in order, ahead of the
+            // documents, each with a positional `typed` origin. A single
+            // document into a text slot is unchanged (the else arm) — one
+            // document into a text slot is the text it always was, so hash
             // definitions 3 and 4 see the same bytes they did.
-            inputs[id] = several ? ConsultInputValue.OfArray(texts) : texts[0];
-            origins[id] = slotOrigins;
+            if (several)
+            {
+                var typedElements = inputs.TryGetValue(id, out var existing)
+                    && existing.Kind == ConsultInputKind.Array
+                        ? existing.Elements!
+                        : Array.Empty<ConsultInputValue>();
+
+                var combined = new List<ConsultInputValue>(typedElements.Count + texts.Count);
+                var combinedOrigins = new List<ConsultInputOrigin>(typedElements.Count + slotOrigins.Count);
+                foreach (var element in typedElements)
+                {
+                    combined.Add(element);
+                    combinedOrigins.Add(new ConsultInputOrigin(
+                        ConsultInputOriginKinds.Typed, null, null, false,
+                        TextSha256: ConsultGenerationProvenance.Sha256Hex(
+                            CanonicalText.Normalize(element.HasCanonical ? element.Canonical : element.AsJson()))));
+                }
+                combined.AddRange(texts);
+                combinedOrigins.AddRange(slotOrigins);
+
+                inputs[id] = ConsultInputValue.OfArray(combined);
+                origins[id] = combinedOrigins;
+            }
+            else
+            {
+                inputs[id] = texts[0];
+                origins[id] = slotOrigins;
+            }
         }
 
         // InputFiles cleared here, and this is load-bearing rather than tidy:
