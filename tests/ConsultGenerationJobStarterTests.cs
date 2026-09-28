@@ -3626,14 +3626,20 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public async Task ARefAndAFileForTheSameArraySlot_OverwritesRatherThanDoublingOrigins()
+    public async Task ARefAndAFileForTheSameArraySlot_IsRefused()
     {
-        // #872 round 1 (Critical fix): previous-run is descoped from the
-        // mixed array entirely. An id that is BOTH ref-resolved (InputRefs)
-        // AND has a file (InputFiles) must NOT combine the two — the file
-        // extraction keeps the pre-#872 overwrite: its value and its origins
-        // are the whole record, with no phantom doubled origin and no ref
-        // element mislabeled `typed`.
+        // #872 review fix (round 1 of task 3.5): a previous-run-resolved id
+        // that ALSO has a file (InputFiles) used to silently overwrite —
+        // the file's value and origins winning whole, the ref's contribution
+        // discarded. The controller ruling: that is an internally
+        // inconsistent record waiting to happen (nothing stops the reverse:
+        // an origin claiming PreviousRun for a value that is really the
+        // document's text), so it is refused by name instead. Not
+        // UI-reachable — loaded/ref and file-upload are mutually exclusive
+        // modes in the frontend — but reachable at the API once
+        // ValidateRequest's same-id gate relaxed for #872's mixed feature.
+        const string expected = "Input 'prior_notes' was supplied as both a document and a previous-run or form response.";
+
         WithSourceRun(SourceRun(text: "Earlier note."));
         var manifest = V9Fixtures.WithInput(new WorkflowInputSpec(
             "prior_notes", "Prior notes", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
@@ -3646,27 +3652,23 @@ public class ConsultGenerationJobStarterTests
 
         var captured = await StartAndCaptureAsync(manifest, request);
 
-        Assert.Null(captured.Outcome.Error);
-        var value = captured.OrchestrationInput!.Request.Inputs!["prior_notes"];
-        var origins = captured.OrchestrationInput.InputDocumentOrigins!["prior_notes"];
-
-        Assert.Equal(value.Elements!.Count, origins.Count);
-        Assert.DoesNotContain(origins, o => o.Kind == ConsultInputOriginKinds.Typed);
-        Assert.All(origins, o => Assert.Equal(ConsultInputOriginKinds.Document, o.Kind));
-        Assert.Equal(new[] { "doc text" }, value.Elements!.Select(e => e.Canonical).ToArray());
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, captured.Outcome.Error);
+        Assert.Equal(expected, captured.Outcome.ErrorDetail);
+        Assert.Equal(expected, captured.Outcome.SenderSafeDetail);
+        Assert.Null(captured.Initialize);
     }
 
     [Fact]
-    public async Task AFormRefAndAFileForTheSameArraySlot_OverwritesRatherThanDoublingOrigins()
+    public async Task AFormRefAndAFileForTheSameArraySlot_IsRefused()
     {
-        // #872 task 3.5 (defensive): a form-ref'd id is the same hazard as a
-        // previous-run-resolved one (the ref/file test just above), now that
-        // the manifest-aware layer allows a several id in both maps. Without
-        // unioning formRefs' ids into the exclude/overwrite treatment, this
-        // would fold the coerced form value in as a `typed` row, then
-        // concatenate the FormResponse origin on top of it — two origins for
-        // a one-element array. The whole record must be the form response's
-        // origin alone, not doubled against the file's.
+        // #872 review fix (round 1 of task 3.5): the form-ref'd twin of the
+        // ref/file refusal above — a form-ref'd id that ALSO has a file used
+        // to overwrite with the file's value while the origin stayed labeled
+        // FormResponse (SourceFormId/SourceResponseId naming a value that was
+        // never actually held), an internally-inconsistent record. Refused
+        // by name instead, for the same reason and with the same sentence.
+        const string expected = "Input 'prior_notes' was supplied as both a document and a previous-run or form response.";
+
         var manifest = V9Fixtures.WithInput(new WorkflowInputSpec(
             "prior_notes", "Prior notes", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
 
@@ -3693,13 +3695,10 @@ public class ConsultGenerationJobStarterTests
 
         var captured = await StartAndCaptureAsync(manifest, request);
 
-        Assert.Null(captured.Outcome.Error);
-        var value = captured.OrchestrationInput!.Request.Inputs!["prior_notes"];
-        var origins = captured.OrchestrationInput.InputDocumentOrigins!["prior_notes"];
-
-        Assert.Equal(value.Elements!.Count, origins.Count);
-        Assert.Single(origins);
-        Assert.Equal(ConsultInputOriginKinds.FormResponse, origins[0].Kind);
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, captured.Outcome.Error);
+        Assert.Equal(expected, captured.Outcome.ErrorDetail);
+        Assert.Equal(expected, captured.Outcome.SenderSafeDetail);
+        Assert.Null(captured.Initialize);
     }
 
     private Task<StartCapture> StartV7AndCaptureAsync(

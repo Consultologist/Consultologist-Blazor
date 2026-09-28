@@ -1849,11 +1849,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         CancellationToken cancellationToken,
         // #872 round 1: ids ResolveInputRefsAsync already resolved (a
         // previous-run reference) — descoped from the typed+documents combine.
-        // Such an id keeps the pre-#872 overwrite below: the documents ARE the
-        // whole value and the whole origin record, the ref's contribution
-        // discarded exactly as it was before this feature existed. Passing
-        // none (the other caller, and every existing test) is the same as
-        // before.
+        // Task 3.5's review fix widened this: the caller also unions in
+        // form-ref'd ids (StartAsync's formRefs), since a form response's
+        // written-back value is the same hazard a previous-run one is, not a
+        // typed row to prepend. For a several (array<text>) id, membership
+        // here is now a REFUSAL (a document alongside a ref/rerun/form
+        // response is refused by name, above) rather than the pre-#872
+        // silent overwrite this parameter used to select. Passing none (the
+        // other caller, and every existing test) is the same as before.
         IReadOnlyCollection<string>? excludeFromCombine = null)
     {
         if (request.InputFiles is not { Count: > 0 })
@@ -1901,6 +1904,26 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
                 return new InputFileExtraction(
                     request, null, bothSentence, null, ConsultGenerationJobStartError.InputsMismatch, SenderSafeError: bothSentence);
+            }
+
+            // #872 (review fix, round 1 of task 3.5): a several (array<text>)
+            // id that is ALSO ref/rerun/form-resolved (excludeFromCombine)
+            // cannot be handled safely either way — combining would mislabel
+            // that resolved value's elements `typed`, and the pre-#872
+            // overwrite this used to silently take would leave the origin
+            // claiming a FormResponse/PreviousRun record for a value that is
+            // actually the document's text (an internally-inconsistent
+            // record: origin says one source, the value holds another).
+            // Not UI-reachable — loaded/form/rerun are mutually exclusive
+            // modes in the frontend — but relaxing ValidateRequest's same-id
+            // gate (task 3.5) made it reachable at the API, so it is refused
+            // here by name instead.
+            if (several && excludeFromCombine?.Contains(id) == true)
+            {
+                var collisionSentence = $"Input '{id}' was supplied as both a document and a previous-run or form response.";
+
+                return new InputFileExtraction(
+                    request, null, collisionSentence, null, ConsultGenerationJobStartError.InputsMismatch, SenderSafeError: collisionSentence);
             }
 
             if (documents.Count > 1 && !several)
@@ -1999,13 +2022,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // #872: for a mixed array<text> slot the request may already carry
             // typed rows in inputs[id]; keep them, in order, ahead of the
             // documents, each with a positional `typed` origin. Round 1: an id
-            // ResolveInputRefsAsync already resolved is excluded from this —
-            // its inputs[id] holds previous-run elements, not typed rows, and
-            // combining them here would mislabel a PreviousRun element `typed`
-            // and (via MergeOrigins) double its origin. The else arm below is
-            // the single-document-into-a-text-slot path AND the excluded-id
-            // path: both keep the pre-#872 overwrite.
-            if (several && excludeFromCombine?.Contains(id) != true)
+            // ResolveInputRefsAsync already resolved (or, per the task 3.5
+            // review fix above, a form/rerun-resolved one) never reaches this
+            // branch — that combination is refused by name above, before any
+            // byte is parsed, rather than silently combined or overwritten.
+            // So `several` here is never also an excluded id.
+            if (several)
             {
                 var typedElements = inputs.TryGetValue(id, out var existing)
                     && existing.Kind == ConsultInputKind.Array
@@ -2030,12 +2052,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             }
             else
             {
-                // A single document into a text slot is the text it always
-                // was, so hash definitions 3 and 4 see the same bytes they
-                // did. A several/array id excluded above (ref-resolved) is
-                // the documents alone, the same shape a several id always
-                // took before #872.
-                inputs[id] = several ? ConsultInputValue.OfArray(texts) : texts[0];
+                // A single document into a text (non-several) slot is the
+                // text it always was, so hash definitions 3 and 4 see the
+                // same bytes they did — unaffected by the combine above.
+                inputs[id] = texts[0];
                 origins[id] = slotOrigins;
             }
         }
