@@ -28,7 +28,7 @@ public static class WorkflowPackageValidator
     /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
     /// are checked against the published spec-versions.json there too.
     /// </summary>
-    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 };
 
     /// <summary>
     /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
@@ -2542,6 +2542,23 @@ public static class WorkflowPackageValidator
 
                 referenced.Add(macroId);
 
+                // v20 (#863): a slot-mode macro is placed inline by the model, via
+                // a [[slot:id]] marker it emits in a section's output; the engine
+                // fills it at assembly. Below 20 it is refused by name; and because
+                // the model owns the position, a slot names no before/after/forItem.
+                if (entry.Slot == true)
+                {
+                    if (manifest.SpecVersion < 20)
+                    {
+                        errors.Add($"Result '{result.Id}' declares macro '{entry.Id}' as a slot, which requires specVersion 20.");
+                    }
+
+                    if (entry.Before != null || entry.After != null || entry.ForItem != null)
+                    {
+                        errors.Add($"Result '{result.Id}' declares macro '{entry.Id}' as a slot and also anchors it with before/after/forItem; a slot is placed by the model, so it names no anchor.");
+                    }
+                }
+
                 // v12 (§ 4): a placement names exactly one anchor, and the
                 // anchor must be a section of THIS deliverable's aggregator.
                 if (!entry.IsBare && manifest.SpecVersion >= 12)
@@ -2620,6 +2637,14 @@ public static class WorkflowPackageValidator
                     .Where(e => e.When != null && tokenCounts.GetValueOrDefault(e.Id) > 0))
                 {
                     errors.Add($"Result '{result.Id}' gates macro '{gated.Id}' with when, and the macro carries {{{{profile:signature}}}}; a conditional signature was rejected (#516) and stays rejected.");
+                }
+
+                // #863: a slot is placed wherever the model drops its marker, so a
+                // slot macro carrying the signature is a conditional signature too.
+                foreach (var slotted in (result.Macros ?? new List<WorkflowResultMacroSpec>())
+                    .Where(e => e.Slot == true && tokenCounts.GetValueOrDefault(e.Id) > 0))
+                {
+                    errors.Add($"Result '{result.Id}' places macro '{slotted.Id}' as a slot, and the macro carries {{{{profile:signature}}}}; a deliverable is signed once, not wherever the model drops a marker.");
                 }
 
                 if (result.Signature == true && carrying.Count > 0)

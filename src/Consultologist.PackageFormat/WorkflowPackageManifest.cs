@@ -429,12 +429,20 @@ public sealed record WorkflowResultMacroSpec(
     string? When = null,
     // v19 (#845): anchor the placement to ONE item of a forEach data-fan the
     // before/after source aggregates (e.g. one section). Trailing optional.
-    string? ForItem = null)
+    string? ForItem = null,
+    // v20 (#863): the model places this macro inline via a `[[slot:<id>]]` marker
+    // it emits in a section's output; the engine fills the marker at assembly.
+    // Mutually exclusive with before/after/forItem (the model owns the position);
+    // the entry's when/optional gate still governs inclusion. Trailing optional.
+    bool? Slot = null)
 {
     /// <summary>An id and nothing else — the v11 form. Every adornment must
     /// count: the writer keys the bare-string form on this, so an entry that
     /// carries only a when or a forItem would silently drop it on republish.</summary>
-    public bool IsBare => Before is null && After is null && When is null && ForItem is null;
+    public bool IsBare => Before is null && After is null && When is null && ForItem is null && Slot is null;
+
+    /// <summary>#863: the model, not the deliverable, chooses where this macro lands.</summary>
+    public bool IsSlot => Slot == true;
 
     public static implicit operator WorkflowResultMacroSpec?(string? id) => id is null ? null : new(id);
 
@@ -444,7 +452,7 @@ public sealed record WorkflowResultMacroSpec(
 public sealed class WorkflowResultMacroSpecConverter : JsonConverter<WorkflowResultMacroSpec>
 {
     // The object form, read without this converter on the outer shape.
-    private sealed record Shape(string? Id, string? Before, string? After, string? When, string? ForItem);
+    private sealed record Shape(string? Id, string? Before, string? After, string? When, string? ForItem, bool? Slot);
 
     public override WorkflowResultMacroSpec Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
@@ -466,7 +474,7 @@ public sealed class WorkflowResultMacroSpecConverter : JsonConverter<WorkflowRes
             throw new JsonException("A placed macro entry must declare id.");
         }
 
-        return new WorkflowResultMacroSpec(shape.Id, shape.Before, shape.After, shape.When, shape.ForItem);
+        return new WorkflowResultMacroSpec(shape.Id, shape.Before, shape.After, shape.When, shape.ForItem, shape.Slot);
     }
 
     public override void Write(Utf8JsonWriter writer, WorkflowResultMacroSpec value, JsonSerializerOptions options)
@@ -498,6 +506,11 @@ public sealed class WorkflowResultMacroSpecConverter : JsonConverter<WorkflowRes
         if (value.ForItem != null)
         {
             writer.WriteString("forItem", value.ForItem);
+        }
+
+        if (value.Slot == true)
+        {
+            writer.WriteBoolean("slot", true);
         }
 
         writer.WriteEndObject();
