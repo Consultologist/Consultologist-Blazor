@@ -220,11 +220,15 @@
                                    array<text> slot is the exception — its rows
                                    below may hold typed entries AND documents
                                    together, side by side. *@
-                                @if (field.HasLoaded)
+                                @if (field.HasLoaded && !field.TakesSeveralDocuments)
                                 {
                                     @* #510: filled from previous runs. One chip per
                                        deliverable, its text shown as a preview: what
-                                       runs is the server's copy of that run's text. *@
+                                       runs is the server's copy of that run's text.
+                                       #874: a several (array<text>) slot is the
+                                       exception — its loaded chips render inside the
+                                       array branch below, alongside typed rows and
+                                       documents, so the three sources mix. *@
                                     <div class="input-field__documents" @onclick:stopPropagation="true">
                                         @for (var i = 0; i < field.Loaded.Count; i++)
                                         {
@@ -391,6 +395,35 @@
                                                 <span class="muted-text input-field__hint">
                                                     Looks wrong? Remove that file, or add a typed entry above alongside the rest.
                                                 </span>
+                                            }
+                                            @if (field.HasLoaded)
+                                            {
+                                                @* #874: previous-run deliverables in the same
+                                                   slot as the typed rows and documents above —
+                                                   one chip per deliverable, its text shown as a
+                                                   preview, removable on its own. What runs is the
+                                                   server's copy of that run's text. *@
+                                                <div class="input-field__documents" @onclick:stopPropagation="true">
+                                                    @for (var i = 0; i < field.Loaded.Count; i++)
+                                                    {
+                                                        var index = i;
+                                                        var loaded = field.Loaded[index];
+                                                        var currentField = field;
+                                                        <div class="input-field__document input-field__loaded" @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                                                            <span class="input-field__chip">
+                                                                <span class="input-field__chip-name">@loaded.Label</span>
+                                                                <span class="muted-text">@loaded.RunName</span>
+                                                                <FluentButton Appearance="Appearance.Stealth"
+                                                                              Title="Remove this loaded deliverable"
+                                                                              @onclick="() => RemoveLoaded(currentField, index)">Remove</FluentButton>
+                                                            </span>
+                                                            <div class="input-field__preview">@loaded.Text</div>
+                                                        </div>
+                                                    }
+                                                    <span class="muted-text input-field__hint">
+                                                        The run will use this text exactly as that run produced it. To change it, remove it and add a typed entry instead.
+                                                    </span>
+                                                </div>
                                             }
                                             @* #510: or a previous run's deliverable, one per entry. *@
                                             <PreviousRunPicker OnChosen="loaded => LoadDeliverable(field, loaded)" />
@@ -2716,11 +2749,10 @@
 
   private void LoadDeliverable(ConsultInputField field, LoadedDeliverable loaded)
   {
+    // A single-value slot is one-or-the-other: loading a deliverable clears
+    // whatever else was there. #874: a several (array<text>) slot mixes, so
+    // it keeps its typed rows and documents — the deliverable joins them.
     if (!field.TakesSeveralDocuments)
-    {
-      field.Clear();
-    }
-    else if (!field.HasLoaded)
     {
       field.Clear();
     }
@@ -2782,13 +2814,15 @@
     return acknowledged.Count > 0 ? acknowledged : null;
   }
 
-  // #872: a mixed array (typed rows + documents) sends both — the typed
-  // portion here, the documents via SuppliedFiles(). Loaded stays its own
-  // mutually-exclusive mode: the engine refuses a file colliding with a
-  // ref-like source, so a loaded field's typed rows never travel here.
+  // #872/#874: a mixed array<text> slot sends every source it holds — the
+  // typed portion here, the documents via SuppliedFiles(), the previous-run
+  // deliverables via SuppliedRefs() — and the engine combines them into one
+  // array. A single-value slot stays one-or-the-other: its typed value only
+  // travels when it has no file and no loaded deliverable.
   private Dictionary<string, ConsultInputValue> SuppliedInputs() =>
     inputFields
-      .Where(field => field.Supplied is not null && !field.HasLoaded && (!field.HasFile || field.TakesSeveralDocuments))
+      .Where(field => field.Supplied is not null
+        && (field.TakesSeveralDocuments || (!field.HasLoaded && !field.HasFile)))
       .ToDictionary(field => field.Id, field => field.Supplied!, StringComparer.Ordinal);
 
   // #510: the references. The server copies each run's text and records the
@@ -3765,15 +3799,17 @@
     {
       get
       {
-        if (HasLoaded)
+        // #872/#874: a several (array<text>) slot mixes typed rows with
+        // documents and previous-run deliverables, so neither an attached file
+        // nor a loaded deliverable silences a row problem underneath it — an
+        // empty typed row still blocks the run. A single-value slot still
+        // hides its (unreachable) scalar/rows once a file or deliverable
+        // fills it.
+        if (HasLoaded && !TakesSeveralDocuments)
         {
           return null;
         }
 
-        // #872: a several-document slot mixes typed rows with documents, so
-        // an attached file no longer silences a row problem underneath it.
-        // A single-document slot still hides its (unreachable) scalar/rows
-        // once a file fills it.
         if (HasFile && !TakesSeveralDocuments)
         {
           return null;
@@ -3788,6 +3824,17 @@
     {
       get
       {
+        // #872/#874: a several slot mixing sources shows every element it
+        // runs, in the order it runs — typed rows, then documents, then
+        // previous-run deliverables — derived from EffectiveValue so display
+        // and the value stay in step. A pure-typed several slot keeps going
+        // through Root.EffectiveText (byte-identical to before).
+        if (TakesSeveralDocuments && (HasFile || HasLoaded))
+        {
+          return string.Join("\n\n", EffectiveValue.Elements!
+            .Select(element => element.HasCanonical ? element.Canonical : element.AsJson()));
+        }
+
         if (HasFile)
         {
           return string.Join("\n\n", Documents.Select(document => document.PreviewText));
@@ -3839,21 +3886,37 @@
 
     /// <summary>
     /// What this slot ran on, as a value: documents as the text read, one
-    /// element each for an array. #872: a several-document slot combines its
-    /// typed rows with its documents (Loaded stays its own exclusive mode,
-    /// never mixed in here).
+    /// element each for an array. #872/#874: a several (array&lt;text&gt;) slot
+    /// combines its typed rows, its documents AND its previous-run
+    /// deliverables into one array, in the order the engine assembles them
+    /// (typed → documents → previous-run). A single-value slot stays
+    /// one-or-the-other.
     /// </summary>
-    public ConsultInputValue EffectiveValue => HasFile
-      ? TakesSeveralDocuments
-        ? ConsultInputValue.OfArray(
+    public ConsultInputValue EffectiveValue
+    {
+      get
+      {
+        if (TakesSeveralDocuments)
+        {
+          return ConsultInputValue.OfArray(
             (Supplied?.Elements ?? Array.Empty<ConsultInputValue>())
-              .Concat(Documents.Select(document => ConsultInputValue.OfText(document.PreviewText))))
-        : ConsultInputValue.OfText(Documents[0].PreviewText)
-      : HasLoaded
-        ? TakesSeveralDocuments
-          ? ConsultInputValue.OfArray(Loaded.Select(loaded => ConsultInputValue.OfText(loaded.Text)))
-          : ConsultInputValue.OfText(Loaded[0].Text)
-        : Supplied!;
+              .Concat(Documents.Select(document => ConsultInputValue.OfText(document.PreviewText)))
+              .Concat(Loaded.Select(loaded => ConsultInputValue.OfText(loaded.Text))));
+        }
+
+        if (HasFile)
+        {
+          return ConsultInputValue.OfText(Documents[0].PreviewText);
+        }
+
+        if (HasLoaded)
+        {
+          return ConsultInputValue.OfText(Loaded[0].Text);
+        }
+
+        return Supplied!;
+      }
+    }
 
     /// <summary>Re-attach from a typed memento (#429): the tree restores itself from the root.</summary>
     public void Restore(ConsultInputValue value)
