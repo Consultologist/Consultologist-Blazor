@@ -316,22 +316,26 @@
                                                     @StructureControl(row)
                                                 </div>
                                                 <span class="input-field__row-buttons">
-                                                    <button type="button" class="aggregate-row__button" title="Move up"
-                                                            aria-label="Move entry @(index + 1) up"
-                                                            disabled="@(index == 0)"
-                                                            @onclick="() => currentField.MoveRow(index, -1)">↑</button>
-                                                    <button type="button" class="aggregate-row__button" title="Move down"
-                                                            aria-label="Move entry @(index + 1) down"
-                                                            disabled="@(index == currentField.Rows.Count - 1)"
-                                                            @onclick="() => currentField.MoveRow(index, +1)">↓</button>
-                                                    <button type="button" class="aggregate-row__button" title="Remove entry"
-                                                            aria-label="Remove entry @(index + 1)"
-                                                            @onclick="() => currentField.RemoveRow(index)">×</button>
+                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move up"
+                                                                  aria-label="@($"Move entry {index + 1} up")"
+                                                                  Disabled="@(index == 0)"
+                                                                  IconStart="@(new Icons.Regular.Size20.ArrowUp())"
+                                                                  OnClick="@(() => currentField.MoveRow(index, -1))" />
+                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move down"
+                                                                  aria-label="@($"Move entry {index + 1} down")"
+                                                                  Disabled="@(index == currentField.Rows.Count - 1)"
+                                                                  IconStart="@(new Icons.Regular.Size20.ArrowDown())"
+                                                                  OnClick="@(() => currentField.MoveRow(index, +1))" />
+                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove entry"
+                                                                  aria-label="@($"Remove entry {index + 1}")"
+                                                                  IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                                  OnClick="@(() => currentField.RemoveRow(index))" />
                                                 </span>
                                             </div>
                                         }
-                                        <button type="button" class="input-field__add"
-                                                @onclick="() => field.AddRow()">+ Add entry</button>
+                                        <FluentButton Appearance="Appearance.Stealth" Class="input-field__add"
+                                                      IconStart="@(new Icons.Regular.Size20.Add())"
+                                                      OnClick="@(() => field.AddRow())">Add entry</FluentButton>
                                         @if (field.TakesSeveralDocuments)
                                         {
                                             @if (field.HasFile)
@@ -355,17 +359,20 @@
                                                                     <span class="muted-text">@pages page@(pages == 1 ? "" : "s")</span>
                                                                 }
                                                                 <span class="input-field__row-buttons">
-                                                                    <button type="button" class="aggregate-row__button" title="Move up"
-                                                                            aria-label="Move @document.FileName up"
-                                                                            disabled="@(index == 0)"
-                                                                            @onclick="() => MoveDocument(currentField, index, -1)">↑</button>
-                                                                    <button type="button" class="aggregate-row__button" title="Move down"
-                                                                            aria-label="Move @document.FileName down"
-                                                                            disabled="@(index == currentField.Documents.Count - 1)"
-                                                                            @onclick="() => MoveDocument(currentField, index, +1)">↓</button>
-                                                                    <button type="button" class="aggregate-row__button" title="Remove this file"
-                                                                            aria-label="Remove @document.FileName"
-                                                                            @onclick="() => RemoveDocument(currentField, index)">×</button>
+                                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move up"
+                                                                                  aria-label="@($"Move {document.FileName} up")"
+                                                                                  Disabled="@(index == 0)"
+                                                                                  IconStart="@(new Icons.Regular.Size20.ArrowUp())"
+                                                                                  OnClick="@(() => MoveDocument(currentField, index, -1))" />
+                                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move down"
+                                                                                  aria-label="@($"Move {document.FileName} down")"
+                                                                                  Disabled="@(index == currentField.Documents.Count - 1)"
+                                                                                  IconStart="@(new Icons.Regular.Size20.ArrowDown())"
+                                                                                  OnClick="@(() => MoveDocument(currentField, index, +1))" />
+                                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove this file"
+                                                                                  aria-label="@($"Remove {document.FileName}")"
+                                                                                  IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                                                  OnClick="@(() => RemoveDocument(currentField, index))" />
                                                                 </span>
                                                             </span>
                                                             <div class="input-field__preview">@document.PreviewText</div>
@@ -820,9 +827,10 @@
                                 @if (latestRunResponse != null)
                                 {
                                     @* #642: the run, drawn live. *@
-                                    <button type="button" class="run-dag-button"
-                                            @onclick="() => showRunDiagram = true"
-                                            aria-label="Show run diagram">Run diagram</button>
+                                    <FluentButton Appearance="Appearance.Stealth" Class="run-dag-button"
+                                                  aria-label="Show run diagram"
+                                                  IconStart="@(new Icons.Regular.Size20.Flowchart())"
+                                                  OnClick="@(() => showRunDiagram = true)">Run diagram</FluentButton>
                                 }
                             </h2>
 
@@ -1049,9 +1057,10 @@
                  placeholder="Paste a OneDrive or SharePoint link"
                  disabled="@(!organisation || docField.IsFetchingLink)"
                  @bind="docField.LinkUrl" @bind:event="oninput" />
-          <button type="button" class="input-field__link-fetch"
-                  disabled="@(!organisation || docField.IsFetchingLink || string.IsNullOrWhiteSpace(docField.LinkUrl))"
-                  @onclick="() => LoadLinkAsync(docField)">Retrieve</button>
+          <FluentButton Appearance="Appearance.Neutral" Class="input-field__link-fetch"
+                        Disabled="@(!organisation || docField.IsFetchingLink || string.IsNullOrWhiteSpace(docField.LinkUrl))"
+                        IconStart="@(new Icons.Regular.Size20.ArrowDownload())"
+                        OnClick="@(() => LoadLinkAsync(docField))">Retrieve</FluentButton>
           @if (docField.IsFetchingLink)
           {
             <FluentProgressRing style="width: 16px; height: 16px;" />
@@ -1193,8 +1202,9 @@
            draws the outermost one. *@
         <div class="input-field__group input-field__group--nested" @onclick:stopPropagation="true">
           @ArrayRows(node)
-          <button type="button" class="input-field__add"
-                  @onclick="() => node.AddRow()">+ Add entry</button>
+          <FluentButton Appearance="Appearance.Stealth" Class="input-field__add"
+                        IconStart="@(new Icons.Regular.Size20.Add())"
+                        OnClick="@(() => node.AddRow())">Add entry</FluentButton>
         </div>
       }
       else
@@ -1216,17 +1226,20 @@
               @StructureControl(row)
             </div>
             <span class="input-field__row-buttons">
-              <button type="button" class="aggregate-row__button" title="Move up"
-                      aria-label="Move entry @(index + 1) up"
-                      disabled="@(index == 0)"
-                      @onclick="() => array.MoveRow(index, -1)">↑</button>
-              <button type="button" class="aggregate-row__button" title="Move down"
-                      aria-label="Move entry @(index + 1) down"
-                      disabled="@(index == array.Rows.Count - 1)"
-                      @onclick="() => array.MoveRow(index, +1)">↓</button>
-              <button type="button" class="aggregate-row__button" title="Remove entry"
-                      aria-label="Remove entry @(index + 1)"
-                      @onclick="() => array.RemoveRow(index)">×</button>
+              <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move up"
+                            aria-label="@($"Move entry {index + 1} up")"
+                            Disabled="@(index == 0)"
+                            IconStart="@(new Icons.Regular.Size20.ArrowUp())"
+                            OnClick="@(() => array.MoveRow(index, -1))" />
+              <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move down"
+                            aria-label="@($"Move entry {index + 1} down")"
+                            Disabled="@(index == array.Rows.Count - 1)"
+                            IconStart="@(new Icons.Regular.Size20.ArrowDown())"
+                            OnClick="@(() => array.MoveRow(index, +1))" />
+              <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove entry"
+                            aria-label="@($"Remove entry {index + 1}")"
+                            IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                            OnClick="@(() => array.RemoveRow(index))" />
             </span>
           </div>
         }

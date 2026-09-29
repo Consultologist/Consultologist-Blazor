@@ -994,7 +994,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         var page = Render<Consults>();
 
         Assert.Empty(page.FindAll(".input-field__row"));
-        Assert.Equal("+ Add entry", page.Find(".input-field__add").TextContent.Trim());
+        Assert.Equal("Add entry", page.Find(".input-field__add").TextContent.Trim());
     }
 
     [Fact]
@@ -1016,8 +1016,8 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         areas[3].Change("Three.");
 
         // The third moves up, the first is removed: Three, Two.
-        page.FindAll("button[title='Move up']")[2].Click();
-        page.FindAll("button[title='Remove entry']")[0].Click();
+        page.FindAll("fluent-button[title='Move up']")[2].Click();
+        page.FindAll("fluent-button[title='Remove entry']")[0].Click();
         Assert.Equal(2, page.FindAll(".input-field__row").Count);
 
         page.FindAll("fluent-button").Last().Click();
@@ -1074,7 +1074,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         Assert.Equal("Prior notes row 2 is empty; fill it in or remove it.", page.Find(".input-field__error").TextContent.Trim());
         Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
 
-        page.FindAll("button[title='Remove entry']")[1].Click();
+        page.FindAll("fluent-button[title='Remove entry']")[1].Click();
         Assert.Empty(page.FindAll(".input-field__error"));
         Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
     }
@@ -1189,7 +1189,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         FileInput(page, 1).UploadFiles(
             InputFileContent.CreateFromText("First note.", "first.txt"),
             InputFileContent.CreateFromText("Second note.", "second.txt"));
-        page.FindAll("button[title='Move down']")[0].Click();
+        page.FindAll("fluent-button[title='Move down']")[0].Click();
         Assert.Equal(new[] { "second.txt", "first.txt" }, ChipNames(page));
 
         page.FindAll("fluent-button").Last().Click();
@@ -1214,7 +1214,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
             InputFileContent.CreateFromText("First note.", "first.txt"),
             InputFileContent.CreateFromText("Second note.", "second.txt"));
 
-        page.FindAll("button[title='Remove this file']")[0].Click();
+        page.FindAll("fluent-button[title='Remove this file']")[0].Click();
         Assert.Equal(new[] { "second.txt" }, ChipNames(page));
 
         page.FindAll("fluent-button").First(button => button.TextContent.Contains("Remove all")).Click();

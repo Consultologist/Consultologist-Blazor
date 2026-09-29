@@ -708,12 +708,18 @@
                                             <summary class="muted-text">
                                                 Workflow (@nodeGroups.Count nodes)
                                                 @* #642: the run, drawn live. *@
-                                                <button type="button" class="run-dag-button"
-                                                        @onclick="() => _diagramJobId = job.JobId"
-                                                        @onclick:preventDefault @onclick:stopPropagation
+                                                @* The button sits inside the row's <summary>; FluentButton's
+                                                   OnClick can't carry the preventDefault/stopPropagation the
+                                                   toggle needs, so the wrapping span intercepts the bubbling
+                                                   click and keeps the <details> from opening/closing. *@
+                                                <span class="run-dag-button-wrap" @onclick:preventDefault @onclick:stopPropagation>
+                                                <FluentButton Appearance="Appearance.Stealth" Class="run-dag-button"
+                                                        OnClick="@(() => _diagramJobId = job.JobId)"
+                                                        IconStart="@(new Icons.Regular.Size20.Flowchart())"
                                                         aria-label="@($"Show run diagram for job {job.JobId}")">
                                                     Run diagram
-                                                </button>
+                                                </FluentButton>
+                                                </span>
                                             </summary>
                                             <div class="node-grid">
                                                 <div class="node-row">
