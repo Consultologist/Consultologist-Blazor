@@ -24,8 +24,9 @@
                 <span class="run-dag-legend__failed">failed</span> ·
                 <span class="run-dag-legend__running">running</span>
             </span>
-            <button type="button" class="run-dag-close" aria-label="Close run diagram"
-                    @onclick="() => OnClose.InvokeAsync()">×</button>
+            <FluentButton Appearance="Appearance.Stealth" Class="run-dag-close" aria-label="Close run diagram"
+                          IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                          OnClick="@(() => OnClose.InvokeAsync())" />
         </div>
         <WorkflowDagView Diagram="@RunDagDiagram.Build(Detail)" />
     </div>
