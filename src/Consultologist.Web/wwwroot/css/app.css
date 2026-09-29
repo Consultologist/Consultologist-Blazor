@@ -275,6 +275,36 @@ header.header.app-header {
 	width: auto !important;
 }
 
+/* #896: the account flyout (FluentProfileMenu). The popover carries no width of
+   its own, so it shrink-wraps and the identity email wraps character-by-character
+   — give it a sensible width and a clean body. PopoverClass="account-flyout__popover"
+   is applied to the popover (rendered as an anchored region; app.css is global,
+   so the class reaches it). */
+.account-flyout__popover {
+	min-width: 17.5rem;
+	max-width: 22rem;
+}
+
+.account-flyout__body {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+	padding: 0.25rem 0;
+}
+
+.account-flyout__identity {
+	display: flex;
+	flex-direction: column;
+	gap: 0.1rem;
+	font-size: 0.85rem;
+}
+
+/* Wrap a very long email at word/character boundaries as a graceful fallback,
+   never per-character mid-word inside a too-narrow box. */
+.account-flyout__identity .muted-text {
+	overflow-wrap: anywhere;
+}
+
 .content {
 	flex: 1 1 auto;
 	min-width: 0;
