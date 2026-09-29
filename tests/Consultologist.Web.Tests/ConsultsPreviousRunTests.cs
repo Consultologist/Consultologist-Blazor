@@ -159,6 +159,66 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void MixedArray_TypedRowAndDeliverable_TravelTogetherForTheSameId()
+    {
+        // #874: a several (array<text>) slot is no longer typed XOR loaded — a
+        // typed row and a previous-run deliverable can travel together, the
+        // typed portion via Inputs and the deliverable via Refs, for one id.
+        WithRuns();
+        CaptureSubmit();
+        var page = Rendered(this);
+        page.FindAll("fluent-text-area")[0].Change("Referral text, long enough to be a referral and pass the floor for content.");
+        page.Find(".input-field__add").Click();
+        page.FindAll("fluent-text-area")[1].Change("A prior typed note.");
+
+        ChooseNote(page, 1);
+        page.WaitForAssertion(() => Assert.Single(page.FindAll(".input-field__loaded")));
+
+        page.FindAll("fluent-button").Last().Click();
+
+        page.WaitForAssertion(() => Assert.NotNull(sentRefs));
+        Assert.Single(sentRefs!["prior_notes"]);
+        Assert.True(sentInputs!.ContainsKey("prior_notes"));
+        var typed = sentInputs["prior_notes"];
+        Assert.True(typed.IsArray);
+        Assert.Equal("A prior typed note.", Assert.Single(typed.Elements!).Canonical);
+    }
+
+    [Fact]
+    public void MixedArray_ShowsTypedRowsAndLoadedChipsTogether()
+    {
+        // #874: attaching a previous-run deliverable to a several slot no
+        // longer hides the typed rows underneath it — both render at once.
+        WithRuns();
+        var page = Rendered(this);
+        page.Find(".input-field__add").Click();
+        page.FindAll("fluent-text-area")[1].Change("A prior typed note.");
+
+        ChooseNote(page, 1);
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".input-field__loaded")));
+
+        Assert.NotEmpty(page.FindAll(".input-field__row"));
+        Assert.NotEmpty(page.FindAll(".input-field__loaded"));
+    }
+
+    [Fact]
+    public void MixedArray_EmptyTypedRow_BlocksSubmit_EvenWithADeliverable()
+    {
+        // #874: a loaded deliverable doesn't relax row validation — an empty
+        // typed row alongside it still names itself and disables Create.
+        WithRuns();
+        var page = Rendered(this);
+        page.FindAll("fluent-text-area")[0].Change("Referral text, long enough to be a referral and pass the floor for content.");
+        page.Find(".input-field__add").Click();
+
+        ChooseNote(page, 1);
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".input-field__loaded")));
+
+        Assert.Equal("Prior notes row 1 is empty; fill it in or remove it.", page.Find(".input-field__error").TextContent.Trim());
+        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+    }
+
+    [Fact]
     public void ALoadedDeliverable_IsShown_NotEditable()
     {
         // The words are the run's, verbatim: no control turns them into text
