@@ -53,6 +53,7 @@
                     @* #884: the Microsoft 365-style account flyout — identity, the
                        theme choice, Profile, and Sign out, in one avatar menu. *@
                     <FluentProfileMenu Class="account-flyout"
+                                       PopoverClass="account-flyout__popover"
                                        FullName="@context.User.Identity?.Name"
                                        HeaderButton="Sign out"
                                        OnHeaderButtonClick="@BeginLogout"
