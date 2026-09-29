@@ -3554,6 +3554,46 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
+    public async Task CombinedSlot_CapCountsTypedTextTogetherWithDocuments()
+    {
+        // Finding 1 (final review, #872): the aggregate cap on a combined
+        // array<text> slot must bound typed rows and documents together, not
+        // just the documents' text — otherwise a caller could stash
+        // arbitrarily long text in the typed elements and add only a small
+        // document to reach the combine path.
+        var manifest = V9Fixtures.WithInput(new WorkflowInputSpec(
+            "prior_notes", "Prior notes", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
+        var half = new string('a', ConsultGenerationJobs.MaxInputLength / 2);
+
+        var over = await ConsultGenerationJobStarter.ExtractInputFilesAsync(
+            new ConsultGenerationRequest(
+                null,
+                Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+                {
+                    ["prior_notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText(half) })
+                },
+                InputFiles: new Dictionary<string, List<InputFilePayload>> { ["prior_notes"] = [Text(half + "a")] }),
+            manifest, TimeSpan.Zero, ocr: null!, ocrMinConfidence: 0, CancellationToken.None);
+
+        Assert.Equal(ConsultGenerationJobStartError.InputTooLong, over.ErrorKind);
+        Assert.Equal("Input 'prior_notes' exceeds 256 KB across its 1 documents.", over.Error);
+        Assert.Equal(over.Error, over.SenderSafeError);
+
+        // Exactly at the bound (typed + document together) passes.
+        var at = await ConsultGenerationJobStarter.ExtractInputFilesAsync(
+            new ConsultGenerationRequest(
+                null,
+                Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+                {
+                    ["prior_notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText(half) })
+                },
+                InputFiles: new Dictionary<string, List<InputFilePayload>> { ["prior_notes"] = [Text(half)] }),
+            manifest, TimeSpan.Zero, ocr: null!, ocrMinConfidence: 0, CancellationToken.None);
+
+        Assert.Null(at.Error);
+    }
+
+    [Fact]
     public async Task MixedTypedAndFileArraySlot_ThroughFullStart_IsAcceptedAndCombines()
     {
         // The full pipeline's own proof, not just ExtractInputFilesAsync in

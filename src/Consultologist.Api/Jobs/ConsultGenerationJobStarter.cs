@@ -1963,7 +1963,23 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
             var texts = new List<ConsultInputValue>(documents.Count);
             var slotOrigins = new List<ConsultInputOrigin>(documents.Count);
-            var total = 0;
+
+            // #872 (final review, finding 1): a several id's typed rows,
+            // already sitting in inputs[id] when there's a combine ahead
+            // (below), share the same slot and the same cap as its
+            // documents — so the aggregate total starts from their length
+            // rather than zero, or a combined slot could carry unbounded
+            // typed text behind one small document. Same text as the
+            // `typed` origin hashes, so this is exactly what the combine
+            // will add.
+            var typedElements = several
+                    && inputs.TryGetValue(id, out var existingForCap)
+                    && existingForCap.Kind == ConsultInputKind.Array
+                ? existingForCap.Elements!
+                : Array.Empty<ConsultInputValue>();
+
+            var total = typedElements.Sum(element =>
+                (element.HasCanonical ? element.Canonical : element.AsJson()).Length);
 
             for (var index = 0; index < documents.Count; index++)
             {
@@ -2029,11 +2045,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // So `several` here is never also an excluded id.
             if (several)
             {
-                var typedElements = inputs.TryGetValue(id, out var existing)
-                    && existing.Kind == ConsultInputKind.Array
-                        ? existing.Elements!
-                        : Array.Empty<ConsultInputValue>();
-
+                // typedElements: computed above, ahead of the loop, to seed
+                // the aggregate cap with the same rows this combines.
                 var combined = new List<ConsultInputValue>(typedElements.Count + texts.Count);
                 var combinedOrigins = new List<ConsultInputOrigin>(typedElements.Count + slotOrigins.Count);
                 foreach (var element in typedElements)
