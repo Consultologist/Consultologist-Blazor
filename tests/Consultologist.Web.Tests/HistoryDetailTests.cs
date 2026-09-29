@@ -768,6 +768,23 @@ public class HistoryDetailTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void MixedArrayOrigins_RenderTypedThenDocument_Positionally()
+    {
+        WithJob(3, inputOrigins: new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
+        {
+            ["consult_draft"] = new[]
+            {
+                new ConsultInputOrigin("typed", null, null, false, TextSha256: "aa"),
+                new ConsultInputOrigin("document", "docintel", 2, false, FileSha256: "bb", TextSha256: "cc"),
+            }
+        });
+        var page = Render<History>(p => p.Add(x => x.JobId, JobId));
+        var text = page.Find(".provenance-list").TextContent;
+        Assert.Contains("entered as text", text);
+        Assert.Contains("read from a document", text);
+    }
+
+    [Fact]
     public void ADocumentsDigests_AreShownShortened_WithTheFullValueInTheTitle()
     {
         // #512: the file and its reading, beside the extractor — shortened in

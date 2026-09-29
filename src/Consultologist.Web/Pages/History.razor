@@ -941,6 +941,8 @@
         // the SaMD/anti-ambient boundary stays legible in the record.
         "ambient-note" => $"read from an ambient note by {origin.Extractor ?? "—"}"
             + (origin.PageCount is { } apages ? $" · {apages} page{(apages == 1 ? "" : "s")}" : ""),
+        // #872: a typed element in a mixed array — entered by the user as text.
+        "typed" => "entered as text",
         _ => $"read from a document by {origin.Extractor ?? "—"}"
             + (origin.PageCount is { } pages ? $" · {pages} page{(pages == 1 ? "" : "s")}" : "")
             + (origin.TrackedChangesResolved ? " · tracked changes resolved to the accepted view" : "")
