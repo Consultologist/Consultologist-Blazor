@@ -411,9 +411,14 @@ public class StartRequestValidationTests
             null, InputRefs: new() { ["consult_draft"] = new() { reference } })));
         Assert.Equal("Send ConsultDraft or InputRefs, not both.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
             "Draft.", InputRefs: new() { ["consult_draft"] = new() { reference } })));
-        Assert.Equal("Input 'consult_draft' was supplied as both text and a previous run.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+        // #874: text+ref and file+ref for one id are no longer refused at this
+        // manifest-blind door — an array<text> slot combines all three sources
+        // (typed rows, documents, previous-run references), and a scalar slot
+        // is still refused, but only from the manifest-aware start layer
+        // (ConsultGenerationJobStarter), where the declared type is known.
+        Assert.Null(ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
             null, Inputs: new() { ["consult_draft"] = "Draft." }, InputRefs: new() { ["consult_draft"] = new() { reference } })));
-        Assert.Equal("Input 'consult_draft' was supplied as both a file and a previous run.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+        Assert.Null(ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
             null, InputFiles: new() { ["consult_draft"] = new() { new InputFilePayload("text/plain", new byte[] { 1 }) } }, InputRefs: new() { ["consult_draft"] = new() { reference } })));
         Assert.Equal("Input 'consult_draft' refers to no previous run.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
             null, InputRefs: new() { ["consult_draft"] = new() })));

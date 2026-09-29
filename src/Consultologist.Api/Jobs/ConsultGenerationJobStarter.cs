@@ -379,16 +379,20 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var ocrMin = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.OcrMinConfidence, cancellationToken);
         var ocrMinConfidence = OcrConfidenceSettings.EffectiveMinConfidence(ocrGate?.Value, ocrMin?.Value);
 
-        // #872 round 1: previous-run-resolved ids are descoped from the
-        // typed+documents combine — ResolveInputRefsAsync above already wrote
-        // their value and origin, and ExtractInputFilesAsync must not treat
-        // that value's elements as typed rows to prepend.
-        // #872 task 3.5 (defensive): a form-ref'd id is under the same
-        // hazard now that the manifest-aware layer allows a several id in
-        // both Inputs and InputFiles — its Inputs[id] is the value the form
-        // response verified, not a typed row to prepend, and its own origin
-        // below must replace rather than concatenate onto a combined record.
-        // Union formRefs' ids into the same exclude/overwrite treatment.
+        // #874: a previous-run reference that STANDS ALONE (its id carries no
+        // typed value and no document) is written into the value map and its
+        // origin recorded by ResolveInputRefsAsync above — resolution.Origins
+        // names exactly those ids, and they are excluded from the combine the
+        // way they always were. A reference that SHARES its id with typed rows
+        // or documents is not in resolution.Origins; it rides in
+        // resolution.RefGroups and is combined by ExtractInputFilesAsync into
+        // the array<text> slot (typed → documents → previous-run) below.
+        // #872 task 3.5 (defensive): a form-ref'd id is under the combine
+        // hazard the standalone reference used to be — its Inputs[id] is the
+        // value the form response verified, not a typed row to prepend, and a
+        // document alongside it is refused by name (form stays its own mode,
+        // #874 does not combine it). Union formRefs' ids into the same
+        // exclude/overwrite treatment.
         // Rerun ids are deliberately NOT unioned in here: a rerun request
         // never carries InputFiles (its source values were already resolved
         // to text on the run it replays), so a rerun id can never reach
@@ -404,7 +408,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         }
 
         var extraction = await ExtractInputFilesAsync(
-            request, package.Manifest, GateWaitFor(origin), _ocr, ocrMinConfidence, cancellationToken, refResolvedIds);
+            request, package.Manifest, GateWaitFor(origin), _ocr, ocrMinConfidence, cancellationToken,
+            refResolvedIds, resolution.RefGroups);
         if (extraction.Error != null)
         {
             _logger.LogWarning(
@@ -1383,11 +1388,25 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             ? DocumentExtraction.BackgroundGateWait
             : DocumentExtraction.InteractiveGateWait;
 
+    // #874: the elements a previous-run reference resolved to, kept beside
+    // their positional origins so a downstream owner can fold them into a
+    // mixed array<text> slot (typed rows → documents → previous-run) rather
+    // than overwriting the slot the way a standalone reference does.
+    internal sealed record RefGroup(
+        IReadOnlyList<ConsultInputValue> Elements,
+        IReadOnlyList<ConsultInputOrigin> Origins);
+
     internal sealed record InputRefResolution(
         ConsultGenerationRequest Request,
         IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? Origins,
         string? Error = null,
-        ConsultGenerationJobStartError ErrorKind = ConsultGenerationJobStartError.InputRefNotFound);
+        ConsultGenerationJobStartError ErrorKind = ConsultGenerationJobStartError.InputRefNotFound,
+        // #874: references that share an id with typed rows or documents are
+        // NOT written into the value map here — they are combined with those
+        // other sources by ExtractInputFilesAsync. A ref that stands alone
+        // (its id has neither typed value nor file) keeps writing its value
+        // and origin directly, exactly as before, and never appears here.
+        IReadOnlyDictionary<string, RefGroup>? RefGroups = null);
 
     /// <summary>
     /// #510: copy each referenced deliverable's text into its slot and record
@@ -1412,6 +1431,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             ? new Dictionary<string, ConsultInputValue>(request.Inputs, StringComparer.Ordinal)
             : new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal);
         var origins = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>(StringComparer.Ordinal);
+        // #874: ids whose reference shares the slot with typed rows or
+        // documents — deferred to ExtractInputFilesAsync's combine.
+        var refGroups = new Dictionary<string, RefGroup>(StringComparer.Ordinal);
         var sources = new Dictionary<string, ConsultGenerationJobState?>(StringComparer.Ordinal);
 
         foreach (var (id, refs) in request.InputRefs)
@@ -1490,13 +1512,29 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     SourceResultId: reference.ResultId));
             }
 
-            // A text slot takes one; several become an array, as documents do.
-            // The declaration is checked downstream, the way it is for files.
-            inputs[id] = texts.Count == 1 ? texts[0] : ConsultInputValue.OfArray(texts);
-            origins[id] = slotOrigins;
+            // #874: a reference sharing its id with typed rows or documents
+            // is combined with them by ExtractInputFilesAsync, the single
+            // slot-assembly owner — so its value must NOT be written here (that
+            // would drop the typed rows the request also carries). Surface the
+            // resolved elements + positional origins instead. A reference that
+            // stands alone keeps the original behavior: a text slot takes one,
+            // several become an array, and the declaration is checked
+            // downstream, the way it is for files.
+            if (request.Inputs?.ContainsKey(id) == true || request.InputFiles?.ContainsKey(id) == true)
+            {
+                refGroups[id] = new RefGroup(texts, slotOrigins);
+            }
+            else
+            {
+                inputs[id] = texts.Count == 1 ? texts[0] : ConsultInputValue.OfArray(texts);
+                origins[id] = slotOrigins;
+            }
         }
 
-        return new InputRefResolution(request with { Inputs = inputs, InputRefs = null }, origins);
+        return new InputRefResolution(
+            request with { Inputs = inputs, InputRefs = null },
+            origins,
+            RefGroups: refGroups.Count > 0 ? refGroups : null);
     }
 
     private static string ShortRunId(string jobId) => jobId.Length > 8 ? jobId[..8] + "…" : jobId;
@@ -1865,19 +1903,27 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IDocumentOcr ocr,
         double? ocrMinConfidence,
         CancellationToken cancellationToken,
-        // #872 round 1: ids ResolveInputRefsAsync already resolved (a
-        // previous-run reference) — descoped from the typed+documents combine.
-        // Task 3.5's review fix widened this: the caller also unions in
-        // form-ref'd ids (StartAsync's formRefs), since a form response's
-        // written-back value is the same hazard a previous-run one is, not a
-        // typed row to prepend. For a several (array<text>) id, membership
-        // here is now a REFUSAL (a document alongside a ref/rerun/form
-        // response is refused by name, above) rather than the pre-#872
-        // silent overwrite this parameter used to select. Passing none (the
-        // other caller, and every existing test) is the same as before.
-        IReadOnlyCollection<string>? excludeFromCombine = null)
+        // #872 round 1 / #874: form-ref'd (and rerun-, were it ever to carry
+        // files) ids that the frontend keeps in their own mutually-exclusive
+        // mode. For a several (array<text>) id, membership here is a REFUSAL
+        // (a document alongside a form response is refused by name, below):
+        // the form response's written-back value is the value it verified, not
+        // a typed row to combine. Previous-run references are NO LONGER named
+        // here (#874) — they arrive in refGroups and are combined, not
+        // excluded. Passing none (every existing test) is the same as before.
+        IReadOnlyCollection<string>? excludeFromCombine = null,
+        // #874: previous-run references that share an id with typed rows or
+        // documents (ResolveInputRefsAsync surfaced them here rather than
+        // writing the slot). This method is the single owner that assembles
+        // the mixed array<text> slot — typed rows → documents → previous-run —
+        // for both the file-bearing ids (the loop below) and the ref-only ids
+        // (the post-loop after it). Null when nothing combined.
+        IReadOnlyDictionary<string, RefGroup>? refGroups = null)
     {
-        if (request.InputFiles is not { Count: > 0 })
+        // #874: refGroups can carry ids with NO file (typed + previous-run,
+        // no document), so a request with only references still has slots to
+        // assemble here.
+        if (request.InputFiles is not { Count: > 0 } && refGroups is not { Count: > 0 })
         {
             return new InputFileExtraction(request, null, null, null);
         }
@@ -1886,6 +1932,21 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             ? new Dictionary<string, ConsultInputValue>(request.Inputs, StringComparer.Ordinal)
             : new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal);
         var origins = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>(StringComparer.Ordinal);
+        // #874: file-bearing ids whose ref group the loop below already folded
+        // in — so the ref-only post-loop skips them.
+        var combinedRefIds = new HashSet<string>(StringComparer.Ordinal);
+
+        // #872/#874: a positional `typed` origin for a row already sitting in
+        // the slot, and the raw (pre-normalisation) length the aggregate cap
+        // counts — both shared by the file-loop combine and the ref-only
+        // post-loop so the two assemble a mixed slot identically.
+        static ConsultInputOrigin TypedOrigin(ConsultInputValue element) =>
+            new(ConsultInputOriginKinds.Typed, null, null, false,
+                TextSha256: ConsultGenerationProvenance.Sha256Hex(
+                    CanonicalText.Normalize(element.HasCanonical ? element.Canonical : element.AsJson())));
+
+        static int RawLength(ConsultInputValue element) =>
+            (element.HasCanonical ? element.Canonical : element.AsJson()).Length;
 
         // v5/v6 declare nothing: the one implicit slot is a text.
         var declared = manifest.SpecVersion >= 7
@@ -1895,7 +1956,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 [ConsultDraftInputId] = new(ConsultDraftInputId, "Consult draft")
             };
 
-        foreach (var (id, documents) in request.InputFiles.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        foreach (var (id, documents) in (request.InputFiles ?? new Dictionary<string, List<InputFilePayload>>())
+            .OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
             // #428: several documents become the elements of an array of text
             // (v9 design § 7). Anything else takes one — a text slot because
@@ -1916,6 +1978,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // combine (typed rows then documents, below) — allowed. Every
             // other type keeps the door's old, unconditional refusal: nobody
             // needs both, and choosing one would drop the other silently.
+            // #874: the previous-run twin of the same rule, relocated from the
+            // same wire door for the same reason — a scalar slot cannot hold a
+            // document AND a reference, but an array<text> one combines them.
             if (!several && request.Inputs?.ContainsKey(id) == true)
             {
                 var bothSentence = $"Input '{id}' was supplied as both text and a file.";
@@ -1924,21 +1989,26 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     request, null, bothSentence, null, ConsultGenerationJobStartError.InputsMismatch, SenderSafeError: bothSentence);
             }
 
+            if (!several && refGroups?.ContainsKey(id) == true)
+            {
+                var bothSentence = $"Input '{id}' was supplied as both a file and a previous run.";
+
+                return new InputFileExtraction(
+                    request, null, bothSentence, null, ConsultGenerationJobStartError.InputsMismatch, SenderSafeError: bothSentence);
+            }
+
             // #872 (review fix, round 1 of task 3.5): a several (array<text>)
-            // id that is ALSO ref/rerun/form-resolved (excludeFromCombine)
-            // cannot be handled safely either way — combining would mislabel
-            // that resolved value's elements `typed`, and the pre-#872
-            // overwrite this used to silently take would leave the origin
-            // claiming a FormResponse/PreviousRun record for a value that is
-            // actually the document's text (an internally-inconsistent
-            // record: origin says one source, the value holds another).
-            // Not UI-reachable — loaded/form/rerun are mutually exclusive
-            // modes in the frontend — but relaxing ValidateRequest's same-id
-            // gate (task 3.5) made it reachable at the API, so it is refused
-            // here by name instead.
+            // id that is ALSO form-resolved (excludeFromCombine) cannot be
+            // combined — the form response's value is the value it verified,
+            // not a typed row, and stamping it `typed` or letting a document
+            // overwrite it leaves the origin claiming a FormResponse record for
+            // a value that is actually the document's text (an internally-
+            // inconsistent record). Form response stays its own mutually-
+            // exclusive mode (#874 combines previous-run, not form), so a
+            // document alongside one is refused here by name.
             if (several && excludeFromCombine?.Contains(id) == true)
             {
-                var collisionSentence = $"Input '{id}' was supplied as both a document and a previous-run or form response.";
+                var collisionSentence = $"Input '{id}' was supplied as both a document and a form response.";
 
                 return new InputFileExtraction(
                     request, null, collisionSentence, null, ConsultGenerationJobStartError.InputsMismatch, SenderSafeError: collisionSentence);
@@ -2063,20 +2133,43 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // So `several` here is never also an excluded id.
             if (several)
             {
+                // #874: a reference sharing this slot is the third source —
+                // typed rows → documents → previous-run. Its elements are
+                // already extracted text, so they add no parse cost, but they
+                // count toward the same aggregate cap the typed rows and
+                // documents do (checked once, after the document loop's own
+                // incremental checks above).
+                var refGroup = refGroups?.GetValueOrDefault(id);
+                if (refGroup is { Elements.Count: > 0 })
+                {
+                    total += refGroup.Elements.Sum(RawLength);
+                    if (total > ConsultGenerationJobs.MaxInputLength)
+                    {
+                        var detail = $"Input '{id}' exceeds {ConsultGenerationJobs.MaxInputLength / 1024} KB.";
+
+                        return new InputFileExtraction(
+                            request, null, detail, null, ConsultGenerationJobStartError.InputTooLong, SenderSafeError: detail);
+                    }
+                }
+
                 // typedElements: computed above, ahead of the loop, to seed
                 // the aggregate cap with the same rows this combines.
-                var combined = new List<ConsultInputValue>(typedElements.Count + texts.Count);
-                var combinedOrigins = new List<ConsultInputOrigin>(typedElements.Count + slotOrigins.Count);
+                var refCount = refGroup?.Elements.Count ?? 0;
+                var combined = new List<ConsultInputValue>(typedElements.Count + texts.Count + refCount);
+                var combinedOrigins = new List<ConsultInputOrigin>(typedElements.Count + slotOrigins.Count + refCount);
                 foreach (var element in typedElements)
                 {
                     combined.Add(element);
-                    combinedOrigins.Add(new ConsultInputOrigin(
-                        ConsultInputOriginKinds.Typed, null, null, false,
-                        TextSha256: ConsultGenerationProvenance.Sha256Hex(
-                            CanonicalText.Normalize(element.HasCanonical ? element.Canonical : element.AsJson()))));
+                    combinedOrigins.Add(TypedOrigin(element));
                 }
                 combined.AddRange(texts);
                 combinedOrigins.AddRange(slotOrigins);
+                if (refGroup != null)
+                {
+                    combined.AddRange(refGroup.Elements);
+                    combinedOrigins.AddRange(refGroup.Origins);
+                    combinedRefIds.Add(id);
+                }
 
                 inputs[id] = ConsultInputValue.OfArray(combined);
                 origins[id] = combinedOrigins;
@@ -2089,6 +2182,67 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 inputs[id] = texts[0];
                 origins[id] = slotOrigins;
             }
+        }
+
+        // #874: a previous-run reference sharing its id with typed rows but
+        // NO document never enters the file loop above (nothing to extract) —
+        // assemble it here, the single remaining slot-assembly path, in the
+        // same typed → previous-run order and under the same aggregate cap. A
+        // reference whose id also had documents was already folded in above
+        // (combinedRefIds), and a standalone reference wrote its own slot in
+        // ResolveInputRefsAsync and never reached refGroups at all — so every
+        // id left here shares its slot with a typed value.
+        foreach (var (id, refGroup) in (refGroups ?? new Dictionary<string, RefGroup>())
+            .OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        {
+            if (combinedRefIds.Contains(id))
+            {
+                continue;
+            }
+
+            var spec = declared.GetValueOrDefault(id);
+            var several = spec != null
+                && WorkflowInputTypes.Of(spec) == WorkflowInputTypes.Array
+                && WorkflowInputTypes.ElementTypeOf(spec) == WorkflowInputTypes.Text;
+
+            // A scalar slot cannot hold both a typed value and a reference —
+            // the manifest-aware twin of ValidateRequest's old text+ref refusal
+            // (relocated for #874, exactly as the text+file one was for #872,
+            // because only here is a declared array<text> distinguishable from
+            // a scalar). An array<text> slot combines them below.
+            if (!several)
+            {
+                var bothSentence = $"Input '{id}' was supplied as both text and a previous run.";
+
+                return new InputFileExtraction(
+                    request, null, bothSentence, null, ConsultGenerationJobStartError.InputsMismatch, SenderSafeError: bothSentence);
+            }
+
+            var typedElements = inputs.TryGetValue(id, out var existing) && existing.Kind == ConsultInputKind.Array
+                ? existing.Elements!
+                : Array.Empty<ConsultInputValue>();
+
+            var total = typedElements.Sum(RawLength) + refGroup.Elements.Sum(RawLength);
+            if (total > ConsultGenerationJobs.MaxInputLength)
+            {
+                var detail = $"Input '{id}' exceeds {ConsultGenerationJobs.MaxInputLength / 1024} KB.";
+
+                return new InputFileExtraction(
+                    request, null, detail, null, ConsultGenerationJobStartError.InputTooLong, SenderSafeError: detail);
+            }
+
+            var combined = new List<ConsultInputValue>(typedElements.Count + refGroup.Elements.Count);
+            var combinedOrigins = new List<ConsultInputOrigin>(typedElements.Count + refGroup.Origins.Count);
+            foreach (var element in typedElements)
+            {
+                combined.Add(element);
+                combinedOrigins.Add(TypedOrigin(element));
+            }
+            combined.AddRange(refGroup.Elements);
+            combinedOrigins.AddRange(refGroup.Origins);
+
+            inputs[id] = ConsultInputValue.OfArray(combined);
+            origins[id] = combinedOrigins;
         }
 
         // InputFiles cleared here, and this is load-bearing rather than tidy:

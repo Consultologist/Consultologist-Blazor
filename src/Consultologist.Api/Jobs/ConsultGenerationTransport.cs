@@ -1254,15 +1254,15 @@ public sealed class ConsultGenerationJobs
                     return "InputRefs contains a blank id.";
                 }
 
-                if (request.Inputs?.ContainsKey(id) == true)
-                {
-                    return $"Input '{id}' was supplied as both text and a previous run.";
-                }
-
-                if (request.InputFiles?.ContainsKey(id) == true)
-                {
-                    return $"Input '{id}' was supplied as both a file and a previous run.";
-                }
+                // #874: the same-id-in-both-maps refusals (text+ref, file+ref)
+                // moved to the manifest-aware layer
+                // (ConsultGenerationJobStarter's ResolveInputRefsAsync /
+                // ExtractInputFilesAsync), exactly as #872 moved the text+file
+                // one — only there is a declared array<text> id (which combines
+                // typed rows, documents and previous-run references into one
+                // slot) distinguishable from a scalar one (which still refuses
+                // both, by name, from that layer). This door has no manifest,
+                // so it can no longer refuse either shape by itself.
 
                 if (refs is not { Count: > 0 })
                 {

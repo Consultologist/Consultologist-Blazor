@@ -3665,37 +3665,171 @@ public class ConsultGenerationJobStarterTests
             merged!["x"].Select(o => o.Kind).ToArray());
     }
 
-    [Fact]
-    public async Task ARefAndAFileForTheSameArraySlot_IsRefused()
-    {
-        // #872 review fix (round 1 of task 3.5): a previous-run-resolved id
-        // that ALSO has a file (InputFiles) used to silently overwrite —
-        // the file's value and origins winning whole, the ref's contribution
-        // discarded. The controller ruling: that is an internally
-        // inconsistent record waiting to happen (nothing stops the reverse:
-        // an origin claiming PreviousRun for a value that is really the
-        // document's text), so it is refused by name instead. Not
-        // UI-reachable — loaded/ref and file-upload are mutually exclusive
-        // modes in the frontend — but reachable at the API once
-        // ValidateRequest's same-id gate relaxed for #872's mixed feature.
-        const string expected = "Input 'prior_notes' was supplied as both a document and a previous-run or form response.";
+    // ----- #874: previous-run references combine into a mixed array too ------
 
+    [Fact]
+    public async Task TypedRowsDocumentAndPreviousRun_CombineIntoOneArray_WithAlignedOrigins()
+    {
+        // #874: the third source. A previous-run reference sharing an
+        // array<text> id with typed rows AND a document is no longer refused
+        // (#872 refused it) — the three combine, in the fixed order
+        // typed → documents → previous-run, each element keeping its own
+        // positional origin.
         WithSourceRun(SourceRun(text: "Earlier note."));
         var manifest = V9Fixtures.WithInput(new WorkflowInputSpec(
             "prior_notes", "Prior notes", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
 
         var request = new ConsultGenerationRequest(
             null,
-            Inputs: V9Typed(),
+            Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["consult_draft"] = Referral,
+                ["seen_on"] = "2026-08-10",
+                ["encounter_kind"] = "follow_up",
+                ["prior_notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("typed one") })
+            },
             InputRefs: new Dictionary<string, List<ConsultInputRef>> { ["prior_notes"] = new() { new ConsultInputRef(SourceJob, "consult") } },
-            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["prior_notes"] = [Text("doc text")] });
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["prior_notes"] = [Text("doc one text")] });
 
         var captured = await StartAndCaptureAsync(manifest, request);
+
+        Assert.Null(captured.Outcome.Error);
+        var value = captured.OrchestrationInput!.Request.Inputs!["prior_notes"];
+        Assert.Equal(
+            new[] { "typed one", "doc one text", "Earlier note." },
+            value.Elements!.Select(e => e.Canonical).ToArray());
+
+        var origins = captured.OrchestrationInput.InputDocumentOrigins!["prior_notes"];
+        Assert.Equal(3, origins.Count);
+        Assert.Equal(ConsultInputOriginKinds.Typed, origins[0].Kind);
+        Assert.Equal(ConsultInputOriginKinds.Document, origins[1].Kind);
+        Assert.NotNull(origins[1].Extractor);
+        Assert.Equal(ConsultInputOriginKinds.PreviousRun, origins[2].Kind);
+        Assert.Equal(SourceJob, origins[2].SourceJobId);
+        Assert.Equal("consult", origins[2].SourceResultId);
+    }
+
+    [Fact]
+    public async Task TypedRowsAndPreviousRun_WithoutADocument_CombineIntoOneArray()
+    {
+        // #874 no-file path: a typed row + a previous-run reference and NO
+        // document never reaches the file-extraction loop (nothing to
+        // extract), so the ref-only post-loop must assemble it — typed row
+        // then previous-run — under the same aggregate cap.
+        WithSourceRun(SourceRun(text: "Earlier note."));
+        var manifest = V9Fixtures.WithInput(new WorkflowInputSpec(
+            "prior_notes", "Prior notes", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
+
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["consult_draft"] = Referral,
+                ["seen_on"] = "2026-08-10",
+                ["encounter_kind"] = "follow_up",
+                ["prior_notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("typed one") })
+            },
+            InputRefs: new Dictionary<string, List<ConsultInputRef>> { ["prior_notes"] = new() { new ConsultInputRef(SourceJob, "consult") } });
+
+        var captured = await StartAndCaptureAsync(manifest, request);
+
+        Assert.Null(captured.Outcome.Error);
+        var value = captured.OrchestrationInput!.Request.Inputs!["prior_notes"];
+        Assert.Equal(
+            new[] { "typed one", "Earlier note." },
+            value.Elements!.Select(e => e.Canonical).ToArray());
+
+        var origins = captured.OrchestrationInput.InputDocumentOrigins!["prior_notes"];
+        Assert.Equal(2, origins.Count);
+        Assert.Equal(ConsultInputOriginKinds.Typed, origins[0].Kind);
+        Assert.Equal(ConsultInputOriginKinds.PreviousRun, origins[1].Kind);
+        Assert.Equal(SourceJob, origins[1].SourceJobId);
+        Assert.Equal("consult", origins[1].SourceResultId);
+    }
+
+    [Fact]
+    public async Task ScalarSlotWithTypedTextAndRef_IsRefused_FromTheManifestAwareLayer()
+    {
+        // #874: the manifest-aware twin of ValidateRequest's old text+ref
+        // refusal (relocated). consult_draft is a text (scalar) in this
+        // package, so a typed value AND a previous-run reference for it cannot
+        // combine — refused by name from the start layer, where the declared
+        // type is finally known.
+        const string expected = "Input 'consult_draft' was supplied as both text and a previous run.";
+
+        WithSourceRun(SourceRun(text: "Earlier note."));
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: V9Typed(),
+            InputRefs: new Dictionary<string, List<ConsultInputRef>> { ["consult_draft"] = new() { new ConsultInputRef(SourceJob, "consult") } });
+
+        var captured = await StartAndCaptureAsync(V9Fixtures.Structured(), request);
 
         Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, captured.Outcome.Error);
         Assert.Equal(expected, captured.Outcome.ErrorDetail);
         Assert.Equal(expected, captured.Outcome.SenderSafeDetail);
         Assert.Null(captured.Initialize);
+    }
+
+    [Fact]
+    public async Task ScalarSlotWithAFileAndRef_IsRefused_FromTheManifestAwareLayer()
+    {
+        // #874: the file+ref twin of the refusal above — a scalar slot given a
+        // document AND a previous-run reference is refused by name from the
+        // manifest-aware layer.
+        const string expected = "Input 'consult_draft' was supplied as both a file and a previous run.";
+
+        WithSourceRun(SourceRun(text: "Earlier note."));
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["seen_on"] = "2026-08-10",
+                ["encounter_kind"] = "follow_up"
+            },
+            InputRefs: new Dictionary<string, List<ConsultInputRef>> { ["consult_draft"] = new() { new ConsultInputRef(SourceJob, "consult") } },
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [Text("doc text")] });
+
+        var captured = await StartAndCaptureAsync(V9Fixtures.Structured(), request);
+
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, captured.Outcome.Error);
+        Assert.Equal(expected, captured.Outcome.ErrorDetail);
+        Assert.Equal(expected, captured.Outcome.SenderSafeDetail);
+        Assert.Null(captured.Initialize);
+    }
+
+    [Fact]
+    public async Task CombinedSlot_CapCountsPreviousRunTogetherWithTypedText()
+    {
+        // #874: the aggregate cap on a combined array<text> slot bounds the
+        // previous-run elements alongside the typed rows and documents — the
+        // ref-only post-loop's own cap check, exercised directly (no file).
+        var manifest = V9Fixtures.WithInput(new WorkflowInputSpec(
+            "prior_notes", "Prior notes", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
+        var half = new string('a', ConsultGenerationJobs.MaxInputLength / 2);
+
+        var refGroup = new ConsultGenerationJobStarter.RefGroup(
+            new[] { ConsultInputValue.OfText(half + "a") },
+            new[]
+            {
+                new ConsultInputOrigin(
+                    ConsultInputOriginKinds.PreviousRun, TextSha256: "sha", SourceJobId: SourceJob, SourceResultId: "consult")
+            });
+
+        var over = await ConsultGenerationJobStarter.ExtractInputFilesAsync(
+            new ConsultGenerationRequest(
+                null,
+                Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+                {
+                    ["prior_notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText(half) })
+                }),
+            manifest, TimeSpan.Zero, ocr: null!, ocrMinConfidence: 0, CancellationToken.None,
+            excludeFromCombine: null,
+            refGroups: new Dictionary<string, ConsultGenerationJobStarter.RefGroup>(StringComparer.Ordinal) { ["prior_notes"] = refGroup });
+
+        Assert.Equal(ConsultGenerationJobStartError.InputTooLong, over.ErrorKind);
+        Assert.Equal("Input 'prior_notes' exceeds 256 KB.", over.Error);
+        Assert.Equal(over.Error, over.SenderSafeError);
     }
 
     [Fact]
@@ -3706,8 +3840,10 @@ public class ConsultGenerationJobStarterTests
         // to overwrite with the file's value while the origin stayed labeled
         // FormResponse (SourceFormId/SourceResponseId naming a value that was
         // never actually held), an internally-inconsistent record. Refused
-        // by name instead, for the same reason and with the same sentence.
-        const string expected = "Input 'prior_notes' was supplied as both a document and a previous-run or form response.";
+        // by name instead. #874: previous-run references now combine, so the
+        // sentence names the form response specifically (form stays its own
+        // mutually-exclusive mode).
+        const string expected = "Input 'prior_notes' was supplied as both a document and a form response.";
 
         var manifest = V9Fixtures.WithInput(new WorkflowInputSpec(
             "prior_notes", "Prior notes", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
