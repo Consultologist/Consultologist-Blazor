@@ -389,6 +389,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // response verified, not a typed row to prepend, and its own origin
         // below must replace rather than concatenate onto a combined record.
         // Union formRefs' ids into the same exclude/overwrite treatment.
+        // Rerun ids are deliberately NOT unioned in here: a rerun request
+        // never carries InputFiles (its source values were already resolved
+        // to text on the run it replays), so a rerun id can never reach
+        // ExtractInputFilesAsync's combine and this set never needs to name
+        // one. If a rerun ever starts carrying InputFiles, rerun ids must
+        // join this set too.
         var refResolvedIds = resolution.Origins?.Keys.ToHashSet(StringComparer.Ordinal);
         if (formRefs is { Count: > 0 })
         {
@@ -415,9 +421,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         }
 
         request = NormalizeInputs(extraction.Request);
-        // The same exclusion set: a ref-resolved id that also had documents
-        // keeps the pre-#872 overwrite (extraction's origin wins whole),
-        // never concatenated with the ref's origin it already discarded.
+        // The same exclusion set — but a ref-resolved id that also carried
+        // documents is refused upstream now (ExtractInputFilesAsync's
+        // same-id-both-maps check, task 3.5), so extraction.Origins never
+        // actually holds a competing record for an id in refResolvedIds by
+        // the time execution reaches here. Passing refResolvedIds as
+        // overwriteForIds is belt-and-suspenders dead-path defense: if that
+        // upstream refusal were ever loosened, this keeps the ref's origin
+        // from being silently concatenated with a document's.
         var inputOrigins = MergeOrigins(resolution.Origins, extraction.Origins, refResolvedIds);
 
         var inputs = ResolveEffectiveInputs(request, package.Manifest);
@@ -439,10 +450,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // #540: the verified form fills, each naming its held response; the
         // digest is over the value as it entered the effective map, the
         // rerun origin's own convention.
-        // #872 task 3.5 (defensive): overwriteForIds so a form-ref'd id that
-        // ALSO combined typed rows with documents above gets this
-        // FormResponse origin as the whole record, not concatenated onto the
-        // combine's typed/document origins.
+        // #872 task 3.5: a form-ref'd id that also carried documents is
+        // refused upstream by name (ExtractInputFilesAsync's same-id-both-
+        // maps check), so it never reaches a combine to concatenate onto in
+        // the first place. overwriteForIds here is belt-and-suspenders
+        // dead-path defense for the same reason as the merge above — not the
+        // mechanism that keeps this FormResponse origin from being doubled.
         if (formRefs is { Count: > 0 } && inputs.Effective != null)
         {
             inputOrigins = MergeOrigins(inputOrigins, formRefs
@@ -469,6 +482,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // id a rerun replays cannot double its origin against a combine
         // either — never observed to reach this state today, but the gate
         // that made it reachable at all just opened.
+        // refResolvedIds itself carries no rerun ids (see its construction
+        // above) — moot here regardless, since this id is the one THIS
+        // request is a rerun of, not one it also supplied InputFiles for; a
+        // rerun request never carries InputFiles at all, so this branch and
+        // ExtractInputFilesAsync's combine never fire for the same id.
         if (origin.RerunOfJobId is { } rerunOf && inputs.Effective != null)
         {
             inputOrigins = MergeOrigins(inputOrigins, inputs.Effective.ToDictionary(

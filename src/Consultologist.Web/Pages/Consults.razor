@@ -213,10 +213,13 @@
                                         <span class="input-field__channel">@union</span>
                                     }
                                 </span>
-                                @* #236: a slot holds either typed text or an
-                                   attached document, never both. The text is
-                                   kept underneath so removing the file gives
-                                   it back. *@
+                                @* #236: a single-value slot holds either typed
+                                   text or an attached document, never both —
+                                   the text is kept underneath so removing the
+                                   file gives it back. #872: a several-document
+                                   array<text> slot is the exception — its rows
+                                   below may hold typed entries AND documents
+                                   together, side by side. *@
                                 @if (field.HasLoaded)
                                 {
                                     @* #510: filled from previous runs. One chip per
@@ -379,14 +382,14 @@
                                                 @if (field.HasFile)
                                                 {
                                                     <FluentButton Appearance="Appearance.Stealth"
-                                                                  Title="Remove every file and type instead"
+                                                                  Title="Remove every attached file"
                                                                   @onclick="() => RemoveFile(field)">Remove all</FluentButton>
                                                 }
                                             </span>
                                             @if (field.HasFile)
                                             {
                                                 <span class="muted-text input-field__hint">
-                                                    Looks wrong? Remove the file and type the entry instead.
+                                                    Looks wrong? Remove that file, or add a typed entry above alongside the rest.
                                                 </span>
                                             }
                                             @* #510: or a previous run's deliverable, one per entry. *@
