@@ -8,6 +8,7 @@
 	border: 1px solid var(--consultologist-border);
 	border-radius: var(--consultologist-radius-md);
 	background: var(--consultologist-surface);
+	box-shadow: var(--consultologist-shadow-sm);
 	overflow: hidden;
 }
 

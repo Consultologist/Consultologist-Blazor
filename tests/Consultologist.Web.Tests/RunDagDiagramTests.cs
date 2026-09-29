@@ -57,7 +57,7 @@ public class RunDagDiagramTests
         // The colours, verbatim — the rails' tokens.
         Assert.Contains("stroke:#107c10", diagram);
         Assert.Contains("stroke:#a4262c", diagram);
-        Assert.Contains("stroke:#0067b8", diagram);
+        Assert.Contains("stroke:#0078d4", diagram);
         Assert.Contains("stroke-dasharray:4 3", diagram);
         Assert.Contains("opacity:0.6", diagram);
         // Fills must be hex, not rgba(): Mermaid's classDef splits styles on

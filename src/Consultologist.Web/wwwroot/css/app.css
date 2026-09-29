@@ -2,20 +2,28 @@
 	--consultologist-font:
 		"Segoe UI Variable", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
 		sans-serif;
+	/* Defined here so the ~12 scoped sheets that read var(--consultologist-font-mono, …)
+	   share one Microsoft-leaning mono stack instead of falling back to bare monospace. */
+	--consultologist-font-mono:
+		ui-monospace, "Cascadia Code", "Cascadia Mono", "Segoe UI Mono", Consolas,
+		"Liberation Mono", monospace;
 	--consultologist-bg: var(--neutral-layer-2, #f7f9fc);
 	--consultologist-surface: var(--neutral-layer-1, #ffffff);
 	--consultologist-surface-muted: var(--neutral-layer-3, #eef5fb);
 	--consultologist-text: var(--neutral-foreground-rest, #172033);
 	--consultologist-text-muted: var(--neutral-foreground-hint, #5d6a7c);
 	--consultologist-border: var(--neutral-stroke-divider-rest, rgba(23, 32, 51, 0.12));
-	--consultologist-accent: var(--accent-fill-rest, #0067b8);
-	--consultologist-accent-soft: rgba(0, 103, 184, 0.08);
+	--consultologist-accent: var(--accent-fill-rest, #0078d4);
+	--consultologist-accent-soft: color-mix(in srgb, var(--consultologist-accent) 8%, transparent);
 	--consultologist-success: #107c10;
 	--consultologist-warning: #a15c00;
 	--consultologist-error: #a4262c;
 	--consultologist-radius-sm: 4px;
 	--consultologist-radius-md: 8px;
-	--consultologist-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
+	/* Fluent-style two-layer elevation: -sm is the card rest (depth-4), -md the
+	   large overlay/flyout shadow. Dark mode strengthens both (below) so the
+	   depth still reads against a dark surface. */
+	--consultologist-shadow-sm: 0 1.6px 3.6px rgba(0, 0, 0, 0.1), 0 0.3px 0.9px rgba(0, 0, 0, 0.07);
 	--consultologist-shadow-md: 0 16px 40px rgba(15, 23, 42, 0.08);
 	--page-gutter: clamp(1rem, 3vw, 2rem);
 	--section-gap: clamp(1.25rem, 3vw, 2rem);
@@ -33,6 +41,8 @@ body[data-theme="dark"] {
 	--consultologist-warning: #d29922;
 	--consultologist-error: #f85149;
 	--consultologist-accent-soft: color-mix(in srgb, var(--consultologist-accent) 22%, transparent);
+	--consultologist-shadow-sm: 0 1.6px 3.6px rgba(0, 0, 0, 0.36), 0 0.3px 0.9px rgba(0, 0, 0, 0.28);
+	--consultologist-shadow-md: 0 16px 40px rgba(0, 0, 0, 0.5);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -41,6 +51,8 @@ body[data-theme="dark"] {
 		--consultologist-warning: #d29922;
 		--consultologist-error: #f85149;
 		--consultologist-accent-soft: color-mix(in srgb, var(--consultologist-accent) 22%, transparent);
+		--consultologist-shadow-sm: 0 1.6px 3.6px rgba(0, 0, 0, 0.36), 0 0.3px 0.9px rgba(0, 0, 0, 0.28);
+		--consultologist-shadow-md: 0 16px 40px rgba(0, 0, 0, 0.5);
 	}
 }
 
@@ -479,6 +491,7 @@ header.header.app-header {
 	border: 1px solid var(--consultologist-border);
 	border-radius: var(--consultologist-radius-md);
 	background: var(--consultologist-surface);
+	box-shadow: var(--consultologist-shadow-sm);
 }
 
 .template-section__header {
