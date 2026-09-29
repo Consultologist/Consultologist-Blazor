@@ -41,7 +41,7 @@
 .run-dag-legend__skipped { color: #5d6a7c; text-decoration: underline dashed; }
 .run-dag-legend__done { color: #107c10; }
 .run-dag-legend__failed { color: #a4262c; }
-.run-dag-legend__running { color: #0067b8; }
+.run-dag-legend__running { color: #0078d4; }
 
 .run-dag-close {
 	border: none;

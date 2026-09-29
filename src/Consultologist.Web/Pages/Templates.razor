@@ -7762,7 +7762,7 @@
 
         if (pendingNodeIds.Count > 0)
         {
-            sb.Append("    classDef pending stroke:#0067b8,stroke-width:2.5px\n");
+            sb.Append("    classDef pending stroke:#0078d4,stroke-width:2.5px\n");
             sb.Append($"    class {string.Join(",", pendingNodeIds.Select(SanitizeMermaidId))} pending\n");
         }
 
@@ -7774,7 +7774,7 @@
 
         foreach (var index in blueIndices)
         {
-            sb.Append($"    linkStyle {index} stroke:#0067b8,stroke-width:2px\n");
+            sb.Append($"    linkStyle {index} stroke:#0078d4,stroke-width:2px\n");
         }
 
         foreach (var index in redIndices)

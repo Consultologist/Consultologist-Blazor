@@ -182,7 +182,7 @@
 	1%, 5% {
 		border-color: var(--consultologist-accent);
 		background: var(--consultologist-accent);
-		box-shadow: 0 0 0 4px rgba(0, 103, 184, 0.18);
+		box-shadow: 0 0 0 4px rgba(0, 120, 212, 0.18);
 	}
 	10%, 95% {
 		border-color: var(--consultologist-success, #107c10);
