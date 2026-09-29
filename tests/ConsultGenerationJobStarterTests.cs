@@ -3877,6 +3877,52 @@ public class ConsultGenerationJobStarterTests
         Assert.Null(captured.Initialize);
     }
 
+    [Fact]
+    public async Task AFormRefAndAPreviousRunRefForTheSameArraySlot_WithNoFile_IsRefused()
+    {
+        // #874: the ref-only twin of the form+document refusal above — a
+        // form-ref'd array<text> id that ALSO carries a previous-run reference
+        // but NO file reaches the ref-only post-loop, not the file loop. The
+        // post-loop must refuse it too: combining would stamp the form's
+        // verified value a `typed` origin, and the FormResponse origin merge in
+        // StartAsync would then overwrite the whole (2-element) origin list
+        // with a single FormResponse origin, dropping the previous-run element
+        // and its lineage. Form response stays its own mutually-exclusive mode.
+        const string expected = "Input 'prior_notes' was supplied as both a form response and a previous run.";
+
+        WithSourceRun(SourceRun(text: "Earlier note."));
+        var manifest = V9Fixtures.WithInput(new WorkflowInputSpec(
+            "prior_notes", "Prior notes", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
+
+        var row = new Consultologist.Api.Forms.FormResponseRow(
+            "user-1", "triage-intake", "17", new DateTimeOffset(2026, 9, 1, 14, 2, 11, TimeSpan.Zero),
+            new[] { "prior_notes" }, "org-form-responses", "user-1/triage-intake-17.json", null);
+        _formResponses.TryGetAsync("user-1", "triage-intake", "17", Arg.Any<CancellationToken>()).Returns(row);
+        _formResponseBlobs.ReadAsync(Arg.Any<Consultologist.Api.Forms.FormResponseBlobPointer>(), Arg.Any<CancellationToken>())
+            .Returns(new Consultologist.Api.Forms.FormResponsePayload(
+                1, "triage-intake", "17", new DateTimeOffset(2026, 9, 1, 14, 2, 11, TimeSpan.Zero),
+                new Dictionary<string, string> { ["prior_notes"] = "[\"held one\"]" }));
+
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["consult_draft"] = Referral,
+                ["seen_on"] = "2026-08-10",
+                ["encounter_kind"] = "follow_up",
+                ["prior_notes"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("held one") })
+            },
+            InputFormRefs: new Dictionary<string, ConsultInputFormRef> { ["prior_notes"] = new("triage-intake", "17") },
+            InputRefs: new Dictionary<string, List<ConsultInputRef>> { ["prior_notes"] = new() { new ConsultInputRef(SourceJob, "consult") } });
+
+        var captured = await StartAndCaptureAsync(manifest, request);
+
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, captured.Outcome.Error);
+        Assert.Equal(expected, captured.Outcome.ErrorDetail);
+        Assert.Equal(expected, captured.Outcome.SenderSafeDetail);
+        Assert.Null(captured.Initialize);
+    }
+
     private Task<StartCapture> StartV7AndCaptureAsync(
         ConsultGenerationRequest request,
         ILogger<ConsultGenerationJobStarter>? logger = null) =>

@@ -2205,6 +2205,24 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 && WorkflowInputTypes.Of(spec) == WorkflowInputTypes.Array
                 && WorkflowInputTypes.ElementTypeOf(spec) == WorkflowInputTypes.Text;
 
+            // A form-resolved id (its Inputs value is the value the form
+            // response verified, not a typed row) that ALSO carries a
+            // previous-run reference cannot combine — form response stays its
+            // own mutually-exclusive mode (#874 combines previous-run, not
+            // form). The post-loop twin of the file-loop's form+document
+            // refusal above: without it, the ref would be combined here and
+            // then the FormResponse origin merge in StartAsync would overwrite
+            // the whole origin list, leaving a 2-element value against 1 origin
+            // and dropping the previous-run lineage. Refused by name for both
+            // scalar and array<text>, since form is never combined either way.
+            if (excludeFromCombine?.Contains(id) == true)
+            {
+                var collisionSentence = $"Input '{id}' was supplied as both a form response and a previous run.";
+
+                return new InputFileExtraction(
+                    request, null, collisionSentence, null, ConsultGenerationJobStartError.InputsMismatch, SenderSafeError: collisionSentence);
+            }
+
             // A scalar slot cannot hold both a typed value and a reference —
             // the manifest-aware twin of ValidateRequest's old text+ref refusal
             // (relocated for #874, exactly as the text+file one was for #872,
