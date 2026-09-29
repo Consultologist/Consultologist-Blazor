@@ -6,7 +6,12 @@
 	font-weight: 400;
 }
 
-.run-picker__trigger,
+/* #891: the trigger is a FluentButton now (Fluent owns its look) — only its
+   layout position is ours. __more is still a native button, so it keeps the pill. */
+.run-picker__trigger {
+	align-self: flex-start;
+}
+
 .run-picker__more {
 	align-self: flex-start;
 	padding: 0.2rem 0.6rem;

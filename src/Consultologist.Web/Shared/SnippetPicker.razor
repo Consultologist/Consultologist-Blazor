@@ -10,10 +10,15 @@
 @using Consultologist.Web.Services.Accounts
 
 <span class="snippet-picker" @onclick:stopPropagation="true">
-    <button type="button"
-            class="snippet-picker__trigger"
-            aria-expanded="@(isOpen ? "true" : "false")"
-            @onclick:preventDefault="true" @onclick="Toggle">Insert snippet&hellip;</button>
+    @* Wrapper span carries the preventDefault the slot label needs; FluentButton's
+       OnClick can't (this picker lives inside the input's <label>). *@
+    <span @onclick:preventDefault="true" @onclick:stopPropagation="true">
+        <FluentButton Appearance="Appearance.Stealth"
+                      Class="snippet-picker__trigger"
+                      aria-expanded="@(isOpen ? "true" : "false")"
+                      IconStart="@(new Icons.Regular.Size20.Notepad())"
+                      OnClick="Toggle">Insert snippet&hellip;</FluentButton>
+    </span>
     @if (isOpen)
     {
         <div class="snippet-picker__panel" role="group" aria-label="Snippets">

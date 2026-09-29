@@ -17,11 +17,17 @@
 @inject IAIEndpointService AIService
 
 <span class="run-picker" @onclick:stopPropagation="true">
-    <button type="button"
-            class="run-picker__trigger"
-            aria-expanded="@(isOpen ? "true" : "false")"
-            disabled="@Disabled"
-            @onclick:preventDefault="true" @onclick="ToggleAsync">Load from a previous run&hellip;</button>
+    @* FluentButton's OnClick can't carry @onclick:preventDefault, which the slot
+       label needs (this picker lives inside the input's <label>); the wrapper
+       span intercepts the bubbling click so the label isn't activated. *@
+    <span @onclick:preventDefault="true" @onclick:stopPropagation="true">
+        <FluentButton Appearance="Appearance.Stealth"
+                      Class="run-picker__trigger"
+                      aria-expanded="@(isOpen ? "true" : "false")"
+                      Disabled="@Disabled"
+                      IconStart="@(new Icons.Regular.Size20.History())"
+                      OnClick="ToggleAsync">Load from a previous run&hellip;</FluentButton>
+    </span>
     @if (isOpen)
     {
         <div class="run-picker__panel" role="group" aria-label="Previous runs">
