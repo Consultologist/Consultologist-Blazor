@@ -1,11 +1,49 @@
+/* #881: self-hosted Microsoft OFL fonts so non-Windows clients get the Microsoft
+   type system too (Segoe UI itself is proprietary and can't be self-hosted).
+   Selawik is Microsoft's OFL, metric-compatible Segoe UI substitute (Latin subset);
+   Cascadia Mono is Microsoft's OFL monospace. Windows still uses real Segoe first
+   (the stack order below). font-display:swap avoids a blank flash. Licenses live
+   beside the files in wwwroot/fonts/. */
+@font-face {
+	font-family: "Selawik";
+	src: url("../fonts/Selawik-Regular.woff2") format("woff2");
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+@font-face {
+	font-family: "Selawik";
+	src: url("../fonts/Selawik-Semibold.woff2") format("woff2");
+	font-weight: 600;
+	font-style: normal;
+	font-display: swap;
+}
+@font-face {
+	font-family: "Selawik";
+	src: url("../fonts/Selawik-Bold.woff2") format("woff2");
+	font-weight: 700;
+	font-style: normal;
+	font-display: swap;
+}
+@font-face {
+	font-family: "Cascadia Mono";
+	src: url("../fonts/CascadiaMono-Regular.woff2") format("woff2");
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+
 :root {
+	/* Windows uses real Segoe; #881 self-hosts Selawik (OFL) so everyone else gets a
+	   Segoe-consistent Microsoft face instead of the OS UI font. */
 	--consultologist-font:
-		"Segoe UI Variable", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
-		sans-serif;
+		"Segoe UI Variable", "Segoe UI", "Selawik", system-ui, -apple-system,
+		BlinkMacSystemFont, sans-serif;
 	/* Defined here so the ~12 scoped sheets that read var(--consultologist-font-mono, …)
-	   share one Microsoft-leaning mono stack instead of falling back to bare monospace. */
+	   share one Microsoft mono. #881 self-hosts Cascadia Mono (OFL) and puts it first so
+	   the bundled face is used cross-platform, not just where it's installed. */
 	--consultologist-font-mono:
-		ui-monospace, "Cascadia Code", "Cascadia Mono", "Segoe UI Mono", Consolas,
+		"Cascadia Mono", ui-monospace, "Cascadia Code", "Segoe UI Mono", Consolas,
 		"Liberation Mono", monospace;
 	--consultologist-bg: var(--neutral-layer-2, #f7f9fc);
 	--consultologist-surface: var(--neutral-layer-1, #ffffff);
