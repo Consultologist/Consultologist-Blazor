@@ -9,14 +9,16 @@
 @inject IFormsIntakeEndpointService FormsService
 
 <span class="form-picker" @onclick:stopPropagation="true">
-    <button type="button"
-            class="form-picker__trigger"
-            aria-expanded="@(open ? "true" : "false")"
-            disabled="@Disabled"
-            @onclick:preventDefault="true"
-            @onclick="ToggleAsync">
-        Load from a form response…
-    </button>
+    @* Wrapper span carries the preventDefault the slot label needs; FluentButton's
+       OnClick can't (this picker lives inside the input's <label>). *@
+    <span @onclick:preventDefault="true" @onclick:stopPropagation="true">
+        <FluentButton Appearance="Appearance.Stealth"
+                      Class="form-picker__trigger"
+                      aria-expanded="@(open ? "true" : "false")"
+                      Disabled="@Disabled"
+                      IconStart="@(new Icons.Regular.Size20.DocumentText())"
+                      OnClick="ToggleAsync">Load from a form response…</FluentButton>
+    </span>
 
     @if (open)
     {

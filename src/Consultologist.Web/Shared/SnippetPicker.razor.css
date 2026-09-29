@@ -6,15 +6,9 @@
 	font-weight: 400;
 }
 
+/* #891: the trigger is a FluentButton now; only its layout position is ours. */
 .snippet-picker__trigger {
 	align-self: flex-start;
-	padding: 0.2rem 0.6rem;
-	border: 1px solid var(--consultologist-border);
-	border-radius: var(--consultologist-radius-sm);
-	background: var(--consultologist-surface-muted);
-	font: inherit;
-	font-size: 0.85rem;
-	cursor: pointer;
 }
 
 .snippet-picker__panel {
