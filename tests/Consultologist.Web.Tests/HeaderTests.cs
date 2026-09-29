@@ -15,12 +15,17 @@ namespace Consultologist.Web.Tests;
 public class HeaderTests : ClientRenderTestContext
 {
     [Fact]
-    public void TheThemeToggle_HasAnAccessibleNameReflectingTheMode()
+    public void SignedIn_ShowsTheAccountFlyout_NotAStandaloneThemeToggle()
     {
+        // #884: the loose theme toggle + name + Log out collapsed into the account
+        // flyout. Signed in, the standalone theme toggle is gone (theme lives in
+        // the flyout) and the flyout shows the identity in its persona trigger.
+        // The flyout's popover body (the theme choices, Profile and Sign out) only
+        // renders when opened — verified live, not here (bUnit can't open it).
         var page = Render<Header>();
 
-        var toggle = page.Find("fluent-button[aria-label*='Theme']");
-        Assert.Contains("Theme:", toggle.GetAttribute("aria-label"));
+        Assert.Empty(page.FindAll("fluent-button[aria-label*='Theme']"));
+        Assert.Contains("clinician@example.com", page.Markup);
     }
 
     [Fact]
@@ -84,6 +89,17 @@ public class HeaderSignedOutTests : BunitContext
         var page = Render<Header>();
 
         Assert.Equal(new[] { "Home", "Help" }, HeaderNav.Labels(page.Find("nav.top-nav")));
+    }
+
+    [Fact]
+    public void SignedOut_KeepsAStandaloneThemeToggle()
+    {
+        // #884: public pages have no account flyout, so the standalone theme
+        // toggle stays for signed-out visitors.
+        var page = Render<Header>();
+
+        var toggle = page.Find("fluent-button[aria-label*='Theme']");
+        Assert.Contains("Theme:", toggle.GetAttribute("aria-label"));
     }
 }
 
