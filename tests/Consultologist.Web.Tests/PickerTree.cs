@@ -12,7 +12,7 @@ namespace Consultologist.Web.Tests;
 internal static class PickerTree
 {
     public static void Open<T>(IRenderedComponent<T> cut) where T : class, IComponent =>
-        cut.Find("button[aria-label='Workflow package']").Click();
+        cut.Find("fluent-button[aria-label='Workflow package']").Click();
 
     public static string Shown<T>(IRenderedComponent<T> cut) where T : class, IComponent =>
         cut.Find(".package-picker__ref").TextContent.Trim();

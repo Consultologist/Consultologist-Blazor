@@ -10,24 +10,15 @@
 }
 
 /* #448: the trigger shows the ref; the panel below it draws the tree. */
+/* #891: the trigger is a FluentButton now (Fluent owns its look + disabled
+   state); only max-width is ours. The mono ref styling moves to the ref span. */
 .package-picker__trigger {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.4rem;
-	font-family: var(--consultologist-font-mono, monospace);
-	font-size: 0.75rem;
-	padding: 0.2rem 0.6rem;
-	border: 1px solid var(--consultologist-border);
-	border-radius: 999px;
-	background: var(--consultologist-surface);
-	color: inherit;
 	max-width: 100%;
-	cursor: pointer;
 }
 
-.package-picker__trigger:disabled {
-	cursor: default;
-	opacity: 0.7;
+.package-picker__ref {
+	font-family: var(--consultologist-font-mono, monospace);
+	font-size: 0.75rem;
 }
 
 .package-picker__panel {

@@ -11,15 +11,18 @@
 
 <span class="package-picker">
     @* The trigger always shows the ref: what the consults run, as recorded. *@
-    <button type="button"
-            class="package-picker__trigger"
-            aria-label="Workflow package"
-            aria-expanded="@(isOpen ? "true" : "false")"
-            disabled="@(Disabled || isPinning)"
-            @onclick="() => isOpen = !isOpen">
+    @* Not inside a <label> (this is the pin control on Consults / a chooser in the
+       editor), so no preventDefault wrapper is needed. aria-label is load-bearing:
+       PickerTree.Open finds the trigger by it. *@
+    <FluentButton Appearance="Appearance.Stealth"
+                  Class="package-picker__trigger"
+                  aria-label="Workflow package"
+                  aria-expanded="@(isOpen ? "true" : "false")"
+                  Disabled="@(Disabled || isPinning)"
+                  IconEnd="@((Icon)(isOpen ? new Icons.Regular.Size20.ChevronUp() : new Icons.Regular.Size20.ChevronDown()))"
+                  OnClick="@(() => isOpen = !isOpen)">
         <span class="package-picker__ref">@selectedRef</span>
-        <span class="package-picker__caret" aria-hidden="true">@(isOpen ? "▴" : "▾")</span>
-    </button>
+    </FluentButton>
     @if (isOpen)
     {
         <div class="package-picker__panel">
