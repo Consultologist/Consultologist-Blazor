@@ -135,7 +135,11 @@ fluent-select:focus-within {
 header.header.app-header {
 	height: 50px !important;
 	min-height: 50px;
-	overflow: hidden;
+	/* #884: visible (not hidden) so the account flyout's popover, which renders
+	   as an anchored region inside the header, isn't clipped by the 50px bar.
+	   The row's own content still fits in 50px; the mobile rule below already
+	   used visible. */
+	overflow: visible;
 }
 
 .app-header .header-gutters {
