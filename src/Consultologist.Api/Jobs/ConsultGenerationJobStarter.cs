@@ -379,8 +379,32 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var ocrMin = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.OcrMinConfidence, cancellationToken);
         var ocrMinConfidence = OcrConfidenceSettings.EffectiveMinConfidence(ocrGate?.Value, ocrMin?.Value);
 
+        // #872 round 1: previous-run-resolved ids are descoped from the
+        // typed+documents combine — ResolveInputRefsAsync above already wrote
+        // their value and origin, and ExtractInputFilesAsync must not treat
+        // that value's elements as typed rows to prepend.
+        // #872 task 3.5 (defensive): a form-ref'd id is under the same
+        // hazard now that the manifest-aware layer allows a several id in
+        // both Inputs and InputFiles — its Inputs[id] is the value the form
+        // response verified, not a typed row to prepend, and its own origin
+        // below must replace rather than concatenate onto a combined record.
+        // Union formRefs' ids into the same exclude/overwrite treatment.
+        // Rerun ids are deliberately NOT unioned in here: a rerun request
+        // never carries InputFiles (its source values were already resolved
+        // to text on the run it replays), so a rerun id can never reach
+        // ExtractInputFilesAsync's combine and this set never needs to name
+        // one. If a rerun ever starts carrying InputFiles, rerun ids must
+        // join this set too.
+        var refResolvedIds = resolution.Origins?.Keys.ToHashSet(StringComparer.Ordinal);
+        if (formRefs is { Count: > 0 })
+        {
+            refResolvedIds = refResolvedIds is { Count: > 0 }
+                ? new HashSet<string>(refResolvedIds.Concat(formRefs.Keys), StringComparer.Ordinal)
+                : new HashSet<string>(formRefs.Keys, StringComparer.Ordinal);
+        }
+
         var extraction = await ExtractInputFilesAsync(
-            request, package.Manifest, GateWaitFor(origin), _ocr, ocrMinConfidence, cancellationToken);
+            request, package.Manifest, GateWaitFor(origin), _ocr, ocrMinConfidence, cancellationToken, refResolvedIds);
         if (extraction.Error != null)
         {
             _logger.LogWarning(
@@ -397,7 +421,15 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         }
 
         request = NormalizeInputs(extraction.Request);
-        var inputOrigins = MergeOrigins(resolution.Origins, extraction.Origins);
+        // The same exclusion set — but a ref-resolved id that also carried
+        // documents is refused upstream now (ExtractInputFilesAsync's
+        // same-id-both-maps check, task 3.5), so extraction.Origins never
+        // actually holds a competing record for an id in refResolvedIds by
+        // the time execution reaches here. Passing refResolvedIds as
+        // overwriteForIds is belt-and-suspenders dead-path defense: if that
+        // upstream refusal were ever loosened, this keeps the ref's origin
+        // from being silently concatenated with a document's.
+        var inputOrigins = MergeOrigins(resolution.Origins, extraction.Origins, refResolvedIds);
 
         var inputs = ResolveEffectiveInputs(request, package.Manifest);
         if (inputs.Error != null)
@@ -418,6 +450,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // #540: the verified form fills, each naming its held response; the
         // digest is over the value as it entered the effective map, the
         // rerun origin's own convention.
+        // #872 task 3.5: a form-ref'd id that also carried documents is
+        // refused upstream by name (ExtractInputFilesAsync's same-id-both-
+        // maps check), so it never reaches a combine to concatenate onto in
+        // the first place. overwriteForIds here is belt-and-suspenders
+        // dead-path defense for the same reason as the merge above — not the
+        // mechanism that keeps this FormResponse origin from being doubled.
         if (formRefs is { Count: > 0 } && inputs.Effective != null)
         {
             inputOrigins = MergeOrigins(inputOrigins, formRefs
@@ -432,13 +470,23 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                             SourceFormId: pair.Value.FormId,
                             SourceResponseId: pair.Value.ResponseId)
                     },
-                    StringComparer.Ordinal));
+                    StringComparer.Ordinal),
+                refResolvedIds);
         }
 
         // #549: a rerun replays the source's held inputs, so every effective
         // slot names the run it came from. Built server-side like every
         // origin; the digest is over the effective value verbatim, equal to
         // the source's slot values by construction.
+        // #872 task 3.5 (defensive): same overwriteForIds, so a ref/form-ref'd
+        // id a rerun replays cannot double its origin against a combine
+        // either — never observed to reach this state today, but the gate
+        // that made it reachable at all just opened.
+        // refResolvedIds itself carries no rerun ids (see its construction
+        // above) — moot here regardless, since this id is the one THIS
+        // request is a rerun of, not one it also supplied InputFiles for; a
+        // rerun request never carries InputFiles at all, so this branch and
+        // ExtractInputFilesAsync's combine never fire for the same id.
         if (origin.RerunOfJobId is { } rerunOf && inputs.Effective != null)
         {
             inputOrigins = MergeOrigins(inputOrigins, inputs.Effective.ToDictionary(
@@ -450,7 +498,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                         TextSha256: ConsultGenerationProvenance.Sha256Hex(pair.Value),
                         SourceJobId: rerunOf)
                 },
-                StringComparer.Ordinal));
+                StringComparer.Ordinal),
+                refResolvedIds);
         }
 
         // #290: present is not the same as filled. ResolveEffectiveInputs has
@@ -1735,14 +1784,38 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
     private static IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? MergeOrigins(
         IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? first,
-        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? second)
+        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? second,
+        // #872 round 1: ids for which a shared key means "the second side
+        // fully replaces the first", the pre-#872 overwrite — a previous-run
+        // reference ExtractInputFilesAsync also found documents for (round 1
+        // descoped combining refs into the array; its inputs[id] already
+        // overwrote to documents-only, so the origin record must match).
+        // Null/empty preserves the concatenating behaviour below for every
+        // other shared id.
+        IReadOnlyCollection<string>? overwriteForIds = null)
     {
         if (first is not { Count: > 0 }) return second;
         if (second is not { Count: > 0 }) return first;
         var merged = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>(first, StringComparer.Ordinal);
-        foreach (var (id, list) in second) merged[id] = list;
+        // #872: a shared id's lists are positional (typed rows, then previous
+        // runs/documents, in the order they were folded in) — overwriting
+        // would drop whichever side merged first, so concatenate instead,
+        // except for an id named in overwriteForIds (above).
+        foreach (var (id, list) in second)
+        {
+            merged[id] = merged.TryGetValue(id, out var existing) && overwriteForIds?.Contains(id) != true
+                ? existing.Concat(list).ToList()
+                : list;
+        }
         return merged;
     }
+
+    /// <summary>#872 test seam: MergeOrigins is private; the tests reach it here.</summary>
+    internal static IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? MergeOriginsForTest(
+        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? first,
+        IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? second,
+        IReadOnlyCollection<string>? overwriteForIds = null)
+        => MergeOrigins(first, second, overwriteForIds);
 
     /// <summary>
     /// #546: the lineage edges this start creates, from the final origins.
@@ -1791,7 +1864,18 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         TimeSpan gateWait,
         IDocumentOcr ocr,
         double? ocrMinConfidence,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        // #872 round 1: ids ResolveInputRefsAsync already resolved (a
+        // previous-run reference) — descoped from the typed+documents combine.
+        // Task 3.5's review fix widened this: the caller also unions in
+        // form-ref'd ids (StartAsync's formRefs), since a form response's
+        // written-back value is the same hazard a previous-run one is, not a
+        // typed row to prepend. For a several (array<text>) id, membership
+        // here is now a REFUSAL (a document alongside a ref/rerun/form
+        // response is refused by name, above) rather than the pre-#872
+        // silent overwrite this parameter used to select. Passing none (the
+        // other caller, and every existing test) is the same as before.
+        IReadOnlyCollection<string>? excludeFromCombine = null)
     {
         if (request.InputFiles is not { Count: > 0 })
         {
@@ -1824,6 +1908,41 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             var several = spec != null
                 && WorkflowInputTypes.Of(spec) == WorkflowInputTypes.Array
                 && WorkflowInputTypes.ElementTypeOf(spec) == WorkflowInputTypes.Text;
+
+            // #872 (task 3.5): the same-id-in-both-maps refusal moved here
+            // from the wire door (ConsultGenerationTransport.ValidateRequest),
+            // which has no manifest and so cannot tell an array<text> id from
+            // a scalar one. A several id in both is the mixed feature's
+            // combine (typed rows then documents, below) — allowed. Every
+            // other type keeps the door's old, unconditional refusal: nobody
+            // needs both, and choosing one would drop the other silently.
+            if (!several && request.Inputs?.ContainsKey(id) == true)
+            {
+                var bothSentence = $"Input '{id}' was supplied as both text and a file.";
+
+                return new InputFileExtraction(
+                    request, null, bothSentence, null, ConsultGenerationJobStartError.InputsMismatch, SenderSafeError: bothSentence);
+            }
+
+            // #872 (review fix, round 1 of task 3.5): a several (array<text>)
+            // id that is ALSO ref/rerun/form-resolved (excludeFromCombine)
+            // cannot be handled safely either way — combining would mislabel
+            // that resolved value's elements `typed`, and the pre-#872
+            // overwrite this used to silently take would leave the origin
+            // claiming a FormResponse/PreviousRun record for a value that is
+            // actually the document's text (an internally-inconsistent
+            // record: origin says one source, the value holds another).
+            // Not UI-reachable — loaded/form/rerun are mutually exclusive
+            // modes in the frontend — but relaxing ValidateRequest's same-id
+            // gate (task 3.5) made it reachable at the API, so it is refused
+            // here by name instead.
+            if (several && excludeFromCombine?.Contains(id) == true)
+            {
+                var collisionSentence = $"Input '{id}' was supplied as both a document and a previous-run or form response.";
+
+                return new InputFileExtraction(
+                    request, null, collisionSentence, null, ConsultGenerationJobStartError.InputsMismatch, SenderSafeError: collisionSentence);
+            }
 
             if (documents.Count > 1 && !several)
             {
@@ -1862,7 +1981,23 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
             var texts = new List<ConsultInputValue>(documents.Count);
             var slotOrigins = new List<ConsultInputOrigin>(documents.Count);
-            var total = 0;
+
+            // #872 (final review, finding 1): a several id's typed rows,
+            // already sitting in inputs[id] when there's a combine ahead
+            // (below), share the same slot and the same cap as its
+            // documents — so the aggregate total starts from their length
+            // rather than zero, or a combined slot could carry unbounded
+            // typed text behind one small document. Same text as the
+            // `typed` origin hashes, so this is exactly what the combine
+            // will add.
+            var typedElements = several
+                    && inputs.TryGetValue(id, out var existingForCap)
+                    && existingForCap.Kind == ConsultInputKind.Array
+                ? existingForCap.Elements!
+                : Array.Empty<ConsultInputValue>();
+
+            var total = typedElements.Sum(element =>
+                (element.HasCanonical ? element.Canonical : element.AsJson()).Length);
 
             for (var index = 0; index < documents.Count; index++)
             {
@@ -1918,10 +2053,42 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     TextSha256: ConsultGenerationProvenance.Sha256Hex(CanonicalText.Normalize(result.Text!))));
             }
 
-            // One document into a text slot is the text it always was, so hash
-            // definitions 3 and 4 see the same bytes they did.
-            inputs[id] = several ? ConsultInputValue.OfArray(texts) : texts[0];
-            origins[id] = slotOrigins;
+            // #872: for a mixed array<text> slot the request may already carry
+            // typed rows in inputs[id]; keep them, in order, ahead of the
+            // documents, each with a positional `typed` origin. Round 1: an id
+            // ResolveInputRefsAsync already resolved (or, per the task 3.5
+            // review fix above, a form/rerun-resolved one) never reaches this
+            // branch — that combination is refused by name above, before any
+            // byte is parsed, rather than silently combined or overwritten.
+            // So `several` here is never also an excluded id.
+            if (several)
+            {
+                // typedElements: computed above, ahead of the loop, to seed
+                // the aggregate cap with the same rows this combines.
+                var combined = new List<ConsultInputValue>(typedElements.Count + texts.Count);
+                var combinedOrigins = new List<ConsultInputOrigin>(typedElements.Count + slotOrigins.Count);
+                foreach (var element in typedElements)
+                {
+                    combined.Add(element);
+                    combinedOrigins.Add(new ConsultInputOrigin(
+                        ConsultInputOriginKinds.Typed, null, null, false,
+                        TextSha256: ConsultGenerationProvenance.Sha256Hex(
+                            CanonicalText.Normalize(element.HasCanonical ? element.Canonical : element.AsJson()))));
+                }
+                combined.AddRange(texts);
+                combinedOrigins.AddRange(slotOrigins);
+
+                inputs[id] = ConsultInputValue.OfArray(combined);
+                origins[id] = combinedOrigins;
+            }
+            else
+            {
+                // A single document into a text (non-several) slot is the
+                // text it always was, so hash definitions 3 and 4 see the
+                // same bytes they did — unaffected by the combine above.
+                inputs[id] = texts[0];
+                origins[id] = slotOrigins;
+            }
         }
 
         // InputFiles cleared here, and this is load-bearing rather than tidy:

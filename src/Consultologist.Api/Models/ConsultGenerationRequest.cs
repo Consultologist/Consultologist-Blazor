@@ -196,6 +196,12 @@ public static class ConsultInputOriginKinds
     // boundary stays legible. Recorded beside the effective-input hash, never
     // inside it, like every kind above.
     public const string AmbientNote = "ambient-note";
+
+    // #872 (provenance@v2026.09.13): an array element the clinician entered as
+    // text in a slot that also carries documents or previous-run deliverables.
+    // Carries only TextSha256; no extractor/pages/file hash. Stamped only for a
+    // mixed array — a pure typed input records no origin, as before.
+    public const string Typed = "typed";
 }
 
 public record ConsultGenerationJobStartResponse(

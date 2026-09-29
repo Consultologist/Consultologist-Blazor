@@ -1171,9 +1171,10 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         Assert.Equal(
             new[] { "First note.", "Second note." },
             page.FindAll(".input-field__document .input-field__preview").Select(preview => preview.TextContent.Trim()));
-        // Document mode: the rows are hidden, the picker stays to append.
+        // #872 Task 5: no rows were added, but a mixed slot still offers to
+        // add a typed one alongside the documents.
         Assert.Empty(page.FindAll(".input-field__row"));
-        Assert.Empty(page.FindAll(".input-field__add"));
+        Assert.NotEmpty(page.FindAll(".input-field__add"));
     }
 
     [Fact]
@@ -1220,6 +1221,69 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".input-field__document"));
         Assert.Single(page.FindAll(".input-field__row"));
         Assert.Equal("Typed row.", FieldText(page, 1));
+    }
+
+    [Fact]
+    public void MixedArrayInput_SubmitsTypedRowsAndFilesForTheSameId()
+    {
+        // #872: a several-document (array<text>) slot is no longer typed XOR
+        // filed — a typed row and an attached document can travel together,
+        // the typed portion via Inputs and the document via Files.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+        CaptureSubmitWithFiles();
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
+        page.Find(".input-field__add").Click();
+        page.FindAll("fluent-text-area")[1].Change("Typed row.");
+        FileInput(page, 1).UploadFiles(InputFileContent.CreateFromText("First note.", "first.txt"));
+
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.True(sentInputs!.ContainsKey("prior_notes"));
+        var typed = sentInputs["prior_notes"];
+        Assert.True(typed.IsArray);
+        Assert.Single(typed.Elements!);
+        Assert.Equal("Typed row.", typed.Elements![0].Canonical);
+
+        Assert.True(sentFiles!.ContainsKey("prior_notes"));
+        Assert.Single(sentFiles["prior_notes"]);
+    }
+
+    [Fact]
+    public void MixedArray_ShowsTypedRowsAndDocumentChipsTogether()
+    {
+        // #872 Task 5: a several-document slot renders its typed rows and its
+        // attached documents at the same time — attaching a file no longer
+        // hides the rows underneath it.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+
+        var page = Render<Consults>();
+        page.Find(".input-field__add").Click();
+        page.FindAll("fluent-text-area")[1].Change("Typed row.");
+        FileInput(page, 1).UploadFiles(InputFileContent.CreateFromText("First note.", "first.txt"));
+
+        Assert.NotEmpty(page.FindAll(".input-field__row"));
+        Assert.NotEmpty(page.FindAll(".input-field__document"));
+    }
+
+    [Fact]
+    public void MixedArray_EmptyTypedRow_BlocksSubmit_ByName()
+    {
+        // #872 Task 5: an attached document doesn't relax row validation — an
+        // empty typed row alongside it still names itself and disables Create.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
+        page.Find(".input-field__add").Click();
+        FileInput(page, 1).UploadFiles(InputFileContent.CreateFromText("First note.", "first.txt"));
+
+        Assert.Equal("Prior notes row 1 is empty; fill it in or remove it.", page.Find(".input-field__error").TextContent.Trim());
+        Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
     }
 
     [Fact]

@@ -213,10 +213,13 @@
                                         <span class="input-field__channel">@union</span>
                                     }
                                 </span>
-                                @* #236: a slot holds either typed text or an
-                                   attached document, never both. The text is
-                                   kept underneath so removing the file gives
-                                   it back. *@
+                                @* #236: a single-value slot holds either typed
+                                   text or an attached document, never both —
+                                   the text is kept underneath so removing the
+                                   file gives it back. #872: a several-document
+                                   array<text> slot is the exception — its rows
+                                   below may hold typed entries AND documents
+                                   together, side by side. *@
                                 @if (field.HasLoaded)
                                 {
                                     @* #510: filled from previous runs. One chip per
@@ -256,59 +259,7 @@
                                         }
                                     </div>
                                 }
-                                else if (field.HasFile && field.TakesSeveralDocuments)
-                                {
-                                    @* #428/#429: several documents, in the order chosen —
-                                       the order the elements hash in. Rows are kept
-                                       underneath; "Remove all" gives them back. *@
-                                    <div class="input-field__documents" @onclick:stopPropagation="true">
-                                        @for (var i = 0; i < field.Documents.Count; i++)
-                                        {
-                                            var index = i;
-                                            var document = field.Documents[index];
-                                            var currentField = field;
-                                            <div class="input-field__document" @key="document" @onclick:preventDefault="true" @onclick:stopPropagation="true">
-                                                <span class="input-field__chip">
-                                                    <span class="muted-text input-field__row-number">@(index + 1).</span>
-                                                    <span class="input-field__chip-name">@document.FileName</span>
-                                                    @if (document.PageCount is { } pages)
-                                                    {
-                                                        <span class="muted-text">@pages page@(pages == 1 ? "" : "s")</span>
-                                                    }
-                                                    <span class="input-field__row-buttons">
-                                                        <button type="button" class="aggregate-row__button" title="Move up"
-                                                                aria-label="Move @document.FileName up"
-                                                                disabled="@(index == 0)"
-                                                                @onclick="() => MoveDocument(currentField, index, -1)">↑</button>
-                                                        <button type="button" class="aggregate-row__button" title="Move down"
-                                                                aria-label="Move @document.FileName down"
-                                                                disabled="@(index == currentField.Documents.Count - 1)"
-                                                                @onclick="() => MoveDocument(currentField, index, +1)">↓</button>
-                                                        <button type="button" class="aggregate-row__button" title="Remove this file"
-                                                                aria-label="Remove @document.FileName"
-                                                                @onclick="() => RemoveDocument(currentField, index)">×</button>
-                                                    </span>
-                                                </span>
-                                                <div class="input-field__preview">@document.PreviewText</div>
-                                            </div>
-                                        }
-                                        <span class="input-field__file">
-                                            <InputFile multiple OnChange="args => LoadFileAsync(field, args)" />
-                                            @if (field.IsReading)
-                                            {
-                                                <FluentProgressRing style="width: 16px; height: 16px;" />
-                                                <span class="muted-text">Reading&hellip;</span>
-                                            }
-                                            <FluentButton Appearance="Appearance.Stealth"
-                                                          Title="Remove every file and type instead"
-                                                          @onclick="() => RemoveFile(field)">Remove all</FluentButton>
-                                        </span>
-                                        <span class="muted-text input-field__hint">
-                                            Looks wrong? Remove the file and type the entry instead.
-                                        </span>
-                                    </div>
-                                }
-                                else if (field.HasFile)
+                                else if (field.HasFile && !field.TakesSeveralDocuments)
                                 {
                                     <span class="input-field__chip" @onclick:preventDefault="true" @onclick:stopPropagation="true">
                                         <span class="input-field__chip-name">@field.FileName</span>
@@ -379,6 +330,45 @@
                                                 @onclick="() => field.AddRow()">+ Add entry</button>
                                         @if (field.TakesSeveralDocuments)
                                         {
+                                            @if (field.HasFile)
+                                            {
+                                                @* #428/#429/#872: several documents, in the order
+                                                   chosen — the order the elements hash in. Typed
+                                                   rows are kept above, side by side with these;
+                                                   "Remove all" gives the rows the field back. *@
+                                                <div class="input-field__documents" @onclick:stopPropagation="true">
+                                                    @for (var i = 0; i < field.Documents.Count; i++)
+                                                    {
+                                                        var index = i;
+                                                        var document = field.Documents[index];
+                                                        var currentField = field;
+                                                        <div class="input-field__document" @key="document" @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                                                            <span class="input-field__chip">
+                                                                <span class="muted-text input-field__row-number">@(index + 1).</span>
+                                                                <span class="input-field__chip-name">@document.FileName</span>
+                                                                @if (document.PageCount is { } pages)
+                                                                {
+                                                                    <span class="muted-text">@pages page@(pages == 1 ? "" : "s")</span>
+                                                                }
+                                                                <span class="input-field__row-buttons">
+                                                                    <button type="button" class="aggregate-row__button" title="Move up"
+                                                                            aria-label="Move @document.FileName up"
+                                                                            disabled="@(index == 0)"
+                                                                            @onclick="() => MoveDocument(currentField, index, -1)">↑</button>
+                                                                    <button type="button" class="aggregate-row__button" title="Move down"
+                                                                            aria-label="Move @document.FileName down"
+                                                                            disabled="@(index == currentField.Documents.Count - 1)"
+                                                                            @onclick="() => MoveDocument(currentField, index, +1)">↓</button>
+                                                                    <button type="button" class="aggregate-row__button" title="Remove this file"
+                                                                            aria-label="Remove @document.FileName"
+                                                                            @onclick="() => RemoveDocument(currentField, index)">×</button>
+                                                                </span>
+                                                            </span>
+                                                            <div class="input-field__preview">@document.PreviewText</div>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
                                             @* Or attach documents: each becomes one entry, in the
                                                order chosen (v9 § 7). The same no-filter rule as the
                                                single picker. *@
@@ -389,7 +379,19 @@
                                                     <FluentProgressRing style="width: 16px; height: 16px;" />
                                                     <span class="muted-text">Reading&hellip;</span>
                                                 }
+                                                @if (field.HasFile)
+                                                {
+                                                    <FluentButton Appearance="Appearance.Stealth"
+                                                                  Title="Remove every attached file"
+                                                                  @onclick="() => RemoveFile(field)">Remove all</FluentButton>
+                                                }
                                             </span>
+                                            @if (field.HasFile)
+                                            {
+                                                <span class="muted-text input-field__hint">
+                                                    Looks wrong? Remove that file, or add a typed entry above alongside the rest.
+                                                </span>
+                                            }
                                             @* #510: or a previous run's deliverable, one per entry. *@
                                             <PreviousRunPicker OnChosen="loaded => LoadDeliverable(field, loaded)" />
                                             @LinkDocumentControl(field)
@@ -2780,9 +2782,13 @@
     return acknowledged.Count > 0 ? acknowledged : null;
   }
 
+  // #872: a mixed array (typed rows + documents) sends both — the typed
+  // portion here, the documents via SuppliedFiles(). Loaded stays its own
+  // mutually-exclusive mode: the engine refuses a file colliding with a
+  // ref-like source, so a loaded field's typed rows never travel here.
   private Dictionary<string, ConsultInputValue> SuppliedInputs() =>
     inputFields
-      .Where(field => !field.HasFile && !field.HasLoaded && field.Supplied is not null)
+      .Where(field => field.Supplied is not null && !field.HasLoaded && (!field.HasFile || field.TakesSeveralDocuments))
       .ToDictionary(field => field.Id, field => field.Supplied!, StringComparer.Ordinal);
 
   // #510: the references. The server copies each run's text and records the
@@ -3759,7 +3765,16 @@
     {
       get
       {
-        if (HasFile || HasLoaded)
+        if (HasLoaded)
+        {
+          return null;
+        }
+
+        // #872: a several-document slot mixes typed rows with documents, so
+        // an attached file no longer silences a row problem underneath it.
+        // A single-document slot still hides its (unreachable) scalar/rows
+        // once a file fills it.
+        if (HasFile && !TakesSeveralDocuments)
         {
           return null;
         }
@@ -3822,10 +3837,17 @@
       Loaded.AddRange(previous.Loaded);
     }
 
-    /// <summary>What this slot ran on, as a value: documents as the text read, one element each for an array.</summary>
+    /// <summary>
+    /// What this slot ran on, as a value: documents as the text read, one
+    /// element each for an array. #872: a several-document slot combines its
+    /// typed rows with its documents (Loaded stays its own exclusive mode,
+    /// never mixed in here).
+    /// </summary>
     public ConsultInputValue EffectiveValue => HasFile
       ? TakesSeveralDocuments
-        ? ConsultInputValue.OfArray(Documents.Select(document => ConsultInputValue.OfText(document.PreviewText)))
+        ? ConsultInputValue.OfArray(
+            (Supplied?.Elements ?? Array.Empty<ConsultInputValue>())
+              .Concat(Documents.Select(document => ConsultInputValue.OfText(document.PreviewText))))
         : ConsultInputValue.OfText(Documents[0].PreviewText)
       : HasLoaded
         ? TakesSeveralDocuments
