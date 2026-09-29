@@ -1223,6 +1223,34 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void MixedArrayInput_SubmitsTypedRowsAndFilesForTheSameId()
+    {
+        // #872: a several-document (array<text>) slot is no longer typed XOR
+        // filed — a typed row and an attached document can travel together,
+        // the typed portion via Inputs and the document via Files.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+        CaptureSubmitWithFiles();
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
+        page.Find(".input-field__add").Click();
+        page.FindAll("fluent-text-area")[1].Change("Typed row.");
+        FileInput(page, 1).UploadFiles(InputFileContent.CreateFromText("First note.", "first.txt"));
+
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.True(sentInputs!.ContainsKey("prior_notes"));
+        var typed = sentInputs["prior_notes"];
+        Assert.True(typed.IsArray);
+        Assert.Single(typed.Elements!);
+        Assert.Equal("Typed row.", typed.Elements![0].Canonical);
+
+        Assert.True(sentFiles!.ContainsKey("prior_notes"));
+        Assert.Single(sentFiles["prior_notes"]);
+    }
+
+    [Fact]
     public void APerFileRefusal_NamesTheFileAndKeepsTheOthers()
     {
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);

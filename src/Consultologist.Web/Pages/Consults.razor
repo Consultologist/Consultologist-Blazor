@@ -2780,9 +2780,13 @@
     return acknowledged.Count > 0 ? acknowledged : null;
   }
 
+  // #872: a mixed array (typed rows + documents) sends both — the typed
+  // portion here, the documents via SuppliedFiles(). Loaded stays its own
+  // mutually-exclusive mode: the engine refuses a file colliding with a
+  // ref-like source, so a loaded field's typed rows never travel here.
   private Dictionary<string, ConsultInputValue> SuppliedInputs() =>
     inputFields
-      .Where(field => !field.HasFile && !field.HasLoaded && field.Supplied is not null)
+      .Where(field => field.Supplied is not null && !field.HasLoaded && (!field.HasFile || field.TakesSeveralDocuments))
       .ToDictionary(field => field.Id, field => field.Supplied!, StringComparer.Ordinal);
 
   // #510: the references. The server copies each run's text and records the
@@ -3822,10 +3826,17 @@
       Loaded.AddRange(previous.Loaded);
     }
 
-    /// <summary>What this slot ran on, as a value: documents as the text read, one element each for an array.</summary>
+    /// <summary>
+    /// What this slot ran on, as a value: documents as the text read, one
+    /// element each for an array. #872: a several-document slot combines its
+    /// typed rows with its documents (Loaded stays its own exclusive mode,
+    /// never mixed in here).
+    /// </summary>
     public ConsultInputValue EffectiveValue => HasFile
       ? TakesSeveralDocuments
-        ? ConsultInputValue.OfArray(Documents.Select(document => ConsultInputValue.OfText(document.PreviewText)))
+        ? ConsultInputValue.OfArray(
+            (Supplied?.Elements ?? Array.Empty<ConsultInputValue>())
+              .Concat(Documents.Select(document => ConsultInputValue.OfText(document.PreviewText))))
         : ConsultInputValue.OfText(Documents[0].PreviewText)
       : HasLoaded
         ? TakesSeveralDocuments
