@@ -1,4 +1,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using System.Security.Claims
+@inject NavigationManager Navigation
 
 <FluentDesignTheme @ref="@_theme" @bind-Mode="_themeMode" CustomColor="#0078d4" OnLoaded="OnThemeLoaded" StorageName="consultologist-clinical-theme" />
 
@@ -45,12 +48,48 @@
                      Orientation="Orientation.Horizontal"
                      HorizontalGap="12"
                      VerticalAlignment="VerticalAlignment.Center">
-            <FluentButton IconStart="@_themeIcon"
-                          Appearance="Appearance.Stealth"
-                          Title="@($"Theme: {_themeMode}")"
-                          aria-label="@($"Theme: {_themeMode}. Activate to change.")"
-                          OnClick="@ToggleTheme" />
-            <LoginDisplay />
+            <AuthorizeView>
+                <Authorized>
+                    @* #884: the Microsoft 365-style account flyout — identity, the
+                       theme choice, Profile, and Sign out, in one avatar menu. *@
+                    <FluentProfileMenu Class="account-flyout"
+                                       FullName="@context.User.Identity?.Name"
+                                       HeaderButton="Sign out"
+                                       OnHeaderButtonClick="@BeginLogout"
+                                       FooterLink="Profile"
+                                       OnFooterLinkClick="@GoToProfile">
+                        <div class="account-flyout__body">
+                            @{
+                                var email = context.User.FindFirst("preferred_username")?.Value
+                                    ?? context.User.FindFirst(ClaimTypes.Email)?.Value;
+                            }
+                            <div class="account-flyout__identity">
+                                <strong>@context.User.Identity?.Name</strong>
+                                @if (!string.IsNullOrWhiteSpace(email))
+                                {
+                                    <span class="muted-text">@email</span>
+                                }
+                            </div>
+                            <FluentRadioGroup Name="account-theme" Label="Theme"
+                                              @bind-Value="_themeMode"
+                                              Orientation="Orientation.Vertical">
+                                <FluentRadio Value="@DesignThemeModes.System">System</FluentRadio>
+                                <FluentRadio Value="@DesignThemeModes.Light">Light</FluentRadio>
+                                <FluentRadio Value="@DesignThemeModes.Dark">Dark</FluentRadio>
+                            </FluentRadioGroup>
+                        </div>
+                    </FluentProfileMenu>
+                </Authorized>
+                <NotAuthorized>
+                    @* Public pages keep a standalone theme toggle + a Log in button. *@
+                    <FluentButton IconStart="@_themeIcon"
+                                  Appearance="Appearance.Stealth"
+                                  Title="@($"Theme: {_themeMode}")"
+                                  aria-label="@($"Theme: {_themeMode}. Activate to change.")"
+                                  OnClick="@ToggleTheme" />
+                    <FluentButton Appearance="Appearance.Accent" @onclick="@BeginLogin">Log in</FluentButton>
+                </NotAuthorized>
+            </AuthorizeView>
         </FluentStack>
     </FluentStack>
 </FluentHeader>
@@ -78,6 +117,8 @@
     }
 
     // #690: a three-way cycle so a user can return to follow-the-OS System.
+    // Still used by the signed-out standalone toggle; signed-in users pick the
+    // mode directly in the account flyout's theme radio group.
     private void ToggleTheme() => _themeMode = _themeMode switch
     {
         DesignThemeModes.System => DesignThemeModes.Light,
@@ -85,4 +126,12 @@
         DesignThemeModes.Dark => DesignThemeModes.System,
         _ => DesignThemeModes.System,
     };
+
+    // #884: login/logout/profile moved here from the retired LoginDisplay so the
+    // account flyout owns them.
+    private void BeginLogin() => Navigation.NavigateToLogin("authentication/login");
+
+    private void BeginLogout() => Navigation.NavigateToLogout("authentication/logout");
+
+    private void GoToProfile() => Navigation.NavigateTo("profile");
 }
