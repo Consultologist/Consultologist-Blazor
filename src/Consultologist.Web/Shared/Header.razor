@@ -52,13 +52,14 @@
                 <Authorized>
                     @* #884: the Microsoft 365-style account flyout — identity, the
                        theme choice, Profile, and Sign out, in one avatar menu. *@
+                    @* FluentProfileMenu's HeaderButton/FooterLink render in separate
+                       header/footer regions, right-aligned and floating at the popover
+                       corners — misaligned with the body. Drive the whole flyout through
+                       ChildContent instead so it is one coherent, left-aligned stack:
+                       persona card, theme, then Profile + Sign out as full-width rows. *@
                     <FluentProfileMenu Class="account-flyout"
                                        PopoverClass="account-flyout__popover"
-                                       FullName="@context.User.Identity?.Name"
-                                       HeaderButton="Sign out"
-                                       OnHeaderButtonClick="@BeginLogout"
-                                       FooterLink="Profile"
-                                       OnFooterLinkClick="@GoToProfile">
+                                       FullName="@context.User.Identity?.Name">
                         <div class="account-flyout__body">
                             @{
                                 var name = context.User.Identity?.Name;
@@ -66,9 +67,7 @@
                                     ?? context.User.FindFirst(ClaimTypes.Email)?.Value;
                             }
                             @* ChildContent REPLACES FluentProfileMenu's default persona
-                               card, so reproduce it — avatar (initials) + name + email —
-                               and add the theme picker below, keeping the Microsoft 365
-                               account-card look instead of bare text. *@
+                               card, so reproduce it — avatar (initials) + name + email. *@
                             <FluentPersona Class="account-flyout__persona"
                                            Initials="@InitialsOf(name)">
                                 <div class="account-flyout__identity">
@@ -87,6 +86,17 @@
                                 <FluentRadio Value="@DesignThemeModes.Light">Light</FluentRadio>
                                 <FluentRadio Value="@DesignThemeModes.Dark">Dark</FluentRadio>
                             </FluentRadioGroup>
+                            <FluentDivider Class="account-flyout__divider" />
+                            <div class="account-flyout__actions">
+                                <FluentButton Appearance="Appearance.Stealth"
+                                              Class="account-flyout__action"
+                                              IconStart="@(new Icons.Regular.Size20.Person())"
+                                              OnClick="@GoToProfile">Profile</FluentButton>
+                                <FluentButton Appearance="Appearance.Stealth"
+                                              Class="account-flyout__action"
+                                              IconStart="@(new Icons.Regular.Size20.SignOut())"
+                                              OnClick="@BeginLogout">Sign out</FluentButton>
+                            </div>
                         </div>
                     </FluentProfileMenu>
                 </Authorized>
