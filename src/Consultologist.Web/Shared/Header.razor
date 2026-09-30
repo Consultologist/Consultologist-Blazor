@@ -68,8 +68,12 @@
                             }
                             @* ChildContent REPLACES FluentProfileMenu's default persona
                                card, so reproduce it — avatar (initials) + name + email. *@
+                            @* ImageSize matches the header trigger's persona (32px);
+                               without it the initials badge has no dimensions and
+                               collapses to a ~22x27 oval instead of a 32px circle. *@
                             <FluentPersona Class="account-flyout__persona"
-                                           Initials="@InitialsOf(name)">
+                                           Initials="@InitialsOf(name)"
+                                           ImageSize="32px">
                                 <div class="account-flyout__identity">
                                     <strong>@name</strong>
                                     @if (!string.IsNullOrWhiteSpace(email))
