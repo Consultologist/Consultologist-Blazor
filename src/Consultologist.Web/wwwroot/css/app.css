@@ -321,6 +321,12 @@ header.header.app-header {
 .account-flyout__popover {
 	min-width: 17.5rem;
 	max-width: 22rem;
+	/* FluentProfileMenu's popover content inherits a near-white foreground
+	   (~--fill-color, meant for a tinted persona header), so plain text like the
+	   identity name renders invisible on the white/dark popover surface. Pin an
+	   explicit theme-aware foreground so everything inside stays legible; the
+	   token flips light↔dark with the theme. */
+	color: var(--neutral-foreground-rest);
 }
 
 .account-flyout__body {
@@ -335,6 +341,13 @@ header.header.app-header {
 	flex-direction: column;
 	gap: 0.1rem;
 	font-size: 0.85rem;
+}
+
+/* The account name — semibold, at full foreground contrast (see the popover
+   note above; a bare <strong> only sets weight, not colour). */
+.account-flyout__identity strong {
+	color: var(--neutral-foreground-rest);
+	font-weight: 600;
 }
 
 /* Wrap a very long email at word/character boundaries as a graceful fallback,
