@@ -52,32 +52,56 @@
                 <Authorized>
                     @* #884: the Microsoft 365-style account flyout — identity, the
                        theme choice, Profile, and Sign out, in one avatar menu. *@
+                    @* FluentProfileMenu's HeaderButton/FooterLink render in separate
+                       header/footer regions, right-aligned and floating at the popover
+                       corners — misaligned with the body. Drive the whole flyout through
+                       ChildContent instead so it is one coherent, left-aligned stack:
+                       persona card, theme, then Profile + Sign out as full-width rows. *@
                     <FluentProfileMenu Class="account-flyout"
                                        PopoverClass="account-flyout__popover"
-                                       FullName="@context.User.Identity?.Name"
-                                       HeaderButton="Sign out"
-                                       OnHeaderButtonClick="@BeginLogout"
-                                       FooterLink="Profile"
-                                       OnFooterLinkClick="@GoToProfile">
+                                       FullName="@context.User.Identity?.Name">
                         <div class="account-flyout__body">
                             @{
+                                var name = context.User.Identity?.Name;
                                 var email = context.User.FindFirst("preferred_username")?.Value
                                     ?? context.User.FindFirst(ClaimTypes.Email)?.Value;
                             }
-                            <div class="account-flyout__identity">
-                                <strong>@context.User.Identity?.Name</strong>
-                                @if (!string.IsNullOrWhiteSpace(email))
-                                {
-                                    <span class="muted-text">@email</span>
-                                }
+                            @* ChildContent REPLACES FluentProfileMenu's default persona
+                               card, so reproduce it — avatar (initials) + name + email. *@
+                            <FluentPersona Class="account-flyout__persona"
+                                           Initials="@InitialsOf(name)">
+                                <div class="account-flyout__identity">
+                                    <strong>@name</strong>
+                                    @if (!string.IsNullOrWhiteSpace(email))
+                                    {
+                                        <span class="muted-text">@email</span>
+                                    }
+                                </div>
+                            </FluentPersona>
+                            <FluentDivider Class="account-flyout__divider" />
+                            @* Wrap the radio group so its label + options stay one
+                               flex item (the component emits them as siblings, so the
+                               body gap would otherwise wedge between label and radios). *@
+                            <div class="account-flyout__theme">
+                                <FluentRadioGroup Name="account-theme" Label="Theme"
+                                                  @bind-Value="_themeMode"
+                                                  Orientation="Orientation.Vertical">
+                                    <FluentRadio Value="@DesignThemeModes.System">System</FluentRadio>
+                                    <FluentRadio Value="@DesignThemeModes.Light">Light</FluentRadio>
+                                    <FluentRadio Value="@DesignThemeModes.Dark">Dark</FluentRadio>
+                                </FluentRadioGroup>
                             </div>
-                            <FluentRadioGroup Name="account-theme" Label="Theme"
-                                              @bind-Value="_themeMode"
-                                              Orientation="Orientation.Vertical">
-                                <FluentRadio Value="@DesignThemeModes.System">System</FluentRadio>
-                                <FluentRadio Value="@DesignThemeModes.Light">Light</FluentRadio>
-                                <FluentRadio Value="@DesignThemeModes.Dark">Dark</FluentRadio>
-                            </FluentRadioGroup>
+                            <FluentDivider Class="account-flyout__divider" />
+                            <div class="account-flyout__actions">
+                                <FluentButton Appearance="Appearance.Stealth"
+                                              Class="account-flyout__action"
+                                              IconStart="@(new Icons.Regular.Size20.Person())"
+                                              OnClick="@GoToProfile">Profile</FluentButton>
+                                <FluentButton Appearance="Appearance.Stealth"
+                                              Class="account-flyout__action"
+                                              IconStart="@(new Icons.Regular.Size20.SignOut())"
+                                              OnClick="@BeginLogout">Sign out</FluentButton>
+                            </div>
                         </div>
                     </FluentProfileMenu>
                 </Authorized>
@@ -130,6 +154,23 @@
 
     // #884: login/logout/profile moved here from the retired LoginDisplay so the
     // account flyout owns them.
+    // #896: the avatar initials for the account flyout's persona card
+    // (FluentProfileMenu's own initials helper isn't public in 4.13.1).
+    private static string InitialsOf(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return "?";
+        }
+
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var first = parts[0][0];
+        var last = parts.Length > 1 ? parts[^1][0] : '\0';
+        return last == '\0'
+            ? char.ToUpperInvariant(first).ToString()
+            : $"{char.ToUpperInvariant(first)}{char.ToUpperInvariant(last)}";
+    }
+
     private void BeginLogin() => Navigation.NavigateToLogin("authentication/login");
 
     private void BeginLogout() => Navigation.NavigateToLogout("authentication/logout");

@@ -321,6 +321,22 @@ header.header.app-header {
 .account-flyout__popover {
 	min-width: 17.5rem;
 	max-width: 22rem;
+
+	/* FluentProfileMenu's popover content inherits a near-white foreground
+	   (~--fill-color, meant for a tinted persona header), so plain text like the
+	   identity name renders invisible on the white/dark popover surface. Pin an
+	   explicit theme-aware foreground so everything inside stays legible; the
+	   token flips light↔dark with the theme. */
+	color: var(--neutral-foreground-rest);
+}
+
+/* FluentProfileMenu always renders a default header ("Sign out", right-aligned)
+   and footer ("View account") region around the body, floating at the popover
+   corners. We drive the whole flyout through the body instead (persona card +
+   theme + our own Profile / Sign out rows), so hide those two chrome regions:
+   every direct popover-content child EXCEPT the one wrapping our body. */
+.account-flyout__popover .fluent-popover-content > div:not(:has(.account-flyout__body)) {
+	display: none;
 }
 
 .account-flyout__body {
@@ -335,6 +351,49 @@ header.header.app-header {
 	flex-direction: column;
 	gap: 0.1rem;
 	font-size: 0.85rem;
+}
+
+/* The account name — semibold, at full foreground contrast (see the popover
+   note above; a bare <strong> only sets weight, not colour). */
+.account-flyout__identity strong {
+	color: var(--neutral-foreground-rest);
+	font-weight: 600;
+}
+
+/* The persona card (avatar + identity) that reproduces FluentProfileMenu's
+   default header, so the flyout keeps the Microsoft 365 account-card look. */
+.account-flyout__persona {
+	align-items: center;
+}
+
+/* No extra margin: the body's flex gap already spaces the divider evenly from
+   its neighbours (its own margin would stack on top and make dividers looser). */
+.account-flyout__divider {
+	margin: 0;
+}
+
+/* Keep the theme label hugging its radios (see the wrapper note in Header). */
+.account-flyout__theme {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+
+/* Profile / Sign out as aligned, full-width menu rows inside the flyout body
+   (replacing FluentProfileMenu's corner-floating Header/Footer regions). */
+.account-flyout__actions {
+	display: flex;
+	flex-direction: column;
+	gap: 0.1rem;
+}
+
+.account-flyout__action {
+	width: 100%;
+}
+
+.account-flyout__action::part(control) {
+	width: 100%;
+	justify-content: flex-start;
 }
 
 /* Wrap a very long email at word/character boundaries as a graceful fallback,
