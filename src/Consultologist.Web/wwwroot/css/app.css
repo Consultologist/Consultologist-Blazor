@@ -339,6 +339,14 @@ header.header.app-header {
 	display: none;
 }
 
+/* FluentProfileMenu's popover content is content-box with 16px padding, so it
+   renders 32px WIDER than the popover (312 vs 280) and overflows to the right —
+   our full-width action buttons then spill past the popover edge. Border-box
+   keeps the content (and the buttons) within the popover. */
+.account-flyout__popover .fluent-popover-content {
+	box-sizing: border-box;
+}
+
 .account-flyout__body {
 	display: flex;
 	flex-direction: column;
@@ -366,12 +374,12 @@ header.header.app-header {
 	align-items: center;
 }
 
-/* Full-bleed separators: cancel the 16px popover padding so the line spans the
-   whole popover edge-to-edge (a real menu divider) instead of a short inset line
-   floating in the gap. No vertical margin — the body's flex gap spaces it. */
+/* Inset separators. (A full-bleed `width: calc(100% + 32px)` overflowed the
+   flex-column body by 32px, which mis-sized the popover — buttons spilled past
+   the edge and the persona avatar distorted to an oval. Keep the divider within
+   the body; the tighter body gap already reads clean.) */
 .account-flyout__divider {
-	margin: 0 -16px;
-	width: calc(100% + 32px);
+	margin: 0;
 }
 
 /* Keep the theme label hugging its radios (see the wrapper note in Header). */
