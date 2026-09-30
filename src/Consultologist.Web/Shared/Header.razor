@@ -68,6 +68,10 @@
                             }
                             @* ChildContent REPLACES FluentProfileMenu's default persona
                                card, so reproduce it — avatar (initials) + name + email. *@
+                            @* The avatar circle is pinned to --consultologist-avatar-size
+                               in CSS (a single source matching the header trigger), because
+                               FluentPersona's ImageSize sizes only the inner cell and left
+                               the .initials circle content-sized, drifting from the header. *@
                             <FluentPersona Class="account-flyout__persona"
                                            Initials="@InitialsOf(name)">
                                 <div class="account-flyout__identity">

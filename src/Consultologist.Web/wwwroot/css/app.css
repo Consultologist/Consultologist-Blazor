@@ -322,6 +322,14 @@ header.header.app-header {
 	min-width: 17.5rem;
 	max-width: 22rem;
 
+	/* Account-flyout persona avatar — the single source for its size, matching
+	   FluentProfileMenu's header trigger persona (32px) so the two can't drift.
+	   Defined here (not :root) because FluentUI's anchored-region does not
+	   inherit :root custom properties into the slotted popover content; from
+	   here it reaches the persona below. Applied in CSS because FluentPersona's
+	   ImageSize sizes only the inner text cell, not the .initials circle. */
+	--consultologist-avatar-size: 32px;
+
 	/* FluentProfileMenu's popover content inherits a near-white foreground
 	   (~--fill-color, meant for a tinted persona header), so plain text like the
 	   identity name renders invisible on the white/dark popover surface. Pin an
@@ -339,10 +347,18 @@ header.header.app-header {
 	display: none;
 }
 
+/* FluentProfileMenu's popover content is content-box with 16px padding, so it
+   renders 32px WIDER than the popover (312 vs 280) and overflows to the right —
+   our full-width action buttons then spill past the popover edge. Border-box
+   keeps the content (and the buttons) within the popover. */
+.account-flyout__popover .fluent-popover-content {
+	box-sizing: border-box;
+}
+
 .account-flyout__body {
 	display: flex;
 	flex-direction: column;
-	gap: 0.75rem;
+	gap: 0.5rem;
 	padding: 0.25rem 0;
 }
 
@@ -366,8 +382,23 @@ header.header.app-header {
 	align-items: center;
 }
 
-/* No extra margin: the body's flex gap already spaces the divider evenly from
-   its neighbours (its own margin would stack on top and make dividers looser). */
+/* Pin the avatar circle (and its badge + inner cell) to the single avatar-size
+   token, so it matches the header trigger exactly. FluentPersona's ImageSize
+   sizes only the inner text cell, leaving .initials width:auto (content-sized) —
+   which let the flyout circle drift from the header's explicit 32px. */
+.account-flyout__persona .initials,
+.account-flyout__persona .fluent-presence-badge,
+.account-flyout__persona .fluent-presence-badge > div {
+	width: var(--consultologist-avatar-size);
+	min-width: var(--consultologist-avatar-size);
+	height: var(--consultologist-avatar-size);
+	min-height: var(--consultologist-avatar-size);
+}
+
+/* Inset separators. (A full-bleed `width: calc(100% + 32px)` overflowed the
+   flex-column body by 32px, which mis-sized the popover — buttons spilled past
+   the edge and the persona avatar distorted to an oval. Keep the divider within
+   the body; the tighter body gap already reads clean.) */
 .account-flyout__divider {
 	margin: 0;
 }
