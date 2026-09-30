@@ -61,16 +61,25 @@
                                        OnFooterLinkClick="@GoToProfile">
                         <div class="account-flyout__body">
                             @{
+                                var name = context.User.Identity?.Name;
                                 var email = context.User.FindFirst("preferred_username")?.Value
                                     ?? context.User.FindFirst(ClaimTypes.Email)?.Value;
                             }
-                            <div class="account-flyout__identity">
-                                <strong>@context.User.Identity?.Name</strong>
-                                @if (!string.IsNullOrWhiteSpace(email))
-                                {
-                                    <span class="muted-text">@email</span>
-                                }
-                            </div>
+                            @* ChildContent REPLACES FluentProfileMenu's default persona
+                               card, so reproduce it — avatar (initials) + name + email —
+                               and add the theme picker below, keeping the Microsoft 365
+                               account-card look instead of bare text. *@
+                            <FluentPersona Class="account-flyout__persona"
+                                           Initials="@InitialsOf(name)">
+                                <div class="account-flyout__identity">
+                                    <strong>@name</strong>
+                                    @if (!string.IsNullOrWhiteSpace(email))
+                                    {
+                                        <span class="muted-text">@email</span>
+                                    }
+                                </div>
+                            </FluentPersona>
+                            <FluentDivider Class="account-flyout__divider" />
                             <FluentRadioGroup Name="account-theme" Label="Theme"
                                               @bind-Value="_themeMode"
                                               Orientation="Orientation.Vertical">
@@ -130,6 +139,23 @@
 
     // #884: login/logout/profile moved here from the retired LoginDisplay so the
     // account flyout owns them.
+    // #896: the avatar initials for the account flyout's persona card
+    // (FluentProfileMenu's own initials helper isn't public in 4.13.1).
+    private static string InitialsOf(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return "?";
+        }
+
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var first = parts[0][0];
+        var last = parts.Length > 1 ? parts[^1][0] : '\0';
+        return last == '\0'
+            ? char.ToUpperInvariant(first).ToString()
+            : $"{char.ToUpperInvariant(first)}{char.ToUpperInvariant(last)}";
+    }
+
     private void BeginLogin() => Navigation.NavigateToLogin("authentication/login");
 
     private void BeginLogout() => Navigation.NavigateToLogout("authentication/logout");

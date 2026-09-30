@@ -350,6 +350,16 @@ header.header.app-header {
 	font-weight: 600;
 }
 
+/* The persona card (avatar + identity) that reproduces FluentProfileMenu's
+   default header, so the flyout keeps the Microsoft 365 account-card look. */
+.account-flyout__persona {
+	align-items: center;
+}
+
+.account-flyout__divider {
+	margin: 0.25rem 0;
+}
+
 /* Wrap a very long email at word/character boundaries as a graceful fallback,
    never per-character mid-word inside a too-narrow box. */
 .account-flyout__identity .muted-text {
