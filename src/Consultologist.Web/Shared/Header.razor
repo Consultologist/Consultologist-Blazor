@@ -79,13 +79,18 @@
                                 </div>
                             </FluentPersona>
                             <FluentDivider Class="account-flyout__divider" />
-                            <FluentRadioGroup Name="account-theme" Label="Theme"
-                                              @bind-Value="_themeMode"
-                                              Orientation="Orientation.Vertical">
-                                <FluentRadio Value="@DesignThemeModes.System">System</FluentRadio>
-                                <FluentRadio Value="@DesignThemeModes.Light">Light</FluentRadio>
-                                <FluentRadio Value="@DesignThemeModes.Dark">Dark</FluentRadio>
-                            </FluentRadioGroup>
+                            @* Wrap the radio group so its label + options stay one
+                               flex item (the component emits them as siblings, so the
+                               body gap would otherwise wedge between label and radios). *@
+                            <div class="account-flyout__theme">
+                                <FluentRadioGroup Name="account-theme" Label="Theme"
+                                                  @bind-Value="_themeMode"
+                                                  Orientation="Orientation.Vertical">
+                                    <FluentRadio Value="@DesignThemeModes.System">System</FluentRadio>
+                                    <FluentRadio Value="@DesignThemeModes.Light">Light</FluentRadio>
+                                    <FluentRadio Value="@DesignThemeModes.Dark">Dark</FluentRadio>
+                                </FluentRadioGroup>
+                            </div>
                             <FluentDivider Class="account-flyout__divider" />
                             <div class="account-flyout__actions">
                                 <FluentButton Appearance="Appearance.Stealth"

@@ -366,8 +366,17 @@ header.header.app-header {
 	align-items: center;
 }
 
+/* No extra margin: the body's flex gap already spaces the divider evenly from
+   its neighbours (its own margin would stack on top and make dividers looser). */
 .account-flyout__divider {
-	margin: 0.25rem 0;
+	margin: 0;
+}
+
+/* Keep the theme label hugging its radios (see the wrapper note in Header). */
+.account-flyout__theme {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
 }
 
 /* Profile / Sign out as aligned, full-width menu rows inside the flyout body
