@@ -68,13 +68,12 @@
                             }
                             @* ChildContent REPLACES FluentProfileMenu's default persona
                                card, so reproduce it — avatar (initials) + name + email. *@
-                            @* ImageSize matches the header trigger's persona (AvatarSize);
-                               without it the initials badge has no dimensions and
-                               collapses to a ~22x27 oval instead of a circle. The size
-                               is a single constant so the flyout avatar can't drift. *@
+                            @* The avatar circle is pinned to --consultologist-avatar-size
+                               in CSS (a single source matching the header trigger), because
+                               FluentPersona's ImageSize sizes only the inner cell and left
+                               the .initials circle content-sized, drifting from the header. *@
                             <FluentPersona Class="account-flyout__persona"
-                                           Initials="@InitialsOf(name)"
-                                           ImageSize="@AvatarSize">
+                                           Initials="@InitialsOf(name)">
                                 <div class="account-flyout__identity">
                                     <strong>@name</strong>
                                     @if (!string.IsNullOrWhiteSpace(email))
@@ -127,12 +126,6 @@
 @code {
     private FluentDesignTheme? _theme;
     private DesignThemeModes _themeMode = DesignThemeModes.System;
-
-    // #900: the account-flyout persona avatar must match FluentProfileMenu's
-    // header trigger persona, which renders at 32px. One constant so the two
-    // can't drift apart. (FluentProfileMenu's trigger size is the component
-    // default; if that ever changes, update this to match.)
-    private const string AvatarSize = "32px";
 
     // #690: the icon shows the CURRENT mode (the tooltip names it), so it is
     // correct after a reload once OnThemeLoaded has seeded _themeMode from the

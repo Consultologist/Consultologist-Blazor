@@ -322,6 +322,14 @@ header.header.app-header {
 	min-width: 17.5rem;
 	max-width: 22rem;
 
+	/* Account-flyout persona avatar — the single source for its size, matching
+	   FluentProfileMenu's header trigger persona (32px) so the two can't drift.
+	   Defined here (not :root) because FluentUI's anchored-region does not
+	   inherit :root custom properties into the slotted popover content; from
+	   here it reaches the persona below. Applied in CSS because FluentPersona's
+	   ImageSize sizes only the inner text cell, not the .initials circle. */
+	--consultologist-avatar-size: 32px;
+
 	/* FluentProfileMenu's popover content inherits a near-white foreground
 	   (~--fill-color, meant for a tinted persona header), so plain text like the
 	   identity name renders invisible on the white/dark popover surface. Pin an
@@ -372,6 +380,19 @@ header.header.app-header {
    default header, so the flyout keeps the Microsoft 365 account-card look. */
 .account-flyout__persona {
 	align-items: center;
+}
+
+/* Pin the avatar circle (and its badge + inner cell) to the single avatar-size
+   token, so it matches the header trigger exactly. FluentPersona's ImageSize
+   sizes only the inner text cell, leaving .initials width:auto (content-sized) —
+   which let the flyout circle drift from the header's explicit 32px. */
+.account-flyout__persona .initials,
+.account-flyout__persona .fluent-presence-badge,
+.account-flyout__persona .fluent-presence-badge > div {
+	width: var(--consultologist-avatar-size);
+	min-width: var(--consultologist-avatar-size);
+	height: var(--consultologist-avatar-size);
+	min-height: var(--consultologist-avatar-size);
 }
 
 /* Inset separators. (A full-bleed `width: calc(100% + 32px)` overflowed the
