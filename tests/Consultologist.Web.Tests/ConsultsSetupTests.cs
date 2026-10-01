@@ -595,7 +595,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         // text keeps the textarea; date, enum and boolean each get their own.
         Assert.Single(page.FindAll("fluent-text-area"));
         Assert.Single(page.FindAll("input[type=date]"));
-        Assert.Equal(2, page.FindAll("select.node-field__input").Count);
+        Assert.Equal(2, page.FindAll("fluent-select.node-field__input").Count);
     }
 
     [Fact]
@@ -682,10 +682,12 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: TypedInputs());
 
         var page = Render<Consults>();
-        var kind = page.FindAll("select.node-field__input")[0];
+        var kind = page.FindAll("fluent-select.node-field__input")[0];
 
-        Assert.Equal(string.Empty, kind.GetAttribute("value"));
-        Assert.Equal("", kind.QuerySelectorAll("option")[0].GetAttribute("value"));
+        // #876: FluentSelect carries the selection on `current-value`, not `value`
+        // (its options keep a `value` attribute); unchosen stays empty.
+        Assert.Equal(string.Empty, kind.GetAttribute("current-value"));
+        Assert.Equal("", kind.QuerySelectorAll("fluent-option")[0].GetAttribute("value"));
     }
 
     [Fact]
@@ -706,8 +708,8 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         var page = Render<Consults>();
         page.Find("fluent-text-area").Change("62F, cough and weight loss over three months, for assessment.");
         page.Find("input[type=date]").Change("2026-08-10");
-        page.FindAll("select.node-field__input")[0].Change("follow_up");
-        page.FindAll("select.node-field__input")[1].Change("true");
+        page.FindAll("fluent-select.node-field__input")[0].Change("follow_up");
+        page.FindAll("fluent-select.node-field__input")[1].Change("true");
         page.FindAll("fluent-button").Last().Click();
 
         Assert.NotNull(sent);
@@ -736,7 +738,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         var page = Render<Consults>();
         page.Find("fluent-text-area").Change("62F, cough and weight loss over three months, for assessment.");
         page.Find("input[type=date]").Change("2026-08-10");
-        page.FindAll("select.node-field__input")[0].Change("follow_up");
+        page.FindAll("fluent-select.node-field__input")[0].Change("follow_up");
         page.FindAll("fluent-button").Last().Click();
 
         Assert.NotNull(sent);
@@ -763,7 +765,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         Assert.NotEmpty(page.FindAll(".input-field__required-hint"));
 
         // Choosing it clears the hint; the optional boolean is not required.
-        page.FindAll("select.node-field__input")[0].Change("follow_up");
+        page.FindAll("fluent-select.node-field__input")[0].Change("follow_up");
         Assert.Empty(page.FindAll(".input-field__required-hint"));
     }
 
@@ -876,7 +878,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
             new[] { "Age", "Sex", "Family name" },
             group.QuerySelectorAll("label.input-field__member > span").Select(span => span.TextContent.Replace("(optional)", "").Trim()));
         Assert.Single(group.QuerySelectorAll("input[inputmode=decimal]"));
-        Assert.Single(group.QuerySelectorAll("select.node-field__input"));
+        Assert.Single(group.QuerySelectorAll("fluent-select.node-field__input"));
         Assert.Single(group.QuerySelectorAll("fluent-text-area"));
     }
 
@@ -895,7 +897,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
 
         // Touched through an optional field: the required one is now named, and
         // the now-present problem holds the button.
-        page.Find(".input-field__group select.node-field__input").Change("female");
+        page.Find(".input-field__group fluent-select.node-field__input").Change("female");
         Assert.Equal("Patient: Age is required.", page.Find(".input-field__error").TextContent.Trim());
         Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
 
@@ -1117,7 +1119,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         var page = Render<Consults>();
         page.Find(".input-field__add").Click();
 
-        var options = page.Find(".input-field__row select.node-field__input").QuerySelectorAll("option").Select(option => option.GetAttribute("value"));
+        var options = page.Find(".input-field__row fluent-select.node-field__input").QuerySelectorAll("fluent-option").Select(option => option.GetAttribute("value"));
         Assert.Equal(new[] { "", "clinic", "ward" }, options);
     }
 
@@ -1439,7 +1441,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         // here — Value carried, Flag did not.
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: TypedInputs());
         var page = Render<Consults>();
-        page.FindAll("select.node-field__input")[1].Change("true");
+        page.FindAll("fluent-select.node-field__input")[1].Change("true");
 
         // Only the package stub moves: re-running WithPinnedPackage would
         // re-enter its throwing content stub while configuring it.
@@ -1448,7 +1450,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         var picker = page.FindComponent<Consultologist.Web.Shared.WorkflowEditor.WorkflowPackagePicker>();
         await page.InvokeAsync(() => picker.Instance.OnPinned.InvokeAsync());
 
-        Assert.Equal("true", page.FindAll("select.node-field__input")[1].GetAttribute("value"));
+        Assert.Equal("true", page.FindAll("fluent-select.node-field__input")[1].GetAttribute("current-value"));
     }
 
     [Fact]
@@ -1463,7 +1465,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
 
         Assert.Single(page.FindAll("fluent-text-area"));
         Assert.Empty(page.FindAll("input[type=date]"));
-        Assert.Empty(page.FindAll("select.node-field__input"));
+        Assert.Empty(page.FindAll("fluent-select.node-field__input"));
     }
 }
 
