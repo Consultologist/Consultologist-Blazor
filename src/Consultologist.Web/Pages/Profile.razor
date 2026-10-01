@@ -1099,10 +1099,14 @@
 
                         @* #859: the reverse — bring packages (a single .zip or the
                            multi-package export) back into your account. *@
-                        <label class="import-packages-button" title="Import a package .zip, or the multi-package export, into your account">
-                            Import packages…
-                            <InputFile OnChange="StageImportAsync" accept=".zip" multiple />
-                        </label>
+                        @* #877: compact Fluent button opens the picker (AnchorId); no native
+                           input. StageImportAsync is unchanged (OnInputFileChange). *@
+                        <FluentButton Id="profile-import-trigger" Appearance="Appearance.Stealth"
+                                      IconStart="@(new Icons.Regular.Size20.ArrowUpload())"
+                                      Title="Import a package .zip, or the multi-package export, into your account">Import packages…</FluentButton>
+                        <FluentInputFile AnchorId="profile-import-trigger" DragDropZoneVisible="false"
+                                         Accept=".zip" Multiple="true" MaximumFileSize="long.MaxValue" MaximumFileCount="int.MaxValue"
+                                         OnInputFileChange="StageImportAsync" />
                     </div>
 
                     @if (!string.IsNullOrWhiteSpace(importError))

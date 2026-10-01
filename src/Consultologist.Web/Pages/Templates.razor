@@ -213,10 +213,16 @@
                     </FluentButton>
                     @* #847: import a package .zip (the download's reverse) into the
                        editor for this session, then Publish it as your own. *@
-                    <label class="import-package-button" title="Import a package .zip into the editor for this session">
-                        Import package…
-                        <InputFile OnChange="ImportPackageAsync" accept=".zip" />
-                    </label>
+                    @* #877: a compact Fluent button opens the picker (AnchorId) — no native
+                       input, no drop zone. The handler is unchanged (OnInputFileChange hands
+                       it the same InputFileChangeEventArgs; the component's own size/count
+                       filtering is bypassed, so ImportPackageAsync stays the authority). *@
+                    <FluentButton Id="editor-import-trigger" Appearance="Appearance.Stealth"
+                                  IconStart="@(new Icons.Regular.Size20.ArrowUpload())"
+                                  Title="Import a package .zip into the editor for this session">Import package…</FluentButton>
+                    <FluentInputFile AnchorId="editor-import-trigger" DragDropZoneVisible="false"
+                                     Accept=".zip" MaximumFileSize="long.MaxValue" MaximumFileCount="int.MaxValue"
+                                     OnInputFileChange="ImportPackageAsync" />
                 </div>
             </div>
 

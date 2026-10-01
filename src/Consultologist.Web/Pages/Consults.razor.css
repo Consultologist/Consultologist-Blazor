@@ -343,6 +343,17 @@
 	font-size: 0.8rem;
 }
 
+/* #877: the Fluent drop zone sits inline in the upload row. FluentInputFile owns
+   the dashed border, hover fill and the drag-drop behaviour; these only give it a
+   compact footprint, the app's corner radius and a pointer cursor over the box. */
+.input-field__dropzone {
+	flex: 1 1 14rem;
+	min-width: 12rem;
+	padding: 0.5rem 0.75rem;
+	border-radius: var(--consultologist-radius-sm, 4px);
+	cursor: pointer;
+}
+
 .input-field__file-error {
 	font-size: 0.8rem;
 	color: var(--error-foreground, #a4262c);
