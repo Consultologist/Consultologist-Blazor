@@ -503,6 +503,15 @@
 	font-weight: 400;
 }
 
+/* #876: the box above (border/background/padding) is for the native date/number
+   inputs that share this class; a FluentSelect draws its own control chrome, so
+   stripping the duplicate box avoids a box-in-box. Width stays from the rule above. */
+fluent-select.node-field__input {
+	padding: 0;
+	border: none;
+	background: none;
+}
+
 /* #432: the pinned package's title, when it has one. */
 .setup-context__title {
 	font-weight: 600;

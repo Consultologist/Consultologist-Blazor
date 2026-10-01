@@ -102,7 +102,7 @@ public class ConsultsNestedIntakeTests : ClientRenderTestContext
 
         // Touching the nested group makes its required field due, and the
         // sentence walks down to it.
-        page.Find("select.node-field__input").Change("email");
+        page.Find("fluent-select.node-field__input").Change("email");
         Assert.Equal("Family history row 1: Contact: Phone is required.", Error(page));
         Assert.True(Submit(page).HasAttribute("disabled"));
         page.FindAll("fluent-text-area")[2].Change("555-0100");
@@ -198,7 +198,7 @@ public class ConsultsNestedIntakeTests : ClientRenderTestContext
         Assert.Equal(2, page.FindAll(".input-field__group--nested .input-field__row").Count);
         Assert.Equal(new[] { "62F, cough and weight loss over three months, for assessment.", "Mother", "Diabetes", "Asthma", "555-0100" },
             page.FindAll("fluent-text-area").Select(area => area.GetAttribute("current-value") ?? area.GetAttribute("value")));
-        Assert.Equal("email", page.Find("select.node-field__input").GetAttribute("value"));
+        Assert.Equal("email", page.Find("fluent-select.node-field__input").GetAttribute("current-value"));
     }
 
     [Fact]

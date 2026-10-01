@@ -1256,15 +1256,15 @@
                     }
 
                     <div class="action-row">
-                        <select class="node-field__input usage-window"
-                                value="@usageWindow"
-                                @onchange="OnUsageWindowChangedAsync"
-                                aria-label="Usage window">
-                            <option value="7">Last 7 days</option>
-                            <option value="30">Last 30 days</option>
-                            <option value="90">Last 90 days</option>
-                            <option value="custom">Custom range</option>
-                        </select>
+                        <FluentSelect TOption="string" class="node-field__input usage-window"
+                                      @bind-Value:get="usageWindow"
+                                      @bind-Value:set="OnUsageWindowChangedAsync"
+                                      aria-label="Usage window">
+                            <FluentOption TOption="string" Value="7">Last 7 days</FluentOption>
+                            <FluentOption TOption="string" Value="30">Last 30 days</FluentOption>
+                            <FluentOption TOption="string" Value="90">Last 90 days</FluentOption>
+                            <FluentOption TOption="string" Value="custom">Custom range</FluentOption>
+                        </FluentSelect>
                         @if (usageWindow == "custom")
                         {
                             <input type="date"
@@ -2486,9 +2486,11 @@
         }
     }
 
-    private async Task OnUsageWindowChangedAsync(ChangeEventArgs args)
+    // #876: FluentSelect's bound setter hands us the chosen string directly
+    // (not a ChangeEventArgs like the old native <select>).
+    private async Task OnUsageWindowChangedAsync(string? value)
     {
-        usageWindow = args.Value?.ToString() ?? "30";
+        usageWindow = value ?? "30";
 
         if (usageWindow != "custom")
         {

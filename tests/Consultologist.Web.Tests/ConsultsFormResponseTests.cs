@@ -112,7 +112,7 @@ public class ConsultsFormResponseTests : ClientRenderTestContext
 
         page.WaitForAssertion(() => Assert.Contains("Not filled:", page.Markup));
         Assert.Contains("Urgency is not one of the declared values", page.Markup);
-        Assert.DoesNotContain("As soon as the family arrives", page.FindAll("select").Select(s => s.GetAttribute("value") ?? "").ToList());
+        Assert.DoesNotContain("As soon as the family arrives", page.FindAll("fluent-select").Select(s => s.GetAttribute("current-value") ?? "").ToList());
         Assert.Contains("filled 1 from", page.Markup);
     }
 

@@ -1100,30 +1100,33 @@
       {
         @* No selection until one is made: a plausible default is still a
            value nobody chose. *@
-        <select class="node-field__input"
-                value="@slot.Value"
-                @onchange="args => slot.Value = args.Value?.ToString() ?? string.Empty"
-                aria-label="@slot.Label">
-          <option value="">choose…</option>
+        <FluentSelect TOption="string" class="node-field__input"
+                      @bind-Value="slot.Value"
+                      aria-label="@slot.Label">
+          <FluentOption TOption="string" Value="">choose…</FluentOption>
           @foreach (var option in slot.Values)
           {
-            <option value="@option">@option</option>
+            <FluentOption TOption="string" Value="@option">@option</FluentOption>
           }
-        </select>
+        </FluentSelect>
       }
       else if (slot.Type == WorkflowInputTypes.Boolean)
       {
         @* Tri-state on purpose: unanswered is not false, and a required
            boolean nobody touched must block the run rather than quietly
            submit false. *@
-        <select class="node-field__input"
-                value="@(slot.Flag is null ? string.Empty : slot.Flag.Value ? "true" : "false")"
-                @onchange="args => SetFlag(slot, args.Value?.ToString())"
-                aria-label="@slot.Label">
-          <option value="">choose…</option>
-          <option value="true">Yes</option>
-          <option value="false">No</option>
-        </select>
+        @* Explicit Value/ValueChanged (not @bind) on purpose: FluentSelect builds a
+           validation FieldIdentifier from a bind expression and only accepts a simple
+           member accessor, but the tri-state maps bool? through a conditional. The
+           empty string keeps "unanswered" distinct from "No" (SetFlag preserves it). *@
+        <FluentSelect TOption="string" class="node-field__input"
+                      Value="@(slot.Flag.HasValue ? (slot.Flag.Value ? "true" : "false") : string.Empty)"
+                      ValueChanged="@(value => SetFlag(slot, value))"
+                      aria-label="@slot.Label">
+          <FluentOption TOption="string" Value="">choose…</FluentOption>
+          <FluentOption TOption="string" Value="true">Yes</FluentOption>
+          <FluentOption TOption="string" Value="false">No</FluentOption>
+        </FluentSelect>
       }
       else if (slot.Type == WorkflowInputTypes.Number)
       {
