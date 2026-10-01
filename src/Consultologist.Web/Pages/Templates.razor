@@ -971,64 +971,64 @@
                                     @* v8: the declared type decides the intake control and
                                        what a condition can read. v9 (#429): a number, an
                                        object of fields, an array of elements. *@
-                                    <select class="node-field__input declared-row__type"
-                                            value="@WorkflowInputTypes.Of(slot)"
-                                            @onchange="args => RetypeInputAsync(slot, args.Value?.ToString())"
+                                    <FluentSelect TOption="string" class="node-field__input declared-row__type"
+                                            Value="@WorkflowInputTypes.Of(slot)"
+                                            ValueChanged="@(v => RetypeInputAsync(slot, v))"
                                             aria-label="@($"Type for input {slot.Id}")">
                                         @* A type the vocabulary does not know is shown as
                                            itself rather than as "text". *@
                                         @if (!WorkflowInputTypes.All.Contains(WorkflowInputTypes.Of(slot)))
                                         {
-                                            <option value="@WorkflowInputTypes.Of(slot)">@WorkflowInputTypes.Of(slot)</option>
+                                            <FluentOption TOption="string" Value="@WorkflowInputTypes.Of(slot)">@WorkflowInputTypes.Of(slot)</FluentOption>
                                         }
                                         @foreach (var type in WorkflowInputTypes.All)
                                         {
-                                            <option value="@type">@type</option>
+                                            <FluentOption TOption="string" Value="@type">@type</FluentOption>
                                         }
-                                    </select>
+                                    </FluentSelect>
                                     @if (WorkflowInputTypes.Of(slot) == WorkflowInputTypes.Array)
                                     {
                                         @* Explicit initialisation: an array says what its
                                            entries are, or the desk refuses the publish. *@
-                                        <select class="node-field__input declared-row__items"
-                                                value="@(slot.Items?.Type ?? string.Empty)"
-                                                @onchange="args => SetInputItemsAsync(slot, args.Value?.ToString())"
+                                        <FluentSelect TOption="string" class="node-field__input declared-row__items"
+                                                Value="@(slot.Items?.Type ?? string.Empty)"
+                                                ValueChanged="@(v => SetInputItemsAsync(slot, v))"
                                                 aria-label="@($"Items for input {slot.Id}")">
                                             @if (slot.Items is null)
                                             {
-                                                <option value="">entries of…</option>
+                                                <FluentOption TOption="string" Value="">entries of…</FluentOption>
                                             }
                                             else if (!WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion).Contains(slot.Items.Type))
                                             {
-                                                <option value="@slot.Items.Type">@slot.Items.Type</option>
+                                                <FluentOption TOption="string" Value="@slot.Items.Type">@slot.Items.Type</FluentOption>
                                             }
                                             @foreach (var element in WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion))
                                             {
-                                                <option value="@element">@element</option>
+                                                <FluentOption TOption="string" Value="@element">@element</FluentOption>
                                             }
-                                        </select>
+                                        </FluentSelect>
                                         @if (slot.Items?.Type == WorkflowInputTypes.Array)
                                         {
                                             @* v10 (#498): an array of arrays says what the inner
                                                entries are, and if those are structure the editor
                                                draws itself again beneath, to any depth. *@
-                                            <select class="node-field__input declared-row__inner-items"
-                                                    value="@(slot.Items.Items?.Type ?? string.Empty)"
-                                                    @onchange="args => SetElementTypeAsync(InnerElementPath(slot.Id), args.Value?.ToString())"
+                                            <FluentSelect TOption="string" class="node-field__input declared-row__inner-items"
+                                                    Value="@(slot.Items.Items?.Type ?? string.Empty)"
+                                                    ValueChanged="@(v => SetElementTypeAsync(InnerElementPath(slot.Id), v))"
                                                     aria-label="@($"Inner items for input {slot.Id}")">
                                                 @if (slot.Items.Items is null)
                                                 {
-                                                    <option value="">entries of entries of…</option>
+                                                    <FluentOption TOption="string" Value="">entries of entries of…</FluentOption>
                                                 }
                                                 else if (!WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion).Contains(slot.Items.Items.Type))
                                                 {
-                                                    <option value="@slot.Items.Items.Type">@slot.Items.Items.Type</option>
+                                                    <FluentOption TOption="string" Value="@slot.Items.Items.Type">@slot.Items.Items.Type</FluentOption>
                                                 }
                                                 @foreach (var element in WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion))
                                                 {
-                                                    <option value="@element">@element</option>
+                                                    <FluentOption TOption="string" Value="@element">@element</FluentOption>
                                                 }
-                                            </select>
+                                            </FluentSelect>
                                             @ElementChildren(new ElementScope(InnerElementPath(slot.Id), slot.Items.Items))
                                         }
                                     }
@@ -1038,20 +1038,20 @@
                                     @{ var channels = WorkflowExpectedContent.ForSpecVersion(EffectiveSpecVersion); }
                                     @if (channels.Count > 0)
                                     {
-                                        <select class="node-field__input declared-row__channel"
-                                                value="@(slot.ExpectedContent ?? string.Empty)"
-                                                @onchange="args => SetExpectedContentAsync(slot, args.Value?.ToString())"
+                                        <FluentSelect TOption="string" class="node-field__input declared-row__channel"
+                                                Value="@(slot.ExpectedContent ?? string.Empty)"
+                                                ValueChanged="@(v => SetExpectedContentAsync(slot, v))"
                                                 aria-label="@($"Content channel for input {slot.Id}")">
-                                            <option value="">— no channel —</option>
+                                            <FluentOption TOption="string" Value="">— no channel —</FluentOption>
                                             @if (!string.IsNullOrEmpty(slot.ExpectedContent) && !channels.Contains(slot.ExpectedContent))
                                             {
-                                                <option value="@slot.ExpectedContent">@slot.ExpectedContent</option>
+                                                <FluentOption TOption="string" Value="@slot.ExpectedContent">@slot.ExpectedContent</FluentOption>
                                             }
                                             @foreach (var channel in channels)
                                             {
-                                                <option value="@channel">@ChannelLabel(channel)</option>
+                                                <FluentOption TOption="string" Value="@channel">@ChannelLabel(channel)</FluentOption>
                                             }
-                                        </select>
+                                        </FluentSelect>
                                     }
                                     <button type="button" class="aggregate-row__button" title="Remove input"
                                             aria-label="Remove input"
@@ -1100,16 +1100,16 @@
                                                         @onclick="() => RemoveTypeArmAsync(slot, armValue)">×</button>
                                             </span>
                                         }
-                                        <select class="node-field__input declared-row__add-arm"
-                                                value=""
-                                                @onchange="args => AddTypeArmAsync(slot, args.Value?.ToString())"
+                                        <FluentSelect TOption="string" class="node-field__input declared-row__add-arm"
+                                                Value=""
+                                                ValueChanged="@(v => AddTypeArmAsync(slot, v))"
                                                 aria-label="@($"Add an accepted type to {slot.Id}")">
-                                            <option value="">add a type…</option>
+                                            <FluentOption TOption="string" Value="">add a type…</FluentOption>
                                             @foreach (var type in WorkflowInputTypes.All)
                                             {
-                                                <option value="@type">@type</option>
+                                                <FluentOption TOption="string" Value="@type">@type</FluentOption>
                                             }
-                                        </select>
+                                        </FluentSelect>
                                     </li>
                                 }
 
@@ -1168,15 +1168,15 @@
                                                value="@deliverable.Label"
                                                @onchange="args => RelabelResultAsync(deliverable, args.Value?.ToString())"
                                                aria-label="@($"Label for document {deliverable.Id}")" />
-                                        <select class="binding-row__select"
-                                                value="@deliverable.Node"
-                                                @onchange="args => RepointResultAsync(deliverable, args.Value?.ToString())"
+                                        <FluentSelect TOption="string" class="binding-row__select"
+                                                Value="@deliverable.Node"
+                                                ValueChanged="@(v => RepointResultAsync(deliverable, v))"
                                                 aria-label="@($"Node for document {deliverable.Id}")">
                                             @foreach (var candidate in DeliverableCandidates)
                                             {
-                                                <option value="@($"node:{candidate.Id}")">@candidate.Label</option>
+                                                <FluentOption TOption="string" Value="@($"node:{candidate.Id}")">@candidate.Label</FluentOption>
                                             }
-                                        </select>
+                                        </FluentSelect>
                                         <button type="button" class="aggregate-row__button" title="Remove document"
                                                 aria-label="Remove document"
                                                 disabled="@(EffectiveResults.Count == 1)"
@@ -1225,22 +1225,23 @@
                                                     {
                                                         @* v12 § 4: where the entry lands — this deliverable's
                                                            aggregator's sources; appended is the bare v11 form. *@
-                                                        <select class="binding-row__select result-macro-placement"
-                                                                @onchange="args => SetMacroPlacementAsync(deliverable, macroId, args.Value?.ToString())"
+                                                        <FluentSelect TOption="string" class="binding-row__select result-macro-placement"
+                                                                Value="@(macroEntry.IsSlot ? "slot" : macroEntry.Before != null ? $"before|{macroEntry.Before}" : macroEntry.After != null ? $"after|{macroEntry.After}" : "")"
+                                                                ValueChanged="@(v => SetMacroPlacementAsync(deliverable, macroId, v))"
                                                                 aria-label="@($"Placement for macro {macroId} in document {deliverable.Id}")">
-                                                            <option value="" selected="@(macroEntry.Before == null && macroEntry.After == null && !macroEntry.IsSlot)">appended</option>
+                                                            <FluentOption TOption="string" Value="">appended</FluentOption>
                                                             @foreach (var placementSource in DeliverableAggregateSources(deliverable))
                                                             {
-                                                                <option value="@($"before|{placementSource}")" selected="@(macroEntry.Before == placementSource)">before @placementSource</option>
-                                                                <option value="@($"after|{placementSource}")" selected="@(macroEntry.After == placementSource)">after @placementSource</option>
+                                                                <FluentOption TOption="string" Value="@($"before|{placementSource}")">before @placementSource</FluentOption>
+                                                                <FluentOption TOption="string" Value="@($"after|{placementSource}")">after @placementSource</FluentOption>
                                                             }
                                                             @* v20 § (#863): the model places the macro inline via a
                                                                [[slot:<id>]] marker it emits; a slot names no anchor. *@
                                                             @if (EffectiveSpecVersion >= 20)
                                                             {
-                                                                <option value="slot" selected="@macroEntry.IsSlot">slot (the model places it)</option>
+                                                                <FluentOption TOption="string" Value="slot">slot (the model places it)</FluentOption>
                                                             }
-                                                        </select>
+                                                        </FluentSelect>
                                                         @* v19 § 4 (#845): when the chosen section is a forEach data-fan,
                                                            anchor the macro to one of its items instead of the whole block.
                                                            A slot has no anchor (§ #863), so the fan-item picker is hidden. *@
@@ -1249,15 +1250,16 @@
                                                             var fanItems = MacroAnchorFanItems(macroEntry);
                                                             if (fanItems.Count > 0)
                                                             {
-                                                                <select class="binding-row__select result-macro-foritem"
-                                                                        @onchange="args => SetMacroForItemAsync(deliverable, macroId, args.Value?.ToString())"
+                                                                <FluentSelect TOption="string" class="binding-row__select result-macro-foritem"
+                                                                        Value="@(macroEntry.ForItem ?? "")"
+                                                                        ValueChanged="@(v => SetMacroForItemAsync(deliverable, macroId, v))"
                                                                         aria-label="@($"Fan item for macro {macroId} in document {deliverable.Id}")">
-                                                                    <option value="" selected="@(macroEntry.ForItem == null)">— whole section —</option>
+                                                                    <FluentOption TOption="string" Value="">— whole section —</FluentOption>
                                                                     @foreach (var fanItem in fanItems)
                                                                     {
-                                                                        <option value="@fanItem.Id" selected="@(macroEntry.ForItem == fanItem.Id)">@fanItem.Name</option>
+                                                                        <FluentOption TOption="string" Value="@fanItem.Id">@fanItem.Name</FluentOption>
                                                                     }
-                                                                </select>
+                                                                </FluentSelect>
                                                             }
                                                         }
                                                         <span class="result-macro-when">
@@ -1279,15 +1281,16 @@
                                             }
                                             @if (EffectiveMacros.Any(m => resultMacros.All(e => e.Id != m.Id)))
                                             {
-                                                <select class="binding-row__select result-macro-append"
-                                                        @onchange="args => AppendResultMacroAsync(deliverable, args.Value?.ToString())"
+                                                <FluentSelect TOption="string" class="binding-row__select result-macro-append"
+                                                        Value=""
+                                                        ValueChanged="@(v => AppendResultMacroAsync(deliverable, v))"
                                                         aria-label="@($"Append macro to document {deliverable.Id}")">
-                                                    <option value="">append macro…</option>
+                                                    <FluentOption TOption="string" Value="">append macro…</FluentOption>
                                                     @foreach (var candidateMacro in EffectiveMacros.Where(m => resultMacros.All(e => e.Id != m.Id)))
                                                     {
-                                                        <option value="@candidateMacro.Id">@candidateMacro.Id</option>
+                                                        <FluentOption TOption="string" Value="@candidateMacro.Id">@candidateMacro.Id</FluentOption>
                                                     }
-                                                </select>
+                                                </FluentSelect>
                                             }
                                             <label class="result-signed">
                                                 <input type="checkbox"
@@ -1300,21 +1303,22 @@
                                             {
                                                 @* v12 § 13: the deliverable's gate. An authored value not
                                                    offered shows as itself, never rewritten. *@
-                                                <select class="binding-row__select result-check"
-                                                        @onchange="args => SetResultCheckAsync(deliverable, args.Value?.ToString())"
+                                                <FluentSelect TOption="string" class="binding-row__select result-check"
+                                                        Value="@(deliverable.Check ?? "")"
+                                                        ValueChanged="@(v => SetResultCheckAsync(deliverable, v))"
                                                         aria-label="@($"Check for document {deliverable.Id}")">
-                                                    <option value="" selected="@(deliverable.Check == null)">— no check —</option>
+                                                    <FluentOption TOption="string" Value="">— no check —</FluentOption>
                                                     @foreach (var checkNode in EffectiveNodes.Where(n => n.IsCheck))
                                                     {
-                                                        <option value="@($"node:{checkNode.Id}")" selected="@(deliverable.Check == $"node:{checkNode.Id}")">@checkNode.Id</option>
+                                                        <FluentOption TOption="string" Value="@($"node:{checkNode.Id}")">@checkNode.Id</FluentOption>
                                                     }
                                                     @if (deliverable.Check is { } authoredCheck
                                                         && (!authoredCheck.StartsWith("node:", StringComparison.Ordinal)
                                                             || EffectiveNodes.All(n => !n.IsCheck || $"node:{n.Id}" != authoredCheck)))
                                                     {
-                                                        <option value="@authoredCheck" selected>@authoredCheck</option>
+                                                        <FluentOption TOption="string" Value="@authoredCheck">@authoredCheck</FluentOption>
                                                     }
-                                                </select>
+                                                </FluentSelect>
                                             }
                                         </li>
                                     }
@@ -1369,15 +1373,15 @@
                             <div class="result-selector">
                                 <label class="node-field">
                                     <span>deliverable</span>
-                                    <select class="binding-row__select"
-                                            value="@(EffectiveResultRef ?? string.Empty)"
-                                            @onchange="OnResultChangedAsync"
+                                    <FluentSelect TOption="string" class="binding-row__select"
+                                            Value="@(EffectiveResultRef ?? string.Empty)"
+                                            ValueChanged="OnResultChangedAsync"
                                             aria-label="Deliverable node">
                                         @foreach (var candidate in DeliverableCandidates)
                                         {
-                                            <option value="@($"node:{candidate.Id}")">@candidate.Label</option>
+                                            <FluentOption TOption="string" Value="@($"node:{candidate.Id}")">@candidate.Label</FluentOption>
                                         }
-                                    </select>
+                                    </FluentSelect>
                                     @if (resultEdit != null)
                                     {
                                         <span class="binding-row__pending" title="Pending change">●</span>
@@ -1520,24 +1524,24 @@
                         <div class="new-item-fields">
                             <label class="input-field">
                                 <span>kind</span>
-                                <select class="binding-row__select" @bind="newNodeKind">
-                                    <option value="prompt">prompt node</option>
+                                <FluentSelect TOption="string" class="binding-row__select" @bind-Value="newNodeKind">
+                                    <FluentOption TOption="string" Value="prompt">prompt node</FluentOption>
                                     @if (EffectiveSpecVersion >= 6)
                                     {
-                                        <option value="aggregator">aggregator</option>
+                                        <FluentOption TOption="string" Value="aggregator">aggregator</FluentOption>
                                     }
                                     @if (EffectiveSpecVersion >= 10)
                                     {
                                         @* v10 (#498): offered at 10 only — absence, the editor's gating pattern. *@
-                                        <option value="@ClassifierKind">classifier</option>
+                                        <FluentOption TOption="string" Value="@ClassifierKind">classifier</FluentOption>
                                     }
                                     @if (EffectiveSpecVersion >= 12)
                                     {
                                         @* v12 § 13/§ 15 (#621): the deterministic kinds, offered at 12 alone. *@
-                                        <option value="@CheckKind">check node</option>
-                                        <option value="@TemplateKind">template node</option>
+                                        <FluentOption TOption="string" Value="@CheckKind">check node</FluentOption>
+                                        <FluentOption TOption="string" Value="@TemplateKind">template node</FluentOption>
                                     }
-                                </select>
+                                </FluentSelect>
                             </label>
                             <label class="input-field">
                                 <span>id (lowercase, letters/digits/-/_)@(newNodePrompt.Length > 0 ? " — optional, defaults to the prompt's name" : "")</span>
@@ -1554,32 +1558,32 @@
                                    until the check is finished. *@
                                 <label class="input-field">
                                     <span>op</span>
-                                    <select class="binding-row__select new-node-check-op" @bind="newNodeCheckOp">
+                                    <FluentSelect TOption="string" class="binding-row__select new-node-check-op" @bind-Value="newNodeCheckOp">
                                         @foreach (var checkOp in PF.WorkflowCheckOps.All)
                                         {
-                                            <option value="@checkOp">@checkOp</option>
+                                            <FluentOption TOption="string" Value="@checkOp">@checkOp</FluentOption>
                                         }
-                                    </select>
+                                    </FluentSelect>
                                 </label>
                                 <label class="input-field">
                                     <span>of — the terms that must be covered</span>
-                                    <select class="binding-row__select new-node-check-of" @bind="newNodeCheckOf">
-                                        <option value="">choose…</option>
+                                    <FluentSelect TOption="string" class="binding-row__select new-node-check-of" @bind-Value="newNodeCheckOf">
+                                        <FluentOption TOption="string" Value="">choose…</FluentOption>
                                         @foreach (var (operandRef, operandLabel) in CheckOperandChoices)
                                         {
-                                            <option value="@operandRef">@operandLabel</option>
+                                            <FluentOption TOption="string" Value="@operandRef">@operandLabel</FluentOption>
                                         }
-                                    </select>
+                                    </FluentSelect>
                                 </label>
                                 <label class="input-field">
                                     <span>in — the terms that must cover them</span>
-                                    <select class="binding-row__select new-node-check-in" @bind="newNodeCheckIn">
-                                        <option value="">choose…</option>
+                                    <FluentSelect TOption="string" class="binding-row__select new-node-check-in" @bind-Value="newNodeCheckIn">
+                                        <FluentOption TOption="string" Value="">choose…</FluentOption>
                                         @foreach (var (operandRef, operandLabel) in CheckOperandChoices)
                                         {
-                                            <option value="@operandRef">@operandLabel</option>
+                                            <FluentOption TOption="string" Value="@operandRef">@operandLabel</FluentOption>
                                         }
-                                    </select>
+                                    </FluentSelect>
                                 </label>
                                 <label class="input-field">
                                     <span>fail with — the sentence a refused document carries</span>
@@ -1592,37 +1596,37 @@
                                 {
                                     <label class="input-field">
                                         <span>prompt</span>
-                                        <select class="binding-row__select" @bind="newNodePrompt">
-                                            <option value="">new prompt (named after the node)</option>
+                                        <FluentSelect TOption="string" class="binding-row__select" @bind-Value="newNodePrompt">
+                                            <FluentOption TOption="string" Value="">new prompt (named after the node)</FluentOption>
                                             @foreach (var existingPrompt in EffectivePrompts)
                                             {
-                                                <option value="@existingPrompt.Id">@existingPrompt.Id</option>
+                                                <FluentOption TOption="string" Value="@existingPrompt.Id">@existingPrompt.Id</FluentOption>
                                             }
-                                        </select>
+                                        </FluentSelect>
                                     </label>
                                 }
                                 @if (newNodeKind != ClassifierKind)
                                 {
                                 <label class="input-field">
                                     <span>for each</span>
-                                    <select class="binding-row__select" @bind="newNodeForEach" aria-label="New node forEach">
-                                        <option value="">— runs once —</option>
+                                    <FluentSelect TOption="string" class="binding-row__select" @bind-Value="newNodeForEach" aria-label="New node forEach">
+                                        <FluentOption TOption="string" Value="">— runs once —</FluentOption>
                                         @foreach (var option in WorkflowNodeSummary.ForEachOptions(CollectionIds, ArrayInputIds))
                                         {
-                                            <option value="@option">@option</option>
+                                            <FluentOption TOption="string" Value="@option">@option</FluentOption>
                                         }
-                                    </select>
+                                    </FluentSelect>
                                 </label>
                                 <label class="input-field">
                                     <span>output</span>
-                                    <select class="binding-row__select" @bind="newNodeOutput">
+                                    <FluentSelect TOption="string" class="binding-row__select" @bind-Value="newNodeOutput">
                                         @* #825/#827: kind-filtered options — "— rendered —" for a
                                            template (no model), answer-only contracts excluded from it. *@
                                         @foreach (var (value, label) in WorkflowNodeSummary.NodeOutputOptions(newNodeKind == TemplateKind, ContractOptions))
                                         {
-                                            <option value="@value">@label</option>
+                                            <FluentOption TOption="string" Value="@value">@label</FluentOption>
                                         }
-                                    </select>
+                                    </FluentSelect>
                                 </label>
                                 @if (newNodeKind == TemplateKind)
                                 {
@@ -1815,13 +1819,13 @@
                                     <li class="prompt-variable-row prompt-variable-row--add">
                                         <input class="variable-chips__input" placeholder="new_variable" @bind="newVariableName" aria-label="New variable name" />
                                         <span aria-hidden="true">←</span>
-                                        <select class="prompt-variable-row__select" @bind="newVariableSource" aria-label="New variable source">
-                                            <option value="">choose source…</option>
+                                        <FluentSelect TOption="string" class="prompt-variable-row__select" @bind-Value="newVariableSource" aria-label="New variable source">
+                                            <FluentOption TOption="string" Value="">choose source…</FluentOption>
                                             @foreach (var option in FirstUsingNodeOptions(prompt))
                                             {
-                                                <option value="@option">@option</option>
+                                                <FluentOption TOption="string" Value="@option">@option</FluentOption>
                                             }
-                                        </select>
+                                        </FluentSelect>
                                         <button type="button" class="variable-chips__add" @onclick="() => AddVariableFromPromptAsync(prompt)">Add</button>
                                     </li>
                                 </ul>
@@ -1851,20 +1855,20 @@
                                 var chosenPrelude = EffectivePromptPrelude(prompt.Id);
                                 <label class="prompt-prelude node-field">
                                     <span>shared prelude</span>
-                                    <select class="binding-row__select"
-                                            value="@(chosenPrelude ?? string.Empty)"
-                                            @onchange="args => SetPromptPreludeAsync(prompt.Id, args.Value?.ToString())"
+                                    <FluentSelect TOption="string" class="binding-row__select"
+                                            Value="@(chosenPrelude ?? string.Empty)"
+                                            ValueChanged="@(v => SetPromptPreludeAsync(prompt.Id, v))"
                                             aria-label="@($"Prelude for prompt {prompt.Id}")">
-                                        <option value="">— none —</option>
+                                        <FluentOption TOption="string" Value="">— none —</FluentOption>
                                         @if (chosenPrelude != null && !LivePreludes.Any(option => option.Id == chosenPrelude))
                                         {
-                                            <option value="@chosenPrelude">@chosenPrelude</option>
+                                            <FluentOption TOption="string" Value="@chosenPrelude">@chosenPrelude</FluentOption>
                                         }
                                         @foreach (var option in LivePreludes)
                                         {
-                                            <option value="@option.Id">@option.Id</option>
+                                            <FluentOption TOption="string" Value="@option.Id">@option.Id</FluentOption>
                                         }
-                                    </select>
+                                    </FluentSelect>
                                 </label>
                             }
                         </WorkflowEditorPane>
@@ -1920,13 +1924,14 @@
                                     {
                                         @* Explicit init: checking optional never invents a
                                            default — publish is refused until one is chosen. *@
-                                        <select class="binding-row__select macro-default"
-                                                @onchange="args => SetMacroDefaultAsync(macro.Id, args.Value?.ToString())"
+                                        <FluentSelect TOption="string" class="binding-row__select macro-default"
+                                                Value="@(effectiveMacro.Default == true ? "true" : effectiveMacro.Default == false ? "false" : "")"
+                                                ValueChanged="@(v => SetMacroDefaultAsync(macro.Id, v))"
                                                 aria-label="@($"Default for macro {macro.Id}")">
-                                            <option value="" selected="@(effectiveMacro.Default == null)">choose a default…</option>
-                                            <option value="true" selected="@(effectiveMacro.Default == true)">appended unless declined</option>
-                                            <option value="false" selected="@(effectiveMacro.Default == false)">omitted unless asked</option>
-                                        </select>
+                                            <FluentOption TOption="string" Value="">choose a default…</FluentOption>
+                                            <FluentOption TOption="string" Value="true">appended unless declined</FluentOption>
+                                            <FluentOption TOption="string" Value="false">omitted unless asked</FluentOption>
+                                        </FluentSelect>
                                     }
                                 </div>
                             }
@@ -2031,12 +2036,12 @@
             </label>
             @if (group.Items.Count > 1)
             {
-              <select class="node-field__input condition-group__join" value="@group.Join"
-                      @onchange="args => SetGroupJoinAsync(scope.Target, scope.Path, args.Value?.ToString())"
+              <FluentSelect TOption="string" class="node-field__input condition-group__join" Value="@group.Join"
+                      ValueChanged="@(v => SetGroupJoinAsync(scope.Target, scope.Path, v))"
                       aria-label="@($"Condition join for {documentId}{suffix}")">
-                <option value="and">all of</option>
-                <option value="or">any of</option>
-              </select>
+                <FluentOption TOption="string" Value="and">all of</FluentOption>
+                <FluentOption TOption="string" Value="or">any of</FluentOption>
+              </FluentSelect>
             }
           </span>
         }
@@ -2096,51 +2101,51 @@
                    aria-label="@($"Negate condition for {documentId}{suffix}")" /> not
           </label>
         }
-        <select class="node-field__input"
-                value="@clause.Operand"
-                @onchange="args => SetClauseOperandAsync(scope.Target, scope.Path, args.Value?.ToString())"
+        <FluentSelect TOption="string" class="node-field__input"
+                Value="@clause.Operand"
+                ValueChanged="@(v => SetClauseOperandAsync(scope.Target, scope.Path, v))"
                 aria-label="@($"Condition operand for {documentId}{suffix}")">
           @* The sole clause's empty choice is the null condition; a clause
              beside others has no meaning until chosen — never a default. *@
-          <option value="">@(single ? "always produced" : "choose…")</option>
+          <FluentOption TOption="string" Value="">@(single ? "always produced" : "choose…")</FluentOption>
           @if (!clause.IsEmpty && operand is null)
           {
             @* A loaded condition naming something not offered
                here — shown as itself, never rewritten. *@
-            <option value="@clause.Operand">when @clause.Operand</option>
+            <FluentOption TOption="string" Value="@clause.Operand">when @clause.Operand</FluentOption>
           }
           @foreach (var candidate in ConditionOperands)
           {
-            <option value="@candidate.Key">when @candidate.Key</option>
+            <FluentOption TOption="string" Value="@candidate.Key">when @candidate.Key</FluentOption>
           }
-        </select>
+        </FluentSelect>
 
         @if (operand is { } tested)
         {
           @if (v10 && tested.Type is WorkflowInputTypes.Number or CountType)
           {
-            <select class="node-field__input condition-clause__arithmetic"
-                    value="@(clause.Arithmetic?.Op.ToString() ?? string.Empty)"
-                    @onchange="args => SetClauseArithmeticAsync(scope.Target, scope.Path, args.Value?.ToString())"
+            <FluentSelect TOption="string" class="node-field__input condition-clause__arithmetic"
+                    Value="@(clause.Arithmetic?.Op.ToString() ?? string.Empty)"
+                    ValueChanged="@(v => SetClauseArithmeticAsync(scope.Target, scope.Path, v))"
                     aria-label="@($"Condition arithmetic for {documentId}{suffix}")">
-              <option value="">as is</option>
-              <option value="+">plus</option>
-              <option value="-">minus</option>
-              <option value="*">times</option>
-              <option value="/">divided by</option>
-            </select>
+              <FluentOption TOption="string" Value="">as is</FluentOption>
+              <FluentOption TOption="string" Value="+">plus</FluentOption>
+              <FluentOption TOption="string" Value="-">minus</FluentOption>
+              <FluentOption TOption="string" Value="*">times</FluentOption>
+              <FluentOption TOption="string" Value="/">divided by</FluentOption>
+            </FluentSelect>
             @if (clause.Arithmetic is { } arithmetic)
             {
-              <select class="node-field__input"
-                      value="@(arithmetic.RightIsLiteral ? string.Empty : arithmetic.Right)"
-                      @onchange="args => SetClauseArithmeticRightAsync(scope.Target, scope.Path, args.Value?.ToString(), literal: null)"
+              <FluentSelect TOption="string" class="node-field__input"
+                      Value="@(arithmetic.RightIsLiteral ? string.Empty : arithmetic.Right)"
+                      ValueChanged="@(v => SetClauseArithmeticRightAsync(scope.Target, scope.Path, v, literal: null))"
                       aria-label="@($"Condition arithmetic operand for {documentId}{suffix}")">
-                <option value="">a number…</option>
+                <FluentOption TOption="string" Value="">a number…</FluentOption>
                 @foreach (var candidate in arithmeticOperands)
                 {
-                  <option value="@candidate.Key">@candidate.Key</option>
+                  <FluentOption TOption="string" Value="@candidate.Key">@candidate.Key</FluentOption>
                 }
-              </select>
+              </FluentSelect>
               @if (arithmetic.RightIsLiteral)
               {
                 <input type="text" inputmode="decimal" class="node-field__input declared-row__literal"
@@ -2156,36 +2161,36 @@
           }
           else
           {
-            <select class="node-field__input"
-                    value="@(clause.Operator ?? "==")"
-                    @onchange="args => SetClauseOperatorAsync(scope.Target, scope.Path, args.Value?.ToString())"
+            <FluentSelect TOption="string" class="node-field__input"
+                    Value="@(clause.Operator ?? "==")"
+                    ValueChanged="@(v => SetClauseOperatorAsync(scope.Target, scope.Path, v))"
                     aria-label="@($"Condition operator for {documentId}{suffix}")">
               @foreach (var symbol in OperatorsFor(tested.Type))
               {
-                <option value="@symbol">@OperatorWord(symbol)</option>
+                <FluentOption TOption="string" Value="@symbol">@OperatorWord(symbol)</FluentOption>
               }
-            </select>
+            </FluentSelect>
             @if (tested.Type == WorkflowInputTypes.Boolean)
             {
-              <select class="node-field__input declared-row__literal"
-                      value="@clause.Literal"
-                      @onchange="args => SetClauseLiteralAsync(scope.Target, scope.Path, args.Value?.ToString())"
+              <FluentSelect TOption="string" class="node-field__input declared-row__literal"
+                      Value="@clause.Literal"
+                      ValueChanged="@(v => SetClauseLiteralAsync(scope.Target, scope.Path, v))"
                       aria-label="@($"Condition value for {documentId}{suffix}")">
-                <option value="true">true</option>
-                <option value="false">false</option>
-              </select>
+                <FluentOption TOption="string" Value="true">true</FluentOption>
+                <FluentOption TOption="string" Value="false">false</FluentOption>
+              </FluentSelect>
             }
             else if (tested.Type is WorkflowInputTypes.Enum or NodeValueType)
             {
-              <select class="node-field__input declared-row__literal"
-                      value="@clause.Literal"
-                      @onchange="args => SetClauseLiteralAsync(scope.Target, scope.Path, args.Value?.ToString())"
+              <FluentSelect TOption="string" class="node-field__input declared-row__literal"
+                      Value="@clause.Literal"
+                      ValueChanged="@(v => SetClauseLiteralAsync(scope.Target, scope.Path, v))"
                       aria-label="@($"Condition value for {documentId}{suffix}")">
                 @foreach (var option in tested.Values ?? Array.Empty<string>())
                 {
-                  <option value="@option">@option</option>
+                  <FluentOption TOption="string" Value="@option">@option</FluentOption>
                 }
-              </select>
+              </FluentSelect>
             }
             else if (tested.Type == WorkflowInputTypes.Date)
             {
@@ -2247,57 +2252,57 @@
                                  aria-label="@($"Required for field {path}")" />
                           required
                       </label>
-                      <select class="node-field__input declared-field__type"
-                              value="@WorkflowInputTypes.Of(member)"
-                              @onchange="args => RetypeFieldAsync(owner, member, args.Value?.ToString())"
+                      <FluentSelect TOption="string" class="node-field__input declared-field__type"
+                              Value="@WorkflowInputTypes.Of(member)"
+                              ValueChanged="@(v => RetypeFieldAsync(owner, member, v))"
                               aria-label="@($"Type for field {path}")">
                           @if (!WorkflowInputTypes.ScalarsFor(EffectiveSpecVersion).Contains(WorkflowInputTypes.Of(member)))
                           {
-                              <option value="@WorkflowInputTypes.Of(member)">@WorkflowInputTypes.Of(member)</option>
+                              <FluentOption TOption="string" Value="@WorkflowInputTypes.Of(member)">@WorkflowInputTypes.Of(member)</FluentOption>
                           }
                           @foreach (var fieldType in WorkflowInputTypes.ScalarsFor(EffectiveSpecVersion))
                           {
-                              <option value="@fieldType">@fieldType</option>
+                              <FluentOption TOption="string" Value="@fieldType">@fieldType</FluentOption>
                           }
-                      </select>
+                      </FluentSelect>
                       @if (WorkflowInputTypes.Of(member) == WorkflowInputTypes.Array)
                       {
-                          <select class="node-field__input declared-field__items"
-                                  value="@(member.Items?.Type ?? string.Empty)"
-                                  @onchange="args => SetFieldItemsAsync(owner, member, args.Value?.ToString())"
+                          <FluentSelect TOption="string" class="node-field__input declared-field__items"
+                                  Value="@(member.Items?.Type ?? string.Empty)"
+                                  ValueChanged="@(v => SetFieldItemsAsync(owner, member, v))"
                                   aria-label="@($"Items for field {path}")">
                               @if (member.Items is null)
                               {
-                                  <option value="">entries of…</option>
+                                  <FluentOption TOption="string" Value="">entries of…</FluentOption>
                               }
                               else if (!WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion).Contains(member.Items.Type))
                               {
-                                  <option value="@member.Items.Type">@member.Items.Type</option>
+                                  <FluentOption TOption="string" Value="@member.Items.Type">@member.Items.Type</FluentOption>
                               }
                               @foreach (var element in WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion))
                               {
-                                  <option value="@element">@element</option>
+                                  <FluentOption TOption="string" Value="@element">@element</FluentOption>
                               }
-                          </select>
+                          </FluentSelect>
                           @if (member.Items?.Type == WorkflowInputTypes.Array)
                           {
-                              <select class="node-field__input declared-field__inner-items"
-                                      value="@(member.Items.Items?.Type ?? string.Empty)"
-                                      @onchange="args => SetElementTypeAsync(InnerElementPath(path), args.Value?.ToString())"
+                              <FluentSelect TOption="string" class="node-field__input declared-field__inner-items"
+                                      Value="@(member.Items.Items?.Type ?? string.Empty)"
+                                      ValueChanged="@(v => SetElementTypeAsync(InnerElementPath(path), v))"
                                       aria-label="@($"Inner items for field {path}")">
                                   @if (member.Items.Items is null)
                                   {
-                                      <option value="">entries of entries of…</option>
+                                      <FluentOption TOption="string" Value="">entries of entries of…</FluentOption>
                                   }
                                   else if (!WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion).Contains(member.Items.Items.Type))
                                   {
-                                      <option value="@member.Items.Items.Type">@member.Items.Items.Type</option>
+                                      <FluentOption TOption="string" Value="@member.Items.Items.Type">@member.Items.Items.Type</FluentOption>
                                   }
                                   @foreach (var element in WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion))
                                   {
-                                      <option value="@element">@element</option>
+                                      <FluentOption TOption="string" Value="@element">@element</FluentOption>
                                   }
-                              </select>
+                              </FluentSelect>
                               @ElementChildren(new ElementScope(InnerElementPath(path), member.Items.Items))
                           }
                       }
@@ -2358,23 +2363,23 @@
   /// </summary>
   private RenderFragment<ElementScope> ElementEditor => scope =>
     @<text>
-      <select class="node-field__input declared-element__type"
-              value="@(scope.Element?.Type ?? string.Empty)"
-              @onchange="args => SetElementTypeAsync(scope.Path, args.Value?.ToString())"
+      <FluentSelect TOption="string" class="node-field__input declared-element__type"
+              Value="@(scope.Element?.Type ?? string.Empty)"
+              ValueChanged="@(v => SetElementTypeAsync(scope.Path, v))"
               aria-label="@($"Inner items for element {scope.Path}")">
           @if (scope.Element is null)
           {
-              <option value="">entries of entries of…</option>
+              <FluentOption TOption="string" Value="">entries of entries of…</FluentOption>
           }
           else if (!WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion).Contains(scope.Element.Type))
           {
-              <option value="@scope.Element.Type">@scope.Element.Type</option>
+              <FluentOption TOption="string" Value="@scope.Element.Type">@scope.Element.Type</FluentOption>
           }
           @foreach (var element in WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion))
           {
-              <option value="@element">@element</option>
+              <FluentOption TOption="string" Value="@element">@element</FluentOption>
           }
-      </select>
+      </FluentSelect>
       @ElementChildren(scope)
     </text>;
 
@@ -6697,10 +6702,9 @@
         await PendingChangedAsync();
     }
 
-    private async Task OnResultChangedAsync(ChangeEventArgs args)
+    // #904: FluentSelect's ValueChanged hands us the chosen string directly.
+    private async Task OnResultChangedAsync(string? selected)
     {
-        var selected = args.Value?.ToString();
-
         if (string.IsNullOrEmpty(selected))
         {
             return;
