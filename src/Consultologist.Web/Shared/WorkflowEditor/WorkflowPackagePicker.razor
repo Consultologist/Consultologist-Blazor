@@ -35,11 +35,15 @@
                     @foreach (var tag in allTags)
                     {
                         var isActive = string.Equals(tag, activeTag, StringComparison.OrdinalIgnoreCase);
-                        <button type="button"
-                                class="package-picker__tag @(isActive ? "package-picker__tag--active" : "")"
-                                aria-pressed="@(isActive ? "true" : "false")"
-                                disabled="@Disabled"
-                                @onclick="() => ToggleTag(tag)">@tag</button>
+                        @* #908: Fluent toggle chip — Accent when the filter is active,
+                           Outline otherwise (matching the old filled/outlined pill). The
+                           class carries the pill shape (below) + the test hooks; aria-pressed
+                           stays a string so it reads "true"/"false". *@
+                        <FluentButton Appearance="@(isActive ? Appearance.Accent : Appearance.Outline)"
+                                      Class="@($"package-picker__tag{(isActive ? " package-picker__tag--active" : "")}")"
+                                      aria-pressed="@(isActive ? "true" : "false")"
+                                      Disabled="@Disabled"
+                                      OnClick="@(() => ToggleTag(tag))">@tag</FluentButton>
                     }
                 </span>
             }
