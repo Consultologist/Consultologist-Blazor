@@ -162,12 +162,12 @@ public class TemplatesEditorTests : ClientRenderTestContext
     {
         var page = RenderEditor();
 
-        var select = page.Find(".result-selector select");
+        var select = page.Find(".result-selector fluent-select");
         var options = select.QuerySelectorAll("option, fluent-option").Select(o => o.GetAttribute("value")).ToArray();
 
         // v6: aggregators are the candidates; the fan node is not one.
         Assert.Equal(new[] { "node:assemble-note" }, options);
-        Assert.Equal("node:assemble-note", select.GetAttribute("value"));
+        Assert.Equal("node:assemble-note", select.GetAttribute("current-value"));
     }
 
     [Fact]
@@ -192,7 +192,7 @@ public class TemplatesEditorTests : ClientRenderTestContext
 
         // The editor diffs against the manifest rather than counting
         // interactions, so re-selecting the current deliverable is not a change.
-        page.Find(".result-selector select").Change("node:assemble-note");
+        page.Find(".result-selector fluent-select").Change("node:assemble-note");
 
         Assert.Empty(page.FindAll(".binding-row__pending"));
         Assert.All(

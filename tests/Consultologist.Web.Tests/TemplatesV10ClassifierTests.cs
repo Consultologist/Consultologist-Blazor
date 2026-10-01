@@ -73,11 +73,11 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
     {
         var at10 = RenderEditor(EditorFixtures.V10Nested());
         Navigate(at10, "+ Node");
-        Assert.Contains("classifier", Options(at10, ".new-item-fields select"));
+        Assert.Contains("classifier", Options(at10, ".new-item-fields fluent-select"));
 
         var at9 = RenderEditor(EditorFixtures.V9Structured());
         Navigate(at9, "+ Node");
-        Assert.DoesNotContain("classifier", Options(at9, ".new-item-fields select"));
+        Assert.DoesNotContain("classifier", Options(at9, ".new-item-fields fluent-select"));
     }
 
     [Fact]
@@ -86,9 +86,9 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V10Nested());
         CapturePublish();
         Navigate(page, "+ Node");
-        page.Find(".new-item-fields select").Change("classifier");
+        page.Find(".new-item-fields fluent-select").Change("classifier");
         // No forEach and no output for a classifier.
-        Assert.Empty(page.FindAll("select[aria-label='New node forEach']"));
+        Assert.Empty(page.FindAll("fluent-select[aria-label='New node forEach']"));
         page.Find("fluent-text-field[placeholder='summarize-guidelines']").Change("scope");
         page.Find("fluent-text-field[placeholder='Summarizing guidelines']").Change("Is it in scope?");
         page.FindAll("fluent-button").First(button => button.TextContent.Contains("Add node") || button.TextContent.Contains("Create")).Click();
@@ -245,10 +245,10 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V10Classifier());
         Navigate(page, "Documents");
 
-        Assert.Contains("node:scope", Options(page, "select[aria-label='Condition operand for consult_note']"));
-        Assert.Equal(new[] { "==", "!=" }, Options(page, "select[aria-label='Condition operator for consult_note']"));
-        Assert.Equal(new[] { "in_scope", "out_of_scope" }, Options(page, "select[aria-label='Condition value for consult_note']"));
-        Assert.Equal("in_scope", page.Find("select[aria-label='Condition value for consult_note']").GetAttribute("value"));
+        Assert.Contains("node:scope", Options(page, "fluent-select[aria-label='Condition operand for consult_note']"));
+        Assert.Equal(new[] { "==", "!=" }, Options(page, "fluent-select[aria-label='Condition operator for consult_note']"));
+        Assert.Equal(new[] { "in_scope", "out_of_scope" }, Options(page, "fluent-select[aria-label='Condition value for consult_note']"));
+        Assert.Equal("in_scope", page.Find("fluent-select[aria-label='Condition value for consult_note']").GetAttribute("current-value"));
     }
 
     [Fact]
@@ -257,8 +257,8 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V10Classifier());
         CapturePublish();
         Navigate(page, "Documents");
-        page.Find("select[aria-label='Condition operator for consult_note']").Change("!=");
-        page.Find("select[aria-label='Condition value for consult_note']").Change("out_of_scope");
+        page.Find("fluent-select[aria-label='Condition operator for consult_note']").Change("!=");
+        page.Find("fluent-select[aria-label='Condition value for consult_note']").Change("out_of_scope");
         Publish(page);
 
         Assert.NotNull(sent);
@@ -282,7 +282,7 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
                 """);
         var page = RenderEditor(package);
         Navigate(page, "Documents");
-        Assert.DoesNotContain(Options(page, "select[aria-label='Condition operand for consult_note']"), key => key?.StartsWith("node:") == true);
+        Assert.DoesNotContain(Options(page, "fluent-select[aria-label='Condition operand for consult_note']"), key => key?.StartsWith("node:") == true);
     }
 
     [Theory]

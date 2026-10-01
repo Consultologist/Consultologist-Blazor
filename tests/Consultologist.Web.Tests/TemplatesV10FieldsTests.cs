@@ -51,7 +51,7 @@ public class TemplatesV10FieldsTests : ClientRenderTestContext
         JsonDocument.Parse(request.Manifest.GetRawText()).RootElement.GetProperty("inputs");
 
     private static IEnumerable<string?> Options(IRenderedComponent<Templates> page, string aria) =>
-        page.Find($"select[aria-label='{aria}']").QuerySelectorAll("option, fluent-option").Select(option => option.GetAttribute("value"));
+        page.Find($"fluent-select[aria-label='{aria}']").QuerySelectorAll("option, fluent-option").Select(option => option.GetAttribute("value"));
 
     [Fact]
     public void ANestedDeclaration_DrawsAnEditorAtEveryLevel()
@@ -62,15 +62,15 @@ public class TemplatesV10FieldsTests : ClientRenderTestContext
         // The array-of-object's fields, and beneath them the array field's
         // element picker and the object field's own editor.
         Assert.NotNull(page.Find("li.declared-row__fields[data-fields-for='family_history']"));
-        Assert.Equal("text", page.Find("select[aria-label='Items for field family_history.conditions']").GetAttribute("value"));
+        Assert.Equal("text", page.Find("fluent-select[aria-label='Items for field family_history.conditions']").GetAttribute("current-value"));
         Assert.NotNull(page.Find("li.declared-row__fields[data-fields-for='family_history.contact']"));
         Assert.NotNull(page.Find("li.declared-field[data-field='family_history.contact.phone']"));
         Assert.Equal(new[] { "phone", "email" },
             page.FindAll("li.declared-field__values[data-values-for='family_history.contact.preferred'] [data-field-enum-value]").Select(chip => chip.GetAttribute("data-field-enum-value")));
 
         // An array of arrays shows its inner element.
-        Assert.Equal("array", page.Find("select[aria-label='Items for input grid']").GetAttribute("value"));
-        Assert.Equal("number", page.Find("select[aria-label='Inner items for input grid']").GetAttribute("value"));
+        Assert.Equal("array", page.Find("fluent-select[aria-label='Items for input grid']").GetAttribute("current-value"));
+        Assert.Equal("number", page.Find("fluent-select[aria-label='Inner items for input grid']").GetAttribute("current-value"));
     }
 
     [Fact]
@@ -120,23 +120,23 @@ public class TemplatesV10FieldsTests : ClientRenderTestContext
 
         // Explicit initialisation at every level: an object field starts
         // with no fields, an array field with no entry type.
-        page.Find("select[aria-label='Type for field family_history.contact.phone']").Change(WorkflowInputTypes.Object);
+        page.Find("fluent-select[aria-label='Type for field family_history.contact.phone']").Change(WorkflowInputTypes.Object);
         Publish(page);
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains("Input 'family_history' field 'contact.phone' is an object and must declare at least one field.", Refusals(page));
 
         page.Find("input[aria-label='New field id for family_history.contact.phone']").Change("number");
         page.Find("li.declared-row__fields[data-fields-for='family_history.contact.phone'] button.variable-chips__add").Click();
-        page.Find("select[aria-label='Type for field family_history.contact.phone.number']").Change(WorkflowInputTypes.Array);
+        page.Find("fluent-select[aria-label='Type for field family_history.contact.phone.number']").Change(WorkflowInputTypes.Array);
         Publish(page);
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains("Input 'family_history' field 'contact.phone.number' is an array and must declare what its entries are.", Refusals(page));
 
-        page.Find("select[aria-label='Items for field family_history.contact.phone.number']").Change(WorkflowInputTypes.Array);
+        page.Find("fluent-select[aria-label='Items for field family_history.contact.phone.number']").Change(WorkflowInputTypes.Array);
         Publish(page);
         Assert.Contains("Input 'family_history' field 'contact.phone.number' is an array of arrays and must declare what the inner entries are.", Refusals(page));
 
-        page.Find("select[aria-label='Inner items for field family_history.contact.phone.number']").Change(WorkflowInputTypes.Number);
+        page.Find("fluent-select[aria-label='Inner items for field family_history.contact.phone.number']").Change(WorkflowInputTypes.Number);
         Publish(page);
 
         Assert.NotNull(sent);

@@ -60,10 +60,10 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V8());
         UpgradeTo(page, 20);
         Navigate(page, "Inputs");
-        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
+        page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
 
-        var items = page.Find("select.declared-row__items");
-        Assert.Equal("", items.GetAttribute("value"));
+        var items = page.Find("fluent-select.declared-row__items");
+        Assert.Equal("", items.GetAttribute("current-value"));
         Assert.Equal("entries of…", items.QuerySelector("option, fluent-option")!.TextContent);
 
         Publish(page);
@@ -78,8 +78,8 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V8());
         UpgradeTo(page, 20);
         Navigate(page, "Inputs");
-        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
-        page.Find("select.declared-row__items").Change(WorkflowInputTypes.Object);
+        page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
+        page.Find("fluent-select.declared-row__items").Change(WorkflowInputTypes.Object);
 
         var editor = page.Find("li.declared-row__fields[data-fields-for=prior_notes]");
         Assert.Empty(editor.QuerySelectorAll("li.declared-field"));
@@ -88,7 +88,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         page.FindAll("button").First(button => button.TextContent.Trim() == "+ Field").Click();
         page.Find("input[aria-label='New field id for prior_notes']").Change("kind");
         page.FindAll("button").First(button => button.TextContent.Trim() == "+ Field").Click();
-        page.Find("select[aria-label='Type for field prior_notes.kind']").Change(WorkflowInputTypes.Enum);
+        page.Find("fluent-select[aria-label='Type for field prior_notes.kind']").Change(WorkflowInputTypes.Enum);
         page.Find("input[aria-label='Add a value to prior_notes.kind']").Change("clinic");
         page.Find("input[aria-label='Add a value to prior_notes.kind']").Change("ward");
         page.Find("input[aria-label='Required for field prior_notes.kind']").Change(false);
@@ -132,7 +132,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V8());
         UpgradeTo(page, 20);
         Navigate(page, "Inputs");
-        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Object);
+        page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Object);
 
         if (emptied)
         {
@@ -153,8 +153,8 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V8());
         UpgradeTo(page, 20);
         Navigate(page, "Inputs");
-        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
-        page.Find("select.declared-row__items").Change(WorkflowInputTypes.Enum);
+        page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
+        page.Find("fluent-select.declared-row__items").Change(WorkflowInputTypes.Enum);
         page.Find("li.declared-row__values input").Change("clinic");
         page.Find("li.declared-row__values input").Change("ward");
 
@@ -192,10 +192,10 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         Navigate(page, "Inputs");
 
         Assert.True(page.Find("li.declared-field[data-field='patient.age'] button[title='Remove field']").HasAttribute("disabled"));
-        page.Find("select[aria-label='Type for field patient.age']").Change(WorkflowInputTypes.Text);
+        page.Find("fluent-select[aria-label='Type for field patient.age']").Change(WorkflowInputTypes.Text);
 
         Assert.Contains("Field 'patient.age' is tested by 'Consultation note'; change that document's condition first.", page.Find("p.editor-warning").TextContent);
-        Assert.Equal(WorkflowInputTypes.Number, page.Find("select[aria-label='Type for field patient.age']").GetAttribute("value"));
+        Assert.Equal(WorkflowInputTypes.Number, page.Find("fluent-select[aria-label='Type for field patient.age']").GetAttribute("current-value"));
     }
 
     [Fact]
@@ -222,10 +222,10 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var page = RenderEditor(package);
         Navigate(page, "Inputs");
 
-        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Text);
+        page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Text);
 
         Assert.Contains("Input 'prior_notes' is tested by 'Consultation note'", page.Find("p.editor-warning").TextContent);
-        Assert.Equal(WorkflowInputTypes.Array, page.FindAll("select.declared-row__type")[1].GetAttribute("value"));
+        Assert.Equal(WorkflowInputTypes.Array, page.FindAll("fluent-select.declared-row__type")[1].GetAttribute("current-value"));
     }
 
     // ----- the results editor at 9 -----------------------------------------
@@ -245,7 +245,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         // Declaration order: prior_notes, patient, labs.
         Assert.Equal(
             new[] { "", "count(prior_notes)", "prior_notes", "patient.age", "patient.sex", "count(labs)", "labs" },
-            Options(page, "select[aria-label='Condition operand for consult_note']"));
+            Options(page, "fluent-select[aria-label='Condition operand for consult_note']"));
     }
 
     [Fact]
@@ -254,9 +254,9 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V9Structured());
         Navigate(page, "Documents");
 
-        page.Find("select[aria-label='Condition operand for consult_note']").Change("patient.age");
+        page.Find("fluent-select[aria-label='Condition operand for consult_note']").Change("patient.age");
 
-        var operators = page.Find("select[aria-label='Condition operator for consult_note']");
+        var operators = page.Find("fluent-select[aria-label='Condition operator for consult_note']");
         Assert.Equal(new[] { "==", "!=", ">", "<", ">=", "<=" }, operators.QuerySelectorAll("option, fluent-option").Select(o => o.GetAttribute("value")));
         Assert.Equal(
             new[] { "is", "is not", "is more than", "is less than", "is at least", "is at most" },
@@ -279,10 +279,10 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V9Structured());
         Navigate(page, "Documents");
 
-        page.Find("select[aria-label='Condition operand for consult_note']").Change(operand);
+        page.Find("fluent-select[aria-label='Condition operand for consult_note']").Change(operand);
         if (op != null)
         {
-            page.Find("select[aria-label='Condition operator for consult_note']").Change(op);
+            page.Find("fluent-select[aria-label='Condition operator for consult_note']").Change(op);
             page.Find("[aria-label='Condition value for consult_note']").Change(literal!);
         }
 
@@ -306,15 +306,15 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         Navigate(page, "Inputs");
         page.Find("input[aria-label='New input id']").Change("seen_on");
         page.FindAll("button").First(button => button.TextContent.Trim() == "+ Input").Click();
-        page.FindAll("select.declared-row__type").Last().Change(WorkflowInputTypes.Date);
+        page.FindAll("fluent-select.declared-row__type").Last().Change(WorkflowInputTypes.Date);
         Navigate(page, "Documents");
 
-        page.Find("select[aria-label='Condition operand for consult_note']").Change("seen_on");
-        page.Find("select[aria-label='Condition operator for consult_note']").Change(">=");
+        page.Find("fluent-select[aria-label='Condition operand for consult_note']").Change("seen_on");
+        page.Find("fluent-select[aria-label='Condition operator for consult_note']").Change(">=");
         page.Find("input[aria-label='Condition value for consult_note']").Change("2026-01-01");
 
         Assert.Equal("date", page.Find("input[aria-label='Condition value for consult_note']").GetAttribute("type"));
-        Assert.Contains("when seen_on", page.Find("select[aria-label='Condition operand for consult_note']").TextContent);
+        Assert.Contains("when seen_on", page.Find("fluent-select[aria-label='Condition operand for consult_note']").TextContent);
     }
 
     [Fact]
@@ -324,14 +324,14 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         // enum and boolean ids, and is/is not.
         var page = RenderEditor(EditorFixtures.V8());
         Navigate(page, "Inputs");
-        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Enum);
+        page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Enum);
         page.Find("li.declared-row__values input").Change("new_patient");
         page.Find("li.declared-row__values input").Change("follow_up");
         Navigate(page, "Documents");
 
-        Assert.Equal(new[] { "", "prior_notes" }, Options(page, "select[aria-label='Condition operand for consult_note']"));
-        page.Find("select[aria-label='Condition operand for consult_note']").Change("prior_notes");
-        Assert.Equal(new[] { "==", "!=" }, Options(page, "select[aria-label='Condition operator for consult_note']"));
+        Assert.Equal(new[] { "", "prior_notes" }, Options(page, "fluent-select[aria-label='Condition operand for consult_note']"));
+        page.Find("fluent-select[aria-label='Condition operand for consult_note']").Change("prior_notes");
+        Assert.Equal(new[] { "==", "!=" }, Options(page, "fluent-select[aria-label='Condition operator for consult_note']"));
     }
 
     [Fact]
@@ -341,16 +341,16 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         // v8 publish carry a form the engine refuses there.
         var page = RenderEditor(EditorFixtures.V8());
         Navigate(page, "Inputs");
-        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Object);
+        page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Object);
         page.Find("input[aria-label='New field id for prior_notes']").Change("kind");
         page.FindAll("button").First(button => button.TextContent.Trim() == "+ Field").Click();
-        page.Find("select[aria-label='Type for field prior_notes.kind']").Change(WorkflowInputTypes.Enum);
+        page.Find("fluent-select[aria-label='Type for field prior_notes.kind']").Change(WorkflowInputTypes.Enum);
         page.Find("input[aria-label='Add a value to prior_notes.kind']").Change("clinic");
         page.Find("input[aria-label='Add a value to prior_notes.kind']").Change("ward");
         Navigate(page, "Documents");
 
         Assert.DoesNotContain("prior_notes.kind", page.Find("li.declared-row__when").TextContent);
-        Assert.Empty(page.FindAll("select[aria-label='Condition operand for consult_note']"));
+        Assert.Empty(page.FindAll("fluent-select[aria-label='Condition operand for consult_note']"));
     }
 
     [Fact]
@@ -361,12 +361,12 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var page = RenderEditor(package);
         Navigate(page, "Documents");
 
-        page.Find("select[aria-label='Condition operand for consult_note']").Change("patient.sex");
+        page.Find("fluent-select[aria-label='Condition operand for consult_note']").Change("patient.sex");
 
         // >= is not an enum's operator and 65 is not one of its values: the
         // condition becomes equality to the first declared value.
-        Assert.Equal("==", page.Find("select[aria-label='Condition operator for consult_note']").GetAttribute("value"));
-        Assert.Equal("female", page.Find("select[aria-label='Condition value for consult_note']").GetAttribute("value"));
+        Assert.Equal("==", page.Find("fluent-select[aria-label='Condition operator for consult_note']").GetAttribute("current-value"));
+        Assert.Equal("female", page.Find("fluent-select[aria-label='Condition value for consult_note']").GetAttribute("current-value"));
     }
 
     [Fact]
@@ -377,9 +377,9 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var page = RenderEditor(package);
         Navigate(page, "Documents");
 
-        var picker = page.Find("select[aria-label='Condition operand for consult_note']");
-        Assert.Equal("patient.family_name", picker.GetAttribute("value"));
-        Assert.Contains("patient.family_name", Options(page, "select[aria-label='Condition operand for consult_note']"));
+        var picker = page.Find("fluent-select[aria-label='Condition operand for consult_note']");
+        Assert.Equal("patient.family_name", picker.GetAttribute("current-value"));
+        Assert.Contains("patient.family_name", Options(page, "fluent-select[aria-label='Condition operand for consult_note']"));
     }
 
     // ----- the nodes editor at 9 -------------------------------------------
@@ -406,7 +406,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
     {
         var page = RenderEditor(EditorFixtures.V8());
         Navigate(page, "Inputs");
-        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
+        page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
         Navigate(page, "Graph");
 
         Assert.DoesNotContain(ForEachOptions(page), option => option!.StartsWith("input:", StringComparison.Ordinal));
@@ -438,7 +438,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V9Structured());
         Navigate(page, "+ Node");
 
-        Assert.Contains("input:prior_notes", Options(page, "select[aria-label='New node forEach']"));
+        Assert.Contains("input:prior_notes", Options(page, "fluent-select[aria-label='New node forEach']"));
     }
 
     [Fact]
@@ -472,7 +472,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
     {
         var page = RenderEditor(EditorFixtures.V8());
         Navigate(page, "Inputs");
-        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
+        page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
 
         Publish(page);
 
@@ -488,7 +488,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         // The two gates never both fire for one input: a v9 shape gets v9 advice.
         var page = RenderEditor(EditorFixtures.V7());
         Navigate(page, "Inputs");
-        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
+        page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
 
         Publish(page);
 

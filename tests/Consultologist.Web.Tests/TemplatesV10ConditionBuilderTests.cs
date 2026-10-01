@@ -92,7 +92,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V9Conditional());
         Navigate(page, "Documents");
 
-        Assert.NotEmpty(page.FindAll("select[aria-label^='Condition operand for']"));
+        Assert.NotEmpty(page.FindAll("fluent-select[aria-label^='Condition operand for']"));
         Assert.Empty(page.FindAll("[aria-label^='Add condition clause']"));
         Assert.Empty(page.FindAll("[aria-label^='Add condition group']"));
         Assert.Empty(page.FindAll("[aria-label^='Negate condition']"));
@@ -105,9 +105,9 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
     {
         var page = At10();
 
-        Assert.Equal("node:scope", page.Find(Sel("operand")).GetAttribute("value"));
-        Assert.Equal("==", page.Find(Sel("operator")).GetAttribute("value"));
-        Assert.Equal("in_scope", page.Find(Sel("value")).GetAttribute("value"));
+        Assert.Equal("node:scope", page.Find(Sel("operand")).GetAttribute("current-value"));
+        Assert.Equal("==", page.Find(Sel("operator")).GetAttribute("current-value"));
+        Assert.Equal("in_scope", page.Find(Sel("value")).GetAttribute("current-value"));
         Assert.NotNull(page.Find("[aria-label='Add condition clause to consult_note']"));
         Assert.NotNull(page.Find("[aria-label='Add condition group to consult_note']"));
         Assert.NotNull(page.Find("[aria-label='Negate condition for consult_note']"));
@@ -124,7 +124,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         var page = At10();
         page.Find("[aria-label='Add condition clause to consult_note']").Click();
 
-        Assert.Equal(string.Empty, page.Find(Sel("operand", " clause 2")).GetAttribute("value"));
+        Assert.Equal(string.Empty, page.Find(Sel("operand", " clause 2")).GetAttribute("current-value"));
         Assert.Contains("choose…", page.Find(Sel("operand", " clause 2")).TextContent);
         Publish(page);
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
@@ -140,7 +140,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         page.Find(Sel("operand", " clause 2")).Change("patient.age");
         page.Find(Sel("operator", " clause 2")).Change(">=");
         page.Find(Sel("value", " clause 2")).Change("65");
-        Assert.Equal("and", page.Find(Sel("join")).GetAttribute("value"));
+        Assert.Equal("and", page.Find(Sel("join")).GetAttribute("current-value"));
 
         page.Find(Sel("join")).Change("or");
         PublishAndExpect(page, "node:scope == in_scope or patient.age >= 65");
@@ -230,7 +230,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
 
         page.Find("[aria-label='Add condition clause to consult_note']").Click();
         page.Find("[aria-label='Remove condition clause for consult_note']").Click();
-        Assert.Equal(string.Empty, page.Find(Sel("operand")).GetAttribute("value"));
+        Assert.Equal(string.Empty, page.Find(Sel("operand")).GetAttribute("current-value"));
         Publish(page);
         Assert.True(sent != null, string.Join(" | ", Refusals(page)));
         Assert.Null(When(sent!));
@@ -254,7 +254,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         page.Find(Sel("operand", " clause 2")).Change("patient.age");
         page.Find(Sel("value", " clause 2")).Change("65");
         page.Find(Sel("operand", " clause 2")).Change(string.Empty);
-        Assert.Equal(string.Empty, page.Find(Sel("operand", " clause 2")).GetAttribute("value"));
+        Assert.Equal(string.Empty, page.Find(Sel("operand", " clause 2")).GetAttribute("current-value"));
         Publish(page);
         // Still the one publish from above: this one was held.
         await WorkflowService.Received(1).PublishPackageAsync(Arg.Any<WorkflowPackagePublishRequest>());
@@ -275,7 +275,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         CapturePublish();
         Navigate(page, "Documents");
 
-        Assert.Equal(clauses, page.FindAll("select[aria-label^='Condition operand for consult_note']").Count);
+        Assert.Equal(clauses, page.FindAll("fluent-select[aria-label^='Condition operand for consult_note']").Count);
         Assert.Equal(nestedGroups, page.FindAll(".condition-group--nested").Count);
         PublishAndExpect(page, when);
     }
@@ -293,13 +293,13 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         Navigate(page, "Documents");
 
         Assert.Equal(when, page.Find("[aria-label='Condition for consult_note']").TextContent);
-        Assert.Empty(page.FindAll("select[aria-label^='Condition operand for consult_note']"));
+        Assert.Empty(page.FindAll("fluent-select[aria-label^='Condition operand for consult_note']"));
         Publish(page);
         Assert.True(sent != null, string.Join(" | ", Refusals(page)));
         Assert.Equal(when, When(sent!));
 
         page.Find("[aria-label='Clear condition for consult_note']").Click();
-        Assert.NotEmpty(page.FindAll("select[aria-label^='Condition operand for consult_note']"));
+        Assert.NotEmpty(page.FindAll("fluent-select[aria-label^='Condition operand for consult_note']"));
         Publish(page);
         Assert.Null(When(sent!));
     }
@@ -314,7 +314,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         Navigate(page, "Documents");
 
         // Shown as its two clauses, without the builder's affordances.
-        Assert.Equal(2, page.FindAll("select[aria-label^='Condition operand for consult_note']").Count);
+        Assert.Equal(2, page.FindAll("fluent-select[aria-label^='Condition operand for consult_note']").Count);
         Assert.Empty(page.FindAll("[aria-label^='Add condition clause']"));
         Publish(page);
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);

@@ -59,19 +59,19 @@ public class TemplatesV10ArraysTests : ClientRenderTestContext
         Navigate(page, "Inputs");
 
         // matrix: array -> array -> object, its fields drawn beneath the element.
-        Assert.Equal("array", page.Find("select[aria-label='Items for input matrix']").GetAttribute("value"));
-        Assert.Equal("object", page.Find("select[aria-label='Inner items for input matrix']").GetAttribute("value"));
+        Assert.Equal("array", page.Find("fluent-select[aria-label='Items for input matrix']").GetAttribute("current-value"));
+        Assert.Equal("object", page.Find("fluent-select[aria-label='Inner items for input matrix']").GetAttribute("current-value"));
         Assert.Contains("matrix.[].[]", page.FindAll("li.declared-row__fields").Select(row => row.GetAttribute("data-fields-for")));
         Assert.Contains("matrix.[].[].name", page.FindAll("li.declared-field").Select(row => row.GetAttribute("data-field")));
-        Assert.Equal("number", page.Find("select[aria-label='Items for field matrix.[].[].scores']").GetAttribute("value"));
+        Assert.Equal("number", page.Find("fluent-select[aria-label='Items for field matrix.[].[].scores']").GetAttribute("current-value"));
 
         // cube: array -> array -> array -> number, the third level an element editor.
-        Assert.Equal("array", page.Find("select[aria-label='Items for input cube']").GetAttribute("value"));
-        Assert.Equal("array", page.Find("select[aria-label='Inner items for input cube']").GetAttribute("value"));
-        Assert.Equal("number", page.Find("select[aria-label='Inner items for element cube.[].[].[]']").GetAttribute("value"));
+        Assert.Equal("array", page.Find("fluent-select[aria-label='Items for input cube']").GetAttribute("current-value"));
+        Assert.Equal("array", page.Find("fluent-select[aria-label='Inner items for input cube']").GetAttribute("current-value"));
+        Assert.Equal("number", page.Find("fluent-select[aria-label='Inner items for element cube.[].[].[]']").GetAttribute("current-value"));
 
         // labels: array -> array -> enum, its values drawn beneath the element.
-        Assert.Equal("enum", page.Find("select[aria-label='Inner items for input labels']").GetAttribute("value"));
+        Assert.Equal("enum", page.Find("fluent-select[aria-label='Inner items for input labels']").GetAttribute("current-value"));
         Assert.Equal(new[] { "low", "high" },
             page.FindAll("li.declared-field__values[data-values-for='labels.[].[]'] [data-field-enum-value]").Select(chip => chip.GetAttribute("data-field-enum-value")));
 
@@ -96,11 +96,11 @@ public class TemplatesV10ArraysTests : ClientRenderTestContext
 
         // grid is an array of arrays of number; make its inner entries an object
         // and give that object a field.
-        page.Find("select[aria-label='Inner items for input grid']").Change(WorkflowInputTypes.Object);
+        page.Find("fluent-select[aria-label='Inner items for input grid']").Change(WorkflowInputTypes.Object);
         page.Find("input[aria-label='New field id for grid.[].[]']").Change("score");
         page.Find("li.declared-row__fields[data-fields-for='grid.[].[]'] button.variable-chips__add").Click();
         page.Find("input[aria-label='Label for field grid.[].[].score']").Change("Score");
-        page.Find("select[aria-label='Type for field grid.[].[].score']").Change(WorkflowInputTypes.Number);
+        page.Find("fluent-select[aria-label='Type for field grid.[].[].score']").Change(WorkflowInputTypes.Number);
         Publish(page);
 
         Assert.NotNull(sent);
@@ -122,8 +122,8 @@ public class TemplatesV10ArraysTests : ClientRenderTestContext
         Navigate(page, "Inputs");
 
         // grid (array of arrays of number) gains a third array level.
-        page.Find("select[aria-label='Inner items for input grid']").Change(WorkflowInputTypes.Array);
-        page.Find("select[aria-label='Inner items for element grid.[].[].[]']").Change(WorkflowInputTypes.Number);
+        page.Find("fluent-select[aria-label='Inner items for input grid']").Change(WorkflowInputTypes.Array);
+        page.Find("fluent-select[aria-label='Inner items for element grid.[].[].[]']").Change(WorkflowInputTypes.Number);
         Publish(page);
 
         Assert.NotNull(sent);
@@ -142,7 +142,7 @@ public class TemplatesV10ArraysTests : ClientRenderTestContext
         CapturePublish();
         Navigate(page, "Inputs");
 
-        page.Find("select[aria-label='Inner items for input grid']").Change(WorkflowInputTypes.Enum);
+        page.Find("fluent-select[aria-label='Inner items for input grid']").Change(WorkflowInputTypes.Enum);
         page.Find("input[aria-label='Add a value to grid.[].[]']").Change("low");
         Publish(page);
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
@@ -168,7 +168,7 @@ public class TemplatesV10ArraysTests : ClientRenderTestContext
 
         // grid (array of arrays of number) gains a third array level with no
         // entry type — a gap the one-level desk check used to miss.
-        page.Find("select[aria-label='Inner items for input grid']").Change(WorkflowInputTypes.Array);
+        page.Find("fluent-select[aria-label='Inner items for input grid']").Change(WorkflowInputTypes.Array);
         Publish(page);
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);

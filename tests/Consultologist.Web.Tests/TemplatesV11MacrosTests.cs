@@ -646,8 +646,8 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         Navigate(page, "Documents");
 
         // Place the disclaimer after the data:standards fan, then anchor it to one item.
-        page.Find("select.result-macro-placement").Change("after|node:draft-section");
-        var picker = page.Find("select.result-macro-foritem");
+        page.Find("fluent-select.result-macro-placement").Change("after|node:draft-section");
+        var picker = page.Find("fluent-select.result-macro-foritem");
         Assert.Contains("History", picker.TextContent); // the fan's item (id hpi)
         picker.Change("hpi");
 
@@ -685,10 +685,10 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
 
         Navigate(page, "Documents");
 
-        page.Find("select.result-macro-placement").Change("slot");
+        page.Find("fluent-select.result-macro-placement").Change("slot");
 
         // A slot has no anchor, so the fan-item picker is not offered for it.
-        Assert.Empty(page.FindAll("select.result-macro-foritem"));
+        Assert.Empty(page.FindAll("fluent-select.result-macro-foritem"));
 
         Publish(page);
 
@@ -714,8 +714,8 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
             .Click();
         Navigate(page, "Documents");
 
-        page.Find("select.result-macro-placement").Change("slot");
-        page.Find("select.result-macro-placement").Change(string.Empty);
+        page.Find("fluent-select.result-macro-placement").Change("slot");
+        page.Find("fluent-select.result-macro-placement").Change(string.Empty);
 
         Publish(page);
 
@@ -730,7 +730,7 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V12());
         Navigate(page, "Documents");
 
-        var values = page.FindAll("select.result-macro-placement option")
+        var values = page.FindAll("fluent-select.result-macro-placement fluent-option")
             .Select(option => option.GetAttribute("value"))
             .ToList();
 
@@ -746,8 +746,8 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         var page = RenderEditor(V20Slot());
         Navigate(page, "Documents");
 
-        Assert.Contains(
-            page.FindAll("select.result-macro-placement option"),
-            option => option.GetAttribute("value") == "slot" && option.HasAttribute("selected"));
+        // #904: FluentSelect carries the selection on the select's current-value,
+        // not a per-option `selected` attribute.
+        Assert.Equal("slot", page.Find("fluent-select.result-macro-placement").GetAttribute("current-value"));
     }
 }

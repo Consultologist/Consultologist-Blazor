@@ -289,6 +289,13 @@
 	color: inherit;
 }
 
+/* #904: a FluentSelect draws its own control chrome, so strip the box above on it. */
+fluent-select.prompt-variable-row__select {
+	padding: 0;
+	border: none;
+	background: none;
+}
+
 .binding-pending {
 	color: var(--consultologist-accent);
 	font-size: 0.7rem;
