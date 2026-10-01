@@ -3,31 +3,31 @@
    The server validator remains the authority on publish. *@
 @using Consultologist.Web.Services.Workflow
 
-<select class="binding-row__select"
-        value="@Row.From"
-        @onchange="OnSourceChangedAsync"
-        aria-label="@($"Source for {Row.Variable}")">
+<FluentSelect TOption="string" class="binding-row__select"
+              Value="@Row.From"
+              ValueChanged="OnSourceChangedAsync"
+              aria-label="@($"Source for {Row.Variable}")">
     @if (Row.From.Length == 0)
     {
-        <option value="">choose source…</option>
+        <FluentOption TOption="string" Value="">choose source…</FluentOption>
     }
     @foreach (var option in SourceOptions(Nodes, Scalars, Node, Row.From, Inputs))
     {
-        <option value="@option">@option</option>
+        <FluentOption TOption="string" Value="@option">@option</FluentOption>
     }
-</select>
+</FluentSelect>
 @if (Row.From.StartsWith("node:", StringComparison.Ordinal))
 {
     var targetHasOutput = TargetHasOutput(Nodes, Row.From);
     <span class="muted-text">render as</span>
-    <select class="binding-row__select"
-            value="@(Row.As ?? NoRenderer)"
-            @onchange="OnRendererChangedAsync"
-            aria-label="@($"Renderer for {Row.Variable}")">
-        <option value="@NoRenderer">plain</option>
-        <option value="concept-bullets" disabled="@(!targetHasOutput && Row.As != "concept-bullets")">concept-bullets</option>
-        <option value="concept-context" disabled="@(!targetHasOutput && Row.As != "concept-context")">concept-context</option>
-    </select>
+    <FluentSelect TOption="string" class="binding-row__select"
+                  Value="@(Row.As ?? NoRenderer)"
+                  ValueChanged="OnRendererChangedAsync"
+                  aria-label="@($"Renderer for {Row.Variable}")">
+        <FluentOption TOption="string" Value="@NoRenderer">plain</FluentOption>
+        <FluentOption TOption="string" Value="concept-bullets" Disabled="@(!targetHasOutput && Row.As != "concept-bullets")">concept-bullets</FluentOption>
+        <FluentOption TOption="string" Value="concept-context" Disabled="@(!targetHasOutput && Row.As != "concept-context")">concept-context</FluentOption>
+    </FluentSelect>
 }
 
 @code {
@@ -83,10 +83,10 @@
     internal static bool TargetHasOutput(IReadOnlyList<WorkflowManifestReader.NodeView> nodes, string from) =>
         nodes.FirstOrDefault(node => $"node:{node.Id}" == from)?.HasOutput == true;
 
-    private async Task OnSourceChangedAsync(ChangeEventArgs args)
+    // #902: FluentSelect's ValueChanged hands us the chosen string directly
+    // (not a ChangeEventArgs like the old native <select>).
+    private async Task OnSourceChangedAsync(string? from)
     {
-        var from = args.Value?.ToString();
-
         if (string.IsNullOrWhiteSpace(from))
         {
             return;
@@ -99,9 +99,8 @@
         await OnChanged.InvokeAsync(new WorkflowNodeSummary.BindingChange(Node.Id, Row.Variable, from, renderer));
     }
 
-    private async Task OnRendererChangedAsync(ChangeEventArgs args)
+    private async Task OnRendererChangedAsync(string? value)
     {
-        var value = args.Value?.ToString();
         var renderer = string.IsNullOrWhiteSpace(value) || value == NoRenderer ? null : value;
 
         await OnChanged.InvokeAsync(new WorkflowNodeSummary.BindingChange(Node.Id, Row.Variable, Row.From, renderer));
