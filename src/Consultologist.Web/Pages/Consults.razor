@@ -384,7 +384,16 @@
                                                order chosen (v9 § 7). The same no-filter rule as the
                                                single picker. *@
                                             <span class="input-field__file">
-                                                <InputFile multiple OnChange="args => LoadFileAsync(field, args)" />
+                                                @* #877: Fluent drop zone (drag-drop + browse). The handler
+                                                   is unchanged — OnInputFileChange hands it the same args,
+                                                   and MaximumFileSize/Count are set high so LoadFileAsync's
+                                                   own 10 MB check + per-file messages stay authoritative. *@
+                                                <FluentInputFile OnInputFileChange="args => LoadFileAsync(field, args)"
+                                                                 Multiple="true"
+                                                                 MaximumFileSize="long.MaxValue" MaximumFileCount="int.MaxValue"
+                                                                 Class="input-field__dropzone">
+                                                    <ChildContent><span class="muted-text">Drop documents here, or browse&hellip;</span></ChildContent>
+                                                </FluentInputFile>
                                                 @if (field.IsReading)
                                                 {
                                                     <FluentProgressRing style="width: 16px; height: 16px;" />
@@ -451,7 +460,11 @@
                                            format is, and a second opinion here could
                                            disagree with it (docs/DOCUMENT_INPUT.md § 1). *@
                                         <span class="input-field__file" @onclick:stopPropagation="true">
-                                            <InputFile OnChange="args => LoadFileAsync(field, args)" />
+                                            <FluentInputFile OnInputFileChange="args => LoadFileAsync(field, args)"
+                                                             MaximumFileSize="long.MaxValue" MaximumFileCount="int.MaxValue"
+                                                             Class="input-field__dropzone">
+                                                <ChildContent><span class="muted-text">Drop a document here, or browse&hellip;</span></ChildContent>
+                                            </FluentInputFile>
                                             @if (field.IsReading)
                                             {
                                                 <FluentProgressRing style="width: 16px; height: 16px;" />
