@@ -65,7 +65,7 @@ public class TemplatesV7AuthoringTests : ClientRenderTestContext
         // input the author never touched.
         Navigate(page, "Graph");
         var sources = page.FindAll(".binding-row__select")
-            .Select(select => select.GetAttribute("value"))
+            .Select(select => select.GetAttribute("current-value") ?? select.GetAttribute("value"))
             .ToList();
 
         Assert.Contains("input:referral", sources);
@@ -109,7 +109,7 @@ public class TemplatesV7AuthoringTests : ClientRenderTestContext
 
         // Candidates are aggregators only — a forEach node is not a valid v7
         // deliverable, which is the bug this pane replaced.
-        var options = row.QuerySelectorAll("option").Select(o => o.GetAttribute("value")).ToArray();
+        var options = row.QuerySelectorAll("option, fluent-option").Select(o => o.GetAttribute("value")).ToArray();
         Assert.Equal(new[] { "node:assemble-note" }, options);
     }
 
@@ -215,7 +215,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         Navigate(page, "Documents");
 
         var picker = page.Find("li.declared-row__when select");
-        var options = picker.QuerySelectorAll("option").Select(o => o.GetAttribute("value")).ToList();
+        var options = picker.QuerySelectorAll("option, fluent-option").Select(o => o.GetAttribute("value")).ToList();
 
         Assert.Equal(new[] { "", "prior_notes" }, options);
     }
@@ -244,7 +244,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         var selects = page.FindAll("li.declared-row__when select");
         Assert.Equal(3, selects.Count);
 
-        var literals = selects[2].QuerySelectorAll("option").Select(o => o.GetAttribute("value")).ToList();
+        var literals = selects[2].QuerySelectorAll("option, fluent-option").Select(o => o.GetAttribute("value")).ToList();
         Assert.Equal(new[] { "new_patient", "follow_up" }, literals);
     }
 

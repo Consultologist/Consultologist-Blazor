@@ -55,7 +55,7 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
         JsonDocument.Parse(request.Manifest.GetRawText()).RootElement.GetProperty("results")[0].TryGetProperty("when", out var when) ? when.GetString() : null;
 
     private static IEnumerable<string?> Options(IRenderedComponent<Templates> page, string selector) =>
-        page.Find(selector).QuerySelectorAll("option").Select(option => option.GetAttribute("value"));
+        page.Find(selector).QuerySelectorAll("option, fluent-option").Select(option => option.GetAttribute("value"));
 
     private void WithDraftedCondition(WorkflowPackageContentResponse package, string when) =>
         JSInterop.Setup<string?>("localStorage.getItem", $"workflow-editor-draft:{package.Ref}")
@@ -133,8 +133,8 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
         Assert.Equal(new[] { "in_scope", "out_of_scope" }, page.FindAll("[data-node-value]").Select(chip => chip.GetAttribute("data-node-value")));
         // The classifier's own card carries no forEach and no output.
         var card = page.Find("[data-values-for='scope']").Closest(".node-fields")!;
-        Assert.Empty(card.QuerySelectorAll("select[aria-label='Node forEach collection']"));
-        Assert.Empty(card.QuerySelectorAll("select[aria-label='Node output contract']"));
+        Assert.Empty(card.QuerySelectorAll("fluent-select[aria-label='Node forEach collection']"));
+        Assert.Empty(card.QuerySelectorAll("fluent-select[aria-label='Node output contract']"));
 
         page.Find("input[aria-label='Add a value to node scope']").Change("unsure");
         Publish(page);
@@ -230,7 +230,7 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V10Classifier());
         CapturePublish();
         Navigate(page, "Graph");
-        page.Find("select[aria-label='Source for referral']").Change("data:standards");
+        page.Find("fluent-select[aria-label='Source for referral']").Change("data:standards");
         Publish(page);
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);

@@ -144,8 +144,8 @@ public class TemplatesSchemasTests : ClientRenderTestContext
         page.Find("button[aria-label='Add output contract concept-list']").Click();
 
         Navigate(page, "Graph");
-        var options = page.FindAll("select[aria-label='Node output contract']")
-            .SelectMany(select => select.QuerySelectorAll("option").Select(option => option.GetAttribute("value")));
+        var options = page.FindAll("fluent-select[aria-label='Node output contract']")
+            .SelectMany(select => select.QuerySelectorAll("fluent-option").Select(option => option.GetAttribute("value")));
         Assert.Contains("concept-list", options);
     }
 

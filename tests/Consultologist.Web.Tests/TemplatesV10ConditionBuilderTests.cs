@@ -398,7 +398,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
     // ----- deeper (multi-level) field-path operands (#754) -----------------
 
     private static IReadOnlyList<string?> Options(IRenderedComponent<Templates> page, string selector) =>
-        page.Find(selector).QuerySelectorAll("option").Select(option => option.GetAttribute("value")).ToList();
+        page.Find(selector).QuerySelectorAll("option, fluent-option").Select(option => option.GetAttribute("value")).ToList();
 
     [Fact]
     public void At10_TheOperandPicker_OffersNestedObjectPaths_ButNotArrayElementFields()

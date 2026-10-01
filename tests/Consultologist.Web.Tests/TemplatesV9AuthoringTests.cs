@@ -64,7 +64,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
 
         var items = page.Find("select.declared-row__items");
         Assert.Equal("", items.GetAttribute("value"));
-        Assert.Equal("entries of…", items.QuerySelector("option")!.TextContent);
+        Assert.Equal("entries of…", items.QuerySelector("option, fluent-option")!.TextContent);
 
         Publish(page);
 
@@ -231,7 +231,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
     // ----- the results editor at 9 -----------------------------------------
 
     private static IReadOnlyList<string?> Options(IRenderedComponent<Templates> page, string selector) =>
-        page.Find(selector).QuerySelectorAll("option").Select(option => option.GetAttribute("value")).ToList();
+        page.Find(selector).QuerySelectorAll("option, fluent-option").Select(option => option.GetAttribute("value")).ToList();
 
     [Fact]
     public void TheOperandPicker_OffersEveryTestableForm()
@@ -257,10 +257,10 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         page.Find("select[aria-label='Condition operand for consult_note']").Change("patient.age");
 
         var operators = page.Find("select[aria-label='Condition operator for consult_note']");
-        Assert.Equal(new[] { "==", "!=", ">", "<", ">=", "<=" }, operators.QuerySelectorAll("option").Select(o => o.GetAttribute("value")));
+        Assert.Equal(new[] { "==", "!=", ">", "<", ">=", "<=" }, operators.QuerySelectorAll("option, fluent-option").Select(o => o.GetAttribute("value")));
         Assert.Equal(
             new[] { "is", "is not", "is more than", "is less than", "is at least", "is at most" },
-            operators.QuerySelectorAll("option").Select(o => o.TextContent));
+            operators.QuerySelectorAll("option, fluent-option").Select(o => o.TextContent));
         Assert.Equal("decimal", page.Find("input[aria-label='Condition value for consult_note']").GetAttribute("inputmode"));
     }
 
@@ -385,8 +385,8 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
     // ----- the nodes editor at 9 -------------------------------------------
 
     private static IReadOnlyList<string?> ForEachOptions(IRenderedComponent<Templates> page) =>
-        page.FindAll("select[aria-label='Node forEach collection']").First()
-            .QuerySelectorAll("option").Select(option => option.GetAttribute("value")).ToList();
+        page.FindAll("fluent-select[aria-label='Node forEach collection']").First()
+            .QuerySelectorAll("option, fluent-option").Select(option => option.GetAttribute("value")).ToList();
 
     [Fact]
     public void TheForEachPicker_OffersArrayInputsAtNine()
@@ -418,18 +418,18 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V9Structured());
         Navigate(page, "Graph");
 
-        page.FindAll("select[aria-label='Node forEach collection']").First().Change("input:prior_notes");
+        page.FindAll("fluent-select[aria-label='Node forEach collection']").First().Change("input:prior_notes");
 
-        var sources = Options(page, "select[aria-label='Source for section_name']");
+        var sources = Options(page, "fluent-select[aria-label='Source for section_name']");
         Assert.Contains("item:id", sources);
         Assert.Contains("item:name", sources);
         Assert.Contains("item:value", sources);
         Assert.DoesNotContain("item:content", sources);
 
-        page.FindAll("select[aria-label='Node forEach collection']").First().Change("data:standards");
+        page.FindAll("fluent-select[aria-label='Node forEach collection']").First().Change("data:standards");
 
-        Assert.Contains("item:content", Options(page, "select[aria-label='Source for section_name']"));
-        Assert.DoesNotContain("item:value", Options(page, "select[aria-label='Source for section_name']"));
+        Assert.Contains("item:content", Options(page, "fluent-select[aria-label='Source for section_name']"));
+        Assert.DoesNotContain("item:value", Options(page, "fluent-select[aria-label='Source for section_name']"));
     }
 
     [Fact]
@@ -452,8 +452,8 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V9Structured());
         Navigate(page, "Graph");
 
-        page.FindAll("select[aria-label='Node forEach collection']").First().Change("input:prior_notes");
-        page.Find("select[aria-label='Source for section_name']").Change("item:value");
+        page.FindAll("fluent-select[aria-label='Node forEach collection']").First().Change("input:prior_notes");
+        page.Find("fluent-select[aria-label='Source for section_name']").Change("item:value");
         Publish(page);
 
         await WorkflowService.Received(1).PublishPackageAsync(Arg.Any<WorkflowPackagePublishRequest>());

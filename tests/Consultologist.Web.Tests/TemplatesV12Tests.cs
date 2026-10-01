@@ -785,7 +785,7 @@ public class TemplatesV12NodeKindsTests : ClientRenderTestContext
 
         // Feed the deliverable so the reachability rule holds.
         Navigate(page, "Assembling note");
-        page.Find("select[aria-label='Add aggregate source']").Change("node:patient-header");
+        page.Find("fluent-select[aria-label='Add aggregate source']").Change("node:patient-header");
 
         Publish(page);
 
