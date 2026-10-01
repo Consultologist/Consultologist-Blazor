@@ -151,8 +151,8 @@ public class TemplatesPreludesTests : ClientRenderTestContext
         Navigate(page, "draft-section");
 
         var select = page.Find("select[aria-label='Prelude for prompt draft-section']");
-        Assert.Contains("guidance", select.QuerySelectorAll("option").Select(option => option.GetAttribute("value")));
-        Assert.Contains("unused", select.QuerySelectorAll("option").Select(option => option.GetAttribute("value")));
+        Assert.Contains("guidance", select.QuerySelectorAll("option, fluent-option").Select(option => option.GetAttribute("value")));
+        Assert.Contains("unused", select.QuerySelectorAll("option, fluent-option").Select(option => option.GetAttribute("value")));
 
         // Point it at the other prelude, then publish.
         select.Change("unused");

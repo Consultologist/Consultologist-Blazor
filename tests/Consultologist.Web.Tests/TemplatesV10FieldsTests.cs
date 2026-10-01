@@ -51,7 +51,7 @@ public class TemplatesV10FieldsTests : ClientRenderTestContext
         JsonDocument.Parse(request.Manifest.GetRawText()).RootElement.GetProperty("inputs");
 
     private static IEnumerable<string?> Options(IRenderedComponent<Templates> page, string aria) =>
-        page.Find($"select[aria-label='{aria}']").QuerySelectorAll("option").Select(option => option.GetAttribute("value"));
+        page.Find($"select[aria-label='{aria}']").QuerySelectorAll("option, fluent-option").Select(option => option.GetAttribute("value"));
 
     [Fact]
     public void ANestedDeclaration_DrawsAnEditorAtEveryLevel()

@@ -163,7 +163,7 @@ public class TemplatesEditorTests : ClientRenderTestContext
         var page = RenderEditor();
 
         var select = page.Find(".result-selector select");
-        var options = select.QuerySelectorAll("option").Select(o => o.GetAttribute("value")).ToArray();
+        var options = select.QuerySelectorAll("option, fluent-option").Select(o => o.GetAttribute("value")).ToArray();
 
         // v6: aggregators are the candidates; the fan node is not one.
         Assert.Equal(new[] { "node:assemble-note" }, options);
@@ -177,7 +177,7 @@ public class TemplatesEditorTests : ClientRenderTestContext
 
         // The fan node binds consult_draft; its source select must offer the
         // frozen input plus the item fields a forEach node can read.
-        var options = page.FindAll(".binding-row__select option")
+        var options = page.FindAll(".binding-row__select fluent-option")
             .Select(option => option.GetAttribute("value"))
             .ToList();
 
@@ -308,7 +308,7 @@ public class TemplatesEditorTests : ClientRenderTestContext
 
         Navigate(page, "Graph");
 
-        var options = page.FindAll("select.binding-row__select option")
+        var options = page.FindAll("fluent-select.binding-row__select fluent-option")
             .Select(option => option.GetAttribute("value"))
             .ToList();
 
@@ -502,7 +502,7 @@ public class TemplatesEditorTests : ClientRenderTestContext
         Navigate(page, "Graph");
         // binding-row__select is shared with the deliverable, prompt and
         // forEach selects; the aria-label is what distinguishes a source row.
-        page.FindAll("select.binding-row__select")
+        page.FindAll("fluent-select.binding-row__select")
             .First(s => s.GetAttribute("aria-label") == "Source for section_name")
             .Change("data:urgency");
 
@@ -542,7 +542,7 @@ public class TemplatesEditorTests : ClientRenderTestContext
         RemoveButton(page).Click();
         Navigate(page, "Graph");
 
-        var options = page.FindAll("select.binding-row__select option")
+        var options = page.FindAll("fluent-select.binding-row__select fluent-option")
             .Select(option => option.GetAttribute("value"))
             .ToList();
 

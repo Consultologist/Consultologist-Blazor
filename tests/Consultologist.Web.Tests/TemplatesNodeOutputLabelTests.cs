@@ -57,14 +57,14 @@ public class TemplatesNodeOutputLabelTests : ClientRenderTestContext
     }
 
     private static string EmptyOutputOptionText(IRenderedComponent<Templates> page) =>
-        page.Find("select[aria-label='Node output contract']")
-            .QuerySelectorAll("option")
+        page.Find("fluent-select[aria-label='Node output contract']")
+            .QuerySelectorAll("fluent-option")
             .First(option => option.GetAttribute("value") == string.Empty)
             .TextContent.Trim();
 
     private static IReadOnlyList<string> OutputOptionValues(IRenderedComponent<Templates> page) =>
-        page.Find("select[aria-label='Node output contract']")
-            .QuerySelectorAll("option")
+        page.Find("fluent-select[aria-label='Node output contract']")
+            .QuerySelectorAll("fluent-option")
             .Select(option => option.GetAttribute("value") ?? string.Empty)
             .ToList();
 
@@ -129,9 +129,11 @@ public class TemplatesNodeOutputLabelTests : ClientRenderTestContext
         Assert.Contains("prose (text)", page.Markup);
         Assert.DoesNotContain("— rendered —", page.Markup);
 
-        // Switch the kind select to a template node.
+        // Switch the kind select to a template node. (The add-node kind select is
+        // still a native <select> — it belongs to Templates.razor, converted in #902
+        // Part 2b — so locate it as such.)
         var kind = page.FindAll("select")
-            .First(select => select.QuerySelectorAll("option").Any(o => o.TextContent.Trim() == "template node"));
+            .First(select => select.QuerySelectorAll("option, fluent-option").Any(o => o.TextContent.Trim() == "template node"));
         kind.Change("template");
 
         Assert.Contains("— rendered —", page.Markup);
