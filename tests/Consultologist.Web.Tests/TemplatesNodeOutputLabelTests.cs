@@ -132,7 +132,7 @@ public class TemplatesNodeOutputLabelTests : ClientRenderTestContext
         // Switch the kind select to a template node. (The add-node kind select is
         // still a native <select> — it belongs to Templates.razor, converted in #902
         // Part 2b — so locate it as such.)
-        var kind = page.FindAll("select")
+        var kind = page.FindAll("fluent-select")
             .First(select => select.QuerySelectorAll("option, fluent-option").Any(o => o.TextContent.Trim() == "template node"));
         kind.Change("template");
 

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Bunit;
 using Consultologist.Web.Pages;
 using Consultologist.Web.Services.Workflow;
+using Microsoft.FluentUI.AspNetCore.Components;
 using NSubstitute;
 
 namespace Consultologist.Web.Tests;
@@ -589,8 +590,13 @@ public class TemplatesV12DocumentsPaneTests : ClientRenderTestContext
         Assert.Equal(JsonValueKind.Object, placed.ValueKind);
         Assert.Equal("node:draft-section", placed.GetProperty("after").GetString());
 
-        // Back to appended with no when: the bare string again.
-        page.Find(".result-macro-placement").Change("");
+        // Back to appended with no when: the bare string again. #904: drive the
+        // placement FluentSelect through its component — bUnit runs no JS, so the
+        // select's DOM value does not reflect the bound Value after a re-render,
+        // which makes re-selecting the already-shown "appended" (empty) a no-op.
+        var placement = page.FindComponents<FluentSelect<string>>()
+            .First(c => (c.Instance.Class ?? string.Empty).Contains("result-macro-placement"));
+        placement.InvokeAsync(() => placement.Instance.ValueChanged.InvokeAsync(string.Empty)).GetAwaiter().GetResult();
         Publish(page);
         Assert.Equal(JsonValueKind.String, Result(sent!).GetProperty("macros").EnumerateArray().Single().ValueKind);
     }
@@ -601,7 +607,7 @@ public class TemplatesV12DocumentsPaneTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V12Full());
         Navigate(page, "Documents");
 
-        var options = page.FindAll(".result-macro-placement option").Select(o => o.GetAttribute("value")).ToList();
+        var options = page.FindAll(".result-macro-placement fluent-option").Select(o => o.GetAttribute("value")).ToList();
         Assert.Contains("before|node:patient-header", options);
         Assert.Contains("after|node:draft-section", options);
         // The classifier and the extraction nodes are not aggregate sources.
@@ -617,8 +623,8 @@ public class TemplatesV12DocumentsPaneTests : ClientRenderTestContext
         Navigate(page, "Documents");
 
         // The entry's own builder, addressed by the macro target's subject.
-        page.Find("select[aria-label^='Condition operand for consult_note macro disclaimer']").Change("node:scope");
-        page.Find("select[aria-label^='Condition value for consult_note macro disclaimer']").Change("in_scope");
+        page.Find("fluent-select[aria-label^='Condition operand for consult_note macro disclaimer']").Change("node:scope");
+        page.Find("fluent-select[aria-label^='Condition value for consult_note macro disclaimer']").Change("in_scope");
         Publish(page);
 
         var entry = Result(sent!).GetProperty("macros").EnumerateArray().Single();
@@ -638,7 +644,7 @@ public class TemplatesV12DocumentsPaneTests : ClientRenderTestContext
         CapturePublish();
         Navigate(page, "Documents");
 
-        var options = page.FindAll(".result-check option").Select(o => o.GetAttribute("value")).ToList();
+        var options = page.FindAll(".result-check fluent-option").Select(o => o.GetAttribute("value")).ToList();
         Assert.Equal(new[] { "", "node:coverage" }, options);
 
         page.Find(".result-check").Change("node:coverage");
@@ -718,7 +724,7 @@ public class TemplatesV12NodeKindsTests : ClientRenderTestContext
         CapturePublish();
 
         Navigate(page, "+ Node");
-        page.Find(".new-item-fields select").Change("check");
+        page.Find(".new-item-fields fluent-select").Change("check");
         page.Find(".new-node-check-of").Change("node:extract-input-terms");
         page.Find(".new-node-check-in").Change("node:extract-note-terms");
         page.Find(".new-node-failwith").Change("The note does not cover the referral.");
@@ -754,7 +760,7 @@ public class TemplatesV12NodeKindsTests : ClientRenderTestContext
         CapturePublish();
 
         Navigate(page, "+ Node");
-        page.Find(".new-item-fields select").Change("check");
+        page.Find(".new-item-fields fluent-select").Change("check");
         page.Find("fluent-text-field[placeholder='summarize-guidelines']").Change("coverage");
         page.Find("fluent-text-field[placeholder='Summarizing guidelines']").Change("Coverage check");
         page.FindAll("fluent-button").First(button => button.TextContent.Contains("Create")).Click();
@@ -776,7 +782,7 @@ public class TemplatesV12NodeKindsTests : ClientRenderTestContext
         CapturePublish();
 
         Navigate(page, "+ Node");
-        page.Find(".new-item-fields select").Change("template");
+        page.Find(".new-item-fields fluent-select").Change("template");
         page.Find("fluent-text-field[placeholder='summarize-guidelines']").Change("patient-header");
         page.Find("fluent-text-field[placeholder='Summarizing guidelines']").Change("Patient header");
         page.FindAll("fluent-button").First(button => button.TextContent.Contains("Create")).Click();
@@ -814,7 +820,7 @@ public class TemplatesV12NodeKindsTests : ClientRenderTestContext
         // Below 12 the kinds are not offered at all.
         var eleven = RenderEditor(EditorFixtures.V11Macro());
         Navigate(eleven, "+ Node");
-        var kinds = eleven.Find(".new-item-fields select").Children.Select(o => o.GetAttribute("value")).ToList();
+        var kinds = eleven.Find(".new-item-fields fluent-select").Children.Select(o => o.GetAttribute("value")).ToList();
         Assert.DoesNotContain("check", kinds);
         Assert.DoesNotContain("template", kinds);
     }

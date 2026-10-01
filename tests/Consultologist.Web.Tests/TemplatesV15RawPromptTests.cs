@@ -260,7 +260,7 @@ public class TemplatesV15RawPromptTests : ClientRenderTestContext
         Assert.False(page.Find(".prompt-raw input[type=checkbox]").HasAttribute("disabled"));
 
         page.Find("input[aria-label='New variable name']").Change("consult_draft");
-        page.Find("select[aria-label='New variable source']").Change("input:consult_draft");
+        page.Find("fluent-select[aria-label='New variable source']").Change("input:consult_draft");
         page.FindAll(".prompt-variables button").First(b => b.TextContent.Trim() == "Add").Click();
 
         Assert.True(page.Find(".prompt-raw input[type=checkbox]").HasAttribute("disabled"));

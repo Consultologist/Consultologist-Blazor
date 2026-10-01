@@ -248,12 +248,12 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         var (result, sent) = await PublishAndCaptureAsync(page =>
         {
             Navigate(page, "Inputs");
-            page.FindAll("select.declared-row__type")[1].Change("enum");
+            page.FindAll("fluent-select.declared-row__type")[1].Change("enum");
             page.Find("li.declared-row__values input").Change("new_patient");
             page.Find("li.declared-row__values input").Change("follow_up");
 
             Navigate(page, "Documents");
-            page.Find("li.declared-row__when select").Change("prior_notes");
+            page.Find("li.declared-row__when fluent-select").Change("prior_notes");
             return Task.CompletedTask;
         }, EditorFixtures.V8());
 
@@ -280,10 +280,10 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
     private static void ConditionOnABoolean(IRenderedComponent<Templates> page)
     {
         Navigate(page, "Inputs");
-        page.FindAll("select.declared-row__type")[1].Change("boolean");
+        page.FindAll("fluent-select.declared-row__type")[1].Change("boolean");
 
         Navigate(page, "Documents");
-        page.Find("li.declared-row__when select").Change("prior_notes");
+        page.Find("li.declared-row__when fluent-select").Change("prior_notes");
     }
 
     [Fact]
@@ -424,7 +424,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         {
             Navigate(page, "Inputs");
             // consult_draft (a text slot, first row) → mark it an image channel.
-            page.FindAll("select.declared-row__channel")[0].Change(WorkflowExpectedContent.Image);
+            page.FindAll("fluent-select.declared-row__channel")[0].Change(WorkflowExpectedContent.Image);
             return Task.CompletedTask;
         }, EditorFixtures.V17ChannelAndUnion());
 
@@ -440,7 +440,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         {
             Navigate(page, "Inputs");
             // consult_draft (bare text, first row) → also accept a number.
-            page.FindAll("select.declared-row__add-arm")[0].Change(WorkflowInputTypes.Number);
+            page.FindAll("fluent-select.declared-row__add-arm")[0].Change(WorkflowInputTypes.Number);
             return Task.CompletedTask;
         }, EditorFixtures.V17ChannelAndUnion());
 
@@ -459,8 +459,8 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         var page = Render<Templates>();
         Navigate(page, "Inputs");
 
-        Assert.Empty(page.FindAll("select.declared-row__channel"));
-        Assert.Empty(page.FindAll("select.declared-row__add-arm"));
+        Assert.Empty(page.FindAll("fluent-select.declared-row__channel"));
+        Assert.Empty(page.FindAll("fluent-select.declared-row__add-arm"));
     }
 
     [Fact]
@@ -532,7 +532,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         var (result, sent) = await PublishAndCaptureAsync(page =>
         {
             Navigate(page, "Inputs");
-            page.FindAll("select.declared-row__type")[3].Change(ClientWorkflow.WorkflowInputTypes.Text);
+            page.FindAll("fluent-select.declared-row__type")[3].Change(ClientWorkflow.WorkflowInputTypes.Text);
             return Task.CompletedTask;
         }, EditorFixtures.V9Structured());
 
@@ -587,7 +587,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
 
         var page = Render<Templates>();
         Navigate(page, "Inputs");
-        page.FindAll("select.declared-row__type")[1].Change("enum");
+        page.FindAll("fluent-select.declared-row__type")[1].Change("enum");
         page.Find("li.declared-row__values input").Change("new_patient");
         page.Find("li.declared-row__values input").Change("follow_up");
 
@@ -607,7 +607,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         var (result, sent) = await PublishAndCaptureAsync(async page =>
         {
             Navigate(page, "Inputs");
-            page.FindAll("select.declared-row__type")[1].Change("enum");
+            page.FindAll("fluent-select.declared-row__type")[1].Change("enum");
             page.Find("li.declared-row__values input").Change("new_patient");
             page.Find("li.declared-row__values input").Change("follow_up");
 

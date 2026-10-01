@@ -150,7 +150,7 @@ public class TemplatesPreludesTests : ClientRenderTestContext
         CapturePublish();
         Navigate(page, "draft-section");
 
-        var select = page.Find("select[aria-label='Prelude for prompt draft-section']");
+        var select = page.Find("fluent-select[aria-label='Prelude for prompt draft-section']");
         Assert.Contains("guidance", select.QuerySelectorAll("option, fluent-option").Select(option => option.GetAttribute("value")));
         Assert.Contains("unused", select.QuerySelectorAll("option, fluent-option").Select(option => option.GetAttribute("value")));
 
@@ -168,7 +168,7 @@ public class TemplatesPreludesTests : ClientRenderTestContext
         CapturePublish();
         Navigate(page, "draft-section");
 
-        page.Find("select[aria-label='Prelude for prompt draft-section']").Change(string.Empty);
+        page.Find("fluent-select[aria-label='Prelude for prompt draft-section']").Change(string.Empty);
         Publish(page);
 
         Assert.NotNull(sent);

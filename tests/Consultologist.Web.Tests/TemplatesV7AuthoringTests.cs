@@ -165,7 +165,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
     private static void DeclareEnum(IRenderedComponent<Templates> page, string id = "prior_notes")
     {
         Navigate(page, "Inputs");
-        var row = page.FindAll("select.declared-row__type")[1];
+        var row = page.FindAll("fluent-select.declared-row__type")[1];
         row.Change(WorkflowInputTypes.Enum);
         page.Find("li.declared-row__values input").Change("new_patient");
         page.Find("li.declared-row__values input").Change("follow_up");
@@ -177,10 +177,10 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         var page = RenderEditor();
         Navigate(page, "Inputs");
 
-        Assert.Equal(2, page.FindAll("select.declared-row__type").Count);
+        Assert.Equal(2, page.FindAll("fluent-select.declared-row__type").Count);
         // Every v7 input opens as text, which is the default the format states.
-        Assert.All(page.FindAll("select.declared-row__type"),
-            select => Assert.Equal(WorkflowInputTypes.Text, select.GetAttribute("value")));
+        Assert.All(page.FindAll("fluent-select.declared-row__type"),
+            select => Assert.Equal(WorkflowInputTypes.Text, select.GetAttribute("current-value")));
     }
 
     [Fact]
@@ -199,7 +199,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         // The validator is the authority; the editor is the early warning.
         var page = RenderEditor();
         Navigate(page, "Inputs");
-        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Enum);
+        page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Enum);
         page.Find("li.declared-row__values input").Change("Follow Up");
 
         Assert.Contains("must be snake_case", page.Markup);
@@ -214,7 +214,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         DeclareEnum(page);
         Navigate(page, "Documents");
 
-        var picker = page.Find("li.declared-row__when select");
+        var picker = page.Find("li.declared-row__when fluent-select");
         var options = picker.QuerySelectorAll("option, fluent-option").Select(o => o.GetAttribute("value")).ToList();
 
         Assert.Equal(new[] { "", "prior_notes" }, options);
@@ -227,7 +227,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         Navigate(page, "Documents");
 
         Assert.Contains("Declare an enum or boolean input", page.Markup);
-        Assert.Empty(page.FindAll("li.declared-row__when select"));
+        Assert.Empty(page.FindAll("li.declared-row__when fluent-select"));
     }
 
     [Fact]
@@ -237,11 +237,11 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         DeclareEnum(page);
         Navigate(page, "Documents");
 
-        page.Find("li.declared-row__when select").Change("prior_notes");
+        page.Find("li.declared-row__when fluent-select").Change("prior_notes");
 
         // Three controls now: input, operator, literal — and the literal offers
         // exactly the enum's declared values.
-        var selects = page.FindAll("li.declared-row__when select");
+        var selects = page.FindAll("li.declared-row__when fluent-select");
         Assert.Equal(3, selects.Count);
 
         var literals = selects[2].QuerySelectorAll("option, fluent-option").Select(o => o.GetAttribute("value")).ToList();
@@ -256,14 +256,14 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         var page = RenderEditor();
         DeclareEnum(page);
         Navigate(page, "Documents");
-        page.Find("li.declared-row__when select").Change("prior_notes");
+        page.Find("li.declared-row__when fluent-select").Change("prior_notes");
 
         Navigate(page, "Inputs");
-        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Date);
+        page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Date);
 
         Assert.Contains("is tested by", page.Markup);
         // Still an enum: the retype was refused, not applied and warned about.
-        Assert.Equal(WorkflowInputTypes.Enum, page.FindAll("select.declared-row__type")[1].GetAttribute("value"));
+        Assert.Equal(WorkflowInputTypes.Enum, page.FindAll("fluent-select.declared-row__type")[1].GetAttribute("current-value"));
     }
 
     // #350: the guard above covered the input. Its value and its name were
@@ -275,7 +275,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         var page = RenderEditor();
         DeclareEnum(page);
         Navigate(page, "Documents");
-        page.Find("li.declared-row__when select").Change("prior_notes");
+        page.Find("li.declared-row__when fluent-select").Change("prior_notes");
 
         // The condition's literal defaults to the first declared value.
         Navigate(page, "Inputs");
@@ -296,7 +296,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         var page = RenderEditor();
         DeclareEnum(page);
         Navigate(page, "Documents");
-        page.Find("li.declared-row__when select").Change("prior_notes");
+        page.Find("li.declared-row__when fluent-select").Change("prior_notes");
 
         Navigate(page, "Inputs");
         page.FindAll("li.declared-row__values button").Last().Click();
@@ -331,7 +331,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         var page = RenderEditor();
         DeclareEnum(page);
         Navigate(page, "Documents");
-        page.Find("li.declared-row__when select").Change("prior_notes");
+        page.Find("li.declared-row__when fluent-select").Change("prior_notes");
 
         Navigate(page, "Inputs");
         page.FindAll("li.declared-row")[1].QuerySelector("input.declared-row__id")!.Change("encounter_kind");
@@ -350,7 +350,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         // because a half-authored enum is a legitimate intermediate state.
         var page = RenderEditor();
         Navigate(page, "Inputs");
-        page.FindAll("select.declared-row__type")[1].Change(WorkflowInputTypes.Enum);
+        page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Enum);
 
         page.FindAll("fluent-button").First(button => button.TextContent.Contains("Publish")).Click();
 
