@@ -110,27 +110,29 @@
                     </label>
                     <label class="node-field">
                         <span>of</span>
-                        <select class="binding-row__select node-check-of"
-                                @onchange="args => EmitNodeChangeAsync(node, checkOf: args.Value?.ToString())"
-                                aria-label="@($"Of for check {node.Id}")">
-                            <option value="" selected="@(node.Of == null)">choose…</option>
+                        <FluentSelect TOption="string" class="binding-row__select node-check-of"
+                                      Value="@(node.Of ?? string.Empty)"
+                                      ValueChanged="@(v => EmitNodeChangeAsync(node, checkOf: v))"
+                                      aria-label="@($"Of for check {node.Id}")">
+                            <FluentOption TOption="string" Value="">choose…</FluentOption>
                             @foreach (var (operandRef, operandLabel) in CheckOperandOptions)
                             {
-                                <option value="@operandRef" selected="@(node.Of == operandRef)">@operandLabel</option>
+                                <FluentOption TOption="string" Value="@operandRef">@operandLabel</FluentOption>
                             }
-                        </select>
+                        </FluentSelect>
                     </label>
                     <label class="node-field">
                         <span>in</span>
-                        <select class="binding-row__select node-check-in"
-                                @onchange="args => EmitNodeChangeAsync(node, checkIn: args.Value?.ToString())"
-                                aria-label="@($"In for check {node.Id}")">
-                            <option value="" selected="@(node.In == null)">choose…</option>
+                        <FluentSelect TOption="string" class="binding-row__select node-check-in"
+                                      Value="@(node.In ?? string.Empty)"
+                                      ValueChanged="@(v => EmitNodeChangeAsync(node, checkIn: v))"
+                                      aria-label="@($"In for check {node.Id}")">
+                            <FluentOption TOption="string" Value="">choose…</FluentOption>
                             @foreach (var (operandRef, operandLabel) in CheckOperandOptions)
                             {
-                                <option value="@operandRef" selected="@(node.In == operandRef)">@operandLabel</option>
+                                <FluentOption TOption="string" Value="@operandRef">@operandLabel</FluentOption>
                             }
-                        </select>
+                        </FluentSelect>
                     </label>
                     <label class="node-field node-field--wide">
                         <span>fail with</span>
@@ -146,57 +148,57 @@
                     {
                         <label class="node-field">
                             <span>prompt</span>
-                            <select class="binding-row__select"
-                                    value="@(node.Prompt ?? string.Empty)"
-                                    @onchange="args => EmitNodeChangeAsync(node, prompt: args.Value?.ToString())"
-                                    aria-label="Node prompt">
+                            <FluentSelect TOption="string" class="binding-row__select"
+                                          Value="@(node.Prompt ?? string.Empty)"
+                                          ValueChanged="@(v => EmitNodeChangeAsync(node, prompt: v))"
+                                          aria-label="Node prompt">
                                 @if (node.Prompt != null && !PromptOptions.Contains(node.Prompt))
                                 {
-                                    <option value="@node.Prompt">@node.Prompt</option>
+                                    <FluentOption TOption="string" Value="@node.Prompt">@node.Prompt</FluentOption>
                                 }
                                 @foreach (var promptId in PromptOptions)
                                 {
-                                    <option value="@promptId">@promptId</option>
+                                    <FluentOption TOption="string" Value="@promptId">@promptId</FluentOption>
                                 }
-                            </select>
+                            </FluentSelect>
                         </label>
                     }
                     <label class="node-field">
                         <span>for each</span>
-                        <select class="binding-row__select"
-                                value="@(node.ForEach ?? string.Empty)"
-                                @onchange="args => EmitNodeChangeAsync(node, forEach: args.Value?.ToString())"
-                                aria-label="Node forEach collection">
-                            <option value="">— runs once —</option>
+                        <FluentSelect TOption="string" class="binding-row__select"
+                                      Value="@(node.ForEach ?? string.Empty)"
+                                      ValueChanged="@(v => EmitNodeChangeAsync(node, forEach: v))"
+                                      aria-label="Node forEach collection">
+                            <FluentOption TOption="string" Value="">— runs once —</FluentOption>
                             @if (node.ForEach != null && !ForEachOptions(Collections, ArrayInputs).Contains(node.ForEach))
                             {
-                                <option value="@node.ForEach">@node.ForEach</option>
+                                <FluentOption TOption="string" Value="@node.ForEach">@node.ForEach</FluentOption>
                             }
                             @foreach (var option in ForEachOptions(Collections, ArrayInputs))
                             {
-                                <option value="@option">@option</option>
+                                <FluentOption TOption="string" Value="@option">@option</FluentOption>
                             }
-                        </select>
+                        </FluentSelect>
                     </label>
                     <label class="node-field">
                         <span>output</span>
-                        <select class="binding-row__select"
-                                value="@(node.OutputSchema ?? string.Empty)"
-                                @onchange="args => EmitNodeChangeAsync(node, outputSchema: args.Value?.ToString())"
-                                aria-label="Node output contract">
+                        <FluentSelect TOption="string" class="binding-row__select"
+                                      Value="@(node.OutputSchema ?? string.Empty)"
+                                      ValueChanged="@(v => EmitNodeChangeAsync(node, outputSchema: v))"
+                                      aria-label="Node output contract">
                             @* #825/#827: the empty (no-contract) row and the offered
                                contracts are kind-filtered — "— rendered —" for a template
                                (no model), answer-only contracts excluded from it. *@
                             @foreach (var (value, label) in NodeOutputOptions(node.IsTemplate, ContractOptions))
                             {
-                                <option value="@value">@label</option>
+                                <FluentOption TOption="string" Value="@value">@label</FluentOption>
                             }
                             @if (node.OutputSchema != null && !ContractOptions.Contains(node.OutputSchema))
                             {
                                 @* A carried/invalid current value stays visible so it is changeable. *@
-                                <option value="@node.OutputSchema">@node.OutputSchema</option>
+                                <FluentOption TOption="string" Value="@node.OutputSchema">@node.OutputSchema</FluentOption>
                             }
-                        </select>
+                        </FluentSelect>
                     </label>
                     @if (node.IsTemplate)
                     {
@@ -259,16 +261,18 @@
                     }
                 </ul>
                 <div class="add-variable__form">
-                    <select class="binding-row__select"
-                            value=""
-                            @onchange="args => AppendAggregateSourceAsync(node, args.Value?.ToString())"
-                            aria-label="Add aggregate source">
-                        <option value="">+ add source…</option>
+                    @* Action-select: Value is pinned to "" so a re-render resets it to the
+                       prompt after each pick appends a source. *@
+                    <FluentSelect TOption="string" class="binding-row__select"
+                                  Value=""
+                                  ValueChanged="@(v => AppendAggregateSourceAsync(node, v))"
+                                  aria-label="Add aggregate source">
+                        <FluentOption TOption="string" Value="">+ add source…</FluentOption>
                         @foreach (var candidate in Nodes.Where(other => other.Id != node.Id && !node.Aggregate.Contains($"node:{other.Id}")))
                         {
-                            <option value="@($"node:{candidate.Id}")">node:@candidate.Id</option>
+                            <FluentOption TOption="string" Value="@($"node:{candidate.Id}")">node:@candidate.Id</FluentOption>
                         }
-                    </select>
+                    </FluentSelect>
                 </div>
             }
             else
@@ -331,16 +335,16 @@
                            value="@form.Name"
                            @onchange="args => SetFormName(node.Id, args)"
                            aria-label="New variable name" />
-                    <select class="binding-row__select"
-                            value="@form.Source"
-                            @onchange="args => SetFormSource(node.Id, args)"
-                            aria-label="New variable source">
-                        <option value="">choose source…</option>
+                    <FluentSelect TOption="string" class="binding-row__select"
+                                  Value="@form.Source"
+                                  ValueChanged="@(v => SetFormSource(node.Id, v))"
+                                  aria-label="New variable source">
+                        <FluentOption TOption="string" Value="">choose source…</FluentOption>
                         @foreach (var option in BindingSourceEditor.SourceOptions(Nodes, Scalars, node, string.Empty, Inputs))
                         {
-                            <option value="@option">@option</option>
+                            <FluentOption TOption="string" Value="@option">@option</FluentOption>
                         }
-                    </select>
+                    </FluentSelect>
                     <button type="button" class="add-variable__submit" @onclick="() => SubmitAddVariableAsync(node)">Add</button>
                 </div>
                 @if (form.Error != null)
@@ -571,8 +575,9 @@
     private void SetFormName(string nodeId, ChangeEventArgs args) =>
         FormFor(nodeId).Name = args.Value?.ToString();
 
-    private void SetFormSource(string nodeId, ChangeEventArgs args) =>
-        FormFor(nodeId).Source = args.Value?.ToString() ?? string.Empty;
+    // #902: FluentSelect's ValueChanged hands us the chosen string directly.
+    private void SetFormSource(string nodeId, string? value) =>
+        FormFor(nodeId).Source = value ?? string.Empty;
 
     private async Task SubmitAddVariableAsync(WorkflowManifestReader.NodeView node)
     {
