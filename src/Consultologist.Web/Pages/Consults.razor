@@ -81,7 +81,8 @@
                     <div class="form-stack">
                         @if (isBlocksLoading)
                         {
-                            <LoadingState>Loading section standards...</LoadingState>
+                            @* #882: a content-shaped skeleton for the section-standards load. *@
+                            <SkeletonText Lines="4" />
                         }
                         else if (!string.IsNullOrEmpty(blocksLoadError))
                         {
