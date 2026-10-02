@@ -53,9 +53,9 @@
             </div>
             @if (Editable && !node.IsResult && OnNodeRemoved.HasDelegate)
             {
-                <button type="button" class="add-variable__submit" @onclick="() => OnNodeRemoved.InvokeAsync(node.Id)">
+                <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit" IconStart="@(new Icons.Regular.Size20.Dismiss())" @onclick="() => OnNodeRemoved.InvokeAsync(node.Id)">
                     Remove node
-                </button>
+                </FluentButton>
             }
         </div>
         @if (Editable)
@@ -82,9 +82,12 @@
                                 var declaredValue = value;
                                 <span class="input-field__chip" data-node-value="@declaredValue">
                                     @declaredValue
-                                    <button type="button" class="aggregate-row__button" title="Remove value"
-                                            aria-label="Remove value @declaredValue"
-                                            @onclick="() => EmitValuesAsync(node, (node.Values ?? Array.Empty<string>()).Where(v => v != declaredValue).ToList())">×</button>
+                                    <span @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                                        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove value"
+                                                      aria-label="@($"Remove value {declaredValue}")"
+                                                      IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                      @onclick="() => EmitValuesAsync(node, (node.Values ?? Array.Empty<string>()).Where(v => v != declaredValue).ToList())" />
+                                    </span>
                                 </span>
                             }
                             <input class="node-field__input" placeholder="in_scope"
@@ -245,18 +248,21 @@
                         <li class="binding-row">
                             <span class="muted-text">@(index + 1).</span>
                             <code>@node.Aggregate[index]</code>
-                            <button type="button" class="aggregate-row__button" title="Move up"
-                                    aria-label="Move source @(index + 1) up"
-                                    disabled="@(index == 0)"
-                                    @onclick="() => MoveAggregateSourceAsync(currentNode, index, -1)">↑</button>
-                            <button type="button" class="aggregate-row__button" title="Move down"
-                                    aria-label="Move source @(index + 1) down"
-                                    disabled="@(index == node.Aggregate.Count - 1)"
-                                    @onclick="() => MoveAggregateSourceAsync(currentNode, index, +1)">↓</button>
-                            <button type="button" class="aggregate-row__button" title="Remove source"
-                                    aria-label="Remove source @(index + 1)"
-                                    disabled="@(node.Aggregate.Count == 1)"
-                                    @onclick="() => RemoveAggregateSourceAsync(currentNode, index)">×</button>
+                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move up"
+                                          aria-label="@($"Move source {index + 1} up")"
+                                          Disabled="@(index == 0)"
+                                          IconStart="@(new Icons.Regular.Size20.ArrowUp())"
+                                          @onclick="() => MoveAggregateSourceAsync(currentNode, index, -1)" />
+                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move down"
+                                          aria-label="@($"Move source {index + 1} down")"
+                                          Disabled="@(index == node.Aggregate.Count - 1)"
+                                          IconStart="@(new Icons.Regular.Size20.ArrowDown())"
+                                          @onclick="() => MoveAggregateSourceAsync(currentNode, index, +1)" />
+                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove source"
+                                          aria-label="@($"Remove source {index + 1}")"
+                                          Disabled="@(node.Aggregate.Count == 1)"
+                                          IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                          @onclick="() => RemoveAggregateSourceAsync(currentNode, index)" />
                         </li>
                     }
                 </ul>
@@ -345,7 +351,7 @@
                             <FluentOption TOption="string" Value="@option">@option</FluentOption>
                         }
                     </FluentSelect>
-                    <button type="button" class="add-variable__submit" @onclick="() => SubmitAddVariableAsync(node)">Add</button>
+                    <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit" IconStart="@(new Icons.Regular.Size20.Add())" @onclick="() => SubmitAddVariableAsync(node)">Add</FluentButton>
                 </div>
                 @if (form.Error != null)
                 {
@@ -364,9 +370,9 @@
                 <h3 class="panel-title"><span class="node-strike">@removedNode.Label</span> <span class="muted-text">— removed</span></h3>
                 <p class="muted-text">@removedNode.Id · its prompt is removed with it</p>
             </div>
-            <button type="button" class="add-variable__submit" @onclick="() => OnNodeRestored.InvokeAsync(removedNode.Id)">
+            <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit" IconStart="@(new Icons.Regular.Size20.ArrowUndo())" @onclick="() => OnNodeRestored.InvokeAsync(removedNode.Id)">
                 Restore
-            </button>
+            </FluentButton>
         </div>
     </article>
 }
