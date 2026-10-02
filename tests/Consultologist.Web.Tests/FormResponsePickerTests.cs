@@ -33,9 +33,9 @@ public class FormResponsePickerTests : ClientRenderTestContext
 
         page.WaitForAssertion(() =>
         {
-            var panel = page.Find(".form-picker__panel");
-            Assert.Equal("group", panel.GetAttribute("role"));
-            Assert.Equal("Held form responses", panel.GetAttribute("aria-label"));
+            // #893: a FluentMenu now — the accessible name sits on the menu's
+            // anchored region, the menu role is set by the web component at runtime.
+            Assert.NotNull(page.Find("[aria-label='Held form responses']"));
             Assert.Equal(2, page.FindAll(".form-picker__response").Count);
         });
 

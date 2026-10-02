@@ -79,7 +79,9 @@ public class ConsultsFormResponseTests : ClientRenderTestContext
         page.WaitForAssertion(() => Assert.Equal(2, page.FindAll(".form-picker__choose").Count));
         // Newest first — the held response, then the older discarded one.
         Assert.Contains("17", page.FindAll(".form-picker__choose")[0].TextContent);
-        var deleted = page.Find(".form-picker__response--deleted .form-picker__choose");
+        // #893: the response row IS the choose item now (a FluentMenuItem carrying
+        // both classes), so the modifier and the choose class are on one element.
+        var deleted = page.Find(".form-picker__choose.form-picker__response--deleted");
         Assert.True(deleted.HasAttribute("disabled"));
         Assert.Contains("values deleted Sep 8, 2026", deleted.TextContent);
     }
