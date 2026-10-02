@@ -587,6 +587,25 @@ header.header.app-header {
 	color: var(--consultologist-text-muted);
 }
 
+/* #877 fix: the FluentInputFile drop zone is rendered by the component, so its
+   container carries FluentInputFile's own scoped-CSS attribute — a Consults-scoped
+   rule never matches it. These global rules fill the upload row (the grid otherwise
+   shrink-wraps to the hint text), keep padding inside the border, and let the whole
+   box — including the centred hint — open the picker: the hint overlay sits above
+   the file input (z-index) and would otherwise swallow the click. FluentInputFile
+   still owns the dashed border, hover fill and drag-drop. */
+.input-field__dropzone {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.5rem 0.75rem;
+	border-radius: var(--consultologist-radius-sm, 4px);
+	cursor: pointer;
+}
+
+.input-field__dropzone .inputfile-content {
+	pointer-events: none;
+}
+
 /* #882: content-shaped loading placeholders (SkeletonText / SkeletonList in the
    Consultologist.UI RCL). The components carry role="status"; these rules lay out
    the shimmer bars and give list rows their card shape. FluentSkeleton supplies
