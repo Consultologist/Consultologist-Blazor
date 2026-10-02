@@ -1,0 +1,28 @@
+@* #882: a content-shaped loading placeholder — N shimmer bars standing in for
+   lines of text while a content load is in flight. role="status" + aria-label so
+   a screen reader announces the load (the bars have no accessible name). The
+   .skeleton-text layout rule lives in each app's global css/app.css, mirroring
+   the sibling LoadingState. *@
+@namespace Consultologist.UI.Components
+
+<div class="skeleton-text @Class" role="status" aria-label="Loading">
+    @for (var i = 0; i < Lines; i++)
+    {
+        <FluentSkeleton Shape="SkeletonShape.Rect" Shimmer="true" Height="0.8rem"
+                        Width="@(i == Lines - 1 ? LastLineWidth : (Width ?? "100%"))" />
+    }
+</div>
+
+@code {
+    /// <summary>How many shimmer bars to draw.</summary>
+    [Parameter] public int Lines { get; set; } = 3;
+
+    /// <summary>Width of every bar except the last (CSS length). Defaults to full width.</summary>
+    [Parameter] public string? Width { get; set; }
+
+    /// <summary>Width of the final bar — a shorter last line reads as prose.</summary>
+    [Parameter] public string LastLineWidth { get; set; } = "60%";
+
+    /// <summary>Extra classes on the wrapper (layout/placement by the caller).</summary>
+    [Parameter] public string? Class { get; set; }
+}

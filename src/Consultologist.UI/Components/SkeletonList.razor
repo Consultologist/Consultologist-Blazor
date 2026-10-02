@@ -1,0 +1,22 @@
+@* #882: a content-shaped loading placeholder for a list — N row skeletons, each a
+   title bar + a shorter meta bar, standing in for rows while they load. role="status"
+   so the load is announced. The .skeleton-list rules live in each app's css/app.css. *@
+@namespace Consultologist.UI.Components
+
+<div class="skeleton-list @Class" role="status" aria-label="Loading">
+    @for (var i = 0; i < Rows; i++)
+    {
+        <div class="skeleton-list__row">
+            <FluentSkeleton Shape="SkeletonShape.Rect" Shimmer="true" Width="40%" Height="1rem" />
+            <FluentSkeleton Shape="SkeletonShape.Rect" Shimmer="true" Width="70%" Height="0.75rem" />
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>How many row skeletons to draw.</summary>
+    [Parameter] public int Rows { get; set; } = 5;
+
+    /// <summary>Extra classes on the wrapper (layout/placement by the caller).</summary>
+    [Parameter] public string? Class { get; set; }
+}
