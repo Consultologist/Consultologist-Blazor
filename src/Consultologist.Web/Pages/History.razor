@@ -74,11 +74,38 @@
                 }
                 else
                 {
+                    @* #879: a command bar — search by run id, filter by status and
+                       date range. Explicit Value/ValueChanged (not @bind) so the
+                       filters are driveable from bUnit and each resets to page 1. *@
+                    <FluentToolbar Class="history-commandbar">
+                        <FluentSearch Value="@runIdFilter" ValueChanged="OnRunIdFilterChanged"
+                                      Placeholder="Search run id" aria-label="Search by run id"
+                                      Class="history-commandbar__search" />
+                        <FluentSelect TOption="string" Value="@statusFilter" ValueChanged="OnStatusFilterChanged"
+                                      aria-label="Filter by status" Class="history-commandbar__status">
+                            <FluentOption TOption="string" Value="">All statuses</FluentOption>
+                            @foreach (var status in StatusOptions)
+                            {
+                                <FluentOption TOption="string" Value="@status">@status</FluentOption>
+                            }
+                        </FluentSelect>
+                        <FluentDatePicker Value="@fromDate" ValueChanged="OnFromDateChanged"
+                                          aria-label="From date" Placeholder="From" />
+                        <FluentDatePicker Value="@toDate" ValueChanged="OnToDateChanged"
+                                          aria-label="To date" Placeholder="To" />
+                        @if (HasActiveFilter)
+                        {
+                            <FluentButton Appearance="Appearance.Stealth" Class="history-commandbar__clear"
+                                          IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                          @onclick="ClearFiltersAsync">Clear</FluentButton>
+                        }
+                    </FluentToolbar>
+
                     @* #879: the run list as a Fluent data grid — sortable columns +
                        client pagination over the whole history; clicking a row opens
                        its record in the master-detail panel below. *@
                     <FluentDataGrid TGridItem="AccountJobSummaryResponse"
-                                    Items="@jobs.AsQueryable()"
+                                    Items="@FilteredJobs"
                                     DisplayMode="DataGridDisplayMode.Table"
                                     Pagination="@pagination"
                                     ShowHover="true"
@@ -962,6 +989,81 @@
     // panel below the grid is showing.
     private readonly PaginationState pagination = new() { ItemsPerPage = 25 };
     private string? selectedJobId;
+
+    // #879: command-bar filters over the in-memory history.
+    private string runIdFilter = string.Empty;
+    private string statusFilter = string.Empty;
+    private DateTime? fromDate;
+    private DateTime? toDate;
+
+    private IEnumerable<string> StatusOptions =>
+        jobs.Select(j => j.Status).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s);
+
+    private bool HasActiveFilter =>
+        !string.IsNullOrWhiteSpace(runIdFilter) || !string.IsNullOrWhiteSpace(statusFilter)
+        || fromDate is not null || toDate is not null;
+
+    private IQueryable<AccountJobSummaryResponse> FilteredJobs
+    {
+        get
+        {
+            IEnumerable<AccountJobSummaryResponse> q = jobs;
+            if (!string.IsNullOrWhiteSpace(runIdFilter))
+            {
+                q = q.Where(j => j.JobId.Contains(runIdFilter.Trim(), StringComparison.OrdinalIgnoreCase));
+            }
+            if (!string.IsNullOrWhiteSpace(statusFilter))
+            {
+                q = q.Where(j => string.Equals(j.Status, statusFilter, StringComparison.OrdinalIgnoreCase));
+            }
+            if (fromDate is { } from)
+            {
+                q = q.Where(j => j.CreatedAtUtc.LocalDateTime.Date >= from.Date);
+            }
+            if (toDate is { } to)
+            {
+                q = q.Where(j => j.CreatedAtUtc.LocalDateTime.Date <= to.Date);
+            }
+            return q.AsQueryable();
+        }
+    }
+
+    private async Task OnRunIdFilterChanged(string value)
+    {
+        runIdFilter = value ?? string.Empty;
+        await ResetToFirstPageAsync();
+    }
+
+    private async Task OnStatusFilterChanged(string value)
+    {
+        statusFilter = value ?? string.Empty;
+        await ResetToFirstPageAsync();
+    }
+
+    private async Task OnFromDateChanged(DateTime? value)
+    {
+        fromDate = value;
+        await ResetToFirstPageAsync();
+    }
+
+    private async Task OnToDateChanged(DateTime? value)
+    {
+        toDate = value;
+        await ResetToFirstPageAsync();
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        runIdFilter = string.Empty;
+        statusFilter = string.Empty;
+        fromDate = null;
+        toDate = null;
+        await ResetToFirstPageAsync();
+    }
+
+    // A narrower filter can leave the current page index past the last page; reset
+    // to the first page so the grid never shows an empty page after filtering.
+    private async Task ResetToFirstPageAsync() => await pagination.SetCurrentPageIndexAsync(0);
 
     private static readonly GridSort<AccountJobSummaryResponse> statusSort =
         GridSort<AccountJobSummaryResponse>.ByAscending(j => j.Status);

@@ -623,6 +623,22 @@ header.header.app-header {
 	margin: 0 0.15rem;
 }
 
+/* #879: the History command bar (search + status + date filters) — wrap at narrow
+   widths; global because fluent-toolbar is component-rendered (the scope lesson). */
+.history-commandbar {
+	margin-bottom: 0.75rem;
+}
+
+.history-commandbar::part(positioning-region) {
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	align-items: center;
+}
+
+.history-commandbar__search {
+	min-width: 14rem;
+}
+
 /* #882: content-shaped loading placeholders (SkeletonText / SkeletonList in the
    Consultologist.UI RCL). The components carry role="status"; these rules lay out
    the shimmer bars and give list rows their card shape. FluentSkeleton supplies
