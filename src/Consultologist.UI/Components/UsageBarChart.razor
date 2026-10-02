@@ -15,7 +15,8 @@
 
     @if (IsEmpty)
     {
-        <p class="usage-chart__empty muted-text">No usage in this window.</p>
+        @* #882: the shared EmptyState (no icon here — the RCL has no Icons package). *@
+        <EmptyState Compact Class="usage-chart__empty" Description="No usage in this window." />
     }
     else
     {

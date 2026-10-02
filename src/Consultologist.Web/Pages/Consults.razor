@@ -815,22 +815,28 @@
                         }
                         else
                         {
-                            <div class="empty-note-state">
-                                <h2 class="panel-title">Consultation note</h2>
-                                <p class="panel-description">
-                                    Sections appear here as they are generated.
-                                </p>
-                                @if (isAiRequestLoading)
-                                {
-                                    <LoadingState>Generating&hellip;</LoadingState>
-                                    @* #684: a run takes minutes — show how long it's been going
-                                       and set the expectation, so the wait doesn't feel stuck. *@
-                                    <p class="generating-status muted-text">
-                                        @ElapsedTime.Format(RunElapsed) elapsed &middot; this usually takes a few
-                                        minutes, and it keeps running in History if you leave.
+                            @* #882: the result-pane placeholder as the shared EmptyState;
+                               when a run is in flight it still carries the "Generating…"
+                               action spinner + elapsed status. *@
+                            <EmptyState Class="empty-note-state"
+                                        Icon="@(new Icons.Regular.Size32.DocumentText())"
+                                        Title="Consultation note">
+                                <ChildContent>
+                                    <p class="panel-description">
+                                        Sections appear here as they are generated.
                                     </p>
-                                }
-                            </div>
+                                    @if (isAiRequestLoading)
+                                    {
+                                        <LoadingState>Generating&hellip;</LoadingState>
+                                        @* #684: a run takes minutes — show how long it's been going
+                                           and set the expectation, so the wait doesn't feel stuck. *@
+                                        <p class="generating-status muted-text">
+                                            @ElapsedTime.Format(RunElapsed) elapsed &middot; this usually takes a few
+                                            minutes, and it keeps running in History if you leave.
+                                        </p>
+                                    }
+                                </ChildContent>
+                            </EmptyState>
                         }
                     </section>
 

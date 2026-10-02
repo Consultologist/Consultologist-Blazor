@@ -60,15 +60,16 @@
                 else if (jobs.Count == 0)
                 {
                     @* #772: a first-run empty state, not a dead-end line — since
-                       #766 a newly-activated account's first stop can be here. *@
+                       #766 a newly-activated account's first stop can be here.
+                       #882: the shared EmptyState block (icon + line + action). *@
                     <div class="content-card">
-                        <div class="form-stack">
-                            <h2 class="panel-title">No consults yet</h2>
-                            <p class="panel-description">Every consult you run — completed or scheduled — shows up here with its full provenance. Draft your first one to get started.</p>
-                            <div class="action-row">
+                        <EmptyState Icon="@(new Icons.Regular.Size32.DocumentText())"
+                                    Title="No consults yet"
+                                    Description="Every consult you run — completed or scheduled — shows up here with its full provenance. Draft your first one to get started.">
+                            <Action>
                                 <FluentAnchor Appearance="Appearance.Accent" Href="create">Draft a consult</FluentAnchor>
-                            </div>
-                        </div>
+                            </Action>
+                        </EmptyState>
                     </div>
                 }
                 else

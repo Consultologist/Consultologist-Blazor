@@ -158,7 +158,8 @@
                     else
                     {
                         <div class="state-panel">
-                            <span class="muted-text">No Epic identity linked. Open Consultologist from Epic to link one.</span>
+                            <EmptyState Compact Icon="@(new Icons.Regular.Size20.LinkMultiple())"
+                                        Description="No Epic identity linked. Open Consultologist from Epic to link one." />
                         </div>
                     }
                 </div>
@@ -207,7 +208,8 @@
                     else
                     {
                         <div class="state-panel">
-                            <span class="muted-text">No Cerner identity linked. Open Consultologist from Cerner to link one.</span>
+                            <EmptyState Compact Icon="@(new Icons.Regular.Size20.LinkMultiple())"
+                                        Description="No Cerner identity linked. Open Consultologist from Cerner to link one." />
                         </div>
                     }
                 </div>
@@ -311,7 +313,8 @@
                                 </FluentMessageBar>
                             }
                             <div class="state-panel">
-                                <span class="muted-text">No Marketplace subscription linked.</span>
+                                <EmptyState Compact Icon="@(new Icons.Regular.Size20.LinkMultiple())"
+                                            Description="No Marketplace subscription linked." />
                             </div>
                         }
                     }
@@ -676,10 +679,21 @@
                         </FluentMessageBar>
                     }
 
-                    <div class="state-panel">
-                        <span class="muted-text">Snippets</span>
-                        <strong class="snippet-state">@Snippets.Describe(snippetSet)</strong>
-                    </div>
+                    @* #882: when empty, the shared EmptyState (keeping the .snippet-state
+                       hook + Describe copy); the summary panel when there are snippets. *@
+                    @if (snippetSet.Items.Count == 0)
+                    {
+                        <EmptyState Icon="@(new Icons.Regular.Size32.Notepad())"
+                                    Class="snippet-state"
+                                    Description="@Snippets.Describe(snippetSet)" />
+                    }
+                    else
+                    {
+                        <div class="state-panel">
+                            <span class="muted-text">Snippets</span>
+                            <strong class="snippet-state">@Snippets.Describe(snippetSet)</strong>
+                        </div>
+                    }
 
                     @foreach (var snippet in snippetSet.Items)
                     {
@@ -768,10 +782,21 @@
                         </FluentMessageBar>
                     }
 
-                    <div class="state-panel">
-                        <span class="muted-text">Signature</span>
-                        <strong class="signature-state">@SignatureBlocks.Describe(signatureSet)</strong>
-                    </div>
+                    @* #882: when empty, the shared EmptyState (keeping the .signature-state
+                       hook + Describe copy); the summary panel when there are blocks. *@
+                    @if (signatureSet.Blocks.Count == 0)
+                    {
+                        <EmptyState Icon="@(new Icons.Regular.Size32.DocumentText())"
+                                    Class="signature-state"
+                                    Description="@SignatureBlocks.Describe(signatureSet)" />
+                    }
+                    else
+                    {
+                        <div class="state-panel">
+                            <span class="muted-text">Signature</span>
+                            <strong class="signature-state">@SignatureBlocks.Describe(signatureSet)</strong>
+                        </div>
+                    }
 
                     @foreach (var block in signatureSet.Blocks)
                     {
@@ -1168,7 +1193,8 @@
 
                     @if (myPackages.Count == 0)
                     {
-                        <p class="muted-text">No packages yet — publishing in the editor creates your first.</p>
+                        <EmptyState Compact Icon="@(new Icons.Regular.Size20.DocumentBulletList())"
+                                    Description="No packages yet — publishing in the editor creates your first." />
                     }
                 </div>
             </section>
@@ -1294,7 +1320,8 @@
                     {
                         @if (usageData.Days.Count == 0)
                         {
-                            <p class="usage-empty muted-text">No usage yet — counts begin with the first completed run after 2026-08-31; older runs have no counts.</p>
+                            <EmptyState Compact Class="usage-empty" Icon="@(new Icons.Regular.Size20.DataHistogram())"
+                                        Description="No usage yet — counts begin with the first completed run after 2026-08-31; older runs have no counts." />
                         }
                         else
                         {

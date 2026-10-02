@@ -1,0 +1,63 @@
+@* #882: the app's one empty-state block — an icon, a title, a line, and an
+   optional primary action, so an empty list reads as a defined state rather than a
+   bare line or nothing. The full form is a centered card; Compact is an inline
+   icon + line for sidebar lists and small sections. The caller supplies the Icon
+   (constructed from the Web app's Icons package) and any Action. The .empty-state
+   rules live in each app's css/app.css, mirroring the sibling LoadingState. *@
+@namespace Consultologist.UI.Components
+
+<div class="@CssClass">
+    @if (Icon is not null)
+    {
+        <FluentIcon Value="Icon" Class="empty-state__icon" />
+    }
+    <div class="empty-state__body">
+        @if (!string.IsNullOrWhiteSpace(Title))
+        {
+            <p class="empty-state__title panel-title">@Title</p>
+        }
+        @if (ChildContent is not null)
+        {
+            <div class="empty-state__description panel-description">@ChildContent</div>
+        }
+        else if (!string.IsNullOrWhiteSpace(Description))
+        {
+            <p class="empty-state__description panel-description">@Description</p>
+        }
+        @if (Action is not null)
+        {
+            <div class="empty-state__action action-row">@Action</div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>The icon above/beside the message (caller-constructed, e.g. new Icons.Regular.Size24.X()).</summary>
+    [Parameter] public Icon? Icon { get; set; }
+
+    /// <summary>The bold one-line heading.</summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>The explanatory line (ignored when ChildContent is supplied).</summary>
+    [Parameter] public string? Description { get; set; }
+
+    /// <summary>Rich description content, in place of <see cref="Description"/>.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>An optional primary action (a FluentAnchor/FluentButton).</summary>
+    [Parameter] public RenderFragment? Action { get; set; }
+
+    /// <summary>Inline icon + line (no card) for sidebar lists and small sections.</summary>
+    [Parameter] public bool Compact { get; set; }
+
+    /// <summary>Extra classes on the wrapper — preserves existing CSS/test hooks.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    private string CssClass =>
+        string.Join(" ", new[]
+        {
+            "empty-state",
+            Compact ? "empty-state--compact" : null,
+            string.IsNullOrWhiteSpace(Class) ? null : Class
+        }.Where(c => c is not null));
+}
