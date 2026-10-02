@@ -35,7 +35,7 @@ public class PublishTargetsTests : ClientRenderTestContext
     {
         page.FindAll("button.editor-nav__item").First(b => b.TextContent.Contains("Inputs")).Click();
         page.Find(".add-variable__form input").Change("added_here");
-        page.FindAll("button.variable-chips__add").First(b => b.TextContent.Contains("+ Input")).Click();
+        page.FindAll("fluent-button.variable-chips__add").First(b => b.TextContent.Contains("+ Input")).Click();
     }
 
     private static void Click(IRenderedComponent<Templates> page, string label) =>

@@ -68,7 +68,7 @@ public class TemplatesSchemasTests : ClientRenderTestContext
         Navigate(page, "Schemas");
 
         // V12Full's concept-list is the output of extract-input-terms / extract-note-terms.
-        Assert.True(page.Find("button[aria-label='Remove schema concept-list']").HasAttribute("disabled"));
+        Assert.True(page.Find("fluent-button[aria-label='Remove schema concept-list']").HasAttribute("disabled"));
         var card = page.Find("div[data-schema='concept-list']").TextContent;
         Assert.Contains("Used by", card);
         Assert.Contains("extract-input-terms", card);
@@ -83,7 +83,7 @@ public class TemplatesSchemasTests : ClientRenderTestContext
         CapturePublish();
         Navigate(page, "Schemas");
 
-        var remove = page.Find("button[aria-label='Remove schema report']");
+        var remove = page.Find("fluent-button[aria-label='Remove schema report']");
         Assert.False(remove.HasAttribute("disabled"));
         // #843: an unused schema shows the pane hint instead of a reader list.
         Assert.Contains("Not yet used by any node", page.Find("div[data-schema='report']").TextContent);
@@ -107,7 +107,7 @@ public class TemplatesSchemasTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V10OrphanSchema());
         Navigate(page, "Schemas");
 
-        page.Find("button[aria-label='Remove schema report']").Click();
+        page.Find("fluent-button[aria-label='Remove schema report']").Click();
         Assert.NotNull(page.Find("div[data-schema-removed='report']"));
 
         page.Find("button[aria-label='Restore schema report']").Click();
@@ -124,7 +124,7 @@ public class TemplatesSchemasTests : ClientRenderTestContext
         CapturePublish();
         Navigate(page, "Schemas");
 
-        page.Find("button[aria-label='Add output contract concept-list']").Click();
+        page.Find("fluent-button[aria-label='Add output contract concept-list']").Click();
         Publish(page);
 
         Assert.True(sent != null, string.Join(" | ", Refusals(page)));
@@ -141,7 +141,7 @@ public class TemplatesSchemasTests : ClientRenderTestContext
     {
         var page = RenderEditor(EditorFixtures.V7());
         Navigate(page, "Schemas");
-        page.Find("button[aria-label='Add output contract concept-list']").Click();
+        page.Find("fluent-button[aria-label='Add output contract concept-list']").Click();
 
         Navigate(page, "Graph");
         var options = page.FindAll("fluent-select[aria-label='Node output contract']")
@@ -155,7 +155,7 @@ public class TemplatesSchemasTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V12Full());
         Navigate(page, "Schemas");
 
-        Assert.Empty(page.FindAll("button[aria-label='Add output contract concept-list']"));
+        Assert.Empty(page.FindAll("fluent-button[aria-label='Add output contract concept-list']"));
     }
 
     [Fact]
@@ -164,11 +164,11 @@ public class TemplatesSchemasTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V7());
         Navigate(page, "Schemas");
 
-        page.Find("button[aria-label='Add output contract concept-list']").Click();
+        page.Find("fluent-button[aria-label='Add output contract concept-list']").Click();
         Assert.NotNull(page.Find("div[data-schema='concept-list']"));
 
-        page.Find("button[aria-label='Remove schema concept-list']").Click();
+        page.Find("fluent-button[aria-label='Remove schema concept-list']").Click();
         Assert.Empty(page.FindAll("div[data-schema='concept-list']"));
-        Assert.NotEmpty(page.FindAll("button[aria-label='Add output contract concept-list']"));
+        Assert.NotEmpty(page.FindAll("fluent-button[aria-label='Add output contract concept-list']"));
     }
 }

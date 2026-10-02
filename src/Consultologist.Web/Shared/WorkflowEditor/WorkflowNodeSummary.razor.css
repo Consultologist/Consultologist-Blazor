@@ -76,19 +76,11 @@ fluent-select.binding-row__select {
 	opacity: 0.65;
 }
 
-.aggregate-row__button {
-	border: 1px solid var(--consultologist-border);
-	border-radius: var(--consultologist-radius-sm, 4px);
-	background: var(--consultologist-surface);
-	cursor: pointer;
-	font-size: 0.72rem;
+/* #889: FluentButton (Stealth) owns fill/border/hover/disabled; keep compact sizing. */
+fluent-button.aggregate-row__button::part(control) {
+	min-width: 0;
 	padding: 0.1rem 0.4rem;
-	color: inherit;
-}
-
-.aggregate-row__button:disabled {
-	opacity: 0.4;
-	cursor: default;
+	font-size: 0.72rem;
 }
 
 .node-strike {
@@ -118,14 +110,11 @@ fluent-select.binding-row__select {
 	margin-top: 0.4rem;
 }
 
-.add-variable__submit {
-	border: 1px solid var(--consultologist-border);
-	border-radius: var(--consultologist-radius-sm, 4px);
-	background: var(--consultologist-surface);
-	cursor: pointer;
-	font-size: 0.78rem;
+/* #889: FluentButton (Stealth); keep compact sizing. */
+fluent-button.add-variable__submit::part(control) {
+	min-width: 0;
 	padding: 0.2rem 0.7rem;
-	color: inherit;
+	font-size: 0.78rem;
 }
 
 .add-variable__error {

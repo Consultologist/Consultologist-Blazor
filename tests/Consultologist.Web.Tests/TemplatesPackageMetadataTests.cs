@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Components.Web;
 using Bunit;
 using System.Text.Json;
 using Consultologist.Web.Pages;
@@ -231,8 +232,12 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
 
     private static void AddTag(IRenderedComponent<Templates> page, string tag)
     {
-        page.Find("input[aria-label='New tag']").Input(tag);
-        page.FindAll("button").First(button => button.TextContent.Trim() == "Add tag").Click();
+        var input = page.Find("input[aria-label='New tag']");
+        input.Input(tag);
+        // #889: the Add-tag button is a FluentButton now, disabled on a blank tag — so a
+        // disabled click no longer fires the handler (the old native-button bUnit quirk).
+        // Enter is the real refusal path (OnNewTagKeyDownAsync) and works for every case.
+        input.KeyDown(new KeyboardEventArgs { Key = "Enter" });
     }
 
     private static string TagsHint(IRenderedComponent<Templates> page) =>
@@ -269,19 +274,19 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.WithTags(EditorFixtures.V9Structured(), "oncology", "breast", "new-patient"));
         Navigate(page, "Package");
         Assert.Equal(new[] { "oncology", "breast", "new-patient" }, TagTexts(page));
-        Assert.True(page.Find("button[aria-label='Move tag oncology earlier']").HasAttribute("disabled"));
-        Assert.True(page.Find("button[aria-label='Move tag new-patient later']").HasAttribute("disabled"));
+        Assert.True(page.Find("fluent-button[aria-label='Move tag oncology earlier']").HasAttribute("disabled"));
+        Assert.True(page.Find("fluent-button[aria-label='Move tag new-patient later']").HasAttribute("disabled"));
 
-        page.Find("button[aria-label='Move tag new-patient earlier']").Click();
+        page.Find("fluent-button[aria-label='Move tag new-patient earlier']").Click();
         Assert.Equal(new[] { "oncology", "new-patient", "breast" }, TagTexts(page));
         Assert.Contains("●", page.FindAll("button.editor-nav__item").First(button => button.TextContent.Contains("Package")).TextContent);
 
         // Back to the loaded order: nothing pending, as with a retyped title.
-        page.Find("button[aria-label='Move tag new-patient later']").Click();
+        page.Find("fluent-button[aria-label='Move tag new-patient later']").Click();
         Assert.Equal(new[] { "oncology", "breast", "new-patient" }, TagTexts(page));
         Assert.DoesNotContain("●", page.FindAll("button.editor-nav__item").First(button => button.TextContent.Contains("Package")).TextContent);
 
-        page.Find("button[aria-label='Remove tag breast']").Click();
+        page.Find("fluent-button[aria-label='Remove tag breast']").Click();
         Publish(page);
 
         Assert.Equal(new[] { "oncology", "new-patient" }, SentManifest(sent!).GetProperty("tags").EnumerateArray().Select(tag => tag.GetString()));
@@ -295,7 +300,7 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.WithTags(EditorFixtures.V9Structured(), "oncology"));
         Navigate(page, "Package");
 
-        page.Find("button[aria-label='Remove tag oncology']").Click();
+        page.Find("fluent-button[aria-label='Remove tag oncology']").Click();
         Assert.Contains("No tags.", page.Markup, StringComparison.Ordinal);
         Publish(page);
 
@@ -389,7 +394,7 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
         Navigate(page, "Package");
 
         Assert.True(page.Find("input[aria-label='New tag']").HasAttribute("disabled"));
-        Assert.True(page.Find("button[aria-label='Remove tag theirs']").HasAttribute("disabled"));
+        Assert.True(page.Find("fluent-button[aria-label='Remove tag theirs']").HasAttribute("disabled"));
     }
 
     // ----- templating (#750): read-only display -----------------------------

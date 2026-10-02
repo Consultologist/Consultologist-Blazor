@@ -79,7 +79,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         {
             Navigate(page, "Inputs");
             page.Find(".add-variable__form input.node-field__input").Change("labs");
-            page.Find(".add-variable__form button").Click();
+            page.Find(".add-variable__form fluent-button").Click();
             return Task.CompletedTask;
         }, EditorFixtures.V9Conditional());
 
@@ -99,7 +99,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         {
             Navigate(page, "Inputs");
             page.Find(".add-variable__form input.node-field__input").Change("labs");
-            page.Find(".add-variable__form button").Click();
+            page.Find(".add-variable__form fluent-button").Click();
             return Task.CompletedTask;
         });
 
@@ -815,7 +815,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
             Upgrade(page);
             Navigate(page, "Inputs");
             page.Find(".add-variable__form input").Change("consult_draft");
-            page.FindAll("button.variable-chips__add").First(b => b.TextContent.Contains("+ Input")).Click();
+            page.FindAll("fluent-button.variable-chips__add").First(b => b.TextContent.Contains("+ Input")).Click();
             await Task.CompletedTask;
         }, EditorFixtures.V6());
 
@@ -964,7 +964,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         var page = Render<Templates>();
         Navigate(page, "Inputs");
         page.Find(".add-variable__form input").Change("added_here");
-        page.FindAll("button.variable-chips__add").First(b => b.TextContent.Contains("+ Input")).Click();
+        page.FindAll("fluent-button.variable-chips__add").First(b => b.TextContent.Contains("+ Input")).Click();
         page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish")).Click();
 
         Assert.Contains("Published acct-1234567890ab@v2026.07.2", page.Markup, StringComparison.Ordinal);

@@ -390,8 +390,8 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         var page = RenderEditor(package);
         Navigate(page, "Inputs");
 
-        Assert.True(page.Find("li.declared-field[data-field='patient.sex'] button[title='Remove field']").HasAttribute("disabled"));
-        page.Find("li.declared-field__values[data-values-for='patient.sex'] button[title='Remove value']").Click();
+        Assert.True(page.Find("li.declared-field[data-field='patient.sex'] fluent-button[title='Remove field']").HasAttribute("disabled"));
+        page.Find("li.declared-field__values[data-values-for='patient.sex'] fluent-button[title='Remove value']").Click();
         Assert.Contains("is what 'Consultation note' tests for", page.Find("p.editor-warning").TextContent);
     }
 

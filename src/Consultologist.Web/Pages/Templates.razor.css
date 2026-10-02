@@ -327,19 +327,23 @@ fluent-select.prompt-variable-row__select {
 	width: 11rem;
 }
 
-.variable-chips__add {
-	border: 1px solid var(--consultologist-border);
-	border-radius: 999px;
-	background: var(--consultologist-surface);
-	cursor: pointer;
-	font-size: 0.78rem;
+/* #889: these were native buttons; now FluentButton (Stealth) owns the fill, border,
+   hover and disabled look. Keep only compact in-row sizing via ::part(control). The
+   fluent-button host carries the page scope attr (FluentButton splats attributes), so
+   scoped selectors match. */
+fluent-button.variable-chips__add::part(control) {
+	min-width: 0;
 	padding: 0.2rem 0.7rem;
-	color: inherit;
+	border-radius: 999px;
+	font-size: 0.78rem;
 }
 
-.variable-chips__add:disabled {
-	cursor: not-allowed;
-	opacity: 0.4;
+fluent-button.aggregate-row__button::part(control),
+fluent-button.input-field__add::part(control),
+fluent-button.node-field__button::part(control) {
+	min-width: 0;
+	padding: 0.1rem 0.4rem;
+	font-size: 0.72rem;
 }
 
 .variable-chips__error {
@@ -500,18 +504,10 @@ fluent-select.prompt-variable-row__select {
 	font-size: 0.85rem;
 }
 
-.package-tag__button {
-	border: none;
-	background: none;
-	cursor: pointer;
+/* #889: FluentButton (Stealth) icon buttons; keep them tight in the tag row. */
+fluent-button.package-tag__button::part(control) {
+	min-width: 0;
 	padding: 0 0.2rem;
-	font-size: 0.7rem;
-	color: var(--consultologist-muted, #666);
-}
-
-.package-tag__button:disabled {
-	opacity: 0.35;
-	cursor: default;
 }
 
 .package-tags__add {
