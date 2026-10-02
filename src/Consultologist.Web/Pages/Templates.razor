@@ -862,15 +862,18 @@
                                         var tag = EffectiveTags[index];
                                         <li class="package-tag">
                                             <span class="package-tag__text">@tag</span>
-                                            <button type="button" class="package-tag__button" disabled="@(!EditingOwnPackage || index == 0)"
-                                                    title="Move earlier" aria-label="Move tag @tag earlier"
-                                                    @onclick="() => MoveTagAsync(index, -1)">◀</button>
-                                            <button type="button" class="package-tag__button" disabled="@(!EditingOwnPackage || index == EffectiveTags.Count - 1)"
-                                                    title="Move later" aria-label="Move tag @tag later"
-                                                    @onclick="() => MoveTagAsync(index, 1)">▶</button>
-                                            <button type="button" class="package-tag__button" disabled="@(!EditingOwnPackage)"
-                                                    title="Remove" aria-label="Remove tag @tag"
-                                                    @onclick="() => RemoveTagAsync(index)">✕</button>
+                                            <FluentButton Appearance="Appearance.Stealth" Class="package-tag__button" Disabled="@(!EditingOwnPackage || index == 0)"
+                                                          Title="Move earlier" aria-label="@($"Move tag {tag} earlier")"
+                                                          IconStart="@(new Icons.Regular.Size20.ChevronLeft())"
+                                                          @onclick="() => MoveTagAsync(index, -1)" />
+                                            <FluentButton Appearance="Appearance.Stealth" Class="package-tag__button" Disabled="@(!EditingOwnPackage || index == EffectiveTags.Count - 1)"
+                                                          Title="Move later" aria-label="@($"Move tag {tag} later")"
+                                                          IconStart="@(new Icons.Regular.Size20.ChevronRight())"
+                                                          @onclick="() => MoveTagAsync(index, 1)" />
+                                            <FluentButton Appearance="Appearance.Stealth" Class="package-tag__button" Disabled="@(!EditingOwnPackage)"
+                                                          Title="Remove" aria-label="@($"Remove tag {tag}")"
+                                                          IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                          @onclick="() => RemoveTagAsync(index)" />
                                         </li>
                                     }
                                 </ul>
@@ -884,9 +887,10 @@
                                        @oninput="args => newTag = args.Value?.ToString() ?? string.Empty"
                                        @onkeydown="OnNewTagKeyDownAsync"
                                        aria-label="New tag" />
-                                <button type="button" class="node-field__button"
-                                        disabled="@(!EditingOwnPackage || string.IsNullOrWhiteSpace(newTag) || EffectiveTags.Count >= WorkflowPackageMetadata.MaxTags)"
-                                        @onclick="AddTagAsync">Add tag</button>
+                                <FluentButton Appearance="Appearance.Stealth" Class="node-field__button"
+                                              Disabled="@(!EditingOwnPackage || string.IsNullOrWhiteSpace(newTag) || EffectiveTags.Count >= WorkflowPackageMetadata.MaxTags)"
+                                              IconStart="@(new Icons.Regular.Size20.Add())"
+                                              @onclick="AddTagAsync">Add tag</FluentButton>
                             </div>
                             <span class="muted-text">
                                 @(newTagProblem ?? $"{EffectiveTags.Count}/{WorkflowPackageMetadata.MaxTags} tags; each at most {WorkflowPackageMetadata.MaxTagLength} characters, distinct ignoring case.")
@@ -921,9 +925,9 @@
                                 @foreach (var contract in AddableContracts)
                                 {
                                     var addable = contract;
-                                    <button type="button" class="variable-chips__add"
-                                            aria-label="@($"Add output contract {contract}")"
-                                            @onclick="() => AddSchemaAsync(addable)">+ @contract</button>
+                                    <FluentButton Appearance="Appearance.Stealth" Class="variable-chips__add"
+                                                  aria-label="@($"Add output contract {contract}")"
+                                                  @onclick="() => AddSchemaAsync(addable)">+ @contract</FluentButton>
                                 }
                             }
                             else
@@ -946,10 +950,11 @@
                                         <span class="panel-title">@schema.Id</span>
                                         <span class="muted-text">@schema.File</span>
                                     </div>
-                                    <button type="button" class="aggregate-row__button" title="Remove schema"
-                                            aria-label="@($"Remove schema {schema.Id}")"
-                                            disabled="@(readers.Count > 0)"
-                                            @onclick="() => RemoveSchemaAsync(declaredSchema)">Remove</button>
+                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove schema"
+                                                  aria-label="@($"Remove schema {schema.Id}")"
+                                                  Disabled="@(readers.Count > 0)"
+                                                  IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                  @onclick="() => RemoveSchemaAsync(declaredSchema)">Remove</FluentButton>
                                 </div>
                                 @* #843: usage line matched to the prelude pane (#841) — names the
                                    reader nodes and the removal precondition, and hints the unused case. *@
@@ -1099,10 +1104,11 @@
                                             }
                                         </FluentSelect>
                                     }
-                                    <button type="button" class="aggregate-row__button" title="Remove input"
-                                            aria-label="Remove input"
-                                            disabled="@(EffectiveInputs.Count == 1 || ConditionLock(slot) != null)"
-                                            @onclick="() => RemoveInputAsync(slot)">×</button>
+                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove input"
+                                                  aria-label="Remove input"
+                                                  Disabled="@(EffectiveInputs.Count == 1 || ConditionLock(slot) != null)"
+                                                  IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                  @onclick="() => RemoveInputAsync(slot)" />
                                 </li>
 
                                 @if (WorkflowInputTypes.DeclaresValues(slot))
@@ -1113,9 +1119,10 @@
                                             var declaredValue = value;
                                             <span class="input-field__chip" data-enum-value="@declaredValue">
                                                 @declaredValue
-                                                <button type="button" class="aggregate-row__button" title="Remove value"
-                                                        aria-label="Remove value @declaredValue"
-                                                        @onclick="() => RemoveEnumValueAsync(slot, declaredValue)">×</button>
+                                                <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove value"
+                                                              aria-label="@($"Remove value {declaredValue}")"
+                                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                              @onclick="() => RemoveEnumValueAsync(slot, declaredValue)" />
                                             </span>
                                         }
                                         <input class="node-field__input" placeholder="follow_up"
@@ -1141,9 +1148,10 @@
                                             var armValue = arm;
                                             <span class="input-field__chip" data-union-arm="@armValue">
                                                 @armValue
-                                                <button type="button" class="aggregate-row__button" title="Remove type"
-                                                        aria-label="Remove type @armValue"
-                                                        @onclick="() => RemoveTypeArmAsync(slot, armValue)">×</button>
+                                                <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove type"
+                                                              aria-label="@($"Remove type {armValue}")"
+                                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                              @onclick="() => RemoveTypeArmAsync(slot, armValue)" />
                                             </span>
                                         }
                                         <FluentSelect TOption="string" class="node-field__input declared-row__add-arm"
@@ -1170,7 +1178,7 @@
                                    value="@newInputId"
                                    @onchange="args => newInputId = args.Value?.ToString() ?? string.Empty"
                                    aria-label="New input id" />
-                            <button type="button" class="variable-chips__add" @onclick="AddInputAsync">+ Input</button>
+                            <FluentButton Appearance="Appearance.Stealth" Class="variable-chips__add" @onclick="AddInputAsync">+ Input</FluentButton>
                         </div>
                         @if (!string.IsNullOrEmpty(declaredError))
                         {
@@ -1195,9 +1203,9 @@
                             <p class="muted-text">
                                 This package uses the single-document form (<code>@(EffectiveResultRef ?? "—")</code>).
                             </p>
-                            <button type="button" class="variable-chips__add" @onclick="ConvertToResultsListAsync">
+                            <FluentButton Appearance="Appearance.Stealth" Class="variable-chips__add" @onclick="ConvertToResultsListAsync">
                                 Convert to a document list
-                            </button>
+                            </FluentButton>
                         }
                         else
                         {
@@ -1223,10 +1231,11 @@
                                                 <FluentOption TOption="string" Value="@($"node:{candidate.Id}")">@candidate.Label</FluentOption>
                                             }
                                         </FluentSelect>
-                                        <button type="button" class="aggregate-row__button" title="Remove document"
-                                                aria-label="Remove document"
-                                                disabled="@(EffectiveResults.Count == 1)"
-                                                @onclick="() => RemoveResultAsync(deliverable)">×</button>
+                                        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove document"
+                                                      aria-label="Remove document"
+                                                      Disabled="@(EffectiveResults.Count == 1)"
+                                                      IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                      @onclick="() => RemoveResultAsync(deliverable)" />
                                     </li>
 
                                     @* v8: when this document is produced. Three controls
@@ -1312,17 +1321,20 @@
                                                             @ConditionEditor(MacroWhenTarget(deliverable, macroEntry))
                                                         </span>
                                                     }
-                                                    <button type="button" class="aggregate-row__button result-macro-up" title="Move up"
-                                                            aria-label="Move macro @(macroIndex + 1) up"
-                                                            disabled="@(macroIndex == 0)"
-                                                            @onclick="() => MoveResultMacroAsync(deliverable, macroId, -1)">↑</button>
-                                                    <button type="button" class="aggregate-row__button result-macro-down" title="Move down"
-                                                            aria-label="Move macro @(macroIndex + 1) down"
-                                                            disabled="@(macroIndex == resultMacros.Count - 1)"
-                                                            @onclick="() => MoveResultMacroAsync(deliverable, macroId, 1)">↓</button>
-                                                    <button type="button" class="aggregate-row__button result-macro-remove" title="Remove macro"
-                                                            aria-label="Remove macro @(macroIndex + 1)"
-                                                            @onclick="() => RemoveResultMacroAsync(deliverable, macroId)">×</button>
+                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-up" Title="Move up"
+                                                                  aria-label="@($"Move macro {macroIndex + 1} up")"
+                                                                  Disabled="@(macroIndex == 0)"
+                                                                  IconStart="@(new Icons.Regular.Size20.ArrowUp())"
+                                                                  @onclick="() => MoveResultMacroAsync(deliverable, macroId, -1)" />
+                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-down" Title="Move down"
+                                                                  aria-label="@($"Move macro {macroIndex + 1} down")"
+                                                                  Disabled="@(macroIndex == resultMacros.Count - 1)"
+                                                                  IconStart="@(new Icons.Regular.Size20.ArrowDown())"
+                                                                  @onclick="() => MoveResultMacroAsync(deliverable, macroId, 1)" />
+                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-remove" Title="Remove macro"
+                                                                  aria-label="@($"Remove macro {macroIndex + 1}")"
+                                                                  IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                                  @onclick="() => RemoveResultMacroAsync(deliverable, macroId)" />
                                                 </span>
                                             }
                                             @if (EffectiveMacros.Any(m => resultMacros.All(e => e.Id != m.Id)))
@@ -1375,7 +1387,7 @@
                                        value="@newResultId"
                                        @onchange="args => newResultId = args.Value?.ToString() ?? string.Empty"
                                        aria-label="New document id" />
-                                <button type="button" class="variable-chips__add" @onclick="AddResultAsync">+ Document</button>
+                                <FluentButton Appearance="Appearance.Stealth" Class="variable-chips__add" @onclick="AddResultAsync">+ Document</FluentButton>
                             </div>
                         }
                         @if (!string.IsNullOrEmpty(declaredError))
@@ -1394,9 +1406,10 @@
                                     highlighted in blue.
                                 </p>
                             </div>
-                            <button type="button" class="variable-chips__add"
-                                    disabled="@isDiagramRefreshing"
-                                    @onclick="RefreshDiagramAsync">@(isDiagramRefreshing ? "Refreshing…" : "Refresh")</button>
+                            <FluentButton Appearance="Appearance.Stealth" Class="variable-chips__add"
+                                          Disabled="@isDiagramRefreshing"
+                                          IconStart="@(new Icons.Regular.Size20.ArrowSync())"
+                                          @onclick="RefreshDiagramAsync">@(isDiagramRefreshing ? "Refreshing…" : "Refresh")</FluentButton>
                         </div>
                         @if (diagramIncludesPending)
                         {
@@ -1433,7 +1446,7 @@
                                         <span class="binding-row__pending" title="Pending change">●</span>
                                     }
                                 </label>
-                                <button type="button" class="variable-chips__add" @onclick="() => Select(AddNodeKey)">+ Node</button>
+                                <FluentButton Appearance="Appearance.Stealth" Class="variable-chips__add" @onclick="() => Select(AddNodeKey)">+ Node</FluentButton>
                             </div>
                         </div>
                         <WorkflowNodeSummary Inputs="@DeclaredInputIds"
@@ -1827,8 +1840,9 @@
                                             <code class="prompt-variable-row__name">@variable</code>
                                             @if (isRemoved)
                                             {
-                                                <button type="button" class="variable-chips__add" title="Restore variable"
-                                                        @onclick="() => RestoreVariableAsync(prompt, variable)">Restore</button>
+                                                <FluentButton Appearance="Appearance.Stealth" Class="variable-chips__add" Title="Restore variable"
+                                                              IconStart="@(new Icons.Regular.Size20.ArrowUndo())"
+                                                              @onclick="() => RestoreVariableAsync(prompt, variable)">Restore</FluentButton>
                                             }
                                             else
                                             {
@@ -1855,10 +1869,11 @@
                                                         </span>
                                                     }
                                                 </span>
-                                                <button type="button" class="variable-chips__add"
-                                                        title="@(usedInText ? "Still used in the template text — remove the placeholder first" : "Remove variable")"
-                                                        disabled="@usedInText"
-                                                        @onclick="() => RemoveVariableAsync(prompt, variable)">Remove</button>
+                                                <FluentButton Appearance="Appearance.Stealth" Class="variable-chips__add"
+                                                              Title="@(usedInText ? "Still used in the template text — remove the placeholder first" : "Remove variable")"
+                                                              Disabled="@usedInText"
+                                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                              @onclick="() => RemoveVariableAsync(prompt, variable)">Remove</FluentButton>
                                             }
                                         </li>
                                     }
@@ -1872,7 +1887,7 @@
                                                 <FluentOption TOption="string" Value="@option">@option</FluentOption>
                                             }
                                         </FluentSelect>
-                                        <button type="button" class="variable-chips__add" @onclick="() => AddVariableFromPromptAsync(prompt)">Add</button>
+                                        <FluentButton Appearance="Appearance.Stealth" Class="variable-chips__add" IconStart="@(new Icons.Regular.Size20.Add())" @onclick="() => AddVariableFromPromptAsync(prompt)">Add</FluentButton>
                                     </li>
                                 </ul>
                             </div>
@@ -2048,8 +2063,9 @@
       @if (state.Verbatim is { } verbatim)
       {
         <code class="declared-row__verbatim" aria-label="@($"Condition for {target.Subject}")">@verbatim</code>
-        <button type="button" class="aggregate-row__button" aria-label="@($"Clear condition for {target.Subject}")"
-                @onclick="() => ClearConditionAsync(target)">clear</button>
+        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" aria-label="@($"Clear condition for {target.Subject}")"
+                      IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                      @onclick="() => ClearConditionAsync(target)">clear</FluentButton>
       }
       else
       {
@@ -2106,14 +2122,15 @@
         @if (v10)
         {
           <span class="condition-group__buttons">
-            <button type="button" class="input-field__add" aria-label="@($"Add condition clause to {documentId}{suffix}")"
-                    @onclick="() => AddClauseAsync(scope.Target, scope.Path)">+ clause</button>
-            <button type="button" class="input-field__add" aria-label="@($"Add condition group to {documentId}{suffix}")"
-                    @onclick="() => AddGroupAsync(scope.Target, scope.Path)">+ group</button>
+            <FluentButton Appearance="Appearance.Stealth" Class="input-field__add" aria-label="@($"Add condition clause to {documentId}{suffix}")"
+                          @onclick="() => AddClauseAsync(scope.Target, scope.Path)">+ clause</FluentButton>
+            <FluentButton Appearance="Appearance.Stealth" Class="input-field__add" aria-label="@($"Add condition group to {documentId}{suffix}")"
+                          @onclick="() => AddGroupAsync(scope.Target, scope.Path)">+ group</FluentButton>
             @if (scope.Path.Count > 0)
             {
-              <button type="button" class="aggregate-row__button" aria-label="@($"Remove condition group for {documentId}{suffix}")"
-                      @onclick="() => RemoveConditionNodeAsync(scope.Target, scope.Path)">remove group</button>
+              <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" aria-label="@($"Remove condition group for {documentId}{suffix}")"
+                            IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                            @onclick="() => RemoveConditionNodeAsync(scope.Target, scope.Path)">remove group</FluentButton>
             }
           </span>
         }
@@ -2260,8 +2277,9 @@
         }
         @if (v10 && !single)
         {
-          <button type="button" class="aggregate-row__button" aria-label="@($"Remove condition clause for {documentId}{suffix}")"
-                  @onclick="() => RemoveConditionNodeAsync(scope.Target, scope.Path)">×</button>
+          <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" aria-label="@($"Remove condition clause for {documentId}{suffix}")"
+                        IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                        @onclick="() => RemoveConditionNodeAsync(scope.Target, scope.Path)" />
         }
       </span>
     </text>;
@@ -2352,10 +2370,11 @@
                               @ElementChildren(new ElementScope(InnerElementPath(path), member.Items.Items))
                           }
                       }
-                      <button type="button" class="aggregate-row__button" title="Remove field"
-                              aria-label="Remove field"
-                              disabled="@(FieldLock(owner, member) != null)"
-                              @onclick="() => RemoveFieldAsync(owner, member)">×</button>
+                      <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove field"
+                                    aria-label="Remove field"
+                                    Disabled="@(FieldLock(owner, member) != null)"
+                                    IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                    @onclick="() => RemoveFieldAsync(owner, member)" />
                   </li>
                   @if (WorkflowInputTypes.DeclaresValues(member))
                   {
@@ -2365,9 +2384,10 @@
                               var declaredValue = value;
                               <span class="input-field__chip" data-field-enum-value="@declaredValue">
                                   @declaredValue
-                                  <button type="button" class="aggregate-row__button" title="Remove value"
-                                          aria-label="Remove value @declaredValue"
-                                          @onclick="() => RemoveFieldValueAsync(owner, member, declaredValue)">×</button>
+                                  <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove value"
+                                                aria-label="@($"Remove value {declaredValue}")"
+                                                IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                @onclick="() => RemoveFieldValueAsync(owner, member, declaredValue)" />
                               </span>
                           }
                           <input class="node-field__input" placeholder="female"
@@ -2390,7 +2410,7 @@
                      value="@NewFieldId(scope.Owner)"
                      @onchange="args => newFieldIds[scope.Owner] = args.Value?.ToString() ?? string.Empty"
                      aria-label="@($"New field id for {scope.Owner}")" />
-              <button type="button" class="variable-chips__add" @onclick="() => AddFieldAsync(scope.Owner, scope.Fields)">+ Field</button>
+              <FluentButton Appearance="Appearance.Stealth" Class="variable-chips__add" @onclick="() => AddFieldAsync(scope.Owner, scope.Fields)">+ Field</FluentButton>
           </div>
       </li>
     </text>;
@@ -2448,9 +2468,10 @@
                   var declaredValue = value;
                   <span class="input-field__chip" data-field-enum-value="@declaredValue">
                       @declaredValue
-                      <button type="button" class="aggregate-row__button" title="Remove value"
-                              aria-label="Remove value @declaredValue"
-                              @onclick="() => RemoveElementValueAsync(scope.Path, declaredValue)">×</button>
+                      <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove value"
+                                    aria-label="@($"Remove value {declaredValue}")"
+                                    IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                    @onclick="() => RemoveElementValueAsync(scope.Path, declaredValue)" />
                   </span>
               }
               <input class="node-field__input" placeholder="female"
