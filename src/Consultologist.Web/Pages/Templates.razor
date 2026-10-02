@@ -819,7 +819,7 @@
                             <span>Tags</span>
                             @if (EffectiveTags.Count == 0)
                             {
-                                <span class="muted-text">No tags.</span>
+                                <EmptyState Compact Description="No tags." />
                             }
                             else
                             {
@@ -901,7 +901,8 @@
                         </div>
                         @if (!LiveSchemas.Any() && !RemovedSchemaViews.Any())
                         {
-                            <p class="muted-text">This package declares no output schemas.</p>
+                            <EmptyState Compact Icon="@(new Icons.Regular.Size20.DocumentText())"
+                                        Description="This package declares no output schemas." />
                         }
                         @foreach (var schema in LiveSchemas)
                         {
@@ -956,6 +957,11 @@
                             @PaneDiscardButton(InputsKey, InputsCanDiscard, RevertInputsEdits)
                         </div>
 
+                        @if (!EffectiveInputs.Any())
+                        {
+                            <EmptyState Compact Icon="@(new Icons.Regular.Size20.DocumentBulletList())"
+                                        Description="No inputs declared yet." />
+                        }
                         <ul class="declared-list">
                             @foreach (var input in EffectiveInputs)
                             {
