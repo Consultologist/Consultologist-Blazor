@@ -50,7 +50,8 @@
 
                 @if (jobsLoading && jobs.Count == 0)
                 {
-                    <LoadingState>Loading job history...</LoadingState>
+                    @* #882: a content-shaped skeleton for the initial list load. *@
+                    <SkeletonList Rows="5" />
                 }
                 else if (!string.IsNullOrWhiteSpace(jobsErrorMessage))
                 {
@@ -217,7 +218,7 @@
                                     }
                                     else if (detail == null)
                                     {
-                                        <LoadingState>Loading job events&hellip;</LoadingState>
+                                        <SkeletonText Lines="4" />
                                     }
                                     else
                                     {
@@ -601,7 +602,7 @@
                                                     }
                                                     else if (!_rerunSourceDetails.TryGetValue(rerunSourceId, out var rerunSource) || rerunSource == null)
                                                     {
-                                                        <p class="muted-text">Loading the source record&hellip;</p>
+                                                        <SkeletonText Lines="3" />
                                                     }
                                                     else
                                                     {

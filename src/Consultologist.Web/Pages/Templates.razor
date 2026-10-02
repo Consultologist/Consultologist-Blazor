@@ -28,8 +28,10 @@
     <Authorized>
         @if (isLoading)
         {
+            @* #882: a content-shaped skeleton for the editor package load. *@
             <section class="content-card">
-                <LoadingState>Loading workflow package...</LoadingState>
+                <SkeletonText Lines="2" Width="16rem" />
+                <SkeletonList Rows="4" />
             </section>
         }
         else if (!string.IsNullOrWhiteSpace(loadError))

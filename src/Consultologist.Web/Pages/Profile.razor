@@ -1369,8 +1369,15 @@
         }
         else
         {
-            <section class="state-panel">
-                <LoadingState>Loading profile information...</LoadingState>
+            @* #882: a content-shaped skeleton for the identity/profile load. *@
+            <section class="content-card">
+                <div class="form-stack">
+                    <div class="skeleton-profile__head">
+                        <FluentSkeleton Shape="SkeletonShape.Circle" Shimmer="true" Width="48px" Height="48px" />
+                        <SkeletonText Lines="2" Width="12rem" />
+                    </div>
+                    <SkeletonText Lines="3" />
+                </div>
             </section>
         }
 

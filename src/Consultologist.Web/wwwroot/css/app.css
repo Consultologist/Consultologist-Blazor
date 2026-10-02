@@ -587,6 +587,41 @@ header.header.app-header {
 	color: var(--consultologist-text-muted);
 }
 
+/* #882: content-shaped loading placeholders (SkeletonText / SkeletonList in the
+   Consultologist.UI RCL). The components carry role="status"; these rules lay out
+   the shimmer bars and give list rows their card shape. FluentSkeleton supplies
+   the theme-aware fill + shimmer. */
+.skeleton-text {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	width: 100%;
+}
+
+.skeleton-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+	width: 100%;
+}
+
+.skeleton-list__row {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	padding: 0.85rem 1rem;
+	border: 1px solid var(--consultologist-border);
+	border-radius: var(--consultologist-radius-md);
+	background: var(--consultologist-surface);
+}
+
+/* #882: the Profile load skeleton's avatar + name row. */
+.skeleton-profile__head {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+}
+
 /* #688: the skip-link — off-screen until focused, then it slides into the
    top-left corner above everything so a keyboard user can see and use it. */
 .skip-link {

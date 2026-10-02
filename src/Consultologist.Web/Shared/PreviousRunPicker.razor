@@ -33,7 +33,7 @@
         <div class="run-picker__panel" role="group" aria-label="Previous runs">
             @if (isLoading)
             {
-                <span class="muted-text">Loading runs&hellip;</span>
+                <SkeletonText Lines="3" />
             }
             else if (error != null)
             {
@@ -69,7 +69,7 @@
                             {
                                 @if (!details.TryGetValue(current.JobId, out var detail))
                                 {
-                                    <span class="muted-text">Loading&hellip;</span>
+                                    <SkeletonText Lines="2" />
                                 }
                                 else if (detail?.AssembledDocuments is not { Count: > 0 })
                                 {

@@ -25,7 +25,7 @@
         <div class="form-picker__panel" role="group" aria-label="Held form responses">
             @if (loading)
             {
-                <span class="muted-text">Loading…</span>
+                <SkeletonText Lines="3" />
             }
             else if (error != null)
             {
