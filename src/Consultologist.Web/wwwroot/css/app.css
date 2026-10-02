@@ -606,6 +606,23 @@ header.header.app-header {
 	pointer-events: none;
 }
 
+/* #880: the editor command bar is a FluentToolbar. These are global (not in
+   Templates.razor.css) because fluent-toolbar/fluent-divider are rendered by their
+   components and carry those components' scoped-CSS attributes, not the page's — a
+   page-scoped rule would never match (the #877 lesson). Let the toolbar content wrap
+   at narrow widths, and give the vertical group dividers a height (a vertical divider
+   collapses to zero in an align-items:center flex row). */
+.editor-bar__toolbar::part(positioning-region) {
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	align-items: center;
+}
+
+.editor-bar__toolbar fluent-divider[orientation="vertical"] {
+	height: 1.5rem;
+	margin: 0 0.15rem;
+}
+
 /* #882: content-shaped loading placeholders (SkeletonText / SkeletonList in the
    Consultologist.UI RCL). The components carry role="status"; these rules lay out
    the shimmer bars and give list rows their card shape. FluentSkeleton supplies
