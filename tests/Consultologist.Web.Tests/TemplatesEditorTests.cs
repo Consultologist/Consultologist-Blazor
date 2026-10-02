@@ -524,7 +524,7 @@ public class TemplatesEditorTests : ClientRenderTestContext
         Navigate(page, "Graph");
         // draft-section is the only removable node — the deliverable's root
         // never offers it.
-        page.FindAll("button").First(b => b.TextContent.Contains("Remove node")).Click();
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Remove node")).Click();
 
         Navigate(page, "specialty");
 

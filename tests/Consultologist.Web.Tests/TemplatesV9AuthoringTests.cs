@@ -85,9 +85,9 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         Assert.Empty(editor.QuerySelectorAll("li.declared-field"));
 
         page.Find("input[aria-label='New field id for prior_notes']").Change("name");
-        page.FindAll("button").First(button => button.TextContent.Trim() == "+ Field").Click();
+        page.FindAll("fluent-button").First(button => button.TextContent.Trim() == "+ Field").Click();
         page.Find("input[aria-label='New field id for prior_notes']").Change("kind");
-        page.FindAll("button").First(button => button.TextContent.Trim() == "+ Field").Click();
+        page.FindAll("fluent-button").First(button => button.TextContent.Trim() == "+ Field").Click();
         page.Find("fluent-select[aria-label='Type for field prior_notes.kind']").Change(WorkflowInputTypes.Enum);
         page.Find("input[aria-label='Add a value to prior_notes.kind']").Change("clinic");
         page.Find("input[aria-label='Add a value to prior_notes.kind']").Change("ward");
@@ -137,8 +137,8 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         if (emptied)
         {
             page.Find("input[aria-label='New field id for prior_notes']").Change("age");
-            page.FindAll("button").First(button => button.TextContent.Trim() == "+ Field").Click();
-            page.Find("button[title='Remove field']").Click();
+            page.FindAll("fluent-button").First(button => button.TextContent.Trim() == "+ Field").Click();
+            page.Find("fluent-button[title='Remove field']").Click();
         }
 
         Publish(page);
@@ -191,7 +191,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var page = RenderEditor(package);
         Navigate(page, "Inputs");
 
-        Assert.True(page.Find("li.declared-field[data-field='patient.age'] button[title='Remove field']").HasAttribute("disabled"));
+        Assert.True(page.Find("li.declared-field[data-field='patient.age'] fluent-button[title='Remove field']").HasAttribute("disabled"));
         page.Find("fluent-select[aria-label='Type for field patient.age']").Change(WorkflowInputTypes.Text);
 
         Assert.Contains("Field 'patient.age' is tested by 'Consultation note'; change that document's condition first.", page.Find("p.editor-warning").TextContent);
@@ -206,7 +206,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var page = RenderEditor(package);
         Navigate(page, "Inputs");
 
-        page.Find("[data-field-enum-value='female'] button").Click();
+        page.Find("[data-field-enum-value='female'] fluent-button").Click();
 
         Assert.Contains("Value 'female' is what 'Consultation note' tests for", page.Find("p.editor-warning").TextContent);
         Assert.Equal(new[] { "female", "male" }, page.FindAll("[data-field-enum-value]").Select(chip => chip.GetAttribute("data-field-enum-value")));
@@ -305,7 +305,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V9Structured());
         Navigate(page, "Inputs");
         page.Find("input[aria-label='New input id']").Change("seen_on");
-        page.FindAll("button").First(button => button.TextContent.Trim() == "+ Input").Click();
+        page.FindAll("fluent-button").First(button => button.TextContent.Trim() == "+ Input").Click();
         page.FindAll("fluent-select.declared-row__type").Last().Change(WorkflowInputTypes.Date);
         Navigate(page, "Documents");
 
@@ -343,7 +343,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         Navigate(page, "Inputs");
         page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Object);
         page.Find("input[aria-label='New field id for prior_notes']").Change("kind");
-        page.FindAll("button").First(button => button.TextContent.Trim() == "+ Field").Click();
+        page.FindAll("fluent-button").First(button => button.TextContent.Trim() == "+ Field").Click();
         page.Find("fluent-select[aria-label='Type for field prior_notes.kind']").Change(WorkflowInputTypes.Enum);
         page.Find("input[aria-label='Add a value to prior_notes.kind']").Change("clinic");
         page.Find("input[aria-label='Add a value to prior_notes.kind']").Change("ward");

@@ -98,7 +98,7 @@ public class TemplatesV10ArraysTests : ClientRenderTestContext
         // and give that object a field.
         page.Find("fluent-select[aria-label='Inner items for input grid']").Change(WorkflowInputTypes.Object);
         page.Find("input[aria-label='New field id for grid.[].[]']").Change("score");
-        page.Find("li.declared-row__fields[data-fields-for='grid.[].[]'] button.variable-chips__add").Click();
+        page.Find("li.declared-row__fields[data-fields-for='grid.[].[]'] fluent-button.variable-chips__add").Click();
         page.Find("input[aria-label='Label for field grid.[].[].score']").Change("Score");
         page.Find("fluent-select[aria-label='Type for field grid.[].[].score']").Change(WorkflowInputTypes.Number);
         Publish(page);

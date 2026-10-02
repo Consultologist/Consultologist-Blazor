@@ -79,7 +79,7 @@ public class TemplatesV7AuthoringTests : ClientRenderTestContext
         Navigate(page, "Inputs");
 
         page.Find(".add-variable__form input.node-field__input").Change("consult_draft");
-        page.Find(".add-variable__form button").Click();
+        page.Find(".add-variable__form fluent-button").Click();
 
         Assert.Contains("Duplicate input id 'consult_draft'", page.Markup);
         Assert.Equal(2, Rows(page).Count);
@@ -92,7 +92,7 @@ public class TemplatesV7AuthoringTests : ClientRenderTestContext
         Navigate(page, "Inputs");
 
         page.Find(".add-variable__form input.node-field__input").Change("Prior-Notes");
-        page.Find(".add-variable__form button").Click();
+        page.Find(".add-variable__form fluent-button").Click();
 
         Assert.Contains("must be snake_case", page.Markup);
         Assert.Equal(2, Rows(page).Count);
@@ -120,7 +120,7 @@ public class TemplatesV7AuthoringTests : ClientRenderTestContext
         Navigate(page, "Documents");
 
         page.Find(".add-variable__form input.node-field__input").Change("patient_letter");
-        page.Find(".add-variable__form button").Click();
+        page.Find(".add-variable__form fluent-button").Click();
 
         // The fixture has one aggregator and it is already spoken for.
         Assert.Contains("already owns a document", page.Markup);
@@ -279,7 +279,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
 
         // The condition's literal defaults to the first declared value.
         Navigate(page, "Inputs");
-        page.FindAll("li.declared-row__values button").First().Click();
+        page.FindAll("li.declared-row__values fluent-button").First().Click();
 
         Assert.Contains("tests for", page.Markup);
 
@@ -299,7 +299,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         page.Find("li.declared-row__when fluent-select").Change("prior_notes");
 
         Navigate(page, "Inputs");
-        page.FindAll("li.declared-row__values button").Last().Click();
+        page.FindAll("li.declared-row__values fluent-button").Last().Click();
 
         Assert.Equal(
             new[] { "new_patient" },

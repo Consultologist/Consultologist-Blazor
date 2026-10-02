@@ -97,7 +97,7 @@ public class TemplatesV10FieldsTests : ClientRenderTestContext
         Navigate(page, "Inputs");
 
         page.Find("input[aria-label='New field id for family_history.contact']").Change("email");
-        page.Find("li.declared-row__fields[data-fields-for='family_history.contact'] button.variable-chips__add").Click();
+        page.Find("li.declared-row__fields[data-fields-for='family_history.contact'] fluent-button.variable-chips__add").Click();
         page.Find("input[aria-label='Label for field family_history.contact.email']").Change("Email address");
         page.Find("input[aria-label='Required for field family_history.contact.email']").Change(false);
         Publish(page);
@@ -126,7 +126,7 @@ public class TemplatesV10FieldsTests : ClientRenderTestContext
         Assert.Contains("Input 'family_history' field 'contact.phone' is an object and must declare at least one field.", Refusals(page));
 
         page.Find("input[aria-label='New field id for family_history.contact.phone']").Change("number");
-        page.Find("li.declared-row__fields[data-fields-for='family_history.contact.phone'] button.variable-chips__add").Click();
+        page.Find("li.declared-row__fields[data-fields-for='family_history.contact.phone'] fluent-button.variable-chips__add").Click();
         page.Find("fluent-select[aria-label='Type for field family_history.contact.phone.number']").Change(WorkflowInputTypes.Array);
         Publish(page);
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
@@ -156,7 +156,7 @@ public class TemplatesV10FieldsTests : ClientRenderTestContext
         CapturePublish();
         Navigate(page, "Inputs");
 
-        page.Find("li.declared-field__values[data-values-for='family_history.contact.preferred'] button[title='Remove value']").Click();
+        page.Find("li.declared-field__values[data-values-for='family_history.contact.preferred'] fluent-button[title='Remove value']").Click();
         Publish(page);
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains("Input 'family_history' field 'contact.preferred' declares 1 enum value; an enum needs at least two.", Refusals(page));

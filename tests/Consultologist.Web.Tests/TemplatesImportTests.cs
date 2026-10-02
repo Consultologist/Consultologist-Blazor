@@ -208,7 +208,7 @@ public class TemplatesImportTests : ClientRenderTestContext
         page.WaitForAssertion(() =>
             Assert.Equal("graph TD; imported", page.FindComponent<WorkflowDagView>().Instance.Diagram));
 
-        page.FindAll("button").First(b => b.TextContent.Contains("Refresh")).Click();
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Refresh")).Click();
 
         page.WaitForAssertion(() =>
             Assert.Equal("graph TD; imported", page.FindComponent<WorkflowDagView>().Instance.Diagram));

@@ -309,7 +309,7 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
         CapturePublish();
         Navigate(page, "Graph");
         // The cards follow the manifest's order; the classifier is first.
-        page.FindAll("button").First(button => button.TextContent.Trim() == "Remove node").Click();
+        page.FindAll("fluent-button").First(button => button.TextContent.Trim() == "Remove node").Click();
         Publish(page);
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
