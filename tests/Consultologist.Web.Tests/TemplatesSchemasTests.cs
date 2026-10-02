@@ -8,9 +8,11 @@ namespace Consultologist.Web.Tests;
 
 /// <summary>
 /// #746: the Schemas pane. Output-contract schemas are viewable and an unused
-/// one is removable; a body must match an engine catalog contract, so it is
-/// shown as published, not edited. Removal is refused while a node reads the
-/// contract, and drops both the manifest map entry and the file at publish.
+/// one is removable. Removal is refused while a node reads the contract, and
+/// drops both the manifest map entry and the file at publish.
+/// #760: a body is now editable (free-form JSON) and a new schema can be created
+/// by id; the body must still canonically match an engine catalog contract, which
+/// the publish desk check pre-checks client-side and the server enforces.
 /// </summary>
 public class TemplatesSchemasTests : ClientRenderTestContext
 {
@@ -32,6 +34,13 @@ public class TemplatesSchemasTests : ClientRenderTestContext
         page.FindAll(".fluent-messagebar-message li").Select(item => item.TextContent.Trim()).ToList();
 
     private WorkflowPackagePublishRequest? sent;
+
+    // #760: the publish desk check fetches the catalog to pre-check schema bodies.
+    // NSubstitute auto-stubs the unstubbed call to an empty dict (not null), so a
+    // schema-publishing test must say which catalog the pre-check sees.
+    private void StubRealCatalog() =>
+        WorkflowService.GetCatalogSchemasAsync().Returns(
+            EditorCatalogSchemas.CatalogSchemas.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal));
 
     private void CapturePublish() =>
         WorkflowService.PublishPackageAsync(Arg.Do<WorkflowPackagePublishRequest>(request => sent = request))
@@ -58,7 +67,9 @@ public class TemplatesSchemasTests : ClientRenderTestContext
 
         var row = page.Find("div[data-schema='concept-list']");
         Assert.Contains("schemas/concept-list.json", row.TextContent);
-        Assert.Contains("\"concepts\"", page.Find("div[data-schema='concept-list'] pre.schema-body").TextContent);
+        // #760: the body is an editable FluentTextArea now, not a read-only <pre>.
+        var body = page.Find("div[data-schema='concept-list'] fluent-text-area.schema-body");
+        Assert.Contains("\"concepts\"", body.GetAttribute("value"));
     }
 
     [Fact]
@@ -170,5 +181,125 @@ public class TemplatesSchemasTests : ClientRenderTestContext
         page.Find("fluent-button[aria-label='Remove schema concept-list']").Click();
         Assert.Empty(page.FindAll("div[data-schema='concept-list']"));
         Assert.NotEmpty(page.FindAll("fluent-button[aria-label='Add output contract concept-list']"));
+    }
+
+    // ----- free-form create + editable bodies (#760) -----------------------
+
+    [Fact]
+    public void CreatingASchemaFreeForm_DeclaresItAndWritesTheAuthoredBody()
+    {
+        var page = RenderEditor(EditorFixtures.V7());
+        CapturePublish();
+        StubRealCatalog();
+        Navigate(page, "Schemas");
+
+        page.Find("fluent-text-field[placeholder='my_contract']").Change("my_contract");
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Create schema")).Click();
+
+        // The new schema shows an editable body; author one.
+        page.Find("div[data-schema='my_contract'] fluent-text-area.schema-body").Change(EditorCatalogSchemas.ConceptListSchema);
+        Publish(page);
+
+        Assert.True(sent != null, string.Join(" | ", Refusals(page)));
+        var schemas = JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement.GetProperty("schemas");
+        Assert.Equal("schemas/my_contract.json", schemas.GetProperty("my_contract").GetString());
+        Assert.Equal(EditorCatalogSchemas.ConceptListSchema, sent.Files["schemas/my_contract.json"]);
+        // Unreferenced, so the catalog-match rule doesn't apply — the validator accepts it.
+        var result = Validated();
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void EditingADeclaredBody_PublishesTheNewText()
+    {
+        var page = RenderEditor(EditorFixtures.V12Full());
+        CapturePublish();
+        StubRealCatalog();
+        Navigate(page, "Schemas");
+
+        // A still-canonical variant (a new title; the match is modulo title/description),
+        // so the body round-trips to the package file and the validator still accepts it.
+        var edited = System.Text.Json.Nodes.JsonNode.Parse(EditorCatalogSchemas.ConceptListSchema)!;
+        edited["title"] = "A clinician-edited title";
+        var editedBody = edited.ToJsonString();
+        page.Find("div[data-schema='concept-list'] fluent-text-area.schema-body").Change(editedBody);
+        Publish(page);
+
+        Assert.True(sent != null, string.Join(" | ", Refusals(page)));
+        Assert.Equal(editedBody, sent!.Files["schemas/concept-list.json"]);
+        Assert.Contains("A clinician-edited title", sent.Files["schemas/concept-list.json"]);
+        var result = Validated();
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void CreatingASchema_WithABadId_IsRefusedInline()
+    {
+        var page = RenderEditor(EditorFixtures.V7());
+        Navigate(page, "Schemas");
+
+        page.Find("fluent-text-field[placeholder='my_contract']").Change("Bad Id");
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Create schema")).Click();
+
+        Assert.Contains("must be lowercase", page.Markup);
+        Assert.Empty(page.FindAll("div[data-schema='Bad Id']"));
+    }
+
+    [Fact]
+    public void CreatingASchema_WithADuplicateId_IsRefusedInline()
+    {
+        var page = RenderEditor(EditorFixtures.V12Full());
+        Navigate(page, "Schemas");
+
+        page.Find("fluent-text-field[placeholder='my_contract']").Change("concept-list");
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Create schema")).Click();
+
+        Assert.Contains("already exists", page.Markup);
+    }
+
+    [Fact]
+    public void AnInvalidJsonBody_ShowsTheInlineHint()
+    {
+        var page = RenderEditor(EditorFixtures.V7());
+        Navigate(page, "Schemas");
+
+        page.Find("fluent-text-field[placeholder='my_contract']").Change("my_contract");
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Create schema")).Click();
+        page.Find("div[data-schema='my_contract'] fluent-text-area.schema-body").Change("{ not valid json");
+
+        Assert.Contains("not valid JSON", page.Find("div[data-schema='my_contract'] .schema-error").TextContent);
+    }
+
+    [Fact]
+    public void ANonCanonicalBody_OnAReferencedSchema_FiresTheDeskCheck_WhenTheCatalogIsKnown()
+    {
+        var page = RenderEditor(EditorFixtures.V12Full());
+        CapturePublish();
+        // The desk check pre-checks client-side against the fetched catalog (#852).
+        WorkflowService.GetCatalogSchemasAsync().Returns(
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["concept-list"] = EditorCatalogSchemas.ConceptListSchema });
+        Navigate(page, "Schemas");
+
+        // Valid JSON, but not a catalog contract.
+        page.Find("div[data-schema='concept-list'] fluent-text-area.schema-body").Change("{\"type\":\"object\",\"properties\":{}}");
+        Publish(page);
+
+        Assert.Null(sent);
+        Assert.Contains(Refusals(page), finding => finding.Contains("must canonically match a catalog output contract"));
+    }
+
+    [Fact]
+    public void ANonCanonicalBody_IsNotFlagged_WhenTheCatalogCannotBeFetched()
+    {
+        var page = RenderEditor(EditorFixtures.V12Full());
+        CapturePublish();
+        // No catalog (the #852 idiom): the match can't be judged, so the server stays authoritative.
+        WorkflowService.GetCatalogSchemasAsync().Returns((IReadOnlyDictionary<string, string>?)null);
+        Navigate(page, "Schemas");
+
+        page.Find("div[data-schema='concept-list'] fluent-text-area.schema-body").Change("{\"type\":\"object\",\"properties\":{}}");
+        Publish(page);
+
+        Assert.True(sent != null, string.Join(" | ", Refusals(page)));
     }
 }
