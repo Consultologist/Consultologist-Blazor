@@ -46,6 +46,9 @@
 }
 
 .editor-nav__group {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
 	font-size: 0.7rem;
 	font-weight: 700;
 	letter-spacing: 0.08em;
@@ -58,12 +61,23 @@
 	margin-top: 0;
 }
 
+/* #880: the section icon (a FluentIcon) — ::deep reaches the component-rendered
+   svg across the scope boundary; muted to match the group label. */
+.editor-nav__group ::deep svg {
+	width: 0.9rem;
+	height: 0.9rem;
+	fill: var(--consultologist-text-muted) !important;
+}
+
 .editor-nav__item {
 	display: flex;
 	align-items: center;
 	gap: 0.4rem;
 	padding: 0.35rem 0.5rem;
 	border: none;
+	/* #880: a transparent accent bar on every item so selecting one doesn't jitter
+	   the label by 3px. */
+	border-left: 3px solid transparent;
 	border-radius: var(--consultologist-radius-md);
 	background: transparent;
 	color: inherit;
@@ -73,14 +87,15 @@
 	cursor: pointer;
 }
 
+/* #880: a subtle neutral hover, distinct from the accent-tinted selected state. */
 .editor-nav__item:hover {
-	background: var(--consultologist-surface);
+	background: var(--consultologist-surface-muted, rgba(0, 0, 0, 0.04));
 }
 
 .editor-nav__item--selected {
-	background: var(--consultologist-surface);
+	background: color-mix(in srgb, var(--accent-fill-rest, #0078d4) 12%, transparent);
 	font-weight: 600;
-	border-left: 3px solid var(--accent-fill-rest, #4f6bed);
+	border-left-color: var(--accent-fill-rest, #0078d4);
 }
 
 .editor-nav__dot {
