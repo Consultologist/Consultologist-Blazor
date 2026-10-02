@@ -553,6 +553,26 @@ header.header.app-header {
 	min-height: 9rem;
 }
 
+/* #760: the editor's Schemas pane renders each schema body as an editable
+   FluentTextArea. A FluentTextArea is component-rendered, so these rules live
+   here (global), not in the page's scoped CSS — the #877 lesson. Monospace JSON,
+   a comfortable min-height, full width. */
+fluent-text-area.schema-body {
+	width: 100%;
+	max-width: 100%;
+}
+
+fluent-text-area.schema-body::part(control) {
+	min-height: 11rem;
+	font-family: var(--consultologist-font-mono, monospace);
+	font-size: 0.8rem;
+}
+
+.schema-error {
+	color: var(--consultologist-error);
+	font-size: 0.78rem;
+}
+
 .panel-title {
 	margin: 0;
 	color: var(--consultologist-text);
