@@ -30,9 +30,10 @@ public class SnippetPickerTests : ClientRenderTestContext
 
         page.Find(".snippet-picker__trigger").Click();
 
-        var panel = page.Find(".snippet-picker__panel");
-        Assert.Equal("group", panel.GetAttribute("role"));
-        Assert.Equal("Snippets", panel.GetAttribute("aria-label"));
+        // #893: the panel is a FluentMenu now — the accessible name sits on the
+        // menu's anchored region and the menu role is set by the web component at
+        // runtime; the name + the items + the open state prove it opened.
+        Assert.NotNull(page.Find("[aria-label='Snippets']"));
         Assert.Equal(2, page.FindAll(".snippet-picker__item").Count);
         Assert.Equal("true", page.Find(".snippet-picker__trigger").GetAttribute("aria-expanded"));
     }

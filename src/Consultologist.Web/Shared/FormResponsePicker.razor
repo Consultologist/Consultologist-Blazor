@@ -11,56 +11,53 @@
 <span class="form-picker" @onclick:stopPropagation="true">
     @* Wrapper span carries the preventDefault the slot label needs; FluentButton's
        OnClick can't (this picker lives inside the input's <label>). *@
+    @* #893: a FluentMenu flyout (keyboard nav + Escape/Tab dismissal + focus for free).
+       UseMenuService="false" renders it inline; Open is driven from the trigger so it
+       stays bUnit-driveable. The wrapper span keeps the slot-label preventDefault. *@
     <span @onclick:preventDefault="true" @onclick:stopPropagation="true">
-        <FluentButton Appearance="Appearance.Stealth"
+        <FluentButton Id="@triggerId"
+                      Appearance="Appearance.Stealth"
                       Class="form-picker__trigger"
                       aria-expanded="@(open ? "true" : "false")"
                       Disabled="@Disabled"
                       IconStart="@(new Icons.Regular.Size20.DocumentText())"
                       OnClick="ToggleAsync">Load from a form response…</FluentButton>
-    </span>
-
-    @if (open)
-    {
-        <div class="form-picker__panel" role="group" aria-label="Held form responses">
+        <FluentMenu Anchor="@triggerId" @bind-Open="open" UseMenuService="false" Anchored="true"
+                    aria-label="Held form responses" Class="form-picker__panel">
             @if (loading)
             {
-                <SkeletonText Lines="3" />
+                <FluentMenuItem Disabled="true"><SkeletonText Lines="3" /></FluentMenuItem>
             }
             else if (error != null)
             {
-                <span class="form-picker__error">@error</span>
+                <FluentMenuItem Disabled="true" Class="form-picker__error">@error</FluentMenuItem>
             }
             else if (rows.Count == 0)
             {
-                <span class="muted-text">No held responses.</span>
+                <FluentMenuItem Disabled="true" class="muted-text">No held responses.</FluentMenuItem>
             }
             else
             {
-                <ul class="form-picker__responses">
-                    @foreach (var row in rows)
-                    {
-                        <li class="form-picker__response @(row.DeletedAtUtc != null ? "form-picker__response--deleted" : null)">
-                            <button type="button"
-                                    class="form-picker__choose"
-                                    disabled="@(row.DeletedAtUtc != null || choosing)"
-                                    @onclick:preventDefault="true"
-                                    @onclick="() => ChooseAsync(row)">
-                                <span class="form-picker__ids">@row.FormId · @row.ResponseId</span>
-                                <span class="muted-text">
-                                    @row.SubmittedAtUtc.ToString("MMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture)
-                                    @if (row.DeletedAtUtc is { } deleted)
-                                    {
-                                        <text> · values deleted @deleted.ToString("MMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture)</text>
-                                    }
-                                </span>
-                            </button>
-                        </li>
-                    }
-                </ul>
+                @foreach (var row in rows)
+                {
+                    <FluentMenuItem Class="@($"form-picker__choose form-picker__response{(row.DeletedAtUtc != null ? " form-picker__response--deleted" : "")}")"
+                                    Disabled="@(row.DeletedAtUtc != null || choosing)"
+                                    OnClick="() => ChooseAsync(row)">
+                        <span class="form-picker__row">
+                            <span class="form-picker__ids">@row.FormId · @row.ResponseId</span>
+                            <span class="muted-text">
+                                @row.SubmittedAtUtc.ToString("MMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture)
+                                @if (row.DeletedAtUtc is { } deleted)
+                                {
+                                    <text> · values deleted @deleted.ToString("MMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture)</text>
+                                }
+                            </span>
+                        </span>
+                    </FluentMenuItem>
+                }
             }
-        </div>
-    }
+        </FluentMenu>
+    </span>
 </span>
 
 @code {
@@ -69,6 +66,7 @@
     [Parameter] public EventCallback<FormResponseValues> OnChosen { get; set; }
 
     private bool open;
+    private readonly string triggerId = Identifier.NewId();
     private bool loading;
     private bool choosing;
     private string? error;

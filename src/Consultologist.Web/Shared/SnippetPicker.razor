@@ -10,34 +10,29 @@
 @using Consultologist.Web.Services.Accounts
 
 <span class="snippet-picker" @onclick:stopPropagation="true">
-    @* Wrapper span carries the preventDefault the slot label needs; FluentButton's
-       OnClick can't (this picker lives inside the input's <label>). *@
+    @* #893: a FluentMenu flyout (keyboard nav + Escape/Tab dismissal + focus for free).
+       UseMenuService="false" renders it inline (no FluentMenuProvider); Open is driven
+       from the trigger (not FluentMenu's JS Trigger) so it stays bUnit-driveable. The
+       wrapper span still carries the preventDefault the slot <label> needs — FluentButton
+       and FluentMenuItem OnClick can't — and now wraps the menu so item clicks don't
+       activate the label either. *@
     <span @onclick:preventDefault="true" @onclick:stopPropagation="true">
-        <FluentButton Appearance="Appearance.Stealth"
+        <FluentButton Id="@triggerId"
+                      Appearance="Appearance.Stealth"
                       Class="snippet-picker__trigger"
                       aria-expanded="@(isOpen ? "true" : "false")"
                       IconStart="@(new Icons.Regular.Size20.Notepad())"
                       OnClick="Toggle">Insert snippet&hellip;</FluentButton>
+        <FluentMenu Anchor="@triggerId" @bind-Open="isOpen" UseMenuService="false" Anchored="true"
+                    aria-label="Snippets" Class="snippet-picker__panel">
+            @foreach (var snippet in Items)
+            {
+                var current = snippet;
+                <FluentMenuItem Class="snippet-picker__item" title="@Preview(current.Text)"
+                                OnClick="() => ChooseAsync(current)">@current.Name</FluentMenuItem>
+            }
+        </FluentMenu>
     </span>
-    @if (isOpen)
-    {
-        <div class="snippet-picker__panel" role="group" aria-label="Snippets">
-            <ul class="snippet-picker__items">
-                @foreach (var snippet in Items)
-                {
-                    var current = snippet;
-                    <li>
-                        <button type="button"
-                                class="snippet-picker__item"
-                                title="@Preview(current.Text)"
-                                @onclick:preventDefault="true" @onclick="() => ChooseAsync(current)">
-                            @current.Name
-                        </button>
-                    </li>
-                }
-            </ul>
-        </div>
-    }
 </span>
 
 @code {
@@ -46,6 +41,7 @@
     [Parameter] public EventCallback<Snippets.Snippet> OnChosen { get; set; }
 
     private bool isOpen;
+    private readonly string triggerId = Identifier.NewId();
 
     private void Toggle() => isOpen = !isOpen;
 
