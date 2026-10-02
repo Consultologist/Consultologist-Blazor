@@ -1,50 +1,8 @@
-.job-history-list {
-	display: flex;
-	flex-direction: column;
-	gap: 0.5rem;
-}
-
-.job-item {
-	border: 1px solid var(--consultologist-border);
-	border-radius: var(--consultologist-radius-md);
-	background: var(--consultologist-surface);
-	box-shadow: var(--consultologist-shadow-sm);
-	overflow: hidden;
-}
-
-.job-item__summary {
-	display: flex;
-	align-items: center;
-	gap: 0.875rem;
-	cursor: pointer;
-	padding: 0.875rem 1rem;
-	list-style: none;
-	user-select: none;
-}
-
-.job-item__summary::-webkit-details-marker {
-	display: none;
-}
-
-.job-item__summary::marker {
-	display: none;
-}
-
-.job-item__summary:hover {
-	background: var(--consultologist-surface-muted);
-}
-
-.job-item__chevron {
-	flex: 0 0 auto;
-	color: var(--consultologist-text-muted);
-	font-size: 1.1em;
-	line-height: 1;
-	display: inline-block;
-	transition: transform 0.15s ease;
-}
-
-.job-item[open] .job-item__chevron {
-	transform: rotate(90deg);
+/* #879: the run list is a FluentDataGrid now (sortable columns + a master-detail
+   record panel below it). The selected-row highlight is global (the row is
+   FluentDataGrid-rendered) — see app.css .job-row--selected. */
+.job-detail-panel {
+	margin-top: 0.75rem;
 }
 
 .job-history-item__status {

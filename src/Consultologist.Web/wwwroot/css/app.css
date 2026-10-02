@@ -703,6 +703,13 @@ header.header.app-header {
 	font-size: 0.8rem;
 }
 
+/* #879: the selected History grid row — global, since the <tr> is rendered by
+   FluentDataGrid (carries its scope attr, not the page's). */
+.job-row--selected,
+.job-row--selected td {
+	background: color-mix(in srgb, var(--accent-fill-rest, #0078d4) 10%, transparent);
+}
+
 /* #688: the skip-link — off-screen until focused, then it slides into the
    top-left corner above everything so a keyboard user can see and use it. */
 .skip-link {
