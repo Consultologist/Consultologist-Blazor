@@ -653,6 +653,19 @@ header.header.app-header {
 	font-weight: 600;
 }
 
+/* #893: PreviousRunPicker menu — the deleted badge, and the deliverable rows
+   indented under their run (expand-in-place). Global: component-rendered elements. */
+.run-picker__deleted {
+	/* !important beats fluent-menu-item's ::slotted content styling. */
+	font-style: italic !important;
+	color: var(--warning-foreground, #7a5c00) !important;
+}
+
+/* margin (not padding) shifts the whole deliverable item right, under its run. */
+.run-picker__deliverable {
+	margin-left: 1rem;
+}
+
 /* #882: content-shaped loading placeholders (SkeletonText / SkeletonList in the
    Consultologist.UI RCL). The components carry role="status"; these rules lay out
    the shimmer bars and give list rows their card shape. FluentSkeleton supplies
