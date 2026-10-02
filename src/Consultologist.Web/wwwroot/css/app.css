@@ -639,6 +639,20 @@ header.header.app-header {
 	min-width: 14rem;
 }
 
+/* #893: picker FluentMenu rows. These are global because fluent-menu-item is
+   component-rendered (it doesn't carry the picker page's scope). The form row
+   stacks the ids over the submitted date. */
+.form-picker__row {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 0.1rem;
+}
+
+.form-picker__row .form-picker__ids {
+	font-weight: 600;
+}
+
 /* #882: content-shaped loading placeholders (SkeletonText / SkeletonList in the
    Consultologist.UI RCL). The components carry role="status"; these rules lay out
    the shimmer bars and give list rows their card shape. FluentSkeleton supplies
