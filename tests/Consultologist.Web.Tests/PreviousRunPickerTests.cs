@@ -32,9 +32,9 @@ public class PreviousRunPickerTests : ClientRenderTestContext
 
         page.WaitForAssertion(() =>
         {
-            var panel = page.Find(".run-picker__panel");
-            Assert.Equal("group", panel.GetAttribute("role"));
-            Assert.Equal("Previous runs", panel.GetAttribute("aria-label"));
+            // #893: a FluentMenu now — the accessible name sits on the menu's anchored
+            // region, the menu role is set by the web component at runtime.
+            Assert.NotNull(page.Find("[aria-label='Previous runs']"));
             // The failed run is not listed — only completed runs have deliverables.
             Assert.Single(page.FindAll(".run-picker__run"));
         });

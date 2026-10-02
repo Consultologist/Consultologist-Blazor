@@ -90,7 +90,9 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
         OpenPicker(page, 0);
 
         page.WaitForAssertion(() => Assert.Equal(2, page.FindAll(".run-picker__run-toggle").Count));
-        var deleted = page.Find(".run-picker__run--deleted .run-picker__run-toggle");
+        // #893: the run row IS the toggle item now (a FluentMenuItem carrying both
+        // classes), so the modifier and the toggle class are on one element.
+        var deleted = page.Find(".run-picker__run-toggle.run-picker__run--deleted");
         Assert.True(deleted.HasAttribute("disabled"));
         Assert.Contains("text deleted Sep 2, 2026", deleted.TextContent);
         // The failed run's id must not appear — the picker lists completed runs

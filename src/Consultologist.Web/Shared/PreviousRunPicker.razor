@@ -20,93 +20,88 @@
     @* FluentButton's OnClick can't carry @onclick:preventDefault, which the slot
        label needs (this picker lives inside the input's <label>); the wrapper
        span intercepts the bubbling click so the label isn't activated. *@
+    @* #893: a FluentMenu flyout. The two-level run→deliverable interaction stays an
+       expand-in-place accordion inside the one menu (runs keep the menu open with
+       KeepOpen; choosing a deliverable closes it) — a cleaner fit than a side-submenu
+       for the lazy per-run load + "Load more". Open is driven from the trigger so it
+       stays bUnit-driveable; the wrapper span keeps the slot-label preventDefault. *@
     <span @onclick:preventDefault="true" @onclick:stopPropagation="true">
-        <FluentButton Appearance="Appearance.Stealth"
+        <FluentButton Id="@triggerId"
+                      Appearance="Appearance.Stealth"
                       Class="run-picker__trigger"
                       aria-expanded="@(isOpen ? "true" : "false")"
                       Disabled="@Disabled"
                       IconStart="@(new Icons.Regular.Size20.History())"
                       OnClick="ToggleAsync">Load from a previous run&hellip;</FluentButton>
-    </span>
-    @if (isOpen)
-    {
-        <div class="run-picker__panel" role="group" aria-label="Previous runs">
+        <FluentMenu Anchor="@triggerId" @bind-Open="isOpen" UseMenuService="false" Anchored="true"
+                    aria-label="Previous runs" Class="run-picker__panel">
             @if (isLoading)
             {
-                <SkeletonText Lines="3" />
+                <FluentMenuItem Disabled="true"><SkeletonText Lines="3" /></FluentMenuItem>
             }
             else if (error != null)
             {
-                <span class="run-picker__error">@error</span>
+                <FluentMenuItem Disabled="true" Class="run-picker__error">@error</FluentMenuItem>
             }
             else if (runs.Count == 0)
             {
-                <span class="muted-text">No completed runs yet.</span>
+                <FluentMenuItem Disabled="true" class="muted-text">No completed runs yet.</FluentMenuItem>
             }
             else
             {
-                <ul class="run-picker__runs">
-                    @foreach (var run in runs)
-                    {
-                        var current = run;
-                        <li class="run-picker__run @(current.TextDroppedAtUtc != null ? "run-picker__run--deleted" : "")">
-                            <button type="button"
-                                    class="run-picker__run-toggle"
-                                    disabled="@(current.TextDroppedAtUtc != null)"
+                @foreach (var run in runs)
+                {
+                    var current = run;
+                    <FluentMenuItem Class="@($"run-picker__run-toggle run-picker__run{(current.TextDroppedAtUtc != null ? " run-picker__run--deleted" : "")}")"
+                                    Disabled="@(current.TextDroppedAtUtc != null)"
+                                    KeepOpen="true"
                                     aria-expanded="@(expanded == current.JobId ? "true" : "false")"
-                                    @onclick:preventDefault="true" @onclick="() => ExpandAsync(current.JobId)">
-                                <span class="run-picker__run-date">@RunDate(current)</span>
-                                @if (details.TryGetValue(current.JobId, out var known) && known?.PackageTitle is { Length: > 0 } title)
-                                {
-                                    <span class="muted-text">@title</span>
-                                }
-                                @if (current.TextDroppedAtUtc is { } dropped)
-                                {
-                                    <span class="run-picker__deleted">text deleted @dropped.ToLocalTime().ToString("MMM d, yyyy")</span>
-                                }
-                            </button>
-                            @if (expanded == current.JobId)
+                                    OnClick="() => ExpandAsync(current.JobId)">
+                        <span class="run-picker__run-date">@RunDate(current)</span>
+                        @if (details.TryGetValue(current.JobId, out var known) && known?.PackageTitle is { Length: > 0 } title)
+                        {
+                            <span class="muted-text">@title</span>
+                        }
+                        @if (current.TextDroppedAtUtc is { } dropped)
+                        {
+                            <span class="run-picker__deleted">text deleted @dropped.ToLocalTime().ToString("MMM d, yyyy")</span>
+                        }
+                    </FluentMenuItem>
+                    @if (expanded == current.JobId)
+                    {
+                        @if (!details.TryGetValue(current.JobId, out var detail))
+                        {
+                            <FluentMenuItem Disabled="true"><SkeletonText Lines="2" /></FluentMenuItem>
+                        }
+                        else if (detail?.AssembledDocuments is not { Count: > 0 })
+                        {
+                            <FluentMenuItem Disabled="true" class="muted-text">This run lists no deliverables.</FluentMenuItem>
+                        }
+                        else
+                        {
+                            @foreach (var document in detail.AssembledDocuments)
                             {
-                                @if (!details.TryGetValue(current.JobId, out var detail))
-                                {
-                                    <SkeletonText Lines="2" />
-                                }
-                                else if (detail?.AssembledDocuments is not { Count: > 0 })
-                                {
-                                    <span class="muted-text">This run lists no deliverables.</span>
-                                }
-                                else
-                                {
-                                    <ul class="run-picker__deliverables">
-                                        @foreach (var document in detail.AssembledDocuments)
-                                        {
-                                            var chosen = document;
-                                            <li>
-                                                <button type="button"
-                                                        class="run-picker__deliverable"
-                                                        disabled="@(chosen.Text == null)"
-                                                        @onclick:preventDefault="true" @onclick="() => ChooseAsync(current, detail, chosen)">
-                                                    @chosen.Label
-                                                    @if (chosen.Text == null)
-                                                    {
-                                                        <span class="run-picker__deleted">text deleted</span>
-                                                    }
-                                                </button>
-                                            </li>
-                                        }
-                                    </ul>
-                                }
+                                var chosen = document;
+                                <FluentMenuItem Class="run-picker__deliverable"
+                                                Disabled="@(chosen.Text == null)"
+                                                OnClick="() => ChooseAsync(current, detail, chosen)">
+                                    @chosen.Label
+                                    @if (chosen.Text == null)
+                                    {
+                                        <span class="run-picker__deleted">text deleted</span>
+                                    }
+                                </FluentMenuItem>
                             }
-                        </li>
+                        }
                     }
-                </ul>
+                }
                 @if (continuationToken != null)
                 {
-                    <button type="button" class="run-picker__more" @onclick:preventDefault="true" @onclick="LoadMoreAsync">Load more</button>
+                    <FluentMenuItem Class="run-picker__more" KeepOpen="true" OnClick="LoadMoreAsync">Load more</FluentMenuItem>
                 }
             }
-        </div>
-    }
+        </FluentMenu>
+    </span>
 </span>
 
 @code {
@@ -116,6 +111,7 @@
     [Parameter] public EventCallback<LoadedDeliverable> OnChosen { get; set; }
 
     private bool isOpen;
+    private readonly string triggerId = Identifier.NewId();
     private bool isLoading;
     private string? error;
     private string? expanded;
