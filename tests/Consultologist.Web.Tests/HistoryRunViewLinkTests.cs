@@ -277,7 +277,7 @@ public class HistoryRunViewLinkTests : ClientRenderTestContext
         // scheduled job. Asserting the COUNT as well, because "contains
         // Scheduled" alone passed even with the new row missing — the deep-link
         // path has its own Insert, and mutating that one proved nothing.
-        Assert.Equal(2, page.FindAll(".job-item").Count);
+        Assert.Equal(2, page.FindAll("tbody tr").Count);
         var badges = page.FindAll(".job-status-badge").Select(b => b.TextContent.Trim()).ToList();
         Assert.Contains("Cancelled", badges);
         Assert.Contains("Scheduled", badges);

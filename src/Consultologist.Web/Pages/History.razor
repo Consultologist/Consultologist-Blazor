@@ -27,7 +27,7 @@
 </section>
 
 <AuthorizeView>
-    <Authorized>
+    <Authorized Context="authContext">
         <section class="content-card">
             @* #687: the list refreshes on a 5s/60s poll; aria-busy tells AT the
                region is updating. The initial load is announced by LoadingState. *@
@@ -74,136 +74,127 @@
                 }
                 else
                 {
-                    <div class="job-history-list">
-                        @foreach (var job in jobs)
-                        {
-                            <details class="job-item" id="job-@job.JobId" open="@(job.JobId == JobId)">
-                                <summary class="job-item__summary" @onclick="async () => await EnsureDetailsLoadedAsync(job.JobId)">
-                                    <span class="job-item__chevron" aria-hidden="true">&#x203A;</span>
-                                    <div class="job-history-item__status">
-                                        <span class="job-status-badge job-status-badge--@job.Status.ToLowerInvariant()">
-                                            @* #434: created already Failed because no document applied —
-                                               named in the list, so a row with 0 / 0 sections is not
-                                               mistaken for a run that broke. *@
-                                            @(job.Deciding ? "Deciding what to produce" : DecisionState.FailedAtStartBadge(job.FailedAtStart, job.DecisionFailureKind) ?? job.Status)
-                                        </span>
-                                        @if (job.Source == "email")
-                                        {
-                                            <span class="job-source-badge" title="Submitted by email">email</span>
-                                        }
-                                        @if (job.Source == "forms")
-                                        {
-                                            <span class="job-source-badge" title="Submitted by a form response">forms</span>
-                                        }
-                                        @if (job.TextDroppedAtUtc != null)
-                                        {
-                                            <span class="job-source-badge job-source-badge--retention" title="The produced text was deleted under the retention policy; the record is kept">text deleted</span>
-                                        }
-                                        @* #486: whether the completion email went — a job that was never
-                                           emailed says so here, not nothing. *@
-                                        @if (DeliveryState.Badge(job.DeliveryOutcome) is { } deliveryBadge)
-                                        {
-                                            <span class="job-source-badge job-source-badge--delivery job-source-badge--delivery-@(job.DeliveryOutcome)" title="@DeliveryState.Describe(job.DeliveryOutcome, null)">@deliveryBadge</span>
-                                        }
-                                    </div>
-                                    <div class="job-history-item__meta">
-                                        <span class="muted-text">@FormatDate(job.CreatedAtUtc)</span>
-                                        @if (job.Status == "Scheduled" && job.ScheduledAtUtc is { } scheduledAt)
-                                        {
-                                            <span class="muted-text">runs @scheduledAt.ToLocalTime().ToString("MMM d, h:mm tt")</span>
-                                        }
-                                        @* v10 (#496): a deciding job has no count yet — a named state, not 0 / 0. *@
-                                        <span class="muted-text">@(job.Deciding ? "— / — sections, not yet decided" : $"{job.CompletedBlockCount} / {job.TotalBlockCount} sections")</span>
-                                        @if (job.FailedBlockCount > 0)
-                                        {
-                                            <span class="muted-text">@job.FailedBlockCount failed</span>
-                                        }
-                                        @* #367: the run view is the only place a job's RAIL is drawn —
-                                           its nodes, their per-item rows, and the statuses the job itself
-                                           reported (#356, #361). The section below lists the nodes that
-                                           produced output, which cannot show a node that was skipped or one
-                                           that failed before recording anything.
+                    @* #879: the run list as a Fluent data grid — sortable columns +
+                       client pagination over the whole history; clicking a row opens
+                       its record in the master-detail panel below. *@
+                    <FluentDataGrid TGridItem="AccountJobSummaryResponse"
+                                    Items="@jobs.AsQueryable()"
+                                    DisplayMode="DataGridDisplayMode.Table"
+                                    Pagination="@pagination"
+                                    ShowHover="true"
+                                    OnRowClick="@(row => SelectJobAsync(row.Item.JobId))"
+                                    RowClass="@(j => j.JobId == selectedJobId ? "job-row--selected" : null)">
+                        <TemplateColumn Title="Status" SortBy="@statusSort">
+                            <span class="job-status-badge job-status-badge--@context.Status.ToLowerInvariant()">
+                                @(context.Deciding ? "Deciding what to produce" : DecisionState.FailedAtStartBadge(context.FailedAtStart, context.DecisionFailureKind) ?? context.Status)
+                            </span>
+                            @if (context.Source == "email")
+                            {
+                                <span class="job-source-badge" title="Submitted by email">email</span>
+                            }
+                            @if (context.Source == "forms")
+                            {
+                                <span class="job-source-badge" title="Submitted by a form response">forms</span>
+                            }
+                            @if (context.TextDroppedAtUtc != null)
+                            {
+                                <span class="job-source-badge job-source-badge--retention" title="The produced text was deleted under the retention policy; the record is kept">text deleted</span>
+                            }
+                        </TemplateColumn>
+                        <TemplateColumn Title="Started" SortBy="@startedSort" IsDefaultSortColumn="true" InitialSortDirection="SortDirection.Descending">
+                            <span class="muted-text">@FormatDate(context.CreatedAtUtc)</span>
+                            @if (context.Status == "Scheduled" && context.ScheduledAtUtc is { } scheduledAt)
+                            {
+                                <span class="muted-text">runs @scheduledAt.ToLocalTime().ToString("MMM d, h:mm tt")</span>
+                            }
+                        </TemplateColumn>
+                        <TemplateColumn Title="Sections" SortBy="@sectionsSort">
+                            <span class="muted-text">@(context.Deciding ? "— / — sections, not yet decided" : $"{context.CompletedBlockCount} / {context.TotalBlockCount} sections")</span>
+                            @if (context.FailedBlockCount > 0)
+                            {
+                                <span class="muted-text">@context.FailedBlockCount failed</span>
+                            }
+                        </TemplateColumn>
+                        <TemplateColumn Title="Delivery">
+                            @if (DeliveryState.Badge(context.DeliveryOutcome) is { } deliveryBadge)
+                            {
+                                <span class="job-source-badge job-source-badge--delivery job-source-badge--delivery-@(context.DeliveryOutcome)" title="@DeliveryState.Describe(context.DeliveryOutcome, null)">@deliveryBadge</span>
+                            }
+                        </TemplateColumn>
+                        <TemplateColumn Title="Run id" SortBy="@runIdSort">
+                            <span class="job-history-item__id muted-text">@context.JobId[..8]&hellip;</span>
+                        </TemplateColumn>
+                        <TemplateColumn Title="" Sortable="false">
+                            @* stopPropagation keeps these controls from also selecting the row. *@
+                            <a class="run-view-link" href="/create/@context.JobId"
+                               @onclick:stopPropagation="true"
+                               title="@(IsTerminal(context.Status) ? "Open this run's steps" : "Open the live run view")">@(IsTerminal(context.Status) ? "view run" : "watch live")</a>
+                            @if (context.Status == "Scheduled")
+                            {
+                                @if (_editing == context.JobId)
+                                {
+                                    <span @onclick:stopPropagation="true">
+                                        <input type="datetime-local"
+                                               class="node-field__input"
+                                               value="@_editValue"
+                                               max="@MaxScheduleLocal"
+                                               disabled="@(_rescheduling == context.JobId)"
+                                               @onchange="args => _editValue = args.Value?.ToString() ?? string.Empty"
+                                               aria-label="New time for this consult" />
+                                    </span>
+                                    <button type="button" class="cancel-run-button"
+                                            disabled="@(_rescheduling == context.JobId)"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => RescheduleAsync(context)">
+                                        @(_rescheduling == context.JobId ? "moving…" : "move")
+                                    </button>
+                                    <button type="button" class="cancel-run-button"
+                                            disabled="@(_rescheduling == context.JobId)"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => ResetEdit(context)">
+                                        reset
+                                    </button>
+                                    <button type="button" class="cancel-run-button"
+                                            disabled="@(_rescheduling == context.JobId)"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => _editing = null">
+                                        done
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="cancel-run-button"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => BeginEdit(context)">
+                                        change time
+                                    </button>
+                                }
+                                <ConfirmButton Native="true"
+                                               StopPropagation="true"
+                                               Armed="@(_cancelArmedId == context.JobId)"
+                                               Busy="@(_cancelling == context.JobId)"
+                                               RestingLabel="cancel"
+                                               ArmedLabel="confirm cancel"
+                                               BusyLabel="cancelling…"
+                                               BackOutLabel="keep"
+                                               MainClass="cancel-run-button"
+                                               BackOutClass="cancel-run-keep-button"
+                                               Disabled="@(_cancelling == context.JobId)"
+                                               OnClick="() => CancelScheduledRunAsync(context.JobId)"
+                                               OnBackOut="() => _cancelArmedId = null" />
+                            }
+                        </TemplateColumn>
+                    </FluentDataGrid>
+                    <FluentPaginator State="@pagination" />
+                }
+            </div>
+        </section>
 
-                                           This link used to be guarded on Running or Queued, so that surface
-                                           was unreachable for every job a minute after it finished — and for
-                                           a Scheduled job (#157), which the guard missed entirely. The route
-                                           never had the restriction: TryReattachAsync handles a terminal
-                                           snapshot deliberately. *@
-                                        @* stopPropagation is load-bearing: the row is the summary of an
-                                           expandable panel, so without it the click toggles the panel
-                                           instead of navigating. *@
-                                        <a class="run-view-link" href="/create/@job.JobId"
-                                           @onclick:stopPropagation="true"
-                                           title="@(IsTerminal(job.Status) ? "Open this run's steps" : "Open the live run view")">@(IsTerminal(job.Status) ? "view run" : "watch live")</a>
-                                        @* #202: only a run that has not started. stopPropagation for the
-                                           same reason as the link above — the row is a summary. *@
-                                        @if (job.Status == "Scheduled")
-                                        {
-                                            @* #390: editing the time cancels and re-creates, so the row
-                                               the user is looking at will be replaced by a new one. Say so
-                                               here rather than letting them find out in the list. *@
-                                            @if (_editing == job.JobId)
-                                            {
-                                                <span @onclick:stopPropagation="true">
-                                                    <input type="datetime-local"
-                                                           class="node-field__input"
-                                                           value="@_editValue"
-                                                           max="@MaxScheduleLocal"
-                                                           disabled="@(_rescheduling == job.JobId)"
-                                                           @onchange="args => _editValue = args.Value?.ToString() ?? string.Empty"
-                                                           aria-label="New time for this consult" />
-                                                </span>
-                                                <button type="button" class="cancel-run-button"
-                                                        disabled="@(_rescheduling == job.JobId)"
-                                                        @onclick:stopPropagation="true"
-                                                        @onclick="() => RescheduleAsync(job)">
-                                                    @(_rescheduling == job.JobId ? "moving…" : "move")
-                                                </button>
-                                                @* The reset: an edit field prefilled from a record is a
-                                                   field you can lose the record in. *@
-                                                <button type="button" class="cancel-run-button"
-                                                        disabled="@(_rescheduling == job.JobId)"
-                                                        @onclick:stopPropagation="true"
-                                                        @onclick="() => ResetEdit(job)">
-                                                    reset
-                                                </button>
-                                                <button type="button" class="cancel-run-button"
-                                                        disabled="@(_rescheduling == job.JobId)"
-                                                        @onclick:stopPropagation="true"
-                                                        @onclick="() => _editing = null">
-                                                    done
-                                                </button>
-                                            }
-                                            else
-                                            {
-                                                <button type="button" class="cancel-run-button"
-                                                        @onclick:stopPropagation="true"
-                                                        @onclick="() => BeginEdit(job)">
-                                                    change time
-                                                </button>
-                                            }
-                                            @* #817/#820: arm→confirm; back out reads "keep" ("cancel"
-                                               is the action here). Native so it stays a plain row button
-                                               and its click doesn't toggle the surrounding row. *@
-                                            <ConfirmButton Native="true"
-                                                           StopPropagation="true"
-                                                           Armed="@(_cancelArmedId == job.JobId)"
-                                                           Busy="@(_cancelling == job.JobId)"
-                                                           RestingLabel="cancel"
-                                                           ArmedLabel="confirm cancel"
-                                                           BusyLabel="cancelling…"
-                                                           BackOutLabel="keep"
-                                                           MainClass="cancel-run-button"
-                                                           BackOutClass="cancel-run-keep-button"
-                                                           Disabled="@(_cancelling == job.JobId)"
-                                                           OnClick="() => CancelScheduledRunAsync(job.JobId)"
-                                                           OnBackOut="() => _cancelArmedId = null" />
-                                        }
-                                    </div>
-                                    <div class="job-history-item__id">
-                                        <span class="muted-text">@job.JobId[..8]&hellip;</span>
-                                    </div>
-                                </summary>
+        @* #879: master-detail — the selected run's record (provenance,
+           workflow, run trace), moved out of the old inline accordion. *@
+        @if (selectedJobId is { } selId && jobs.FirstOrDefault(j => j.JobId == selId) is { } job)
+        {
+            <section class="content-card job-detail-panel">
                                 <div class="job-item__detail">
                                     @{
                                         var hasStartedLoad = _jobDetails.TryGetValue(job.JobId, out var detail);
@@ -854,30 +845,8 @@
                                         </details>
                                     }
                                 </div>
-                            </details>
-                        }
-                    </div>
-
-                    @if (jobsContinuationToken != null)
-                    {
-                        <FluentButton
-                            Appearance="Appearance.Outline"
-                            Disabled="@jobsLoading"
-                            OnClick="LoadMoreJobsAsync">
-                            @if (jobsLoading)
-                            {
-                                <FluentProgressRing style="width: 16px; height: 16px;" />
-                                <span>Loading&hellip;</span>
-                            }
-                            else
-                            {
-                                <span>Load more</span>
-                            }
-                        </FluentButton>
-                    }
-                }
-            </div>
-        </section>
+            </section>
+        }
     </Authorized>
 </AuthorizeView>
 
@@ -986,9 +955,22 @@
         string.IsNullOrEmpty(jobId) ? "—" : jobId.Length > 8 ? jobId[..8] + "…" : jobId;
 
     private List<AccountJobSummaryResponse> jobs = new();
-    private string? jobsContinuationToken;
     private bool jobsLoading;
     private string? jobsErrorMessage;
+
+    // #879: the grid's client pagination + which row's record the master-detail
+    // panel below the grid is showing.
+    private readonly PaginationState pagination = new() { ItemsPerPage = 25 };
+    private string? selectedJobId;
+
+    private static readonly GridSort<AccountJobSummaryResponse> statusSort =
+        GridSort<AccountJobSummaryResponse>.ByAscending(j => j.Status);
+    private static readonly GridSort<AccountJobSummaryResponse> startedSort =
+        GridSort<AccountJobSummaryResponse>.ByAscending(j => j.CreatedAtUtc);
+    private static readonly GridSort<AccountJobSummaryResponse> sectionsSort =
+        GridSort<AccountJobSummaryResponse>.ByAscending(j => j.CompletedBlockCount);
+    private static readonly GridSort<AccountJobSummaryResponse> runIdSort =
+        GridSort<AccountJobSummaryResponse>.ByAscending(j => j.JobId);
 
     // #642: which job's run diagram is open; null = closed.
     private string? _diagramJobId;
@@ -1023,6 +1005,9 @@
         {
             return;
         }
+
+        // #879: a deep link selects the row so the master-detail panel renders it.
+        selectedJobId = JobId;
 
         var existing = jobs.FindIndex(job => job.JobId == JobId);
 
@@ -1584,9 +1569,17 @@
 
         try
         {
-            var result = await AccountService.GetJobsAsync(limit: 20);
-            jobs.AddRange(result.Jobs);
-            jobsContinuationToken = result.ContinuationToken;
+            // #879: the grid sorts/filters/paginates in memory, so load the whole
+            // history up front (the account endpoint has no server sort/filter), by
+            // following the continuation token to the end.
+            string? continuationToken = null;
+            do
+            {
+                var result = await AccountService.GetJobsAsync(limit: 100, continuationToken: continuationToken);
+                jobs.AddRange(result.Jobs);
+                continuationToken = result.ContinuationToken;
+            }
+            while (continuationToken != null);
         }
         catch (AccessTokenNotAvailableException exception)
         {
@@ -1602,35 +1595,11 @@
         }
     }
 
-    private async Task LoadMoreJobsAsync()
+    // #879: clicking a grid row shows that run's record in the panel below.
+    private async Task SelectJobAsync(string jobId)
     {
-        if (jobsLoading || jobsContinuationToken == null)
-        {
-            return;
-        }
-
-        jobsLoading = true;
-        StateHasChanged();
-
-        try
-        {
-            var result = await AccountService.GetJobsAsync(limit: 20, continuationToken: jobsContinuationToken);
-            jobs.AddRange(result.Jobs);
-            jobsContinuationToken = result.ContinuationToken;
-        }
-        catch (Exception ex)
-        {
-            jobsErrorMessage = $"Unable to load more jobs: {ex.Message}";
-        }
-        finally
-        {
-            jobsLoading = false;
-            StateHasChanged();
-        }
-
-        // An older page can surface a non-terminal row (e.g. a Scheduled job)
-        // after the loop already stopped.
-        EnsurePollingStarted();
+        selectedJobId = jobId;
+        await EnsureDetailsLoadedAsync(jobId);
     }
 
     private async Task EnsureDetailsLoadedAsync(string jobId)

@@ -25,8 +25,9 @@ public class RunDiagramModalE2ETests
 
         await page.GotoAsync($"{_fixture.BaseUrl}/history", new() { WaitUntil = WaitUntilState.DOMContentLoaded });
 
-        // Expand the job row → detail loads → the "Run diagram" trigger appears.
-        await page.ClickAsync(".job-item__summary", new() { Timeout = 30_000 });
+        // #879: History is a FluentDataGrid now — select a row → the master-detail
+        // panel loads below → the "Run diagram" trigger appears.
+        await page.ClickAsync("tbody tr", new() { Timeout = 30_000 });
         await page.ClickAsync(".run-dag-button", new() { Timeout = 30_000 });
         await page.WaitForSelectorAsync(".run-dag-panel", new() { Timeout = 30_000 });
         return page;
