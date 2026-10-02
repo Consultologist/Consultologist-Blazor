@@ -696,6 +696,13 @@ header.header.app-header {
 	align-items: flex-start;
 }
 
+/* #880: the editor nav's empty-group hint — a compact EmptyState sized down to sit
+   in the 240px rail (global, since the class lands on the EmptyState element). */
+.editor-nav__empty {
+	padding: 0.2rem 0.5rem;
+	font-size: 0.8rem;
+}
+
 /* #688: the skip-link — off-screen until focused, then it slides into the
    top-left corner above everything so a keyboard user can see and use it. */
 .skip-link {

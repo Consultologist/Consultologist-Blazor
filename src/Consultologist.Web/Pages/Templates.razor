@@ -321,7 +321,7 @@
 
             <div class="editor-layout">
                 <nav class="editor-nav" aria-label="Package contents">
-                    <span class="editor-nav__group">Workflow</span>
+                    <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.Branch())" /> Workflow</span>
                     @if (EffectiveSpecVersion >= 9)
                     {
                         @* #432: the package's own pane arrives with v9. *@
@@ -358,7 +358,11 @@
                     @* #838: the graph's nodes as their own section, a peer to
                        Prompts and Macros, not nested under the Graph page. Graph
                        itself stays above as the whole-DAG binding view. *@
-                    <span class="editor-nav__group">Nodes</span>
+                    <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.Molecule())" /> Nodes</span>
+                    @if (!EffectiveNodes.Any())
+                    {
+                        <EmptyState Compact Class="editor-nav__empty" Description="No nodes yet." />
+                    }
                     @foreach (var navNode in EffectiveNodes)
                     {
                         <button type="button"
@@ -382,7 +386,11 @@
                         <span class="editor-nav__dot"></span>
                         <span>+ Node</span>
                     </button>
-                    <span class="editor-nav__group">Prompts</span>
+                    <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.Comment())" /> Prompts</span>
+                    @if (!EffectivePrompts.Any())
+                    {
+                        <EmptyState Compact Class="editor-nav__empty" Description="No prompts yet." />
+                    }
                     @foreach (var prompt in EffectivePrompts)
                     {
                         <button type="button"
@@ -410,7 +418,7 @@
                        reachable below 11; authoring is offered only at 11. *@
                     @if (EffectiveMacros.Count > 0 || EffectiveSpecVersion >= 11)
                     {
-                        <span class="editor-nav__group">Macros</span>
+                        <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.Flash())" /> Macros</span>
                         @foreach (var navMacro in EffectiveMacros)
                         {
                             <button type="button"
@@ -458,7 +466,11 @@
                     }
                     @* #747: shared preludes — named text prepended to a prompt.
                        Create/edit/remove here; a prompt picks one in its pane. *@
-                    <span class="editor-nav__group">Preludes</span>
+                    <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.TextParagraph())" /> Preludes</span>
+                    @if (!LivePreludes.Any())
+                    {
+                        <EmptyState Compact Class="editor-nav__empty" Description="No preludes yet." />
+                    }
                     @foreach (var prelude in LivePreludes)
                     {
                         var livePrelude = prelude;
@@ -507,16 +519,20 @@
                     @* #746/#759: output-contract schemas — the pane views declared
                        ones, adds a catalog contract, and removes an unused one.
                        Always shown so the first contract can be added. *@
-                    <span class="editor-nav__group">Schemas</span>
+                    <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.Braces())" /> Schemas</span>
                     <button type="button"
                             class="editor-nav__item @(selectedKey == SchemasKey ? "editor-nav__item--selected" : "")"
                             @onclick="() => Select(SchemasKey)">
                         <span class="editor-nav__dot">@(removedSchemaIds.Count > 0 || addedSchemas.Count > 0 ? "●" : "")</span>
                         <span>Schemas</span>
                     </button>
-                    <span class="editor-nav__group">Data</span>
+                    <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.NumberSymbol())" /> Data</span>
                     @* A value has no items, so it sits flat in the same Data
                        group rather than as a folder with nothing inside. *@
+                    @if (!EffectiveScalars.Any())
+                    {
+                        <EmptyState Compact Class="editor-nav__empty" Description="No data values yet." />
+                    }
                     @foreach (var scalar in EffectiveScalars)
                     {
                         @if (ScalarIsRemoved(scalar))
@@ -550,6 +566,10 @@
                         <span class="editor-nav__dot"></span>
                         <span>+ Data value</span>
                     </button>
+                    @if (!EffectiveCollections.Any())
+                    {
+                        <EmptyState Compact Class="editor-nav__empty" Description="No data folders yet." />
+                    }
                     @foreach (var collection in EffectiveCollections)
                     {
                         <details class="editor-nav__folder" open>
