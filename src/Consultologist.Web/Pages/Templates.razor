@@ -76,6 +76,10 @@
                     }
                 </div>
                 <div class="editor-bar__actions">
+                  @* #880: a Fluent command bar — the same FluentButton/ConfirmButton
+                     commands, grouped with vertical dividers (edit · publish · history ·
+                     reset · package I/O). Keeps flex-wrap at narrow widths. *@
+                  <FluentToolbar Class="editor-bar__toolbar">
                     @* #347: the migration. Shown only while the fork is below the
                        newest format — upward only, by construction rather than by
                        a refusal. It stages a pending change and publishes like any
@@ -96,6 +100,10 @@
                                       @onclick="() => UpgradeSpecVersionTo(NewestSpecVersion)">
                             Upgrade to specVersion @NewestSpecVersion
                         </FluentButton>
+                    }
+                    @if (OffersRunnableUpgrade || OffersNewestUpgrade)
+                    {
+                        <FluentDivider Orientation="Orientation.Vertical" Role="DividerRole.Presentation" />
                     }
                     @* #447: two publishes, said explicitly. A package of my own
                        takes a new version; anything can become a new package of
@@ -169,6 +177,7 @@
                             <FluentButton Appearance="Appearance.Outline" Disabled="@isPublishing" @onclick="() => newPackageOpen = false">Cancel</FluentButton>
                         </span>
                     }
+                    <FluentDivider Orientation="Orientation.Vertical" Role="DividerRole.Presentation" />
                     @* #815: step back and forward through committed edits. *@
                     <FluentButton Appearance="Appearance.Outline"
                                   Class="undo-button"
@@ -182,6 +191,7 @@
                                   @onclick="RedoAsync">
                         Redo
                     </FluentButton>
+                    <FluentDivider Orientation="Orientation.Vertical" Role="DividerRole.Presentation" />
                     @* #770: both wipe unpublished work on one click, so arm them
                        — the first click warns, the second acts (the #195 pattern).
                        #817/#820: an Outline Cancel sits beside whichever is armed
@@ -205,6 +215,7 @@
                                    Disabled="@isPublishing"
                                    OnClick="RevertToDefaultAsync"
                                    OnBackOut="CancelToolbarArm" />
+                    <FluentDivider Orientation="Orientation.Vertical" Role="DividerRole.Presentation" />
                     @* #808: download the package being edited as a zip of the real
                        directory tree (current edits applied), interchangeable with the
                        GitOps repo and local editing. No gate — an unedited package downloads too. *@
@@ -225,6 +236,7 @@
                     <FluentInputFile AnchorId="editor-import-trigger" DragDropZoneVisible="false"
                                      Accept=".zip" MaximumFileSize="long.MaxValue" MaximumFileCount="int.MaxValue"
                                      OnInputFileChange="ImportPackageAsync" />
+                  </FluentToolbar>
                 </div>
             </div>
 
