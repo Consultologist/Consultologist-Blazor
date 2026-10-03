@@ -27,6 +27,14 @@ public static class OutputContracts
     /// node's kind, never declared by schema id.
     /// </summary>
     public const string Classification = "classification";
+
+    /// <summary>
+    /// v22 (#760): a custom, user-defined output shape. A routing marker, NOT a
+    /// catalog entry — a custom schema has no catalog agent; it is run by a
+    /// content-addressed generic no-tool agent provisioned per run, and its
+    /// output is explicitly unattested/ungrounded.
+    /// </summary>
+    public const string Custom = "custom";
 }
 
 /// <summary>One catalog entry: the attested agent pinned for an output shape.</summary>

@@ -25,7 +25,9 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     // v18 (#822): a node's own when — condition-gated node inclusion, cascade.
     // v20 (#863): inline macro slots — a section may emit [[slot:id]], filled at assembly.
     // v21 (#923): schemaRefs — an output schema may reference a catalog contract by name.
-    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21 };
+    // v22 (#760): customSchemas — an inline user-defined output shape, run by a
+    // content-addressed generic no-tool agent (unattested).
+    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22 };
     private static readonly TimeSpan LatestPointerCacheDuration = TimeSpan.FromSeconds(60);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -290,6 +292,15 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
             }
 
             schemaContracts[schemaId] = contractId;
+        }
+
+        // v22 (#760): a custom schema resolves to the reserved `custom` contract —
+        // a routing marker, NOT a catalog entry (custom has no catalog agent; the
+        // agent is content-addressed and provisioned per run). So there is no
+        // catalog existence check here, unlike the stamped/referenced paths.
+        foreach (var (schemaId, _) in manifest.CustomSchemas ?? new Dictionary<string, string>())
+        {
+            schemaContracts[schemaId] = OutputContracts.Custom;
         }
 
         return schemaContracts;

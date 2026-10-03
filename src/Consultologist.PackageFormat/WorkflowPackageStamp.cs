@@ -96,6 +96,14 @@ public sealed record WorkflowPackageStamp(
             contracts[schemaId] = contractId;
         }
 
+        // v22 (#760): a custom schema records the reserved `custom` contract id —
+        // no body match (custom is not a catalog contract). The stamp shape stays
+        // {catalogRef, contracts} with no new member.
+        foreach (var (schemaId, _) in manifest.CustomSchemas ?? new Dictionary<string, string>())
+        {
+            contracts[schemaId] = WorkflowNodeDefaults.CustomSchemaId;
+        }
+
         return new WorkflowPackageStamp(catalog.ResolvedRef, contracts);
     }
 

@@ -43,11 +43,22 @@ public sealed record WorkflowPackageManifest(
     // contract id (e.g. "my-concepts" → "concept-list") — instead of an inline
     // body carried in the bundle that must canonically match the catalog. A
     // referenced schema has no file and skips the canonical match; it resolves
-    // by the named contract id. A schema id lives in exactly one of Schemas or
-    // SchemaRefs. Trailing optional, omitted when null, so every earlier
-    // manifest writes the bytes it always wrote. The version gate is the
-    // validator's.
-    Dictionary<string, string>? SchemaRefs = null);
+    // by the named contract id. A schema id lives in exactly one of Schemas,
+    // SchemaRefs or CustomSchemas. Trailing optional, omitted when null, so
+    // every earlier manifest writes the bytes it always wrote. The version gate
+    // is the validator's.
+    Dictionary<string, string>? SchemaRefs = null,
+    // v22 (package-format-v22.md, #760): a declared output schema may be a
+    // CUSTOM, user-defined shape — schema id → an inline package file holding a
+    // JSON body that is NOT a catalog contract and does NOT canonically match
+    // one. A custom schema is run by a content-addressed generic no-tool agent
+    // (its output is explicitly unattested/ungrounded); the body must be
+    // expressible as a strict structured-output schema (the subset rule). Like
+    // Schemas it carries a file; unlike Schemas it skips the canonical match. A
+    // schema id lives in exactly one of Schemas, SchemaRefs or CustomSchemas.
+    // Trailing optional, omitted when null, so every earlier manifest writes the
+    // bytes it always wrote. The version gate is the validator's.
+    Dictionary<string, string>? CustomSchemas = null);
 
 /// <summary>
 /// One declared macro (v11 § 4): a package-owned template file, applied to a

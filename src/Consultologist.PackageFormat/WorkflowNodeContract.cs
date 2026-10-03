@@ -116,4 +116,8 @@ public static class WorkflowNodeDefaults
     // v12 (§ 15): the classification contract's catalog id — the template
     // node's output-schema refusal matches against it.
     public const string ClassificationSchemaId = "classification";
+
+    // v22 (#760): the reserved contract id for a custom, user-defined output
+    // shape — a routing marker, not a catalog contract.
+    public const string CustomSchemaId = "custom";
 }
