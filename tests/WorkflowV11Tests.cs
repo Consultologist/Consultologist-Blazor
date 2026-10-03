@@ -68,11 +68,11 @@ public class WorkflowV11GateTests
     }
 
     [Fact]
-    public void TwentyTwoIsRefused_NamingTheSet()
+    public void TwentyThreeIsRefused_NamingTheSet()
     {
-        // 21 is accepted since #923; the version after it is what the set refuses.
-        Assert.Contains(V11Fixtures.Validate(V11Fixtures.Minimal() with { SpecVersion = 22 }).Errors,
-            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 or 21"));
+        // 22 is accepted since #760; the version after it is what the set refuses.
+        Assert.Contains(V11Fixtures.Validate(V11Fixtures.Minimal() with { SpecVersion = 23 }).Errors,
+            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21 or 22"));
     }
 
     [Theory]

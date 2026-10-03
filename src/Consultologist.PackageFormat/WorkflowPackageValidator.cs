@@ -28,7 +28,7 @@ public static class WorkflowPackageValidator
     /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
     /// are checked against the published spec-versions.json there too.
     /// </summary>
-    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21 };
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22 };
 
     /// <summary>
     /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
@@ -170,6 +170,7 @@ public static class WorkflowPackageValidator
         {
             ValidateMetadata(manifest, errors);
             ValidateSchemaRefs(manifest, catalogSchemas, errors);
+            ValidateCustomSchemas(manifest, files, errors);
             ValidateDerivedFrom(manifest, errors);
             ValidateNodes(manifest, files, catalogSchemas, stampedContracts, errors, warnings);
             WarnUnreachableByEmail(manifest, warnings);
@@ -340,6 +341,155 @@ public static class WorkflowPackageValidator
                 errors.Add($"Schema reference '{schemaId}' names contract '{contractId}', which is not a catalog output contract.");
             }
         }
+    }
+
+    /// <summary>
+    /// v22 (package-format-v22.md § 4, #760): customSchemas — a declared output
+    /// schema carrying a user-defined inline body that is NOT a catalog contract
+    /// and is NOT canonically matched. Refused by name below 22. A schema id
+    /// lives in exactly one of schemas, schemaRefs or customSchemas. The body
+    /// must be present, parse as JSON, and obey the strict structured-output
+    /// subset (below) — a custom shape is run by a generic no-tool agent whose
+    /// json_schema is strict, so a body the model cannot enforce is refused here,
+    /// at author/publish time, not at run.
+    /// </summary>
+    private static void ValidateCustomSchemas(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> files,
+        List<string> errors)
+    {
+        if (manifest.CustomSchemas is not { Count: > 0 } customSchemas)
+        {
+            return;
+        }
+
+        if (manifest.SpecVersion < 22)
+        {
+            errors.Add("customSchemas requires specVersion 22.");
+            return;
+        }
+
+        foreach (var (schemaId, schemaPath) in customSchemas)
+        {
+            if ((manifest.Schemas is not null && manifest.Schemas.ContainsKey(schemaId))
+                || (manifest.SchemaRefs is not null && manifest.SchemaRefs.ContainsKey(schemaId)))
+            {
+                errors.Add($"Schema '{schemaId}' is declared both as custom and elsewhere; a schema is declared in exactly one of schemas, schemaRefs or customSchemas.");
+            }
+
+            if (!files.TryGetValue(schemaPath, out var schemaText))
+            {
+                errors.Add($"Custom schema '{schemaId}' file '{schemaPath}' is missing from the package.");
+                continue;
+            }
+
+            JsonNode? schemaNode;
+            try
+            {
+                schemaNode = JsonNode.Parse(schemaText);
+            }
+            catch (JsonException)
+            {
+                errors.Add($"Custom schema '{schemaId}' file '{schemaPath}' is not valid JSON.");
+                continue;
+            }
+
+            ValidateStructuredOutputSubset(schemaId, schemaNode, errors);
+        }
+    }
+
+    // v22 (#760): a custom schema is enforced by a strict json_schema agent, so
+    // the body must fit the structured-output subset (the v4.0 rule retired when
+    // canonical-match subsumed it, dag-as-data-design.md § structured outputs).
+    private const int MaxCustomSchemaDepth = 8;
+
+    /// <summary>
+    /// The strict structured-output subset a custom schema must obey: every
+    /// object sets additionalProperties:false and lists every one of its
+    /// properties in required (optionality is a nullable type — type: ["T",
+    /// "null"] — never omission from required), and nesting is bounded. These are
+    /// exactly the constraints a strict json_schema agent can enforce.
+    /// </summary>
+    private static void ValidateStructuredOutputSubset(string schemaId, JsonNode? node, List<string> errors)
+    {
+        Walk(node, "", 0);
+
+        void Walk(JsonNode? current, string path, int depth)
+        {
+            if (current is not JsonObject obj)
+            {
+                return;
+            }
+
+            if (depth > MaxCustomSchemaDepth)
+            {
+                errors.Add($"Custom schema '{schemaId}' nests deeper than {MaxCustomSchemaDepth} levels{At(path)}; flatten it to fit the strict structured-output subset.");
+                return;
+            }
+
+            var properties = obj["properties"] as JsonObject;
+            var isObject = properties is not null || TypeIs(obj, "object");
+            var items = obj["items"];
+            var isArray = items is not null || TypeIs(obj, "array");
+
+            if (isObject)
+            {
+                if (obj["additionalProperties"] is not JsonValue addl
+                    || !addl.TryGetValue(out bool allowsExtra)
+                    || allowsExtra)
+                {
+                    errors.Add($"Custom schema '{schemaId}' object{At(path)} must set additionalProperties:false (the strict structured-output subset).");
+                }
+
+                var required = (obj["required"] as JsonArray)?
+                    .Select(entry => entry?.GetValue<string>())
+                    .Where(name => name is not null)
+                    .Select(name => name!)
+                    .ToHashSet(StringComparer.Ordinal)
+                    ?? new HashSet<string>(StringComparer.Ordinal);
+
+                if (properties is not null)
+                {
+                    foreach (var (name, value) in properties)
+                    {
+                        if (!required.Contains(name))
+                        {
+                            errors.Add($"Custom schema '{schemaId}' property '{name}'{At(path)} must be listed in required (optionality is expressed by a nullable type, not omission).");
+                        }
+
+                        Walk(value, path.Length == 0 ? name : $"{path}.{name}", depth + 1);
+                    }
+                }
+            }
+
+            if (isArray)
+            {
+                Walk(items, $"{path}[]", depth + 1);
+            }
+        }
+
+        static string At(string path) => path.Length == 0 ? "" : $" at '{path}'";
+    }
+
+    // A schema node's declared type is <expected>, allowing a nullable union
+    // (type: ["object", "null"]). Absence of a type is not a match.
+    private static bool TypeIs(JsonObject obj, string expected)
+    {
+        var type = obj["type"];
+        if (type is JsonValue value && value.TryGetValue(out string? single))
+        {
+            return single == expected;
+        }
+
+        if (type is JsonArray union)
+        {
+            return union.Any(member =>
+                member is JsonValue memberValue
+                && memberValue.TryGetValue(out string? memberType)
+                && memberType == expected);
+        }
+
+        return false;
     }
 
     private static void ValidateDerivedFrom(WorkflowPackageManifest manifest, List<string> errors)
@@ -625,6 +775,12 @@ public static class WorkflowPackageValidator
                 return refContractId == WorkflowNodeDefaults.ConceptListSchemaId;
             }
 
+            // v22 (#760): a custom schema is a user-defined shape, never concept-list.
+            if (manifest.CustomSchemas is not null && manifest.CustomSchemas.ContainsKey(target.Output.Schema))
+            {
+                return false;
+            }
+
             if (manifest.Schemas is null
                 || !manifest.Schemas.TryGetValue(target.Output.Schema, out var schemaPath))
             {
@@ -666,6 +822,12 @@ public static class WorkflowPackageValidator
             if (manifest.SchemaRefs is not null && manifest.SchemaRefs.TryGetValue(target.Output.Schema, out var refContractId))
             {
                 return refContractId == WorkflowNodeDefaults.ClassificationSchemaId;
+            }
+
+            // v22 (#760): a custom schema is a user-defined shape, never classification.
+            if (manifest.CustomSchemas is not null && manifest.CustomSchemas.ContainsKey(target.Output.Schema))
+            {
+                return false;
             }
 
             if (manifest.Schemas is null
@@ -2870,6 +3032,21 @@ public static class WorkflowPackageValidator
         // no inline body to load, no canonical match. ValidateSchemaRefs has
         // already checked the reference itself (known contract, not also inline).
         if (manifest.SchemaRefs is not null && manifest.SchemaRefs.ContainsKey(node.Output.Schema))
+        {
+            if (node.Output.FailIfEmpty != null && string.IsNullOrWhiteSpace(node.Output.FailIfEmpty))
+            {
+                errors.Add($"Node '{node.Id}' failIfEmpty must not be blank.");
+            }
+
+            return;
+        }
+
+        // v22 (#760): a custom schema carries an inline user-defined body that is
+        // NOT canonically matched — it's run by a generic no-tool agent. The body
+        // (present, JSON, in the strict subset) was already checked by
+        // ValidateCustomSchemas; here only failIfEmpty applies, skipping the
+        // canonical-match block below.
+        if (manifest.CustomSchemas is not null && manifest.CustomSchemas.ContainsKey(node.Output.Schema))
         {
             if (node.Output.FailIfEmpty != null && string.IsNullOrWhiteSpace(node.Output.FailIfEmpty))
             {

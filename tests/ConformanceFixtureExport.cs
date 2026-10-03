@@ -1083,6 +1083,35 @@ public class ConformanceFixtureExport
             "One schema id declared both as an inline body and as a reference — a schema is one or the other.",
             V21Fixtures.SchemaRef(alsoInline: true));
 
+        // ----- v22 (#760): a declared output schema may be a CUSTOM, user-defined
+        // shape — customSchemas: { "<id>": "schemas/<id>.json" } — whose inline body
+        // is not a catalog contract and is not canonically matched, run by a generic
+        // no-tool agent (unattested). Below 22 refused; a body outside the strict
+        // structured-output subset refused; an id declared in two of schemas/
+        // schemaRefs/customSchemas refused.
+        var v21MinimalForV22 = V18Fixtures.Minimal() with { SpecVersion = 21 };
+        Bundle("v22-minimal-is-v21-plus-a-line", 22,
+            "The migration v22 promises: a valid v21 manifest with specVersion 22 and nothing else changed.",
+            (v21MinimalForV22 with { SpecVersion = 22 }, V6Fixtures.Files(v21MinimalForV22)));
+
+        Bundle("v22-custom-schema", 22,
+            "A node whose output is a custom, user-defined schema (inline body, no canonical match, run unattested).",
+            V22Fixtures.Custom());
+
+        Bundle("invalid-custom-schemas-below-22", 21,
+            "A customSchemas declaration on a v21 manifest. The custom form arrives at 22.",
+            V22Fixtures.Custom(specVersion: 21));
+
+        Bundle("invalid-custom-schema-declared-in-two-maps", 22,
+            "One schema id declared both as custom and inline — a schema lives in exactly one of schemas, schemaRefs or customSchemas.",
+            V22Fixtures.Custom(alsoInline: true));
+
+        Bundle("invalid-custom-schema-outside-the-subset", 22,
+            "A custom body missing additionalProperties:false — outside the strict structured-output subset a json_schema agent can enforce.",
+            V22Fixtures.Custom(body: """
+                { "type": "object", "required": ["summary"], "properties": { "summary": { "type": "string" } } }
+                """));
+
         return cases;
     }
 
