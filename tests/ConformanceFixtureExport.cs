@@ -1054,6 +1054,35 @@ public class ConformanceFixtureExport
             "A slot macro carrying {{profile:signature}}. A deliverable is signed once, not wherever the model drops a marker.",
             V20Fixtures.SlotMacro(text: "Sincerely,\n\n{{profile:signature}}"));
 
+        // ----- v21 (#923): a declared output schema may be a REFERENCE to a
+        // published catalog output-contract by name (schema id -> contract id),
+        // instead of an inline body carried in the bundle that must canonically
+        // match the catalog. A referenced schema has no file; it resolves by the
+        // named contract id. Below 21 refused; a reference naming a contract the
+        // catalog does not publish refused; declaring a schema both inline and as
+        // a reference refused. -----
+
+        var v20MinimalForV21 = V18Fixtures.Minimal() with { SpecVersion = 20 };
+        Bundle("v21-minimal-is-v20-plus-a-line", 21,
+            "The migration v21 promises: a valid v20 manifest with specVersion 21 and nothing else changed.",
+            (v20MinimalForV21 with { SpecVersion = 21 }, V6Fixtures.Files(v20MinimalForV21)));
+
+        Bundle("v21-schema-ref", 21,
+            "An output schema declared as a reference to the catalog's concept-list contract by name — no inline body in the bundle; it resolves by the contract id (§ 4).",
+            V21Fixtures.SchemaRef());
+
+        Bundle("invalid-schema-refs-below-21", 20,
+            "A schemaRefs declaration on a v20 manifest. The reference form arrives at 21.",
+            V21Fixtures.SchemaRef(specVersion: 20));
+
+        Bundle("invalid-schema-ref-unknown-contract", 21,
+            "A schema reference naming a contract the catalog does not publish.",
+            V21Fixtures.SchemaRef(contract: "no-such-contract"));
+
+        Bundle("invalid-schema-declared-inline-and-as-reference", 21,
+            "One schema id declared both as an inline body and as a reference — a schema is one or the other.",
+            V21Fixtures.SchemaRef(alsoInline: true));
+
         return cases;
     }
 

@@ -92,6 +92,17 @@ internal static class PackageFormatSchema
             EnrichMacros(Object(properties, "macros"), specVersion);
         }
 
+        // v21 (#923): schemaRefs — a schema id referencing a catalog contract by
+        // name (schema id → contract id). Below 21 the member does not exist,
+        // and the published v5–v20 bytes must not move. The generated shape (an
+        // object with string additionalProperties) is what the type gives; the
+        // "contract exists in the catalog" and "not also inline" rules are the
+        // validator's, unexpressible in the schema (SHAPE_BLIND).
+        if (specVersion < 21)
+        {
+            Remove(properties, "schemaRefs");
+        }
+
         if (specVersion < 9)
         {
             Remove(properties, "title");

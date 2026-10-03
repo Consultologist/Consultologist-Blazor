@@ -43,6 +43,23 @@ public class WorkflowPackageStampTests
     }
 
     [Fact]
+    public void Compute_RecordsAReferencedSchema_ByItsNamedContract_AndTheStampShapeIsUnchanged()
+    {
+        // v21 (#923): a referenced schema names its catalog contract directly —
+        // Compute records it with no body to load or match, and the stamp byte
+        // shape stays {catalogRef, contracts} with no new member.
+        var (manifest, files) = V21Fixtures.SchemaRef();
+        var errors = new List<string>();
+
+        var stamp = WorkflowPackageStamp.Compute(manifest, files, Catalog, errors);
+
+        Assert.Empty(errors);
+        Assert.Equal(new Dictionary<string, string> { ["concept-list"] = "concept-list" }, stamp.Contracts);
+        Assert.Contains("\"contracts\": {", stamp.ToJson());
+        Assert.DoesNotContain("schemaRef", stamp.ToJson());
+    }
+
+    [Fact]
     public void Compute_NoSchemas_IsAnEmptyMapUnderTheCatalogRef()
     {
         // The catalog ref is still evidence: it says what the package was
