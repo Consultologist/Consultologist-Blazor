@@ -1114,10 +1114,19 @@ public sealed class ConsultGenerationOrchestrator
     /// orchestrator body has no harness; this does.
     /// </summary>
     internal static ConsultGenerationNodeUpdate NodeUpdateFrom(
-        ConsultNodeDescriptor node, NodeRunResult result, int completedNodeCount, int totalNodeCount) =>
-        new(node.Id, node.Label, result.Concepts, result.InputHash, result.OutputHash,
+        ConsultNodeDescriptor node, NodeRunResult result, int completedNodeCount, int totalNodeCount)
+    {
+        // #760 (custom tier): a custom node's output is an unattested user shape — mark
+        // it, and record the schema hash + the content-addressed agent that ran, so the
+        // client can distinguish it from an attested catalog contract.
+        var custom = string.Equals(node.OutputContract, OutputContracts.Custom, StringComparison.Ordinal);
+        return new(node.Id, node.Label, result.Concepts, result.InputHash, result.OutputHash,
             completedNodeCount, totalNodeCount, result.HashVersion, result.Classification, result.Tokens,
-            NodeStartedAtUtc: result.StartedAtUtc, DurationMs: result.DurationMs);
+            NodeStartedAtUtc: result.StartedAtUtc, DurationMs: result.DurationMs,
+            Unattested: custom ? true : null,
+            CustomSchemaHash: custom ? node.CustomSchemaHash : null,
+            CustomAgent: custom && node.AgentName is not null ? $"{node.AgentName}@{node.AgentVersion}" : null);
+    }
 
     internal static ConsultGenerationNodeItemUpdate ItemUpdateFrom(
         ConsultNodeDescriptor node, string itemId, string itemName, NodeRunResult result, int completedChainCount, int totalChainCount) =>
@@ -1468,6 +1477,14 @@ internal static class ConsultNodeVariableResolver
         {
             return result.Classification
                 ?? throw new InvalidOperationException($"Node '{nodeId}' binding '{variable}' targets classifier '{targetId}', which recorded no value.");
+        }
+
+        // #760 (custom tier): a custom node's output is user-defined JSON — string-
+        // consumable, interpolated whole into the downstream template/prompt. (Per-field
+        // access is a follow-up.)
+        if (string.Equals(target.OutputContract, OutputContracts.Custom, StringComparison.Ordinal))
+        {
+            return result.RawOutput;
         }
 
         return Render(binding.As ?? WorkflowConceptRenderers.ConceptBullets, result.Concepts

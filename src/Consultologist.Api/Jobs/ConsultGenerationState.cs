@@ -431,6 +431,14 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             state.Classifications[input.NodeId] = input.Classification;
         }
 
+        // #760 (custom tier): mark an unattested custom output + its provenance.
+        if (input.Unattested == true)
+        {
+            node.Unattested = true;
+            node.CustomSchemaHash = input.CustomSchemaHash;
+            node.CustomAgent = input.CustomAgent;
+        }
+
         state.CompletedStageCount = input.CompletedNodeCount;
         state.TotalStageCount = input.TotalNodeCount;
         state.History.Add(new JobHistoryEvent("success", input.Label, null, DateTimeOffset.UtcNow));
@@ -1093,7 +1101,13 @@ public sealed record ConsultGenerationNodeUpdate(
     // with queue and retry wait excluded. Appended last, same positional
     // rule; null is "not recorded", never zero.
     DateTimeOffset? NodeStartedAtUtc = null,
-    long? DurationMs = null);
+    long? DurationMs = null,
+    // #760 (custom tier): an unattested custom-schema output — the marker, the schema
+    // hash, and the content-addressed agent (name@version) that ran. Null on every other
+    // node and on payloads from before. Appended last, the positional-call rule.
+    bool? Unattested = null,
+    string? CustomSchemaHash = null,
+    string? CustomAgent = null);
 
 /// <summary>v10 (#496): what the boundary decided — the one Decide signal.</summary>
 public sealed record ConsultGenerationDecision(
@@ -1738,7 +1752,10 @@ public sealed class ConsultGenerationJobState
                     pair.Value.StartedAtUtc,
                     pair.Value.DurationMs,
                     pair.Value.ErrorType,
-                    pair.Value.ErrorStack)),
+                    pair.Value.ErrorStack,
+                    pair.Value.Unattested,
+                    pair.Value.CustomSchemaHash,
+                    pair.Value.CustomAgent)),
             AgentVersions: AgentVersions,
             EffectiveInputHashVersion: EffectiveInputHashVersion,
             CatalogRef: CatalogRef,
@@ -1892,6 +1909,14 @@ public sealed class ConsultNodeOutputState
     // never the message beyond Error.
     public string? ErrorType { get; set; }
     public string? ErrorStack { get; set; }
+
+    // #760 (custom tier): an unattested custom-schema output. Unattested marks the
+    // block as a user-defined shape (no SNOMED, no attested agent); CustomSchemaHash and
+    // CustomAgent provenance exactly what shape ran and on which content-addressed agent.
+    // Null on every attested node and on records from before.
+    public bool? Unattested { get; set; }
+    public string? CustomSchemaHash { get; set; }
+    public string? CustomAgent { get; set; }
 }
 
 public static class ConsultGenerationNodeStatuses

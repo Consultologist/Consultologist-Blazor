@@ -530,7 +530,11 @@ public sealed record ConsultNodeDescriptor(
     // before phase 2 (the activity falls back to the global catalog). Appended
     // last, same reason as the fields above.
     string? AgentName = null,
-    string? AgentVersion = null);
+    string? AgentVersion = null,
+    // #760 (custom tier): the hash of the custom schema this node runs, or null for a
+    // non-custom node. Recorded as per-node provenance for the unattested output.
+    // Appended last, same positional-call rule.
+    string? CustomSchemaHash = null);
 
 /// <summary>
 /// v12 #624 (design § 13): a check node's snapshotted declaration — the
@@ -654,7 +658,13 @@ public sealed record ConsultGenerationNodeStatusResponse(
     long? DurationMs = null,
     // #639: the failure's identity and frames beside Error's message.
     string? ErrorType = null,
-    string? ErrorStack = null);
+    string? ErrorStack = null,
+    // #760 (custom tier): an unattested custom-schema output — the marker and its
+    // provenance (schema hash + the content-addressed agent), so a client can show the
+    // block as a user-defined, ungrounded shape. Null on every attested node.
+    bool? Unattested = null,
+    string? CustomSchemaHash = null,
+    string? CustomAgent = null);
 
 /// <summary>#390: the body of a reschedule — a job id in the route, a time here.</summary>
 public sealed record RescheduleConsultRequest(DateTimeOffset? ScheduledAtUtc);

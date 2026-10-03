@@ -234,6 +234,24 @@ public sealed class RunPromptNodeActivity
                 ? ConceptOutputContract.Deserialize(rawOutput, input.ConceptSource ?? input.NodeId)
                 : null;
 
+            // #760 (custom tier): a custom node's strict json_schema agent already
+            // guarantees a conforming object; parse it as a sanity check only. A
+            // malformed body (never expected) throws a retryable InvalidDataException —
+            // not InvalidOperationException, so the Durable retry policy retries it. The
+            // raw JSON rides RawOutput, consumed as-is by a downstream template/prompt.
+            if (string.Equals(input.OutputContract, OutputContracts.Custom, StringComparison.Ordinal))
+            {
+                try
+                {
+                    _ = System.Text.Json.Nodes.JsonNode.Parse(rawOutput);
+                }
+                catch (System.Text.Json.JsonException ex)
+                {
+                    throw new InvalidDataException(
+                        $"Custom node '{input.NodeId}' returned output that is not valid JSON.", ex);
+                }
+            }
+
             _logger.LogInformation(
                 "Prompt node completed. NodeId={NodeId}, ConceptCount={ConceptCount}, InputHash={InputHash}, OutputHash={OutputHash}, ElapsedMs={ElapsedMs}",
                 input.NodeId,

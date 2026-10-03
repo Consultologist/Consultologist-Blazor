@@ -778,7 +778,13 @@ public record ConsultGenerationNodeStatus(
     long? DurationMs = null,
     // #639: the failure's identity and frames beside Error's message.
     string? ErrorType = null,
-    string? ErrorStack = null);
+    string? ErrorStack = null,
+    // #760 (custom tier): an unattested custom-schema output — the marker and its
+    // provenance (schema hash + the content-addressed agent). The client shows the
+    // block as a user-defined, ungrounded shape. Null on every attested node.
+    bool? Unattested = null,
+    string? CustomSchemaHash = null,
+    string? CustomAgent = null);
 
 public record ConsultGenerationJobHistoryEvent(string Kind, string Label, string? Detail, DateTimeOffset OccurredAt);
 
