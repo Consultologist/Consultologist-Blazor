@@ -16,12 +16,14 @@ public sealed class CatalogStrandSweeper
     private readonly IWorkflowPackageRegistryReader _registry;
     private readonly IAccountStore _accounts;
     private readonly IWorkflowPackagePinResolver _pins;
+    private readonly CatalogResolver _catalogResolver;
 
-    public CatalogStrandSweeper(IWorkflowPackageRegistryReader registry, IAccountStore accounts, IWorkflowPackagePinResolver pins)
+    public CatalogStrandSweeper(IWorkflowPackageRegistryReader registry, IAccountStore accounts, IWorkflowPackagePinResolver pins, CatalogResolver catalogResolver)
     {
         _registry = registry;
         _accounts = accounts;
         _pins = pins;
+        _catalogResolver = catalogResolver;
     }
 
     public async Task<CatalogStrandResponse> RunAsync(OutputContractCatalog candidate, CancellationToken cancellationToken)
@@ -58,6 +60,31 @@ public sealed class CatalogStrandSweeper
             var stampJson = await _registry.TryDownloadAsync(name, $"{name}/{version}/{WorkflowPackageStamp.FileName}", cancellationToken);
             var files = new Dictionary<string, string?>(StringComparer.Ordinal);
 
+            // #923 phase 2: a stamped package resolves against its OWN catalog
+            // version at run time, so bumping the global pin to `candidate` can
+            // never strand it — check it against its own catalog so the sweep
+            // does not report a false strand. Only unstamped (pre-#433) versions,
+            // which still re-match the running pin, are checked against candidate.
+            var catalogForCheck = candidate;
+            if (stampJson != null)
+            {
+                try
+                {
+                    var packageStamp = WorkflowPackageStamp.Read(stampJson, packageRef);
+                    catalogForCheck = await _catalogResolver.GetAsync(packageStamp.CatalogRef, cancellationToken);
+                }
+                catch (WorkflowPackageContentException)
+                {
+                    // Unreadable stamp — let Check re-read it and report the
+                    // unreadable sentence (against candidate; the catalog is moot).
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // The package's own catalog version could not be loaded; fall
+                    // back to candidate so the sweep still answers for this version.
+                }
+            }
+
             var result = CatalogStrands.Check(
                 packageRef,
                 manifestJson,
@@ -65,7 +92,7 @@ public sealed class CatalogStrandSweeper
                 path => files.TryGetValue(path, out var cached)
                     ? cached
                     : files[path] = _registry.TryDownloadAsync(name, $"{name}/{version}/{path}", cancellationToken).GetAwaiter().GetResult(),
-                candidate,
+                catalogForCheck,
                 WorkflowPackageStore.SupportedSpecVersions,
                 out var skip,
                 out var stamped);

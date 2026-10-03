@@ -125,7 +125,10 @@ public class CatalogStrandsTests
         ownership.Records.Add(("user-b", "acct-1234567890ab"));
         var resolver = new WorkflowPackagePinResolver(settings, ownership, NullLogger<WorkflowPackagePinResolver>.Instance);
 
-        var report = await new CatalogStrandSweeper(registry, accounts, resolver).RunAsync(Catalog, CancellationToken.None);
+        // #923 phase 2: every version here is unstamped, so the catalog resolver
+        // is never consulted (unstamped versions check against the candidate).
+        var catalogResolver = new CatalogResolver(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), (_, _) => Task.FromResult(Catalog));
+        var report = await new CatalogStrandSweeper(registry, accounts, resolver, catalogResolver).RunAsync(Catalog, CancellationToken.None);
 
         Assert.Equal(Catalog.ResolvedRef, report.Candidate);
         Assert.Equal(3, report.Counts.Versions);
