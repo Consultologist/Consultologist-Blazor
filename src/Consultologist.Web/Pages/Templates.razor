@@ -935,22 +935,6 @@
                                 <span class="muted-text">Every catalog output contract is already declared.</span>
                             }
                         </div>
-                        @* #760: or author one free-form — a new id with an empty body to write.
-                           Its body must still canonically match a catalog contract, checked in
-                           the desk check (with the catalog) and authoritatively on publish. *@
-                        @if (newSchemaError != null)
-                        {
-                            <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false">@newSchemaError</FluentMessageBar>
-                        }
-                        <div class="new-item-fields" data-schema-create>
-                            <label class="input-field">
-                                <span>new schema id (lowercase, digits, underscores, hyphens)</span>
-                                <FluentTextField @bind-Value="newSchemaId" Placeholder="my_contract" />
-                            </label>
-                            <div class="action-row">
-                                <FluentButton Appearance="Appearance.Accent" @onclick="CreateSchemaAsync">Create schema</FluentButton>
-                            </div>
-                        </div>
                         @if (!LiveSchemas.Any() && !RemovedSchemaViews.Any())
                         {
                             <EmptyState Compact Icon="@(new Icons.Regular.Size20.DocumentText())"
@@ -963,17 +947,14 @@
                             <div class="package-field" data-schema="@schema.Id">
                                 <div class="pane-header">
                                     <div>
-                                        <span class="panel-title">@schema.Id@(SchemaHasPending(schema) ? " ●" : "")</span>
+                                        <span class="panel-title">@schema.Id</span>
                                         <span class="muted-text">@schema.File</span>
                                     </div>
-                                    <div class="action-row">
-                                        @PaneDiscardButton(schema.File, SchemaBodyCanDiscard(schema), () => RevertFileEdits(schema.File))
-                                        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove schema"
-                                                      aria-label="@($"Remove schema {schema.Id}")"
-                                                      Disabled="@(readers.Count > 0)"
-                                                      IconStart="@(new Icons.Regular.Size20.Dismiss())"
-                                                      @onclick="() => RemoveSchemaAsync(declaredSchema)">Remove</FluentButton>
-                                    </div>
+                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove schema"
+                                                  aria-label="@($"Remove schema {schema.Id}")"
+                                                  Disabled="@(readers.Count > 0)"
+                                                  IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                  @onclick="() => RemoveSchemaAsync(declaredSchema)">Remove</FluentButton>
                                 </div>
                                 @* #843: usage line matched to the prelude pane (#841) — names the
                                    reader nodes and the removal precondition, and hints the unused case. *@
@@ -985,18 +966,7 @@
                                 {
                                     <span class="muted-text">Not yet used by any node — a node reads it in its output field.</span>
                                 }
-                                @* #760: the JSON body is editable now. It must canonically
-                                   match a catalog contract — surfaced in the desk check and
-                                   enforced on publish; here we flag only malformed JSON inline. *@
-                                <FluentTextArea Class="schema-body"
-                                                Value="@GetText(schema.File)"
-                                                ValueChanged="@(value => OnTextChangedAsync(schema.File, value))"
-                                                aria-label="@($"Schema body for {schema.Id}")"
-                                                Rows="12" />
-                                @if (!IsValidJson(GetText(schema.File)))
-                                {
-                                    <span class="schema-error">The schema body is not valid JSON.</span>
-                                }
+                                <pre class="schema-body">@GetText(schema.File)</pre>
                             </div>
                         }
                         @foreach (var removed in RemovedSchemaViews)
@@ -3216,19 +3186,19 @@
     // removedFiles), and is refused while a node's output reads the contract.
     private readonly HashSet<string> removedSchemaIds = new(StringComparer.Ordinal);
 
-    // #759/#760: schemas the author has added — id → authored JSON body. The #759
-    // catalog chip prefills the canonical body (editable); #760's free-form create
-    // starts empty for the author to paste/write. Both fold into the publish Files
-    // as schemas/<id>.json; the server's canonical-catalog-match stays the authority.
-    private readonly Dictionary<string, string> addedSchemas = new(StringComparer.Ordinal);
+    // #759: catalog contracts the author has added — each id is both the schema
+    // id and the key into WorkflowOutputContracts.Declarable for its canonical
+    // body. The pane picks a contract (id and body follow); the body is fixed,
+    // not edited, so this only ever holds a declarable contract id.
+    private readonly List<string> addedSchemas = new();
 
     private static string AddedSchemaFile(string schemaId) => $"schemas/{schemaId}.json";
 
-    private bool IsAddedSchema(string schemaId) => addedSchemas.ContainsKey(schemaId);
+    private bool IsAddedSchema(string schemaId) => addedSchemas.Contains(schemaId);
 
     /// <summary>The added contract for a package file path, or null.</summary>
     private string? AddedSchemaForFile(string path) =>
-        addedSchemas.Keys.FirstOrDefault(id => AddedSchemaFile(id) == path);
+        addedSchemas.FirstOrDefault(id => AddedSchemaFile(id) == path);
 
     private IReadOnlyList<WorkflowManifestReader.SchemaView> DeclaredSchemas =>
         content == null
@@ -3238,7 +3208,7 @@
     /// <summary>The schemas the pane shows — declared less removed, plus pending additions.</summary>
     private IEnumerable<WorkflowManifestReader.SchemaView> LiveSchemas =>
         DeclaredSchemas.Where(schema => !removedSchemaIds.Contains(schema.Id))
-            .Concat(addedSchemas.Keys.Select(id => new WorkflowManifestReader.SchemaView(id, AddedSchemaFile(id))));
+            .Concat(addedSchemas.Select(id => new WorkflowManifestReader.SchemaView(id, AddedSchemaFile(id))));
 
     private IEnumerable<WorkflowManifestReader.SchemaView> RemovedSchemaViews =>
         DeclaredSchemas.Where(schema => removedSchemaIds.Contains(schema.Id));
@@ -3267,42 +3237,7 @@
             return;
         }
 
-        // #760: the canonical body is prefilled, now editable (not pinned).
-        addedSchemas[id] = WorkflowOutputContracts.Declarable[id];
-        await PendingChangedAsync();
-    }
-
-    // #760: free-form create — a new schema id with an empty body for the author
-    // to write. The server's catalog-match is the authority; the pane pre-checks
-    // id shape + uniqueness here and body JSON/canonical-match in the desk check.
-    private string? newSchemaId;
-    private string? newSchemaError;
-
-    private async Task CreateSchemaAsync()
-    {
-        var id = newSchemaId?.Trim() ?? string.Empty;
-
-        if (!ItemIdPattern.IsMatch(id))
-        {
-            newSchemaError = "The schema id must be lowercase letters, digits, '_' or '-', starting with a letter or digit.";
-            return;
-        }
-
-        if (LiveSchemas.Select(schema => schema.Id).Concat(RemovedSchemaViews.Select(schema => schema.Id)).Contains(id, StringComparer.Ordinal))
-        {
-            newSchemaError = $"A schema named '{id}' already exists.";
-            return;
-        }
-
-        if (content!.Files.ContainsKey(AddedSchemaFile(id)))
-        {
-            newSchemaError = $"A schema named '{id}' already exists.";
-            return;
-        }
-
-        addedSchemas[id] = string.Empty;
-        newSchemaId = null;
-        newSchemaError = null;
+        addedSchemas.Add(id);
         await PendingChangedAsync();
     }
 
@@ -3352,29 +3287,6 @@
         removedSchemaIds
             .SelectMany(id => SchemaReferencedBy(id).Select(nodeId => (id, nodeId)))
             .Select(pair => $"Schema '{pair.id}' is removed but node '{pair.nodeId}' still reads it as its output contract; change that node's output first.");
-
-    // #760: a schema is pending when its body is edited (declared → edits) or it
-    // is newly added; the per-schema discard reverts only a published body edit.
-    private bool SchemaHasPending(WorkflowManifestReader.SchemaView schema) =>
-        edits.ContainsKey(schema.File) || addedSchemas.ContainsKey(schema.Id);
-
-    private bool SchemaBodyCanDiscard(WorkflowManifestReader.SchemaView schema) =>
-        !addedSchemas.ContainsKey(schema.Id) && edits.ContainsKey(schema.File);
-
-    // #760: the body is not valid JSON — shown inline and (with the catalog) in
-    // the publish desk check.
-    private static bool IsValidJson(string text)
-    {
-        try
-        {
-            System.Text.Json.Nodes.JsonNode.Parse(text);
-            return true;
-        }
-        catch (System.Text.Json.JsonException)
-        {
-            return false;
-        }
-    }
 
     // #747: shared preludes — a `preludes` map (id -> file) whose free-form text
     // is prepended to a prompt that names it. Authored in full: create/edit/
@@ -7958,7 +7870,7 @@
         : AddedPromptForFile(path) is { } addedPrompt ? addedPrompt.Text
         : AddedMacroForFile(path) is { } addedMacro ? addedMacro.Text
         : AddedPreludeForFile(path) is { } addedPrelude ? addedPrelude.Text
-        : AddedSchemaForFile(path) is { } addedSchema ? addedSchemas[addedSchema]
+        : AddedSchemaForFile(path) is { } addedSchema ? WorkflowOutputContracts.Declarable[addedSchema]
         : AddedScalarIdForPath(path) is { } pendingScalar ? addedScalars[pendingScalar]
         : edits.TryGetValue(path, out var edited) ? edited : content!.Files.GetValueOrDefault(path, string.Empty);
 
@@ -8140,14 +8052,10 @@
         List<string>? RemovedPreludes = null,
         List<DraftPromptPreludeEdit>? PromptPreludeEdits = null,
         // #759: catalog contracts added. Trailing optional — an older draft restores with none.
-        // #760: superseded by AddedSchemaBodies (id→body); kept for reading older drafts.
         List<string>? AddedSchemas = null,
         // v18 (#822): pending node-when conditions. Trailing optional — a draft
         // written before restores with none.
-        List<DraftNodeWhen>? NodeWhenEdits = null,
-        // #760: added schemas as id → authored JSON body. Trailing optional — an
-        // older draft (id-only AddedSchemas) migrates by filling bodies from the catalog.
-        Dictionary<string, string>? AddedSchemaBodies = null);
+        List<DraftNodeWhen>? NodeWhenEdits = null);
 
     // #815: the undo/redo stacks persisted beside the draft. Each entry is a
     // serialized DraftPayload (or null for the clean state); Version tracks the
@@ -8431,18 +8339,14 @@
             }
         }
 
-        // #759/#760: restore pending schema adds — prefer the id→body map; migrate
-        // an older id-only draft by filling each body from the catalog (that format
-        // only ever held declarable catalog ids). Kept only when the id is still free.
-        var restoredSchemaBodies = payload.AddedSchemaBodies
-            ?? (draftAddedSchemas ?? new List<string>())
-                .Where(id => WorkflowOutputContracts.Declarable.ContainsKey(id))
-                .ToDictionary(id => id, id => WorkflowOutputContracts.Declarable[id], StringComparer.Ordinal);
-        foreach (var (schemaId, body) in restoredSchemaBodies)
+        // #759: a drafted schema add is kept only when it is still a declarable
+        // catalog contract and not already live (the stale-id idiom).
+        foreach (var draftAddedSchema in draftAddedSchemas ?? new List<string>())
         {
-            if (LiveSchemas.All(schema => schema.Id != schemaId) && !addedSchemas.ContainsKey(schemaId))
+            if (WorkflowOutputContracts.Declarable.ContainsKey(draftAddedSchema)
+                && LiveSchemas.All(schema => schema.Id != draftAddedSchema))
             {
-                addedSchemas[schemaId] = body;
+                addedSchemas.Add(draftAddedSchema);
             }
         }
 
@@ -8738,9 +8642,8 @@
             addedPreludes.Select(prelude => new DraftAddedPrelude(prelude.Id, prelude.Text)).ToList(),
             removedPreludeIds.ToList(),
             promptPreludeEdits.Select(pair => new DraftPromptPreludeEdit(pair.Key, pair.Value)).ToList(),
-            addedSchemas.Keys.ToList(),
-            nodeWhenEdits.Select(pair => new DraftNodeWhen(pair.Key, pair.Value)).ToList(),
-            new Dictionary<string, string>(addedSchemas, StringComparer.Ordinal));
+            addedSchemas.ToList(),
+            nodeWhenEdits.Select(pair => new DraftNodeWhen(pair.Key, pair.Value)).ToList());
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -8899,14 +8802,6 @@
         if (AddedScalarIdForPath(path) is { } pendingScalar)
         {
             addedScalars[pendingScalar] = value;
-            await PendingChangedAsync();
-            return;
-        }
-
-        // #760: same for an added schema's body (no published file yet).
-        if (AddedSchemaForFile(path) is { } pendingSchema)
-        {
-            addedSchemas[pendingSchema] = value;
             await PendingChangedAsync();
             return;
         }
@@ -9076,50 +8971,6 @@
             unbound.AddRange(PackageMetadataErrors());
             unbound.AddRange(SchemaErrors());
             unbound.AddRange(PreludeErrors());
-
-            // #760: a schema body must canonically match a catalog output contract.
-            // When the pane has pending schema work, run the real validator over the
-            // composed pending package against the fetched catalog (#852) and surface
-            // its schema findings (parse / declared / canonical-match) before publish;
-            // when the catalog can't be fetched, drop the canonical-match finding (we
-            // can't judge it) — the server stays authoritative either way.
-            if (addedSchemas.Count > 0 || removedSchemaIds.Count > 0
-                || LiveSchemas.Any(schema => edits.ContainsKey(schema.File)))
-            {
-                PF.WorkflowPackageManifest? composedManifest = null;
-                try
-                {
-                    composedManifest = PF.WorkflowPackageManifestJson.Read(
-                        ComposeManifest().GetRawText(), content.Ref, PF.WorkflowPackageValidator.AcceptedSpecVersions);
-                }
-                catch
-                {
-                    // An unreadable composed manifest is the server's to reject; the
-                    // schema desk check can't run without it, so skip it here.
-                }
-
-                if (composedManifest is not null)
-                {
-                    var catalog = await WorkflowService.GetCatalogSchemasAsync();
-                    var schemaValidation = PF.WorkflowPackageValidator.Validate(
-                        composedManifest, AssembleFiles(), catalog ?? EmptyCatalogSchemas);
-                    var schemaFindings = schemaValidation.Errors
-                        .Where(error => error.Contains("schema", StringComparison.OrdinalIgnoreCase));
-                    if (catalog is null)
-                    {
-                        schemaFindings = schemaFindings.Where(error =>
-                            !error.Contains("must canonically match a catalog output contract", StringComparison.Ordinal));
-                    }
-
-                    foreach (var finding in schemaFindings)
-                    {
-                        if (!unbound.Contains(finding))
-                        {
-                            unbound.Add(finding);
-                        }
-                    }
-                }
-            }
 
             if (unbound.Count > 0)
             {
@@ -9330,11 +9181,6 @@
     {
         addedSchemas.Clear();
         removedSchemaIds.Clear();
-        // #760: declared-schema body edits route through the shared `edits` dict.
-        foreach (var schema in DeclaredSchemas)
-        {
-            edits.Remove(schema.File);
-        }
     }
 
     // Prelude, published scalar and published data-item panes each edit one file.
@@ -9377,8 +9223,7 @@
     private bool PackageCanDiscard => titleEdit != null || descriptionEdit != null || tagsEdit != null;
     private bool InputsCanDiscard => inputsEdit != null;
     private bool DocumentsCanDiscard => resultsEdit != null || resultEdit != null || conditionDrafts.Count > 0;
-    private bool SchemasCanDiscard => addedSchemas.Count > 0 || removedSchemaIds.Count > 0
-        || DeclaredSchemas.Any(schema => edits.ContainsKey(schema.File));
+    private bool SchemasCanDiscard => addedSchemas.Count > 0 || removedSchemaIds.Count > 0;
 
     // #812: the one per-pane discard button, rendered in each pane's header.
     // Shown only when the pane has edits to discard; arm→confirm via
@@ -9421,7 +9266,6 @@
         newItemId = newItemName = newItemContent = newItemError = null;
         newCollectionId = newCollectionError = null;
         newScalarId = newScalarError = null;
-        newSchemaId = newSchemaError = null;
         newNodeId = newNodeLabel = newNodeError = null;
         newNodeForEach = string.Empty;
         newNodeOutput = string.Empty;
@@ -9569,9 +9413,9 @@
         }
 
         // #759: each added schema's canonical contract body (removed schemas drop via removedFiles).
-        foreach (var (addedSchemaId, body) in addedSchemas)
+        foreach (var addedSchemaId in addedSchemas)
         {
-            files[AddedSchemaFile(addedSchemaId)] = body;
+            files[AddedSchemaFile(addedSchemaId)] = WorkflowOutputContracts.Declarable[addedSchemaId];
         }
 
         // #571: a removed declared macro takes its template file with it.
@@ -9906,7 +9750,7 @@
                 schemasObject.Remove(schemaId);
             }
 
-            foreach (var addedSchemaId in addedSchemas.Keys)
+            foreach (var addedSchemaId in addedSchemas)
             {
                 schemasObject[addedSchemaId] = AddedSchemaFile(addedSchemaId);
             }
