@@ -103,6 +103,17 @@ internal static class PackageFormatSchema
             Remove(properties, "schemaRefs");
         }
 
+        // v22 (#760): customSchemas — a schema id with an inline user-defined body
+        // (schema id → package file). Below 22 the member does not exist, and the
+        // published v5–v21 bytes must not move. The generated shape (an object with
+        // string additionalProperties) is what the type gives; the structured-output
+        // subset, "not also declared elsewhere", and JSON-validity rules are the
+        // validator's, unexpressible in the schema (SHAPE_BLIND).
+        if (specVersion < 22)
+        {
+            Remove(properties, "customSchemas");
+        }
+
         if (specVersion < 9)
         {
             Remove(properties, "title");
