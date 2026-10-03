@@ -58,7 +58,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
     public async Task DeclaringAnArray_StartsWithNoEntryType_AndIsRefusedUntilChosen()
     {
         var page = RenderEditor(EditorFixtures.V8());
-        UpgradeTo(page, 21);
+        UpgradeTo(page, 22);
         Navigate(page, "Inputs");
         page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
 
@@ -76,7 +76,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
     public void ChoosingObjectEntries_OpensTheFieldsEditor_AndTheShapePublishes()
     {
         var page = RenderEditor(EditorFixtures.V8());
-        UpgradeTo(page, 21);
+        UpgradeTo(page, 22);
         Navigate(page, "Inputs");
         page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
         page.Find("fluent-select.declared-row__items").Change(WorkflowInputTypes.Object);
@@ -130,7 +130,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         // Reached two ways: retyping to object (fields null → []), and adding
         // a field then removing it (fields []). Both are refused.
         var page = RenderEditor(EditorFixtures.V8());
-        UpgradeTo(page, 21);
+        UpgradeTo(page, 22);
         Navigate(page, "Inputs");
         page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Object);
 
@@ -151,7 +151,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
     public void AnArrayOfEnums_KeepsInputLevelValues()
     {
         var page = RenderEditor(EditorFixtures.V8());
-        UpgradeTo(page, 21);
+        UpgradeTo(page, 22);
         Navigate(page, "Inputs");
         page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
         page.Find("fluent-select.declared-row__items").Change(WorkflowInputTypes.Enum);
@@ -478,7 +478,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains(
-            "Input 'prior_notes' declares a type that requires specVersion 9. Use \"Upgrade to specVersion 21\" and publish.",
+            "Input 'prior_notes' declares a type that requires specVersion 9. Use \"Upgrade to specVersion 22\" and publish.",
             Refusals(page));
     }
 
@@ -509,7 +509,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains(
-            "Document 'consult_note' declares a condition form that requires specVersion 9. Use \"Upgrade to specVersion 21\" and publish.",
+            "Document 'consult_note' declares a condition form that requires specVersion 9. Use \"Upgrade to specVersion 22\" and publish.",
             Refusals(page));
     }
 
