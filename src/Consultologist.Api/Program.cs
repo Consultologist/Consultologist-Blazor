@@ -86,6 +86,11 @@ builder.Services.AddSingleton(_ =>
 // catalog they were published under rather than the global pin. The singleton
 // above stays the engine default.
 builder.Services.AddSingleton<CatalogResolver>();
+// #760 (custom tier): provisions the content-addressed no-tool agent a custom schema
+// runs on (lazily created, cached forever). Inert until a package declares a custom
+// schema AND runs — and until the engine identity holds Foundry agent-CREATE RBAC.
+builder.Services.AddSingleton<IFoundryAgentClient, FoundryAgentClient>();
+builder.Services.AddSingleton<ICustomAgentProvisioner, CustomAgentProvisioner>();
 builder.Services.AddScoped<AgentSectionGenerator>();
 // #239: OCR for image-only PDFs. Singleton so the Document Intelligence client
 // is built once and reused; off unless DocumentExtraction__OcrEndpoint is set.
