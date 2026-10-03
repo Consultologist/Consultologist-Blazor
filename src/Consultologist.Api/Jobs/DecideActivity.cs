@@ -1,3 +1,4 @@
+using Consultologist.Api.Agents;
 using Consultologist.Api.Models;
 using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
@@ -46,11 +47,14 @@ public sealed record ConsultDecisionResult(
 public sealed class DecideActivity
 {
     private readonly IWorkflowPackageStore _packageStore;
+    private readonly ICustomAgentProvisioner _customProvisioner;
     private readonly ILogger<DecideActivity> _logger;
 
-    public DecideActivity(IWorkflowPackageStore packageStore, ILogger<DecideActivity> logger)
+    public DecideActivity(
+        IWorkflowPackageStore packageStore, ICustomAgentProvisioner customProvisioner, ILogger<DecideActivity> logger)
     {
         _packageStore = packageStore;
+        _customProvisioner = customProvisioner;
         _logger = logger;
     }
 
@@ -70,7 +74,11 @@ public sealed class DecideActivity
             pair => ConsultInputValue.FromJson(pair.Value),
             StringComparer.Ordinal);
 
-        var result = Decide(package, supplied, input.Classifications);
+        // #760: a custom node behind the boundary runs its content-addressed agent too
+        // (GET-hits the cache — created at job-start).
+        var customAgents = await ConsultGenerationJobStarter.ProvisionCustomAgentsAsync(
+            _customProvisioner, package, cancellationToken);
+        var result = Decide(package, supplied, input.Classifications, customAgents);
 
         _logger.LogInformation(
             "Boundary decided. Package={Package}, Firing={Firing}, Skipped={Skipped}, Nodes={Nodes}, Blocks={Blocks}, EmptyFans={EmptyFans}",
@@ -88,7 +96,8 @@ public sealed class DecideActivity
     internal static ConsultDecisionResult Decide(
         WorkflowPackage package,
         IReadOnlyDictionary<string, ConsultInputValue>? supplied,
-        IReadOnlyDictionary<string, string> classifications)
+        IReadOnlyDictionary<string, string> classifications,
+        IReadOnlyDictionary<string, ConsultGenerationJobStarter.CustomAgentPin>? customAgents = null)
     {
         var fireSet = ConsultGenerationJobStarter.DecideFireSet(package, supplied, classifications);
 
@@ -142,7 +151,7 @@ public sealed class DecideActivity
         return new ConsultDecisionResult(
             firingDescriptors,
             fireSet.Skipped,
-            narrowed.Nodes!.Select(node => ConsultGenerationJobStarter.DescribeNode(node, narrowed.SchemaContracts, narrowed.ContractAgents)).ToList(),
+            narrowed.Nodes!.Select(node => ConsultGenerationJobStarter.DescribeNode(node, narrowed.SchemaContracts, narrowed.ContractAgents, customAgents)).ToList(),
             skeleton.Items,
             skeleton.CollectionSets,
             skeleton.CollectionRosters,

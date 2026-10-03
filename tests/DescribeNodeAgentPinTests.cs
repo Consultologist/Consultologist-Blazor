@@ -73,6 +73,50 @@ public class DescribeNodeAgentPinTests
     }
 
     [Fact]
+    public void ACustomNode_CarriesItsContentAddressedAgentAndSchemaHash()
+    {
+        // #760: a custom node's contract is 'custom' (no catalog entry); its agent comes
+        // from the provisioned map, keyed by schema id, and its hash rides the descriptor.
+        var node = new WorkflowNodeSpec("shape", "Shape", Prompt: "p", Output: new WorkflowNodeOutputSpec("my-shape"));
+        var schemaContracts = new Dictionary<string, string>(StringComparer.Ordinal) { ["my-shape"] = OutputContracts.Custom };
+        var customAgents = new Dictionary<string, ConsultGenerationJobStarter.CustomAgentPin>(StringComparer.Ordinal)
+        {
+            ["my-shape"] = new("custom-abc123", "1", "hash-abc"),
+        };
+
+        var descriptor = ConsultGenerationJobStarter.DescribeNode(node, schemaContracts, ContractAgents, customAgents);
+
+        Assert.Equal(OutputContracts.Custom, descriptor.OutputContract);
+        Assert.Equal("custom-abc123", descriptor.AgentName);
+        Assert.Equal("1", descriptor.AgentVersion);
+        Assert.Equal("hash-abc", descriptor.CustomSchemaHash);
+    }
+
+    [Fact]
+    public void TwoCustomNodes_EachCarryTheirOwnAgent_KeyedBySchemaId()
+    {
+        // The two share contract id 'custom' but have different content-addressed agents.
+        var schemaContracts = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["shape-a"] = OutputContracts.Custom,
+            ["shape-b"] = OutputContracts.Custom,
+        };
+        var customAgents = new Dictionary<string, ConsultGenerationJobStarter.CustomAgentPin>(StringComparer.Ordinal)
+        {
+            ["shape-a"] = new("custom-aaa", "1", "ha"),
+            ["shape-b"] = new("custom-bbb", "1", "hb"),
+        };
+
+        var a = ConsultGenerationJobStarter.DescribeNode(
+            new WorkflowNodeSpec("a", "A", Prompt: "p", Output: new WorkflowNodeOutputSpec("shape-a")), schemaContracts, ContractAgents, customAgents);
+        var b = ConsultGenerationJobStarter.DescribeNode(
+            new WorkflowNodeSpec("b", "B", Prompt: "p", Output: new WorkflowNodeOutputSpec("shape-b")), schemaContracts, ContractAgents, customAgents);
+
+        Assert.Equal("custom-aaa", a.AgentName);
+        Assert.Equal("custom-bbb", b.AgentName);
+    }
+
+    [Fact]
     public void WithoutTheContractAgentMap_NoPinIsThreaded_SoTheActivityFallsBackToTheGlobalCatalog()
     {
         // A snapshot taken before phase 2 (or a bare call) threads no pin; the
