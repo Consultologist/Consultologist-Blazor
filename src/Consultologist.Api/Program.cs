@@ -81,6 +81,11 @@ builder.Services.AddSingleton(_ =>
         ? OutputContractCatalog.Load()
         : OutputContractCatalog.LoadFromRegistryAsync(new Uri(publicUri), pin).GetAwaiter().GetResult();
 });
+// #923 phase 2: loads a stamped package's own catalog version on demand (cached
+// forever — versions are immutable), so stamped packages resolve against the
+// catalog they were published under rather than the global pin. The singleton
+// above stays the engine default.
+builder.Services.AddSingleton<CatalogResolver>();
 builder.Services.AddScoped<AgentSectionGenerator>();
 // #239: OCR for image-only PDFs. Singleton so the Document Intelligence client
 // is built once and reused; off unless DocumentExtraction__OcrEndpoint is set.
