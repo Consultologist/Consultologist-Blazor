@@ -742,7 +742,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 .Where(node => node.ForEach != null)
                 .Select(node => new ConsultItemStepDescriptor(node.Id, node.Label))
                 .ToList();
-        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts)).ToList();
+        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents)).ToList();
 
         // Provenance: identify the artifacts and input that produce this consult.
         // v5/v6: the hash covers the draft only (definition version 2). v7: the
@@ -955,7 +955,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 EffectiveInputHashVersion: effectiveInputHashVersion,
                 InputTypes: declaredInputTypes,
                 SkippedDocuments: skipped.Count > 0 ? skipped : null,
-                CatalogRef: _catalog.ResolvedRef,
+                // #923 phase 2: the record stamps the catalog the package actually
+                // resolved against (its own stamped version), not the global pin.
+                CatalogRef: package.CatalogRef ?? _catalog.ResolvedRef,
                 Collections: collectionSets,
                 Source: origin.Source,
                 ReplyToAddress: origin.ReplyToAddress,
@@ -1307,7 +1309,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     package.Ref,
                     effectiveInputHash,
                     EffectiveInputHashVersion: effectiveInputHashVersion,
-                    CatalogRef: _catalog.ResolvedRef,
+                    // #923 phase 2: the package's own catalog ref (its stamp's), not the global pin.
+                    CatalogRef: package.CatalogRef ?? _catalog.ResolvedRef,
                     Source: origin.Source,
                     ScheduledAtUtc: request.ScheduledAtUtc,
                     SkippedDocuments: notProduced,
@@ -2698,8 +2701,28 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
     internal static ConsultNodeDescriptor DescribeNode(
         WorkflowNodeSpec node,
-        IReadOnlyDictionary<string, string>? schemaContracts)
+        IReadOnlyDictionary<string, string>? schemaContracts,
+        IReadOnlyDictionary<string, OutputContractEntry>? contractAgents = null)
     {
+        // v10 (#495): a classifier's contract is implied by its kind — the one
+        // shape no package declares by schema id.
+        var outputContract = WorkflowNodeKinds.IsClassifier(node)
+            ? OutputContracts.Classification
+            : node.Output is null
+                ? null
+                : schemaContracts?.GetValueOrDefault(node.Output.Schema)
+                    ?? throw new InvalidOperationException(
+                        $"Node '{node.Id}' declares schema '{node.Output.Schema}' with no resolved output contract.");
+
+        // #923 phase 2: resolve the node's agent pin from the package's own
+        // catalog at job-start and thread it to the activity, so the executor
+        // runs the stamped catalog version's agent rather than the global pin. A
+        // template runs no agent; every other model node (incl. classifiers) uses
+        // its contract — the text default when it declares none.
+        var agent = node.Prompt is not null && !WorkflowNodeKinds.IsTemplate(node)
+            ? contractAgents?.GetValueOrDefault(outputContract ?? OutputContracts.Text)
+            : null;
+
         return new ConsultNodeDescriptor(
             node.Id,
             node.Label,
@@ -2708,15 +2731,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 pair => pair.Key,
                 pair => new ConsultNodeBindingDescriptor(pair.Value.From, pair.Value.As),
                 StringComparer.Ordinal),
-            // v10 (#495): a classifier's contract is implied by its kind — the
-            // one shape no package declares by schema id.
-            OutputContract: WorkflowNodeKinds.IsClassifier(node)
-                ? OutputContracts.Classification
-                : node.Output is null
-                    ? null
-                    : schemaContracts?.GetValueOrDefault(node.Output.Schema)
-                        ?? throw new InvalidOperationException(
-                            $"Node '{node.Id}' declares schema '{node.Output.Schema}' with no resolved output contract."),
+            OutputContract: outputContract,
             FailIfEmpty: node.Output?.FailIfEmpty,
             ForEach: node.ForEach,
             ConceptSource: WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(node.Id, node.Id),
@@ -2732,6 +2747,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 : null,
             // v12 #634: only true or null — every other node writes the
             // bytes it always wrote.
-            Template: WorkflowNodeKinds.IsTemplate(node) ? true : null);
+            Template: WorkflowNodeKinds.IsTemplate(node) ? true : null,
+            // #923 phase 2: the stamped catalog version's agent for this node.
+            AgentName: agent?.AgentName,
+            AgentVersion: agent?.AgentVersion);
     }
 }

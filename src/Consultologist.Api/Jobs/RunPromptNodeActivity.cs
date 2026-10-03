@@ -30,7 +30,13 @@ public sealed record ConsultPromptNodeActivityInput(
     // v12 #634 (design § 15): the template discriminator — the render is
     // returned as the answer; no agent runs. Trailing optional; a stored
     // payload replays with null and the activity behaves exactly as it did.
-    bool? Template = null);
+    bool? Template = null,
+    // #923 phase 2: the agent pin resolved at job-start from the package's own
+    // stamped catalog version. When set, the activity runs this agent directly;
+    // when null (a template, or a payload snapshotted before phase 2), it falls
+    // back to the global catalog. Trailing optional — replay-safe.
+    string? AgentName = null,
+    string? AgentVersion = null);
 
 /// <summary>
 /// One node run. Deserialized concepts ride the recorded activity result so Durable
@@ -192,12 +198,30 @@ public sealed class RunPromptNodeActivity
             var sent = isClassifier ? rendered + ClassificationOutputContract.Trailer(values) : rendered;
             var inputHash = ConsultGenerationProvenance.Sha256Hex(sent);
 
-            var entry = _catalog.GetEntry(input.OutputContract ?? OutputContracts.Text);
+            // #923 phase 2: the job starter resolved the agent pin from the
+            // package's own stamped catalog version and threaded it here, so the
+            // package runs the agent it was published against — not the engine's
+            // current global pin. The _catalog fallback covers a payload
+            // snapshotted before phase 2 (an in-flight orchestration mid-upgrade).
+            string agentName;
+            string agentVersion;
+            if (input.AgentName is { Length: > 0 } pinnedName && input.AgentVersion is { Length: > 0 } pinnedVersion)
+            {
+                agentName = pinnedName;
+                agentVersion = pinnedVersion;
+            }
+            else
+            {
+                var entry = _catalog.GetEntry(input.OutputContract ?? OutputContracts.Text);
+                agentName = entry.AgentName;
+                agentVersion = entry.AgentVersion;
+            }
+
             var agentResponse = await _agent.SendPromptAsync(
                 input.NodeId,
                 sent,
-                entry.AgentName,
-                entry.AgentVersion,
+                agentName,
+                agentVersion,
                 cancellationToken);
             var rawOutput = agentResponse.Text;
 

@@ -248,7 +248,11 @@ public sealed class ConsultGenerationOrchestrator
                     node.ConceptSource,
                     variableTypes,
                     node.Values,
-                    node.Template),
+                    node.Template,
+                    // #923 phase 2: the stamped catalog version's agent pin,
+                    // resolved at job-start, so the executor uses it directly.
+                    node.AgentName,
+                    node.AgentVersion),
                 AgentActivityRetryOptions)] = (node.Id, item?["id"]);
         }
 

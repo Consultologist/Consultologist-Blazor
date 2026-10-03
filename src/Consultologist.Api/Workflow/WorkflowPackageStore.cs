@@ -35,6 +35,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
 
     private readonly WorkflowPackageBlobContainerFactory _containers;
     private readonly OutputContractCatalog _catalog;
+    private readonly CatalogResolver _catalogResolver;
     private readonly ILogger<WorkflowPackageStore> _logger;
 
     // Published package versions are immutable, so resolved packages cache forever;
@@ -45,9 +46,11 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     public WorkflowPackageStore(
         WorkflowPackageBlobContainerFactory containerFactory,
         OutputContractCatalog catalog,
+        CatalogResolver catalogResolver,
         ILogger<WorkflowPackageStore> logger)
     {
         _catalog = catalog;
+        _catalogResolver = catalogResolver;
         _logger = logger;
         _containers = containerFactory;
     }
@@ -81,7 +84,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
             : results.Count == 1 ? results[0].NodeId : null;
         var schemaContracts = loaded.SchemaContracts;
 
-        var package = new WorkflowPackage(manifest, prompts, nodes, schemaContracts, loaded.Data, resultNodeId, loaded.Files, results, loaded.Stamp);
+        var package = new WorkflowPackage(manifest, prompts, nodes, schemaContracts, loaded.Data, resultNodeId, loaded.Files, results, loaded.Stamp, loaded.ContractAgents, loaded.CatalogRef);
 
         _packageCache.TryAdd(cacheKey, package);
         _logger.LogInformation("Workflow package resolved. Package={Package}, SpecVersion={SpecVersion}, Prompts={PromptCount}", cacheKey, manifest.SpecVersion, prompts?.Count ?? 0);
@@ -143,7 +146,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     /// reports them coherently); everything else fails loud on 404. Validation
     /// failures throw — the engine's fail-loud enforcement point.
     /// </summary>
-    private async Task<(Dictionary<string, WorkflowPromptTemplate> Prompts, Dictionary<string, string> SchemaContracts, WorkflowPackageData? Data, Dictionary<string, string> Files, WorkflowPackageStamp? Stamp)> LoadPromptsAsync(
+    private async Task<(Dictionary<string, WorkflowPromptTemplate> Prompts, Dictionary<string, string> SchemaContracts, WorkflowPackageData? Data, Dictionary<string, string> Files, WorkflowPackageStamp? Stamp, IReadOnlyDictionary<string, OutputContractEntry> ContractAgents, string CatalogRef)> LoadPromptsAsync(
         string name,
         string version,
         WorkflowPackageManifest manifest,
@@ -174,7 +177,15 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         var stampJson = await TryDownloadTextAsync(name, $"{name}/{version}/{WorkflowPackageStamp.FileName}", cancellationToken);
         var stamp = stampJson is null ? null : WorkflowPackageStamp.Read(stampJson, packageRef);
 
-        var catalogSchemas = _catalog.Entries.Values
+        // #923 phase 2: a stamped package resolves against the catalog version
+        // its stamp names (immutable, fetchable forever) — so a global pin bump
+        // can never strand it, and it reproducibly runs that version's agents.
+        // Unstamped (pre-#433) packages keep re-matching the global catalog.
+        var catalog = stamp is null
+            ? _catalog
+            : await _catalogResolver.GetAsync(stamp.CatalogRef, cancellationToken);
+
+        var catalogSchemas = catalog.Entries.Values
             .Where(entry => entry.SchemaJson != null)
             .ToDictionary(entry => entry.ContractId, entry => entry.SchemaJson!, StringComparer.Ordinal);
 
@@ -202,21 +213,21 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
                 prompt.Raw == true),
             StringComparer.Ordinal);
 
-        var schemaContracts = ResolveContracts(packageRef, manifest, files, stamp, _catalog);
+        var schemaContracts = ResolveContracts(packageRef, manifest, files, stamp, catalog);
 
         if (manifest.Schemas is { Count: > 0 })
         {
             _logger.LogInformation(
                 "Workflow package {Package} contracts resolved from {Source}.",
                 packageRef,
-                stamp is null ? $"schema match against {_catalog.ResolvedRef}" : $"publication stamp ({stamp.CatalogRef})");
+                stamp is null ? $"schema match against {catalog.ResolvedRef}" : $"publication stamp ({stamp.CatalogRef})");
         }
 
         // Post-validation resolve: the validator has already guaranteed integrity,
         // so this collects no errors.
         var data = WorkflowDataResolver.Resolve(manifest, files, new List<string>());
 
-        return (prompts, schemaContracts, data, files, stamp);
+        return (prompts, schemaContracts, data, files, stamp, catalog.Entries, catalog.ResolvedRef);
     }
 
     /// <summary>

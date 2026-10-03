@@ -522,7 +522,15 @@ public sealed record ConsultNodeDescriptor(
     // v12 #634 (design § 15): the template kind's explicit discriminator —
     // the render IS the output, no model runs. Only true or null, never
     // false (the Reproducible shape). Appended last, same reason.
-    bool? Template = null);
+    bool? Template = null,
+    // #923 phase 2: the agent pin this node runs, resolved at job-start from the
+    // package's own stamped catalog version and threaded through the Durable
+    // input so the executor uses that version's agent (not the global pin) —
+    // replay-safe. Null for a template node (no agent) and for a snapshot taken
+    // before phase 2 (the activity falls back to the global catalog). Appended
+    // last, same reason as the fields above.
+    string? AgentName = null,
+    string? AgentVersion = null);
 
 /// <summary>
 /// v12 #624 (design § 13): a check node's snapshotted declaration — the
