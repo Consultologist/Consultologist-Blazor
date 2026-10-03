@@ -197,6 +197,6 @@ public class TemplatesV10ArraysTests : ClientRenderTestContext
         Publish(page);
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
-        Assert.Contains("Input 'grid' declares structure deeper than one level, which requires specVersion 10. Use \"Upgrade to specVersion 20\" and publish.", Refusals(page));
+        Assert.Contains("Input 'grid' declares structure deeper than one level, which requires specVersion 10. Use \"Upgrade to specVersion 21\" and publish.", Refusals(page));
     }
 }

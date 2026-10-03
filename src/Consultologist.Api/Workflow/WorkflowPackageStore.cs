@@ -24,7 +24,8 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     // v13 (#728): declarable input content channels — transcript and form.
     // v18 (#822): a node's own when — condition-gated node inclusion, cascade.
     // v20 (#863): inline macro slots — a section may emit [[slot:id]], filled at assembly.
-    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 };
+    // v21 (#923): schemaRefs — an output schema may reference a catalog contract by name.
+    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21 };
     private static readonly TimeSpan LatestPointerCacheDuration = TimeSpan.FromSeconds(60);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -261,6 +262,23 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
             }
 
             schemaContracts[schemaId] = stampedId;
+        }
+
+        // v21 (#923): a referenced schema names its catalog contract directly —
+        // resolved by id, not by matching an embedded body. Phase 1 (#923)
+        // resolves against the running catalog, checking only that the named
+        // contract still exists (as the stamped path does); per-package pinning
+        // is phase 2. The manifest is the declaration, so the ref is read from
+        // it (the stamp records the same id→contract, but is not re-read here).
+        foreach (var (schemaId, contractId) in manifest.SchemaRefs ?? new Dictionary<string, string>())
+        {
+            if (!catalog.Entries.ContainsKey(contractId))
+            {
+                throw WorkflowPackageContentException.StampedContractUnknown(
+                    packageRef, schemaId, contractId, stamp?.CatalogRef ?? catalog.ResolvedRef, catalog.ResolvedRef);
+            }
+
+            schemaContracts[schemaId] = contractId;
         }
 
         return schemaContracts;

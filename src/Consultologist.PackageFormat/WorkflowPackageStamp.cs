@@ -87,6 +87,15 @@ public sealed record WorkflowPackageStamp(
             contracts[schemaId] = contractId;
         }
 
+        // v21 (#923): a referenced schema names its catalog contract directly —
+        // no body to load or match. The validator has already checked the
+        // contract exists in the catalog; here it is recorded like any other,
+        // so the stamp shape stays {catalogRef, contracts} with no new member.
+        foreach (var (schemaId, contractId) in manifest.SchemaRefs ?? new Dictionary<string, string>())
+        {
+            contracts[schemaId] = contractId;
+        }
+
         return new WorkflowPackageStamp(catalog.ResolvedRef, contracts);
     }
 

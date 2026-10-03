@@ -73,6 +73,29 @@ public class WorkflowPackageStoreResolveContractsTests
     }
 
     [Fact]
+    public void AReference_ResolvesByItsNamedContract()
+    {
+        // v21 (#923): a referenced schema resolves to the contract it names, by
+        // id — there is no inline body to match. No stamp required.
+        var (manifest, files) = V21Fixtures.SchemaRef();
+
+        var resolved = WorkflowPackageStore.ResolveContracts(PackageRef, manifest, files, null, Catalog);
+
+        Assert.Equal("concept-list", resolved["concept-list"]);
+    }
+
+    [Fact]
+    public void AReference_ToAContractTheCatalogDoesNotCarry_Strands()
+    {
+        var (manifest, files) = V21Fixtures.SchemaRef(contract: "no-such-contract");
+
+        var exception = Assert.Throws<WorkflowPackageContentException>(() =>
+            WorkflowPackageStore.ResolveContracts(PackageRef, manifest, files, null, Catalog));
+
+        Assert.Contains("no-such-contract", exception.Message);
+    }
+
+    [Fact]
     public void Stamped_ASchemaTheStampOmits_IsRefused()
     {
         var manifest = V5Fixtures.Manifest();
