@@ -28,7 +28,7 @@ public static class WorkflowPackageValidator
     /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
     /// are checked against the published spec-versions.json there too.
     /// </summary>
-    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 };
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21 };
 
     /// <summary>
     /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
@@ -169,6 +169,7 @@ public static class WorkflowPackageValidator
         else
         {
             ValidateMetadata(manifest, errors);
+            ValidateSchemaRefs(manifest, catalogSchemas, errors);
             ValidateDerivedFrom(manifest, errors);
             ValidateNodes(manifest, files, catalogSchemas, stampedContracts, errors, warnings);
             WarnUnreachableByEmail(manifest, warnings);
@@ -298,6 +299,45 @@ public static class WorkflowPackageValidator
                     errors.Add($"tags[{i}] repeats tags[{j}]; tags are distinct ignoring case.");
                     break;
                 }
+            }
+        }
+    }
+
+    /// <summary>
+    /// v21 (package-format-v21.md § 4, #923): schemaRefs — a declared output
+    /// schema that names a published catalog output-contract by id instead of
+    /// carrying an inline body. Refused by name below 21, as title/tags are.
+    /// Each reference must name a contract the running catalog knows (the same
+    /// closure the inline canonical match enforces, resolved by id not body),
+    /// and a schema id lives in exactly one of schemas or schemaRefs — a body
+    /// and a reference for the same id would be two declarations of one schema.
+    /// </summary>
+    private static void ValidateSchemaRefs(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> catalogSchemas,
+        List<string> errors)
+    {
+        if (manifest.SchemaRefs is not { Count: > 0 } schemaRefs)
+        {
+            return;
+        }
+
+        if (manifest.SpecVersion < 21)
+        {
+            errors.Add("schemaRefs requires specVersion 21.");
+            return;
+        }
+
+        foreach (var (schemaId, contractId) in schemaRefs)
+        {
+            if (manifest.Schemas is not null && manifest.Schemas.ContainsKey(schemaId))
+            {
+                errors.Add($"Schema '{schemaId}' is declared both inline and as a reference; a schema is one or the other.");
+            }
+
+            if (!catalogSchemas.ContainsKey(contractId))
+            {
+                errors.Add($"Schema reference '{schemaId}' names contract '{contractId}', which is not a catalog output contract.");
             }
         }
     }
@@ -574,8 +614,18 @@ public static class WorkflowPackageValidator
         // name means "declares any output".
         bool DeclaresConceptList(WorkflowNodeSpec target)
         {
-            if (target.Output is null
-                || manifest.Schemas is null
+            if (target.Output is null)
+            {
+                return false;
+            }
+
+            // v21 (#923): a referenced schema names its contract directly.
+            if (manifest.SchemaRefs is not null && manifest.SchemaRefs.TryGetValue(target.Output.Schema, out var refContractId))
+            {
+                return refContractId == WorkflowNodeDefaults.ConceptListSchemaId;
+            }
+
+            if (manifest.Schemas is null
                 || !manifest.Schemas.TryGetValue(target.Output.Schema, out var schemaPath))
             {
                 return false;
@@ -607,8 +657,18 @@ public static class WorkflowPackageValidator
         // DeclaresConceptList, for the template refusal below.
         bool DeclaresClassification(WorkflowNodeSpec target)
         {
-            if (target.Output is null
-                || manifest.Schemas is null
+            if (target.Output is null)
+            {
+                return false;
+            }
+
+            // v21 (#923): a referenced schema names its contract directly.
+            if (manifest.SchemaRefs is not null && manifest.SchemaRefs.TryGetValue(target.Output.Schema, out var refContractId))
+            {
+                return refContractId == WorkflowNodeDefaults.ClassificationSchemaId;
+            }
+
+            if (manifest.Schemas is null
                 || !manifest.Schemas.TryGetValue(target.Output.Schema, out var schemaPath))
             {
                 return false;
@@ -2803,6 +2863,19 @@ public static class WorkflowPackageValidator
     {
         if (node.Output is null)
         {
+            return;
+        }
+
+        // v21 (#923): a referenced schema resolves to a catalog contract by name —
+        // no inline body to load, no canonical match. ValidateSchemaRefs has
+        // already checked the reference itself (known contract, not also inline).
+        if (manifest.SchemaRefs is not null && manifest.SchemaRefs.ContainsKey(node.Output.Schema))
+        {
+            if (node.Output.FailIfEmpty != null && string.IsNullOrWhiteSpace(node.Output.FailIfEmpty))
+            {
+                errors.Add($"Node '{node.Id}' failIfEmpty must not be blank.");
+            }
+
             return;
         }
 

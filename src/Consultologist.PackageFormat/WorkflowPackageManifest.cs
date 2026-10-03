@@ -37,7 +37,17 @@ public sealed record WorkflowPackageManifest(
     // appended verbatim to the deliverables that name them. Trailing
     // optional, omitted when null, so every earlier manifest writes the
     // bytes it always wrote. The version gate is the validator's.
-    List<WorkflowMacroSpec>? Macros = null);
+    List<WorkflowMacroSpec>? Macros = null,
+    // v21 (package-format-v21.md, #923): a declared output schema may be a
+    // REFERENCE to a published catalog output-contract by name — schema id →
+    // contract id (e.g. "my-concepts" → "concept-list") — instead of an inline
+    // body carried in the bundle that must canonically match the catalog. A
+    // referenced schema has no file and skips the canonical match; it resolves
+    // by the named contract id. A schema id lives in exactly one of Schemas or
+    // SchemaRefs. Trailing optional, omitted when null, so every earlier
+    // manifest writes the bytes it always wrote. The version gate is the
+    // validator's.
+    Dictionary<string, string>? SchemaRefs = null);
 
 /// <summary>
 /// One declared macro (v11 § 4): a package-owned template file, applied to a
