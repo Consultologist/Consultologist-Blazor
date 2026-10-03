@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using Consultologist.Api.Agents;
 
 using Consultologist.PackageFormat;
 namespace Consultologist.Api.Workflow;
@@ -48,7 +49,18 @@ public sealed record WorkflowPackage(
     IReadOnlyList<WorkflowResolvedResult>? Results = null,
     // #433: the publication stamp the version carries, or null for every
     // version published before it existed. Deliberately not in SourceFiles.
-    WorkflowPackageStamp? Stamp = null)
+    WorkflowPackageStamp? Stamp = null,
+    // #923 phase 2: the agent pin behind each contract this package uses,
+    // resolved at load from the package's EFFECTIVE catalog (its own stamped
+    // version when stamped, else the global pin) — contractId -> entry. The
+    // job starter threads these onto each node so the executor runs the
+    // stamped version's agent, not the global pin's. Null for a package resolved
+    // before phase 2's path runs (e.g. a bare test fixture).
+    IReadOnlyDictionary<string, OutputContractEntry>? ContractAgents = null,
+    // #923 phase 2: the concrete ref of that effective catalog — the package's
+    // stamped CatalogRef when stamped, else the global ResolvedRef — stamped on
+    // the job record so provenance reflects what actually ran.
+    string? CatalogRef = null)
 {
     public string Ref => $"{Manifest.Name}@{Manifest.Version}";
 

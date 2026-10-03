@@ -57,6 +57,32 @@ public class WorkflowPackageStoreResolveContractsTests
     }
 
     [Fact]
+    public void Stamped_ResolvesAgainstThePackagesOwnCatalog_WhichStillCarriesTheContract()
+    {
+        // #923 phase 2: the store resolves a stamped package against the catalog
+        // version its stamp names — which still carries its contracts — so a
+        // global catalog that advanced past them never strands it. ResolveContracts
+        // honours the catalog it is given; LoadPromptsAsync now hands it the
+        // package's own version (loaded via CatalogResolver) rather than the global.
+        var manifest = V5Fixtures.Manifest();
+        var files = V5Fixtures.Files(manifest);
+        var stamp = Stamp(("concept-list", "concept-list"));
+
+        // The package's own catalog version still carries concept-list → resolves.
+        var resolved = WorkflowPackageStore.ResolveContracts(PackageRef, manifest, files, stamp, Catalog);
+        Assert.Equal(new Dictionary<string, string> { ["concept-list"] = "concept-list" }, resolved);
+
+        // An advanced global catalog that dropped concept-list WOULD strand it —
+        // which is exactly why phase 2 never resolves a stamped package against it.
+        var advancedGlobal = OutputContractCatalog.Build(
+            """{"version":"v2026.12.1","contracts":{"text":{"agentName":"test-json","agentVersion":"50"}}}""",
+            _ => null,
+            "advanced-global");
+        Assert.Throws<WorkflowPackageContentException>(() =>
+            WorkflowPackageStore.ResolveContracts(PackageRef, manifest, files, stamp, advancedGlobal));
+    }
+
+    [Fact]
     public void Stamped_AContractTheCatalogNoLongerCarries_IsTheStampedStrandingSentence()
     {
         var manifest = V5Fixtures.Manifest();
