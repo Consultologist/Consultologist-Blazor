@@ -342,8 +342,8 @@ public class DurablePayloadReplayTests
 
         Assert.Null(node.Reproducible);
         Assert.Equal(new[] { "in_scope", "out_of_scope" }, node.Values);
-        // #923 phase 2 appended AgentName/AgentVersion last.
-        Assert.Equal(stored[..^1] + ",\"Reproducible\":null,\"Check\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null}", JsonSerializer.Serialize(node, Durable));
+        // #923 phase 2 appended AgentName/AgentVersion; #760 appended CustomSchemaHash.
+        Assert.Equal(stored[..^1] + ",\"Reproducible\":null,\"Check\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null,\"CustomSchemaHash\":null}", JsonSerializer.Serialize(node, Durable));
     }
 
     [Fact]
