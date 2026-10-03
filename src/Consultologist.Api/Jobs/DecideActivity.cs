@@ -142,7 +142,7 @@ public sealed class DecideActivity
         return new ConsultDecisionResult(
             firingDescriptors,
             fireSet.Skipped,
-            narrowed.Nodes!.Select(node => ConsultGenerationJobStarter.DescribeNode(node, narrowed.SchemaContracts)).ToList(),
+            narrowed.Nodes!.Select(node => ConsultGenerationJobStarter.DescribeNode(node, narrowed.SchemaContracts, narrowed.ContractAgents)).ToList(),
             skeleton.Items,
             skeleton.CollectionSets,
             skeleton.CollectionRosters,
