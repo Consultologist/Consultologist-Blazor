@@ -159,6 +159,11 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         var paths = (manifest.Prompts ?? new List<WorkflowPromptSpec>()).Select(p => p.File)
             .Concat((manifest.Preludes ?? new Dictionary<string, string>()).Values)
             .Concat((manifest.Schemas ?? new Dictionary<string, string>()).Values)
+            // v22 #760: a custom schema's inline body is a package file like a
+            // schema — it must be downloaded so the load-time validator finds it
+            // and the starter can snapshot it into SourceFiles for the content-
+            // addressed agent. (schemaRefs name a catalog contract, no file.)
+            .Concat((manifest.CustomSchemas ?? new Dictionary<string, string>()).Values)
             // v11 #513: macro templates are package files like prompts — they
             // must be in SourceFiles for the starter to snapshot.
             .Concat((manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.File))
@@ -217,7 +222,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
 
         var schemaContracts = ResolveContracts(packageRef, manifest, files, stamp, catalog);
 
-        if (manifest.Schemas is { Count: > 0 })
+        if (manifest.Schemas is { Count: > 0 } || manifest.CustomSchemas is { Count: > 0 })
         {
             _logger.LogInformation(
                 "Workflow package {Package} contracts resolved from {Source}.",
