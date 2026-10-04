@@ -441,6 +441,21 @@ Posture, in brief:
 | `AzureAI__NetworkTimeoutSeconds` | Non-negative integer (seconds) | `270` | no |
 | `AzureAI__MaxRetries` | Non-negative integer (SDK-internal retries per call; durable retries stack on top) | `0` | no |
 | `AZURE_CLIENT_ID` | Client id (GUID) of the user-assigned managed identity | — | yes when running in Azure (detected via `WEBSITE_INSTANCE_ID`) |
+| `CustomAgents__Model` | Model deployment the engine embeds when it provisions a **custom output-schema** agent (#760), e.g. `gpt-5.6-sol` — part of the content-addressed agent's identity and stamped per node | — | yes once a package declares `customSchemas` (a custom node fails loud without it) |
+
+**Custom output-schema agents (#760).** A package may declare a user-defined output
+shape (`customSchemas`, package-format v22) that is *not* a catalog contract. On first
+use the engine provisions a no-tool Foundry agent named
+`custom-{hash(schema + CustomAgents__Model)}` — GET-or-create, the schema embedded as a
+strict `json_schema`, immutable and reused across runs and packages, so the same schema
+always maps to the same re-fetchable agent (reproducible; its output is recorded
+`Unattested` — engine-created, not git-attested, not SNOMED-grounded). This is the one
+agent the engine **creates** at run time rather than reads, so the managed identity needs
+Foundry **agent-create** permission — the same `Microsoft.CognitiveServices/*` data
+actions the catalog reads already carry, now also exercising write. Inert until a
+`customSchemas` package is published and run. See
+[output-contract-catalog.md](customizable-workflow/output-contract-catalog.md) (amendment
+2026-10-04) for the two-tier model this belongs to.
 
 Agent name/version pins are **not** app settings: they live in the bundled,
 git-tracked output-contract catalog (`agents/output-contracts.json`), keyed by output

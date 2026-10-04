@@ -319,3 +319,23 @@ This landed with the output-contract catalog (#93) and the per-node output contr
 Once that is done, the published artifact set — open weights (DeepSeek), workflow
 package, SNOMED edition, MCP server code (Apache 2.0) — is sufficient to re-run the
 system with no dependency on this application or its Azure tenant.
+
+> **Amendment, 2026-10-04 (epic #924 — the two-tier output-schema model, engine
+> v2026.10.1).** Two changes to what a record names (see
+> [output-contract-catalog.md](output-contract-catalog.md), amendment 2026-10-04):
+>
+> - **`catalogRef` is now the package's own.** A stamped package resolves against the
+>   catalog version its stamp names, so the record stamps **that** `catalogRef` — the
+>   version the agents actually ran under — not the engine's live pin. Re-running an old
+>   record is now self-describing: the ref resolves to an immutable version forever, and
+>   a run reproducibly uses the agents it was published against.
+> - **Custom nodes carry an unattested marker.** A node whose output is a *custom* shape
+>   (`customSchemas`, package-format v22) resolves to the reserved `custom` contract, runs
+>   on a content-addressed, engine-provisioned agent (`custom-{hash(schema + model)}`,
+>   not a catalog contract), and the record stamps, per node, **`unattested: true`** with
+>   the **custom schema hash** and that agent's name+version. This is the deliberate gap
+>   in the attestation chain: the shape is user-defined and the agent is not
+>   git-attested/CI-published, so the record says so rather than implying a catalog
+>   contract's guarantees. `outputHash`/`inputHash` and reproducibility are unchanged — a
+>   custom node reproduces like any other (same schema + model ⇒ same agent ⇒ same
+>   contract), it simply is not *attested*.
