@@ -13,7 +13,7 @@ public readonly record struct CustomAgentRef(string AgentName, string AgentVersi
 
 /// <summary>
 /// #760 (custom tier): provisions the no-tool Foundry agent a custom output schema
-/// runs on. The agent is CONTENT-ADDRESSED by the (canonical schema + model) hash —
+/// runs on. The agent is CONTENT-ADDRESSED by the (schema + model) hash —
 /// <c>custom-{hash}</c> — created lazily on first use and NEVER deleted, so the same
 /// schema always maps to the same immutable agent: strict json_schema conformance,
 /// shared across every run and package with that schema, and re-fetchable forever for
@@ -23,7 +23,7 @@ public readonly record struct CustomAgentRef(string AgentName, string AgentVersi
 /// </summary>
 public interface ICustomAgentProvisioner
 {
-    Task<CustomAgentRef> GetOrCreateAsync(string canonicalSchema, string modelId, CancellationToken cancellationToken);
+    Task<CustomAgentRef> GetOrCreateAsync(string schemaJson, string modelId, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -67,7 +67,7 @@ public sealed class CustomAgentProvisioner : ICustomAgentProvisioner
     public CustomAgentProvisioner(IFoundryAgentClient foundry) => _foundry = foundry;
 
     public async Task<CustomAgentRef> GetOrCreateAsync(
-        string canonicalSchema, string modelId, CancellationToken cancellationToken)
+        string schemaJson, string modelId, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(modelId))
         {
@@ -75,7 +75,7 @@ public sealed class CustomAgentProvisioner : ICustomAgentProvisioner
                 "A custom output schema requires a model; set CustomAgents__Model.");
         }
 
-        var name = AgentName(canonicalSchema, modelId);
+        var name = AgentName(schemaJson, modelId);
         if (_cache.TryGetValue(name, out var cached))
         {
             return cached;
@@ -86,7 +86,7 @@ public sealed class CustomAgentProvisioner : ICustomAgentProvisioner
         {
             try
             {
-                version = await _foundry.CreateAsync(name, modelId, Instruction, canonicalSchema, cancellationToken);
+                version = await _foundry.CreateAsync(name, modelId, Instruction, schemaJson, cancellationToken);
             }
             catch (FoundryAgentConflictException)
             {
@@ -103,9 +103,9 @@ public sealed class CustomAgentProvisioner : ICustomAgentProvisioner
     }
 
     /// <summary>The deterministic, content-addressed agent name for a (schema, model) pair.</summary>
-    public static string AgentName(string canonicalSchema, string modelId)
+    public static string AgentName(string schemaJson, string modelId)
     {
-        var hash = ConsultGenerationProvenance.Sha256Hex($"{canonicalSchema}\n{modelId}");
+        var hash = ConsultGenerationProvenance.Sha256Hex($"{schemaJson}\n{modelId}");
         return $"custom-{hash[..HashHexLength]}";
     }
 }

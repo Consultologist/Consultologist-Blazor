@@ -1,6 +1,8 @@
+using System.Text.Json.Nodes;
 using Consultologist.Api.Agents;
 using Consultologist.Api.Jobs;
 using Consultologist.Api.Models;
+using Consultologist.Api.Workflow;
 using NSubstitute;
 
 namespace Consultologist.Api.Tests;
@@ -14,6 +16,46 @@ public class CustomSchemaRunTests
 {
     private const string SchemaA = """{"type":"object","additionalProperties":false,"required":["a"],"properties":{"a":{"type":"string"}}}""";
     private const string SchemaB = """{"type":"object","additionalProperties":false,"required":["b"],"properties":{"b":{"type":"string"}}}""";
+
+    // --- the agent embeds the user's ORIGINAL schema ---
+
+    [Fact]
+    public async Task ProvisionCustomAgents_EmbedsTheOriginalSchema_NotACanonicalisedCopy()
+    {
+        // #760 (regression, caught by a live first-run): a user schema may name a
+        // property "title" or "description". The content-addressed agent must embed
+        // the ORIGINAL schema, NOT WorkflowPackageValidator.CanonicalizeSchema, which
+        // strips those keys (right for catalog-match hashing) and corrupts the shape —
+        // leaving a 'required' key with no matching property, which the strict
+        // json_schema model rejects ("Extra required key 'title' supplied").
+        var body = """
+            {"type":"object","additionalProperties":false,"required":["title","description"],
+             "properties":{"title":{"type":"string"},"description":{"type":"string"}}}
+            """;
+        var (manifest, files) = V22Fixtures.Custom(body: body);
+        var package = new WorkflowPackage(manifest, SourceFiles: files);
+
+        string? embedded = null;
+        var provisioner = Substitute.For<ICustomAgentProvisioner>();
+        provisioner
+            .GetOrCreateAsync(Arg.Do<string>(s => embedded = s), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new CustomAgentRef("custom-test", "1"));
+
+        Environment.SetEnvironmentVariable("CustomAgents__Model", "test-model");
+        try
+        {
+            await ConsultGenerationJobStarter.ProvisionCustomAgentsAsync(provisioner, package, CancellationToken.None);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("CustomAgents__Model", null);
+        }
+
+        Assert.NotNull(embedded);
+        var schema = JsonNode.Parse(embedded!)!;
+        Assert.NotNull(schema["properties"]!["title"]);
+        Assert.NotNull(schema["properties"]!["description"]);
+    }
 
     // --- content-addressed name ---
 

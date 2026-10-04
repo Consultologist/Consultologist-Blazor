@@ -2740,10 +2740,18 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     $"Custom schema '{schemaId}' file '{file}' is missing from package '{package.Ref}'.");
             }
 
-            var canonical = WorkflowPackageValidator.CanonicalizeSchema(System.Text.Json.Nodes.JsonNode.Parse(body));
-            var agent = await customProvisioner.GetOrCreateAsync(canonical, model, cancellationToken);
+            // #760: embed the user's ORIGINAL schema in the agent — NOT
+            // WorkflowPackageValidator.CanonicalizeSchema, which strips every key
+            // named "title"/"description" (JSON Schema annotations in the catalog-
+            // match context). A custom schema may use those as real property names;
+            // stripping them corrupts the shape (a 'required' key with no matching
+            // property), which the strict json_schema model then rejects. Normalise
+            // only the formatting (a parse + reserialize, no key removal) so the
+            // content-addressed hash is whitespace-stable.
+            var schemaJson = System.Text.Json.Nodes.JsonNode.Parse(body)!.ToJsonString();
+            var agent = await customProvisioner.GetOrCreateAsync(schemaJson, model, cancellationToken);
             pins[schemaId] = new CustomAgentPin(
-                agent.AgentName, agent.AgentVersion, ConsultGenerationProvenance.Sha256Hex(canonical));
+                agent.AgentName, agent.AgentVersion, ConsultGenerationProvenance.Sha256Hex(schemaJson));
         }
 
         return pins;
