@@ -209,3 +209,58 @@ control flow; multiple/non-terminal maps (each waits for a demanding workflow).
 > node's values to the prompt, normalises the answer and refuses one
 > outside the set. Its agent runs gpt-5.6-sol at low reasoning effort with
 > no tools.
+
+> **Amendment, 2026-10-04 (epic #924 — the two-tier output-schema model, live in
+> engine release v2026.10.1).** The catalog gains two directions a package can take,
+> and the custom one relaxes the "N shapes ⇒ N attested agents" doctrine for a tier
+> that was always deferred ("future shapes" above).
+>
+> **References (#923, package-format v21).** A declared output schema may now be a
+> *reference* to a catalog contract by name (`schemaRefs: { <id>: <contract> }`,
+> no file) rather than an inline body the validator canonically matches. The
+> package→catalog closure for a referenced schema is satisfied by the name, not a
+> body comparison; the inline `schemas` path remains (and is what the custom tier
+> below reuses). `schemaRefs` never contributes a file.
+>
+> **Per-package catalog resolution (#923, package-format v21).** Resolution moved off
+> the *running global* catalog (`OutputContracts__Pin`) and onto the catalog version a
+> package's **stamp** names — its schemas, its contract ids, **and the agent pins
+> behind them**. A stamped package's effective catalog is loaded on demand and cached
+> (immutable versions → cache forever); the per-contract agent (name + version) is
+> resolved at **job-start** and threaded through the Durable input to each activity, so
+> the executor runs the stamped version's agent, never the live pin's. This **dissolves
+> the stranding class for stamped packages entirely** — a global pin bump can no longer
+> strand a published package, and a run reproducibly uses the agents it was published
+> against (adopt newer agents by re-publishing). The strand check and
+> `check-catalog-strands-packages.cs` above now guard only the shrinking unstamped
+> history; the job record stamps the package's own `catalogRef`, not the engine's.
+>
+> **Custom schemas (#760, package-format v22) — attested execution of an unattested
+> shape.** A package may carry a *custom*, user-defined inline schema
+> (`customSchemas: { <id>: <file> }`) that is **not** a catalog contract and is **not**
+> canonically matched — it resolves to a reserved `custom` contract id (no catalog
+> entry) and need only fit the strict structured-output subset
+> (`additionalProperties:false`, every property required, nullability via a type array,
+> bounded depth — the v4.0 rule the catalog match had subsumed, re-authored at author
+> time so Foundry can enforce it). It runs on a **content-addressed, no-tool agent**
+> named `custom-{sha256(schema + model)}`, provisioned lazily on first use (GET, else
+> POST-create) with the user's schema embedded as a strict `json_schema`, never deleted,
+> reused across every run and package with that schema — so same schema ⇒ same immutable,
+> re-fetchable agent (reproducible, the #923 story extended to shapes the catalog never
+> defined). This is the one agent the engine *creates* rather than reads, so it is the
+> single relaxation of the doctrine: it is engine-published, **not** git-attested /
+> CI-published, and not SNOMED-grounded. Its output is therefore recorded **`Unattested`**
+> (per node, surfaced on the response beside the schema hash and the agent pin) and must
+> be shown as such — never mistaken for a catalog-contract deliverable. The schema is
+> embedded verbatim: `CanonicalizeSchema` (which strips `title`/`description` as JSON
+> Schema *annotations*) is **not** used for the agent, because a custom schema may use
+> those as real property names. Rendering (v22 phase 1) is string-consumable — a custom
+> node's JSON interpolates whole into a downstream template/prompt, or a terminal custom
+> node emits it verbatim; per-field template access is a later tier. Config and the
+> Foundry agent-create permission: [CONFIGURATION.md](../CONFIGURATION.md).
+>
+> The three tiers, by where the shape and its executor come from: **catalog contract**
+> (inline body or `schemaRefs`) → an attested, CI-published agent; **custom**
+> (`customSchemas`) → an engine-provisioned, content-addressed, unattested agent; and
+> `text`/`classification` as before. All resolve through the package's own stamped
+> catalog.
