@@ -108,6 +108,14 @@ internal static class WorkflowPackageContentValidation
             referenced.Add(path);
         }
 
+        // v22 (#760): a custom schema carries an inline body file, like Schemas —
+        // its path is referenced, not a stray. (schemaRefs name a catalog contract,
+        // not a file, so they contribute nothing here.)
+        foreach (var path in (manifest.CustomSchemas ?? new Dictionary<string, string>()).Values)
+        {
+            referenced.Add(path);
+        }
+
         foreach (var (_, path) in manifest.Data ?? new Dictionary<string, string>())
         {
             if (!path.EndsWith('/'))
