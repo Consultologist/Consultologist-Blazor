@@ -116,6 +116,25 @@ public class WorkflowPackageIngestorTests
     }
 
     [Fact]
+    public void ACustomSchemaFile_IsReferenced_NotAStray()
+    {
+        // #760: a customSchemas body file is referenced by the manifest (like a
+        // schemas file), so the content check must not flag it as an unreferenced
+        // stray. (Regression: the referenced-files set omitted customSchemas, so a
+        // custom-schema package could not be published.)
+        var (manifest, files) = V22Fixtures.Custom();
+
+        var result = Ingestor().Ingest(Zip(
+            new Dictionary<string, string>(files, StringComparer.Ordinal),
+            JsonSerializer.Serialize(manifest, Wire)));
+
+        Assert.True(result.Parsed);
+        Assert.DoesNotContain(
+            result.Findings,
+            f => f.Contains(V22Fixtures.CustomSchemaPath) && f.Contains("not referenced"));
+    }
+
+    [Fact]
     public void ADisallowedFilePath_IsAFinding()
     {
         var manifest = V5Fixtures.Manifest();
