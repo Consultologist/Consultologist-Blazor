@@ -1974,24 +1974,101 @@
                                             TextChanged="@(value => OnTextChangedAsync(macro.File, value))">
                             @PaneDiscardButton(macro.File, MacroCanDiscard(macro), () => RevertMacroEdits(macro.File, macro.Id))
                             @{
-                                @* #936: a read-only usage line — which documents append this
-                                   macro, so the Macros pane shows what the attachment editing in
-                                   the Documents pane produced. *@
+                                @* #936: which documents this macro is attached to — used by the
+                                   Remove-macro button's reach note (below) and, since #940, edited
+                                   from the Attachments section here as well as in the Documents pane. *@
                                 var attachedTo = EffectiveResults
                                     .Where(r => (r.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).Any(m => m.Id == macro.Id))
                                     .Select(r => r.Id)
                                     .ToList();
                             }
-                            <p class="macro-attached muted-text">
-                                @if (attachedTo.Count > 0)
+                            @* #940: the macro's attachment, edited from the macro's side — one row per
+                               document it is attached to (placement + gated-when + detach), plus an
+                               attach-to-a-document picker. Per-document ORDERING (↑↓) stays in the
+                               Documents pane only, where the sibling macros are visible. *@
+                            <div class="macro-attachments">
+                                <span class="macro-attachments__head">Attached to</span>
+                                @foreach (var attachedResult in EffectiveResults.Where(r => (r.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).Any(m => m.Id == macro.Id)))
                                 {
-                                    <span>Attached to: @string.Join(", ", attachedTo)</span>
+                                    var result = attachedResult;
+                                    var entry = result.Macros!.First(m => m.Id == macro.Id);
+                                    <div class="result-macro">
+                                        <span class="result-macro-row">
+                                            <FluentButton Appearance="Appearance.Stealth" Class="result-macro__id"
+                                                          Title="@($"Edit document {result.Id} in the Documents pane")"
+                                                          aria-label="@($"Edit document {result.Id} in the Documents pane")"
+                                                          @onclick="() => Select(ResultsKey)"><code>@result.Id</code></FluentButton>
+                                            @if (EffectiveSpecVersion >= 12)
+                                            {
+                                                <FluentSelect TOption="string" class="binding-row__select result-macro-placement"
+                                                        Value="@(entry.IsSlot ? "slot" : entry.Before != null ? $"before|{entry.Before}" : entry.After != null ? $"after|{entry.After}" : "")"
+                                                        ValueChanged="@(v => SetMacroPlacementAsync(result, macro.Id, v))"
+                                                        aria-label="@($"Placement for macro {macro.Id} in document {result.Id}")">
+                                                    <FluentOption TOption="string" Value="">appended</FluentOption>
+                                                    @foreach (var placementSource in DeliverableAggregateSources(result))
+                                                    {
+                                                        <FluentOption TOption="string" Value="@($"before|{placementSource}")">before @placementSource</FluentOption>
+                                                        <FluentOption TOption="string" Value="@($"after|{placementSource}")">after @placementSource</FluentOption>
+                                                    }
+                                                    @if (EffectiveSpecVersion >= 20)
+                                                    {
+                                                        <FluentOption TOption="string" Value="slot">slot (the model places it)</FluentOption>
+                                                    }
+                                                </FluentSelect>
+                                                @if (EffectiveSpecVersion >= 19 && !entry.IsSlot)
+                                                {
+                                                    var fanItems = MacroAnchorFanItems(entry);
+                                                    if (fanItems.Count > 0)
+                                                    {
+                                                        <FluentSelect TOption="string" class="binding-row__select result-macro-foritem"
+                                                                Value="@(entry.ForItem ?? "")"
+                                                                ValueChanged="@(v => SetMacroForItemAsync(result, macro.Id, v))"
+                                                                aria-label="@($"Fan item for macro {macro.Id} in document {result.Id}")">
+                                                            <FluentOption TOption="string" Value="">— whole section —</FluentOption>
+                                                            @foreach (var fanItem in fanItems)
+                                                            {
+                                                                <FluentOption TOption="string" Value="@fanItem.Id">@fanItem.Name</FluentOption>
+                                                            }
+                                                        </FluentSelect>
+                                                    }
+                                                }
+                                            }
+                                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-detach" Title="@($"Detach from {result.Id}")"
+                                                          aria-label="@($"Detach macro {macro.Id} from document {result.Id}")"
+                                                          IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                          @onclick="() => RemoveResultMacroAsync(result, macro.Id)" />
+                                        </span>
+                                        @if (EffectiveSpecVersion >= 12)
+                                        {
+                                            <span class="result-macro-when">
+                                                @ConditionField(("Gated when", MacroWhenTarget(result, entry)))
+                                            </span>
+                                        }
+                                    </div>
                                 }
-                                else
+                                @{
+                                    var attachableDocs = EffectiveResults
+                                        .Where(r => (r.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).All(m => m.Id != macro.Id))
+                                        .ToList();
+                                }
+                                @if (attachableDocs.Count > 0)
                                 {
-                                    <span>Not attached to any document.</span>
+                                    <FluentSelect TOption="string" class="binding-row__select result-macro-attach-doc"
+                                            Value=""
+                                            ValueChanged="@(v => AttachMacroToDocumentAsync(macro.Id, v))"
+                                            aria-label="@($"Attach macro {macro.Id} to a document")">
+                                        <FluentOption TOption="string" Value="">attach to a document…</FluentOption>
+                                        @foreach (var candidateDoc in attachableDocs)
+                                        {
+                                            <FluentOption TOption="string" Value="@candidateDoc.Id">@candidateDoc.Label</FluentOption>
+                                        }
+                                    </FluentSelect>
                                 }
-                            </p>
+                                @if (attachedTo.Count == 0)
+                                {
+                                    <span class="muted-text">Not attached to any document.</span>
+                                }
+                            </div>
                             @* #571: a macro is removed from its own pane — consistent with
                                "Remove node" — so the "Attached to" reach is visible at the point
                                of removal. A pending (just-added) macro can always go; a declared
@@ -6623,6 +6700,19 @@
         }
 
         await CommitDeclarationAsync();
+    }
+
+    /// <summary>#940: attach the macro to a document by id, from the macro pane's
+    /// Attachments picker — resolves the id to its ResultView and appends the bare entry.</summary>
+    private Task AttachMacroToDocumentAsync(string macroId, string? resultId)
+    {
+        if (string.IsNullOrEmpty(resultId))
+        {
+            return Task.CompletedTask;
+        }
+
+        var result = EffectiveResults.FirstOrDefault(r => r.Id == resultId);
+        return result is null ? Task.CompletedTask : AppendResultMacroAsync(result, macroId);
     }
 
     /// <summary>This deliverable's aggregator's effective sources — the only legal placement anchors (§ 4).</summary>
