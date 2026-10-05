@@ -244,6 +244,7 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
     {
         var page = RenderEditor(EditorFixtures.V10Classifier());
         Navigate(page, "Documents");
+        OpenCondition(page);
 
         Assert.Contains("node:scope", Options(page, "fluent-select[aria-label='Condition operand for consult_note']"));
         Assert.Equal(new[] { "==", "!=" }, Options(page, "fluent-select[aria-label='Condition operator for consult_note']"));
@@ -257,6 +258,7 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V10Classifier());
         CapturePublish();
         Navigate(page, "Documents");
+        OpenCondition(page);
         page.Find("fluent-select[aria-label='Condition operator for consult_note']").Change("!=");
         page.Find("fluent-select[aria-label='Condition value for consult_note']").Change("out_of_scope");
         Publish(page);
@@ -282,6 +284,7 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
                 """);
         var page = RenderEditor(package);
         Navigate(page, "Documents");
+        OpenCondition(page);
         Assert.DoesNotContain(Options(page, "fluent-select[aria-label='Condition operand for consult_note']"), key => key?.StartsWith("node:") == true);
     }
 
