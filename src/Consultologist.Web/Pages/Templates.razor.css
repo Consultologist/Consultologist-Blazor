@@ -461,6 +461,23 @@ fluent-button.node-field__button::part(control) {
 	font-size: 0.8rem;
 }
 
+/* #940: the macro pane's editable Attachments section — one .result-macro row
+   per document the macro is attached to, mirroring the Documents pane minus ↑↓. */
+.macro-attachments {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+	margin: 0.25rem 0;
+}
+
+.macro-attachments__head {
+	font-size: 0.72rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--consultologist-text-muted);
+}
+
 .declared-row {
 	display: flex;
 	flex-wrap: wrap;
