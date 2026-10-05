@@ -241,6 +241,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         // object's are. So labs offers its count and its bare form only.
         var page = RenderEditor(EditorFixtures.V9Structured());
         Navigate(page, "Documents");
+        OpenCondition(page);
 
         // Declaration order: prior_notes, patient, labs.
         Assert.Equal(
@@ -253,6 +254,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
     {
         var page = RenderEditor(EditorFixtures.V9Structured());
         Navigate(page, "Documents");
+        OpenCondition(page);
 
         page.Find("fluent-select[aria-label='Condition operand for consult_note']").Change("patient.age");
 
@@ -278,6 +280,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
                 Array.Empty<string>()));
         var page = RenderEditor(EditorFixtures.V9Structured());
         Navigate(page, "Documents");
+        OpenCondition(page);
 
         page.Find("fluent-select[aria-label='Condition operand for consult_note']").Change(operand);
         if (op != null)
@@ -308,6 +311,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         page.FindAll("fluent-button").First(button => button.TextContent.Trim() == "+ Input").Click();
         page.FindAll("fluent-select.declared-row__type").Last().Change(WorkflowInputTypes.Date);
         Navigate(page, "Documents");
+        OpenCondition(page);
 
         page.Find("fluent-select[aria-label='Condition operand for consult_note']").Change("seen_on");
         page.Find("fluent-select[aria-label='Condition operator for consult_note']").Change(">=");
@@ -328,6 +332,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         page.Find("li.declared-row__values input").Change("new_patient");
         page.Find("li.declared-row__values input").Change("follow_up");
         Navigate(page, "Documents");
+        OpenCondition(page);
 
         Assert.Equal(new[] { "", "prior_notes" }, Options(page, "fluent-select[aria-label='Condition operand for consult_note']"));
         page.Find("fluent-select[aria-label='Condition operand for consult_note']").Change("prior_notes");
@@ -348,8 +353,9 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         page.Find("input[aria-label='Add a value to prior_notes.kind']").Change("clinic");
         page.Find("input[aria-label='Add a value to prior_notes.kind']").Change("ward");
         Navigate(page, "Documents");
+        OpenCondition(page);
 
-        Assert.DoesNotContain("prior_notes.kind", page.Find("li.declared-row__when").TextContent);
+        Assert.DoesNotContain("prior_notes.kind", page.Find("[data-when-for]").TextContent);
         Assert.Empty(page.FindAll("fluent-select[aria-label='Condition operand for consult_note']"));
     }
 
@@ -360,6 +366,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         WithDraftedCondition(package, "patient.age >= 65");
         var page = RenderEditor(package);
         Navigate(page, "Documents");
+        OpenCondition(page);
 
         page.Find("fluent-select[aria-label='Condition operand for consult_note']").Change("patient.sex");
 
@@ -376,6 +383,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         WithDraftedCondition(package, "patient.family_name == Smith");
         var page = RenderEditor(package);
         Navigate(page, "Documents");
+        OpenCondition(page);
 
         var picker = page.Find("fluent-select[aria-label='Condition operand for consult_note']");
         Assert.Equal("patient.family_name", picker.GetAttribute("current-value"));

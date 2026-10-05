@@ -623,6 +623,8 @@ public class TemplatesV12DocumentsPaneTests : ClientRenderTestContext
         Navigate(page, "Documents");
 
         // The entry's own builder, addressed by the macro target's subject.
+        // #936: a macro's "Gated when" rests collapsed until opened.
+        page.Find("fluent-button[aria-label='Add a condition for consult_note macro disclaimer']").Click();
         page.Find("fluent-select[aria-label^='Condition operand for consult_note macro disclaimer']").Change("node:scope");
         page.Find("fluent-select[aria-label^='Condition value for consult_note macro disclaimer']").Change("in_scope");
         Publish(page);

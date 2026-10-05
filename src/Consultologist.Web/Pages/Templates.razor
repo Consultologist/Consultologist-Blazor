@@ -1213,7 +1213,8 @@
                                 @foreach (var result in EffectiveResults)
                                 {
                                     var deliverable = result;
-                                    <li class="declared-row">
+                                    <li class="document-card">
+                                        <div class="document-card__head">
                                         <input class="node-field__input declared-row__id"
                                                value="@deliverable.Id"
                                                @onchange="args => RenameResultAsync(deliverable, args.Value?.ToString())"
@@ -1236,17 +1237,18 @@
                                                       Disabled="@(EffectiveResults.Count == 1)"
                                                       IconStart="@(new Icons.Regular.Size20.Dismiss())"
                                                       @onclick="() => RemoveResultAsync(deliverable)" />
-                                    </li>
+                                        </div>
 
-                                    @* v8: when this document is produced. Three controls
-                                       rather than a text field — the literal follows the
-                                       chosen operand's type, which is what makes the closed
-                                       grammar authorable instead of a string to get wrong.
-                                       v9 (#429): the operand may be a path into an object
-                                       or the count of an array, and a number or a date may
-                                       be ordered. *@
-                                    <li class="declared-row__when" data-when-for="@deliverable.Id">
-                                        @if (ConditionOperands.Count == 0)
+                                        @* v8: when this document is produced. Three controls
+                                           rather than a text field — the literal follows the
+                                           chosen operand's type, which is what makes the closed
+                                           grammar authorable instead of a string to get wrong.
+                                           v9 (#429): the operand may be a path into an object
+                                           or the count of an array, and a number or a date may
+                                           be ordered. *@
+                                        <section class="document-section" data-when-for="@deliverable.Id">
+                                            <span class="document-section__head">Produced when</span>
+                                            @if (ConditionOperands.Count == 0)
                                         {
                                             <span class="muted-text">
                                                 @(EffectiveSpecVersion >= 9
@@ -1259,23 +1261,26 @@
                                             @* v10 (#498): the expression builder — one clause is
                                                the v9 editor exactly; at 10 clauses join, group and
                                                negate, and a number may carry one arithmetic term. *@
-                                            @ConditionEditor(DocumentConditionTarget(deliverable))
+                                            @ConditionField(("", DocumentConditionTarget(deliverable)))
                                         }
-                                    </li>
+                                        </section>
 
                                     @* v11 #564: the deliverable's ordered macro list
                                        (§ 4 — append order is semantic) and the signed
                                        flag (§ 5), both through resultsEdit as `when`. *@
                                     @if (EffectiveSpecVersion >= 11)
                                     {
-                                        <li class="declared-row__v11" data-v11-for="@deliverable.Id">
-                                            <span class="muted-text">Appended:</span>
+                                        <section class="document-section" data-v11-for="@deliverable.Id">
+                                            <span class="document-section__head">Appended content</span>
                                             @{ var resultMacros = deliverable.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>(); }
                                             @foreach (var (macroEntry, macroIndex) in resultMacros.Select((m, i) => (m, i)))
                                             {
                                                 var macroId = macroEntry.Id;
                                                 <span class="result-macro-row">
-                                                    <code>@macroId</code>
+                                                    <FluentButton Appearance="Appearance.Stealth" Class="result-macro__id"
+                                                                  Title="@($"Edit macro {macroId}")"
+                                                                  aria-label="@($"Edit macro {macroId}")"
+                                                                  @onclick="() => SelectMacro(macroId)"><code>@macroId</code></FluentButton>
                                                     @if (EffectiveSpecVersion >= 12)
                                                     {
                                                         @* v12 § 4: where the entry lands — this deliverable's
@@ -1318,7 +1323,7 @@
                                                             }
                                                         }
                                                         <span class="result-macro-when">
-                                                            @ConditionEditor(MacroWhenTarget(deliverable, macroEntry))
+                                                            @ConditionField(("Gated when", MacroWhenTarget(deliverable, macroEntry)))
                                                         </span>
                                                     }
                                                     <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-up" Title="Move up"
@@ -1350,6 +1355,14 @@
                                                     }
                                                 </FluentSelect>
                                             }
+                                            @if (resultMacros.Count == 0 && EffectiveMacros.Count == 0)
+                                            {
+                                                <span class="muted-text">No macros declared yet. Define one in the Macros pane, then append it here.</span>
+                                            }
+                                        </section>
+
+                                        <section class="document-section">
+                                            <span class="document-section__head">Checks</span>
                                             <label class="result-signed">
                                                 <input type="checkbox"
                                                        checked="@(deliverable.Signature == true)"
@@ -1378,8 +1391,9 @@
                                                     }
                                                 </FluentSelect>
                                             }
-                                        </li>
+                                        </section>
                                     }
+                                    </li>
                                 }
                             </ul>
                             <div class="add-variable__form">
@@ -1970,6 +1984,25 @@
                                             Modified="@(edits.ContainsKey(macro.File) || AddedMacroForFile(macro.File) != null)"
                                             TextChanged="@(value => OnTextChangedAsync(macro.File, value))">
                             @PaneDiscardButton(macro.File, MacroCanDiscard(macro), () => RevertMacroEdits(macro.File, macro.Id))
+                            @{
+                                @* #936: a read-only usage line — which documents append this
+                                   macro, so the Macros pane shows what the attachment editing in
+                                   the Documents pane produced. *@
+                                var attachedTo = EffectiveResults
+                                    .Where(r => (r.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).Any(m => m.Id == macro.Id))
+                                    .Select(r => r.Id)
+                                    .ToList();
+                            }
+                            <p class="macro-attached muted-text">
+                                @if (attachedTo.Count > 0)
+                                {
+                                    <span>Attached to: @string.Join(", ", attachedTo)</span>
+                                }
+                                else
+                                {
+                                    <span>Not attached to any document.</span>
+                                }
+                            </p>
                             @if (EffectiveSpecVersion >= 12)
                             {
                                 var effectiveMacro = EffectiveMacros.First(m => m.Id == macro.Id);
@@ -2072,6 +2105,79 @@
         @ConditionGroupView(new ConditionScope(target, state.Root, Array.Empty<int>()))
       }
     </text>;
+
+  /// <summary>
+  /// #936: expand flags for the collapsible condition fields, keyed by the stable
+  /// <see cref="ConditionTarget.Key"/> so a document's "Produced when" and each of
+  /// its macros' "Gated when" fold independently.
+  /// </summary>
+  private readonly HashSet<string> _expandedConditions = new(StringComparer.Ordinal);
+
+  /// <summary>
+  /// #936: a labeled, collapsible condition — the document's "Produced when" and a
+  /// macro's "Gated when" share it so the builder reads against what it governs. An
+  /// empty condition rests as a quiet "Always produced" control; expanding reveals
+  /// the shared <see cref="ConditionEditor"/>. A verbatim or non-empty condition
+  /// shows the builder directly — content worth seeing.
+  /// </summary>
+  private RenderFragment<(string Label, ConditionTarget Target)> ConditionField => spec =>
+    @<text>
+      <div class="condition-field">
+        @if (!string.IsNullOrEmpty(spec.Label))
+        {
+          <span class="condition-field__label">@spec.Label</span>
+        }
+        @{
+          var fieldState = ConditionState(spec.Target);
+          var fieldIsEmpty = fieldState.Verbatim is null && IsBlankCondition(fieldState.Root);
+          var fieldIsExpanded = _expandedConditions.Contains(spec.Target.Key);
+        }
+        @if (fieldIsEmpty && !fieldIsExpanded)
+        {
+          <FluentButton Appearance="Appearance.Stealth" Class="condition-field__resting"
+                        aria-label="@($"Add a condition for {spec.Target.Subject}")"
+                        @onclick="() => { _expandedConditions.Add(spec.Target.Key); }">Always produced</FluentButton>
+        }
+        else
+        {
+          @ConditionEditor(spec.Target)
+          @if (fieldIsEmpty)
+          {
+            <FluentButton Appearance="Appearance.Stealth" Class="condition-field__collapse"
+                          aria-label="@($"Collapse condition for {spec.Target.Subject}")"
+                          @onclick="() => CollapseConditionAsync(spec.Target)">always produced</FluentButton>
+          }
+        }
+      </div>
+    </text>;
+
+  /// <summary>#936: a condition is "blank" — i.e. the document is always produced —
+  /// when it carries no gate: the fresh single empty clause (<see cref="ConditionGroup.Fresh"/>)
+  /// or nothing, un-negated and with no nested group. That is what the resting
+  /// "Always produced" state stands in for.</summary>
+  private static bool IsBlankCondition(ConditionGroup root) =>
+      !root.Not
+      && root.Items.Count <= 1
+      && root.Items.All(item => item is ConditionClause { IsEmpty: true });
+
+  /// <summary>#936: fold a condition back to the resting "Always produced" state —
+  /// drop the expand flag and clear any partial expression the builder left.</summary>
+  private async Task CollapseConditionAsync(ConditionTarget target)
+  {
+      _expandedConditions.Remove(target.Key);
+      await ClearConditionAsync(target);
+  }
+
+  /// <summary>#936: jump from a document's appended-macro row to that macro's text
+  /// in the Macros pane (the nav keys on the macro's file).</summary>
+  private void SelectMacro(string macroId)
+  {
+      var file = EffectiveMacros.FirstOrDefault(m => m.Id == macroId)?.File;
+      if (file is not null)
+      {
+          Select(file);
+      }
+  }
 
   /// <summary>
   /// One group: its clauses and groups as rows, joined by and/or, negatable;

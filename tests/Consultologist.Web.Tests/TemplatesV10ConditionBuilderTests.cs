@@ -72,6 +72,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V10Classifier());
         CapturePublish();
         Navigate(page, "Documents");
+        OpenCondition(page);
         return page;
     }
 
@@ -91,6 +92,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
     {
         var page = RenderEditor(EditorFixtures.V9Conditional());
         Navigate(page, "Documents");
+        OpenCondition(page);
 
         Assert.NotEmpty(page.FindAll("fluent-select[aria-label^='Condition operand for']"));
         Assert.Empty(page.FindAll("[aria-label^='Add condition clause']"));
@@ -230,6 +232,10 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
 
         page.Find("[aria-label='Add condition clause to consult_note']").Click();
         page.Find("[aria-label='Remove condition clause for consult_note']").Click();
+        // #936: removing the last clause clears the condition, so the field
+        // returns to the quiet "Always produced" rest; open it to see the fresh
+        // empty operand the cleared state offers.
+        OpenCondition(page);
         Assert.Equal(string.Empty, page.Find(Sel("operand")).GetAttribute("current-value"));
         Publish(page);
         Assert.True(sent != null, string.Join(" | ", Refusals(page)));
@@ -274,6 +280,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         var page = RenderEditor(package);
         CapturePublish();
         Navigate(page, "Documents");
+        OpenCondition(page);
 
         Assert.Equal(clauses, page.FindAll("fluent-select[aria-label^='Condition operand for consult_note']").Count);
         Assert.Equal(nestedGroups, page.FindAll(".condition-group--nested").Count);
@@ -291,6 +298,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         var page = RenderEditor(package);
         CapturePublish();
         Navigate(page, "Documents");
+        OpenCondition(page);
 
         Assert.Equal(when, page.Find("[aria-label='Condition for consult_note']").TextContent);
         Assert.Empty(page.FindAll("fluent-select[aria-label^='Condition operand for consult_note']"));
@@ -299,6 +307,9 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         Assert.Equal(when, When(sent!));
 
         page.Find("[aria-label='Clear condition for consult_note']").Click();
+        // #936: clearing returns the field to the quiet "Always produced" rest;
+        // open it again to confirm the fresh operand picker is back.
+        OpenCondition(page);
         Assert.NotEmpty(page.FindAll("fluent-select[aria-label^='Condition operand for consult_note']"));
         Publish(page);
         Assert.Null(When(sent!));
@@ -312,6 +323,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         var page = RenderEditor(package);
         CapturePublish();
         Navigate(page, "Documents");
+        OpenCondition(page);
 
         // Shown as its two clauses, without the builder's affordances.
         Assert.Equal(2, page.FindAll("fluent-select[aria-label^='Condition operand for consult_note']").Count);
@@ -405,6 +417,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
     {
         var page = RenderEditor(EditorFixtures.V10DeepConditionObject());
         Navigate(page, "Documents");
+        OpenCondition(page);
 
         var operands = Options(page, Sel("operand"));
         Assert.Contains("patient.age", operands);
@@ -420,6 +433,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V10DeepConditionObject());
         CapturePublish();
         Navigate(page, "Documents");
+        OpenCondition(page);
 
         page.Find(Sel("operand")).Change("patient.contact.preferred");
         page.Find(Sel("operator")).Change("==");
@@ -452,6 +466,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
                 """);
         var page = RenderEditor(package);
         Navigate(page, "Documents");
+        OpenCondition(page);
 
         var operands = Options(page, Sel("operand"));
         Assert.Contains("patient.age", operands);

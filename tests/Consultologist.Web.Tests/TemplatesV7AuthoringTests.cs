@@ -28,6 +28,10 @@ public class TemplatesV7AuthoringTests : ClientRenderTestContext
     private static IReadOnlyList<IElement> Rows(IRenderedComponent<Templates> page) =>
         page.FindAll("li.declared-row");
 
+    // #936: a deliverable is now a card of labeled sub-sections, not a flat row.
+    private static IReadOnlyList<IElement> DocCards(IRenderedComponent<Templates> page) =>
+        page.FindAll("li.document-card");
+
     [Fact]
     public void LegacyPackage_HasNoDeclaredSections()
     {
@@ -104,7 +108,7 @@ public class TemplatesV7AuthoringTests : ClientRenderTestContext
         var page = RenderEditor();
         Navigate(page, "Documents");
 
-        var row = Assert.Single(Rows(page));
+        var row = Assert.Single(DocCards(page));
         Assert.Equal("consult_note", row.QuerySelector("input.declared-row__id")!.GetAttribute("value"));
 
         // Candidates are aggregators only — a forEach node is not a valid v7
@@ -124,7 +128,7 @@ public class TemplatesV7AuthoringTests : ClientRenderTestContext
 
         // The fixture has one aggregator and it is already spoken for.
         Assert.Contains("already owns a document", page.Markup);
-        Assert.Single(Rows(page));
+        Assert.Single(DocCards(page));
     }
 
     [Fact]
@@ -133,7 +137,7 @@ public class TemplatesV7AuthoringTests : ClientRenderTestContext
         var page = RenderEditor();
         Navigate(page, "Documents");
 
-        Rows(page)[0].QuerySelector("input.node-field__input:not(.declared-row__id)")!.Change("Consult letter");
+        DocCards(page)[0].QuerySelector("input.node-field__input:not(.declared-row__id)")!.Change("Consult letter");
 
         Assert.Contains("documents", page.Markup);
         Assert.False(
@@ -214,7 +218,8 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         DeclareEnum(page);
         Navigate(page, "Documents");
 
-        var picker = page.Find("li.declared-row__when fluent-select");
+        OpenCondition(page);
+        var picker = page.Find("[data-when-for] fluent-select");
         var options = picker.QuerySelectorAll("option, fluent-option").Select(o => o.GetAttribute("value")).ToList();
 
         Assert.Equal(new[] { "", "prior_notes" }, options);
@@ -227,7 +232,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         Navigate(page, "Documents");
 
         Assert.Contains("Declare an enum or boolean input", page.Markup);
-        Assert.Empty(page.FindAll("li.declared-row__when fluent-select"));
+        Assert.Empty(page.FindAll("[data-when-for] fluent-select"));
     }
 
     [Fact]
@@ -237,11 +242,11 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         DeclareEnum(page);
         Navigate(page, "Documents");
 
-        page.Find("li.declared-row__when fluent-select").Change("prior_notes");
+        { OpenCondition(page); page.Find("[data-when-for] fluent-select").Change("prior_notes"); }
 
         // Three controls now: input, operator, literal — and the literal offers
         // exactly the enum's declared values.
-        var selects = page.FindAll("li.declared-row__when fluent-select");
+        var selects = page.FindAll("[data-when-for] fluent-select");
         Assert.Equal(3, selects.Count);
 
         var literals = selects[2].QuerySelectorAll("option, fluent-option").Select(o => o.GetAttribute("value")).ToList();
@@ -256,7 +261,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         var page = RenderEditor();
         DeclareEnum(page);
         Navigate(page, "Documents");
-        page.Find("li.declared-row__when fluent-select").Change("prior_notes");
+        { OpenCondition(page); page.Find("[data-when-for] fluent-select").Change("prior_notes"); }
 
         Navigate(page, "Inputs");
         page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Date);
@@ -275,7 +280,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         var page = RenderEditor();
         DeclareEnum(page);
         Navigate(page, "Documents");
-        page.Find("li.declared-row__when fluent-select").Change("prior_notes");
+        { OpenCondition(page); page.Find("[data-when-for] fluent-select").Change("prior_notes"); }
 
         // The condition's literal defaults to the first declared value.
         Navigate(page, "Inputs");
@@ -296,7 +301,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         var page = RenderEditor();
         DeclareEnum(page);
         Navigate(page, "Documents");
-        page.Find("li.declared-row__when fluent-select").Change("prior_notes");
+        { OpenCondition(page); page.Find("[data-when-for] fluent-select").Change("prior_notes"); }
 
         Navigate(page, "Inputs");
         page.FindAll("li.declared-row__values fluent-button").Last().Click();
@@ -331,7 +336,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         var page = RenderEditor();
         DeclareEnum(page);
         Navigate(page, "Documents");
-        page.Find("li.declared-row__when fluent-select").Change("prior_notes");
+        { OpenCondition(page); page.Find("[data-when-for] fluent-select").Change("prior_notes"); }
 
         Navigate(page, "Inputs");
         page.FindAll("li.declared-row")[1].QuerySelector("input.declared-row__id")!.Change("encounter_kind");

@@ -279,11 +279,11 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
     {
         var eleven = RenderEditor(EditorFixtures.V11Macro());
         Navigate(eleven, "Documents");
-        Assert.NotEmpty(eleven.FindAll(".declared-row__v11"));
+        Assert.NotEmpty(eleven.FindAll("[data-v11-for]"));
 
         var ten = RenderEditor(EditorFixtures.V10Classifier());
         Navigate(ten, "Documents");
-        Assert.Empty(ten.FindAll(".declared-row__v11"));
+        Assert.Empty(ten.FindAll("[data-v11-for]"));
     }
 
     [Fact]

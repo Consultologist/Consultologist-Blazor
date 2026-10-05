@@ -127,7 +127,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         var result = await PublishAndValidateAsync(page =>
         {
             Navigate(page, "Documents");
-            page.FindAll("li.declared-row")[0]
+            page.FindAll("li.document-card")[0]
                 .QuerySelector("input.node-field__input:not(.declared-row__id)")!
                 .Change("Consult letter");
             return Task.CompletedTask;
@@ -253,7 +253,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
             page.Find("li.declared-row__values input").Change("follow_up");
 
             Navigate(page, "Documents");
-            page.Find("li.declared-row__when fluent-select").Change("prior_notes");
+            { OpenCondition(page); page.Find("[data-when-for] fluent-select").Change("prior_notes"); }
             return Task.CompletedTask;
         }, EditorFixtures.V8());
 
@@ -283,7 +283,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         page.FindAll("fluent-select.declared-row__type")[1].Change("boolean");
 
         Navigate(page, "Documents");
-        page.Find("li.declared-row__when fluent-select").Change("prior_notes");
+        { OpenCondition(page); page.Find("[data-when-for] fluent-select").Change("prior_notes"); }
     }
 
     [Fact]
