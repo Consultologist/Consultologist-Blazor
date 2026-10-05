@@ -267,9 +267,24 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         page.FindAll("fluent-button").First(b => b.TextContent.Contains("Create macro")).Click();
         Assert.Contains(page.FindAll("button.editor-nav__item"), b => b.TextContent.Contains("closing_paragraph"));
 
-        page.Find(".editor-nav__restore").Click();
+        Navigate(page, "closing_paragraph");
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Remove macro")).Click();
 
         Assert.DoesNotContain(page.FindAll("button.editor-nav__item"), b => b.TextContent.Contains("closing_paragraph"));
+    }
+
+    [Fact]
+    public void RemovingAMacro_IsInThePane_NotTheNav()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro());
+
+        // The nav no longer carries a macro remove link.
+        Assert.DoesNotContain(page.FindAll(".editor-nav__restore"), b => b.TextContent == "(remove)");
+
+        // The macro's own pane carries the Remove macro button, which names its reach.
+        Navigate(page, "disclaimer");
+        var remove = page.FindAll("fluent-button").First(b => b.TextContent.Contains("Remove macro"));
+        Assert.Contains("detaches from:", remove.TextContent);
     }
 
     // ----- the Documents pane: macro list + signed toggle -----
@@ -370,8 +385,8 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
     {
         // Removing only the reference (not the declaration) orphans the
         // declared macro — refused by name, the validator's sentence, before
-        // any version is minted. Removing the macro itself is the nav's
-        // "(remove)" (#571, below), which strips references in the same
+        // any version is minted. Removing the macro itself is the pane's
+        // "Remove macro" (#571, below), which strips references in the same
         // publish and so never meets this refusal.
         var package = EditorFixtures.V11Macro();
         CapturePublish();
@@ -394,7 +409,8 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         CapturePublish();
         var page = RenderEditor(package);
 
-        page.FindAll(".editor-nav__restore").First(b => b.TextContent == "(remove)").Click();
+        Navigate(page, "disclaimer");
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Remove macro")).Click();
         Publish(page);
 
         // The declaration, the reference and the template file leave in one
@@ -414,7 +430,8 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
     {
         var page = RenderEditor(EditorFixtures.V11Macro());
 
-        page.FindAll(".editor-nav__restore").First(b => b.TextContent == "(remove)").Click();
+        Navigate(page, "disclaimer");
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Remove macro")).Click();
 
         // Struck through with restore offered; the pane itself is withdrawn.
         Assert.Equal(new[] { "disclaimer" }, page.FindAll(".editor-nav__strike").Select(s => s.TextContent.Trim()));
