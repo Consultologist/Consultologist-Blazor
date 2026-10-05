@@ -1981,6 +1981,9 @@
                                     .Where(r => (r.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).Any(m => m.Id == macro.Id))
                                     .Select(r => r.Id)
                                     .ToList();
+                                @* #942: whether any section's prompt/standard/prelude already instructs
+                                   this macro's [[slot:id]] marker — computed once; a slot row warns when false. *@
+                                var slotInstructed = SlotHasInstruction(macro.Id);
                             }
                             @* #940: the macro's attachment, edited from the macro's side — one row per
                                document it is attached to (placement + gated-when + detach), plus an
@@ -2052,6 +2055,12 @@
                                                best-effort — editable, then copied to paste where it belongs. *@
                                             var slotKey = $"{result.Id}\n{macro.Id}";
                                             <div class="slot-instruction">
+                                                @* #942: a slot no section instructs never fills — warn, with the
+                                                   fix (the scaffold below) right here. *@
+                                                @if (!slotInstructed)
+                                                {
+                                                    <p class="slot-instruction__warning">No section instructs this slot yet — add <code>[[slot:@macro.Id]]</code> to a prompt, standard, or prelude (the snippet below), or it will never fill.</p>
+                                                }
                                                 <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit result-slot-instruction"
                                                               aria-label="@($"Slot instruction for macro {macro.Id} in document {result.Id}")"
                                                               @onclick="() => ToggleSlotSnippet(slotKey, macro.Id, entry.When)">Slot instruction</FluentButton>
@@ -6341,6 +6350,18 @@
         return condition is not null
             ? $"If {condition}, run {marker} verbatim and nothing else here. Do not write this content yourself — the system fills {marker} afterward, and only when it applies."
             : $"Where appropriate, run {marker} verbatim and nothing else there. Do not write this content yourself — the system fills {marker} afterward, and only when it applies.";
+    }
+
+    /// <summary>#942: whether any model-facing text — a prompt, standard or prelude, never a
+    /// macro body — already carries this macro's [[slot:id]] marker, so a section instructs it.
+    /// A slot with no instruction never fills; the macro pane warns on it.</summary>
+    private bool SlotHasInstruction(string macroId)
+    {
+        var marker = $"[[slot:{macroId}]]";
+        return EffectivePrompts.Select(prompt => GetText(prompt.File))
+            .Concat(collections.SelectMany(collection => collection.Items).Select(item => GetText(item.File)))
+            .Concat(LivePreludes.Select(prelude => GetText(prelude.File)))
+            .Any(text => text.Contains(marker, StringComparison.Ordinal));
     }
 
     // ----- v10 (#498): the condition expression builder's state -----------
