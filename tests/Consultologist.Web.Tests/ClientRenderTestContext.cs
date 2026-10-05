@@ -116,4 +116,22 @@ public abstract class ClientRenderTestContext : BunitContext
     }
 
     protected static WorkflowPackageBlockResponse Block(string id, string name) => new(id, name);
+
+    /// <summary>
+    /// #936: a document's "Produced when" (and a macro's "Gated when") condition
+    /// rests collapsed as a quiet "Always produced" control. Open the first one in
+    /// the given scope — default the document when — so a test can drive its
+    /// operand builder; a no-op when there is nothing to expand (e.g. no testable
+    /// operands, so no field is offered).
+    /// </summary>
+    protected static void OpenCondition(
+        IRenderedComponent<Consultologist.Web.Pages.Templates> page,
+        string scopeSelector = "[data-when-for]")
+    {
+        var resting = page.FindAll($"{scopeSelector} fluent-button.condition-field__resting");
+        if (resting.Count > 0)
+        {
+            resting[0].Click();
+        }
+    }
 }
