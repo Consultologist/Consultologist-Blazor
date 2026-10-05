@@ -205,3 +205,62 @@ public class WorkflowV20SlotFillTests
         Assert.Null(entries);
     }
 }
+
+/// <summary>
+/// #942: a slot macro only fills where the model emits its [[slot:id]] marker,
+/// which a prompt/standard/prelude must instruct. A slot no text names, and a
+/// marker naming no slot macro, are both silent — so the validator warns, never
+/// blocks.
+/// </summary>
+public class WorkflowV20SlotInstructionWarningTests
+{
+    private static (WorkflowPackageManifest, Dictionary<string, string>) WithPromptText(
+        (WorkflowPackageManifest Manifest, IReadOnlyDictionary<string, string> Files) bundle, string appended)
+    {
+        var key = bundle.Files.Keys.First(k => k.StartsWith("prompts/", StringComparison.Ordinal));
+        var files = new Dictionary<string, string>(bundle.Files) { [key] = bundle.Files[key] + "\n" + appended };
+        return (bundle.Manifest, files);
+    }
+
+    private static WorkflowPackageValidator.ValidationResult Validate(
+        (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle) =>
+        WorkflowPackageValidator.Validate(bundle.Item1, bundle.Item2, TestOutputContracts.CatalogSchemas);
+
+    [Fact]
+    public void AnUninstructedSlot_Warns_ButStaysValid()
+    {
+        // The baseline slot fixture names [[slot:disclaimer]] in no text.
+        var result = V20Fixtures.Validate(V20Fixtures.SlotMacro());
+
+        Assert.Contains(result.Warnings, w => w.Contains("Slot macro 'disclaimer' is never instructed"));
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AnInstructedSlot_DoesNotWarn()
+    {
+        var result = Validate(WithPromptText(V20Fixtures.SlotMacro(), "Run [[slot:disclaimer]] verbatim."));
+
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("never instructed"));
+    }
+
+    [Fact]
+    public void AStrayMarker_NamingNoSlotMacro_Warns()
+    {
+        // disclaimer is now instructed; ghost names no slot macro and is dropped.
+        var result = Validate(WithPromptText(V20Fixtures.SlotMacro(), "[[slot:disclaimer]] and [[slot:ghost]]."));
+
+        Assert.Contains(result.Warnings, w => w.Contains("[[slot:ghost]]") && w.Contains("not a slot macro"));
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("never instructed"));
+    }
+
+    [Fact]
+    public void AnAppendedMacro_IsNotASlot_AndNeverWarns()
+    {
+        // A non-slot (appended) macro on a v20 package: no slot warnings at all.
+        var (manifest, files) = V11Fixtures.WithMacro(from: V12Fixtures.Minimal());
+        var result = WorkflowPackageValidator.Validate(manifest with { SpecVersion = 20 }, files, TestOutputContracts.CatalogSchemas);
+
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("never instructed") || w.Contains("not a slot macro"));
+    }
+}

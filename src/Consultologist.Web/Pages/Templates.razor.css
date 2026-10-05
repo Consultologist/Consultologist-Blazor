@@ -498,6 +498,13 @@ fluent-button.node-field__button::part(control) {
 	gap: 0.4rem;
 }
 
+/* #942: a quiet nudge when a slot macro has no [[slot:id]] instruction anywhere. */
+.slot-instruction__warning {
+	margin: 0 0 0.1rem;
+	font-size: 0.8rem;
+	color: var(--consultologist-warning, #a15c00);
+}
+
 .declared-row {
 	display: flex;
 	flex-wrap: wrap;

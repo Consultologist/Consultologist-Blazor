@@ -2884,6 +2884,48 @@ public static class WorkflowPackageValidator
         {
             errors.Add($"Macro '{orphan}' is not referenced by any result.");
         }
+
+        // #942: a slot macro (#863) is placed only where the model emits a
+        // [[slot:<id>]] marker, which a section's prompt, standard or prelude must
+        // instruct. A slot no text names never fills, and a marker naming no slot
+        // macro is dropped at assembly — both silent, neither an error, so both
+        // are warned. The marker lives only in model-facing text, never a macro body.
+        if (manifest.SpecVersion >= 20)
+        {
+            var slotIds = results
+                .SelectMany(result => result.Macros ?? new List<WorkflowResultMacroSpec>())
+                .Where(entry => entry.Slot == true)
+                .Select(entry => entry.Id)
+                .ToHashSet(StringComparer.Ordinal);
+
+            var macroFiles = (manifest.Macros ?? new List<WorkflowMacroSpec>())
+                .Select(macro => macro.File)
+                .ToHashSet(StringComparer.Ordinal);
+
+            var slotReferenced = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var (path, text) in files)
+            {
+                if (macroFiles.Contains(path))
+                {
+                    continue;
+                }
+
+                foreach (var id in WorkflowSlotMarker.Pattern.Matches(text).Select(match => match.Groups[1].Value))
+                {
+                    slotReferenced.Add(id);
+                }
+            }
+
+            foreach (var id in slotIds.Where(id => !slotReferenced.Contains(id)).OrderBy(id => id, StringComparer.Ordinal))
+            {
+                warnings.Add($"Slot macro '{id}' is never instructed: no prompt, standard, or prelude contains a [[slot:{id}]] marker, so it will never be placed.");
+            }
+
+            foreach (var id in slotReferenced.Where(id => !slotIds.Contains(id)).OrderBy(id => id, StringComparer.Ordinal))
+            {
+                warnings.Add($"A [[slot:{id}]] marker names '{id}', which is not a slot macro on any deliverable; it is dropped at assembly.");
+            }
+        }
     }
 
     /// <summary>

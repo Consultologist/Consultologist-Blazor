@@ -223,4 +223,30 @@ public class TemplatesMacroAttachmentTests : ClientRenderTestContext
         var invocation = JSInterop.Invocations["navigator.clipboard.writeText"].Last();
         Assert.Equal("Edited slot instruction.", invocation.Arguments[0]);
     }
+
+    // ----- #942: warn when a slot macro has no [[slot:id]] instruction -----
+
+    [Fact]
+    public void AnUninstructedSlot_WarnsInTheMacroPane()
+    {
+        // V20Slot's prompt text names [[slot:disclaimer]] nowhere — the orphan case.
+        var page = RenderEditor(V20Slot());
+        Navigate(page, "disclaimer");
+
+        Assert.NotEmpty(page.FindAll("p.slot-instruction__warning"));
+    }
+
+    [Fact]
+    public void AnInstructedSlot_ShowsNoWarning()
+    {
+        var package = V20Slot();
+        var files = new Dictionary<string, string>(package.Files)
+        {
+            [EditorFixtures.PromptFile] = package.Files[EditorFixtures.PromptFile] + "\nRun [[slot:disclaimer]] verbatim.",
+        };
+        var page = RenderEditor(package with { Files = files });
+        Navigate(page, "disclaimer");
+
+        Assert.Empty(page.FindAll("p.slot-instruction__warning"));
+    }
 }
