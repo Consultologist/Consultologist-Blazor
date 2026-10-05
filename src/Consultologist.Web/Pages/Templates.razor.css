@@ -419,13 +419,27 @@ fluent-button.node-field__button::part(control) {
 	font-size: 0.8rem;
 }
 
-/* #936: the macro rows under "Appended content" — each a horizontal row, its
-   id a quiet monospace button that jumps to the macro in the Macros pane. */
+/* #936: each appended macro stacks its control row over its gate, so the
+   control rows stay aligned regardless of condition content and the builder
+   has room to expand on its own line. */
+.result-macro {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+}
+
+/* #936: the macro's control row — id (a quiet monospace button that jumps to
+   the macro in the Macros pane), placement, fan item, and reorder/remove. */
 .result-macro-row {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 0.4rem;
+}
+
+/* #936: the macro's gate, indented beneath its control row. */
+.result-macro-when {
+	padding-left: 1.6rem;
 }
 
 .result-macro__id {

@@ -1276,6 +1276,7 @@
                                             @foreach (var (macroEntry, macroIndex) in resultMacros.Select((m, i) => (m, i)))
                                             {
                                                 var macroId = macroEntry.Id;
+                                                <div class="result-macro">
                                                 <span class="result-macro-row">
                                                     <FluentButton Appearance="Appearance.Stealth" Class="result-macro__id"
                                                                   Title="@($"Edit macro {macroId}")"
@@ -1322,9 +1323,6 @@
                                                                 </FluentSelect>
                                                             }
                                                         }
-                                                        <span class="result-macro-when">
-                                                            @ConditionField(("Gated when", MacroWhenTarget(deliverable, macroEntry)))
-                                                        </span>
                                                     }
                                                     <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-up" Title="Move up"
                                                                   aria-label="@($"Move macro {macroIndex + 1} up")"
@@ -1341,6 +1339,16 @@
                                                                   IconStart="@(new Icons.Regular.Size20.Dismiss())"
                                                                   @onclick="() => RemoveResultMacroAsync(deliverable, macroId)" />
                                                 </span>
+                                                @if (EffectiveSpecVersion >= 12)
+                                                {
+                                                    @* #936 follow-up: the macro's gate reads on its own indented
+                                                       line beneath the control row — so the rows stay aligned and
+                                                       the condition builder has room to expand. *@
+                                                    <span class="result-macro-when">
+                                                        @ConditionField(("Gated when", MacroWhenTarget(deliverable, macroEntry)))
+                                                    </span>
+                                                }
+                                                </div>
                                             }
                                             @if (EffectiveMacros.Any(m => resultMacros.All(e => e.Id != m.Id)))
                                             {
