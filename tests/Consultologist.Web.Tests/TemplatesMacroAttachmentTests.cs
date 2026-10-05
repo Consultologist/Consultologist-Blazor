@@ -143,4 +143,84 @@ public class TemplatesMacroAttachmentTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".macro-attachments .result-macro"));
         Assert.Contains("Not attached to any document", page.Find(".macro-attachments").TextContent);
     }
+
+    // ----- #941: the slot-instruction snippet generator -----
+
+    private static WorkflowPackageContentResponse V20Slot(string? when = "node:scope == in_scope")
+    {
+        var package = EditorFixtures.V11Macro();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["specVersion"] = 20;
+        var macro = new System.Text.Json.Nodes.JsonObject { ["id"] = "disclaimer", ["slot"] = true };
+        if (when != null)
+        {
+            macro["when"] = when;
+        }
+
+        root["results"]!.AsArray()[0]!.AsObject()["macros"] = new System.Text.Json.Nodes.JsonArray(macro);
+        return package with { SpecVersion = 20, Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
+
+    [Fact]
+    public void SlotInstructionButton_Shows_ForASlotAttachment()
+    {
+        var page = RenderEditor(V20Slot());
+        Navigate(page, "disclaimer");
+
+        Assert.Contains(page.FindAll("fluent-button"), b => b.TextContent.Contains("Slot instruction"));
+    }
+
+    [Fact]
+    public void SlotInstructionButton_IsAbsent_ForANonSlotAttachment()
+    {
+        var page = RenderEditor(EditorFixtures.V12());
+        Navigate(page, "disclaimer");
+
+        Assert.DoesNotContain(page.FindAll("fluent-button"), b => b.TextContent.Contains("Slot instruction"));
+    }
+
+    [Fact]
+    public void SlotInstructionSnippet_CarriesTheMarker_TheConditionProse_AndTheGuard()
+    {
+        var page = RenderEditor(V20Slot());
+        Navigate(page, "disclaimer");
+
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Slot instruction")).Click();
+
+        var snippet = page.FindComponent<FluentTextArea>().Instance.Value ?? string.Empty;
+        Assert.Contains("[[slot:disclaimer]]", snippet);
+        Assert.Contains("scope is in_scope", snippet);
+        Assert.Contains("verbatim", snippet);
+    }
+
+    [Fact]
+    public void SlotInstructionSnippet_UsesTheUngatedVariant_WhenNoGate()
+    {
+        var page = RenderEditor(V20Slot(when: null));
+        Navigate(page, "disclaimer");
+
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Slot instruction")).Click();
+
+        var snippet = page.FindComponent<FluentTextArea>().Instance.Value ?? string.Empty;
+        Assert.Contains("[[slot:disclaimer]]", snippet);
+        Assert.Contains("Where appropriate", snippet);
+        Assert.DoesNotContain("If ", snippet);
+    }
+
+    [Fact]
+    public void CopySlotInstruction_WritesTheEditedText_ToTheClipboard()
+    {
+        JSInterop.SetupVoid("navigator.clipboard.writeText", _ => true).SetVoidResult();
+        var page = RenderEditor(V20Slot());
+        Navigate(page, "disclaimer");
+
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Slot instruction")).Click();
+
+        var textArea = page.FindComponent<FluentTextArea>();
+        textArea.InvokeAsync(() => textArea.Instance.ValueChanged.InvokeAsync("Edited slot instruction.")).GetAwaiter().GetResult();
+        page.Find(".result-slot-copy").Click();
+
+        var invocation = JSInterop.Invocations["navigator.clipboard.writeText"].Last();
+        Assert.Equal("Edited slot instruction.", invocation.Arguments[0]);
+    }
 }

@@ -478,6 +478,26 @@ fluent-button.node-field__button::part(control) {
 	color: var(--consultologist-text-muted);
 }
 
+/* #941: a slot attachment's inline instruction editor — scaffolds the
+   [[slot:id]] prompt instruction, editable, under the gated-when line. */
+.slot-instruction {
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+	padding-left: 1.6rem;
+}
+
+.slot-instruction__text {
+	width: 100%;
+	max-width: 48rem;
+}
+
+.slot-instruction__actions {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+
 .declared-row {
 	display: flex;
 	flex-wrap: wrap;

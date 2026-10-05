@@ -2044,6 +2044,33 @@
                                                 @ConditionField(("Gated when", MacroWhenTarget(result, entry)))
                                             </span>
                                         }
+                                        @if (EffectiveSpecVersion >= 20 && entry.IsSlot)
+                                        {
+                                            @* #941: a slot is placed by the model emitting a [[slot:id]]
+                                               marker, which a section's prompt/standard must instruct. Scaffold
+                                               that instruction — the marker + the guard + the gate rendered
+                                               best-effort — editable, then copied to paste where it belongs. *@
+                                            var slotKey = $"{result.Id}\n{macro.Id}";
+                                            <div class="slot-instruction">
+                                                <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit result-slot-instruction"
+                                                              aria-label="@($"Slot instruction for macro {macro.Id} in document {result.Id}")"
+                                                              @onclick="() => ToggleSlotSnippet(slotKey, macro.Id, entry.When)">Slot instruction</FluentButton>
+                                                @if (_slotSnippetShown.Contains(slotKey))
+                                                {
+                                                    <FluentTextArea class="slot-instruction__text" Rows="4"
+                                                            Value="@SlotSnippetText(slotKey)"
+                                                            ValueChanged="@(v => _slotSnippetText[slotKey] = v ?? string.Empty)"
+                                                            aria-label="@($"Slot instruction text for macro {macro.Id} in document {result.Id}")" />
+                                                    <span class="slot-instruction__actions">
+                                                        <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit result-slot-copy"
+                                                                      @onclick="() => CopySlotInstructionAsync(slotKey)">Copy</FluentButton>
+                                                        <FluentButton Appearance="Appearance.Stealth" Class="result-slot-reset"
+                                                                      aria-label="@($"Reset slot instruction for macro {macro.Id} in document {result.Id}")"
+                                                                      @onclick="() => _slotSnippetText[slotKey] = BuildSlotInstruction(macro.Id, entry.When)">reset to generated</FluentButton>
+                                                    </span>
+                                                }
+                                            </div>
+                                        }
                                     </div>
                                 }
                                 @{
@@ -2190,6 +2217,35 @@
   /// its macros' "Gated when" fold independently.
   /// </summary>
   private readonly HashSet<string> _expandedConditions = new(StringComparer.Ordinal);
+
+  /// <summary>#941: which slot attachments have their instruction editor open, and the
+  /// editable snippet text, both keyed by "{result.Id}\n{macro.Id}" (the MacroWhenTarget key shape).</summary>
+  private readonly HashSet<string> _slotSnippetShown = new(StringComparer.Ordinal);
+  private readonly Dictionary<string, string> _slotSnippetText = new(StringComparer.Ordinal);
+
+  private string SlotSnippetText(string key) => _slotSnippetText.TryGetValue(key, out var text) ? text : string.Empty;
+
+  /// <summary>#941: toggle a slot attachment's instruction editor; seed the generated snippet on first open.</summary>
+  private void ToggleSlotSnippet(string key, string macroId, string? when)
+  {
+      if (!_slotSnippetShown.Remove(key))
+      {
+          _slotSnippetShown.Add(key);
+          if (!_slotSnippetText.ContainsKey(key))
+          {
+              _slotSnippetText[key] = BuildSlotInstruction(macroId, when);
+          }
+      }
+  }
+
+  /// <summary>#941: copy the (edited) slot instruction to the clipboard for pasting into a section's prompt/standard.</summary>
+  private async Task CopySlotInstructionAsync(string key)
+  {
+      if (_slotSnippetText.TryGetValue(key, out var text))
+      {
+          await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+      }
+  }
 
   /// <summary>
   /// #936: a labeled, collapsible condition — the document's "Produced when" and a
@@ -6238,6 +6294,54 @@
         "<=" => "is at most",
         _ => symbol
     };
+
+    /// <summary>#941: an operand id as it reads in prose — drops the "node:" prefix a classifier
+    /// carries; a bare input id or a count(id) is already readable.</summary>
+    private static string StripOperand(string operand) =>
+        operand.StartsWith("node:", StringComparison.Ordinal) ? operand["node:".Length..] : operand;
+
+    /// <summary>#941: a macro attachment's gated-when rendered best-effort as prose for the slot
+    /// instruction — null when ungated. A flat and/or of simple clauses reads as
+    /// "scope is in_scope and letrozole_prescribed is yes"; anything the flat renderer can't
+    /// hold (verbatim, nested groups, arithmetic, an unchosen clause) falls back to the raw
+    /// expression, which the author edits in the snippet anyway.</summary>
+    private string? DescribeSlotCondition(string? when)
+    {
+        if (string.IsNullOrWhiteSpace(when))
+        {
+            return null;
+        }
+
+        if (!ConditionBuilderModel.TryFromText(when, out var root, out _))
+        {
+            return when.Trim();
+        }
+
+        var clauses = ConditionBuilderModel.Clauses(root).ToList();
+        if (clauses.Count == 0
+            || clauses.Any(c => c.IsEmpty || c.Arithmetic != null)
+            || root.Items.Any(i => i is ConditionGroup))
+        {
+            return when.Trim();
+        }
+
+        var joined = string.Join(
+            root.Join == ConditionGroup.Or ? " or " : " and ",
+            clauses.Select(c => $"{(c.Not ? "not " : string.Empty)}{StripOperand(c.Operand)} {OperatorWord(c.Operator!)} {c.Literal}"));
+        return root.Not ? $"not ({joined})" : joined;
+    }
+
+    /// <summary>#941: the editable default instruction for a slot macro — the [[slot:id]] marker, the
+    /// "verbatim / don't write it yourself / the system fills it" guard, and the gate rendered
+    /// best-effort. The gated-when stays the authoritative gate; this only scaffolds the prose.</summary>
+    private string BuildSlotInstruction(string macroId, string? when)
+    {
+        var marker = $"[[slot:{macroId}]]";
+        var condition = DescribeSlotCondition(when);
+        return condition is not null
+            ? $"If {condition}, run {marker} verbatim and nothing else here. Do not write this content yourself — the system fills {marker} afterward, and only when it applies."
+            : $"Where appropriate, run {marker} verbatim and nothing else there. Do not write this content yourself — the system fills {marker} afterward, and only when it applies.";
+    }
 
     // ----- v10 (#498): the condition expression builder's state -----------
 
