@@ -121,9 +121,9 @@ public class TemplatesDocumentsPaneReorgTests : ClientRenderTestContext
 
         page.Find("[data-v11-for] fluent-button.result-macro__id").Click();
 
-        // The Macros pane for `disclaimer` is now shown — its usage line only
-        // renders there.
-        var attached = Assert.Single(page.FindAll(".macro-attached"));
+        // The Macros pane for `disclaimer` is now shown — its Attachments section
+        // only renders there.
+        var attached = Assert.Single(page.FindAll(".macro-attachments"));
         Assert.Contains("consult_note", attached.TextContent);
     }
 
@@ -144,8 +144,8 @@ public class TemplatesDocumentsPaneReorgTests : ClientRenderTestContext
         var page = RenderEditor(EditorFixtures.V12());
         Navigate(page, "disclaimer");
 
-        var attached = Assert.Single(page.FindAll(".macro-attached"));
-        Assert.Contains("Attached to:", attached.TextContent);
+        var attached = Assert.Single(page.FindAll(".macro-attachments"));
+        Assert.Contains("Attached to", attached.TextContent);
         Assert.Contains("consult_note", attached.TextContent);
     }
 
@@ -155,7 +155,7 @@ public class TemplatesDocumentsPaneReorgTests : ClientRenderTestContext
         var page = RenderEditor(WithoutMacroAttachment(EditorFixtures.V12()));
         Navigate(page, "disclaimer");
 
-        var attached = Assert.Single(page.FindAll(".macro-attached"));
+        var attached = Assert.Single(page.FindAll(".macro-attachments"));
         Assert.Contains("Not attached to any document", attached.TextContent);
     }
 }
