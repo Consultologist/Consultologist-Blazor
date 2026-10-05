@@ -427,23 +427,9 @@
                                 <span class="editor-nav__dot">@(edits.ContainsKey(navMacro.File) || AddedMacroForFile(navMacro.File) != null ? "●" : "")</span>
                                 <span>@navMacro.Id</span>
                             </button>
-                            @if (AddedMacroForFile(navMacro.File) is { } pendingMacro)
-                            {
-                                <div class="editor-nav__item editor-nav__item--nested">
-                                    <span class="editor-nav__dot"></span>
-                                    <button type="button" class="editor-nav__restore" @onclick="() => RemoveAddedMacroAsync(pendingMacro)">(remove)</button>
-                                </div>
-                            }
-                            else if (EffectiveSpecVersion >= 11)
-                            {
-                                @* #571: a declared macro can be removed; its
-                                   references strip in the same publish. *@
-                                var declaredMacro = navMacro;
-                                <div class="editor-nav__item editor-nav__item--nested">
-                                    <span class="editor-nav__dot"></span>
-                                    <button type="button" class="editor-nav__restore" @onclick="() => RemoveDeclaredMacroAsync(declaredMacro)">(remove)</button>
-                                </div>
-                            }
+                            @* #936 follow-up: a macro is removed from its own pane (like a node),
+                               not from a nav link. The nav keeps only navigation and, below,
+                               restore for already-removed macros. *@
                         }
                         @foreach (var removedMacro in RemovedMacros)
                         {
@@ -474,32 +460,16 @@
                     @foreach (var prelude in LivePreludes)
                     {
                         var livePrelude = prelude;
-                        var readers = PreludeReferencedBy(prelude.Id);
                         <button type="button"
                                 class="editor-nav__item @(selectedKey == prelude.File ? "editor-nav__item--selected" : "")"
                                 @onclick="() => Select(livePrelude.File)">
                             <span class="editor-nav__dot">@(edits.ContainsKey(prelude.File) || AddedPreludeForFile(prelude.File) != null ? "●" : "")</span>
                             <span>@prelude.Id</span>
                         </button>
-                        @* #841: the "used by" list now lives in the prelude's pane, not here.
-                           The nested row is kept only for the remove affordance, shown only when
-                           the prelude is unused (a referenced prelude can't be removed until it is
-                           unlinked from its prompts). *@
-                        @if (readers.Count == 0)
-                        {
-                            <div class="editor-nav__item editor-nav__item--nested">
-                                <span class="editor-nav__dot"></span>
-                                @if (AddedPreludeForFile(prelude.File) is { } pendingPrelude)
-                                {
-                                    <button type="button" class="editor-nav__restore" @onclick="() => RemoveAddedPreludeAsync(pendingPrelude)">(remove)</button>
-                                }
-                                else
-                                {
-                                    var declaredPrelude = new WorkflowManifestReader.PreludeView(livePrelude.Id, livePrelude.File);
-                                    <button type="button" class="editor-nav__restore" @onclick="() => RemovePreludeAsync(declaredPrelude)">(remove)</button>
-                                }
-                            </div>
-                        }
+                        @* #936 follow-up: a prelude is removed from its own pane (like a node),
+                           not from a nav link — and only when unused, which the pane's "used by"
+                           line (#841) makes visible at the point of removal. The nav keeps only
+                           navigation and, below, restore for already-removed preludes. *@
                     }
                     @foreach (var removed in RemovedPreludeViews)
                     {
@@ -1981,6 +1951,17 @@
                             {
                                 <p class="muted-text">Not yet used by any prompt — select it on a prompt's pane.</p>
                             }
+                            @* #841: a prelude is removed from its own pane. A referenced prelude
+                               can't be removed until it is unlinked from its prompts, so the button
+                               shows only when the "used by" list above is empty. *@
+                            @if (preludeReaders.Count == 0)
+                            {
+                                <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit"
+                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                              @onclick="() => RemovePreludeFromPaneAsync(prelude)">
+                                    Remove prelude
+                                </FluentButton>
+                            }
                         </WorkflowEditorPane>
                     }
                     else if (SelectedMacro() is { } macro)
@@ -2011,6 +1992,18 @@
                                     <span>Not attached to any document.</span>
                                 }
                             </p>
+                            @* #571: a macro is removed from its own pane — consistent with
+                               "Remove node" — so the "Attached to" reach is visible at the point
+                               of removal. A pending (just-added) macro can always go; a declared
+                               one at v11+ (its references strip in the same publish). *@
+                            @if (AddedMacroForFile(macro.File) != null || EffectiveSpecVersion >= 11)
+                            {
+                                <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit"
+                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                              @onclick="() => RemoveMacroFromPaneAsync(macro)">
+                                    Remove macro@(attachedTo.Count > 0 ? $" (detaches from: {string.Join(", ", attachedTo)})" : "")
+                                </FluentButton>
+                            }
                             @if (EffectiveSpecVersion >= 12)
                             {
                                 var effectiveMacro = EffectiveMacros.First(m => m.Id == macro.Id);
@@ -3517,6 +3510,14 @@
         await PendingChangedAsync();
     }
 
+    /// <summary>#936 follow-up: remove the open prelude from its own pane — a pending
+    /// (just-added) prelude drops outright; a declared one is marked removed (only when
+    /// unused, which <see cref="RemovePreludeAsync"/> enforces).</summary>
+    private Task RemovePreludeFromPaneAsync(WorkflowManifestReader.PreludeView prelude) =>
+        AddedPreludeForFile(prelude.File) is { } pending
+            ? RemoveAddedPreludeAsync(pending)
+            : RemovePreludeAsync(prelude);
+
     private async Task RestorePreludeAsync(WorkflowManifestReader.PreludeView prelude)
     {
         removedPreludeIds.Remove(prelude.Id);
@@ -3891,6 +3892,14 @@
 
         await PendingChangedAsync();
     }
+
+    /// <summary>#936 follow-up: remove the open macro from its own pane — a pending
+    /// (just-added) macro drops outright; a declared one is marked removed and its
+    /// references strip in the same publish.</summary>
+    private Task RemoveMacroFromPaneAsync(WorkflowManifestReader.MacroView macro) =>
+        AddedMacroForFile(macro.File) is { } pending
+            ? RemoveAddedMacroAsync(pending)
+            : RemoveDeclaredMacroAsync(macro);
 
     private async Task RestoreDeclaredMacroAsync(string macroId)
     {

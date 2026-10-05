@@ -113,10 +113,12 @@ public class TemplatesPreludesTests : ClientRenderTestContext
         Navigate(page, "guidance");
         Assert.Contains("Used by 'draft-section'", page.Markup);
 
-        // An unused prelude gets the pane hint instead, and keeps its nav remove link.
+        // An unused prelude gets the pane hint and a Remove prelude button in its
+        // pane; the old nav remove link is gone.
         Navigate(page, "unused");
         Assert.Contains("Not yet used by any prompt", page.Markup);
-        Assert.Contains(page.FindAll(".editor-nav__restore"), button => button.TextContent == "(remove)");
+        Assert.Contains(page.FindAll("fluent-button"), button => button.TextContent.Contains("Remove prelude"));
+        Assert.DoesNotContain(page.FindAll(".editor-nav__restore"), button => button.TextContent == "(remove)");
     }
 
     [Fact]
@@ -126,12 +128,14 @@ public class TemplatesPreludesTests : ClientRenderTestContext
         CapturePublish();
 
         // guidance is read by the draft-section prompt: its pane names the reader
-        // (#841 moved this off the nav), and it has no remove link.
+        // (#841 moved this off the nav), and offers no Remove button while referenced.
         Navigate(page, "guidance");
         Assert.Contains("Used by 'draft-section'", page.Markup);
+        Assert.DoesNotContain(page.FindAll("fluent-button"), button => button.TextContent.Contains("Remove prelude"));
 
-        // unused is an orphan: remove it, and it drops from the map and files.
-        page.FindAll(".editor-nav__restore").First(button => button.TextContent == "(remove)").Click();
+        // unused is an orphan: remove it from its pane, and it drops from the map and files.
+        Navigate(page, "unused");
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Remove prelude")).Click();
         Publish(page);
 
         Assert.True(sent != null, string.Join(" | ", Refusals(page)));
