@@ -1,48 +1,54 @@
 @* The detail pane of the master–detail editor (#110): one selected text,
    editor and live preview side by side on wide screens. *@
 
-<div class="pane-header">
-    <div>
-        <h3 class="panel-title">@Title</h3>
-        @{
-            // #946: the identity strip — id (unless it is already the title) and file,
-            // read-only and greyed, so every pane names itself the same way.
-            var showId = !string.IsNullOrEmpty(IdentityId) && IdentityId != Title;
-            var showFile = !string.IsNullOrEmpty(IdentityFile);
-        }
-        @if (showId || showFile)
+@* #949: ShowHeader=false lets the pane be embedded headerless (the node pane's
+   inline prompt editor owns its own header). Default true — every other pane
+   keeps its header. *@
+@if (ShowHeader)
+{
+    <div class="pane-header">
+        <div>
+            <h3 class="panel-title">@Title</h3>
+            @{
+                // #946: the identity strip — id (unless it is already the title) and file,
+                // read-only and greyed, so every pane names itself the same way.
+                var showId = !string.IsNullOrEmpty(IdentityId) && IdentityId != Title;
+                var showFile = !string.IsNullOrEmpty(IdentityFile);
+            }
+            @if (showId || showFile)
+            {
+                <p class="pane-identity muted-text">
+                    @if (showId)
+                    {
+                        <span class="pane-identity__item">id <code>@IdentityId</code></span>
+                    }
+                    @if (showId && showFile)
+                    {
+                        <span class="pane-identity__sep"> · </span>
+                    }
+                    @if (showFile)
+                    {
+                        <span class="pane-identity__item">file <code>@IdentityFile</code></span>
+                    }
+                </p>
+            }
+            @if (!string.IsNullOrEmpty(Subtitle) || Modified)
+            {
+                <p class="muted-text">
+                    @Subtitle
+                    @if (Modified)
+                    {
+                        <strong> — edited</strong>
+                    }
+                </p>
+            }
+        </div>
+        @if (HeaderActions != null)
         {
-            <p class="pane-identity muted-text">
-                @if (showId)
-                {
-                    <span class="pane-identity__item">id <code>@IdentityId</code></span>
-                }
-                @if (showId && showFile)
-                {
-                    <span class="pane-identity__sep"> · </span>
-                }
-                @if (showFile)
-                {
-                    <span class="pane-identity__item">file <code>@IdentityFile</code></span>
-                }
-            </p>
-        }
-        @if (!string.IsNullOrEmpty(Subtitle) || Modified)
-        {
-            <p class="muted-text">
-                @Subtitle
-                @if (Modified)
-                {
-                    <strong> — edited</strong>
-                }
-            </p>
+            <div class="pane-header__actions">@HeaderActions</div>
         }
     </div>
-    @if (HeaderActions != null)
-    {
-        <div class="pane-header__actions">@HeaderActions</div>
-    }
-</div>
+}
 
 @ChildContent
 
@@ -74,6 +80,10 @@
 
 @code {
     [Parameter] public string Title { get; set; } = string.Empty;
+    // #949: false renders the pane without its header (ChildContent + the
+    // editor/preview split still render), so it can be embedded under a pane
+    // that already owns a header. Default true — every existing user is unchanged.
+    [Parameter] public bool ShowHeader { get; set; } = true;
     [Parameter] public string Subtitle { get; set; } = string.Empty;
     // #946: the read-only identity strip — the id (shown only when it is not already
     // the title) and the file path, so every pane surfaces its metadata uniformly.
