@@ -10,354 +10,422 @@
 @foreach (var node in (Only == null ? Nodes : Nodes.Where(n => n.Id == Only)))
 {
     <article class="template-section">
-        <div class="template-section__header">
-            <div>
-                <h3 class="panel-title">
-                    @node.Label
-                    @if (node.IsResult)
-                    {
-                        <span class="muted-text"> — deliverable</span>
-                    }
-                </h3>
-                <p class="muted-text">
-                    @node.Id
-                    @if (node.Prompt != null)
-                    {
-                        <span> · prompt: @node.Prompt</span>
-                    }
-                    @if (node.ForEach != null)
-                    {
-                        <span> · for each @node.ForEach item</span>
-                    }
-                    @if (node.Aggregate != null)
-                    {
-                        <span> · aggregator</span>
-                    }
-                    @if (node.IsClassifier)
-                    {
-                        <span> · classifier</span>
-                    }
-                    @if (node.IsCheck)
-                    {
-                        <span> · check</span>
-                    }
-                    @if (node.IsTemplate)
-                    {
-                        <span> · template</span>
-                    }
-                    @if (NodeModified?.Invoke(node.Id) == true)
-                    {
-                        <span class="binding-row__pending" title="Pending change"> ●</span>
-                    }
-                </p>
-            </div>
-            @if (Editable && !node.IsResult && OnNodeRemoved.HasDelegate)
-            {
-                <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit" IconStart="@(new Icons.Regular.Size20.Dismiss())" @onclick="() => OnNodeRemoved.InvokeAsync(node.Id)">
-                    Remove node
-                </FluentButton>
-            }
-        </div>
-        @if (Editable)
+        @* #948: the node pane owns a single header (via ShowHeader=false); the Graph
+           pane keeps this one. *@
+        @if (ShowHeader)
         {
-            <div class="node-fields">
-                <label class="node-field">
-                    <span>label</span>
-                    <input class="binding-row__select node-field__input"
-                           value="@node.Label"
-                           @onchange="args => EmitNodeChangeAsync(node, label: args.Value?.ToString() ?? string.Empty)"
-                           aria-label="Node label" />
-                </label>
-                @if (node.IsClassifier)
+            <div class="template-section__header">
+                <div>
+                    <h3 class="panel-title">
+                        @node.Label
+                        @if (node.IsResult)
+                        {
+                            <span class="muted-text"> — deliverable</span>
+                        }
+                    </h3>
+                    <p class="muted-text">
+                        @node.Id
+                        @if (node.Prompt != null)
+                        {
+                            <span> · prompt: @node.Prompt</span>
+                        }
+                        @if (node.ForEach != null)
+                        {
+                            <span> · for each @node.ForEach item</span>
+                        }
+                        @if (node.Aggregate != null)
+                        {
+                            <span> · aggregator</span>
+                        }
+                        @if (node.IsClassifier)
+                        {
+                            <span> · classifier</span>
+                        }
+                        @if (node.IsCheck)
+                        {
+                            <span> · check</span>
+                        }
+                        @if (node.IsTemplate)
+                        {
+                            <span> · template</span>
+                        }
+                        @if (NodeModified?.Invoke(node.Id) == true)
+                        {
+                            <span class="binding-row__pending" title="Pending change"> ●</span>
+                        }
+                    </p>
+                </div>
+                @if (Editable && !node.IsResult && OnNodeRemoved.HasDelegate)
                 {
-                    @* v10 (#498): the values a classifier may answer — the enum
-                       input's chips. No forEach and no output: a classification is
-                       one answer under the classification contract, implied by
-                       the kind. Fewer than two is refused at the desk, not here. *@
-                    <label class="node-field node-field--wide">
-                        <span>values</span>
-                        <span class="node-values" data-values-for="@node.Id">
-                            @foreach (var value in node.Values ?? Array.Empty<string>())
-                            {
-                                var declaredValue = value;
-                                <span class="input-field__chip" data-node-value="@declaredValue">
-                                    @declaredValue
-                                    <span @onclick:preventDefault="true" @onclick:stopPropagation="true">
-                                        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove value"
-                                                      aria-label="@($"Remove value {declaredValue}")"
-                                                      IconStart="@(new Icons.Regular.Size20.Dismiss())"
-                                                      @onclick="() => EmitValuesAsync(node, (node.Values ?? Array.Empty<string>()).Where(v => v != declaredValue).ToList())" />
-                                    </span>
-                                </span>
-                            }
-                            <input class="node-field__input" placeholder="in_scope"
-                                   @onchange="args => AddValueAsync(node, args.Value?.ToString())"
-                                   aria-label="@($"Add a value to node {node.Id}")" />
-                        </span>
-                    </label>
-                    @if (valuesError is { } valuesProblem)
-                    {
-                        <span class="editor-warning">@valuesProblem</span>
-                    }
-                }
-                @if (node.IsCheck)
-                {
-                    @* v12 § 13 (#621): the check's four members. The op is the
-                       closed set's one entry — shown, not edited; the operands
-                       are selects over the output-declaring nodes (the
-                       concept-list contract itself is the server's word). *@
-                    <label class="node-field">
-                        <span>op</span>
-                        <input class="binding-row__select node-field__input" value="@(node.Op ?? string.Empty)" disabled
-                               aria-label="@($"Op for check {node.Id}")" />
-                    </label>
-                    <label class="node-field">
-                        <span>of</span>
-                        <FluentSelect TOption="string" class="binding-row__select node-check-of"
-                                      Value="@(node.Of ?? string.Empty)"
-                                      ValueChanged="@(v => EmitNodeChangeAsync(node, checkOf: v))"
-                                      aria-label="@($"Of for check {node.Id}")">
-                            <FluentOption TOption="string" Value="">choose…</FluentOption>
-                            @foreach (var (operandRef, operandLabel) in CheckOperandOptions)
-                            {
-                                <FluentOption TOption="string" Value="@operandRef">@operandLabel</FluentOption>
-                            }
-                        </FluentSelect>
-                    </label>
-                    <label class="node-field">
-                        <span>in</span>
-                        <FluentSelect TOption="string" class="binding-row__select node-check-in"
-                                      Value="@(node.In ?? string.Empty)"
-                                      ValueChanged="@(v => EmitNodeChangeAsync(node, checkIn: v))"
-                                      aria-label="@($"In for check {node.Id}")">
-                            <FluentOption TOption="string" Value="">choose…</FluentOption>
-                            @foreach (var (operandRef, operandLabel) in CheckOperandOptions)
-                            {
-                                <FluentOption TOption="string" Value="@operandRef">@operandLabel</FluentOption>
-                            }
-                        </FluentSelect>
-                    </label>
-                    <label class="node-field node-field--wide">
-                        <span>fail with</span>
-                        <input class="binding-row__select node-field__input node-check-failwith"
-                               value="@(node.FailWith ?? string.Empty)"
-                               @onchange="args => EmitNodeChangeAsync(node, failWith: args.Value?.ToString())"
-                               aria-label="@($"FailWith for check {node.Id}")" />
-                    </label>
-                }
-                @if (node.Aggregate == null && !node.IsClassifier && !node.IsCheck)
-                {
-                    @if (AllowPromptChange)
-                    {
-                        <label class="node-field">
-                            <span>prompt</span>
-                            <FluentSelect TOption="string" class="binding-row__select"
-                                          Value="@(node.Prompt ?? string.Empty)"
-                                          ValueChanged="@(v => EmitNodeChangeAsync(node, prompt: v))"
-                                          aria-label="Node prompt">
-                                @if (node.Prompt != null && !PromptOptions.Contains(node.Prompt))
-                                {
-                                    <FluentOption TOption="string" Value="@node.Prompt">@node.Prompt</FluentOption>
-                                }
-                                @foreach (var promptId in PromptOptions)
-                                {
-                                    <FluentOption TOption="string" Value="@promptId">@promptId</FluentOption>
-                                }
-                            </FluentSelect>
-                        </label>
-                    }
-                    <label class="node-field">
-                        <span>for each</span>
-                        <FluentSelect TOption="string" class="binding-row__select"
-                                      Value="@(node.ForEach ?? string.Empty)"
-                                      ValueChanged="@(v => EmitNodeChangeAsync(node, forEach: v))"
-                                      aria-label="Node forEach collection">
-                            <FluentOption TOption="string" Value="">— runs once —</FluentOption>
-                            @if (node.ForEach != null && !ForEachOptions(Collections, ArrayInputs).Contains(node.ForEach))
-                            {
-                                <FluentOption TOption="string" Value="@node.ForEach">@node.ForEach</FluentOption>
-                            }
-                            @foreach (var option in ForEachOptions(Collections, ArrayInputs))
-                            {
-                                <FluentOption TOption="string" Value="@option">@option</FluentOption>
-                            }
-                        </FluentSelect>
-                    </label>
-                    <label class="node-field">
-                        <span>output</span>
-                        <FluentSelect TOption="string" class="binding-row__select"
-                                      Value="@(node.OutputSchema ?? string.Empty)"
-                                      ValueChanged="@(v => EmitNodeChangeAsync(node, outputSchema: v))"
-                                      aria-label="Node output contract">
-                            @* #825/#827: the empty (no-contract) row and the offered
-                               contracts are kind-filtered — "— rendered —" for a template
-                               (no model), answer-only contracts excluded from it. *@
-                            @foreach (var (value, label) in NodeOutputOptions(node.IsTemplate, ContractOptions))
-                            {
-                                <FluentOption TOption="string" Value="@value">@label</FluentOption>
-                            }
-                            @if (node.OutputSchema != null && !ContractOptions.Contains(node.OutputSchema))
-                            {
-                                @* A carried/invalid current value stays visible so it is changeable. *@
-                                <FluentOption TOption="string" Value="@node.OutputSchema">@node.OutputSchema</FluentOption>
-                            }
-                        </FluentSelect>
-                    </label>
-                    @if (node.IsTemplate)
-                    {
-                        <p class="muted-text node-field--wide">The template renders this; a contract here validates the render, it does not call a model.</p>
-                    }
-                    @if (node.OutputSchema != null)
-                    {
-                        <label class="node-field node-field--wide">
-                            <span>fail if empty</span>
-                            <input class="binding-row__select node-field__input"
-                                   value="@(node.FailIfEmpty ?? string.Empty)"
-                                   placeholder="optional — error shown when the output is empty"
-                                   @onchange="args => EmitNodeChangeAsync(node, failIfEmpty: args.Value?.ToString())"
-                                   aria-label="Node fail-if-empty message" />
-                        </label>
-                    }
-                }
-                @if (OfferReproducible && !node.IsCheck && !node.IsTemplate)
-                {
-                    @* v11 #564 (record § 6): any node may claim it — the
-                       classifier and extraction stages are the intended cases,
-                       so this sits outside the prompt-only guard. *@
-                    <label class="node-field node-field--reproducible">
-                        <input type="checkbox"
-                               checked="@node.Reproducible"
-                               @onchange="args => EmitReproducibleAsync(node, args.Value is bool isChecked && isChecked)"
-                               aria-label="@($"Reproducible for node {node.Id}")" />
-                        <span>reproducible — same input, same output (the rerun verdict reads this)</span>
-                    </label>
+                    <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit" IconStart="@(new Icons.Regular.Size20.Dismiss())" @onclick="() => OnNodeRemoved.InvokeAsync(node.Id)">
+                        Remove node
+                    </FluentButton>
                 }
             </div>
         }
-        @if (node.Aggregate != null)
-        {
-            @* Deterministic aggregation: sources in declared order (v6) — the
-               order is the assembled document's order. *@
-            @if (Editable && OnAggregateChanged.HasDelegate)
-            {
-                <ul class="binding-list">
-                    @for (var i = 0; i < node.Aggregate.Count; i++)
-                    {
-                        var index = i;
-                        var currentNode = node;
-                        <li class="binding-row">
-                            <span class="muted-text">@(index + 1).</span>
-                            <code>@node.Aggregate[index]</code>
-                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move up"
-                                          aria-label="@($"Move source {index + 1} up")"
-                                          Disabled="@(index == 0)"
-                                          IconStart="@(new Icons.Regular.Size20.ArrowUp())"
-                                          @onclick="() => MoveAggregateSourceAsync(currentNode, index, -1)" />
-                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move down"
-                                          aria-label="@($"Move source {index + 1} down")"
-                                          Disabled="@(index == node.Aggregate.Count - 1)"
-                                          IconStart="@(new Icons.Regular.Size20.ArrowDown())"
-                                          @onclick="() => MoveAggregateSourceAsync(currentNode, index, +1)" />
-                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove source"
-                                          aria-label="@($"Remove source {index + 1}")"
-                                          Disabled="@(node.Aggregate.Count == 1)"
-                                          IconStart="@(new Icons.Regular.Size20.Dismiss())"
-                                          @onclick="() => RemoveAggregateSourceAsync(currentNode, index)" />
-                        </li>
-                    }
-                </ul>
-                <div class="add-variable__form">
-                    @* Action-select: Value is pinned to "" so a re-render resets it to the
-                       prompt after each pick appends a source. *@
-                    <FluentSelect TOption="string" class="binding-row__select"
-                                  Value=""
-                                  ValueChanged="@(v => AppendAggregateSourceAsync(node, v))"
-                                  aria-label="Add aggregate source">
-                        <FluentOption TOption="string" Value="">+ add source…</FluentOption>
-                        @foreach (var candidate in Nodes.Where(other => other.Id != node.Id && !node.Aggregate.Contains($"node:{other.Id}")))
+        @* #948: each field group is a self-guarded fragment, composed either flat
+           (the Graph pane, exact original order) or into labeled sections (the node
+           pane, Sectioned=true). Single-sourced — the inputs/handlers live once. *@
+        @{
+                RenderFragment labelField =
+                    @<label class="node-field">
+                        <span>label</span>
+                        <input class="binding-row__select node-field__input"
+                               value="@node.Label"
+                               @onchange="args => EmitNodeChangeAsync(node, label: args.Value?.ToString() ?? string.Empty)"
+                               aria-label="Node label" />
+                    </label>;
+
+                RenderFragment valuesField =
+                    @<text>
+                        @if (node.IsClassifier)
                         {
-                            <FluentOption TOption="string" Value="@($"node:{candidate.Id}")">node:@candidate.Id</FluentOption>
+                            @* v10 (#498): the values a classifier may answer — the enum input's chips. *@
+                            <label class="node-field node-field--wide">
+                                <span>values</span>
+                                <span class="node-values" data-values-for="@node.Id">
+                                    @foreach (var value in node.Values ?? Array.Empty<string>())
+                                    {
+                                        var declaredValue = value;
+                                        <span class="input-field__chip" data-node-value="@declaredValue">
+                                            @declaredValue
+                                            <span @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                                                <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove value"
+                                                              aria-label="@($"Remove value {declaredValue}")"
+                                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                              @onclick="() => EmitValuesAsync(node, (node.Values ?? Array.Empty<string>()).Where(v => v != declaredValue).ToList())" />
+                                            </span>
+                                        </span>
+                                    }
+                                    <input class="node-field__input" placeholder="in_scope"
+                                           @onchange="args => AddValueAsync(node, args.Value?.ToString())"
+                                           aria-label="@($"Add a value to node {node.Id}")" />
+                                </span>
+                            </label>
+                            @if (valuesError is { } valuesProblem)
+                            {
+                                <span class="editor-warning">@valuesProblem</span>
+                            }
                         }
-                    </FluentSelect>
+                    </text>;
+
+                RenderFragment checkFields =
+                    @<text>
+                        @if (node.IsCheck)
+                        {
+                            @* v12 § 13 (#621): the check's four members — op is read-only. *@
+                            <label class="node-field">
+                                <span>op</span>
+                                <input class="binding-row__select node-field__input" value="@(node.Op ?? string.Empty)" disabled
+                                       aria-label="@($"Op for check {node.Id}")" />
+                            </label>
+                            <label class="node-field">
+                                <span>of</span>
+                                <FluentSelect TOption="string" class="binding-row__select node-check-of"
+                                              Value="@(node.Of ?? string.Empty)"
+                                              ValueChanged="@(v => EmitNodeChangeAsync(node, checkOf: v))"
+                                              aria-label="@($"Of for check {node.Id}")">
+                                    <FluentOption TOption="string" Value="">choose…</FluentOption>
+                                    @foreach (var (operandRef, operandLabel) in CheckOperandOptions)
+                                    {
+                                        <FluentOption TOption="string" Value="@operandRef">@operandLabel</FluentOption>
+                                    }
+                                </FluentSelect>
+                            </label>
+                            <label class="node-field">
+                                <span>in</span>
+                                <FluentSelect TOption="string" class="binding-row__select node-check-in"
+                                              Value="@(node.In ?? string.Empty)"
+                                              ValueChanged="@(v => EmitNodeChangeAsync(node, checkIn: v))"
+                                              aria-label="@($"In for check {node.Id}")">
+                                    <FluentOption TOption="string" Value="">choose…</FluentOption>
+                                    @foreach (var (operandRef, operandLabel) in CheckOperandOptions)
+                                    {
+                                        <FluentOption TOption="string" Value="@operandRef">@operandLabel</FluentOption>
+                                    }
+                                </FluentSelect>
+                            </label>
+                            <label class="node-field node-field--wide">
+                                <span>fail with</span>
+                                <input class="binding-row__select node-field__input node-check-failwith"
+                                       value="@(node.FailWith ?? string.Empty)"
+                                       @onchange="args => EmitNodeChangeAsync(node, failWith: args.Value?.ToString())"
+                                       aria-label="@($"FailWith for check {node.Id}")" />
+                            </label>
+                        }
+                    </text>;
+
+                RenderFragment promptField =
+                    @<text>
+                        @if (node.Aggregate == null && !node.IsClassifier && !node.IsCheck && AllowPromptChange)
+                        {
+                            <label class="node-field">
+                                <span>prompt</span>
+                                <FluentSelect TOption="string" class="binding-row__select"
+                                              Value="@(node.Prompt ?? string.Empty)"
+                                              ValueChanged="@(v => EmitNodeChangeAsync(node, prompt: v))"
+                                              aria-label="Node prompt">
+                                    @if (node.Prompt != null && !PromptOptions.Contains(node.Prompt))
+                                    {
+                                        <FluentOption TOption="string" Value="@node.Prompt">@node.Prompt</FluentOption>
+                                    }
+                                    @foreach (var promptId in PromptOptions)
+                                    {
+                                        <FluentOption TOption="string" Value="@promptId">@promptId</FluentOption>
+                                    }
+                                </FluentSelect>
+                            </label>
+                        }
+                    </text>;
+
+                RenderFragment forEachField =
+                    @<text>
+                        @if (node.Aggregate == null && !node.IsClassifier && !node.IsCheck)
+                        {
+                            <label class="node-field">
+                                <span>for each</span>
+                                <FluentSelect TOption="string" class="binding-row__select"
+                                              Value="@(node.ForEach ?? string.Empty)"
+                                              ValueChanged="@(v => EmitNodeChangeAsync(node, forEach: v))"
+                                              aria-label="Node forEach collection">
+                                    <FluentOption TOption="string" Value="">— runs once —</FluentOption>
+                                    @if (node.ForEach != null && !ForEachOptions(Collections, ArrayInputs).Contains(node.ForEach))
+                                    {
+                                        <FluentOption TOption="string" Value="@node.ForEach">@node.ForEach</FluentOption>
+                                    }
+                                    @foreach (var option in ForEachOptions(Collections, ArrayInputs))
+                                    {
+                                        <FluentOption TOption="string" Value="@option">@option</FluentOption>
+                                    }
+                                </FluentSelect>
+                            </label>
+                        }
+                    </text>;
+
+                RenderFragment outputField =
+                    @<text>
+                        @if (node.Aggregate == null && !node.IsClassifier && !node.IsCheck)
+                        {
+                            <label class="node-field">
+                                <span>output</span>
+                                <FluentSelect TOption="string" class="binding-row__select"
+                                              Value="@(node.OutputSchema ?? string.Empty)"
+                                              ValueChanged="@(v => EmitNodeChangeAsync(node, outputSchema: v))"
+                                              aria-label="Node output contract">
+                                    @* #825/#827: the empty (no-contract) row and the offered contracts are kind-filtered. *@
+                                    @foreach (var (value, label) in NodeOutputOptions(node.IsTemplate, ContractOptions))
+                                    {
+                                        <FluentOption TOption="string" Value="@value">@label</FluentOption>
+                                    }
+                                    @if (node.OutputSchema != null && !ContractOptions.Contains(node.OutputSchema))
+                                    {
+                                        <FluentOption TOption="string" Value="@node.OutputSchema">@node.OutputSchema</FluentOption>
+                                    }
+                                </FluentSelect>
+                            </label>
+                            @if (node.IsTemplate)
+                            {
+                                <p class="muted-text node-field--wide">The template renders this; a contract here validates the render, it does not call a model.</p>
+                            }
+                        }
+                    </text>;
+
+                RenderFragment failIfEmptyField =
+                    @<text>
+                        @if (node.Aggregate == null && !node.IsClassifier && !node.IsCheck && node.OutputSchema != null)
+                        {
+                            <label class="node-field node-field--wide">
+                                <span>fail if empty</span>
+                                <input class="binding-row__select node-field__input"
+                                       value="@(node.FailIfEmpty ?? string.Empty)"
+                                       placeholder="optional — error shown when the output is empty"
+                                       @onchange="args => EmitNodeChangeAsync(node, failIfEmpty: args.Value?.ToString())"
+                                       aria-label="Node fail-if-empty message" />
+                            </label>
+                        }
+                    </text>;
+
+                RenderFragment reproducibleField =
+                    @<text>
+                        @if (OfferReproducible && !node.IsCheck && !node.IsTemplate)
+                        {
+                            @* v11 #564 (record § 6): any node may claim it. *@
+                            <label class="node-field node-field--reproducible">
+                                <input type="checkbox"
+                                       checked="@node.Reproducible"
+                                       @onchange="args => EmitReproducibleAsync(node, args.Value is bool isChecked && isChecked)"
+                                       aria-label="@($"Reproducible for node {node.Id}")" />
+                                <span>reproducible — same input, same output (the rerun verdict reads this)</span>
+                            </label>
+                        }
+                    </text>;
+        }
+        @if (Editable)
+        {
+            @if (Sectioned)
+            {
+                <div class="node-section">
+                    <span class="node-section__head">Identity</span>
+                    <div class="node-fields">@labelField@forEachField@outputField</div>
+                </div>
+                @if (node.Aggregate == null && !node.IsClassifier && !node.IsCheck && AllowPromptChange)
+                {
+                    <div class="node-section">
+                        <span class="node-section__head">Prompt</span>
+                        <div class="node-fields">@promptField</div>
+                    </div>
+                }
+                <div class="node-section">
+                    <span class="node-section__head">Options</span>
+                    <div class="node-fields">@reproducibleField@failIfEmptyField@valuesField@checkFields</div>
+                    @OptionsExtra
                 </div>
             }
             else
             {
-                <ul class="binding-list">
-                    @foreach (var sourceRef in node.Aggregate)
-                    {
-                        <li class="binding-row muted-text">
-                            <code>@sourceRef</code>
-                            <span aria-hidden="true">→</span>
-                            <span>collected in order</span>
-                        </li>
-                    }
-                </ul>
+                <div class="node-fields">@labelField@valuesField@checkFields@promptField@forEachField@outputField@failIfEmptyField@reproducibleField</div>
             }
         }
-        else
-        {
-        <ul class="binding-list">
-            @foreach (var row in Rows(node))
-            {
-                var modified = row.IsNew || row.From != row.OriginalFrom || row.As != row.OriginalAs;
-
-                <li class="binding-row @(Editable ? null : "muted-text")">
-                    <code class="binding-row__variable">@row.Variable</code>
-                    <span aria-hidden="true">←</span>
-                    @if (Editable)
+        @{
+            @* #948: the bindings/aggregate list + the "+ variable" form — one fragment,
+               rendered flat (Graph) or inside the "Inputs" section (node pane). *@
+            RenderFragment inputsFragment =
+                @<text>
+                    @if (node.Aggregate != null)
                     {
-                        <BindingSourceEditor Node="@node"
-                                             Row="@row"
-                                             Nodes="@Nodes"
-                                             Scalars="@Scalars"
-                                             Inputs="@Inputs"
-                                             OnChanged="@OnBindingChanged" />
-                        @if (modified)
+                        @* Deterministic aggregation: sources in declared order (v6). *@
+                        @if (Editable && OnAggregateChanged.HasDelegate)
                         {
-                            <span class="binding-row__pending" title="Pending change">●</span>
+                            <ul class="binding-list">
+                                @for (var i = 0; i < node.Aggregate.Count; i++)
+                                {
+                                    var index = i;
+                                    var currentNode = node;
+                                    <li class="binding-row">
+                                        <span class="muted-text">@(index + 1).</span>
+                                        <code>@node.Aggregate[index]</code>
+                                        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move up"
+                                                      aria-label="@($"Move source {index + 1} up")"
+                                                      Disabled="@(index == 0)"
+                                                      IconStart="@(new Icons.Regular.Size20.ArrowUp())"
+                                                      @onclick="() => MoveAggregateSourceAsync(currentNode, index, -1)" />
+                                        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move down"
+                                                      aria-label="@($"Move source {index + 1} down")"
+                                                      Disabled="@(index == node.Aggregate.Count - 1)"
+                                                      IconStart="@(new Icons.Regular.Size20.ArrowDown())"
+                                                      @onclick="() => MoveAggregateSourceAsync(currentNode, index, +1)" />
+                                        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove source"
+                                                      aria-label="@($"Remove source {index + 1}")"
+                                                      Disabled="@(node.Aggregate.Count == 1)"
+                                                      IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                      @onclick="() => RemoveAggregateSourceAsync(currentNode, index)" />
+                                    </li>
+                                }
+                            </ul>
+                            <div class="add-variable__form">
+                                @* Action-select: Value pinned to "" so a re-render resets it after each pick. *@
+                                <FluentSelect TOption="string" class="binding-row__select"
+                                              Value=""
+                                              ValueChanged="@(v => AppendAggregateSourceAsync(node, v))"
+                                              aria-label="Add aggregate source">
+                                    <FluentOption TOption="string" Value="">+ add source…</FluentOption>
+                                    @foreach (var candidate in Nodes.Where(other => other.Id != node.Id && !node.Aggregate.Contains($"node:{other.Id}")))
+                                    {
+                                        <FluentOption TOption="string" Value="@($"node:{candidate.Id}")">node:@candidate.Id</FluentOption>
+                                    }
+                                </FluentSelect>
+                            </div>
                         }
-                        @if (row.IsNew && row.From.Length == 0)
+                        else
                         {
-                            <span class="muted-text binding-row__hint">new — choose source</span>
+                            <ul class="binding-list">
+                                @foreach (var sourceRef in node.Aggregate)
+                                {
+                                    <li class="binding-row muted-text">
+                                        <code>@sourceRef</code>
+                                        <span aria-hidden="true">→</span>
+                                        <span>collected in order</span>
+                                    </li>
+                                }
+                            </ul>
                         }
                     }
                     else
                     {
-                        <code>@(row.As is null ? row.From : $"{row.From} (as {row.As})")</code>
+                        <ul class="binding-list">
+                            @foreach (var row in Rows(node))
+                            {
+                                var modified = row.IsNew || row.From != row.OriginalFrom || row.As != row.OriginalAs;
+
+                                <li class="binding-row @(Editable ? null : "muted-text")">
+                                    <code class="binding-row__variable">@row.Variable</code>
+                                    <span aria-hidden="true">←</span>
+                                    @if (Editable)
+                                    {
+                                        <BindingSourceEditor Node="@node"
+                                                             Row="@row"
+                                                             Nodes="@Nodes"
+                                                             Scalars="@Scalars"
+                                                             Inputs="@Inputs"
+                                                             OnChanged="@OnBindingChanged" />
+                                        @if (modified)
+                                        {
+                                            <span class="binding-row__pending" title="Pending change">●</span>
+                                        }
+                                        @if (row.IsNew && row.From.Length == 0)
+                                        {
+                                            <span class="muted-text binding-row__hint">new — choose source</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <code>@(row.As is null ? row.From : $"{row.From} (as {row.As})")</code>
+                                    }
+                                </li>
+                            }
+                        </ul>
                     }
-                </li>
-            }
-        </ul>
+                    @if (Editable && node.Prompt != null && OnVariableAdded.HasDelegate)
+                    {
+                        var form = FormFor(node.Id);
+                        <details class="add-variable">
+                            <summary>+ variable</summary>
+                            <div class="add-variable__form">
+                                <input class="binding-row__select"
+                                       placeholder="variable_name"
+                                       value="@form.Name"
+                                       @onchange="args => SetFormName(node.Id, args)"
+                                       aria-label="New variable name" />
+                                <FluentSelect TOption="string" class="binding-row__select"
+                                              Value="@form.Source"
+                                              ValueChanged="@(v => SetFormSource(node.Id, v))"
+                                              aria-label="New variable source">
+                                    <FluentOption TOption="string" Value="">choose source…</FluentOption>
+                                    @foreach (var option in BindingSourceEditor.SourceOptions(Nodes, Scalars, node, string.Empty, Inputs))
+                                    {
+                                        <FluentOption TOption="string" Value="@option">@option</FluentOption>
+                                    }
+                                </FluentSelect>
+                                <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit" IconStart="@(new Icons.Regular.Size20.Add())" @onclick="() => SubmitAddVariableAsync(node)">Add</FluentButton>
+                            </div>
+                            @if (form.Error != null)
+                            {
+                                <p class="add-variable__error">@form.Error</p>
+                            }
+                        </details>
+                    }
+                </text>;
         }
-        @if (Editable && node.Prompt != null && OnVariableAdded.HasDelegate)
+        @if (Sectioned)
         {
-            var form = FormFor(node.Id);
-            <details class="add-variable">
-                <summary>+ variable</summary>
-                <div class="add-variable__form">
-                    <input class="binding-row__select"
-                           placeholder="variable_name"
-                           value="@form.Name"
-                           @onchange="args => SetFormName(node.Id, args)"
-                           aria-label="New variable name" />
-                    <FluentSelect TOption="string" class="binding-row__select"
-                                  Value="@form.Source"
-                                  ValueChanged="@(v => SetFormSource(node.Id, v))"
-                                  aria-label="New variable source">
-                        <FluentOption TOption="string" Value="">choose source…</FluentOption>
-                        @foreach (var option in BindingSourceEditor.SourceOptions(Nodes, Scalars, node, string.Empty, Inputs))
-                        {
-                            <FluentOption TOption="string" Value="@option">@option</FluentOption>
-                        }
-                    </FluentSelect>
-                    <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit" IconStart="@(new Icons.Regular.Size20.Add())" @onclick="() => SubmitAddVariableAsync(node)">Add</FluentButton>
-                </div>
-                @if (form.Error != null)
-                {
-                    <p class="add-variable__error">@form.Error</p>
-                }
-            </details>
+            <div class="node-section">
+                <span class="node-section__head">Inputs</span>
+                @inputsFragment
+            </div>
+        }
+        else
+        {
+            @inputsFragment
         }
     </article>
 }
@@ -419,6 +487,12 @@
     [Parameter] public IReadOnlyList<(string Ref, string Label)> CheckOperandOptions { get; set; } = Array.Empty<(string, string)>();
     [Parameter] public bool AllowPromptChange { get; set; }
     [Parameter] public string? Only { get; set; }
+
+    // #948: the node pane owns a single header and lays the fields out in labeled
+    // sections; the Graph pane passes neither, so it renders the flat card as before.
+    [Parameter] public bool ShowHeader { get; set; } = true;
+    [Parameter] public bool Sectioned { get; set; }
+    [Parameter] public RenderFragment? OptionsExtra { get; set; }
     [Parameter] public Func<string, bool>? NodeModified { get; set; }
     [Parameter] public IReadOnlyList<WorkflowManifestReader.NodeView> RemovedNodes { get; set; } = Array.Empty<WorkflowManifestReader.NodeView>();
     [Parameter] public EventCallback<string> OnNodeRemoved { get; set; }

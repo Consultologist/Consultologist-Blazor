@@ -577,6 +577,25 @@ header.header.app-header {
 	color: var(--consultologist-text-muted);
 }
 
+/* #948: the node pane's labeled sub-sections (Identity / Prompt / Inputs / Runs when /
+   Options), mirroring the Documents pane's #936 sections. Global so the card (scoped)
+   and the Templates wrapper render them identically; the Graph pane opts out. */
+.node-section {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	padding-top: 0.5rem;
+	border-top: 1px solid var(--consultologist-border);
+}
+
+.node-section__head {
+	font-size: 0.72rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--consultologist-text-muted);
+}
+
 .panel-description,
 .muted-text {
 	margin: 0;

@@ -1698,17 +1698,35 @@
                     }
                     else if (SelectedNode() is { } selectedNode)
                     {
+                        @* #948: a single header with the #946 identity strip (the card's own
+                           header is suppressed via ShowHeader=false), and the fields laid out
+                           in labeled sections (Sectioned=true). The Graph pane passes neither,
+                           so its Node details stays the flat card. *@
                         <div class="pane-header">
                             <div>
                                 <h3 class="panel-title">@selectedNode.Label</h3>
-                                <p class="muted-text">One workflow node — the same card as the Graph pane's Node details.</p>
+                                <p class="pane-identity muted-text">
+                                    <span class="pane-identity__item">id <code>@selectedNode.Id</code></span>
+                                    <span class="pane-identity__sep"> · </span>
+                                    <span class="pane-identity__item">@NodeKindLabel(selectedNode)</span>
+                                </p>
                             </div>
-                            @PaneDiscardButton(NodeKeyFor(selectedNode.Id), NodeCanDiscard(selectedNode), () => RevertNodeEdits(selectedNode.Id, selectedNode.Prompt))
+                            <div class="pane-header__actions">
+                                @if (!selectedNode.IsResult)
+                                {
+                                    <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit"
+                                                  IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                  @onclick="() => RemoveNodeAsync(selectedNode.Id)">Remove node</FluentButton>
+                                }
+                                @PaneDiscardButton(NodeKeyFor(selectedNode.Id), NodeCanDiscard(selectedNode), () => RevertNodeEdits(selectedNode.Id, selectedNode.Prompt))
+                            </div>
                         </div>
                         <WorkflowNodeSummary Inputs="@DeclaredInputIds"
                                              Nodes="@EffectiveNodes"
                                              Only="@selectedNode.Id"
                                              Editable="true"
+                                             ShowHeader="false"
+                                             Sectioned="true"
                                              Scalars="@ScalarIds"
                                              Collections="@CollectionIds"
                                              ArrayInputs="@ArrayInputIds"
@@ -1724,44 +1742,18 @@
                                              OnVariableAdded="OnVariableAddedAsync"
                                              OnNodeChanged="OnNodeChangedAsync"
                                              OnAggregateChanged="OnAggregateChangedAsync"
-                                             OnNodeRemoved="RemoveNodeAsync" />
-                        @* #822 (v18): the node's own condition gate. A classifier
-                           always runs to make its decision, so it carries none. *@
+                                             OnNodeRemoved="RemoveNodeAsync"
+                                             OptionsExtra="@NodePlainTextToggle(selectedNode)" />
+                        @* #822 (v18): the node's own condition gate, now a labeled section. A
+                           classifier always runs to make its decision, so it carries none. *@
                         @if (EffectiveSpecVersion >= 18 && !selectedNode.IsClassifier)
                         {
-                            <div class="node-when-editor">
-                                <h4 class="panel-subtitle">Runs when</h4>
-                                <p class="muted-text">Leave empty to always run. When the condition does not hold, this node — and every deliverable that needs it — is skipped.</p>
-                                @ConditionEditor(NodeConditionTarget(selectedNode))
-                            </div>
-                        }
-                        @* #831: the prompt's plain-text (raw) setting, surfaced here so a
-                           template/prompt node can be set on its own pane. raw is a PROMPT
-                           property, shared by every node using that prompt. Offered for a
-                           declared prompt at v15+; #832: disabled (not hidden) when the
-                           prompt has variables, since plain text interpolates nothing. *@
-                        @if (EffectiveSpecVersion >= 15
-                             && selectedNode.Prompt is { } nodePrompt && IsRawTogglablePrompt(nodePrompt)
-                             && EffectivePrompts.FirstOrDefault(p => p.Id == nodePrompt) is { } promptView)
-                        {
-                            var hasVariables = EffectiveVariables(promptView).Any();
-                            <div class="node-plain-text prompt-raw-row">
-                                <label class="prompt-raw">
-                                    <input type="checkbox"
-                                           checked="@EffectivePromptRaw(nodePrompt)"
-                                           disabled="@hasVariables"
-                                           @onchange="args => SetPromptRawAsync(nodePrompt, args.Value is bool isChecked && isChecked)"
-                                           aria-label="@($"Send prompt {nodePrompt} as plain text (no Scriban)")" />
-                                    <span>Plain text — sent verbatim, no Scriban templating</span>
-                                </label>
-                                @if (hasVariables)
-                                {
-                                    <p class="muted-text">Unavailable while the prompt '@nodePrompt' uses variables — plain text is sent verbatim and can't interpolate. Remove its variables to send it as plain text.</p>
-                                }
-                                else
-                                {
-                                    <p class="muted-text">This edits the prompt '@nodePrompt' (used by any node with that prompt). Unchecked, it is rendered with Scriban templating.</p>
-                                }
+                            <div class="node-section">
+                                <span class="node-section__head">Runs when</span>
+                                <div class="node-when-editor">
+                                    <p class="muted-text">Leave empty to always run. When the condition does not hold, this node — and every deliverable that needs it — is skipped.</p>
+                                    @ConditionEditor(NodeConditionTarget(selectedNode))
+                                </div>
                             </div>
                         }
                     }
@@ -6499,6 +6491,45 @@
 
     private ConditionTarget NodeConditionTarget(WorkflowManifestReader.NodeView node) =>
         new($"node-when:{node.Id}", node.Id, NodeWhenValue(node), text => SetNodeWhen(node.Id, text));
+
+    // #948: the node's kind as it reads in the pane's identity strip.
+    private static string NodeKindLabel(WorkflowManifestReader.NodeView node) =>
+        node.IsClassifier ? "classifier"
+        : node.IsCheck ? "check"
+        : node.IsTemplate ? "template"
+        : node.Aggregate != null ? "aggregator"
+        : "prompt node";
+
+    // #948: the prompt's plain-text (raw) toggle — a PROMPT property shared by every node
+    // using it (#831) — injected into the node pane's Options section via OptionsExtra.
+    // Offered for a declared prompt at v15+; disabled (not hidden) when the prompt has
+    // variables, since plain text interpolates nothing (#832).
+    private RenderFragment NodePlainTextToggle(WorkflowManifestReader.NodeView node) => @<text>
+        @if (EffectiveSpecVersion >= 15
+             && node.Prompt is { } nodePrompt && IsRawTogglablePrompt(nodePrompt)
+             && EffectivePrompts.FirstOrDefault(p => p.Id == nodePrompt) is { } promptView)
+        {
+            var hasVariables = EffectiveVariables(promptView).Any();
+            <div class="node-plain-text prompt-raw-row">
+                <label class="prompt-raw">
+                    <input type="checkbox"
+                           checked="@EffectivePromptRaw(nodePrompt)"
+                           disabled="@hasVariables"
+                           @onchange="args => SetPromptRawAsync(nodePrompt, args.Value is bool isChecked && isChecked)"
+                           aria-label="@($"Send prompt {nodePrompt} as plain text (no Scriban)")" />
+                    <span>Plain text — sent verbatim, no Scriban templating</span>
+                </label>
+                @if (hasVariables)
+                {
+                    <p class="muted-text">Unavailable while the prompt '@nodePrompt' uses variables — plain text is sent verbatim and can't interpolate. Remove its variables to send it as plain text.</p>
+                }
+                else
+                {
+                    <p class="muted-text">This edits the prompt '@nodePrompt' (used by any node with that prompt). Unchecked, it is rendered with Scriban templating.</p>
+                }
+            </div>
+        }
+    </text>;
 
     private string? NodeWhenValue(WorkflowManifestReader.NodeView node) =>
         nodeWhenEdits.TryGetValue(node.Id, out var edited) ? edited : node.When;
