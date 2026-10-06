@@ -4,13 +4,39 @@
 <div class="pane-header">
     <div>
         <h3 class="panel-title">@Title</h3>
-        <p class="muted-text">
-            @Subtitle
-            @if (Modified)
-            {
-                <strong> — edited</strong>
-            }
-        </p>
+        @{
+            // #946: the identity strip — id (unless it is already the title) and file,
+            // read-only and greyed, so every pane names itself the same way.
+            var showId = !string.IsNullOrEmpty(IdentityId) && IdentityId != Title;
+            var showFile = !string.IsNullOrEmpty(IdentityFile);
+        }
+        @if (showId || showFile)
+        {
+            <p class="pane-identity muted-text">
+                @if (showId)
+                {
+                    <span class="pane-identity__item">id <code>@IdentityId</code></span>
+                }
+                @if (showId && showFile)
+                {
+                    <span class="pane-identity__sep"> · </span>
+                }
+                @if (showFile)
+                {
+                    <span class="pane-identity__item">file <code>@IdentityFile</code></span>
+                }
+            </p>
+        }
+        @if (!string.IsNullOrEmpty(Subtitle) || Modified)
+        {
+            <p class="muted-text">
+                @Subtitle
+                @if (Modified)
+                {
+                    <strong> — edited</strong>
+                }
+            </p>
+        }
     </div>
     @if (HeaderActions != null)
     {
@@ -49,6 +75,10 @@
 @code {
     [Parameter] public string Title { get; set; } = string.Empty;
     [Parameter] public string Subtitle { get; set; } = string.Empty;
+    // #946: the read-only identity strip — the id (shown only when it is not already
+    // the title) and the file path, so every pane surfaces its metadata uniformly.
+    [Parameter] public string? IdentityId { get; set; }
+    [Parameter] public string? IdentityFile { get; set; }
     [Parameter] public string EditLabel { get; set; } = "Content";
     [Parameter] public string Text { get; set; } = string.Empty;
     [Parameter] public bool Modified { get; set; }
