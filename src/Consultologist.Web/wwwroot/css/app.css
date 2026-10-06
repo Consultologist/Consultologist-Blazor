@@ -563,6 +563,20 @@ header.header.app-header {
 	overflow-wrap: break-word;
 }
 
+/* #946: the entity pane's read-only identity strip (id · file), quiet and greyed. */
+.pane-identity {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.15rem 0.6rem;
+	margin: 0;
+	font-size: 0.8rem;
+}
+
+.pane-identity__item,
+.pane-identity__sep {
+	color: var(--consultologist-text-muted);
+}
+
 .panel-description,
 .muted-text {
 	margin: 0;
