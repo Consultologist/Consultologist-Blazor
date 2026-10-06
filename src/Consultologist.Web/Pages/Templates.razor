@@ -1235,7 +1235,7 @@
                                             @* v10 (#498): the expression builder — one clause is
                                                the v9 editor exactly; at 10 clauses join, group and
                                                negate, and a number may carry one arithmetic term. *@
-                                            @ConditionField(("", DocumentConditionTarget(deliverable)))
+                                            @ConditionField(("", DocumentConditionTarget(deliverable), "Always produced"))
                                         }
                                         </section>
 
@@ -1319,7 +1319,7 @@
                                                        line beneath the control row — so the rows stay aligned and
                                                        the condition builder has room to expand. *@
                                                     <span class="result-macro-when">
-                                                        @ConditionField(("Gated when", MacroWhenTarget(deliverable, macroEntry)))
+                                                        @ConditionField(("Gated when", MacroWhenTarget(deliverable, macroEntry), "Always produced"))
                                                     </span>
                                                 }
                                                 </div>
@@ -1721,6 +1721,19 @@
                                 @PaneDiscardButton(NodeKeyFor(selectedNode.Id), NodeCanDiscard(selectedNode), () => RevertNodeEdits(selectedNode.Id, selectedNode.Prompt))
                             </div>
                         </div>
+                        @* #952: the node's gate — its "Produced when" — leads the pane, right after
+                           the header, resting quietly as "Always run" when ungated (#936 ConditionField).
+                           A classifier always runs to make its decision, so it carries none. *@
+                        @if (EffectiveSpecVersion >= 18 && !selectedNode.IsClassifier)
+                        {
+                            <div class="node-section">
+                                <span class="node-section__head">Runs when</span>
+                                <div class="node-when-editor">
+                                    <p class="muted-text">Leave empty to always run. When the condition does not hold, this node — and every deliverable that needs it — is skipped.</p>
+                                    @ConditionField(("", NodeConditionTarget(selectedNode), "Always run"))
+                                </div>
+                            </div>
+                        }
                         <WorkflowNodeSummary Inputs="@DeclaredInputIds"
                                              Nodes="@EffectiveNodes"
                                              Only="@selectedNode.Id"
@@ -1786,18 +1799,6 @@
                                         </label>
                                     }
                                 </WorkflowEditorPane>
-                            </div>
-                        }
-                        @* #822 (v18): the node's own condition gate, now a labeled section. A
-                           classifier always runs to make its decision, so it carries none. *@
-                        @if (EffectiveSpecVersion >= 18 && !selectedNode.IsClassifier)
-                        {
-                            <div class="node-section">
-                                <span class="node-section__head">Runs when</span>
-                                <div class="node-when-editor">
-                                    <p class="muted-text">Leave empty to always run. When the condition does not hold, this node — and every deliverable that needs it — is skipped.</p>
-                                    @ConditionEditor(NodeConditionTarget(selectedNode))
-                                </div>
                             </div>
                         }
                     }
@@ -2104,7 +2105,7 @@
                                         @if (EffectiveSpecVersion >= 12)
                                         {
                                             <span class="result-macro-when">
-                                                @ConditionField(("Gated when", MacroWhenTarget(result, entry)))
+                                                @ConditionField(("Gated when", MacroWhenTarget(result, entry), "Always produced"))
                                             </span>
                                         }
                                         @if (EffectiveSpecVersion >= 20 && entry.IsSlot)
@@ -2323,7 +2324,7 @@
   /// the shared <see cref="ConditionEditor"/>. A verbatim or non-empty condition
   /// shows the builder directly — content worth seeing.
   /// </summary>
-  private RenderFragment<(string Label, ConditionTarget Target)> ConditionField => spec =>
+  private RenderFragment<(string Label, ConditionTarget Target, string RestingLabel)> ConditionField => spec =>
     @<text>
       <div class="condition-field">
         @if (!string.IsNullOrEmpty(spec.Label))
@@ -2339,7 +2340,7 @@
         {
           <FluentButton Appearance="Appearance.Stealth" Class="condition-field__resting"
                         aria-label="@($"Add a condition for {spec.Target.Subject}")"
-                        @onclick="() => { _expandedConditions.Add(spec.Target.Key); }">Always produced</FluentButton>
+                        @onclick="() => { _expandedConditions.Add(spec.Target.Key); }">@spec.RestingLabel</FluentButton>
         }
         else
         {
@@ -2348,7 +2349,7 @@
           {
             <FluentButton Appearance="Appearance.Stealth" Class="condition-field__collapse"
                           aria-label="@($"Collapse condition for {spec.Target.Subject}")"
-                          @onclick="() => CollapseConditionAsync(spec.Target)">always produced</FluentButton>
+                          @onclick="() => CollapseConditionAsync(spec.Target)">@spec.RestingLabel</FluentButton>
           }
         }
       </div>
