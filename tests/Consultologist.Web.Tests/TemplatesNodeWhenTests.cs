@@ -105,7 +105,22 @@ public class TemplatesNodeWhenTests : ClientRenderTestContext
         ShowNode(page, "draft-section");
 
         Assert.NotEmpty(page.FindAll(".node-when-editor"));
+        // #952: the gate rests quietly as "Always run" until opened (the #936 ConditionField).
+        Assert.NotEmpty(page.FindAll(".condition-field__resting"));
+        page.Find("[aria-label='Add a condition for draft-section']").Click();
         Assert.NotEmpty(page.FindAll("[aria-label='Condition operand for draft-section']"));
+    }
+
+    [Fact]
+    public void At18_TheRunsWhenGate_RestsAsAlwaysRun_AndLeadsThePane()
+    {
+        var page = RenderEditor(18);
+        ShowNode(page, "draft-section");
+
+        // #952: an ungated node rests as a quiet "Always run" control.
+        Assert.Equal("Always run", page.Find(".node-when-editor .condition-field__resting").TextContent.Trim());
+        // …and "Runs when" leads the pane — it is the first sub-section, before the node card's sections.
+        Assert.Equal("Runs when", page.FindAll(".node-section__head").First().TextContent.Trim());
     }
 
     [Fact]
@@ -137,7 +152,8 @@ public class TemplatesNodeWhenTests : ClientRenderTestContext
         ShowNode(page, "draft-section");
 
         // The same condition builder the deliverable when uses; the node's id
-        // is the subject in every control's aria-label.
+        // is the subject in every control's aria-label. #952: open the resting gate first.
+        page.Find("[aria-label='Add a condition for draft-section']").Click();
         page.Find("[aria-label='Condition operand for draft-section']").Change("encounter_kind");
         page.Find("[aria-label='Condition operator for draft-section']").Change("==");
         page.Find("[aria-label='Condition value for draft-section']").Change("follow_up");
