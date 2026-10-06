@@ -1742,8 +1742,52 @@
                                              OnVariableAdded="OnVariableAddedAsync"
                                              OnNodeChanged="OnNodeChangedAsync"
                                              OnAggregateChanged="OnAggregateChangedAsync"
-                                             OnNodeRemoved="RemoveNodeAsync"
-                                             OptionsExtra="@NodePlainTextToggle(selectedNode)" />
+                                             OnNodeRemoved="RemoveNodeAsync" />
+                        @* #949: the node's bound prompt, edited in place — the full prompt editor
+                           (text + live preview + shared prelude + plain-text toggle) reusing the
+                           same files/handlers as the Prompts pane, so editing from either pane is
+                           the same edit. A classifier drives a prompt too, so gate on the prompt,
+                           not the kind. The variables stay in the Inputs section (the node's
+                           bindings). Node-pane-only — the shared card is untouched. *@
+                        @if (selectedNode.Prompt is { } nodePrompt && EffectivePrompts.FirstOrDefault(p => p.Id == nodePrompt) is { } promptView)
+                        {
+                            <div class="node-section">
+                                <span class="node-section__head">Prompt text</span>
+                                @{ var alsoUsedBy = NodesUsingPrompt(nodePrompt).Where(n => n.Id != selectedNode.Id).Select(n => n.Id).ToList(); }
+                                @if (alsoUsedBy.Count > 0)
+                                {
+                                    <p class="muted-text">Shared prompt <code>@promptView.File</code> — also used by @(string.Join(", ", alsoUsedBy.Select(n => $"'{n}'"))). Editing here changes it for all of them.</p>
+                                }
+                                <WorkflowEditorPane ShowHeader="false" EditLabel="Prompt text"
+                                                    Text="@GetText(promptView.File)"
+                                                    Raw="@EffectivePromptRaw(nodePrompt)"
+                                                    TextChanged="@(value => OnTextChangedAsync(promptView.File, value))">
+                                    @NodePlainTextToggle(selectedNode)
+                                    @* #747: the prompt's shared prelude — same control as the Prompts pane. *@
+                                    @if (IsDeclaredPrompt(nodePrompt) && (LivePreludes.Any() || EffectivePromptPrelude(nodePrompt) != null))
+                                    {
+                                        var chosenNodePrelude = EffectivePromptPrelude(nodePrompt);
+                                        <label class="prompt-prelude node-field">
+                                            <span>shared prelude</span>
+                                            <FluentSelect TOption="string" class="binding-row__select"
+                                                    Value="@(chosenNodePrelude ?? string.Empty)"
+                                                    ValueChanged="@(v => SetPromptPreludeAsync(nodePrompt, v))"
+                                                    aria-label="@($"Prelude for prompt {nodePrompt}")">
+                                                <FluentOption TOption="string" Value="">— none —</FluentOption>
+                                                @if (chosenNodePrelude != null && !LivePreludes.Any(option => option.Id == chosenNodePrelude))
+                                                {
+                                                    <FluentOption TOption="string" Value="@chosenNodePrelude">@chosenNodePrelude</FluentOption>
+                                                }
+                                                @foreach (var option in LivePreludes)
+                                                {
+                                                    <FluentOption TOption="string" Value="@option.Id">@option.Id</FluentOption>
+                                                }
+                                            </FluentSelect>
+                                        </label>
+                                    }
+                                </WorkflowEditorPane>
+                            </div>
+                        }
                         @* #822 (v18): the node's own condition gate, now a labeled section. A
                            classifier always runs to make its decision, so it carries none. *@
                         @if (EffectiveSpecVersion >= 18 && !selectedNode.IsClassifier)
