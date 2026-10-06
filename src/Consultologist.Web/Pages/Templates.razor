@@ -563,8 +563,8 @@
                                     <button type="button"
                                             class="editor-nav__item editor-nav__item--nested @(selectedKey == item.File ? "editor-nav__item--selected" : "")"
                                             @onclick="() => Select(item.File)">
-                                        <span class="editor-nav__dot">@(edits.ContainsKey(item.File) ? "●" : "")</span>
-                                        <span>@item.Name</span>
+                                        <span class="editor-nav__dot">@(edits.ContainsKey(item.File) || standardNameEdits.ContainsKey(item.File) ? "●" : "")</span>
+                                        <span>@StandardName(item)</span>
                                     </button>
                                 }
                             }
@@ -708,7 +708,9 @@
                     else if (SelectedScalar() is { } scalar)
                     {
                         <WorkflowEditorPane Title="@scalar.Id"
-                                            Subtitle="@(addedScalars.ContainsKey(scalar.Id) ? $"{scalar.Path} — new, unpublished" : scalar.Path)"
+                                            Subtitle="@(addedScalars.ContainsKey(scalar.Id) ? "— new, unpublished" : string.Empty)"
+                                            IdentityId="@scalar.Id"
+                                            IdentityFile="@scalar.Path"
                                             EditLabel="Value"
                                             Text="@GetText(scalar.Path)"
                                             Modified="@ScalarHasPending(scalar)"
@@ -745,7 +747,9 @@
                     else if (SelectedAdded() is { } addedItem)
                     {
                         <WorkflowEditorPane Title="@addedItem.Name"
-                                            Subtitle="@($"{AddedPath(addedItem)} — new, unpublished")"
+                                            Subtitle="— new, unpublished"
+                                            IdentityId="@addedItem.Id"
+                                            IdentityFile="@AddedPath(addedItem)"
                                             EditLabel="Standard"
                                             Text="@addedItem.Content"
                                             Modified="true"
@@ -1763,8 +1767,9 @@
                     }
                     else if (SelectedStandard() is { } standard)
                     {
-                        <WorkflowEditorPane Title="@standard.Name"
-                                            Subtitle="@standard.File"
+                        <WorkflowEditorPane Title="@StandardName(standard)"
+                                            IdentityId="@standard.Id"
+                                            IdentityFile="@standard.File"
                                             EditLabel="Standard"
                                             Text="@GetText(standard.File)"
                                             Modified="@edits.ContainsKey(standard.File)"
@@ -1776,6 +1781,14 @@
                                 </FluentButton>
                             </HeaderActions>
                             <ChildContent>
+                                @* #946: the standard's display name — an editable index.json field. *@
+                                <label class="node-field">
+                                    <span>name</span>
+                                    <input class="node-field__input"
+                                           value="@StandardName(standard)"
+                                           @onchange="args => RenameStandardAsync(standard, args.Value?.ToString())"
+                                           aria-label="@($"Name for standard {standard.Id}")" />
+                                </label>
                                 <p class="muted-text">
                                     Standards guide organization and tone only. Patient facts still come from the draft consult.
                                 </p>
@@ -1785,7 +1798,8 @@
                     else if (SelectedPrompt() is { } prompt)
                     {
                         <WorkflowEditorPane Title="@prompt.Id"
-                                            Subtitle="@prompt.File"
+                                            IdentityId="@prompt.Id"
+                                            IdentityFile="@prompt.File"
                                             EditLabel="Prompt text"
                                             Text="@GetText(prompt.File)"
                                             Modified="@(edits.ContainsKey(prompt.File) || AddedNodeForPromptFile(prompt.File) != null || AddedPromptForFile(prompt.File) != null)"
@@ -1929,7 +1943,8 @@
                     else if (SelectedPrelude() is { } prelude)
                     {
                         <WorkflowEditorPane Title="@prelude.Id"
-                                            Subtitle="@prelude.File"
+                                            IdentityId="@prelude.Id"
+                                            IdentityFile="@prelude.File"
                                             EditLabel="Prelude text"
                                             Text="@GetText(prelude.File)"
                                             Modified="@(edits.ContainsKey(prelude.File) || AddedPreludeForFile(prelude.File) != null)"
@@ -1966,13 +1981,22 @@
                     }
                     else if (SelectedMacro() is { } macro)
                     {
-                        <WorkflowEditorPane Title="@macro.Id"
-                                            Subtitle="@macro.File"
+                        <WorkflowEditorPane Title="@macro.Label"
+                                            IdentityId="@macro.Id"
+                                            IdentityFile="@macro.File"
                                             EditLabel="Macro text"
                                             Text="@GetText(macro.File)"
                                             Modified="@(edits.ContainsKey(macro.File) || AddedMacroForFile(macro.File) != null)"
                                             TextChanged="@(value => OnTextChangedAsync(macro.File, value))">
                             @PaneDiscardButton(macro.File, MacroCanDiscard(macro), () => RevertMacroEdits(macro.File, macro.Id))
+                            @* #946: the macro's display label — an editable manifest field (macros[].label). *@
+                            <label class="node-field">
+                                <span>label</span>
+                                <input class="node-field__input"
+                                       value="@macro.Label"
+                                       @onchange="args => RelabelMacroAsync(macro.Id, args.Value?.ToString())"
+                                       aria-label="@($"Label for macro {macro.Id}")" />
+                            </label>
                             @{
                                 @* #936: which documents this macro is attached to — used by the
                                    Remove-macro button's reach note (below) and, since #940, edited
@@ -3040,6 +3064,13 @@
             // v12 § 3 (#621): pending optional/default edits on declared macros.
             new("macroEdits", () => macroEdits.Count, macroEdits.Clear,
                 () => $"{macroEdits.Count} macro {Plural(macroEdits.Count, "choice")}", () => macroEdits.Count > 0),
+            // #946: pending display-label edits on declared macros (writes macros[].label).
+            new("macroLabelEdits", () => macroLabelEdits.Count, macroLabelEdits.Clear,
+                () => $"{macroLabelEdits.Count} macro {Plural(macroLabelEdits.Count, "label")}", () => macroLabelEdits.Count > 0),
+            // #946: pending data-item name edits (writes the collection's index.json,
+            // not the manifest — AffectsManifest is false, like file-body edits).
+            new("standardNameEdits", () => standardNameEdits.Count, standardNameEdits.Clear,
+                () => $"{standardNameEdits.Count} standard {Plural(standardNameEdits.Count, "name")}", () => false),
             // v15 (#731): pending raw toggles on declared prompts.
             new("promptRawEdits", () => promptRawEdits.Count, promptRawEdits.Clear,
                 () => $"{promptRawEdits.Count} raw {Plural(promptRawEdits.Count, "prompt")}", () => promptRawEdits.Count > 0),
@@ -3405,6 +3436,40 @@
     private IReadOnlyList<WorkflowManifestReader.PromptView> prompts = Array.Empty<WorkflowManifestReader.PromptView>();
     private IReadOnlyList<WorkflowManifestReader.NodeView> nodes = Array.Empty<WorkflowManifestReader.NodeView>();
     private IReadOnlyList<WorkflowManifestReader.CollectionView> collections = Array.Empty<WorkflowManifestReader.CollectionView>();
+
+    // #946: a data-item's edited display name (its collection's index.json items[].name),
+    // keyed by the item's file path, self-removing when it equals the loaded value.
+    private readonly Dictionary<string, string> standardNameEdits = new(StringComparer.Ordinal);
+
+    // #946: the item's display name with any pending rename applied.
+    private string StandardName(WorkflowManifestReader.DataItemView item) =>
+        standardNameEdits.TryGetValue(item.File, out var name) ? name : item.Name;
+
+    // #946: rename a data-item's display name — writes its index.json items[].name.
+    private async Task RenameStandardAsync(WorkflowManifestReader.DataItemView item, string? value)
+    {
+        var name = (value ?? string.Empty).Trim();
+        if (name.Length == 0)
+        {
+            declaredError = $"Standard '{item.Id}' has no name.";
+            return;
+        }
+
+        if (item.Name == name)
+        {
+            standardNameEdits.Remove(item.File);
+        }
+        else
+        {
+            standardNameEdits[item.File] = name;
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    // #946: does a collection carry a pending item-name rename? (gates index.json recompose.)
+    private bool CollectionHasNameEdits(WorkflowManifestReader.CollectionView collection) =>
+        standardNameEdits.Keys.Any(file => file.StartsWith(collection.Directory, StringComparison.Ordinal));
 
     // Path -> edited text, only where it differs from the loaded package;
     // mirrored to localStorage so drafts survive refresh on this browser.
@@ -3874,6 +3939,11 @@
 
     private readonly Dictionary<string, (bool Optional, bool? Default)> macroEdits = new(StringComparer.Ordinal);
 
+    // #946: a declared macro's edited display label (macros[].label), self-removing
+    // when it equals the loaded value — the RelabelInputAsync idiom, kept apart from
+    // the optional/default pair above.
+    private readonly Dictionary<string, string> macroLabelEdits = new(StringComparer.Ordinal);
+
     private readonly List<AddedMacro> addedMacros = new();
     private string? newMacroId;
     private string? newMacroLabel;
@@ -3911,6 +3981,40 @@
             else
             {
                 macroEdits[macroId] = next;
+            }
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    // #946: a macro's display label (macros[].label), editable from the macro pane.
+    // A pending (added) macro edits in place; a declared one rides macroLabelEdits,
+    // self-removing when it equals the manifest again. A macro must carry a label.
+    private async Task RelabelMacroAsync(string macroId, string? value)
+    {
+        var label = (value ?? string.Empty).Trim();
+        if (label.Length == 0)
+        {
+            declaredError = $"Macro '{macroId}' has no label.";
+            return;
+        }
+
+        if (addedMacros.FirstOrDefault(m => m.Id == macroId) is { } pending)
+        {
+            pending.Label = label;
+        }
+        else
+        {
+            var declared = content == null
+                ? null
+                : WorkflowManifestReader.ReadMacros(content.Manifest).FirstOrDefault(m => m.Id == macroId);
+            if (declared?.Label == label)
+            {
+                macroLabelEdits.Remove(macroId);
+            }
+            else
+            {
+                macroLabelEdits[macroId] = label;
             }
         }
 
@@ -3958,6 +4062,8 @@
         .Select(m => macroEdits.TryGetValue(m.Id, out var edit)
             ? m with { Optional = edit.Optional ? true : null, Default = edit.Default }
             : m)
+        // #946: a pending label edit is effective everywhere (title, field, nav).
+        .Select(m => macroLabelEdits.TryGetValue(m.Id, out var label) ? m with { Label = label } : m)
         .Concat(addedMacros.Select(m => new WorkflowManifestReader.MacroView(
             m.Id, m.Label, AddedMacroFile(m.Id), m.Optional ? true : null, m.Default)))
         .ToList();
@@ -8332,6 +8438,10 @@
 
     private sealed record DraftMacroEdit(string Id, bool Optional, bool? Default = null);
 
+    // #946: a declared macro's pending label, and a data-item's pending name.
+    private sealed record DraftMacroLabel(string Id, string Label);
+    private sealed record DraftStandardName(string File, string Name);
+
     // v18 (#822): a pending node when — its own list, mirroring how the dict is
     // kept apart from nodeEdits. A null When is a clearing.
     private sealed record DraftNodeWhen(string NodeId, string? When);
@@ -8393,7 +8503,11 @@
         List<string>? AddedSchemas = null,
         // v18 (#822): pending node-when conditions. Trailing optional — a draft
         // written before restores with none.
-        List<DraftNodeWhen>? NodeWhenEdits = null);
+        List<DraftNodeWhen>? NodeWhenEdits = null,
+        // #946: pending macro label edits + standard (data-item) name edits.
+        // Trailing optional — a draft written before restores with none.
+        List<DraftMacroLabel>? MacroLabels = null,
+        List<DraftStandardName>? StandardNames = null);
 
     // #815: the undo/redo stacks persisted beside the draft. Each entry is a
     // serialized DraftPayload (or null for the clean state); Version tracks the
@@ -8644,6 +8758,29 @@
             if (WorkflowManifestReader.ReadMacros(content!.Manifest).Any(m => m.Id == draftMacroEdit.Id))
             {
                 macroEdits[draftMacroEdit.Id] = (draftMacroEdit.Optional, draftMacroEdit.Default);
+            }
+        }
+
+        // #946: a drafted macro label is kept only while the macro is still declared.
+        foreach (var draftMacroLabel in payload.MacroLabels ?? new List<DraftMacroLabel>())
+        {
+            if (WorkflowManifestReader.ReadMacros(content!.Manifest).Any(m => m.Id == draftMacroLabel.Id))
+            {
+                macroLabelEdits[draftMacroLabel.Id] = draftMacroLabel.Label;
+            }
+        }
+
+        // #946: a drafted standard name is kept only while that item file still exists.
+        if ((payload.StandardNames?.Count ?? 0) > 0)
+        {
+            var loadedItemFiles = WorkflowManifestReader.ReadCollections(content!.Manifest, content!.Files)
+                .SelectMany(c => c.Items).Select(item => item.File).ToHashSet(StringComparer.Ordinal);
+            foreach (var draftStandardName in payload.StandardNames!)
+            {
+                if (loadedItemFiles.Contains(draftStandardName.File))
+                {
+                    standardNameEdits[draftStandardName.File] = draftStandardName.Name;
+                }
             }
         }
 
@@ -8981,7 +9118,9 @@
             removedPreludeIds.ToList(),
             promptPreludeEdits.Select(pair => new DraftPromptPreludeEdit(pair.Key, pair.Value)).ToList(),
             addedSchemas.ToList(),
-            nodeWhenEdits.Select(pair => new DraftNodeWhen(pair.Key, pair.Value)).ToList());
+            nodeWhenEdits.Select(pair => new DraftNodeWhen(pair.Key, pair.Value)).ToList(),
+            macroLabelEdits.Select(pair => new DraftMacroLabel(pair.Key, pair.Value)).ToList(),
+            standardNameEdits.Select(pair => new DraftStandardName(pair.Key, pair.Value)).ToList());
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -9183,7 +9322,8 @@
 
         var items = collection.Items
             .Where(item => !removedFiles.Contains(item.File))
-            .Select(item => new { id = item.Id, name = item.Name, file = item.File[collection.Directory.Length..] })
+            // #946: apply any pending rename to the item's name.
+            .Select(item => new { id = item.Id, name = StandardName(item), file = item.File[collection.Directory.Length..] })
             .Concat(addedItems
                 .Where(a => a.Collection == collection.Id)
                 .Select(a => new { id = a.Id, name = a.Name, file = $"{a.Id}.md" }))
@@ -9778,7 +9918,8 @@
         // the authority on the result.
         foreach (var collection in EffectiveCollections)
         {
-            if (CollectionHasMembershipChanges(collection) || addedCollections.Contains(collection.Id))
+            if (CollectionHasMembershipChanges(collection) || addedCollections.Contains(collection.Id)
+                || CollectionHasNameEdits(collection))
             {
                 files[collection.Directory + "index.json"] = ComposeIndexJson(collection);
             }
@@ -10488,6 +10629,29 @@
                             declaration["default"] = chosenDefault;
                         }
                     }
+                }
+            }
+        }
+
+        // #946: a declared macro's relabelled display name writes macros[].label
+        // (both casings cleared first, like the optional/default pair above).
+        if (macroLabelEdits.Count > 0)
+        {
+            var macrosKey = root["Macros"] is not null ? "Macros" : "macros";
+            if (root[macrosKey] is System.Text.Json.Nodes.JsonArray declaredMacros)
+            {
+                foreach (var (editedMacroId, label) in macroLabelEdits)
+                {
+                    if (declaredMacros
+                        .OfType<System.Text.Json.Nodes.JsonObject>()
+                        .FirstOrDefault(m => (m["id"] ?? m["Id"])?.GetValue<string>() == editedMacroId) is not { } declaration)
+                    {
+                        continue;
+                    }
+
+                    declaration.Remove("label");
+                    declaration.Remove("Label");
+                    declaration["label"] = label;
                 }
             }
         }
