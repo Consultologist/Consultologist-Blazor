@@ -78,18 +78,19 @@ New record `WorkflowNodeMacroSpec`:
 |---|---|---|
 | `id` | reference into `manifest.macros` — **the same field `results[].macros[]` uses**, so the two attachment records share their reference + `when` shape | yes |
 | `at` | `"before"` \| `"after"` the prompt (the host-dependent placement axis — a deliverable instead uses source-relative `before`/`after` + `slot`) | yes |
-| `when` | condition, **node-level grammar** (`input:`/`node:`/`data:` — identical to the node's own `when`); absent = always | no |
+| `when` | condition, **node-level grammar** (`input:`/`node:` — identical to the node's own `when`; the evaluator has no `data:` operand); absent = always | no |
 | `optional` | per-run choice (mirrors the library macro's `optional`) | no |
 
 Like `WorkflowResultMacroSpec`, the wire form is either a bare id string (`"snomed-tool-guidance"`
 = `before`, always) or a placement object. **The attachment is an object from day one** — the
 forward-compat decision that lets Phase 2 add fields without a shape break.
 
-### Token vocabulary — add `{{data:}}`
-The shared macro token set gains `{{data:}}` (collection reference), available to **both**
-output and node macros. Output macros therefore gain `{{data:}}` too — the one deliberate
-touch to the existing output path. All tokens (`input:`/`data:`/`run:`/`profile:`) are
-**run-global**, so node macros stay inside the node-level scope (no per-item variation).
+### Token vocabulary — already shared (no change in Phase 1)
+Node macros reuse the **existing** macro token engine (`ConsultMacroExpander.Expand`), whose set
+is `{{input:}}`/`{{data:}}` (scalar)/`{{classification:}}`/`{{run:}}`/`{{profile:}}`. `{{data:}}`
+**already exists** (it resolves a scalar data value), so there is **no token work** and **output
+macros are untouched** in Phase 1. Every token is **run-global**, so node macros stay inside the
+node-level scope (no per-item variation). (`{{data:}}`-as-*collection* and `{{item:}}` are Phase 2.)
 
 ## Prelude migration (v22 → v23, done by the editor's "Upgrade to specVersion 23")
 
@@ -137,10 +138,12 @@ but the composed-prompt hash already captures the effect.
 
 - `nodes[].macros[].id` must resolve to a `manifest.macros` entry.
 - `at ∈ {before, after}`.
-- `when` uses the node-level grammar only (reuse the node-`when` validator); `item:` operands
-  are rejected until Phase 2, named by the required specVersion (as `when` names v18 today).
+- `when` uses the node-level grammar only (reuse the node-`when` validator, `ValidateV10Clause`);
+  it has no `item:` operand (that arrives with Phase 2).
 - The `macros` field on a node requires specVersion ≥ 23 (gated like `when` at v18).
-- `{{data:}}` tokens resolve against a declared `manifest.data` collection.
+- A node with no prompt has nothing to compose into — rejected.
+- Macro *text* tokens are already validated at the library level (`ValidateMacroPlaceholders`), so
+  node macros inherit that unchanged.
 - Conformance fixtures: valid node-macro (before/after/when), bare-id form, invalid
   (unknown macro id, `item:` below Phase 2, node-macros below v23).
 
@@ -165,9 +168,9 @@ own specVersion bump, gated by the validator (the format's established pattern �
 `forEach`, `schemaRefs` @v21, custom schemas @v22). We design the full shape now so later
 phases slot in; we do **not** define fields the engine would reject (no "valid-but-unrunnable").
 
-- **Phase 1 — v23 (this spec):** node macro attachment site, shared library, token templating
-  (+`{{data:}}`), `before`/`after`, node-level `when`, prelude migration. Scriban is **not**
-  used — token substitution reuses the macro engine.
+- **Phase 1 — v23 (this spec):** node macro attachment site, shared library, the existing token
+  templating, `before`/`after`, node-level `when`, prelude migration. Scriban is **not** used —
+  token substitution reuses the macro engine unchanged.
 - **Phase 2 — v24 (follow-up):** the per-item layer — `{{item:name}}`/`item:` tokens,
   `item:` operands in `when`, and `forItem` on node attachments → per-fan-item prompt
   variation and its per-item attestation. Also revisit **`slot` on a node macro** (when the
@@ -181,7 +184,7 @@ phases slot in; we do **not** define fields the engine would reject (no "valid-b
 **Out of scope:**
 - **Surfacing the output-macro `before/after`/`slot` placement on the node pane** — a
   separate, UI-only follow-up issue (a transposition like #940). The output macro's own
-  attachment record and Documents placement are unchanged here (beyond gaining `{{data:}}`).
+  attachment record and Documents placement are entirely unchanged here.
 - **Scriban in macros** — deliberately dropped; token substitution is the templating model.
 - **Per-item conditions/tokens** — Phase 2.
 
