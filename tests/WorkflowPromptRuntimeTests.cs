@@ -19,6 +19,33 @@ public class PromptTemplateRendererTests
         Assert.Equal("Draft:\nPatient draft text.", result);
     }
 
+    [Fact]
+    public void Render_ComposesMacroBlocks_BeforeAndAfter()
+    {
+        // v23 #955: node-macro blocks compose around the prompt — before blocks
+        // precede the body, after blocks follow it, one blank line between each.
+        var result = PromptTemplateRenderer.Render(
+            Template("Body {{ consult_draft }}."),
+            new Dictionary<string, string> { ["consult_draft"] = "x" },
+            before: new[] { "Preamble." },
+            after: new[] { "Postamble." });
+
+        Assert.Equal("Preamble.\n\nBody x.\n\nPostamble.", result);
+    }
+
+    [Fact]
+    public void Render_WithAPrelude_ComposesItAheadOfTheBeforeBlocks()
+    {
+        // A prelude (<= v22) stays the leading block; a migrated prelude arrives
+        // as a before block, so the ordering is prelude, then the before macros.
+        var result = PromptTemplateRenderer.Render(
+            Template("Body.", prelude: "Prelude."),
+            new Dictionary<string, string> { ["consult_draft"] = "x" },
+            before: new[] { "Preamble." });
+
+        Assert.Equal("Prelude.\n\nPreamble.\n\nBody.", result);
+    }
+
     // #313 (v8): a typed input reaches Scriban as its own type, so a template
     // can format a date and branch on a boolean. This is the author-visible
     // half of typing inputs — without it, typed JSON would change the spelling
