@@ -93,7 +93,11 @@ would otherwise have carried it (#397).
   licensing and the email bridge),
   [storage separation](customizable-workflow/storage-separation.md)
   (#545: four classes of state, two private accounts per region, the
-  migration order)
+  migration order),
+  [node macros design](customizable-workflow/node-macros-design.md)
+  (Milestone 28, specVersion 23: one macro type with a second — node —
+  attachment site, absorbing preludes; the data model, prelude migration,
+  renderer seam, and the v23/v24 phasing)
 
 ## Research
 
