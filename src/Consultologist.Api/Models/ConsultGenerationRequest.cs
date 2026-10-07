@@ -534,7 +534,14 @@ public sealed record ConsultNodeDescriptor(
     // #760 (custom tier): the hash of the custom schema this node runs, or null for a
     // non-custom node. Recorded as per-node provenance for the unattested output.
     // Appended last, same positional-call rule.
-    string? CustomSchemaHash = null);
+    string? CustomSchemaHash = null,
+    // v23 #955: the macros composed into this node's prompt, snapshotted from the
+    // package — each a library id, a before/after placement and an optional
+    // node-level `when`. A when that names a classifier (node:<id>) makes that
+    // classifier a scheduling dependency too (ConsultNodeScheduler.NodeDependencies),
+    // so the node waits for its answer before the when is judged. Appended last,
+    // same positional-call rule.
+    IReadOnlyList<ConsultNodeMacroDescriptor>? Macros = null);
 
 /// <summary>
 /// v12 #624 (design § 13): a check node's snapshotted declaration — the
@@ -544,6 +551,13 @@ public sealed record ConsultNodeDescriptor(
 public sealed record ConsultCheckDescriptor(string Op, string Of, string In, string FailWith);
 
 public sealed record ConsultNodeBindingDescriptor(string From, string? As = null);
+
+/// <summary>
+/// v23 #955: a macro composed into a node's prompt — the library id, whether it
+/// lands after the prompt (else before), and its optional node-level <c>when</c>
+/// (the node condition grammar; a <c>node:</c> operand is a scheduling dependency).
+/// </summary>
+public sealed record ConsultNodeMacroDescriptor(string Id, bool After, string? When = null);
 
 /// <summary>
 /// One deliverable of a v7 job, snapshotted from the resolved package's result
