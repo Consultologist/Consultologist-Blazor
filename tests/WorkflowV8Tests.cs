@@ -431,7 +431,7 @@ public class WorkflowV8ValidationTests
         // thirteen, #729 to fourteen, #731 to fifteen, #730 to sixteen, #673 to
         // seventeen, #822 to eighteen, #845 to nineteen, #863 to twenty, #923 to
         // twenty-one, #760 to twenty-two — each the ladder's last rung.
-        Assert.Equal(new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22 }, WorkflowPackageStore.SupportedSpecVersions);
+        Assert.Equal(new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23 }, WorkflowPackageStore.SupportedSpecVersions);
     }
 
     [Fact]

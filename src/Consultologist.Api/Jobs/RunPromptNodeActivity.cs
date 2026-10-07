@@ -36,7 +36,14 @@ public sealed record ConsultPromptNodeActivityInput(
     // when null (a template, or a payload snapshotted before phase 2), it falls
     // back to the global catalog. Trailing optional — replay-safe.
     string? AgentName = null,
-    string? AgentVersion = null);
+    string? AgentVersion = null,
+    // v23 #955: the node's macro blocks, resolved orchestrator-side (when-gated,
+    // tokens substituted) into verbatim text — before blocks precede the prompt,
+    // after blocks follow it. The renderer composes them so the InputHash below
+    // covers the exact prompt the model saw. Trailing optional; a payload
+    // snapshotted before v23 replays with null and the activity renders as it did.
+    IReadOnlyList<string>? Before = null,
+    IReadOnlyList<string>? After = null);
 
 /// <summary>
 /// One node run. Deserialized concepts ride the recorded activity result so Durable
@@ -164,7 +171,11 @@ public sealed class RunPromptNodeActivity
                 prompt,
                 input.Variables,
                 input.VariableTypes,
-                WorkflowVariableDeclarations.For(package.Manifest));
+                WorkflowVariableDeclarations.For(package.Manifest),
+                // v23 #955: the node's resolved macro blocks compose around the
+                // prompt here, so `sent`/InputHash below cover them.
+                input.Before,
+                input.After);
             // v12 #634 (design § 15): the first early return — the render IS
             // the answer. The catalog, the agent and the classifier trailer
             // are never touched; the validator guarantees a template never

@@ -982,7 +982,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 TerminologyServerRelease: terminology?.ServerRelease,
                 // v10 (#496): the boundary's inputs, only when there is one.
                 Deciding: deciding ? true : null,
-                SuppliedInputs: deciding ? SuppliedCarrier(inputs.Supplied) : null,
+                // v23 (#955): the orchestrator also needs the typed supplied map to
+                // judge a node macro's `when` at dispatch, so carry it when a
+                // deciding boundary needs it OR the package declares node macros.
+                SuppliedInputs: (deciding || package.Nodes.Any(node => node.Macros is { Count: > 0 }))
+                    ? SuppliedCarrier(inputs.Supplied)
+                    : null,
                 // #514: where this runs and what runs it, as Public/Engine attests.
                 ApiHost: _engine.ApiHost,
                 EngineCommit: _engine.Commit,
@@ -2828,6 +2833,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             AgentName: agentName,
             AgentVersion: agentVersion,
             // #760: the custom schema's hash, recorded for provenance on the node.
-            CustomSchemaHash: customSchemaHash);
+            CustomSchemaHash: customSchemaHash,
+            // v23 #955: the node's macro attachments, snapshotted with their
+            // placement and when so the orchestrator resolves them at run time.
+            Macros: node.Macros?
+                .Select(macro => new ConsultNodeMacroDescriptor(macro.Id, macro.IsAfter, macro.When))
+                .ToList());
     }
 }

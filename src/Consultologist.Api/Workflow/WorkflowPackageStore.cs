@@ -27,7 +27,10 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     // v21 (#923): schemaRefs — an output schema may reference a catalog contract by name.
     // v22 (#760): customSchemas — an inline user-defined output shape, run by a
     // content-addressed generic no-tool agent (unattested).
-    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22 };
+    // v23 (#955): node macros — a library macro composed into a node's prompt,
+    // before/after, gated by the node-level when; a classifier-gated one waits
+    // for its classifier (scheduling dependency).
+    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23 };
     private static readonly TimeSpan LatestPointerCacheDuration = TimeSpan.FromSeconds(60);
 
     private static readonly JsonSerializerOptions JsonOptions = new()

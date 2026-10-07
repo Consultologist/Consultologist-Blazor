@@ -72,6 +72,22 @@ public sealed class ConsultGenerationOrchestrator
                 [ConsultGenerationJobStarter.ConsultDraftInputId] = request.ConsultDraft ?? string.Empty
             };
 
+        // v23 #955: the run context a node-macro resolution needs, built once and
+        // replay-stable (every argument is an input field or the replay-safe
+        // CurrentUtcDateTime). The typed supplied map is reconstructed from the
+        // carrier the starter threads whenever a node macro might read it (a
+        // deciding job, or a package that declares node macros); it stays null
+        // otherwise, and a node with no macros never looks at it.
+        var nodeMacroFacts = new ConsultMacroExpander.RunFacts(
+            context.CurrentUtcDateTime,
+            context.InstanceId,
+            input.WorkflowPackage ?? string.Empty,
+            input.ApiHost,
+            input.ProfileName,
+            input.Signature);
+        var suppliedInputs = input.SuppliedInputs?.ToDictionary(
+            pair => pair.Key, pair => ConsultInputValue.FromJson(pair.Value), StringComparer.Ordinal);
+
         await context.Entities.CallEntityAsync(
             entityId,
             nameof(ConsultGenerationJobEntity.Initialize),
@@ -237,6 +253,8 @@ public sealed class ConsultGenerationOrchestrator
             // sources are strings by nature.
             var variableTypes = ConsultNodeVariableResolver.TypedVariables(node, input.InputTypes);
 
+            var (beforeBlocks, afterBlocks) = ResolveNodeMacros(node);
+
             pendingTasks[context.CallActivityAsync<NodeRunResult>(
                 ConsultGenerationActivityNames.RunPromptNode,
                 new ConsultPromptNodeActivityInput(
@@ -252,7 +270,10 @@ public sealed class ConsultGenerationOrchestrator
                     // #923 phase 2: the stamped catalog version's agent pin,
                     // resolved at job-start, so the executor uses it directly.
                     node.AgentName,
-                    node.AgentVersion),
+                    node.AgentVersion,
+                    // v23 #955: the resolved macro blocks for this node's prompt.
+                    Before: beforeBlocks,
+                    After: afterBlocks),
                 AgentActivityRetryOptions)] = (node.Id, item?["id"]);
         }
 
@@ -905,6 +926,43 @@ public sealed class ConsultGenerationOrchestrator
             .Where(pair => pair.Value.Classification != null)
             .ToDictionary(pair => pair.Key, pair => pair.Value.Classification!, StringComparer.Ordinal);
 
+        // v23 #955: the node's macro blocks, resolved when its activity is
+        // dispatched — each macro's `when` judged (input: against the supplied
+        // map, node: against the classifications the scheduler guarantees are in
+        // by now), then the firing macro's text token-substituted. before blocks
+        // precede the prompt, after blocks follow it; the renderer composes them.
+        (IReadOnlyList<string>?, IReadOnlyList<string>?) ResolveNodeMacros(ConsultNodeDescriptor node)
+        {
+            if (node.Macros is not { Count: > 0 })
+            {
+                return (null, null);
+            }
+
+            List<string>? before = null;
+            List<string>? after = null;
+
+            foreach (var macro in node.Macros)
+            {
+                if (macro.When != null
+                    && (!WorkflowResultConditions.TryParseExpression(macro.When, out var when, out _)
+                        || !WorkflowResultConditions.Holds(when, suppliedInputs, Classifications())))
+                {
+                    continue;
+                }
+
+                if (input.MacroTexts is null || !input.MacroTexts.TryGetValue(macro.Id, out var template))
+                {
+                    continue;
+                }
+
+                var expanded = ConsultMacroExpander.Expand(
+                    template, effectiveInputs, input.DataScalars, Classifications(), nodeMacroFacts);
+                (macro.After ? (after ??= new()) : (before ??= new())).Add(expanded);
+            }
+
+            return (before, after);
+        }
+
         var expectedInstances = nodes.Where(node => node.Aggregate is null && node.Check is null).Sum(node => node.ForEach is null
             ? 1
             : FanItems(node).Count(item => !failedItems.Contains(FailedKey(node, item["id"]))));
@@ -1228,10 +1286,24 @@ internal static class ConsultNodeScheduler
 
     public static IEnumerable<string> NodeDependencies(ConsultNodeDescriptor node)
     {
-        return (node.Bindings ?? new Dictionary<string, ConsultNodeBindingDescriptor>())
+        var bindingDeps = (node.Bindings ?? new Dictionary<string, ConsultNodeBindingDescriptor>())
             .Values
             .Where(binding => binding.From.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal))
             .Select(binding => binding.From[WorkflowNodeBindingSources.NodePrefix.Length..]);
+
+        // v23 #955: a node macro gated on a classifier (when: node:<id> …) makes
+        // that classifier a dependency too, so the node waits for its answer and
+        // the when is judged against a populated classifications map, not an empty
+        // one. node: in a when names a classifier (the validator guarantees it),
+        // and a classifier always runs, so this never deadlocks.
+        var macroWhenDeps = (node.Macros ?? new List<ConsultNodeMacroDescriptor>())
+            .Where(macro => macro.When != null)
+            .SelectMany(macro =>
+                WorkflowResultConditions.TryParseExpression(macro.When, out var when, out _) && when != null
+                    ? when.Leaves.Where(leaf => leaf.IsNodeValue).Select(leaf => leaf.NodeId!)
+                    : Enumerable.Empty<string>());
+
+        return bindingDeps.Concat(macroWhenDeps).Distinct(StringComparer.Ordinal);
     }
 }
 

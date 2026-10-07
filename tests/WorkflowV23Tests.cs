@@ -61,11 +61,12 @@ public static class V23Fixtures
 public class WorkflowV23GateTests
 {
     [Fact]
-    public void TheValidatorAccepts23_ButTheStoreDoesNotRunItYet()
+    public void TheValidatorAccepts23_AndTheStoreRunsIt()
     {
-        // Layer A makes it publishable; Layer B (#959) adds it to the run set.
+        // Layer A (#958) made it publishable; Layer B (#959) runs it — the two
+        // ceilings meet again, the shape every gate flip has had.
         Assert.Contains(23, WorkflowPackageValidator.AcceptedSpecVersions);
-        Assert.DoesNotContain(23, WorkflowPackageStore.SupportedSpecVersions);
+        Assert.Contains(23, WorkflowPackageStore.SupportedSpecVersions);
     }
 
     [Fact]

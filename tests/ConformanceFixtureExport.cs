@@ -1112,6 +1112,34 @@ public class ConformanceFixtureExport
                 { "type": "object", "required": ["summary"], "properties": { "summary": { "type": "string" } } }
                 """));
 
+        // ----- v23 (#955): node macros — a library macro composed into a node's
+        // prompt, before or after the rendered template, gated by the node-level
+        // when (a classifier-gated one makes that classifier a scheduling
+        // dependency). The bare form is what a prelude migrates to; a macro no
+        // result or node references is an orphan; below 23 the attachment is refused.
+        var v22MinimalForV23 = V18Fixtures.Minimal() with { SpecVersion = 22 };
+        Bundle("v23-minimal-is-v22-plus-a-line", 23,
+            "The migration v23 promises: a valid v22 manifest with specVersion 23 and nothing else changed.",
+            (v22MinimalForV23 with { SpecVersion = 23 }, V6Fixtures.Files(v22MinimalForV23)));
+
+        Bundle("v23-node-macro", 23,
+            "A library macro composed before a node's prompt (the bare form) and again after it, gated on a classifier's answer.",
+            V23Fixtures.WithNodeMacros(new List<WorkflowNodeMacroSpec>
+            {
+                "tool_guidance",
+                new("tool_guidance", At: WorkflowNodeMacroSpec.After, When: "node:scope == in_scope")
+            }));
+
+        {
+            var (undeclared, undeclaredFiles) = V23Fixtures.WithNodeMacros(
+                new List<WorkflowNodeMacroSpec> { "ghost" }, declare: false);
+            Invalid("invalid-node-macro-undeclared", 23,
+                "A node macro naming a library macro the manifest does not declare.", undeclared, undeclaredFiles);
+            Invalid("invalid-node-macros-at-v22", 22,
+                "A node's macros list on a v22 manifest. The attachment arrives at 23.",
+                undeclared with { SpecVersion = 22 }, undeclaredFiles);
+        }
+
         return cases;
     }
 

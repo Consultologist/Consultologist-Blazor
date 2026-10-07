@@ -214,6 +214,28 @@ public class ConsultNodeSchedulerTests
         Assert.Equal(new[] { "standard-section-draft" }, ConsultNodeScheduler.NodeDependencies(Step2));
         Assert.Empty(ConsultNodeScheduler.NodeDependencies(Trajectory));
     }
+
+    // v23 #955: a node macro gated on a classifier is a scheduling edge too, so
+    // the node waits for the classifier's answer before its when is judged.
+    private static readonly ConsultNodeDescriptor GatedByMacro = new(
+        "draft-section", "Drafting section", OutputContract: "concept-list",
+        Macros: new[] { new ConsultNodeMacroDescriptor("ap_guardrails", After: true, When: "node:scope == in_scope") });
+
+    [Fact]
+    public void NodeDependencies_IncludeAMacroWhensClassifier()
+    {
+        Assert.Equal(new[] { "scope" }, ConsultNodeScheduler.NodeDependencies(GatedByMacro));
+    }
+
+    [Fact]
+    public void AClassifierGatedMacro_BlocksTheNode_UntilTheClassifierAnswers()
+    {
+        var scope = new ConsultNodeDescriptor("scope", "Scope", OutputContract: "classification");
+        var nodes = new[] { scope, GatedByMacro }.ToDictionary(n => n.Id, StringComparer.Ordinal);
+
+        Assert.False(ConsultNodeScheduler.InstanceReady(GatedByMacro, null, nodes, Outputs()));
+        Assert.True(ConsultNodeScheduler.InstanceReady(GatedByMacro, null, nodes, Outputs("scope")));
+    }
 }
 
 public class ProvenanceHashTests
