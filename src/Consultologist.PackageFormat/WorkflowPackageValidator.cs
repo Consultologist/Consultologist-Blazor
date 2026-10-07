@@ -2967,9 +2967,29 @@ public static class WorkflowPackageValidator
             }
         }
 
+        // v23 (#955): a macro attached to a node — composed into its prompt —
+        // counts as referenced too, so the orphan rule below does not flag a
+        // node-only macro. The attachment grammar is validated in
+        // ValidateNodeMacros; here we only tally the reference.
+        if (manifest.SpecVersion >= 23)
+        {
+            foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
+            {
+                foreach (var entry in node.Macros ?? new List<WorkflowNodeMacroSpec>())
+                {
+                    referenced.Add(entry.Id);
+                }
+            }
+        }
+
         foreach (var orphan in macroIds.Where(id => !referenced.Contains(id)))
         {
-            errors.Add($"Macro '{orphan}' is not referenced by any result.");
+            // Below 23 a macro is referenced only by a result; at 23 a node may
+            // reference one too, so the sentence names both (the v5–v22 bytes,
+            // and the v11 orphan fixture, do not move).
+            errors.Add(manifest.SpecVersion >= 23
+                ? $"Macro '{orphan}' is not referenced by any result or node."
+                : $"Macro '{orphan}' is not referenced by any result.");
         }
 
         // #942: a slot macro (#863) is placed only where the model emits a
