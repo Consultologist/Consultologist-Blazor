@@ -289,6 +289,40 @@ internal static class PackageFormatSchema
             Remove(properties, "when");
         }
 
+        // v23 (#955): a node's macro attachments. The exporter cannot see
+        // through WorkflowNodeMacroSpecConverter (the results[].macros and
+        // bindings precedent), so the items shape is hand-written — a bare id
+        // string or a placement object { id, at: before|after, when, optional }.
+        // Below 23 the member does not exist, and the published v5–v22 bytes
+        // must not move.
+        if (specVersion < 23)
+        {
+            Remove(properties, "macros");
+        }
+        else
+        {
+            var macros = Object(properties, "macros");
+            macros["minItems"] = 1;
+            macros["items"] = new JsonObject
+            {
+                ["oneOf"] = new JsonArray(
+                    new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId },
+                    new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["id"] = new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId },
+                            ["at"] = new JsonObject { ["enum"] = new JsonArray(WorkflowNodeMacroSpec.Before, WorkflowNodeMacroSpec.After) },
+                            ["when"] = new JsonObject { ["type"] = "string", ["minLength"] = 1 },
+                            ["optional"] = new JsonObject { ["type"] = "boolean" }
+                        },
+                        ["required"] = Required("id"),
+                        ["additionalProperties"] = false
+                    })
+            };
+        }
+
         if (specVersion < 10)
         {
             // v10 (§ 4): the classifying node. Below 10 neither member exists,
