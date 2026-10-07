@@ -203,7 +203,7 @@ public class TemplatesV12SignatureTokenDeskTests : ClientRenderTestContext
         Publish(page);
 
         Assert.Contains(
-            "Macro 'disclaimer' placeholder '{{profile:signature}}' requires specVersion 12. Use \"Upgrade to specVersion 22\" and publish.",
+            "Macro 'disclaimer' placeholder '{{profile:signature}}' requires specVersion 12. Use \"Upgrade to specVersion 23\" and publish.",
             Refusals(page));
         Assert.DoesNotContain(Refusals(page), refusal => refusal.Contains("does not resolve"));
     }
@@ -276,7 +276,7 @@ public class TemplatesV12DeskMirrorTests : ClientRenderTestContext
 
         var refusals = PublishAndRead(package);
 
-        const string pointer = " Use \"Upgrade to specVersion 22\" and publish.";
+        const string pointer = " Use \"Upgrade to specVersion 23\" and publish.";
         Assert.Contains($"Macro 'disclaimer' declares optional, which requires specVersion 12.{pointer}", refusals);
         Assert.Contains($"Macro 'disclaimer' declares default, which requires specVersion 12.{pointer}", refusals);
         Assert.Contains($"Result 'consult_note' places macro 'disclaimer', which requires specVersion 12.{pointer}", refusals);
