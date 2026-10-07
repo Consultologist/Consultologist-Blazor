@@ -9,8 +9,9 @@ namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// Renders a prompt template in strict mode: exactly the declared
-/// variables are supplied, any other access throws, and the prelude (if any) is
-/// prepended followed by one blank line.
+/// variables are supplied, any other access throws, and the macro blocks (if any)
+/// compose around the prompt — before blocks precede it, after blocks follow it,
+/// one blank line between each. A prelude (≤ v22) is the leading before block.
 /// </summary>
 public static class PromptTemplateRenderer
 {
@@ -22,16 +23,23 @@ public static class PromptTemplateRenderer
         // fields render as their own types. Optional — the activity has the
         // package in hand and passes them; an older job, or a caller without
         // the package, still materialises structure by its JSON kinds.
-        IReadOnlyDictionary<string, WorkflowInputSpec>? declarations = null)
+        IReadOnlyDictionary<string, WorkflowInputSpec>? declarations = null,
+        // v23 (#955): node-macro blocks the engine already resolved — when-gated,
+        // tokens substituted — to compose around this node's prompt. Each is a
+        // standalone verbatim block; before blocks precede the prompt, after
+        // blocks follow it. A migrated prelude (≤ v22 carried PreludeText) is
+        // composed as the leading before block, so older packages render exactly
+        // as they did. Defaulted, so the publish-time probe and older callers are
+        // unchanged.
+        IReadOnlyList<string>? before = null,
+        IReadOnlyList<string>? after = null)
     {
         // #731: a raw prompt is verbatim — no Scriban parse or render, and no
-        // variable check (it declares none). Its prelude, already verbatim,
-        // still prepends, exactly as for a rendered prompt.
+        // variable check (it declares none). Its prelude and macro blocks, all
+        // already verbatim, still compose, exactly as for a rendered prompt.
         if (prompt.Raw)
         {
-            return string.IsNullOrEmpty(prompt.PreludeText)
-                ? prompt.TemplateText
-                : $"{prompt.PreludeText.TrimEnd()}\n\n{prompt.TemplateText}";
+            return Compose(before, prompt.TemplateText, after, prompt.PreludeText);
         }
 
         var declared = new HashSet<string>(prompt.Variables, StringComparer.Ordinal);
@@ -85,9 +93,59 @@ public static class PromptTemplateRenderer
             throw new InvalidOperationException($"Prompt '{prompt.Id}' failed to render: {ex.Message}", ex);
         }
 
-        return string.IsNullOrEmpty(prompt.PreludeText)
-            ? rendered
-            : $"{prompt.PreludeText.TrimEnd()}\n\n{rendered}";
+        return Compose(before, rendered, after, prompt.PreludeText);
+    }
+
+    /// <summary>
+    /// Composes the macro blocks around the rendered body: an optional prelude
+    /// (≤ v22) and the before blocks precede it, the after blocks follow it, one
+    /// blank line between each, every block trailing-trimmed. With no prelude and
+    /// no blocks the body is returned unchanged; with only a prelude this is
+    /// exactly the pre-v23 "<c>prelude\n\nbody</c>".
+    /// </summary>
+    private static string Compose(
+        IReadOnlyList<string>? before,
+        string body,
+        IReadOnlyList<string>? after,
+        string? prelude)
+    {
+        var hasPrelude = !string.IsNullOrEmpty(prelude);
+        var hasBefore = before is not null && before.Any(b => !string.IsNullOrEmpty(b));
+        var hasAfter = after is not null && after.Any(a => !string.IsNullOrEmpty(a));
+
+        if (!hasPrelude && !hasBefore && !hasAfter)
+        {
+            return body;
+        }
+
+        var parts = new List<string>();
+        if (hasPrelude)
+        {
+            parts.Add(prelude!.TrimEnd());
+        }
+        if (before is not null)
+        {
+            foreach (var block in before)
+            {
+                if (!string.IsNullOrEmpty(block))
+                {
+                    parts.Add(block.TrimEnd());
+                }
+            }
+        }
+        parts.Add(body);
+        if (after is not null)
+        {
+            foreach (var block in after)
+            {
+                if (!string.IsNullOrEmpty(block))
+                {
+                    parts.Add(block.TrimEnd());
+                }
+            }
+        }
+
+        return string.Join("\n\n", parts);
     }
 
     /// <summary>

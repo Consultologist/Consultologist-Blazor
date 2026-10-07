@@ -538,6 +538,103 @@ public sealed class WorkflowResultMacroSpecConverter : JsonConverter<WorkflowRes
     }
 }
 
+/// <summary>
+/// One entry in a NODE's macro list (v23, #955): a macro from the package
+/// library (<c>manifest.macros</c>) composed into THIS node's prompt, before or
+/// after the rendered template. On the wire either a bare id — the
+/// before/always form that absorbs a prelude — or a placement object,
+/// <c>{ id: ap_guardrails, at: after, when: "..." }</c>. A bare entry writes the
+/// string form, so the common case round-trips byte for byte. Node placement is
+/// before/after only (a prompt is single text, unlike a deliverable's aggregate);
+/// the <c>when</c> is the node-level condition grammar (input:/node:), evaluated
+/// per node run. item: tokens and slot are Phase 2 (v24). The object form below
+/// specVersion 23 is refused by the validator, never by the reader.
+/// </summary>
+[JsonConverter(typeof(WorkflowNodeMacroSpecConverter))]
+public sealed record WorkflowNodeMacroSpec(
+    string Id,
+    // null ≡ "before" (the bare/prelude form); "after" places it after the prompt.
+    string? At = null,
+    // the node-level condition grammar (input:/node:), evaluated per node run;
+    // absent = always. Trailing so a placed pair keeps its positions.
+    string? When = null,
+    // a per-run choice (mirrors the library macro's optional). Trailing optional.
+    bool? Optional = null)
+{
+    public const string Before = "before";
+    public const string After = "after";
+
+    /// <summary>An id and nothing else — the before/always form that a prelude
+    /// migrates to. The writer keys the bare-string form on this, so any
+    /// adornment must count or it would silently drop on republish.</summary>
+    public bool IsBare => At is null && When is null && Optional is null;
+
+    /// <summary>Null placement means before; only an explicit "after" moves it.</summary>
+    public bool IsAfter => At == After;
+
+    public static implicit operator WorkflowNodeMacroSpec?(string? id) => id is null ? null : new(id);
+
+    public override string ToString() => Id;
+}
+
+public sealed class WorkflowNodeMacroSpecConverter : JsonConverter<WorkflowNodeMacroSpec>
+{
+    // The object form, read without this converter on the outer shape.
+    private sealed record Shape(string? Id, string? At, string? When, bool? Optional);
+
+    public override WorkflowNodeMacroSpec Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            return new WorkflowNodeMacroSpec(reader.GetString()!);
+        }
+
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException("A node macro entry must be a macro id or a placement object.");
+        }
+
+        var shape = JsonSerializer.Deserialize<Shape>(ref reader, options)
+            ?? throw new JsonException("A node macro entry must be a macro id or a placement object.");
+
+        if (string.IsNullOrWhiteSpace(shape.Id))
+        {
+            throw new JsonException("A placed node macro entry must declare id.");
+        }
+
+        return new WorkflowNodeMacroSpec(shape.Id, shape.At, shape.When, shape.Optional);
+    }
+
+    public override void Write(Utf8JsonWriter writer, WorkflowNodeMacroSpec value, JsonSerializerOptions options)
+    {
+        if (value.IsBare)
+        {
+            writer.WriteStringValue(value.Id);
+            return;
+        }
+
+        writer.WriteStartObject();
+        writer.WriteString("id", value.Id);
+
+        if (value.At != null)
+        {
+            writer.WriteString("at", value.At);
+        }
+
+        if (value.When != null)
+        {
+            writer.WriteString("when", value.When);
+        }
+
+        if (value.Optional != null)
+        {
+            writer.WriteBoolean("optional", value.Optional.Value);
+        }
+
+        writer.WriteEndObject();
+    }
+}
+
 public sealed record WorkflowTemplatingSpec(
     string Engine,
     string EngineVersion);
@@ -590,7 +687,13 @@ public sealed record WorkflowNodeSpec(
     // a gated check simply does not run and its deliverable still fires. A
     // classifier may not carry one (it always runs to make its decision).
     // Trailing optional, omitted when null; below 18 refused by name.
-    string? When = null);
+    string? When = null,
+    // v23 (#955): macros from the package library (manifest.macros) composed
+    // into THIS node's prompt, before/after the rendered template, each gated by
+    // the node-level `when` grammar. Absorbs the prelude — a bare entry is the
+    // before/always form. Trailing optional, omitted when null; below 23 refused
+    // by name by the validator.
+    List<WorkflowNodeMacroSpec>? Macros = null);
 
 /// <summary>
 /// The node kinds a manifest may spell (v10 § 4; check since v12 § 13).
