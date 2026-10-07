@@ -28,7 +28,7 @@ public static class WorkflowPackageValidator
     /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
     /// are checked against the published spec-versions.json there too.
     /// </summary>
-    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22 };
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23 };
 
     /// <summary>
     /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
@@ -964,6 +964,16 @@ public static class WorkflowPackageValidator
                 errors.Add($"Node '{node.Id}' declares when but is a classifier; a classifier always runs to make its decision.");
             }
 
+            // v23 (#955): a node's macro attachments arrive at 23 — refused by
+            // name below it, the posture every gated member has had since v8.
+            // The attachment grammar (id resolution, before/after, the
+            // node-level when) is validated with the classifiers in hand; see
+            // ValidateNodeMacros.
+            if (manifest.SpecVersion < 23 && node.Macros != null)
+            {
+                errors.Add($"Node '{node.Id}' declares macros, which requires specVersion 23.");
+            }
+
             // v12 (§ 13): the check node and its members arrive at 12 — below
             // it each is refused by name, and nothing else about a check is
             // meaningful, so the gate continues (the v10 shape). Sits before
@@ -1732,6 +1742,7 @@ public static class WorkflowPackageValidator
         foreach (var node in nodesById.Values)
         {
             ValidateNodeCondition(manifest, node, declaredInputs, classifiers, errors);
+            ValidateNodeMacros(manifest, node, declaredInputs, classifiers, errors);
         }
 
         foreach (var orphan in checks.Keys.Where(id => !namedChecks.Contains(id)).Order(StringComparer.Ordinal))
@@ -1896,6 +1907,82 @@ public static class WorkflowPackageValidator
             if (errors.Count > before)
             {
                 return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// v23 (#955): a node's macro attachments. Each id resolves to a library
+    /// macro (manifest.macros); the placement is before or after the prompt
+    /// (null = before, the prelude form); the when speaks the node-level grammar
+    /// — the same parser and clause validator as the node's own when. A macro may
+    /// sit both before and after the prompt, but not twice in the same place. A
+    /// node with no prompt has nothing to compose into. The below-23 gate spoke
+    /// in the node loop, so this validates the attachment grammar at 23 only.
+    /// </summary>
+    private static void ValidateNodeMacros(
+        WorkflowPackageManifest manifest,
+        WorkflowNodeSpec node,
+        IReadOnlyDictionary<string, WorkflowInputSpec> declaredInputs,
+        IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
+        List<string> errors)
+    {
+        if (node.Macros is null || manifest.SpecVersion < 23)
+        {
+            return;
+        }
+
+        if (node.Prompt is null)
+        {
+            errors.Add($"Node '{node.Id}' declares macros but has no prompt to compose them into.");
+            return;
+        }
+
+        var declaredMacros = new HashSet<string>(
+            (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id), StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var entry in node.Macros)
+        {
+            var where = $"Node '{node.Id}' macro '{entry.Id}'";
+
+            if (!declaredMacros.Contains(entry.Id))
+            {
+                errors.Add($"{where} is not a declared macro.");
+                continue;
+            }
+
+            if (entry.At != null && entry.At != WorkflowNodeMacroSpec.Before && entry.At != WorkflowNodeMacroSpec.After)
+            {
+                errors.Add($"{where} declares at '{entry.At}'; a node macro is placed 'before' or 'after' the prompt.");
+            }
+
+            var position = entry.IsAfter ? WorkflowNodeMacroSpec.After : WorkflowNodeMacroSpec.Before;
+            if (!seen.Add($"{entry.Id}\n{position}"))
+            {
+                errors.Add($"{where} is listed more than once {position} the prompt.");
+            }
+
+            if (entry.When != null)
+            {
+                var prefix = $"{where} condition";
+
+                if (!WorkflowResultConditions.TryParseExpression(entry.When, out var expression, out var syntaxError))
+                {
+                    errors.Add($"{prefix} {syntaxError}");
+                    continue;
+                }
+
+                foreach (var condition in expression!.Leaves)
+                {
+                    var before = errors.Count;
+                    ValidateV10Clause(prefix, condition, declaredInputs, classifiers, errors);
+
+                    if (errors.Count > before)
+                    {
+                        break;
+                    }
+                }
             }
         }
     }
