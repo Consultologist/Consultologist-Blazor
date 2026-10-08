@@ -1870,17 +1870,20 @@
                                 }
                             </div>
                         }
-                        @* #956/#965: the OUTPUT macros anchored around this node's output — the
-                           node-side view of the Documents placement, edited in place (#965): flip
-                           before/after THIS node, the gated-when, remove — the same resultsEdit
-                           handlers #940 uses from the macro pane. Attaching, another source and
-                           forItem stay in the Documents pane (#966). The query is empty unless a
-                           deliverable aggregates this node with a macro placed before/after it. *@
-                        @if (OutputMacrosAnchoredTo(selectedNode.Id) is { Count: > 0 } anchoredOutputMacros)
+                        @* #956/#965/#966: the OUTPUT macros anchored around this node's output — the
+                           node-side view of the Documents placement, at full parity (#966): the whole
+                           placement list (appended / before·after any source / slot), the fan item,
+                           the gated-when, remove, and an attach-here picker — the same resultsEdit
+                           handlers #940 uses from the macro pane. Rows are the entries anchored to
+                           THIS node; moving one elsewhere takes it out of this view. The section
+                           renders whenever a deliverable aggregates this node (anchors arrive at 12).
+                           Reordering stays in Documents, as the macro pane decided (#940). *@
+                        @if (EffectiveSpecVersion >= 12 && DeliverablesAggregating(selectedNode.Id) is { Count: > 0 } aggregatingDocs)
                         {
+                            var anchoredOutputMacros = OutputMacrosAnchoredTo(selectedNode.Id);
                             <div class="node-section">
                                 <span class="node-section__head">Output macros</span>
-                                <p class="muted-text">Deliverable macros placed around this node's output. Attach, reorder, or move to another source in the Documents pane.</p>
+                                <p class="muted-text">Deliverable macros placed around this node's output. Moving one to another placement takes it out of this node's view; find it again in the Documents pane.</p>
                                 @foreach (var (result, entry, after) in anchoredOutputMacros)
                                 {
                                     <div class="node-output-macro">
@@ -1893,9 +1896,31 @@
                                                           Value="@(after ? $"after|node:{selectedNode.Id}" : $"before|node:{selectedNode.Id}")"
                                                           ValueChanged="@(v => SetMacroPlacementAsync(result, entry.Id, v))"
                                                           aria-label="@($"Placement for macro {entry.Id} around {selectedNode.Id}")">
-                                                <FluentOption TOption="string" Value="@($"before|node:{selectedNode.Id}")">before this node</FluentOption>
-                                                <FluentOption TOption="string" Value="@($"after|node:{selectedNode.Id}")">after this node</FluentOption>
+                                                <FluentOption TOption="string" Value="">appended</FluentOption>
+                                                @foreach (var placementSource in DeliverableAggregateSources(result))
+                                                {
+                                                    var isThisNode = placementSource == $"node:{selectedNode.Id}";
+                                                    <FluentOption TOption="string" Value="@($"before|{placementSource}")">@(isThisNode ? "before this node" : $"before {placementSource}")</FluentOption>
+                                                    <FluentOption TOption="string" Value="@($"after|{placementSource}")">@(isThisNode ? "after this node" : $"after {placementSource}")</FluentOption>
+                                                }
+                                                @if (EffectiveSpecVersion >= 20)
+                                                {
+                                                    <FluentOption TOption="string" Value="slot">slot (the model places it)</FluentOption>
+                                                }
                                             </FluentSelect>
+                                            @if (EffectiveSpecVersion >= 19 && MacroAnchorFanItems(entry) is { Count: > 0 } outputFanItems)
+                                            {
+                                                <FluentSelect TOption="string" class="binding-row__select node-output-macro-foritem"
+                                                              Value="@(entry.ForItem ?? "")"
+                                                              ValueChanged="@(v => SetMacroForItemAsync(result, entry.Id, v))"
+                                                              aria-label="@($"Fan item for macro {entry.Id} around {selectedNode.Id}")">
+                                                    <FluentOption TOption="string" Value="">— whole section —</FluentOption>
+                                                    @foreach (var fanItem in outputFanItems)
+                                                    {
+                                                        <FluentOption TOption="string" Value="@fanItem.Id">@StandardName(fanItem)</FluentOption>
+                                                    }
+                                                </FluentSelect>
+                                            }
                                             <span class="muted-text">in</span>
                                             <FluentButton Appearance="Appearance.Lightweight" Class="result-macro__id"
                                                           Title="@($"Edit document {result.Id} in the Documents pane")"
@@ -1910,6 +1935,65 @@
                                         <span class="result-macro-when">
                                             @ConditionField(("Gated when", MacroWhenTarget(result, entry), "Always produced"))
                                         </span>
+                                    </div>
+                                }
+                                @if (anchoredOutputMacros.Count == 0)
+                                {
+                                    <p class="muted-text">No macro is placed around this node's output yet.</p>
+                                }
+                                @{
+                                    // The deliverable an attach lands in: the only one, or the one chosen
+                                    // for this node (explicit — nothing is attached until it is chosen).
+                                    var attachDoc = aggregatingDocs.Count == 1
+                                        ? aggregatingDocs[0]
+                                        : aggregatingDocs.FirstOrDefault(doc => outputMacroAttachDoc is { } chosen && chosen.NodeId == selectedNode.Id && chosen.ResultId == doc.Id);
+                                    var attachableOutputMacros = attachDoc is null
+                                        ? EffectiveMacros
+                                        : EffectiveMacros.Where(m => (attachDoc.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).All(e => e.Id != m.Id)).ToList();
+                                }
+                                @if (EffectiveMacros.Count == 0)
+                                {
+                                    <p class="muted-text">No macros declared yet — add one in the Macros section first.</p>
+                                }
+                                else
+                                {
+                                    <div class="node-output-macro-row node-output-macro-attach-row">
+                                        @if (aggregatingDocs.Count > 1)
+                                        {
+                                            <FluentSelect TOption="string" class="binding-row__select node-output-macro-attach-doc"
+                                                          Value="@(attachDoc?.Id ?? "")"
+                                                          ValueChanged="@(v => { outputMacroAttachDoc = string.IsNullOrEmpty(v) ? null : (selectedNode.Id, v); })"
+                                                          aria-label="@($"Deliverable for an output macro before {selectedNode.Id}")">
+                                                <FluentOption TOption="string" Value="">in document…</FluentOption>
+                                                @foreach (var candidateDoc in aggregatingDocs)
+                                                {
+                                                    <FluentOption TOption="string" Value="@candidateDoc.Id">@candidateDoc.Id</FluentOption>
+                                                }
+                                            </FluentSelect>
+                                        }
+                                        @if (attachableOutputMacros.Count > 0)
+                                        {
+                                            <FluentSelect TOption="string" class="binding-row__select node-output-macro-attach"
+                                                          Value=""
+                                                          Disabled="@(attachDoc is null)"
+                                                          ValueChanged="@(v => AttachOutputMacroBeforeNodeAsync(attachDoc, selectedNode.Id, v))"
+                                                          aria-label="@($"Attach an output macro before {selectedNode.Id}")">
+                                                <FluentOption TOption="string" Value="">attach a macro before this node…</FluentOption>
+                                                @foreach (var libraryMacro in attachableOutputMacros)
+                                                {
+                                                    <FluentOption TOption="string" Value="@libraryMacro.Id">@libraryMacro.Id</FluentOption>
+                                                }
+                                            </FluentSelect>
+                                        }
+                                        else
+                                        {
+                                            <span class="muted-text">every library macro is already attached</span>
+                                        }
+                                        @if (aggregatingDocs.Count == 1)
+                                        {
+                                            <span class="muted-text">in</span>
+                                            <code>@aggregatingDocs[0].Id</code>
+                                        }
                                     </div>
                                 }
                             </div>
@@ -6960,9 +7044,45 @@
             }
         });
 
+    // #966: the deliverables whose aggregator aggregates this node — where an
+    // output macro anchored to it can live. Pending aggregate edits count, as
+    // DeliverableAggregateSources reads EffectiveNodes.
+    private IReadOnlyList<WorkflowManifestReader.ResultView> DeliverablesAggregating(string nodeId)
+    {
+        var source = $"node:{nodeId}";
+        return EffectiveResults.Where(result => DeliverableAggregateSources(result).Contains(source, StringComparer.Ordinal)).ToList();
+    }
+
+    // #966: the deliverable chosen on the node pane for the next attach, when
+    // more than one aggregates the node — per node, so another node's choice
+    // never leaks; nothing is chosen until the author chooses.
+    private (string NodeId, string ResultId)? outputMacroAttachDoc;
+
+    /// <summary>#966: attach a library macro to the deliverable, placed before this node —
+    /// one entry, one commit (so one undo step), the way the row would then read.</summary>
+    private async Task AttachOutputMacroBeforeNodeAsync(WorkflowManifestReader.ResultView? result, string nodeId, string? macroId)
+    {
+        if (result is null || string.IsNullOrEmpty(macroId))
+        {
+            return;
+        }
+
+        var results = MutableResults();
+        var index = results.FindIndex(existing => existing.Id == result.Id);
+
+        if (index >= 0 && (results[index].Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).All(e => e.Id != macroId))
+        {
+            var list = (results[index].Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).ToList();
+            list.Add(new WorkflowManifestReader.ResultMacroView(macroId, Before: $"node:{nodeId}"));
+            results[index] = results[index] with { Macros = list };
+        }
+
+        await CommitDeclarationAsync();
+    }
+
     // #956: the OUTPUT macros anchored around this node's output — a deliverable
     // macro whose before/after names node:<id>. The node-side view of the
-    // Documents placement; read-only here (editing is #965/#966). Before/after
+    // Documents placement, edited at full parity (#965/#966). Before/after
     // anchors arrive at v12, so the list is empty below it.
     private IReadOnlyList<(WorkflowManifestReader.ResultView Result, WorkflowManifestReader.ResultMacroView Entry, bool After)>
         OutputMacrosAnchoredTo(string nodeId)
