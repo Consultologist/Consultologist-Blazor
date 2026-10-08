@@ -390,6 +390,15 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         output.DurationMs = input.DurationMs;
         output.CompletedAtUtc = DateTimeOffset.UtcNow;
 
+        // #980: a fanned custom node's item is an unattested custom output too —
+        // the record says so per item, as it does per node (#760).
+        if (input.Unattested == true)
+        {
+            output.Unattested = true;
+            output.CustomSchemaHash = input.CustomSchemaHash;
+            output.CustomAgent = input.CustomAgent;
+        }
+
         var progress = state.GetOrAddItemProgress(input.ItemId, input.ItemName);
         progress.Step = input.NodeId;
         progress.CompletedStepCount = input.CompletedChainCount;
@@ -1277,7 +1286,14 @@ public sealed record ConsultGenerationNodeItemUpdate(
     ConsultTokenUsage? Tokens = null,
     // #639: the activity's clock, as on the node update. Appended last.
     DateTimeOffset? NodeStartedAtUtc = null,
-    long? DurationMs = null);
+    long? DurationMs = null,
+    // #760/#980 (custom tier): the unattested marker, the schema hash and the
+    // content-addressed agent (name@version), per fan item — the same stamp the
+    // node update carries. Null on every other row and on payloads from before.
+    // Appended last, the positional-call rule.
+    bool? Unattested = null,
+    string? CustomSchemaHash = null,
+    string? CustomAgent = null);
 
 public sealed class ConsultGenerationJobState
 {
