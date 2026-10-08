@@ -171,11 +171,21 @@ phases slot in; we do **not** define fields the engine would reject (no "valid-b
 - **Phase 1 — v23 (this spec):** node macro attachment site, shared library, the existing token
   templating, `before`/`after`, node-level `when`, prelude migration. Scriban is **not** used —
   token substitution reuses the macro engine unchanged.
-- **Phase 2 — v24 (follow-up):** the per-item layer — `{{item:name}}`/`item:` tokens,
-  `item:` operands in `when`, and `forItem` on node attachments → per-fan-item prompt
-  variation and its per-item attestation. Also revisit **`slot` on a node macro** (when the
-  prompt text carries a `[[slot:]]` marker) here — deferred out of Phase 1 to keep node
-  placement to `before`/`after`.
+- **Phase 2 — v24 (#957):** the per-item layer on a node that fans a collection —
+  `{{item:<field>}}` tokens in macro text (filled per item from the fields the fan exposes: a
+  `data:` collection's `id`/`name`/`content`, an input fan's `id`/`name`/`value`), an
+  **`item:id`** operand in a node macro's `when` (judged per item), and `forItem` on a node
+  attachment (composed for one item only). `item:id` is the one condition operand: a `data:`
+  collection's item ids are a closed set at publish, compared like a classifier's value; an
+  item's other fields are text, which a condition never compares, and an **input fan's items
+  are the caller's**, so neither `item:` operands nor `forItem` read them (tokens do, since the
+  item map carries the fields). A macro carrying an item token composes only into a fan
+  node's prompt — a deliverable attachment (a slot one included) is refused, since assembly
+  has no fan item. **Per-item attestation needs no new mechanism:** each fan item is its own
+  activity with its own `inputHash` (keyed `node:item`), so per-item text is attested by what
+  already exists. **`slot` on a node macro stays deferred** (#969): a deliverable slot is
+  filled from the model's *output* at assembly; a marker inside a *prompt* filled before the
+  model call would be a new mechanism, not a mirror.
 
 ## Scope boundaries
 
@@ -192,5 +202,5 @@ phases slot in; we do **not** define fields the engine would reject (no "valid-b
 
 - **Reference field = `id`** (not `macro`) — mirrors `results[].macros[]` so the two
   attachment records share their reference + `when` shape.
-- **`slot` on a node macro is deferred** out of Phase 1 (revisited with Phase 2); Phase 1
+- **`slot` on a node macro is deferred** out of Phase 1 and again out of Phase 2 (#969);
   node placement is `before`/`after` only.
