@@ -40,7 +40,7 @@ public class UnattestedNodesTests
             {
                 ["digest"] = new("digest", "Digest", "Completed", "in", "out", null, null),
                 ["shape"] = new("shape", "Shape", "Completed", null, null, null, null, Unattested: true, CustomSchemaHash: "0123456789abcdef", CustomAgent: "custom-0123@1"),
-                // The engine stamps only the node-level row (#980); the item is custom by descriptor.
+                // Items are stamped since #980; an unstamped one (a record from before) is custom by descriptor.
                 ["shape:hpi"] = new("shape", "Shape", "Completed", "in-h", "out-h", null, null)
             });
 
@@ -49,6 +49,24 @@ public class UnattestedNodesTests
         var entry = Assert.Single(unattested).Value;
         Assert.Equal("shape", entry.NodeId);
         Assert.Equal("schema 0123456789ab · agent custom-0123@1", UnattestedNodes.Detail(entry));
+    }
+
+    [Fact]
+    public void Of_TakesTheHashAndAgent_FromAnItemRow_WhenTheSummaryRowLacksThem()
+    {
+        // #980: a fan's items carry the stamp; a summary row without one (a record
+        // from the gap, or an in-flight fan) still names what ran.
+        var job = Job(
+            nodes: new[] { new ConsultGenerationNodeDescriptor("shape", "Shape", OutputContract: "custom", ForEach: "data:standards") },
+            outputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["shape"] = new("shape", "Shape", "Completed", null, null, null, null),
+                ["shape:pmh"] = new("shape", "Shape", "Completed", "in-p", "out-p", null, null, Unattested: true, CustomSchemaHash: "fedcba9876543210", CustomAgent: "custom-fedc@2"),
+                ["shape:hpi"] = new("shape", "Shape", "Completed", "in-h", "out-h", null, null, Unattested: true, CustomSchemaHash: "fedcba9876543210", CustomAgent: "custom-fedc@2")
+            });
+
+        var entry = Assert.Single(UnattestedNodes.Of(job)).Value;
+        Assert.Equal("schema fedcba987654 · agent custom-fedc@2", UnattestedNodes.Detail(entry));
     }
 
     [Fact]

@@ -10,7 +10,8 @@ namespace Consultologist.Api.Tests;
 /// <summary>
 /// #760 (custom tier, run): the content-addressed agent provisioner (GET-or-create,
 /// cached, create-conflict → GET) and the per-node unattested provenance that
-/// NodeUpdateFrom stamps for a custom node.
+/// NodeUpdateFrom stamps for a custom node — and, since #980, that ItemUpdateFrom
+/// stamps per fan item (a fanned custom node was stamped on no row before).
 /// </summary>
 public class CustomSchemaRunTests
 {
@@ -151,6 +152,51 @@ public class CustomSchemaRunTests
         Assert.True(update.Unattested);
         Assert.Equal("hash-abc", update.CustomSchemaHash);
         Assert.Equal("custom-abc@1", update.CustomAgent);
+    }
+
+    [Fact]
+    public void ACustomNodesItemUpdate_IsMarkedUnattested_WithItsSchemaHashAndAgent()
+    {
+        // #980: the per-item row of a fanned custom node carries the same stamp.
+        var node = new ConsultNodeDescriptor(
+            "shape", "Shape", PromptId: "p", OutputContract: OutputContracts.Custom, ForEach: "data:standards",
+            AgentName: "custom-abc", AgentVersion: "1", CustomSchemaHash: "hash-abc");
+        var result = new NodeRunResult("{\"a\":\"x\"}", null, "in", "out");
+
+        var update = ConsultGenerationOrchestrator.ItemUpdateFrom(node, "hpi", "HPI", result, 1, 2);
+
+        Assert.True(update.Unattested);
+        Assert.Equal("hash-abc", update.CustomSchemaHash);
+        Assert.Equal("custom-abc@1", update.CustomAgent);
+    }
+
+    [Fact]
+    public void ANonCustomNodesItemUpdate_IsNotMarkedUnattested()
+    {
+        var node = new ConsultNodeDescriptor(
+            "draft", "Draft", PromptId: "p", OutputContract: OutputContracts.ConceptList, ForEach: "data:standards",
+            AgentName: "concept-extraction", AgentVersion: "7");
+        var result = new NodeRunResult("[]", Array.Empty<ClinicalConcept>(), "in", "out");
+
+        var update = ConsultGenerationOrchestrator.ItemUpdateFrom(node, "hpi", "HPI", result, 1, 2);
+
+        Assert.Null(update.Unattested);
+        Assert.Null(update.CustomSchemaHash);
+        Assert.Null(update.CustomAgent);
+    }
+
+    [Fact]
+    public void TheStamp_IsOneReading_ForNodeItemAndSummaryRows()
+    {
+        // #980: the fan's summary row is built from the same stamp the node and
+        // item updates use, so the three rows cannot disagree.
+        var custom = new ConsultNodeDescriptor(
+            "shape", "Shape", PromptId: "p", OutputContract: OutputContracts.Custom,
+            AgentName: "custom-abc", AgentVersion: "1", CustomSchemaHash: "hash-abc");
+        Assert.Equal((true, "hash-abc", "custom-abc@1"), ConsultGenerationOrchestrator.CustomStamp(custom));
+
+        var unpinned = custom with { AgentName = null, AgentVersion = null };
+        Assert.Equal(((bool?)true, (string?)"hash-abc", (string?)null), ConsultGenerationOrchestrator.CustomStamp(unpinned));
     }
 
     [Fact]

@@ -296,6 +296,24 @@ public class DurablePayloadReplayTests
     }
 
     [Fact]
+    public void AStoredNodeItemUpdate_WithoutTheCustomStamp_BindsNull()
+    {
+        // #980: the entity payload every fan item sent before the stamp — a
+        // mid-flight job's stored item update binds the three new trailing fields
+        // null and re-serialises with exactly three more trailing nulls.
+        const string stored = """
+            {"NodeId":"draft","Label":"Draft","ItemId":"hpi","ItemName":"HPI","Concepts":null,"InputHash":"a","OutputHash":"b","CompletedChainCount":1,"TotalChainCount":2,"HashVersion":5,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null}
+            """;
+
+        var update = JsonSerializer.Deserialize<ConsultGenerationNodeItemUpdate>(stored, Durable)!;
+
+        Assert.Null(update.Unattested);
+        Assert.Null(update.CustomSchemaHash);
+        Assert.Null(update.CustomAgent);
+        Assert.Equal(stored[..^1] + ",\"Unattested\":null,\"CustomSchemaHash\":null,\"CustomAgent\":null}", JsonSerializer.Serialize(update, Durable));
+    }
+
+    [Fact]
     public void AStoredResultDocument_WithoutAppended_BindsNull()
     {
         // v11 #513: the entity payload every pre-macro job sends — Appended

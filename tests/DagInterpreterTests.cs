@@ -785,6 +785,33 @@ public class ConsultGenerationNodeEntityTests
     }
 
     [Fact]
+    public void MarkNodeItemCompleted_CopiesTheCustomStamp_WhenTheItemCarriesOne()
+    {
+        // #980: the stamp rides the item row into state and out on the response;
+        // an item without one records none (null, never false).
+        var (entity, state) = CreateEntity();
+
+        entity.MarkNodeItemCompleted(new ConsultGenerationNodeItemUpdate(
+            "shape", "Shape", "hpi", "History of Present Illness",
+            null, "hash-in", "hash-out", 1, 2, ConsultGenerationProvenance.NodeHashVersion,
+            Unattested: true, CustomSchemaHash: "hash-abc", CustomAgent: "custom-abc@1"));
+        entity.MarkNodeItemCompleted(new ConsultGenerationNodeItemUpdate(
+            "draft", "Draft", "hpi", "History of Present Illness",
+            null, "hash-in-2", "hash-out-2", 2, 2, ConsultGenerationProvenance.NodeHashVersion));
+
+        var s = state();
+        Assert.True(s.NodeOutputs!["shape:hpi"].Unattested);
+        Assert.Equal("hash-abc", s.NodeOutputs["shape:hpi"].CustomSchemaHash);
+        Assert.Equal("custom-abc@1", s.NodeOutputs["shape:hpi"].CustomAgent);
+        Assert.Null(s.NodeOutputs["draft:hpi"].Unattested);
+
+        var response = s.ToResponse();
+        Assert.True(response.NodeOutputs!["shape:hpi"].Unattested);
+        Assert.Equal("custom-abc@1", response.NodeOutputs["shape:hpi"].CustomAgent);
+        Assert.Null(response.NodeOutputs["draft:hpi"].CustomSchemaHash);
+    }
+
+    [Fact]
     public void MarkNodeFailed_RecordsSkippedSetAndFailsJob()
     {
         var (entity, state) = CreateEntity();
