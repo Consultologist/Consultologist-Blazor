@@ -92,20 +92,33 @@ is `{{input:}}`/`{{data:}}` (scalar)/`{{classification:}}`/`{{run:}}`/`{{profile
 macros are untouched** in Phase 1. Every token is **run-global**, so node macros stay inside the
 node-level scope (no per-item variation). (`{{data:}}`-as-*collection* and `{{item:}}` are Phase 2.)
 
-## Prelude migration (v22 → v23, done by the editor's "Upgrade to specVersion 23")
+## Prelude migration (done by the editor on the upgrade to specVersion ≥ 23 — #963)
 
-Mechanical and behavior-preserving:
+Mechanical and behavior-preserving, materialised into the editor's pending state when the
+bump is staged (not a publish-time rewrite), so the desk, the panes, undo and the draft all see
+it; a package already at 23+ that still carries preludes migrates on demand from its Preludes
+pane:
 
-1. Each `manifest.preludes[id] = file` → a `manifest.macros` library entry (same id, same
-   file, verbatim — no tokens). (If `manifest.macros` already holds that id, the upgrade
-   reports a collision for the author to rename; expected to be rare.)
-2. For each `prompt` with `prelude: X`, for **every node** that uses that prompt, append
-   `{ "macro": "X", "at": "before" }` to that node's `macros`.
+1. Each live `preludes[id] = file` → a `manifest.macros` library entry `{ id, label: id, file }`
+   whose **text is written to `macros/<id>.md`** (verbatim — no tokens). The file moves because the
+   publish door's path allowlist accepts `prompts/`, `schemas/`, `macros/` and `data/` only — a
+   `preludes/` path never published to an account. If `manifest.macros` already holds that id, or
+   the id is not snake_case, the upgrade is **refused by name** for the author to rename; nothing
+   is staged.
+2. For each `prompt` with `prelude: X`, for **every node** that uses that prompt, insert the bare
+   entry `"X"` (before, always — the wire form `WorkflowNodeMacroSpec` writes) **first** in that
+   node's `macros`, so it stays the leading block (`PromptTemplateRenderer.Compose` places a prelude
+   ahead of the before blocks — the byte-identical order).
 3. Remove `manifest.preludes` and every `prompt.prelude`.
+4. A prelude no prompt uses, or whose text is empty, is **dropped** (as a macro it would be an
+   orphan / an empty macro, both refused) and named in a one-time notice, with each migrated
+   prelude's new home.
 
 A prompt used by N nodes yields N attachments pointing at one library entry — reuse of the
 *text* is preserved; only the prompt-level auto-fan-out (future nodes inherit) is dropped,
-by design. Rendered output at every node is identical to before.
+by design. Rendered output at every node is identical to before, and so is its `inputHash`
+(it covers the composed bytes). Prelude text carrying `{{…}}` was sent verbatim as a prelude;
+as a macro it meets the placeholder check, which the desk reports for the author to fix.
 
 ## Engine resolution & the renderer seam
 
@@ -156,8 +169,9 @@ but the composed-prompt hash already captures the effect.
   and a condition that rests quietly as "Always" and expands to the shared `ConditionField`
   (#936) — consistent with Produced-when / Runs-when. Position: alongside the node's other
   sub-sections.
-- **Retire the Preludes section** (migrated into Macros). The per-prompt "shared prelude"
-  selector is removed.
+- **Retire the Preludes section** (migrated into Macros): from 23 the nav group renders only
+  while a package still carries a prelude, "+ Prelude" only below 23, and the per-prompt
+  "shared prelude" selector only while the prompt still names one (#963).
 - UI makes the host-dependent placement obvious so the two attachment sites don't blur
   (a node macro offers before/after; a deliverable macro offers the fuller set).
 
