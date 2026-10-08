@@ -105,6 +105,13 @@
                     {
                         <FluentDivider Orientation="Orientation.Vertical" Role="DividerRole.Presentation" />
                     }
+                    @if (upgradeRefusal is { Length: > 0 })
+                    {
+                        @* #963: the upgrade migrates preludes to node macros; a prelude it
+                           cannot migrate (an id a macro already holds, an id that is not
+                           snake_case) refuses the upgrade by name — nothing is staged. *@
+                        <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false" Class="upgrade-refusal">@upgradeRefusal</FluentMessageBar>
+                    }
                     @* #447: two publishes, said explicitly. A package of my own
                        takes a new version; anything can become a new package of
                        my own, named by a slug; a package that is not mine can
@@ -286,6 +293,13 @@
                     specVersion @EffectiveSpecVersion is publishable but not yet runnable: consults pinned to a specVersion @EffectiveSpecVersion package will refuse to start until the engine runs it.
                 </FluentMessageBar>
             }
+            @if (migrationNotice is { Length: > 0 })
+            {
+                @* #963: what the prelude migration did — said once, up front, never a
+                   silent hold: each prelude's new home, and any dropped because no
+                   prompt used it or it was empty. Cleared by the next publish/discard. *@
+                <FluentMessageBar Intent="MessageIntent.Info" AllowDismiss="false" Class="prelude-migration-notice">@migrationNotice</FluentMessageBar>
+            }
             @if (!string.IsNullOrWhiteSpace(publishSuccess))
             {
                 <FluentMessageBar Intent="MessageIntent.Success" AllowDismiss="false">@publishSuccess</FluentMessageBar>
@@ -451,7 +465,12 @@
                         }
                     }
                     @* #747: shared preludes — named text prepended to a prompt.
-                       Create/edit/remove here; a prompt picks one in its pane. *@
+                       Create/edit/remove here; a prompt picks one in its pane.
+                       #963: from 23 a prelude is the trivial node macro, so the group
+                       stays only while a package still carries one (migrate it from its
+                       pane); below 23 it is the authoring surface it always was. *@
+                    @if (EffectiveSpecVersion < 23 || LivePreludes.Any())
+                    {
                     <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.TextParagraph())" /> Preludes</span>
                     @if (!LivePreludes.Any())
                     {
@@ -480,12 +499,16 @@
                             <button type="button" class="editor-nav__restore" @onclick="() => RestorePreludeAsync(restorePrelude)">(restore)</button>
                         </div>
                     }
-                    <button type="button"
-                            class="editor-nav__item editor-nav__add @(selectedKey == AddPreludeKey ? "editor-nav__item--selected" : "")"
-                            @onclick="() => Select(AddPreludeKey)">
-                        <span class="editor-nav__dot"></span>
-                        <span>+ Prelude</span>
-                    </button>
+                    @if (EffectiveSpecVersion < 23)
+                    {
+                        <button type="button"
+                                class="editor-nav__item editor-nav__add @(selectedKey == AddPreludeKey ? "editor-nav__item--selected" : "")"
+                                @onclick="() => Select(AddPreludeKey)">
+                            <span class="editor-nav__dot"></span>
+                            <span>+ Prelude</span>
+                        </button>
+                    }
+                    }
                     @* #746/#759: output-contract schemas — the pane views declared
                        ones, adds a catalog contract, and removes an unused one.
                        Always shown so the first contract can be added. *@
@@ -1777,7 +1800,7 @@
                                                     TextChanged="@(value => OnTextChangedAsync(promptView.File, value))">
                                     @NodePlainTextToggle(selectedNode)
                                     @* #747: the prompt's shared prelude — same control as the Prompts pane. *@
-                                    @if (IsDeclaredPrompt(nodePrompt) && (LivePreludes.Any() || EffectivePromptPrelude(nodePrompt) != null))
+                                    @if (IsDeclaredPrompt(nodePrompt) && (EffectiveSpecVersion < 23 || EffectivePromptPrelude(nodePrompt) != null) && (LivePreludes.Any() || EffectivePromptPrelude(nodePrompt) != null))
                                     {
                                         var chosenNodePrelude = EffectivePromptPrelude(nodePrompt);
                                         <label class="prompt-prelude node-field">
@@ -2151,7 +2174,7 @@
                             }
                             @* #747: the prompt's shared prelude — prepended to it. Offered for a declared
                                prompt when the package has a prelude (or this prompt already names one). *@
-                            @if (IsDeclaredPrompt(prompt.Id) && (LivePreludes.Any() || EffectivePromptPrelude(prompt.Id) != null))
+                            @if (IsDeclaredPrompt(prompt.Id) && (EffectiveSpecVersion < 23 || EffectivePromptPrelude(prompt.Id) != null) && (LivePreludes.Any() || EffectivePromptPrelude(prompt.Id) != null))
                             {
                                 var chosenPrelude = EffectivePromptPrelude(prompt.Id);
                                 <label class="prompt-prelude node-field">
@@ -2209,6 +2232,18 @@
                                               IconStart="@(new Icons.Regular.Size20.Dismiss())"
                                               @onclick="() => RemovePreludeFromPaneAsync(prelude)">
                                     Remove prelude
+                                </FluentButton>
+                            }
+                            @if (EffectiveSpecVersion >= 23)
+                            {
+                                @* #963: a package already at 23+ that still carries preludes (loaded
+                                   from a repo, or published before the migration shipped) — the same
+                                   migration the upgrade runs, on demand; the group retires after. *@
+                                <p class="muted-text">From specVersion 23 a prelude is a node macro placed before the prompt, always. Migrate every prelude of this package to node macros; a prelude no prompt uses is dropped.</p>
+                                <FluentButton Appearance="Appearance.Outline" Class="prelude-migrate"
+                                              aria-label="Migrate preludes to node macros"
+                                              @onclick="MigratePreludesOnDemandAsync">
+                                    Migrate preludes to node macros
                                 </FluentButton>
                             }
                         </WorkflowEditorPane>
@@ -3242,8 +3277,141 @@
             return;
         }
 
+        // #963: crossing 23 migrates every prelude to a node macro — into the
+        // pending shapes the editor already has, so the desk, the panes, undo and
+        // the draft all see it, and the bump and the migration are one step. A
+        // prelude that cannot become a macro refuses the upgrade by name.
+        string? notice = null;
+        if (LoadedSpecVersion < 23 && target >= 23 && LivePreludes.Any())
+        {
+            var (migrated, refusal, notices) = MigratePreludes();
+            if (!migrated)
+            {
+                upgradeRefusal = refusal;
+                return;
+            }
+
+            notice = MigrationSentence(notices);
+        }
+
         specVersionBump = target;
+        upgradeRefusal = null;
         await PendingChangedAsync();
+        migrationNotice = notice;
+    }
+
+    // #963: the prelude migration's two message surfaces — session-only, not
+    // pending state: the refusal beside the upgrade buttons, the one-time notice
+    // of what moved and what was dropped.
+    private string? upgradeRefusal;
+    private string? migrationNotice;
+
+    /// <summary>#963: the on-demand door — a package already at 23+ that still carries preludes.</summary>
+    private async Task MigratePreludesOnDemandAsync()
+    {
+        var (migrated, refusal, notices) = MigratePreludes();
+        if (!migrated)
+        {
+            upgradeRefusal = refusal;
+            return;
+        }
+
+        upgradeRefusal = null;
+        await PendingChangedAsync();
+        migrationNotice = MigrationSentence(notices);
+    }
+
+    private static string MigrationSentence(IReadOnlyList<string> notices) =>
+        "Preludes migrated to node macros. " + string.Join(" ", notices);
+
+    /// <summary>
+    /// #963: every live prelude becomes a library macro (its text at macros/&lt;id&gt;.md —
+    /// the publish door refuses preludes/ paths, so the file moves) composed FIRST,
+    /// bare (before, always), on every node using a prompt that named it — the
+    /// byte-identical order (PromptTemplateRenderer.Compose puts a prelude ahead of
+    /// the before blocks). The prelude and the prompt's choice are removed. A prelude
+    /// no prompt uses, or whose text is empty, is dropped and named in the notice.
+    /// Refused as a whole — nothing changes — when an id is already a macro's or is
+    /// not snake_case: the author renames, then upgrades.
+    /// </summary>
+    private (bool Migrated, string? Refusal, IReadOnlyList<string> Notices) MigratePreludes()
+    {
+        var live = LivePreludes.ToList();
+        var macroIds = EffectiveMacros.Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var (id, _) in live)
+        {
+            if (macroIds.Contains(id))
+            {
+                return (false, $"Prelude '{id}' has the id of a declared macro; rename one, then upgrade.", Array.Empty<string>());
+            }
+
+            if (!PF.WorkflowDeclaredIds.IsValid(id))
+            {
+                return (false, $"Prelude '{id}' needs a snake_case id to become a macro; rename it, then upgrade.", Array.Empty<string>());
+            }
+        }
+
+        var notices = new List<string>();
+
+        foreach (var (id, file) in live)
+        {
+            var readers = PreludeReferencedBy(id);
+            var text = GetText(file);
+            var selected = selectedKey == file;
+
+            if (readers.Count == 0)
+            {
+                notices.Add($"Prelude '{id}' is used by no prompt and was dropped.");
+            }
+            else if (string.IsNullOrWhiteSpace(text))
+            {
+                notices.Add($"Prelude '{id}' is empty and was dropped.");
+            }
+            else
+            {
+                addedMacros.Add(new AddedMacro { Id = id, Label = id, Text = text });
+                var homes = new List<string>();
+
+                foreach (var promptId in readers)
+                {
+                    promptPreludeEdits[promptId] = null;
+
+                    foreach (var node in NodesUsingPrompt(promptId))
+                    {
+                        var list = MutableNodeMacros(node.Id);
+                        if (list.All(entry => entry.Id != id))
+                        {
+                            list.Insert(0, new WorkflowManifestReader.NodeMacroView(id));
+                        }
+
+                        homes.Add(node.Id);
+                    }
+                }
+
+                notices.Add($"'{id}' → macro '{id}' before {(homes.Count == 0 ? "no node (its prompt is unused)" : string.Join(", ", homes.Select(h => $"'{h}'")))}.");
+            }
+
+            if (AddedPreludeForFile(file) is { } pending)
+            {
+                addedPreludes.Remove(pending);
+            }
+            else
+            {
+                removedPreludeIds.Add(id);
+                if (file.Length > 0)
+                {
+                    removedFiles.Add(file);
+                }
+            }
+
+            if (selected)
+            {
+                selectedKey = readers.Count > 0 && !string.IsNullOrWhiteSpace(text) ? AddedMacroFile(id) : GraphKey;
+            }
+        }
+
+        return (true, null, notices);
     }
 
     private bool CanUpgradeTo(int target) =>
@@ -10268,6 +10436,10 @@
         {
             kind.Clear();
         }
+
+        // #963: the migration's messages go with the pending state they describe.
+        upgradeRefusal = null;
+        migrationNotice = null;
     }
 
     // #817: disarm the toolbar Discard/Revert without acting, clearing the arm
@@ -10952,6 +11124,13 @@
             foreach (var added in addedPreludes)
             {
                 preludesObject[added.Id] = AddedPreludeFile(added.Id);
+            }
+
+            // #963: a map emptied by the migration (or by removing the last prelude)
+            // drops the key — a package with no preludes declares none.
+            if (preludesObject.Count == 0)
+            {
+                root.AsObject().Remove(preludesKey);
             }
         }
 

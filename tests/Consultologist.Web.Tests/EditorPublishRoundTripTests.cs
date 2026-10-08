@@ -766,6 +766,34 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         }
     }
 
+    [Fact]
+    public async Task AnUpgradeOfAPackageWithPreludes_ChangesExactlyThePreludeKeys()
+    {
+        // #963: the one migration beyond the version line and v9's tags — a
+        // prelude becomes a library macro composed first on its prompt's nodes.
+        // Everything else is unchanged; the keys that move are exactly these.
+        var fixture = EditorFixtures.V7Preludes();
+        var (result, sent) = await PublishAndCaptureAsync(
+            page => { UpgradeTo(page, 24); return Task.CompletedTask; },
+            fixture);
+
+        var before = JsonDocument.Parse(fixture.Manifest.GetRawText()).RootElement;
+        var after = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement;
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+
+        static string Canonical(JsonElement value) => JsonSerializer.Serialize(JsonDocument.Parse(value.GetRawText()).RootElement);
+        foreach (var property in before.EnumerateObject().Where(p => p.Name is not ("specVersion" or "preludes" or "prompts" or "nodes")))
+        {
+            Assert.Equal(Canonical(property.Value), Canonical(after.GetProperty(property.Name)));
+        }
+
+        Assert.False(after.TryGetProperty("preludes", out _));
+        Assert.Equal(new[] { "macros", "tags" }, after.EnumerateObject().Select(p => p.Name).Except(before.EnumerateObject().Select(p => p.Name)).Order().ToList());
+        Assert.False(after.GetProperty("prompts")[0].TryGetProperty("prelude", out _));
+        Assert.Equal("guidance", after.GetProperty("nodes")[0].GetProperty("macros")[0].GetString());
+        Assert.Equal("Use short SNOMED search terms.", sent.Files["macros/guidance.md"]);
+    }
+
     /// <summary>
     /// #404: every upgrade test above loads V7, where IsV7 is already true, so
     /// the path that breaks was never exercised. A v6 fork is offered the same

@@ -165,6 +165,146 @@ public class TemplatesPreludesTests : ClientRenderTestContext
         Assert.Equal("unused", Prompt(sent!, "draft-section").GetProperty("prelude").GetString());
     }
 
+    // ----- #963: the migration to node macros ---------------------------------
+
+    private static void UpgradeTo(IRenderedComponent<Templates> page, int target) =>
+        page.FindAll("fluent-button")
+            .First(button => button.TextContent.Contains($"Upgrade to specVersion {target}", StringComparison.Ordinal))
+            .Click();
+
+    private static JsonElement Node(WorkflowPackagePublishRequest request, string id) =>
+        Manifest(request).GetProperty("nodes").EnumerateArray().Single(n => n.GetProperty("id").GetString() == id);
+
+    private static IReadOnlyList<string> NavGroups(IRenderedComponent<Templates> page) =>
+        page.FindAll(".editor-nav__group").Select(group => group.TextContent.Trim()).ToList();
+
+    /// <summary>The V7Preludes shape at a version, with an optional library macro declared (for the collision) and an optional existing node macro on draft-section.</summary>
+    private static WorkflowPackageContentResponse PreludesAt(int specVersion, bool declareGuidanceMacro = false, bool existingNodeMacro = false)
+    {
+        var macros = declareGuidanceMacro
+            ? """, "macros": [ { "id": "guidance", "label": "Guidance", "file": "macros/guidance.md" } ]"""
+            : existingNodeMacro
+                ? """, "macros": [ { "id": "tool_guidance", "label": "Tool guidance", "file": "macros/tool_guidance.md" } ]"""
+                : "";
+        var nodeMacros = existingNodeMacro ? """, "macros": [ "tool_guidance" ]""" : "";
+        var manifest = $$"""
+            {
+              "name": "acct-1234567890ab",
+              "version": "v2026.07.1",
+              "specVersion": {{specVersion}},
+              "tags": [],
+              "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
+              "preludes": { "guidance": "preludes/guidance.md", "unused": "preludes/unused.md" }{{macros}},
+              "inputs": [ { "id": "consult_draft", "label": "Consult draft", "required": true } ],
+              "data": { "standards": "data/standards/" },
+              "prompts": [
+                { "id": "draft-section", "file": "prompts/draft-section.md", "variables": ["section_name", "consult_draft"], "prelude": "guidance" }
+              ],
+              "results": [ { "id": "consult_note", "node": "node:assemble-note", "label": "Consultation note" } ],
+              "nodes": [
+                { "id": "draft-section", "forEach": "data:standards", "label": "Drafting section", "prompt": "draft-section",
+                  "bindings": { "section_name": "item:name", "consult_draft": "input:consult_draft" }{{nodeMacros}} },
+                { "id": "assemble-note", "label": "Assembling note", "aggregate": ["node:draft-section"] }
+              ]
+            }
+            """;
+        var files = new List<(string, string)> { ("preludes/guidance.md", "Use short SNOMED search terms."), ("preludes/unused.md", "An unused prelude.") };
+        if (declareGuidanceMacro) files.Add(("macros/guidance.md", "A macro already called guidance."));
+        if (existingNodeMacro) files.Add(("macros/tool_guidance.md", "Tool guidance."));
+        return EditorFixtures.Package(manifest, specVersion, files.ToArray());
+    }
+
+    [Fact]
+    public void UpgradingPast23_MigratesPreludesToNodeMacros_ByteForByte()
+    {
+        var page = RenderEditor(EditorFixtures.V7Preludes());
+        CapturePublish();
+
+        UpgradeTo(page, 24);
+
+        // Said once, up front: where guidance went, and that unused was dropped.
+        var notice = page.Find(".prelude-migration-notice").TextContent;
+        Assert.Contains("'guidance' → macro 'guidance' before 'draft-section'", notice);
+        Assert.Contains("Prelude 'unused' is used by no prompt and was dropped.", notice);
+        // The Preludes group retires with its last prelude; the macro is in the library.
+        Assert.DoesNotContain("Preludes", NavGroups(page));
+        Assert.Contains(page.FindAll("button.editor-nav__item"), button => button.TextContent.Contains("guidance"));
+
+        Publish(page);
+
+        Assert.True(sent != null, string.Join(" | ", Refusals(page)));
+        var manifest = Manifest(sent!);
+        Assert.False(manifest.TryGetProperty("preludes", out _));
+        Assert.False(Prompt(sent!, "draft-section").TryGetProperty("prelude", out _));
+        var macro = manifest.GetProperty("macros").EnumerateArray().Single();
+        Assert.Equal("guidance", macro.GetProperty("id").GetString());
+        Assert.Equal("macros/guidance.md", macro.GetProperty("file").GetString());
+        // The bare form, first: before, always — the prelude's exact composition.
+        Assert.Equal("guidance", Node(sent!, "draft-section").GetProperty("macros").EnumerateArray().Single().GetString());
+        // The text moved to macros/ (the publish door accepts no preludes/ path).
+        Assert.Equal("Use short SNOMED search terms.", sent!.Files["macros/guidance.md"]);
+        Assert.DoesNotContain("preludes/guidance.md", sent.Files.Keys);
+        Assert.DoesNotContain("preludes/unused.md", sent.Files.Keys);
+        var result = Validated();
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void MigratingOnDemandAt23_KeepsThePreludeAheadOfExistingNodeMacros()
+    {
+        // A package already at 23 with both a prelude and a node macro: the
+        // Preludes pane offers the migration, and the migrated entry lands FIRST
+        // — the order PromptTemplateRenderer.Compose gave the prelude.
+        var page = RenderEditor(PreludesAt(23, existingNodeMacro: true));
+        CapturePublish();
+        Assert.Contains("Preludes", NavGroups(page));
+        Navigate(page, "guidance");
+
+        page.Find("fluent-button[aria-label='Migrate preludes to node macros']").Click();
+        Assert.DoesNotContain("Preludes", NavGroups(page));
+        Publish(page);
+
+        Assert.True(sent != null, string.Join(" | ", Refusals(page)));
+        var entries = Node(sent!, "draft-section").GetProperty("macros").EnumerateArray().Select(e => e.GetString()).ToList();
+        Assert.Equal(new[] { "guidance", "tool_guidance" }, entries);
+        var result = Validated();
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public async Task AnIdCollision_RefusesTheUpgrade_AndStagesNothing()
+    {
+        var page = RenderEditor(PreludesAt(7, declareGuidanceMacro: true));
+        CapturePublish();
+
+        UpgradeTo(page, 24);
+
+        Assert.Contains("Prelude 'guidance' has the id of a declared macro; rename one, then upgrade.", page.Find(".upgrade-refusal").TextContent);
+        // Nothing staged: the rung is still on offer, the preludes untouched.
+        Assert.Contains(page.FindAll("fluent-button"), button => button.TextContent.Contains("Upgrade to specVersion 24"));
+        Assert.Contains("Preludes", NavGroups(page));
+        Publish(page);
+        await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
+    }
+
+    [Fact]
+    public void At24_WithNoPreludes_ThePreludesGroupIsGone()
+    {
+        var page = RenderEditor(EditorFixtures.V11Macro() with { SpecVersion = 24, Manifest = JsonDocument.Parse(EditorFixtures.V11Macro().Manifest.GetRawText().Replace("\"specVersion\": 11", "\"specVersion\": 24")).RootElement.Clone() });
+
+        Assert.DoesNotContain("Preludes", NavGroups(page));
+        Assert.DoesNotContain(page.FindAll("button.editor-nav__item"), button => button.TextContent.Contains("+ Prelude"));
+    }
+
+    [Fact]
+    public void At23_WithPreludes_TheGroupStays_ButOffersNoNewPrelude()
+    {
+        var page = RenderEditor(PreludesAt(23));
+
+        Assert.Contains("Preludes", NavGroups(page));
+        Assert.DoesNotContain(page.FindAll("button.editor-nav__item"), button => button.TextContent.Contains("+ Prelude"));
+    }
+
     [Fact]
     public void ClearingAPromptsPrelude_DropsThePreludeKey()
     {
