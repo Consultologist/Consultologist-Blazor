@@ -819,7 +819,9 @@
                                                                         <span class="node-row__chevron" aria-hidden="true"></span>
                                                                         <span class="node-row__status @StatusCss(entry.Status)">@StatusGlyph(entry.Status)</span>
                                                                         <span class="node-row__label">@itemId</span>
-                                                                        @UnattestedBadge(group.Descriptor, group.NodeLevel ?? entry)
+                                                                        @* #980: an item stamped by the engine names its own hash + agent;
+                                                                           an unstamped one (a record from before) reads the summary row's. *@
+                                                                        @UnattestedBadge(group.Descriptor, entry.CustomSchemaHash != null || entry.CustomAgent != null ? entry : (group.NodeLevel ?? entry))
                                                                         @TokensSpan(entry.Tokens, group.Descriptor.PromptId != null)
                                                                         @DurationSpan(entry.DurationMs)
                                                                         <span class="node-row__hashes hash-text">
@@ -1885,8 +1887,9 @@
     };
 
     /// <summary>#933: the unattested pill on a node row (scalar, fan summary and every item —
-    /// the descriptor says custom before the engine stamps anything, #980), with the
-    /// sentence and the row's schema hash + agent in its title.</summary>
+    /// the descriptor says custom before the engine stamps anything, and on records from
+    /// before #980 stamped a fan's rows), with the sentence and the row's schema hash +
+    /// agent in its title.</summary>
     private RenderFragment UnattestedBadge(ConsultGenerationNodeDescriptor descriptor, ConsultGenerationNodeStatus? status) => builder =>
     {
         if (!UnattestedNodes.IsUnattested(descriptor, status))

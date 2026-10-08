@@ -902,14 +902,15 @@ public class HistoryDetailTests : ClientRenderTestContext
     [Fact]
     public void AFannedCustomNode_MarksEveryItemRow_FromTheDescriptor()
     {
-        // The engine stamps only the node-level row (#980); the descriptor's custom
-        // contract marks the items regardless.
+        // A record from before #980: the engine stamped no row of a fanned custom
+        // node; the descriptor's custom contract marks the summary and the items
+        // regardless, and the detail says what the record did not carry.
         WithEngine();
         WithJob(3,
             nodes: new[] { CustomShape with { ForEach = "data:standards" } },
             nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
             {
-                ["shape"] = CustomRow(),
+                ["shape"] = new("shape", "Assessment shape", "Completed", null, null, DateTimeOffset.UtcNow, null),
                 ["shape:hpi"] = new("shape", "Assessment shape", "Completed", "in-h", "out-h", DateTimeOffset.UtcNow, null),
                 ["shape:pmh"] = new("shape", "Assessment shape", "Completed", "in-p", "out-p", DateTimeOffset.UtcNow, null)
             });
@@ -918,6 +919,28 @@ public class HistoryDetailTests : ClientRenderTestContext
         // The summary row and both item rows.
         Assert.Equal(3, page.FindAll(".node-row__unattested").Count);
         Assert.Equal(2, page.FindAll(".node-row--item .node-row__unattested").Count);
+        Assert.Contains("schema not recorded · agent not recorded", page.Find(".provenance-unattested").TextContent);
+    }
+
+    [Fact]
+    public void AFannedCustomNode_StampedPerItem_NamesTheHashAndAgent_FromAnItemRow()
+    {
+        // Since #980 the engine stamps a fan's items and its summary row; a record
+        // whose summary row lacks the stamp still names the hash + agent from an item.
+        WithEngine();
+        WithJob(3,
+            nodes: new[] { CustomShape with { ForEach = "data:standards" } },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["shape"] = new("shape", "Assessment shape", "Completed", null, null, DateTimeOffset.UtcNow, null),
+                ["shape:hpi"] = CustomRow() with { InputHash = "in-h", OutputHash = "out-h" },
+                ["shape:pmh"] = CustomRow() with { InputHash = "in-p", OutputHash = "out-p" }
+            });
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Contains("Assessment shape · schema 0123456789ab · agent custom-0123@1", page.Find(".provenance-unattested").TextContent);
+        var itemBadge = page.FindAll(".node-row--item .node-row__unattested").First();
+        Assert.Contains("schema 0123456789ab · agent custom-0123@1", itemBadge.GetAttribute("title"));
     }
 
     [Fact]

@@ -344,10 +344,15 @@ public sealed class ConsultGenerationOrchestrator
                 nodeLevelCompleted.Add(node.Id);
                 completedNodeCount++;
 
+                // #980: the fan's summary row carries no hashes (nothing was sent at node
+                // level) but does carry the custom stamp, so a reader of the node-level
+                // row knows what its items are.
+                var stamp = CustomStamp(node);
                 await context.Entities.CallEntityAsync(
                     entityId,
                     nameof(ConsultGenerationJobEntity.MarkNodeCompleted),
-                    new ConsultGenerationNodeUpdate(node.Id, node.Label, null, null, null, completedNodeCount, totalNodeCount));
+                    new ConsultGenerationNodeUpdate(node.Id, node.Label, null, null, null, completedNodeCount, totalNodeCount,
+                        Unattested: stamp.Unattested, CustomSchemaHash: stamp.CustomSchemaHash, CustomAgent: stamp.CustomAgent));
             }
         }
 
@@ -1180,27 +1185,47 @@ public sealed class ConsultGenerationOrchestrator
     /// hashes, the classification, the tokens) actually rides. The
     /// orchestrator body has no harness; this does.
     /// </summary>
+    /// <summary>
+    /// #760 (custom tier): a custom node's output is an unattested user shape — the
+    /// marker, the schema hash and the content-addressed agent that ran, so the
+    /// client can distinguish it from an attested catalog contract. One stamp for
+    /// the node update, the item update (#980) and the fan's summary row.
+    /// </summary>
+    internal static (bool? Unattested, string? CustomSchemaHash, string? CustomAgent) CustomStamp(ConsultNodeDescriptor node)
+    {
+        var custom = string.Equals(node.OutputContract, OutputContracts.Custom, StringComparison.Ordinal);
+        return (
+            custom ? true : null,
+            custom ? node.CustomSchemaHash : null,
+            custom && node.AgentName is not null ? $"{node.AgentName}@{node.AgentVersion}" : null);
+    }
+
     internal static ConsultGenerationNodeUpdate NodeUpdateFrom(
         ConsultNodeDescriptor node, NodeRunResult result, int completedNodeCount, int totalNodeCount)
     {
-        // #760 (custom tier): a custom node's output is an unattested user shape — mark
-        // it, and record the schema hash + the content-addressed agent that ran, so the
-        // client can distinguish it from an attested catalog contract.
-        var custom = string.Equals(node.OutputContract, OutputContracts.Custom, StringComparison.Ordinal);
+        var stamp = CustomStamp(node);
         return new(node.Id, node.Label, result.Concepts, result.InputHash, result.OutputHash,
             completedNodeCount, totalNodeCount, result.HashVersion, result.Classification, result.Tokens,
             NodeStartedAtUtc: result.StartedAtUtc, DurationMs: result.DurationMs,
-            Unattested: custom ? true : null,
-            CustomSchemaHash: custom ? node.CustomSchemaHash : null,
-            CustomAgent: custom && node.AgentName is not null ? $"{node.AgentName}@{node.AgentVersion}" : null);
+            Unattested: stamp.Unattested,
+            CustomSchemaHash: stamp.CustomSchemaHash,
+            CustomAgent: stamp.CustomAgent);
     }
 
     internal static ConsultGenerationNodeItemUpdate ItemUpdateFrom(
-        ConsultNodeDescriptor node, string itemId, string itemName, NodeRunResult result, int completedChainCount, int totalChainCount) =>
-        new(node.Id, node.Label, itemId, itemName,
+        ConsultNodeDescriptor node, string itemId, string itemName, NodeRunResult result, int completedChainCount, int totalChainCount)
+    {
+        // #980: a fanned custom node's items carry the stamp too — before, only a
+        // scalar node's row did, and a fanned one was stamped on no row at all.
+        var stamp = CustomStamp(node);
+        return new(node.Id, node.Label, itemId, itemName,
             result.Concepts, result.InputHash, result.OutputHash,
             completedChainCount, totalChainCount, result.HashVersion, result.Tokens,
-            NodeStartedAtUtc: result.StartedAtUtc, DurationMs: result.DurationMs);
+            NodeStartedAtUtc: result.StartedAtUtc, DurationMs: result.DurationMs,
+            Unattested: stamp.Unattested,
+            CustomSchemaHash: stamp.CustomSchemaHash,
+            CustomAgent: stamp.CustomAgent);
+    }
 
     internal static ConsultGenerationDeliveryRecord DeliveryRecordFor(Email.EmailIntakeReplyOutcome? outcome) =>
         outcome switch
