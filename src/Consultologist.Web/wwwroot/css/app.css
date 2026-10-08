@@ -596,6 +596,16 @@ header.header.app-header {
 	color: var(--consultologist-text-muted);
 }
 
+/* #956: a read-only output-macro row on the node pane — the macro id, its
+   placement relative to this node, and the deliverable it sits in, on one line. */
+.node-output-macro-row {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 0.3rem;
+	font-size: 0.85rem;
+}
+
 .panel-description,
 .muted-text {
 	margin: 0;
