@@ -101,8 +101,11 @@ pane:
 
 1. Each live `preludes[id] = file` → a `manifest.macros` library entry `{ id, label: id, file }`
    whose **text is written to `macros/<id>.md`** (verbatim — no tokens). The file moves because the
-   publish door's path allowlist accepts `prompts/`, `schemas/`, `macros/` and `data/` only — a
-   `preludes/` path never published to an account. If `manifest.macros` already holds that id, or
+   publish door's path allowlist accepts `prompts/`, `schemas/`, `macros/` and `data/` only: the
+   format's own prelude convention is `prompts/_<name>.md`, and the editor's `preludes/<id>.md`
+   convention was a bug (#978) — an editor-authored prelude never published to an account. #978
+   retired prelude creation in the editor; below 23 the "+ Prelude" door says so and stages nothing,
+   while declared preludes stay editable and migrate. If `manifest.macros` already holds that id, or
    the id is not snake_case, the upgrade is **refused by name** for the author to rename; nothing
    is staged.
 2. For each `prompt` with `prelude: X`, for **every node** that uses that prompt, insert the bare

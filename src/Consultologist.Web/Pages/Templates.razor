@@ -482,7 +482,7 @@
                         <button type="button"
                                 class="editor-nav__item @(selectedKey == prelude.File ? "editor-nav__item--selected" : "")"
                                 @onclick="() => Select(livePrelude.File)">
-                            <span class="editor-nav__dot">@(edits.ContainsKey(prelude.File) || AddedPreludeForFile(prelude.File) != null ? "●" : "")</span>
+                            <span class="editor-nav__dot">@(edits.ContainsKey(prelude.File) ? "●" : "")</span>
                             <span>@prelude.Id</span>
                         </button>
                         @* #936 follow-up: a prelude is removed from its own pane (like a node),
@@ -1552,30 +1552,20 @@
                     }
                     else if (selectedKey == AddPreludeKey)
                     {
+                        @* #978: prelude creation is retired. The editor's own convention wrote a
+                           new prelude at preludes/<id>.md, a path the publish door never accepted
+                           (the format's convention is prompts/_<name>.md), so an editor-authored
+                           prelude never published. From 23 a prelude is a node macro (#955/#963);
+                           below 23 the door stays visible and says so, rather than offering a form
+                           whose result cannot publish. Existing preludes stay editable and migrate. *@
                         <div class="pane-header">
                             <div>
                                 <h3 class="panel-title">New prelude</h3>
-                                <p class="muted-text">
-                                    A named shared text. When a prompt selects it (on the prompt's pane), the
-                                    prelude is prepended to that prompt, so common guidance lives in one place.
-                                </p>
                             </div>
                         </div>
-                        @if (newPreludeError != null)
-                        {
-                            <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false">@newPreludeError</FluentMessageBar>
-                        }
-                        <div class="new-item-fields">
-                            <label class="input-field">
-                                <span>id (snake_case)</span>
-                                <FluentTextField @bind-Value="newPreludeId" Placeholder="snomed_tool_guidance" />
-                            </label>
-                        </div>
-                        <div class="action-row">
-                            <FluentButton Appearance="Appearance.Accent" @onclick="AddPreludeAsync">
-                                Create prelude
-                            </FluentButton>
-                        </div>
+                        <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false" Class="prelude-retired">
+                            A prelude publishes only as a node macro from specVersion 23. Use "Upgrade to specVersion @NewestSpecVersion" and every prelude of this package migrates; new shared text is a macro composed into a node's prompt.
+                        </FluentMessageBar>
                     }
                     else if (selectedKey == AddNodeKey)
                     {
@@ -2204,7 +2194,7 @@
                                             IdentityFile="@prelude.File"
                                             EditLabel="Prelude text"
                                             Text="@GetText(prelude.File)"
-                                            Modified="@(edits.ContainsKey(prelude.File) || AddedPreludeForFile(prelude.File) != null)"
+                                            Modified="@edits.ContainsKey(prelude.File)"
                                             TextChanged="@(value => OnTextChangedAsync(prelude.File, value))">
                             @PaneDiscardButton(prelude.File, PreludeCanDiscard(prelude), () => RevertFileEdits(prelude.File))
                             <p class="muted-text">
@@ -3392,17 +3382,10 @@
                 notices.Add($"'{id}' → macro '{id}' before {(homes.Count == 0 ? "no node (its prompt is unused)" : string.Join(", ", homes.Select(h => $"'{h}'")))}.");
             }
 
-            if (AddedPreludeForFile(file) is { } pending)
+            removedPreludeIds.Add(id);
+            if (file.Length > 0)
             {
-                addedPreludes.Remove(pending);
-            }
-            else
-            {
-                removedPreludeIds.Add(id);
-                if (file.Length > 0)
-                {
-                    removedFiles.Add(file);
-                }
+                removedFiles.Add(file);
             }
 
             if (selected)
@@ -3508,8 +3491,6 @@
             new("addedSchemas", () => addedSchemas.Count, addedSchemas.Clear,
                 () => $"+{addedSchemas.Count} {Plural(addedSchemas.Count, "schema")}", () => addedSchemas.Count > 0),
             // #747: shared preludes — pending additions, removals and a prompt's choice.
-            new("addedPreludes", () => addedPreludes.Count, addedPreludes.Clear,
-                () => $"+{addedPreludes.Count} {Plural(addedPreludes.Count, "prelude")}", () => addedPreludes.Count > 0),
             new("removedPreludeIds", () => removedPreludeIds.Count, removedPreludeIds.Clear,
                 () => $"−{removedPreludeIds.Count} {Plural(removedPreludeIds.Count, "prelude")}", () => removedPreludeIds.Count > 0),
             new("promptPreludeEdits", () => promptPreludeEdits.Count, promptPreludeEdits.Clear,
@@ -3595,9 +3576,8 @@
         // a remembered pane on a v10 package must not restore blank.
         || (key == AddMacroKey && EffectiveSpecVersion >= 11)
         || EffectiveMacros.Any(m => m.File == key)
-        // #747: the preludes add form and each pending prelude's body pane.
+        // #747/#978: the preludes door (a retirement notice since #978).
         || key == AddPreludeKey
-        || addedPreludes.Any(prelude => AddedPreludeFile(prelude.Id) == key)
         || addedItems.Any(added => added.Key == key);
 
     private string AddedPath(AddedItem item) => $"data/{item.Collection}/{item.Id}.md";
@@ -4027,18 +4007,11 @@
             .Select(pair => $"Schema '{pair.id}' is removed but node '{pair.nodeId}' still reads it as its output contract; change that node's output first.");
 
     // #747: shared preludes — a `preludes` map (id -> file) whose free-form text
-    // is prepended to a prompt that names it. Authored in full: create/edit/
-    // remove the text, and a prompt selects its prelude. Mirrors the schemas map
-    // (#746) for the map and the macro body pattern for the editable text.
-    private sealed class AddedPrelude
-    {
-        public string Id { get; set; } = string.Empty;
-        public string Text { get; set; } = string.Empty;
-    }
-
-    private readonly List<AddedPrelude> addedPreludes = new();
-    private string? newPreludeId;
-    private string? newPreludeError;
+    // is prepended to a prompt that names it. Edit/remove the text, and a prompt
+    // selects its prelude. #978 retired CREATION: the editor's preludes/<id>.md
+    // convention never passed the publish door (the format's is prompts/_<name>.md),
+    // and from 23 a prelude is a node macro (#955/#963) — so there is no added
+    // prelude any more, only declared ones, less removed.
     private readonly HashSet<string> removedPreludeIds = new(StringComparer.Ordinal);
 
     // A prompt's chosen prelude, keyed by prompt id; an entry equal to the
@@ -4047,20 +4020,14 @@
 
     private const string AddPreludeKey = "add-prelude";
 
-    private static string AddedPreludeFile(string preludeId) => $"preludes/{preludeId}.md";
-
-    private AddedPrelude? AddedPreludeForFile(string path) =>
-        addedPreludes.FirstOrDefault(prelude => AddedPreludeFile(prelude.Id) == path);
-
     private IReadOnlyList<WorkflowManifestReader.PreludeView> DeclaredPreludes =>
         content == null
             ? Array.Empty<WorkflowManifestReader.PreludeView>()
             : WorkflowManifestReader.ReadPreludes(content.Manifest);
 
-    /// <summary>The live preludes as (id, file): declared less removed, plus pending additions.</summary>
+    /// <summary>The live preludes as (id, file): declared less removed.</summary>
     private IEnumerable<(string Id, string File)> LivePreludes =>
-        DeclaredPreludes.Where(prelude => !removedPreludeIds.Contains(prelude.Id)).Select(prelude => (prelude.Id, prelude.File))
-            .Concat(addedPreludes.Select(added => (added.Id, AddedPreludeFile(added.Id))));
+        DeclaredPreludes.Where(prelude => !removedPreludeIds.Contains(prelude.Id)).Select(prelude => (prelude.Id, prelude.File));
 
     private IEnumerable<WorkflowManifestReader.PreludeView> RemovedPreludeViews =>
         DeclaredPreludes.Where(prelude => removedPreludeIds.Contains(prelude.Id));
@@ -4073,52 +4040,6 @@
     /// <summary>The prompts whose prelude reads an id — removal is refused while any exist.</summary>
     private IReadOnlyList<string> PreludeReferencedBy(string preludeId) =>
         prompts.Where(prompt => EffectivePromptPrelude(prompt.Id) == preludeId).Select(prompt => prompt.Id).ToList();
-
-    private async Task AddPreludeAsync()
-    {
-        var id = newPreludeId?.Trim() ?? string.Empty;
-
-        if (!DeclaredIdPattern.IsMatch(id))
-        {
-            newPreludeError = "Prelude ids are snake_case: a lowercase letter, then lowercase letters, digits, or underscores.";
-            return;
-        }
-
-        if (LivePreludes.Any(prelude => prelude.Id == id))
-        {
-            newPreludeError = $"A prelude named '{id}' already exists.";
-            return;
-        }
-
-        if (content!.Files.ContainsKey(AddedPreludeFile(id)))
-        {
-            newPreludeError = $"The package already has a file at '{AddedPreludeFile(id)}'.";
-            return;
-        }
-
-        addedPreludes.Add(new AddedPrelude { Id = id });
-        newPreludeId = null;
-        newPreludeError = null;
-        // Land on the new prelude's pane — writing its text is the next step.
-        selectedKey = AddedPreludeFile(id);
-        await PendingChangedAsync();
-    }
-
-    private async Task RemoveAddedPreludeAsync(AddedPrelude pending)
-    {
-        if (PreludeReferencedBy(pending.Id).Count > 0)
-        {
-            return;
-        }
-
-        addedPreludes.Remove(pending);
-        if (selectedKey == AddedPreludeFile(pending.Id))
-        {
-            selectedKey = GraphKey;
-        }
-
-        await PendingChangedAsync();
-    }
 
     private async Task RemovePreludeAsync(WorkflowManifestReader.PreludeView prelude)
     {
@@ -4141,13 +4062,10 @@
         await PendingChangedAsync();
     }
 
-    /// <summary>#936 follow-up: remove the open prelude from its own pane — a pending
-    /// (just-added) prelude drops outright; a declared one is marked removed (only when
-    /// unused, which <see cref="RemovePreludeAsync"/> enforces).</summary>
+    /// <summary>#936 follow-up: remove the open prelude from its own pane — marked removed
+    /// (only when unused, which <see cref="RemovePreludeAsync"/> enforces).</summary>
     private Task RemovePreludeFromPaneAsync(WorkflowManifestReader.PreludeView prelude) =>
-        AddedPreludeForFile(prelude.File) is { } pending
-            ? RemoveAddedPreludeAsync(pending)
-            : RemovePreludeAsync(prelude);
+        RemovePreludeAsync(prelude);
 
     private async Task RestorePreludeAsync(WorkflowManifestReader.PreludeView prelude)
     {
@@ -9151,7 +9069,6 @@
         AddedNodeForPromptFile(path) is { } addedNode ? addedNode.PromptText
         : AddedPromptForFile(path) is { } addedPrompt ? addedPrompt.Text
         : AddedMacroForFile(path) is { } addedMacro ? addedMacro.Text
-        : AddedPreludeForFile(path) is { } addedPrelude ? addedPrelude.Text
         : AddedSchemaForFile(path) is { } addedSchema ? WorkflowOutputContracts.Declarable[addedSchema]
         : AddedScalarIdForPath(path) is { } pendingScalar ? addedScalars[pendingScalar]
         : edits.TryGetValue(path, out var edited) ? edited : content!.Files.GetValueOrDefault(path, string.Empty);
@@ -9466,7 +9383,6 @@
         var draftMacroEdits = payload.MacroEdits;
         var draftPromptRawEdits = payload.PromptRawEdits;
         var draftRemovedSchemas = payload.RemovedSchemas;
-        var draftAddedPreludes = payload.AddedPreludes;
         var draftAddedSchemas = payload.AddedSchemas;
         var draftRemovedPreludes = payload.RemovedPreludes;
         var draftPromptPreludeEdits = payload.PromptPreludeEdits;
@@ -9675,14 +9591,8 @@
         // #747: pending preludes — an addition kept only when its id is free, a
         // removal only while the package still declares it, a prompt's choice
         // only while the prompt is still declared (the stale-id idiom).
-        foreach (var draftAddedPrelude in draftAddedPreludes ?? new List<DraftAddedPrelude>())
-        {
-            if (LivePreludes.All(prelude => prelude.Id != draftAddedPrelude.Id))
-            {
-                addedPreludes.Add(new AddedPrelude { Id = draftAddedPrelude.Id, Text = draftAddedPrelude.Text });
-            }
-        }
-
+        // #978: a draft's added preludes (a shape the editor no longer makes) are not
+        // restored — they never published; the field stays so an older draft still reads.
         foreach (var draftRemovedPrelude in draftRemovedPreludes ?? new List<string>())
         {
             if (DeclaredPreludes.FirstOrDefault(prelude => prelude.Id == draftRemovedPrelude) is { } prelude)
@@ -9969,7 +9879,7 @@
             macroEdits.Select(pair => new DraftMacroEdit(pair.Key, pair.Value.Optional, pair.Value.Default)).ToList(),
             promptRawEdits.Select(pair => new DraftPromptRawEdit(pair.Key, pair.Value)).ToList(),
             removedSchemaIds.ToList(),
-            addedPreludes.Select(prelude => new DraftAddedPrelude(prelude.Id, prelude.Text)).ToList(),
+            null,
             removedPreludeIds.ToList(),
             promptPreludeEdits.Select(pair => new DraftPromptPreludeEdit(pair.Key, pair.Value)).ToList(),
             addedSchemas.ToList(),
@@ -10121,13 +10031,6 @@
         if (AddedMacroForFile(path) is { } addedMacroDraft)
         {
             addedMacroDraft.Text = value;
-            await PendingChangedAsync();
-            return;
-        }
-
-        if (AddedPreludeForFile(path) is { } addedPreludeDraft)
-        {
-            addedPreludeDraft.Text = value;
             await PendingChangedAsync();
             return;
         }
@@ -10562,7 +10465,7 @@
         && (edits.ContainsKey(macro.File) || macroEdits.ContainsKey(macro.Id));
 
     private bool PreludeCanDiscard(WorkflowManifestReader.PreludeView prelude) =>
-        AddedPreludeForFile(prelude.File) == null && edits.ContainsKey(prelude.File);
+        edits.ContainsKey(prelude.File);
 
     private bool ScalarCanDiscard(WorkflowManifestReader.ScalarView scalar) =>
         !addedScalars.ContainsKey(scalar.Id) && edits.ContainsKey(scalar.Path);
@@ -10751,12 +10654,6 @@
         foreach (var pendingMacro in addedMacros)
         {
             files[AddedMacroFile(pendingMacro.Id)] = pendingMacro.Text;
-        }
-
-        // #747: each pending prelude's text file (removed preludes drop via removedFiles).
-        foreach (var pendingPrelude in addedPreludes)
-        {
-            files[AddedPreludeFile(pendingPrelude.Id)] = pendingPrelude.Text;
         }
 
         // #759: each added schema's canonical contract body (removed schemas drop via removedFiles).
@@ -11104,10 +11001,9 @@
             }
         }
 
-        // #747: preludes marked for removal drop from the preludes map (their
-        // files drop via removedFiles); added preludes are declared here, the
-        // map created when absent. Their bodies fold into the publish files.
-        if (addedPreludes.Count > 0 || removedPreludeIds.Count > 0)
+        // #747/#978: removed preludes leave the map (their files drop via
+        // removedFiles); the editor no longer adds preludes (#978).
+        if (removedPreludeIds.Count > 0)
         {
             var preludesKey = root["Preludes"] is not null ? "Preludes" : "preludes";
             if (root[preludesKey] is not System.Text.Json.Nodes.JsonObject preludesObject)
@@ -11119,11 +11015,6 @@
             foreach (var preludeId in removedPreludeIds)
             {
                 preludesObject.Remove(preludeId);
-            }
-
-            foreach (var added in addedPreludes)
-            {
-                preludesObject[added.Id] = AddedPreludeFile(added.Id);
             }
 
             // #963: a map emptied by the migration (or by removing the last prelude)
