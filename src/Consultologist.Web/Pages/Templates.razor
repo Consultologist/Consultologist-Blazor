@@ -1854,6 +1854,37 @@
                                 }
                             </div>
                         }
+                        @* #956: the OUTPUT macros anchored around this node's output — the node-side
+                           view of the Documents placement. Read-only here (editing is #965 in place /
+                           #966 full parity). The query is empty unless a deliverable aggregates this
+                           node with a macro placed before/after it (so no node-kind gate is needed). *@
+                        @if (OutputMacrosAnchoredTo(selectedNode.Id) is { Count: > 0 } anchoredOutputMacros)
+                        {
+                            <div class="node-section">
+                                <span class="node-section__head">Output macros</span>
+                                <p class="muted-text">Deliverable macros placed around this node's output. Edit them in the Documents pane.</p>
+                                @foreach (var (result, entry, after) in anchoredOutputMacros)
+                                {
+                                    <div class="node-output-macro-row">
+                                        <FluentButton Appearance="Appearance.Lightweight" Class="result-macro__id"
+                                                      Title="@($"Edit macro {entry.Id}")"
+                                                      aria-label="@($"Edit macro {entry.Id}")"
+                                                      @onclick="() => SelectMacro(entry.Id)"><code>@entry.Id</code></FluentButton>
+                                        <span class="muted-text">
+                                            @(after ? "after" : "before") this node in
+                                            <FluentButton Appearance="Appearance.Lightweight" Class="result-macro__id"
+                                                          Title="@($"Edit document {result.Id} in the Documents pane")"
+                                                          aria-label="@($"Edit document {result.Id} in the Documents pane")"
+                                                          @onclick="() => Select(ResultsKey)"><code>@result.Id</code></FluentButton>
+                                            @if (entry.When != null)
+                                            {
+                                                <span> · when <code>@entry.When</code></span>
+                                            }
+                                        </span>
+                                    </div>
+                                }
+                            </div>
+                        }
                     }
                     else if (SelectedStandard() is { } standard)
                     {
@@ -6695,6 +6726,22 @@
                 };
             }
         });
+
+    // #956: the OUTPUT macros anchored around this node's output — a deliverable
+    // macro whose before/after names node:<id>. The node-side view of the
+    // Documents placement; read-only here (editing is #965/#966). Before/after
+    // anchors arrive at v12, so the list is empty below it.
+    private IReadOnlyList<(WorkflowManifestReader.ResultView Result, WorkflowManifestReader.ResultMacroView Entry, bool After)>
+        OutputMacrosAnchoredTo(string nodeId)
+    {
+        var anchor = $"node:{nodeId}";
+        return EffectiveResults
+            .SelectMany(result => (result.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>())
+                .Select(entry => (result, entry)))
+            .Where(pair => pair.entry.Before == anchor || pair.entry.After == anchor)
+            .Select(pair => (pair.result, pair.entry, After: pair.entry.After == anchor))
+            .ToList();
+    }
 
     // v23 (#955): a node's macro attachments, edited as a whole list (the
     // resultsEdit precedent) keyed by node id. A library macro composed into the
