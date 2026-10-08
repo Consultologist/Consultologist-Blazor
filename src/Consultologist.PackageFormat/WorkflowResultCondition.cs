@@ -33,13 +33,19 @@ public sealed record WorkflowResultCondition(
     IReadOnlyList<string>? Path = null,
     string? NodeId = null,
     WorkflowConditionTerm? Left = null,
-    WorkflowConditionTerm? Right = null)
+    WorkflowConditionTerm? Right = null,
+    // v24 (#957): a fan item's field, `item:<field>` — read against the item
+    // a forEach node is running for. Kept apart from NodeId so an item leaf
+    // adds no scheduling dependency (ConsultNodeScheduler reads IsNodeValue).
+    string? ItemField = null)
 {
     /// <summary>The operand as an author wrote it: <c>patient.age</c>, <c>count(prior_notes)</c>, <c>node:scope</c>.</summary>
     public string Operand => Left is not null
         ? Left.Text
         : NodeId is not null
             ? $"node:{NodeId}"
+            : ItemField is not null
+            ? $"item:{ItemField}"
             : IsCount
                 ? $"count({PathText})"
                 : PathText;
@@ -57,6 +63,9 @@ public sealed record WorkflowResultCondition(
     public int PathDepth => Segments.Count;
 
     public bool IsNodeValue => NodeId is not null;
+
+    /// <summary>A fan item's field (v24): the operand reads the item the node runs for.</summary>
+    public bool IsItemValue => ItemField is not null;
 
     /// <summary>A side of the comparison is arithmetic (v10).</summary>
     public bool IsArithmetic => Left is not null || Right is not null;
@@ -100,6 +109,7 @@ public sealed record WorkflowClauseExpression(WorkflowResultCondition Clause) : 
     public override string? FirstV10Form =>
         Clause.IsArithmetic ? "arithmetic"
         : Clause.IsNodeValue ? $"'node:{Clause.NodeId}'"
+        : Clause.IsItemValue ? $"'item:{Clause.ItemField}'"
         : Clause.PathDepth >= 2 ? $"a path of {Clause.PathDepth + 1} segments"
         : null;
 
@@ -199,6 +209,7 @@ public static class WorkflowResultConditions
     private static readonly string[] Operators = { ">=", "<=", EqualsOperator, NotEqualsOperator, ">", "<" };
 
     private const string NodePrefix = "node:";
+    private const string ItemPrefix = "item:";
 
     /// <summary>
     /// The v8/v9 entry point, kept: the one clause of a one-clause condition.
@@ -288,7 +299,8 @@ public static class WorkflowResultConditions
             var token = match.Value;
 
             if (Words.Contains(token) || token == "(" || token == ")" || token is "+" or "-" or "*" or "/"
-                || token.StartsWith(NodePrefix, StringComparison.Ordinal))
+                || token.StartsWith(NodePrefix, StringComparison.Ordinal)
+                || token.StartsWith(ItemPrefix, StringComparison.Ordinal))
             {
                 // count(x) is a v9 token when written without spaces; the
                 // pattern above splits it into `count`, `(`, `x`, `)`.
@@ -540,7 +552,7 @@ public static class WorkflowResultConditions
                 return operand with { Literal = literal, Negated = negated, Ordering = ordering };
             }
 
-            if (right is WorkflowOperandTerm { Operand: { PathDepth: 0, IsCount: false, IsNodeValue: false } word })
+            if (right is WorkflowOperandTerm { Operand: { PathDepth: 0, IsCount: false, IsNodeValue: false, IsItemValue: false } word })
             {
                 return operand with { Literal = word.InputId, Negated = negated, Ordering = ordering };
             }
@@ -565,7 +577,8 @@ public static class WorkflowResultConditions
             first?.Path,
             first?.NodeId,
             Left: left,
-            Right: right);
+            Right: right,
+            ItemField: first?.ItemField);
     }
 
     /// <summary>The v9 clause parser, unchanged in what it says; the operand now admits a path of any length and node:.</summary>
@@ -666,6 +679,23 @@ public static class WorkflowResultConditions
             return true;
         }
 
+        if (raw.StartsWith(ItemPrefix, StringComparison.Ordinal))
+        {
+            // v24 (#957): `item:<field>` — the field of the fan item a forEach
+            // node is running for. The field is a declared id (id, name, …);
+            // which fields a fan exposes, and that the clause sits on a node
+            // macro of a data: fan, is the validator's to say.
+            var field = raw[ItemPrefix.Length..];
+
+            if (!WorkflowDeclaredIds.IsValid(field))
+            {
+                return false;
+            }
+
+            operand = new WorkflowResultCondition(field, null, false, ItemField: field);
+            return true;
+        }
+
         if (raw.StartsWith("count(", StringComparison.Ordinal) && raw.EndsWith(')'))
         {
             var inner = raw["count(".Length..^1].Trim();
@@ -725,14 +755,19 @@ public static class WorkflowResultConditions
     public static bool Holds(
         WorkflowResultCondition? condition,
         IReadOnlyDictionary<string, ConsultInputValue>? suppliedInputs,
-        IReadOnlyDictionary<string, string>? classifications = null) =>
-        condition is null || Evaluate(condition, suppliedInputs, classifications) == Outcome.Held;
+        IReadOnlyDictionary<string, string>? classifications = null,
+        IReadOnlyDictionary<string, string>? item = null) =>
+        condition is null || Evaluate(condition, suppliedInputs, classifications, item) == Outcome.Held;
 
+    /// <param name="item">v24 (#957): the fan item the condition is judged for —
+    /// its fields by name — when it sits on a node macro of a forEach node.
+    /// Null elsewhere, where an item: leaf is absent.</param>
     public static bool Holds(
         WorkflowConditionExpression? expression,
         IReadOnlyDictionary<string, ConsultInputValue>? suppliedInputs,
-        IReadOnlyDictionary<string, string>? classifications = null) =>
-        expression is null || Evaluate(expression, suppliedInputs, classifications) == Outcome.Held;
+        IReadOnlyDictionary<string, string>? classifications = null,
+        IReadOnlyDictionary<string, string>? item = null) =>
+        expression is null || Evaluate(expression, suppliedInputs, classifications, item) == Outcome.Held;
 
     /// <summary>
     /// Three-valued (v10 § 6): held, not held, or absent — a clause whose
@@ -749,17 +784,18 @@ public static class WorkflowResultConditions
     internal static Outcome Evaluate(
         WorkflowConditionExpression expression,
         IReadOnlyDictionary<string, ConsultInputValue>? inputs,
-        IReadOnlyDictionary<string, string>? classifications) => expression switch
+        IReadOnlyDictionary<string, string>? classifications,
+        IReadOnlyDictionary<string, string>? item = null) => expression switch
     {
-        WorkflowClauseExpression clause => Evaluate(clause.Clause, inputs, classifications),
-        WorkflowNotExpression not => Evaluate(not.Inner, inputs, classifications) switch
+        WorkflowClauseExpression clause => Evaluate(clause.Clause, inputs, classifications, item),
+        WorkflowNotExpression not => Evaluate(not.Inner, inputs, classifications, item) switch
         {
             Outcome.Held => Outcome.NotHeld,
             Outcome.NotHeld => Outcome.Held,
             _ => Outcome.Absent
         },
-        WorkflowAndExpression and => Both(Evaluate(and.Left, inputs, classifications), Evaluate(and.Right, inputs, classifications)),
-        WorkflowOrExpression or => Either(Evaluate(or.Left, inputs, classifications), Evaluate(or.Right, inputs, classifications)),
+        WorkflowAndExpression and => Both(Evaluate(and.Left, inputs, classifications, item), Evaluate(and.Right, inputs, classifications, item)),
+        WorkflowOrExpression or => Either(Evaluate(or.Left, inputs, classifications, item), Evaluate(or.Right, inputs, classifications, item)),
         _ => Outcome.Absent
     };
 
@@ -776,11 +812,30 @@ public static class WorkflowResultConditions
     internal static Outcome Evaluate(
         WorkflowResultCondition condition,
         IReadOnlyDictionary<string, ConsultInputValue>? inputs,
-        IReadOnlyDictionary<string, string>? classifications)
+        IReadOnlyDictionary<string, string>? classifications,
+        IReadOnlyDictionary<string, string>? item = null)
     {
         if (condition.IsArithmetic)
         {
             return EvaluateArithmetic(condition, inputs, classifications);
+        }
+
+        if (condition.IsItemValue)
+        {
+            // v24 (#957): judged per fan item, at the instance that carries
+            // one. No item (a scalar node, a deliverable) is absent — never held.
+            if (item is null || !item.TryGetValue(condition.ItemField!, out var fieldValue))
+            {
+                return Outcome.Absent;
+            }
+
+            if (condition.IsBare)
+            {
+                return Outcome.NotHeld;
+            }
+
+            var equal = string.Equals(fieldValue, condition.Literal, StringComparison.Ordinal);
+            return (condition.Negated ? !equal : equal) ? Outcome.Held : Outcome.NotHeld;
         }
 
         if (condition.IsNodeValue)
@@ -921,7 +976,7 @@ public static class WorkflowResultConditions
                     return TryCount(operand.Operand, inputs, out var count) ? new TermValue(count, null, false) : TermValue.Undefined;
                 }
 
-                if (operand.Operand.IsNodeValue)
+                if (operand.Operand.IsNodeValue || operand.Operand.IsItemValue)
                 {
                     return TermValue.Undefined; // a symbol has no arithmetic; refused at publish
                 }
