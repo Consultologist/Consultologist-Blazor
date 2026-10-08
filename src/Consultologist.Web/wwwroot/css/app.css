@@ -971,6 +971,21 @@ header.header.app-header {
 	overflow-wrap: break-word;
 }
 
+/* #933: a section produced from a user-defined schema (#760) — unattested, said on the block. */
+.note-section__unattested {
+	margin-left: 0.5rem;
+	font-size: 0.65rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	padding: 0.05rem 0.45rem;
+	border-radius: 999px;
+	color: var(--consultologist-warning-text, #92400e);
+	border: 1px solid var(--consultologist-warning, #b45309);
+	background: var(--consultologist-warning-surface, #fffbeb);
+	vertical-align: middle;
+}
+
 /* The v6 assembled document: rendered markdown (h2 block headings), styled to
    match the v5 per-section view's typography. Block flow with margins instead
    of the flex gap so a heading sits tight above its first paragraph. */

@@ -26,7 +26,9 @@ public class ConsultsResultTests : ClientRenderTestContext
         IReadOnlyList<ConsultFailedDocumentResponse>? failed = null,
         IReadOnlyDictionary<string, string>? heldInputs = null,
         DateTimeOffset? inputsDroppedAtUtc = null,
-        ConsultTokenUsage? tokens = null)
+        ConsultTokenUsage? tokens = null,
+        IReadOnlyList<ConsultGenerationNodeDescriptor>? nodes = null,
+        IReadOnlyDictionary<string, ConsultGenerationNodeStatus>? nodeOutputs = null)
     {
         WithPinnedPackage(blocks: new[] { Block("section-instructions:hpi", "History of Present Illness") });
 
@@ -48,7 +50,60 @@ public class ConsultsResultTests : ClientRenderTestContext
             FailedDocuments: failed,
             HeldInputs: heldInputs,
             InputsDroppedAtUtc: inputsDroppedAtUtc,
-            Tokens: tokens));
+            Tokens: tokens,
+            Nodes: nodes,
+            NodeOutputs: nodeOutputs));
+    }
+
+    // ----- #933: the custom tier's unattested marker (#760) on the result -----
+
+    private static readonly ConsultGenerationNodeDescriptor[] CustomNodes =
+    {
+        new("section-instructions", "Applying section instructions", OutputContract: "custom", ForEach: "data:standards")
+    };
+
+    private static readonly Dictionary<string, ConsultGenerationNodeStatus> CustomOutputs = new(StringComparer.Ordinal)
+    {
+        ["section-instructions"] = new("section-instructions", "Applying section instructions", "Completed", null, null, DateTimeOffset.UtcNow, null,
+            Unattested: true, CustomSchemaHash: "0123456789abcdef", CustomAgent: "custom-0123@1")
+    };
+
+    [Fact]
+    public void ARunWithACustomNode_SaysSoAboveTheResult()
+    {
+        WithCompletedJob(documents: OneNote, nodes: CustomNodes, nodeOutputs: CustomOutputs);
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var bar = page.Find(".result-unattested");
+        Assert.Contains("output from a user-defined schema (1 unattested block)", bar.TextContent);
+        Assert.Contains("not an attested clinical contract, no terminology grounding", bar.TextContent);
+        Assert.Contains("Applying section instructions: schema 0123456789ab · agent custom-0123@1", bar.TextContent);
+    }
+
+    [Fact]
+    public void ACatalogOnlyRun_ShowsNoUnattestedBar()
+    {
+        WithCompletedJob(documents: OneNote,
+            nodes: new[] { new ConsultGenerationNodeDescriptor("section-instructions", "Applying section instructions", OutputContract: "concept-list") });
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Empty(page.FindAll(".result-unattested"));
+    }
+
+    [Fact]
+    public void ThePerSectionView_MarksTheBlocks_ACustomNodeProduced()
+    {
+        // No assembled document: the pre-assembly per-section view renders the
+        // generated block, whose id's node prefix is the custom node.
+        WithCompletedJob(nodes: CustomNodes, nodeOutputs: CustomOutputs);
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var badge = Assert.Single(page.FindAll(".note-section__unattested"));
+        Assert.Equal("unattested", badge.TextContent.Trim());
+        Assert.Contains("no terminology grounding", badge.GetAttribute("title"));
     }
 
     // ----- #551: the run's total on the completed view -----

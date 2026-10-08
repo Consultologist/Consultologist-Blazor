@@ -4,6 +4,7 @@
 @using System.Diagnostics
 @using System.Text.Json
 @using Consultologist.Web.Services
+@using Consultologist.Web.Services.Provenance
 @using Consultologist.Web.Services.AI
 @using Consultologist.Web.Services.Accounts
 @using Consultologist.Web.Services.Diagnostics
@@ -652,6 +653,15 @@
 
                 <div class="consult-run__grid">
                     <section class="result-panel">
+                        @* #933: said before the text, not after — a block produced from a
+                           user-defined schema is unattested (#760): never to be read as a
+                           catalog-contract deliverable. *@
+                        @if (unattestedNodes.Count > 0)
+                        {
+                            <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false" Class="result-unattested">
+                                This result contains output from a user-defined schema (@UnattestedNodes.CountSentence(unattestedNodes.Count)): not an attested clinical contract, no terminology grounding — @string.Join("; ", unattestedNodes.Values.Select(entry => $"{entry.Label}: {UnattestedNodes.Detail(entry)}")).
+                            </FluentMessageBar>
+                        }
                         @if (assembledDocuments.Count > 0)
                         {
                             @* The deliverables: one server-assembled document in
@@ -805,7 +815,13 @@
                                         if (generatedBlocks.TryGetValue(standard.Id, out var prose) && !string.IsNullOrWhiteSpace(prose))
                                         {
                                             <section class="note-section">
-                                                <h3>@standard.Name</h3>
+                                                <h3>
+                                                    @standard.Name
+                                                    @if (unattestedNodes.ContainsKey(standard.Id.Split(':')[0]))
+                                                    {
+                                                        <span class="note-section__unattested" title="@UnattestedNodes.Sentence">unattested</span>
+                                                    }
+                                                </h3>
                                                 <p>@prose</p>
                                             </section>
                                         }
@@ -1385,6 +1401,11 @@
   // #642: the latest full job response the run has seen — what the run
   // diagram draws from; null until the first snapshot-shaped payload.
   private ConsultGenerationJobResponse? latestRunResponse;
+
+  // #933: the run's unattested nodes (#760's custom tier) — read from the latest
+  // job response, so the result panel says, up front, that a block came from a
+  // user-defined schema: not an attested clinical contract, no terminology grounding.
+  private IReadOnlyDictionary<string, UnattestedNodes.Entry> unattestedNodes = new Dictionary<string, UnattestedNodes.Entry>(StringComparer.Ordinal);
   private bool showRunDiagram;
   private Dictionary<string, string> generatedBlocks = new();
   private Dictionary<string, string> failedBlockErrors = new();
@@ -1712,6 +1733,7 @@
     completedNodeItems = new();
     nodeStatuses = new(StringComparer.Ordinal);
     latestRunResponse = null;
+    unattestedNodes = new Dictionary<string, UnattestedNodes.Entry>(StringComparer.Ordinal);
     showRunDiagram = false;
     jobNodes = null;
     jobCollections = null;
@@ -2302,6 +2324,7 @@
     runEventSeen = true;
     // #642: the run diagram draws from the whole latest response.
     latestRunResponse = response;
+    unattestedNodes = UnattestedNodes.Of(response);
     generatedBlocks = response.GeneratedBlocks;
     textDroppedAtUtc = response.TextDroppedAtUtc;
     heldInputsAvailable = response.HeldInputs != null;
