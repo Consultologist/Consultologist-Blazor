@@ -1140,6 +1140,68 @@ public class ConformanceFixtureExport
                 undeclared with { SpecVersion = 22 }, undeclaredFiles);
         }
 
+        // ----- v24 (#957): the per-item layer of a node macro on a node that fans
+        // a data: collection — forItem anchors it to one item, item:id gates it
+        // per item (the collection's ids are a closed set, compared like a
+        // classifier's value), {{item:…}} tokens fill per item. An input fan's
+        // items are the caller's; a deliverable composes no fan item.
+        var v23MinimalForV24 = V18Fixtures.Minimal() with { SpecVersion = 23 };
+        Bundle("v24-minimal-is-v23-plus-a-line", 24,
+            "The migration v24 promises: a valid v23 manifest with specVersion 24 and nothing else changed.",
+            (v23MinimalForV24 with { SpecVersion = 24 }, V6Fixtures.Files(v23MinimalForV24)));
+
+        Bundle("v24-node-macro-per-item", 24,
+            "A per-item node macro on a data: fan: composed after the prompt for the one item its when names, and before it for the one item forItem anchors, its text filled from the item's fields.",
+            V24Fixtures.WithNodeMacros(new List<WorkflowNodeMacroSpec>
+            {
+                new(V24Fixtures.MacroId, At: WorkflowNodeMacroSpec.After, When: "item:id == hpi"),
+                new(V24Fixtures.MacroId, ForItem: "pmh")
+            }, "Section {{item:name}}: keep to {{item:content}}."));
+
+        {
+            var scalar = V23Fixtures.FirstPromptNode(V23Fixtures.Base().Manifest);
+            var (forItemAt23, forItemAt23Files) = V24Fixtures.WithNodeMacros(new List<WorkflowNodeMacroSpec> { new(V24Fixtures.MacroId, ForItem: "hpi") }, specVersion: 23);
+            Invalid("invalid-node-macro-for-item-at-v23", 23,
+                "forItem on a node macro of a v23 manifest. The per-item layer arrives at 24.", forItemAt23, forItemAt23Files);
+            var (itemWhenAt23, itemWhenAt23Files) = V24Fixtures.WithNodeMacros(new List<WorkflowNodeMacroSpec> { new(V24Fixtures.MacroId, When: "item:id == hpi") }, specVersion: 23);
+            Invalid("invalid-node-macro-item-when-at-v23", 23,
+                "An item:id operand in a node macro's when on a v23 manifest. The per-item layer arrives at 24.", itemWhenAt23, itemWhenAt23Files);
+            var (itemTokenAt23, itemTokenAt23Files) = V24Fixtures.WithNodeMacros(new List<WorkflowNodeMacroSpec> { V24Fixtures.MacroId }, "Draft {{item:name}}.", specVersion: 23);
+            Invalid("invalid-node-macro-item-token-at-v23", 23,
+                "An {{item:name}} token in a node macro's text on a v23 manifest — a version requirement, not an unknown word.", itemTokenAt23, itemTokenAt23Files);
+
+            var (forItemMissing, forItemMissingFiles) = V24Fixtures.WithNodeMacros(new List<WorkflowNodeMacroSpec> { new(V24Fixtures.MacroId, ForItem: "ros") });
+            Invalid("invalid-node-macro-for-item-missing", 24,
+                "forItem naming an item the fanned collection does not contain.", forItemMissing, forItemMissingFiles);
+            var (forItemScalar, forItemScalarFiles) = V24Fixtures.WithNodeMacros(new List<WorkflowNodeMacroSpec> { new(V24Fixtures.MacroId, ForItem: "hpi") }, onNode: scalar);
+            Invalid("invalid-node-macro-for-item-on-scalar-node", 24,
+                "forItem on a node that does not fan — there is no item to anchor to.", forItemScalar, forItemScalarFiles);
+            var (itemWhenScalar, itemWhenScalarFiles) = V24Fixtures.WithNodeMacros(new List<WorkflowNodeMacroSpec> { new(V24Fixtures.MacroId, When: "item:id == hpi") }, onNode: scalar);
+            Invalid("invalid-node-macro-item-when-on-scalar-node", 24,
+                "An item:id operand on a node that does not fan — there is no item to read.", itemWhenScalar, itemWhenScalarFiles);
+            var (itemWhenName, itemWhenNameFiles) = V24Fixtures.WithNodeMacros(new List<WorkflowNodeMacroSpec> { new(V24Fixtures.MacroId, When: "item:name == hpi") });
+            Invalid("invalid-node-macro-item-when-not-id", 24,
+                "An item:name operand — a condition reads item:id only; an item's other fields are text, which is never compared.", itemWhenName, itemWhenNameFiles);
+            var (itemWhenUndeclared, itemWhenUndeclaredFiles) = V24Fixtures.WithNodeMacros(new List<WorkflowNodeMacroSpec> { new(V24Fixtures.MacroId, When: "item:id == ros") });
+            Invalid("invalid-node-macro-item-when-value-undeclared", 24,
+                "item:id compared to an id the fanned collection does not contain — the closed set a classifier's values are.", itemWhenUndeclared, itemWhenUndeclaredFiles);
+            var (itemTokenScalar, itemTokenScalarFiles) = V24Fixtures.WithNodeMacros(new List<WorkflowNodeMacroSpec> { V24Fixtures.MacroId }, "Draft {{item:name}}.", onNode: scalar);
+            Invalid("invalid-node-macro-item-token-on-scalar-node", 24,
+                "An {{item:name}} token composed into a node that does not fan — nothing fills it.", itemTokenScalar, itemTokenScalarFiles);
+            var (itemTokenUnknownField, itemTokenUnknownFieldFiles) = V24Fixtures.WithNodeMacros(new List<WorkflowNodeMacroSpec> { V24Fixtures.MacroId }, "Draft {{item:value}}.");
+            Invalid("invalid-node-macro-item-token-unknown-field", 24,
+                "An item token naming a field the fanned collection does not declare.", itemTokenUnknownField, itemTokenUnknownFieldFiles);
+            var (itemTokenOnResult, itemTokenOnResultFiles) = V24Fixtures.WithNodeMacros(new List<WorkflowNodeMacroSpec> { V24Fixtures.MacroId }, "Draft {{item:name}}.");
+            itemTokenOnResult = itemTokenOnResult with
+            {
+                Results = itemTokenOnResult.Results!.Select((r, i) => i == 0
+                    ? r with { Macros = new List<WorkflowResultMacroSpec> { new(V24Fixtures.MacroId) } }
+                    : r).ToList()
+            };
+            Invalid("invalid-macro-item-token-on-result", 24,
+                "A macro carrying an item token attached to a deliverable — assembly has no fan item to fill it.", itemTokenOnResult, itemTokenOnResultFiles);
+        }
+
         return cases;
     }
 
