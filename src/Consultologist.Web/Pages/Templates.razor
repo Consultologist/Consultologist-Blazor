@@ -1825,6 +1825,22 @@
                                             <FluentOption TOption="string" Value="before">before the prompt</FluentOption>
                                             <FluentOption TOption="string" Value="after">after the prompt</FluentOption>
                                         </FluentSelect>
+                                        @* v24 (#957): on a node that fans a data: collection, compose this
+                                           macro for one of its items only (the Documents pane's forItem,
+                                           on the prompt side). Label = the item's name, value = its id. *@
+                                        @if (EffectiveSpecVersion >= 24 && NodeFanItems(selectedNode) is { Count: > 0 } nodeFanItems)
+                                        {
+                                            <FluentSelect TOption="string" class="binding-row__select node-macro-foritem"
+                                                          Value="@(entry.ForItem ?? "")"
+                                                          ValueChanged="@(v => SetNodeMacroForItemAsync(selectedNode.Id, index, v))"
+                                                          aria-label="@($"Fan item for macro {entry.Id} on {selectedNode.Id}")">
+                                                <FluentOption TOption="string" Value="">— every item —</FluentOption>
+                                                @foreach (var fanItem in nodeFanItems)
+                                                {
+                                                    <FluentOption TOption="string" Value="@fanItem.Id">@StandardName(fanItem)</FluentOption>
+                                                }
+                                            </FluentSelect>
+                                        }
                                         <FluentButton Appearance="Appearance.Stealth"
                                                       IconStart="@(new Icons.Regular.Size20.Dismiss())"
                                                       @onclick="() => RemoveNodeMacroAsync(selectedNode.Id, index)"
@@ -2318,6 +2334,15 @@
                                     {
                                         <li><code>{{classification:@classifier.Id}}</code></li>
                                     }
+                                    @if (EffectiveSpecVersion >= 24)
+                                    {
+                                        @* v24 (#957): the fan item's fields — filled per item where this
+                                           macro is composed into a node that fans; offered only then. *@
+                                        @foreach (var itemField in FanNodesComposing(macro.Id).SelectMany(FanItemFields).Distinct(StringComparer.Ordinal))
+                                        {
+                                            <li><code>{{item:@itemField}}</code> — filled per fan item where the macro is composed into a node that fans a collection</li>
+                                        }
+                                    }
                                     @foreach (var runWord in PF.WorkflowMacroPlaceholders.RunFacts)
                                     {
                                         <li><code>{{run:@runWord}}</code></li>
@@ -2352,7 +2377,10 @@
   /// impossible in either grammar); Subject is what the labels say; Write
   /// lands the composed text where this condition lives.
   /// </summary>
-  private sealed record ConditionTarget(string Key, string Subject, string? When, Action<string?> Write);
+  // v24 (#957): Extra — operands only THIS target may read (a node macro on a data
+  // fan reads item:id), offered before the package-wide list. Trailing: every
+  // other target constructs as it did.
+  private sealed record ConditionTarget(string Key, string Subject, string? When, Action<string?> Write, IReadOnlyList<ConditionOperand>? Extra = null);
 
   private sealed record ConditionScope(ConditionTarget Target, ConditionGroup Root, IReadOnlyList<int> Path);
 
@@ -2559,7 +2587,8 @@
         var suffix = ordinal == 1 ? string.Empty : $" clause {ordinal}";
         var v10 = EffectiveSpecVersion >= 10;
         var single = scope.Path.Count == 1 && scope.Root.Items.Count == 1;
-        var operand = ConditionOperands.FirstOrDefault(candidate => candidate.Key == clause.Operand);
+        var operands = OperandsFor(scope.Target);
+        var operand = operands.FirstOrDefault(candidate => candidate.Key == clause.Operand);
         var arithmeticOperands = ConditionOperands.Where(candidate => candidate.Type is WorkflowInputTypes.Number or CountType).ToList();
       }
       <span class="condition-clause" data-condition-path="@string.Join(".", scope.Path)">
@@ -2584,7 +2613,7 @@
                here — shown as itself, never rewritten. *@
             <FluentOption TOption="string" Value="@clause.Operand">when @clause.Operand</FluentOption>
           }
-          @foreach (var candidate in ConditionOperands)
+          @foreach (var candidate in operands)
           {
             <FluentOption TOption="string" Value="@candidate.Key">when @candidate.Key</FluentOption>
           }
@@ -2650,15 +2679,20 @@
                 <FluentOption TOption="string" Value="false">false</FluentOption>
               </FluentSelect>
             }
-            else if (tested.Type is WorkflowInputTypes.Enum or NodeValueType)
+            else if (tested.Type is WorkflowInputTypes.Enum or NodeValueType or ItemValueType)
             {
               <FluentSelect TOption="string" class="node-field__input declared-row__literal"
                       Value="@clause.Literal"
                       ValueChanged="@(v => SetClauseLiteralAsync(scope.Target, scope.Path, v))"
                       aria-label="@($"Condition value for {documentId}{suffix}")">
-                @foreach (var option in tested.Values ?? Array.Empty<string>())
+                @{ var values = tested.Values ?? Array.Empty<string>(); }
+                @for (var optionIndex = 0; optionIndex < values.Count; optionIndex++)
                 {
-                  <FluentOption TOption="string" Value="@option">@option</FluentOption>
+                  // Both captured per iteration: the option's child content is a
+                  // fragment rendered after the loop, when the index has run out.
+                  var option = values[optionIndex];
+                  var label = tested.Labels is { } labels && optionIndex < labels.Count ? labels[optionIndex] : option;
+                  <FluentOption TOption="string" Value="@option">@label</FluentOption>
                 }
               </FluentSelect>
             }
@@ -4696,6 +4730,124 @@
             }
         }
 
+        // v23/v24 (#955/#957): each node macro's own rules at the desk — the
+        // incomplete-draft guard, the when in the node-level grammar (plus item:id
+        // on a data fan at 24), forItem, and an item token composed where no fan
+        // item fills it. The validator is the real gate; these refuse before the
+        // round-trip, in its words.
+        if (EffectiveSpecVersion >= 23)
+        {
+            foreach (var node in EffectiveNodes)
+            {
+                var nodeMacros = EffectiveNodeMacros(node);
+                var fanItems = NodeFanItems(node);
+                var fanFields = FanItemFields(node);
+
+                for (var index = 0; index < nodeMacros.Count; index++)
+                {
+                    var entry = nodeMacros[index];
+                    var where = $"Node '{node.Id}' macro '{entry.Id}'";
+
+                    if (ItemTokenFields(entry.Id) is { Count: > 0 } itemFields && EffectiveSpecVersion >= 24)
+                    {
+                        if (node.ForEach is null)
+                        {
+                            errors.Add($"{where} carries '{{{{item:{itemFields[0]}}}}}' but the node declares no forEach.");
+                        }
+                        else
+                        {
+                            foreach (var field in itemFields.Where(field => !fanFields.Contains(field, StringComparer.Ordinal)))
+                            {
+                                errors.Add($"{where} carries '{{{{item:{field}}}}}', an item field the fan does not expose (it carries: {string.Join(", ", fanFields)}).");
+                            }
+                        }
+                    }
+
+                    if (entry.ForItem != null)
+                    {
+                        if (EffectiveSpecVersion < 24)
+                        {
+                            errors.Add($"{where} declares forItem, which requires specVersion 24. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.");
+                        }
+                        else if (fanItems.Count == 0)
+                        {
+                            errors.Add($"{where} anchors to fan item '{entry.ForItem}', but '{node.Id}' does not fan a data: collection.");
+                        }
+                        else if (fanItems.All(item => item.Id != entry.ForItem))
+                        {
+                            errors.Add($"{where} anchors to fan item '{entry.ForItem}', which the collection fanned by '{node.Id}' does not contain.");
+                        }
+                    }
+
+                    var macroPrefix = $"{where} condition";
+
+                    if (conditionDrafts.TryGetValue($"node-macro:{node.Id}\n{index}", out var macroDraft) && IsUnwritable(macroDraft))
+                    {
+                        errors.Add(ConditionBuilderModel.IsComplete(macroDraft)
+                            ? $"{macroPrefix} has a clause the format cannot read; finish it or remove it."
+                            : $"{macroPrefix} has a clause with no operand chosen.");
+                        continue;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(entry.When))
+                    {
+                        continue;
+                    }
+
+                    if (!PF.WorkflowResultConditions.TryParseExpression(entry.When, out var macroExpression, out var macroParseError) || macroExpression is null)
+                    {
+                        errors.Add($"{macroPrefix} {macroParseError}");
+                        continue;
+                    }
+
+                    foreach (var clause in macroExpression.Leaves)
+                    {
+                        if (clause.IsItemValue)
+                        {
+                            if (EffectiveSpecVersion < 24)
+                            {
+                                errors.Add($"{macroPrefix} reads 'item:', which requires specVersion 24. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.");
+                            }
+                            else if (ItemClauseComplaint(macroPrefix, clause, node.Id, fanItems) is { Length: > 0 } itemComplaint)
+                            {
+                                errors.Add(itemComplaint);
+                            }
+
+                            continue;
+                        }
+
+                        if (clause.IsNodeValue)
+                        {
+                            if (NodeClauseComplaint(macroPrefix, clause) is { Length: > 0 } nodeComplaint)
+                            {
+                                errors.Add(nodeComplaint);
+                            }
+
+                            continue;
+                        }
+
+                        if (clause.IsArithmetic || clause.PathDepth >= 2)
+                        {
+                            continue;
+                        }
+
+                        var tested = inputs.FirstOrDefault(input => input.Id == clause.InputId);
+
+                        if (tested == null)
+                        {
+                            errors.Add($"{macroPrefix} reads undeclared input '{clause.InputId}'.");
+                            continue;
+                        }
+
+                        if (V9ConditionComplaint(macroPrefix, clause, tested) is { } complaint)
+                        {
+                            errors.Add(complaint);
+                        }
+                    }
+                }
+            }
+        }
+
         foreach (var duplicate in results.GroupBy(result => result.Id).Where(group => group.Count() > 1))
         {
             errors.Add($"Duplicate result id '{duplicate.Key}'.");
@@ -4908,6 +5060,13 @@
                         {
                             errors.Add($"Result '{result.Id}' places macro '{entry.Id}' {(entry.Before != null ? "before" : "after")} '{anchor}', which its aggregator '{aggregator.Id}' does not aggregate.");
                         }
+                    }
+
+                    // v24 (#957): a deliverable composes no fan item, so a macro
+                    // carrying an item token is attached only to a fan node.
+                    if (EffectiveSpecVersion >= 24 && ItemTokenFields(entry.Id) is { Count: > 0 } resultItemFields)
+                    {
+                        errors.Add($"Result '{result.Id}' macro '{entry.Id}' carries '{{{{item:{resultItemFields[0]}}}}}', which only a node that fans a collection fills; a deliverable composes no fan item.");
                     }
 
                     // v19 (#845): forItem anchors to one item of a data-fan section.
@@ -5145,6 +5304,9 @@
                 // v12 § 5 (#621): version-keyed — the desk speaks the set the
                 // staged version speaks, not v11's frozen one.
                 "profile" => PF.WorkflowMacroPlaceholders.ProfileFactsFor(EffectiveSpecVersion).Contains(id),
+                // v24 (#957): an item field — structurally a declared id; which
+                // fields a fan exposes is checked where the macro is attached.
+                PF.WorkflowMacroPlaceholders.ItemNamespace => EffectiveSpecVersion >= 24 && PF.WorkflowDeclaredIds.IsValid(id),
                 _ => false
             };
 
@@ -5152,10 +5314,17 @@
             {
                 // A token the NEWEST set resolves is a version question, not
                 // a spelling one — the validator's three-way, mirrored.
-                yield return PF.WorkflowMacroPlaceholders.TryParse(token, out var ns12, out var id12)
-                    && ns12 == "profile"
-                    && PF.WorkflowMacroPlaceholders.ProfileFactsFor(NewestSpecVersion).Contains(id12)
-                    ? $"Macro '{macroId}' placeholder '{{{{{token}}}}}' requires specVersion 12. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish."
+                int? requiredVersion = PF.WorkflowMacroPlaceholders.TryParse(token, out var lateNs, out var lateId)
+                    ? lateNs switch
+                    {
+                        "profile" when PF.WorkflowMacroPlaceholders.ProfileFactsFor(NewestSpecVersion).Contains(lateId) => 12,
+                        PF.WorkflowMacroPlaceholders.ItemNamespace when PF.WorkflowDeclaredIds.IsValid(lateId) => 24,
+                        _ => null
+                    }
+                    : null;
+
+                yield return requiredVersion is { } required
+                    ? $"Macro '{macroId}' placeholder '{{{{{token}}}}}' requires specVersion {required}. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish."
                     : $"Macro '{macroId}' placeholder '{{{{{token}}}}}' does not resolve.";
             }
         }
@@ -5292,6 +5461,49 @@
             ? string.Empty
             : $"{prefix} compares '{operand}' to '{clause.Literal}', which it does not declare (values: {string.Join(", ", classifier.Values ?? new List<string>())}).";
     }
+
+    /// <summary>v24 (#957): the desk's mirror of the validator's item:id arm — read only by a
+    /// node macro on a data fan, the id field alone, == or != against an id the collection
+    /// contains. Empty when sound.</summary>
+    private static string? ItemClauseComplaint(string prefix, PF.WorkflowResultCondition clause, string nodeId, IReadOnlyList<WorkflowManifestReader.DataItemView> fanItems)
+    {
+        var operand = clause.Operand;
+
+        if (fanItems.Count == 0)
+        {
+            return $"{prefix} reads '{operand}', but '{nodeId}' does not fan a data: collection.";
+        }
+
+        if (clause.ItemField != "id")
+        {
+            return $"{prefix} reads '{operand}'; a condition reads item:id only — an item's other fields are text, which is never compared.";
+        }
+
+        if (clause.IsBare)
+        {
+            return $"{prefix} '{operand}' tests an item for truth; compare it to one of the collection's item ids instead.";
+        }
+
+        if (clause.IsOrdered)
+        {
+            return $"{prefix} compares '{operand}' with {clause.Operator}; an item id is compared with == or != only.";
+        }
+
+        if (string.IsNullOrEmpty(clause.Literal))
+        {
+            return $"{prefix} compares against nothing; write a value after the operator.";
+        }
+
+        return fanItems.Any(item => item.Id == clause.Literal)
+            ? string.Empty
+            : $"{prefix} compares '{operand}' to '{clause.Literal}', which the collection does not contain (items: {string.Join(", ", fanItems.Select(item => item.Id))}).";
+    }
+
+    /// <summary>v24 (#957): the item fields a library macro's text reads through {{item:…}}, in order.</summary>
+    private IReadOnlyList<string> ItemTokenFields(string macroId) =>
+        EffectiveMacros.FirstOrDefault(m => m.Id == macroId) is { } macro && GetText(macro.File) is { } text && !string.IsNullOrWhiteSpace(text)
+            ? PF.WorkflowMacroPlaceholders.ItemFieldsOf(text)
+            : Array.Empty<string>();
 
     /// <summary>The pseudo-type of count(x): a whole number, ordered.</summary>
     private const string CountType = "count";
@@ -6465,7 +6677,15 @@
     /// One thing a condition may read (#314, #427): its key as the grammar
     /// spells it, the type its literal follows, and an enum's values.
     /// </summary>
-    private sealed record ConditionOperand(string Key, string Type, IReadOnlyList<string>? Values);
+    private sealed record ConditionOperand(string Key, string Type, IReadOnlyList<string>? Values, IReadOnlyList<string>? Labels = null);
+
+    /// <summary>The operands a target's clauses may read: its own (v24 item:id on a fan node's macro) before the package-wide list.</summary>
+    private IReadOnlyList<ConditionOperand> OperandsFor(ConditionTarget target) =>
+        target.Extra is { Count: > 0 } extra ? extra.Concat(ConditionOperands).ToList() : ConditionOperands;
+
+    /// <summary>v24 (#957): the one item operand a condition reads, and its pseudo-type (a closed set, like a classifier's values).</summary>
+    private const string ItemIdKey = "item:id";
+    private const string ItemValueType = "item";
 
     /// <summary>
     /// What a condition may read, in declaration order: an enum or a boolean;
@@ -6810,6 +7030,47 @@
         }
     }
 
+    /// <summary>v24 (#957): anchor the entry to one item of the collection the node fans (null = every item).</summary>
+    private async Task SetNodeMacroForItemAsync(string nodeId, int index, string? itemId)
+    {
+        var list = MutableNodeMacros(nodeId);
+        if (index >= 0 && index < list.Count)
+        {
+            list[index] = list[index] with { ForItem = string.IsNullOrEmpty(itemId) ? null : itemId };
+            await PendingChangedAsync();
+        }
+    }
+
+    /// <summary>v24 (#957): the items of the data: collection a node fans — the legal forItem
+    /// values and item:id literals (label = name, value = id). Empty when the node does not
+    /// fan a data: collection (an input fan's items are the caller's).</summary>
+    private IReadOnlyList<WorkflowManifestReader.DataItemView> NodeFanItems(WorkflowManifestReader.NodeView node)
+    {
+        if (node.ForEach is not { } forEach || !forEach.StartsWith("data:", StringComparison.Ordinal))
+        {
+            return Array.Empty<WorkflowManifestReader.DataItemView>();
+        }
+
+        var collectionId = forEach["data:".Length..];
+        return EffectiveCollections.FirstOrDefault(c => c.Id == collectionId)?.Items
+            ?? (IReadOnlyList<WorkflowManifestReader.DataItemView>)Array.Empty<WorkflowManifestReader.DataItemView>();
+    }
+
+    /// <summary>v24 (#957): the item fields a fan node's item map carries — a data: collection's
+    /// id/name/content, an input fan's id/name/value; none for a node that does not fan.</summary>
+    private static IReadOnlyList<string> FanItemFields(WorkflowManifestReader.NodeView node) =>
+        node.ForEach is not { } forEach ? Array.Empty<string>()
+        : forEach.StartsWith("data:", StringComparison.Ordinal) ? DataFanFields
+        : PF.WorkflowInputFans.ItemFields;
+
+    private static readonly IReadOnlyList<string> DataFanFields = new[] { "id", "name", "content" };
+
+    /// <summary>The fan nodes a library macro is composed into (v23+), with the item fields each exposes.</summary>
+    private IEnumerable<WorkflowManifestReader.NodeView> FanNodesComposing(string macroId) =>
+        EffectiveSpecVersion < 23
+            ? Enumerable.Empty<WorkflowManifestReader.NodeView>()
+            : EffectiveNodes.Where(node => node.ForEach != null && EffectiveNodeMacros(node).Any(entry => entry.Id == macroId));
+
     /// <summary>v23 § (#955): a node macro entry's when — keyed by node id and
     /// position (one macro may sit both before and after), the entry's own write.
     /// The subject names the macro so its condition controls never collide with
@@ -6818,6 +7079,12 @@
     {
         var macros = EffectiveNodeMacros(node);
         var macroId = index < macros.Count ? macros[index].Id : "?";
+        // v24 (#957): on a node that fans a data: collection the builder also offers
+        // item:id — the collection's item ids as the closed value set (names as labels).
+        var fanItems = EffectiveSpecVersion >= 24 ? NodeFanItems(node) : Array.Empty<WorkflowManifestReader.DataItemView>();
+        var extra = fanItems.Count > 0
+            ? new[] { new ConditionOperand(ItemIdKey, ItemValueType, fanItems.Select(item => item.Id).ToList(), fanItems.Select(StandardName).ToList()) }
+            : null;
         return new($"node-macro:{node.Id}\n{index}", $"{node.Id} macro {macroId}",
             index < macros.Count ? macros[index].When : null,
             text =>
@@ -6827,7 +7094,8 @@
                 {
                     list[index] = list[index] with { When = text };
                 }
-            });
+            },
+            extra);
     }
 
     /// <summary>1-based position of the clause at the path among every clause in document order.</summary>
@@ -6933,7 +7201,7 @@
             return EditClauseAsync(target, path, clause => ConditionClause.Empty with { Not = clause.Not });
         }
 
-        var operand = ConditionOperands.FirstOrDefault(candidate => candidate.Key == key);
+        var operand = OperandsFor(target).FirstOrDefault(candidate => candidate.Key == key);
         if (operand is null)
         {
             return Task.CompletedTask;
@@ -6958,7 +7226,7 @@
     private Task SetClauseLiteralAsync(ConditionTarget target, IReadOnlyList<int> path, string? literal) =>
         EditClauseAsync(target, path, clause =>
         {
-            var operand = ConditionOperands.FirstOrDefault(candidate => candidate.Key == clause.Operand);
+            var operand = OperandsFor(target).FirstOrDefault(candidate => candidate.Key == clause.Operand);
             return clause with { Literal = operand is null ? literal ?? string.Empty : CoerceLiteral(operand, literal ?? string.Empty) };
         });
 
@@ -7014,7 +7282,7 @@
     /// </summary>
     private static string CoerceLiteral(ConditionOperand operand, string value) => operand.Type switch
     {
-        WorkflowInputTypes.Enum or NodeValueType => operand.Values?.Contains(value, StringComparer.Ordinal) == true ? value : operand.Values?.FirstOrDefault() ?? string.Empty,
+        WorkflowInputTypes.Enum or NodeValueType or ItemValueType => operand.Values?.Contains(value, StringComparer.Ordinal) == true ? value : operand.Values?.FirstOrDefault() ?? string.Empty,
         WorkflowInputTypes.Boolean => value is "true" or "false" ? value : "true",
         WorkflowInputTypes.Number => Consultologist.Web.Services.AI.ConsultInputValue.TryParseNumber(value, out _) ? value : string.Empty,
         WorkflowInputTypes.Date => DateOnly.TryParseExact(value, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _) ? value : string.Empty,
@@ -8730,7 +8998,7 @@
 
     // v23 (#955): a node's macro attachments persisted in the draft — the whole
     // list per node, mirroring nodeMacroEdits.
-    private sealed record DraftNodeMacro(string Id, string? At = null, string? When = null, bool? Optional = null);
+    private sealed record DraftNodeMacro(string Id, string? At = null, string? When = null, bool? Optional = null, string? ForItem = null);
     private sealed record DraftNodeMacros(string NodeId, List<DraftNodeMacro> Macros);
 
     // v15 (#731): a pending raw toggle on a declared prompt.
@@ -9308,7 +9576,7 @@
         foreach (var draftNodeMacros in draftNodeMacroEdits ?? new List<DraftNodeMacros>())
         {
             nodeMacroEdits[draftNodeMacros.NodeId] = draftNodeMacros.Macros
-                .Select(m => new WorkflowManifestReader.NodeMacroView(m.Id, m.At, m.When, m.Optional))
+                .Select(m => new WorkflowManifestReader.NodeMacroView(m.Id, m.At, m.When, m.Optional, m.ForItem))
                 .ToList();
         }
 
@@ -9422,7 +9690,7 @@
             standardNameEdits.Select(pair => new DraftStandardName(pair.Key, pair.Value)).ToList(),
             nodeMacroEdits.Select(pair => new DraftNodeMacros(
                 pair.Key,
-                pair.Value.Select(e => new DraftNodeMacro(e.Id, e.At, e.When, e.Optional)).ToList())).ToList());
+                pair.Value.Select(e => new DraftNodeMacro(e.Id, e.At, e.When, e.Optional, e.ForItem)).ToList())).ToList());
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -11232,6 +11500,7 @@
                     if (entry.At != null) { macroObject["at"] = entry.At; }
                     if (entry.When != null) { macroObject["when"] = entry.When; }
                     if (entry.Optional != null) { macroObject["optional"] = entry.Optional.Value; }
+                    if (entry.ForItem != null) { macroObject["forItem"] = entry.ForItem; }
                     macrosArray.Add(macroObject);
                 }
             }
