@@ -1801,6 +1801,59 @@
                                 </WorkflowEditorPane>
                             </div>
                         }
+                        @* #955 Layer C: the node's macros — a library macro composed into THIS
+                           node's prompt, before or after, each gated by the node-level when (the
+                           #936 ConditionField). The prompt-side sibling of a deliverable's
+                           "Appended content". A prelude is the trivial case (before, always). *@
+                        @if (EffectiveSpecVersion >= 23 && selectedNode.Prompt is not null)
+                        {
+                            <div class="node-section">
+                                <span class="node-section__head">Macros</span>
+                                <p class="muted-text">Compose a library macro into this node's prompt. A before block precedes the prompt, an after block follows it; each applies always, or when its condition holds.</p>
+                                @{ var nodeMacros = EffectiveNodeMacros(selectedNode); }
+                                @for (var macroPosition = 0; macroPosition < nodeMacros.Count; macroPosition++)
+                                {
+                                    var index = macroPosition;
+                                    var entry = nodeMacros[index];
+                                    <div class="node-macro-row">
+                                        <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source"
+                                                      @onclick="() => SelectMacro(entry.Id)">@entry.Id</FluentButton>
+                                        <FluentSelect TOption="string" class="binding-row__select"
+                                                      Value="@(entry.IsAfter ? "after" : "before")"
+                                                      ValueChanged="@(v => SetNodeMacroPlacementAsync(selectedNode.Id, index, v))"
+                                                      aria-label="@($"Placement for macro {entry.Id} on {selectedNode.Id}")">
+                                            <FluentOption TOption="string" Value="before">before the prompt</FluentOption>
+                                            <FluentOption TOption="string" Value="after">after the prompt</FluentOption>
+                                        </FluentSelect>
+                                        <FluentButton Appearance="Appearance.Stealth"
+                                                      IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                      @onclick="() => RemoveNodeMacroAsync(selectedNode.Id, index)"
+                                                      aria-label="@($"Remove macro {entry.Id} from {selectedNode.Id}")" />
+                                        @ConditionField(("Applies when", NodeMacroWhenTarget(selectedNode, index), "Always"))
+                                    </div>
+                                }
+                                @if (nodeMacros.Count == 0)
+                                {
+                                    <p class="muted-text">No macros composed into this node's prompt.</p>
+                                }
+                                @if (EffectiveMacros.Count > 0)
+                                {
+                                    <FluentSelect TOption="string" class="binding-row__select" Value=""
+                                                  ValueChanged="@(v => AttachNodeMacroAsync(selectedNode.Id, v))"
+                                                  aria-label="@($"Attach a macro to {selectedNode.Id}")">
+                                        <FluentOption TOption="string" Value="">attach a macro…</FluentOption>
+                                        @foreach (var libraryMacro in EffectiveMacros)
+                                        {
+                                            <FluentOption TOption="string" Value="@libraryMacro.Id">@libraryMacro.Id</FluentOption>
+                                        }
+                                    </FluentSelect>
+                                }
+                                else
+                                {
+                                    <p class="muted-text">No macros declared yet — add one in the Macros section first.</p>
+                                }
+                            </div>
+                        }
                     }
                     else if (SelectedStandard() is { } standard)
                     {
@@ -3083,6 +3136,10 @@
             // never touches nodeEdits' NodeChange.
             new("nodeWhenEdits", () => nodeWhenEdits.Count, nodeWhenEdits.Clear,
                 () => $"{nodeWhenEdits.Count} node {Plural(nodeWhenEdits.Count, "condition")}", () => nodeWhenEdits.Count > 0),
+            // v23 (#955): a node's macro attachments — its own dict, the whole
+            // list per node (the resultsEdit shape).
+            new("nodeMacroEdits", () => nodeMacroEdits.Count, nodeMacroEdits.Clear,
+                () => $"{nodeMacroEdits.Count} node {Plural(nodeMacroEdits.Count, "macro list")}", () => nodeMacroEdits.Count > 0),
             // v10 (#498): a condition with a clause not yet chosen — held, never
             // written, and named until it is.
             new("conditionDrafts", () => conditionDrafts.Count, conditionDrafts.Clear,
@@ -4668,13 +4725,27 @@
         }
         else
         {
-            // The orphan rule, the validator's sentence verbatim.
+            // The orphan rule, the validator's sentence verbatim. v23 (#955): a
+            // macro composed into a node's prompt references the library too, and
+            // the sentence names both.
             var referencedMacroIds = results
                 .SelectMany(result => (result.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).Select(e => e.Id))
                 .ToHashSet(StringComparer.Ordinal);
+            if (EffectiveSpecVersion >= 23)
+            {
+                foreach (var nodeView in EffectiveNodes)
+                {
+                    foreach (var entry in EffectiveNodeMacros(nodeView))
+                    {
+                        referencedMacroIds.Add(entry.Id);
+                    }
+                }
+            }
             errors.AddRange(EffectiveMacros
                 .Where(m => !referencedMacroIds.Contains(m.Id))
-                .Select(m => $"Macro '{m.Id}' is not referenced by any result."));
+                .Select(m => EffectiveSpecVersion >= 23
+                    ? $"Macro '{m.Id}' is not referenced by any result or node."
+                    : $"Macro '{m.Id}' is not referenced by any result."));
 
             foreach (var macroView in EffectiveMacros)
             {
@@ -6625,6 +6696,80 @@
             }
         });
 
+    // v23 (#955): a node's macro attachments, edited as a whole list (the
+    // resultsEdit precedent) keyed by node id. A library macro composed into the
+    // node's prompt, before/after, with its optional node-level when.
+    private readonly Dictionary<string, List<WorkflowManifestReader.NodeMacroView>> nodeMacroEdits = new(StringComparer.Ordinal);
+
+    private IReadOnlyList<WorkflowManifestReader.NodeMacroView> EffectiveNodeMacros(WorkflowManifestReader.NodeView node) =>
+        nodeMacroEdits.TryGetValue(node.Id, out var edited)
+            ? edited
+            : node.Macros ?? (IReadOnlyList<WorkflowManifestReader.NodeMacroView>)Array.Empty<WorkflowManifestReader.NodeMacroView>();
+
+    private List<WorkflowManifestReader.NodeMacroView> MutableNodeMacros(string nodeId)
+    {
+        if (!nodeMacroEdits.TryGetValue(nodeId, out var list))
+        {
+            list = EffectiveNodes.FirstOrDefault(n => n.Id == nodeId)?.Macros?.ToList()
+                ?? new List<WorkflowManifestReader.NodeMacroView>();
+            nodeMacroEdits[nodeId] = list;
+        }
+
+        return list;
+    }
+
+    private async Task AttachNodeMacroAsync(string nodeId, string? macroId)
+    {
+        if (string.IsNullOrWhiteSpace(macroId))
+        {
+            return;
+        }
+
+        MutableNodeMacros(nodeId).Add(new WorkflowManifestReader.NodeMacroView(macroId));
+        await PendingChangedAsync();
+    }
+
+    private async Task SetNodeMacroPlacementAsync(string nodeId, int index, string? at)
+    {
+        var list = MutableNodeMacros(nodeId);
+        if (index >= 0 && index < list.Count)
+        {
+            // null ≡ before (the bare form keeps its string shape); only "after" is stored.
+            list[index] = list[index] with { At = at == "after" ? "after" : null };
+            await PendingChangedAsync();
+        }
+    }
+
+    private async Task RemoveNodeMacroAsync(string nodeId, int index)
+    {
+        var list = MutableNodeMacros(nodeId);
+        if (index >= 0 && index < list.Count)
+        {
+            list.RemoveAt(index);
+            await PendingChangedAsync();
+        }
+    }
+
+    /// <summary>v23 § (#955): a node macro entry's when — keyed by node id and
+    /// position (one macro may sit both before and after), the entry's own write.
+    /// The subject names the macro so its condition controls never collide with
+    /// the node's own "Runs when" (whose subject is the bare node id).</summary>
+    private ConditionTarget NodeMacroWhenTarget(WorkflowManifestReader.NodeView node, int index)
+    {
+        var macros = EffectiveNodeMacros(node);
+        var macroId = index < macros.Count ? macros[index].Id : "?";
+        return new($"node-macro:{node.Id}\n{index}", $"{node.Id} macro {macroId}",
+            index < macros.Count ? macros[index].When : null,
+            text =>
+            {
+                var list = MutableNodeMacros(node.Id);
+                if (index >= 0 && index < list.Count)
+                {
+                    list[index] = list[index] with { When = text };
+                }
+            });
+    }
+
     /// <summary>1-based position of the clause at the path among every clause in document order.</summary>
     private static int ClauseOrdinal(ConditionGroup root, IReadOnlyList<int> path)
     {
@@ -7414,6 +7559,7 @@
     private bool NodeHasPending(WorkflowManifestReader.NodeView node) =>
         nodeEdits.ContainsKey(node.Id)
         || nodeWhenEdits.ContainsKey(node.Id)
+        || nodeMacroEdits.ContainsKey(node.Id)
         || aggregateEdits.ContainsKey(node.Id)
         || addedNodes.Any(a => a.Id == node.Id)
         || bindingEdits.Keys.Any(key => key.StartsWith(node.Id + "\n", StringComparison.Ordinal))
@@ -8522,6 +8668,11 @@
     // kept apart from nodeEdits. A null When is a clearing.
     private sealed record DraftNodeWhen(string NodeId, string? When);
 
+    // v23 (#955): a node's macro attachments persisted in the draft — the whole
+    // list per node, mirroring nodeMacroEdits.
+    private sealed record DraftNodeMacro(string Id, string? At = null, string? When = null, bool? Optional = null);
+    private sealed record DraftNodeMacros(string NodeId, List<DraftNodeMacro> Macros);
+
     // v15 (#731): a pending raw toggle on a declared prompt.
     private sealed record DraftPromptRawEdit(string Id, bool Raw);
 
@@ -8583,7 +8734,10 @@
         // #946: pending macro label edits + standard (data-item) name edits.
         // Trailing optional — a draft written before restores with none.
         List<DraftMacroLabel>? MacroLabels = null,
-        List<DraftStandardName>? StandardNames = null);
+        List<DraftStandardName>? StandardNames = null,
+        // v23 (#955): pending node macro attachments. Trailing optional — a draft
+        // written before restores with none.
+        List<DraftNodeMacros>? NodeMacroEdits = null);
 
     // #815: the undo/redo stacks persisted beside the draft. Each entry is a
     // serialized DraftPayload (or null for the clean state); Version tracks the
@@ -8685,6 +8839,7 @@
         var draftAddedCollections = payload.AddedCollections;
         var draftNodeEdits = payload.NodeEdits;
         var draftNodeWhenEdits = payload.NodeWhenEdits;
+        var draftNodeMacroEdits = payload.NodeMacroEdits;
         var draftAddedNodes = payload.AddedNodes;
         var draftRemovedNodes = payload.RemovedNodes;
         var draftAggregateEdits = payload.AggregateEdits;
@@ -9089,6 +9244,14 @@
             nodeWhenEdits[draftNodeWhen.NodeId] = draftNodeWhen.When;
         }
 
+        // v23 (#955): rehydrate pending node macro attachments (its own dict).
+        foreach (var draftNodeMacros in draftNodeMacroEdits ?? new List<DraftNodeMacros>())
+        {
+            nodeMacroEdits[draftNodeMacros.NodeId] = draftNodeMacros.Macros
+                .Select(m => new WorkflowManifestReader.NodeMacroView(m.Id, m.At, m.When, m.Optional))
+                .ToList();
+        }
+
         foreach (var draftBinding in bindings ?? new List<DraftBinding>())
         {
             // Keep rebinds whose node/variable still exists and still differs —
@@ -9196,7 +9359,10 @@
             addedSchemas.ToList(),
             nodeWhenEdits.Select(pair => new DraftNodeWhen(pair.Key, pair.Value)).ToList(),
             macroLabelEdits.Select(pair => new DraftMacroLabel(pair.Key, pair.Value)).ToList(),
-            standardNameEdits.Select(pair => new DraftStandardName(pair.Key, pair.Value)).ToList());
+            standardNameEdits.Select(pair => new DraftStandardName(pair.Key, pair.Value)).ToList(),
+            nodeMacroEdits.Select(pair => new DraftNodeMacros(
+                pair.Key,
+                pair.Value.Select(e => new DraftNodeMacro(e.Id, e.At, e.When, e.Optional)).ToList())).ToList());
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -9694,6 +9860,13 @@
         nodeWhenEdits.Remove(nodeId);
         conditionDrafts.Remove($"node-when:{nodeId}");
         aggregateEdits.Remove(nodeId);
+        // v23 (#955): a node's macro attachments and any in-progress macro-when
+        // condition drafts.
+        nodeMacroEdits.Remove(nodeId);
+        foreach (var key in conditionDrafts.Keys.Where(k => k.StartsWith($"node-macro:{nodeId}\n", StringComparison.Ordinal)).ToList())
+        {
+            conditionDrafts.Remove(key);
+        }
         foreach (var key in bindingEdits.Keys.Where(k => k.StartsWith(nodeId + "\n", StringComparison.Ordinal)).ToList())
         {
             bindingEdits.Remove(key);
@@ -10967,6 +11140,43 @@
             {
                 nodeObject[nodeObject.ContainsKey("When") ? "When" : "when"] = pair.Value;
             }
+        }
+
+        // v23 (#955): a node's macro attachments — the whole list, each a bare id
+        // (before/always) or a placement object { id, at, when, optional }. An
+        // empty list removes the field.
+        foreach (var pair in nodeMacroEdits)
+        {
+            if (removedNodeIds.Contains(pair.Key) || NodeFor(pair.Key) is not { } nodeObject)
+            {
+                continue;
+            }
+
+            if (pair.Value.Count == 0)
+            {
+                nodeObject.Remove("macros");
+                nodeObject.Remove("Macros");
+                continue;
+            }
+
+            var macrosArray = new System.Text.Json.Nodes.JsonArray();
+            foreach (var entry in pair.Value)
+            {
+                if (entry.IsBare)
+                {
+                    macrosArray.Add(System.Text.Json.Nodes.JsonValue.Create(entry.Id));
+                }
+                else
+                {
+                    var macroObject = new System.Text.Json.Nodes.JsonObject { ["id"] = entry.Id };
+                    if (entry.At != null) { macroObject["at"] = entry.At; }
+                    if (entry.When != null) { macroObject["when"] = entry.When; }
+                    if (entry.Optional != null) { macroObject["optional"] = entry.Optional.Value; }
+                    macrosArray.Add(macroObject);
+                }
+            }
+
+            nodeObject[nodeObject.ContainsKey("Macros") ? "Macros" : "macros"] = macrosArray;
         }
 
         // Rebinds and added-variable bindings (the indexer adds missing keys).
