@@ -157,6 +157,28 @@
 	font-weight: 600;
 }
 
+/* #933: the custom tier's marker (#760) — warning-toned, never the catalog chip's look. */
+.provenance-chip--unattested,
+.node-row__unattested {
+	color: var(--consultologist-warning-text, #92400e);
+	border: 1px solid var(--consultologist-warning, #b45309);
+	background: var(--consultologist-warning-surface, #fffbeb);
+	font-weight: 600;
+}
+
+.node-row__unattested {
+	font-size: 0.65rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	padding: 0.05rem 0.45rem;
+	border-radius: 999px;
+	white-space: nowrap;
+}
+
+.provenance-unattested div {
+	line-height: 1.4;
+}
+
 .job-detail-section {
 	margin: 0.5rem 0;
 }
