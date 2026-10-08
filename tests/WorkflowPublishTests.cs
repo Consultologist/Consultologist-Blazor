@@ -982,6 +982,44 @@ public class WorkflowPackagePublisherTests
     }
 
     [Fact]
+    public async Task Publish_ASpecStylePrelude_Publishes()
+    {
+        // #978: the format's prelude convention is prompts/_<name>.md (the v5
+        // example, every conformance vector) — which the path rule accepts.
+        var (publisher, writer, _) = CreatePublisher();
+        var manifest = V5Fixtures.Manifest();
+        Assert.Equal("prompts/_snomed-tool-guidance.md", manifest.Preludes!["snomed-tool-guidance"]);
+
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: V5Fixtures.Files(manifest)), CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join("; ", result.Errors));
+        Assert.Contains(writer.Blobs, blob => blob.Key.EndsWith("prompts/_snomed-tool-guidance.md", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Publish_AnEditorStylePreludePath_IsRefusedByName()
+    {
+        // #978: the editor used to write a NEW prelude at preludes/<id>.md — a
+        // directory the path rule never allowed, so an editor-authored prelude
+        // never published. The editor no longer creates preludes; this pins the
+        // door's answer so the two cannot disagree silently again.
+        var (publisher, writer, _) = CreatePublisher();
+        var manifest = V5Fixtures.Manifest() with
+        {
+            Preludes = new Dictionary<string, string> { ["snomed-tool-guidance"] = "preludes/snomed-tool-guidance.md" }
+        };
+        var files = V5Fixtures.Files(manifest);
+        files["preludes/snomed-tool-guidance.md"] = files["prompts/_snomed-tool-guidance.md"];
+        files.Remove("prompts/_snomed-tool-guidance.md");
+
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: files), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Errors, e => e.Contains("'preludes/snomed-tool-guidance.md'") && e.Contains("is not allowed"));
+        Assert.Empty(writer.Blobs);
+    }
+
+    [Fact]
     public async Task Publish_AMacroCarryingPackage_Publishes()
     {
         // #623's live demo surfaced the gap: the path rule and the reverse

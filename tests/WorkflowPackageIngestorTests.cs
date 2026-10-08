@@ -135,6 +135,26 @@ public class WorkflowPackageIngestorTests
     }
 
     [Fact]
+    public void AnEditorStylePreludePath_IsAFinding()
+    {
+        // #978: the same path rule as the publish door, advisory here — an
+        // imported package whose prelude sits at preludes/<id>.md loads with a
+        // finding and is refused by name at publish.
+        var manifest = V5Fixtures.Manifest() with
+        {
+            Preludes = new Dictionary<string, string> { ["snomed-tool-guidance"] = "preludes/snomed-tool-guidance.md" }
+        };
+        var files = V5Fixtures.Files(manifest);
+        files["preludes/snomed-tool-guidance.md"] = files["prompts/_snomed-tool-guidance.md"];
+        files.Remove("prompts/_snomed-tool-guidance.md");
+
+        var result = Ingestor().Ingest(Zip(files, JsonSerializer.Serialize(manifest, Wire)));
+
+        Assert.True(result.Parsed);
+        Assert.Contains(result.Findings, f => f.Contains("preludes/snomed-tool-guidance.md") && f.Contains("is not allowed"));
+    }
+
+    [Fact]
     public void ADisallowedFilePath_IsAFinding()
     {
         var manifest = V5Fixtures.Manifest();
