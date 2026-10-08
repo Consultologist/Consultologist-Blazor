@@ -37,7 +37,11 @@ public static class WorkflowManifestReader
         string? Op = null, string? Of = null, string? In = null, string? FailWith = null,
         // v18 (#822): the node's own condition gate. Null on every node
         // before 18 and on any node without one.
-        string? When = null)
+        string? When = null,
+        // v23 (#955): the macros composed into this node's prompt, before/after,
+        // each with its optional node-level when. Null before 23 and on any node
+        // without one.
+        IReadOnlyList<NodeMacroView>? Macros = null)
     {
         public bool IsClassifier => Kind == Consultologist.PackageFormat.WorkflowNodeKinds.Classifier;
 
@@ -135,6 +139,19 @@ public static class WorkflowManifestReader
         // v20 (#863): the model places this macro inline via a [[slot:<id>]]
         // marker; it names no anchor. Mirror of WorkflowResultMacroSpec.IsSlot.
         public bool IsSlot => Slot == true;
+    }
+
+    /// <summary>
+    /// v23 (#955): one macro attached to a node — the library id, whether it
+    /// lands after the prompt (else before, the bare form), and its optional
+    /// node-level when. A bare read writes the string form, an adorned one the
+    /// object. Mirror of WorkflowNodeMacroSpec.
+    /// </summary>
+    public sealed record NodeMacroView(string Id, string? At = null, string? When = null, bool? Optional = null)
+    {
+        public bool IsBare => At is null && When is null && Optional is null;
+
+        public bool IsAfter => At == Consultologist.PackageFormat.WorkflowNodeMacroSpec.After;
     }
 
     /// <summary>One declared macro (v11 § 4): package-owned template text.
@@ -235,7 +252,8 @@ public static class WorkflowManifestReader
                 ReadString(node, "of"),
                 ReadString(node, "in"),
                 ReadString(node, "failWith"),
-                ReadString(node, "when")));
+                ReadString(node, "when"),
+                ReadNodeMacroEntries(node)));
         }
 
         return nodes;
@@ -672,6 +690,37 @@ public static class WorkflowManifestReader
                     ReadString(item, "when"),
                     ReadString(item, "forItem"),
                     ReadBool(item, "slot")));
+            }
+        }
+
+        return entries;
+    }
+
+    /// <summary>
+    /// v23 (#955): a node's macro attachments — a bare id string (before, always)
+    /// or a placement object { id, at, when, optional }.
+    /// </summary>
+    private static IReadOnlyList<NodeMacroView>? ReadNodeMacroEntries(JsonElement node)
+    {
+        if (!TryGetProperty(node, "macros", out var array) || array.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var entries = new List<NodeMacroView>();
+        foreach (var item in array.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String)
+            {
+                entries.Add(new NodeMacroView(item.GetString()!));
+            }
+            else if (item.ValueKind == JsonValueKind.Object && TryGetProperty(item, "id", out var id) && id.ValueKind == JsonValueKind.String)
+            {
+                entries.Add(new NodeMacroView(
+                    id.GetString()!,
+                    ReadString(item, "at"),
+                    ReadString(item, "when"),
+                    ReadBool(item, "optional")));
             }
         }
 
