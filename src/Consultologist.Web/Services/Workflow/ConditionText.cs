@@ -21,24 +21,24 @@ public static class ConditionText
         ?? Enumerable.Empty<WorkflowResultCondition>();
 
     public static bool ReadsInput(string? when, string inputId) =>
-        Operands(when).Any(operand => !operand.IsNodeValue && operand.InputId == inputId);
+        Operands(when).Any(operand => !operand.IsNodeValue && !operand.IsItemValue && operand.InputId == inputId);
 
     /// <summary>Reads the input's top-level field, bare or by a longer path beneath it.</summary>
     public static bool ReadsField(string? when, string inputId, string fieldId) =>
-        Operands(when).Any(operand => !operand.IsNodeValue && operand.InputId == inputId && operand.Segments.Count > 0 && operand.Segments[0] == fieldId);
+        Operands(when).Any(operand => !operand.IsNodeValue && !operand.IsItemValue && operand.InputId == inputId && operand.Segments.Count > 0 && operand.Segments[0] == fieldId);
 
     /// <summary>Reads the field at a path below the input (any depth), or anything beneath it.</summary>
     public static bool ReadsPath(string? when, string inputId, IReadOnlyList<string> segments) =>
-        Operands(when).Any(operand => !operand.IsNodeValue && operand.InputId == inputId && StartsWith(operand.Segments, segments));
+        Operands(when).Any(operand => !operand.IsNodeValue && !operand.IsItemValue && operand.InputId == inputId && StartsWith(operand.Segments, segments));
 
     /// <summary>Compares the field at a path below the input to the literal, in any clause.</summary>
     public static bool TestsPath(string? when, string inputId, IReadOnlyList<string> segments, string value) =>
-        Parse(when)?.Leaves.Any(leaf => !leaf.IsArithmetic && !leaf.IsNodeValue && leaf.InputId == inputId
+        Parse(when)?.Leaves.Any(leaf => !leaf.IsArithmetic && !leaf.IsNodeValue && !leaf.IsItemValue && leaf.InputId == inputId
             && leaf.Segments.SequenceEqual(segments, StringComparer.Ordinal) && leaf.Literal == value) ?? false;
 
     /// <summary>The condition with the field at a path renamed wherever it, or anything beneath it, is read.</summary>
     public static string RenamePath(string when, string inputId, IReadOnlyList<string> segments, string newLast) =>
-        Map(when, clause => clause.InputId == inputId && !clause.IsNodeValue && StartsWith(clause.Segments, segments)
+        Map(when, clause => clause.InputId == inputId && !clause.IsNodeValue && !clause.IsItemValue && StartsWith(clause.Segments, segments)
             ? Renamed(clause, segments.Count - 1, newLast)
             : clause);
 
@@ -57,17 +57,17 @@ public static class ConditionText
 
     /// <summary>Compares the input (or its top-level field) to the literal, in any clause.</summary>
     public static bool TestsValue(string? when, string inputId, string? fieldId, string value) =>
-        Parse(when)?.Leaves.Any(leaf => !leaf.IsArithmetic && !leaf.IsNodeValue && leaf.InputId == inputId
+        Parse(when)?.Leaves.Any(leaf => !leaf.IsArithmetic && !leaf.IsNodeValue && !leaf.IsItemValue && leaf.InputId == inputId
             && (fieldId is null ? leaf.Segments.Count == 0 : leaf.Segments.Count > 0 && leaf.Segments[0] == fieldId)
             && leaf.Literal == value) ?? false;
 
     /// <summary>The condition with an input renamed wherever it is read, re-spelled by the format's writer.</summary>
     public static string RenameInput(string when, string oldId, string newId) =>
-        Map(when, clause => clause.InputId == oldId && !clause.IsNodeValue ? clause with { InputId = newId } : clause);
+        Map(when, clause => clause.InputId == oldId && !clause.IsNodeValue && !clause.IsItemValue ? clause with { InputId = newId } : clause);
 
     /// <summary>The condition with an input's top-level field renamed wherever it is read.</summary>
     public static string RenameField(string when, string inputId, string oldField, string newField) =>
-        Map(when, clause => clause.InputId == inputId && !clause.IsNodeValue && clause.Segments.Count > 0 && clause.Segments[0] == oldField
+        Map(when, clause => clause.InputId == inputId && !clause.IsNodeValue && !clause.IsItemValue && clause.Segments.Count > 0 && clause.Segments[0] == oldField
             ? clause with
             {
                 Field = newField,

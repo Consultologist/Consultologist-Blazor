@@ -559,7 +559,10 @@ public sealed record WorkflowNodeMacroSpec(
     // absent = always. Trailing so a placed pair keeps its positions.
     string? When = null,
     // a per-run choice (mirrors the library macro's optional). Trailing optional.
-    bool? Optional = null)
+    bool? Optional = null,
+    // v24 (#957): composed only for ONE item of the data: collection the node
+    // fans (the results[].macros[].forItem shape on the prompt side). Trailing.
+    string? ForItem = null)
 {
     public const string Before = "before";
     public const string After = "after";
@@ -567,7 +570,7 @@ public sealed record WorkflowNodeMacroSpec(
     /// <summary>An id and nothing else — the before/always form that a prelude
     /// migrates to. The writer keys the bare-string form on this, so any
     /// adornment must count or it would silently drop on republish.</summary>
-    public bool IsBare => At is null && When is null && Optional is null;
+    public bool IsBare => At is null && When is null && Optional is null && ForItem is null;
 
     /// <summary>Null placement means before; only an explicit "after" moves it.</summary>
     public bool IsAfter => At == After;
@@ -580,7 +583,7 @@ public sealed record WorkflowNodeMacroSpec(
 public sealed class WorkflowNodeMacroSpecConverter : JsonConverter<WorkflowNodeMacroSpec>
 {
     // The object form, read without this converter on the outer shape.
-    private sealed record Shape(string? Id, string? At, string? When, bool? Optional);
+    private sealed record Shape(string? Id, string? At, string? When, bool? Optional, string? ForItem);
 
     public override WorkflowNodeMacroSpec Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
@@ -602,7 +605,7 @@ public sealed class WorkflowNodeMacroSpecConverter : JsonConverter<WorkflowNodeM
             throw new JsonException("A placed node macro entry must declare id.");
         }
 
-        return new WorkflowNodeMacroSpec(shape.Id, shape.At, shape.When, shape.Optional);
+        return new WorkflowNodeMacroSpec(shape.Id, shape.At, shape.When, shape.Optional, shape.ForItem);
     }
 
     public override void Write(Utf8JsonWriter writer, WorkflowNodeMacroSpec value, JsonSerializerOptions options)
@@ -629,6 +632,11 @@ public sealed class WorkflowNodeMacroSpecConverter : JsonConverter<WorkflowNodeM
         if (value.Optional != null)
         {
             writer.WriteBoolean("optional", value.Optional.Value);
+        }
+
+        if (value.ForItem != null)
+        {
+            writer.WriteString("forItem", value.ForItem);
         }
 
         writer.WriteEndObject();

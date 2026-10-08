@@ -41,6 +41,23 @@ public static class WorkflowMacroPlaceholders
     public static bool CarriesSignatureToken(string template) =>
         Pattern.Matches(template).Any(match => TokenOf(match) == SignatureToken);
 
+    /// <summary>
+    /// v24 (#957): the item: namespace — a fan item's field, filled per item
+    /// when the macro is composed into a forEach node's prompt. Which fields
+    /// a fan exposes is the fan's (a data: collection's declared fields, an
+    /// input fan's id/name/value), so this class names only the namespace.
+    /// </summary>
+    public const string ItemNamespace = "item";
+
+    /// <summary>The distinct item fields a template reads, in order of first appearance (empty when it reads none).</summary>
+    public static IReadOnlyList<string> ItemFieldsOf(string template) =>
+        Pattern.Matches(template)
+            .Select(match => TokenOf(match))
+            .Select(token => TryParse(token, out var ns, out var id) && ns == ItemNamespace ? id : null)
+            .Where(id => id != null)
+            .Distinct(StringComparer.Ordinal)
+            .ToList()!;
+
     /// <summary>The token of one match, trimmed — the form every sentence names.</summary>
     public static string TokenOf(Match match) => match.Groups[1].Value.Trim();
 

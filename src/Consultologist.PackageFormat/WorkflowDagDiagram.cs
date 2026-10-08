@@ -185,7 +185,7 @@ public static class WorkflowDagDiagram
             // whole expression as the label on the first; a v9 clause draws
             // exactly what it did.
             var first = true;
-            foreach (var condition in expression.Leaves.Concat(expression.Leaves.SelectMany(l => (l.Left?.Operands ?? Enumerable.Empty<WorkflowResultCondition>()).Concat(l.Right?.Operands ?? Enumerable.Empty<WorkflowResultCondition>()))).DistinctBy(c => c.IsNodeValue ? "node:" + c.NodeId : c.InputId))
+            foreach (var condition in expression.Leaves.Concat(expression.Leaves.SelectMany(l => (l.Left?.Operands ?? Enumerable.Empty<WorkflowResultCondition>()).Concat(l.Right?.Operands ?? Enumerable.Empty<WorkflowResultCondition>()))).Where(c => !c.IsItemValue).DistinctBy(c => c.IsNodeValue ? "node:" + c.NodeId : c.InputId))
             {
                 var source = condition.IsNodeValue ? Sanitize($"node:{condition.NodeId}") : Sanitize($"input:{condition.InputId}");
                 string test;
@@ -290,7 +290,7 @@ public static class WorkflowDagDiagram
                 && WorkflowResultConditions.TryParseExpression(result.When, out var expression, out _)
                 && expression != null)
             {
-                foreach (var leaf in expression.Leaves.Where(leaf => !leaf.IsNodeValue))
+                foreach (var leaf in expression.Leaves.Where(leaf => !leaf.IsNodeValue && !leaf.IsItemValue))
                 {
                     Add($"input:{leaf.InputId}");
                 }
