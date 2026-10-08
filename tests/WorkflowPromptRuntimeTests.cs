@@ -46,6 +46,20 @@ public class PromptTemplateRendererTests
         Assert.Equal("Prelude.\n\nPreamble.\n\nBody.", result);
     }
 
+    [Fact]
+    public void APrelude_AndItsMigratedBeforeBlock_RenderTheSameBytes()
+    {
+        // #963: the editor migrates a prelude to a bare node macro placed first
+        // — the claim the migration rests on is that the composed bytes (and so
+        // the node's InputHash) do not move. Pinned here, trailing newline and all.
+        var inputs = new Dictionary<string, string> { ["consult_draft"] = "x" };
+        var asPrelude = PromptTemplateRenderer.Render(Template("Body {{ consult_draft }}.", prelude: "Guidance text.\n"), inputs, before: new[] { "Preamble." });
+        var asMacro = PromptTemplateRenderer.Render(Template("Body {{ consult_draft }}."), inputs, before: new[] { "Guidance text.\n", "Preamble." });
+
+        Assert.Equal(asPrelude, asMacro);
+        Assert.Equal("Guidance text.\n\nPreamble.\n\nBody x.", asMacro);
+    }
+
     // #313 (v8): a typed input reaches Scriban as its own type, so a template
     // can format a date and branch on a boolean. This is the author-visible
     // half of typing inputs — without it, typed JSON would change the spelling
