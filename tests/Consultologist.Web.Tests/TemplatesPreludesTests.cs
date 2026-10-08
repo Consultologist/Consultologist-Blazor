@@ -80,24 +80,23 @@ public class TemplatesPreludesTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void CreatingAPrelude_DeclaresItAndWritesItsFile()
+    public async Task CreatingAPrelude_Below23_IsRefusedByName()
     {
+        // #978: the editor used to write a new prelude at preludes/<id>.md, which
+        // the publish door never accepted. Creation is retired: the door stays
+        // visible below 23 and says where shared text goes now; nothing is staged.
         var page = RenderEditor(EditorFixtures.V7Preludes());
         CapturePublish();
 
         Navigate(page, "+ Prelude");
-        page.Find("fluent-text-field[placeholder='snomed_tool_guidance']").Change("closing_note");
-        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Create prelude")).Click();
-        page.Find("fluent-text-area").Change("Signed by the consultant.");
-        Publish(page);
 
-        Assert.NotNull(sent);
-        var preludes = Manifest(sent!).GetProperty("preludes");
-        Assert.Equal("preludes/closing_note.md", preludes.GetProperty("closing_note").GetString());
-        Assert.Equal("Signed by the consultant.", sent!.Files["preludes/closing_note.md"]);
-        // An unreferenced prelude is tolerated by the validator.
-        var result = Validated();
-        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+        Assert.Contains("A prelude publishes only as a node macro from specVersion 23.", page.Find(".prelude-retired").TextContent);
+        Assert.Contains("Upgrade to specVersion 24", page.Find(".prelude-retired").TextContent);
+        Assert.Empty(page.FindAll("fluent-text-field[placeholder='snomed_tool_guidance']"));
+        Assert.DoesNotContain(page.FindAll("fluent-button"), button => button.TextContent.Contains("Create prelude"));
+        // Nothing pending: Publish has nothing to send.
+        Publish(page);
+        await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
     }
 
     // #841: the usage list lives in the prelude's pane, not the nav.
