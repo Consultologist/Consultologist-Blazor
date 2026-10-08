@@ -860,6 +860,83 @@ public class HistoryDetailTests : ClientRenderTestContext
         Assert.Contains("Output hash (v2)", page.Find(".provenance-list").TextContent);
     }
 
+    // ----- #933: the custom tier's unattested marker (#760) -----
+
+    private static readonly ConsultGenerationNodeDescriptor CustomShape =
+        new("shape", "Assessment shape", OutputContract: "custom");
+
+    private static ConsultGenerationNodeStatus CustomRow(string nodeId = "shape") =>
+        new(nodeId, "Assessment shape", "Completed", "in-s", "out-s", DateTimeOffset.UtcNow, null,
+            Unattested: true, CustomSchemaHash: "0123456789abcdefdeadbeef", CustomAgent: "custom-0123@1");
+
+    [Fact]
+    public void ACustomNode_IsMarkedUnattested_OnItsRow_TheChip_TheProvenanceList_AndTheGlossary()
+    {
+        WithEngine();
+        WithJob(3,
+            nodes: new[] { new ConsultGenerationNodeDescriptor("digest", "Digest", OutputContract: "concept-list"), CustomShape },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["digest"] = new("digest", "Digest", "Completed", "in-1", "out-1", DateTimeOffset.UtcNow, null),
+                ["shape"] = CustomRow()
+            });
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        // The row: a pill, the sentence and the record's hash + agent in its title;
+        // the contract label names the content-addressed agent, never a catalog one.
+        var badge = Assert.Single(page.FindAll(".node-row__unattested"));
+        Assert.Equal("unattested", badge.TextContent.Trim());
+        Assert.Contains("not an attested clinical contract, no terminology grounding", badge.GetAttribute("title"));
+        Assert.Contains("schema 0123456789ab · agent custom-0123@1", badge.GetAttribute("title"));
+        Assert.Contains("custom · custom-0123@1", page.FindAll(".node-row__contract").Select(c => c.TextContent.Trim()));
+        // The chip, beside the catalog chip.
+        Assert.Contains("1 unattested block", Chips(page));
+        // The provenance row.
+        var row = page.Find(".provenance-unattested");
+        Assert.Contains("Assessment shape · schema 0123456789ab · agent custom-0123@1", row.TextContent);
+        Assert.Contains("no terminology grounding", row.TextContent);
+        // The glossary.
+        Assert.Contains("Unattested", page.Find(".provenance-help__list").TextContent);
+    }
+
+    [Fact]
+    public void AFannedCustomNode_MarksEveryItemRow_FromTheDescriptor()
+    {
+        // The engine stamps only the node-level row (#980); the descriptor's custom
+        // contract marks the items regardless.
+        WithEngine();
+        WithJob(3,
+            nodes: new[] { CustomShape with { ForEach = "data:standards" } },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["shape"] = CustomRow(),
+                ["shape:hpi"] = new("shape", "Assessment shape", "Completed", "in-h", "out-h", DateTimeOffset.UtcNow, null),
+                ["shape:pmh"] = new("shape", "Assessment shape", "Completed", "in-p", "out-p", DateTimeOffset.UtcNow, null)
+            });
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        // The summary row and both item rows.
+        Assert.Equal(3, page.FindAll(".node-row__unattested").Count);
+        Assert.Equal(2, page.FindAll(".node-row--item .node-row__unattested").Count);
+    }
+
+    [Fact]
+    public void ACatalogOnlyRun_CarriesNoUnattestedMarker()
+    {
+        WithEngine();
+        WithJob(3,
+            nodes: new[] { new ConsultGenerationNodeDescriptor("digest", "Digest", OutputContract: "concept-list") },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["digest"] = new("digest", "Digest", "Completed", "in-1", "out-1", DateTimeOffset.UtcNow, null)
+            });
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Empty(page.FindAll(".node-row__unattested"));
+        Assert.Empty(page.FindAll(".provenance-chip--unattested"));
+        Assert.Empty(page.FindAll(".provenance-unattested"));
+    }
+
     private static IReadOnlyList<string> Chips(IRenderedComponent<History> page) =>
         page.FindAll(".provenance-chip").Select(chip => chip.TextContent.Trim()).ToList();
 
