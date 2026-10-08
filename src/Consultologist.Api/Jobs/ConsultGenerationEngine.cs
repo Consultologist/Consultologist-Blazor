@@ -253,7 +253,7 @@ public sealed class ConsultGenerationOrchestrator
             // sources are strings by nature.
             var variableTypes = ConsultNodeVariableResolver.TypedVariables(node, input.InputTypes);
 
-            var (beforeBlocks, afterBlocks) = ResolveNodeMacros(node);
+            var (beforeBlocks, afterBlocks) = ResolveNodeMacros(node, item);
 
             pendingTasks[context.CallActivityAsync<NodeRunResult>(
                 ConsultGenerationActivityNames.RunPromptNode,
@@ -931,7 +931,11 @@ public sealed class ConsultGenerationOrchestrator
         // map, node: against the classifications the scheduler guarantees are in
         // by now), then the firing macro's text token-substituted. before blocks
         // precede the prompt, after blocks follow it; the renderer composes them.
-        (IReadOnlyList<string>?, IReadOnlyList<string>?) ResolveNodeMacros(ConsultNodeDescriptor node)
+        // v24 #957: resolved per INSTANCE — a fan node's item is in scope, so a
+        // forItem macro composes for that item alone, an item:id when is judged
+        // against it, and {{item:…}} tokens fill from its fields. The per-item
+        // prompt is attested by the instance's own InputHash, as every instance is.
+        (IReadOnlyList<string>?, IReadOnlyList<string>?) ResolveNodeMacros(ConsultNodeDescriptor node, IReadOnlyDictionary<string, string>? item)
         {
             if (node.Macros is not { Count: > 0 })
             {
@@ -943,9 +947,14 @@ public sealed class ConsultGenerationOrchestrator
 
             foreach (var macro in node.Macros)
             {
+                if (macro.ForItem != null && macro.ForItem != item?.GetValueOrDefault("id"))
+                {
+                    continue;
+                }
+
                 if (macro.When != null
                     && (!WorkflowResultConditions.TryParseExpression(macro.When, out var when, out _)
-                        || !WorkflowResultConditions.Holds(when, suppliedInputs, Classifications())))
+                        || !WorkflowResultConditions.Holds(when, suppliedInputs, Classifications(), item)))
                 {
                     continue;
                 }
@@ -956,7 +965,7 @@ public sealed class ConsultGenerationOrchestrator
                 }
 
                 var expanded = ConsultMacroExpander.Expand(
-                    template, effectiveInputs, input.DataScalars, Classifications(), nodeMacroFacts);
+                    template, effectiveInputs, input.DataScalars, Classifications(), nodeMacroFacts, item);
                 (macro.After ? (after ??= new()) : (before ??= new())).Add(expanded);
             }
 
@@ -1303,7 +1312,12 @@ internal static class ConsultNodeScheduler
                     ? when.Leaves.Where(leaf => leaf.IsNodeValue).Select(leaf => leaf.NodeId!)
                     : Enumerable.Empty<string>());
 
-        return bindingDeps.Concat(macroWhenDeps).Distinct(StringComparer.Ordinal);
+        // v24 #957: a macro whose TEXT reads {{classification:x}} needs x answered
+        // before it is expanded — the starter snapshots those ids on the descriptor.
+        var macroTextDeps = (node.Macros ?? new List<ConsultNodeMacroDescriptor>())
+            .SelectMany(macro => macro.Reads ?? Array.Empty<string>());
+
+        return bindingDeps.Concat(macroWhenDeps).Concat(macroTextDeps).Distinct(StringComparer.Ordinal);
     }
 }
 

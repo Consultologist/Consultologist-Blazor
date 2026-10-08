@@ -749,7 +749,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // schema runs on (GET-or-create, cached), in the starter so the side-effect stays
         // out of the orchestrator; the resolved refs are baked into the recorded input.
         var customAgents = await ProvisionCustomAgentsAsync(_customProvisioner, package, cancellationToken);
-        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, customAgents)).ToList();
+        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, customAgents, package.SourceFiles, package.Manifest.Macros)).ToList();
 
         // Provenance: identify the artifacts and input that produce this consult.
         // v5/v6: the hash covers the draft only (definition version 2). v7: the
@@ -2766,7 +2766,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         WorkflowNodeSpec node,
         IReadOnlyDictionary<string, string>? schemaContracts,
         IReadOnlyDictionary<string, OutputContractEntry>? contractAgents = null,
-        IReadOnlyDictionary<string, CustomAgentPin>? customAgents = null)
+        IReadOnlyDictionary<string, CustomAgentPin>? customAgents = null,
+        IReadOnlyDictionary<string, string>? macroFiles = null,
+        IReadOnlyList<WorkflowMacroSpec>? macros = null)
     {
         // v10 (#495): a classifier's contract is implied by its kind — the one
         // shape no package declares by schema id.
@@ -2836,8 +2838,32 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             CustomSchemaHash: customSchemaHash,
             // v23 #955: the node's macro attachments, snapshotted with their
             // placement and when so the orchestrator resolves them at run time.
+            // v24 #957: plus forItem, and the classifiers the macro's text reads
+            // (a {{classification:x}} token needs x answered before the macro is
+            // expanded — a scheduling dependency the Phase 1 snapshot missed).
             Macros: node.Macros?
-                .Select(macro => new ConsultNodeMacroDescriptor(macro.Id, macro.IsAfter, macro.When))
+                .Select(macro => new ConsultNodeMacroDescriptor(
+                    macro.Id, macro.IsAfter, macro.When, macro.ForItem, ClassifiersReadBy(macro.Id, macros, macroFiles)))
                 .ToList());
+    }
+
+    /// <summary>The classifier ids a library macro's text names through {{classification:…}}, or null when it names none (so a v23 payload writes the bytes it wrote).</summary>
+    private static IReadOnlyList<string>? ClassifiersReadBy(
+        string macroId, IReadOnlyList<WorkflowMacroSpec>? macros, IReadOnlyDictionary<string, string>? files)
+    {
+        var file = macros?.FirstOrDefault(macro => macro.Id == macroId)?.File;
+        if (file is null || files is null || !files.TryGetValue(file, out var template))
+        {
+            return null;
+        }
+
+        var reads = WorkflowMacroPlaceholders.Pattern.Matches(template)
+            .Select(match => WorkflowMacroPlaceholders.TokenOf(match))
+            .Select(token => WorkflowMacroPlaceholders.TryParse(token, out var ns, out var id) && ns == "classification" ? id : null)
+            .Where(id => id != null)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        return reads.Count == 0 ? null : reads!;
     }
 }

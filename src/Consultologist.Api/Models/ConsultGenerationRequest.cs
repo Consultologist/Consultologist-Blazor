@@ -556,8 +556,18 @@ public sealed record ConsultNodeBindingDescriptor(string From, string? As = null
 /// v23 #955: a macro composed into a node's prompt — the library id, whether it
 /// lands after the prompt (else before), and its optional node-level <c>when</c>
 /// (the node condition grammar; a <c>node:</c> operand is a scheduling dependency).
+/// v24 #957 appends <c>ForItem</c> (composed for one fan item only) and
+/// <c>Reads</c>, the classifiers the macro's TEXT names through
+/// <c>{{classification:…}}</c> — scheduling dependencies too, snapshotted by the
+/// starter so the orchestrator never reads a template to schedule. Trailing
+/// optionals: a stored v23 descriptor binds both null.
 /// </summary>
-public sealed record ConsultNodeMacroDescriptor(string Id, bool After, string? When = null);
+public sealed record ConsultNodeMacroDescriptor(
+    string Id,
+    bool After,
+    string? When = null,
+    string? ForItem = null,
+    IReadOnlyList<string>? Reads = null);
 
 /// <summary>
 /// One deliverable of a v7 job, snapshotted from the resolved package's result

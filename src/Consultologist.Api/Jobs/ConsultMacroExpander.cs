@@ -221,7 +221,8 @@ internal static class ConsultMacroExpander
         IReadOnlyDictionary<string, string> inputs,
         IReadOnlyDictionary<string, string>? dataScalars,
         IReadOnlyDictionary<string, string> classifications,
-        RunFacts facts)
+        RunFacts facts,
+        IReadOnlyDictionary<string, string>? item = null)
     {
         return WorkflowMacroPlaceholders.Pattern.Replace(template, match =>
         {
@@ -251,6 +252,17 @@ internal static class ConsultMacroExpander
                         if (classifications.TryGetValue(id, out var answer))
                         {
                             return answer;
+                        }
+
+                        break;
+                    case WorkflowMacroPlaceholders.ItemNamespace:
+                        // v24 #957: the fan item a node macro is composed for.
+                        // Publish guarantees the macro sits on a fan node and
+                        // names a field the fan exposes; with no item in scope
+                        // (a deliverable, a scalar node) it does not resolve.
+                        if (item != null && item.TryGetValue(id, out var field))
+                        {
+                            return field;
                         }
 
                         break;
