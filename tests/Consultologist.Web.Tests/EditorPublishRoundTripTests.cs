@@ -596,7 +596,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains("requires specVersion 8", page.Markup, StringComparison.Ordinal);
         // #430: the hint names the one rung on offer — 12 since #623.
-        Assert.Contains("Upgrade to specVersion 23", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Upgrade to specVersion 24", page.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -649,7 +649,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
 
         var page = Render<Templates>();
 
-        Assert.Contains("Upgrade to specVersion 23", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Upgrade to specVersion 24", page.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Upgrade to specVersion 11", page.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Upgrade to specVersion 10", page.Markup, StringComparison.Ordinal);
     }
@@ -660,34 +660,39 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
             .Where(text => text.StartsWith("Upgrade to specVersion", StringComparison.Ordinal));
 
     [Fact]
-    public void TheRungsOffered_AreTheOneRungThatRuns()
+    public void TheRungsOffered_AreTheRunnableAndTheNewest()
     {
-        // #959 closed the gap again: 23 publishes AND runs, so the two ceilings
-        // meet and the second rung retires — one button, naming 23, whatever
-        // version is loaded. (#955 reopened it; the engine half closed it.)
+        // #957 reopened the gap: 24 publishes but 23 is the newest that runs, so
+        // a package below both is offered two rungs again — the staged shape #429
+        // built, which collapses to one rung whenever the ceilings meet.
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
-        Assert.Equal(new[] { "Upgrade to specVersion 23" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 23", "Upgrade to specVersion 24" }, UpgradeButtons(Render<Templates>()));
 
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V9Structured());
-        Assert.Equal(new[] { "Upgrade to specVersion 23" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 23", "Upgrade to specVersion 24" }, UpgradeButtons(Render<Templates>()));
 
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V11());
-        Assert.Equal(new[] { "Upgrade to specVersion 23" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 23", "Upgrade to specVersion 24" }, UpgradeButtons(Render<Templates>()));
     }
 
     [Fact]
-    public void AStagedBumpToTheNewest_SaysNothing_TheCeilingsMeet()
+    public void AStagedBumpToTheRunnableCeiling_SaysNothing_ButToTheNewestWarns()
     {
-        // #959 closed the gap: 23 runs, so a staged bump to the newest ceiling
-        // publishes into no gap and says nothing — and still hides every upgrade
-        // button (the CanUpgradeTo clause).
+        // #957 reopened the gap. A staged bump to the runnable ceiling (23)
+        // publishes into no gap and says nothing; a bump to the newest (24)
+        // publishes ahead of the engine and earns #429's runnability notice.
+        // Either way, once a bump is staged every upgrade button hides.
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V10Nested());
-        var page = Render<Templates>();
-        UpgradeTo(page, Templates.NewestSpecVersion);
+        var toRunnable = Render<Templates>();
+        UpgradeTo(toRunnable, Templates.RunnableSpecVersion);
+        Assert.DoesNotContain("not yet runnable", toRunnable.Markup, StringComparison.Ordinal);
+        Assert.Empty(UpgradeButtons(toRunnable));
 
-        Assert.DoesNotContain("not yet runnable", page.Markup, StringComparison.Ordinal);
-        Assert.Empty(UpgradeButtons(page));
-        Assert.Equal(Templates.NewestSpecVersion, Templates.RunnableSpecVersion);
+        WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V10Nested());
+        var toNewest = Render<Templates>();
+        UpgradeTo(toNewest, Templates.NewestSpecVersion);
+        Assert.Contains("not yet runnable", toNewest.Markup, StringComparison.Ordinal);
+        Assert.Empty(UpgradeButtons(toNewest));
     }
 
     [Fact]

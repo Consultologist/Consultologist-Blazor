@@ -444,11 +444,11 @@ public class WorkflowV8ValidationTests
 
         // #424 moved the gate to 9, #492 to 10, #563 to 11, #617 to 12, #728
         // to 13, #729 to 14, #731 to 15, #730 to 16, #673 to 17, #822 to 18,
-        // #845 to 19, #863 to 20, #923 to 21, #760 to 22 and #955 to 23; the
+        // #845 to 19, #863 to 20, #923 to 21, #760 to 22, #955 to 23 and #957 to 24; the
         // version after it is what the gate refuses now.
         Assert.Contains(
-            V8Fixtures.Validate(V8Fixtures.Minimal() with { SpecVersion = 24 }).Errors,
-            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22 or 23"));
+            V8Fixtures.Validate(V8Fixtures.Minimal() with { SpecVersion = 25 }).Errors,
+            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23 or 24"));
     }
 }
 
