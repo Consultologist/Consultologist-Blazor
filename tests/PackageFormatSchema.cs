@@ -321,6 +321,15 @@ internal static class PackageFormatSchema
                         ["additionalProperties"] = false
                     })
             };
+
+            // v24 (#957): forItem anchors the attachment to one item of the
+            // data: collection the node fans. additionalProperties is false, so
+            // the member must be present for a valid v24 manifest to pass.
+            if (specVersion >= 24)
+            {
+                var placed = (JsonObject)macros["items"]!["oneOf"]![1]!["properties"]!;
+                placed["forItem"] = new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId };
+            }
         }
 
         if (specVersion < 10)

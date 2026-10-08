@@ -28,7 +28,7 @@ public static class WorkflowPackageValidator
     /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
     /// are checked against the published spec-versions.json there too.
     /// </summary>
-    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23 };
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24 };
 
     /// <summary>
     /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
@@ -1188,7 +1188,7 @@ public static class WorkflowPackageValidator
             }
         }
 
-        ValidateResult(manifest, nodesById, v6OrLater, errors);
+        ValidateResult(manifest, nodesById, v6OrLater, data, inputsById, errors);
         ValidateMacros(manifest, files, inputsById, data, classifierIds, errors, warnings);
 
         if (v6OrLater)
@@ -1668,6 +1668,8 @@ public static class WorkflowPackageValidator
         List<WorkflowResultSpec> results,
         IReadOnlyDictionary<string, WorkflowNodeSpec> nodesById,
         IReadOnlyDictionary<string, WorkflowInputSpec> declaredInputs,
+        WorkflowPackageData data,
+        IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
         List<string> errors)
     {
         if (results.Count == 0)
@@ -1742,7 +1744,7 @@ public static class WorkflowPackageValidator
         foreach (var node in nodesById.Values)
         {
             ValidateNodeCondition(manifest, node, declaredInputs, classifiers, errors);
-            ValidateNodeMacros(manifest, node, declaredInputs, classifiers, errors);
+            ValidateNodeMacros(manifest, node, declaredInputs, classifiers, data, inputsById, errors);
         }
 
         foreach (var orphan in checks.Keys.Where(id => !namedChecks.Contains(id)).Order(StringComparer.Ordinal))
@@ -1911,6 +1913,12 @@ public static class WorkflowPackageValidator
         }
     }
 
+    /// <summary>Whether any operand of the expression, arithmetic terms included, is an item: leaf (v24).</summary>
+    private static bool ReadsItem(WorkflowConditionExpression expression) =>
+        expression.Leaves.Any(leaf => leaf.IsItemValue
+            || (leaf.Left?.Operands ?? Enumerable.Empty<WorkflowResultCondition>()).Any(o => o.IsItemValue)
+            || (leaf.Right?.Operands ?? Enumerable.Empty<WorkflowResultCondition>()).Any(o => o.IsItemValue));
+
     /// <summary>
     /// v23 (#955): a node's macro attachments. Each id resolves to a library
     /// macro (manifest.macros); the placement is before or after the prompt
@@ -1919,12 +1927,19 @@ public static class WorkflowPackageValidator
     /// sit both before and after the prompt, but not twice in the same place. A
     /// node with no prompt has nothing to compose into. The below-23 gate spoke
     /// in the node loop, so this validates the attachment grammar at 23 only.
+    /// v24 (#957) adds the per-item layer on a node that fans a data:
+    /// collection — its items are a closed set at publish, so `forItem` names
+    /// one of them and a when's `item:id` compares to one of them, the way a
+    /// classifier's value is compared to one it declares. An input fan's items
+    /// are the caller's, so neither reads them.
     /// </summary>
     private static void ValidateNodeMacros(
         WorkflowPackageManifest manifest,
         WorkflowNodeSpec node,
         IReadOnlyDictionary<string, WorkflowInputSpec> declaredInputs,
         IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
+        WorkflowPackageData data,
+        IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
         List<string> errors)
     {
         if (node.Macros is null || manifest.SpecVersion < 23)
@@ -1936,6 +1951,25 @@ public static class WorkflowPackageValidator
         {
             errors.Add($"Node '{node.Id}' declares macros but has no prompt to compose them into.");
             return;
+        }
+
+        // The item scope this node offers: the data: collection's item ids, or
+        // the reason it offers none (spoken only when a macro reaches for one).
+        IReadOnlyList<string>? fanItemIds = null;
+        string itemRefusal;
+
+        if (node.ForEach is null)
+        {
+            itemRefusal = $"but '{node.Id}' is not a forEach fan";
+        }
+        else if (!TryResolveForEachSource(manifest, node, data, inputsById, out _, out var fanCollection, out _) || fanCollection is null)
+        {
+            itemRefusal = $"but '{node.Id}' does not fan a data: collection (an input fan's items are the caller's)";
+        }
+        else
+        {
+            fanItemIds = fanCollection.Items.Select(item => item.Id).ToList();
+            itemRefusal = string.Empty;
         }
 
         var declaredMacros = new HashSet<string>(
@@ -1963,6 +1997,22 @@ public static class WorkflowPackageValidator
                 errors.Add($"{where} is listed more than once {position} the prompt.");
             }
 
+            if (entry.ForItem != null)
+            {
+                if (manifest.SpecVersion < 24)
+                {
+                    errors.Add($"{where} declares forItem, which requires specVersion 24.");
+                }
+                else if (fanItemIds is null)
+                {
+                    errors.Add($"{where} anchors to fan item '{entry.ForItem}', {itemRefusal}.");
+                }
+                else if (!fanItemIds.Contains(entry.ForItem, StringComparer.Ordinal))
+                {
+                    errors.Add($"{where} anchors to fan item '{entry.ForItem}', which the collection fanned by '{node.Id}' does not contain (items: {string.Join(", ", fanItemIds)}).");
+                }
+            }
+
             if (entry.When != null)
             {
                 var prefix = $"{where} condition";
@@ -1973,10 +2023,16 @@ public static class WorkflowPackageValidator
                     continue;
                 }
 
+                if (manifest.SpecVersion < 24 && ReadsItem(expression!))
+                {
+                    errors.Add($"{prefix} reads 'item:', which requires specVersion 24.");
+                    continue;
+                }
+
                 foreach (var condition in expression!.Leaves)
                 {
                     var before = errors.Count;
-                    ValidateV10Clause(prefix, condition, declaredInputs, classifiers, errors);
+                    ValidateV10Clause(prefix, condition, declaredInputs, classifiers, errors, fanItemIds, itemRefusal);
 
                     if (errors.Count > before)
                     {
@@ -2034,17 +2090,58 @@ public static class WorkflowPackageValidator
     /// operator, the literal and any arithmetic are held to it. The v9
     /// sentences are produced for the v9 forms; the new forms have their own.
     /// </summary>
+    /// <param name="fanItemIds">v24 (#957): the item ids an item: operand may compare
+    /// to — a node macro on a node that fans a data: collection — or null where
+    /// no clause reads an item, with <paramref name="itemRefusal"/> saying why.</param>
     private static void ValidateV10Clause(
         string prefix,
         WorkflowResultCondition condition,
         IReadOnlyDictionary<string, WorkflowInputSpec> declaredInputs,
         IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
-        List<string> errors)
+        List<string> errors,
+        IReadOnlyList<string>? fanItemIds = null,
+        string? itemRefusal = null)
     {
 
         if (condition.IsArithmetic)
         {
             ValidateArithmeticClause(prefix, condition, declaredInputs, classifiers, errors);
+            return;
+        }
+
+        if (condition.IsItemValue)
+        {
+            // The item's id is the one closed field: a name is text, which is
+            // never compared (v9), and content is the item file.
+            if (fanItemIds is null)
+            {
+                errors.Add($"{prefix} reads '{condition.Operand}', {(string.IsNullOrEmpty(itemRefusal) ? "but only a node macro on a node that fans a data: collection reads an item" : itemRefusal)}.");
+                return;
+            }
+
+            if (condition.ItemField != "id")
+            {
+                errors.Add($"{prefix} reads '{condition.Operand}'; a condition reads item:id only — an item's other fields are text, which is never compared.");
+                return;
+            }
+
+            if (condition.IsBare)
+            {
+                errors.Add($"{prefix} '{condition.Operand}' tests an item for truth; compare it to one of the collection's item ids instead.");
+                return;
+            }
+
+            if (condition.IsOrdered)
+            {
+                errors.Add($"{prefix} compares '{condition.Operand}' with {condition.Ordering}; an item id is compared with == or != only.");
+                return;
+            }
+
+            if (!fanItemIds.Contains(condition.Literal!, StringComparer.Ordinal))
+            {
+                errors.Add($"{prefix} compares '{condition.Operand}' to '{condition.Literal}', which the collection does not contain (items: {string.Join(", ", fanItemIds)}).");
+            }
+
             return;
         }
 
@@ -2258,6 +2355,12 @@ public static class WorkflowPackageValidator
                 if (operand.Operand.IsNodeValue)
                 {
                     errors.Add($"{prefix} uses 'node:{operand.Operand.NodeId}' in arithmetic; a classifier's value is a symbol, not a number.");
+                    return null;
+                }
+
+                if (operand.Operand.IsItemValue)
+                {
+                    errors.Add($"{prefix} uses '{operand.Operand.Operand}' in arithmetic; an item's field is a symbol, not a number.");
                     return null;
                 }
 
@@ -2982,6 +3085,71 @@ public static class WorkflowPackageValidator
             }
         }
 
+        // v24 (#957): an {{item:<field>}} token is filled per fan item, so a
+        // macro carrying one is composed only into a forEach node's prompt, and
+        // reads only a field that fan exposes (the item: binding rule). A
+        // deliverable composes no fan item — the assembler would have nothing
+        // to fill — so a result attachment (a slot one included) is refused.
+        if (manifest.SpecVersion >= 24)
+        {
+            var itemFields = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+            foreach (var macro in macros)
+            {
+                if (files.TryGetValue(macro.File, out var template) && WorkflowMacroPlaceholders.ItemFieldsOf(template) is { Count: > 0 } fields)
+                {
+                    itemFields[macro.Id] = fields;
+                }
+            }
+
+            if (itemFields.Count > 0)
+            {
+                foreach (var result in results)
+                {
+                    foreach (var entry in result.Macros ?? new List<WorkflowResultMacroSpec>())
+                    {
+                        if (itemFields.TryGetValue(entry.Id, out var fields))
+                        {
+                            errors.Add($"Result '{result.Id}' macro '{entry.Id}' carries '{{{{item:{fields[0]}}}}}', which only a node that fans a collection fills; a deliverable composes no fan item.");
+                        }
+                    }
+                }
+
+                foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
+                {
+                    foreach (var entry in node.Macros ?? new List<WorkflowNodeMacroSpec>())
+                    {
+                        if (!itemFields.TryGetValue(entry.Id, out var fields))
+                        {
+                            continue;
+                        }
+
+                        if (node.ForEach is null)
+                        {
+                            errors.Add($"Node '{node.Id}' macro '{entry.Id}' carries '{{{{item:{fields[0]}}}}}' but the node declares no forEach.");
+                            continue;
+                        }
+
+                        if (!TryResolveForEachSource(manifest, node, data, inputsById, out _, out var collection, out var inputFan))
+                        {
+                            continue; // The forEach itself is refused beside this; one complaint is enough.
+                        }
+
+                        foreach (var field in fields)
+                        {
+                            if (collection != null && !collection.Fields.Contains(field))
+                            {
+                                errors.Add($"Node '{node.Id}' macro '{entry.Id}' carries '{{{{item:{field}}}}}', an item field the collection does not declare (it declares: {string.Join(", ", collection.Fields)}).");
+                            }
+                            else if (inputFan != null && !WorkflowInputFans.ItemFields.Contains(field, StringComparer.Ordinal))
+                            {
+                                errors.Add($"Node '{node.Id}' macro '{entry.Id}' carries '{{{{item:{field}}}}}', an item field an input fan's items do not carry (they carry: {string.Join(", ", WorkflowInputFans.ItemFields)}).");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         foreach (var orphan in macroIds.Where(id => !referenced.Contains(id)))
         {
             // Below 23 a macro is referenced only by a result; at 23 a node may
@@ -3065,6 +3233,10 @@ public static class WorkflowPackageValidator
                 // v12 (§ 5): the profile vocabulary is version-keyed — the
                 // signature token resolves at 12 and up.
                 "profile" => WorkflowMacroPlaceholders.ProfileFactsFor(specVersion).Contains(id),
+                // v24 (#957): an item's field — which fields the fan exposes is
+                // checked where the macro is attached (ValidateMacros), since the
+                // library macro itself has no fan.
+                WorkflowMacroPlaceholders.ItemNamespace => specVersion >= 24 && WorkflowDeclaredIds.IsValid(id),
                 _ => false
             };
 
@@ -3073,12 +3245,17 @@ public static class WorkflowPackageValidator
                 // v12 (§ 5): a token the format knows but this version does
                 // not is a version requirement, never an unknown word — the
                 // three-way the design mandates.
-                var resolvesAtNewest = WorkflowMacroPlaceholders.TryParse(token, out var lateNs, out var lateId)
-                    && lateNs == "profile"
-                    && WorkflowMacroPlaceholders.ProfileFactsFor(AcceptedSpecVersions.Max()).Contains(lateId);
+                int? requiredVersion = WorkflowMacroPlaceholders.TryParse(token, out var lateNs, out var lateId)
+                    ? lateNs switch
+                    {
+                        "profile" when WorkflowMacroPlaceholders.ProfileFactsFor(AcceptedSpecVersions.Max()).Contains(lateId) => 12,
+                        WorkflowMacroPlaceholders.ItemNamespace when WorkflowDeclaredIds.IsValid(lateId) => 24,
+                        _ => null
+                    }
+                    : null;
 
-                errors.Add(resolvesAtNewest
-                    ? $"Macro '{macro.Id}' placeholder '{{{{{token}}}}}' requires specVersion 12."
+                errors.Add(requiredVersion is { } required
+                    ? $"Macro '{macro.Id}' placeholder '{{{{{token}}}}}' requires specVersion {required}."
                     : $"Macro '{macro.Id}' placeholder '{{{{{token}}}}}' does not resolve.");
                 continue;
             }
@@ -3095,6 +3272,8 @@ public static class WorkflowPackageValidator
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, WorkflowNodeSpec> nodesById,
         bool v6OrLater,
+        WorkflowPackageData data,
+        IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
         List<string> errors)
     {
         if (manifest.SpecVersion >= 7 && manifest.Results != null)
@@ -3116,7 +3295,7 @@ public static class WorkflowPackageValidator
                 .GroupBy(input => input.Id, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
 
-            ValidateResultSet(manifest, manifest.Results, nodesById, declaredInputs, errors);
+            ValidateResultSet(manifest, manifest.Results, nodesById, declaredInputs, data, inputsById, errors);
             return;
         }
 
@@ -3498,6 +3677,7 @@ public static class WorkflowPackageValidator
             && expression!.Leaves.Any()
             && expression.Leaves.All(condition =>
                 !condition.IsNodeValue
+                && !condition.IsItemValue
                 && inputsById.TryGetValue(condition.InputId, out var input)
                 && WorkflowInputTypes.Of(input) == WorkflowInputTypes.Boolean));
 
