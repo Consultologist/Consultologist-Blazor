@@ -227,6 +227,29 @@ public class ConsultNodeSchedulerTests
         Assert.Equal(new[] { "scope" }, ConsultNodeScheduler.NodeDependencies(GatedByMacro));
     }
 
+    // v24 #957: a macro whose TEXT reads {{classification:x}} is an edge too —
+    // the starter snapshots the ids it reads, so the expander never meets an
+    // unanswered classifier (the Phase 1 gap).
+    private static readonly ConsultNodeDescriptor ReadsByMacro = new(
+        "draft-section", "Drafting section", OutputContract: "concept-list",
+        Macros: new[] { new ConsultNodeMacroDescriptor("ap_guardrails", After: false, Reads: new[] { "scope", "scope" }) });
+
+    [Fact]
+    public void NodeDependencies_IncludeTheClassifiersAMacrosTextReads()
+    {
+        Assert.Equal(new[] { "scope" }, ConsultNodeScheduler.NodeDependencies(ReadsByMacro));
+    }
+
+    [Fact]
+    public void AnItemGatedMacro_AddsNoDependency()
+    {
+        // item:id is judged against the instance's own item — nothing to wait for.
+        var perItem = new ConsultNodeDescriptor(
+            "section-instructions", "Applying section instructions", ForEach: "data:standards",
+            Macros: new[] { new ConsultNodeMacroDescriptor("ap_guardrails", After: true, When: "item:id == hpi", ForItem: "hpi") });
+        Assert.Empty(ConsultNodeScheduler.NodeDependencies(perItem));
+    }
+
     [Fact]
     public void AClassifierGatedMacro_BlocksTheNode_UntilTheClassifierAnswers()
     {

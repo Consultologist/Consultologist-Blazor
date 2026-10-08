@@ -347,6 +347,23 @@ public class DurablePayloadReplayTests
     }
 
     [Fact]
+    public void AStoredNodeMacroDescriptor_WithoutThePerItemLayer_BindsNull()
+    {
+        // v24 #957 appended ForItem and Reads to the v23 node-macro snapshot a
+        // sleeping job re-reads: both bind null and re-serialise as two more
+        // trailing nulls — nothing else moves.
+        const string stored = """
+            {"Id":"ap_guardrails","After":true,"When":"node:scope == in_scope"}
+            """;
+
+        var macro = JsonSerializer.Deserialize<ConsultNodeMacroDescriptor>(stored, Durable)!;
+
+        Assert.Null(macro.ForItem);
+        Assert.Null(macro.Reads);
+        Assert.Equal(stored[..^1] + ",\"ForItem\":null,\"Reads\":null}", JsonSerializer.Serialize(macro, Durable));
+    }
+
+    [Fact]
     public void AStructuredValue_SurvivesTheOrchestrationPayload()
     {
         // #421 made the typed request carry structure, and the request rides

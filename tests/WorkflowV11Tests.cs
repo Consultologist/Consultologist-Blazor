@@ -284,6 +284,18 @@ public class ConsultMacroExpanderTests
     }
 
     [Fact]
+    public void AnItemToken_FillsFromTheFanItem_AndDoesNotResolveWithoutOne()
+    {
+        // v24 #957: the item a node macro is composed for; with no item in
+        // scope (a deliverable, a scalar node) the token is the grammar
+        // failure publish already refused.
+        var hpi = new Dictionary<string, string>(StringComparer.Ordinal) { ["id"] = "hpi", ["name"] = "History of Present Illness" };
+        Assert.Equal("Draft History of Present Illness (hpi).",
+            ConsultMacroExpander.Expand("Draft {{item:name}} ({{item:id}}).", NoValues, null, NoValues, Facts(), hpi));
+        Assert.Throws<InvalidOperationException>(() => Expand("Draft {{item:name}}."));
+    }
+
+    [Fact]
     public void AnAbsentOptionalInput_RendersEmpty()
     {
         // The effective map carries every declared id; an absent optional is
