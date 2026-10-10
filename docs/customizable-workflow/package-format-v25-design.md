@@ -265,6 +265,21 @@ upgrade past 23, so a package arriving at 25 has none; the 25 rung adds the refu
 schema-catchable conformance vector, and this sentence in the migration section. The
 renderer keeps its prelude seam for ≤ 24 packages.
 
+## 8a. `results` becomes `deliverables`
+
+The manifest's list of deliverables has been `results[]` since v7 (with a single `result` as
+one-entry sugar). The engine, the record's prose and the editor (#985) call them deliverables.
+At 25 the key is **`deliverables[]`**; `results` and `result` are refused by name at ≥ 25 and
+valid below under their frozen rules. The validator's sentences that begin "Result '…'" begin
+"Deliverable '…'" at ≥ 25; the v5–v24 sentences and their conformance vectors do not move.
+The editor's migration rewrites the key (and folds a single `result` into a one-entry list).
+
+**Out of scope, deliberately:** the provenance record's field names — `assembledDocuments`,
+`skippedDocuments`, `failedDocuments`, `resultId` — are the contract outside verifiers read
+across every record ever written, and stay. The provenance document may say "the deliverables
+(`assembledDocuments`)" in prose. The model's internal names (`WorkflowResultSpec` → a
+deliverable spec; the editor's `ResultView`, `resultsEdit`) are renamed as hygiene, not contract.
+
 ## 9. The record and the registries
 
 - **provenance** (bump): `nodeOutputs[].agentOutputHash`, `nodeOutputs[].appended[]`,
@@ -273,7 +288,7 @@ renderer keeps its prelude seam for ≤ 24 packages.
   documented as derived from the template at publish; the file-sourced form-response origin
   kind (§ 7); the `[[slot]]` removal/exclusion rows on a node.
 - **package-format** (bump to 25): the object grammar (§ 1), derived edges and the
-  refusals (§ 2, § 8), the instance shape (§ 3), the mechanics sentence (§ 3.3), enum
+  refusals (§ 2, § 8, § 8a), the instance shape (§ 3), the mechanics sentence (§ 3.3), enum
   labels (§ 6), the object form slot (§ 7); schema generated from the model; conformance
   vectors for every refusal above (the cross-field ones `SHAPE_BLIND`).
 - **agents**: no change — the catalog and its contracts are read as today.
@@ -314,6 +329,7 @@ renderer keeps its prelude seam for ≤ 24 packages.
    same in the assembled document — but the node's `outputHash` now covers it (§ 4), which
    is the point, and the record says so.
 4. Preludes are already gone (#963); a 24 package carrying one is migrated by the same path.
+   The `results` key is rewritten to `deliverables` (§ 8a).
 5. Hand-written slot instructions keep working; an author may move the condition into the
    instance's `instruction` field and delete the paragraph.
 
