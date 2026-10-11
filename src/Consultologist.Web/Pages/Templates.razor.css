@@ -352,7 +352,7 @@ fluent-button.node-field__button::part(control) {
 	margin: 0.25rem 0 0;
 }
 
-/* The v7 declared sections: one row per input slot or document (#218). */
+/* The v7 declared sections: one row per input slot or deliverable (#218). */
 .declared-list {
 	list-style: none;
 	margin: 0.5rem 0 0;
@@ -365,7 +365,7 @@ fluent-button.node-field__button::part(control) {
 /* #936: each deliverable as a card of labeled sub-sections, so its macro
    attachments, its "produced when" condition and its checks read apart
    instead of crammed into one flat row. */
-.document-card {
+.deliverable-card {
 	display: flex;
 	flex-direction: column;
 	gap: 0.5rem;
@@ -376,14 +376,14 @@ fluent-button.node-field__button::part(control) {
 	box-shadow: var(--consultologist-shadow-sm);
 }
 
-.document-card__head {
+.deliverable-card__head {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 0.5rem;
 }
 
-.document-section {
+.deliverable-section {
 	display: flex;
 	flex-direction: column;
 	gap: 0.35rem;
@@ -391,7 +391,7 @@ fluent-button.node-field__button::part(control) {
 	border-top: 1px solid var(--consultologist-border);
 }
 
-.document-section__head {
+.deliverable-section__head {
 	font-size: 0.72rem;
 	font-weight: 600;
 	letter-spacing: 0.04em;
@@ -400,7 +400,7 @@ fluent-button.node-field__button::part(control) {
 }
 
 /* #936: a labeled condition — the label sits beside the builder, and an
-   always-produced document rests as a quiet control rather than empty space. */
+   always-produced deliverable rests as a quiet control rather than empty space. */
 .condition-field {
 	display: flex;
 	flex-wrap: wrap;
@@ -462,7 +462,7 @@ fluent-button.node-field__button::part(control) {
 }
 
 /* #940: the macro pane's editable Attachments section — one .result-macro row
-   per document the macro is attached to, mirroring the Documents pane minus ↑↓. */
+   per deliverable the macro is attached to, mirroring the Deliverables pane minus ↑↓. */
 .macro-attachments {
 	display: flex;
 	flex-direction: column;
