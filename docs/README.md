@@ -94,11 +94,15 @@ would otherwise have carried it (#397).
   [storage separation](customizable-workflow/storage-separation.md)
   (#545: four classes of state, two private accounts per region, the
   migration order),
-  [node macros design](customizable-workflow/node-macros-design.md),
-  [package format v25 design](customizable-workflow/package-format-v25-design.md)
+  [node macros design](customizable-workflow/node-macros-design.md)
   (Milestone 28, specVersion 23: one macro type with a second — node —
   attachment site, absorbing preludes; the data model, prelude migration,
-  renderer seam, and the v23/v24 phasing)
+  renderer seam, and the v23/v24 phasing),
+  [package format v25 design](customizable-workflow/package-format-v25-design.md)
+  (Milestone 29, specVersion 25, revision 2: templates reference the package by
+  object with derived edges; formats with a producer class and the catalogue in
+  the agents registry replacing contracts, schemas and node kinds; snippets read,
+  macros placed; two per-node hashes)
 
 ## Research
 
