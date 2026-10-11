@@ -360,7 +360,7 @@
                                 class="editor-nav__item @(selectedKey == ResultsKey ? "editor-nav__item--selected" : "")"
                                 @onclick="() => Select(ResultsKey)">
                             <span class="editor-nav__dot">@(resultsEdit != null ? "●" : "")</span>
-                            <span>Documents</span>
+                            <span>Deliverables</span>
                         </button>
                     }
                     <button type="button"
@@ -1186,7 +1186,7 @@
                     {
                         <div class="pane-header">
                             <div>
-                                <h3 class="panel-title">Documents</h3>
+                                <h3 class="panel-title">Deliverables</h3>
                                 <p class="muted-text">
                                     Each deliverable this package produces. Every one names its own aggregator
                                     node, and its id becomes the delivered file's name.
@@ -1198,10 +1198,10 @@
                         @if (EffectiveResults.Count == 0)
                         {
                             <p class="muted-text">
-                                This package uses the single-document form (<code>@(EffectiveResultRef ?? "—")</code>).
+                                This package uses the single-deliverable form (<code>@(EffectiveResultRef ?? "—")</code>).
                             </p>
                             <FluentButton Appearance="Appearance.Stealth" Class="variable-chips__add" @onclick="ConvertToResultsListAsync">
-                                Convert to a document list
+                                Convert to a deliverable list
                             </FluentButton>
                         }
                         else
@@ -1215,22 +1215,22 @@
                                         <input class="node-field__input declared-row__id"
                                                value="@deliverable.Id"
                                                @onchange="args => RenameResultAsync(deliverable, args.Value?.ToString())"
-                                               aria-label="@($"Id for document {deliverable.Id}")" />
+                                               aria-label="@($"Id for deliverable {deliverable.Id}")" />
                                         <input class="node-field__input"
                                                value="@deliverable.Label"
                                                @onchange="args => RelabelResultAsync(deliverable, args.Value?.ToString())"
-                                               aria-label="@($"Label for document {deliverable.Id}")" />
+                                               aria-label="@($"Label for deliverable {deliverable.Id}")" />
                                         <FluentSelect TOption="string" class="binding-row__select"
                                                 Value="@deliverable.Node"
                                                 ValueChanged="@(v => RepointResultAsync(deliverable, v))"
-                                                aria-label="@($"Node for document {deliverable.Id}")">
+                                                aria-label="@($"Node for deliverable {deliverable.Id}")">
                                             @foreach (var candidate in DeliverableCandidates)
                                             {
                                                 <FluentOption TOption="string" Value="@($"node:{candidate.Id}")">@candidate.Label</FluentOption>
                                             }
                                         </FluentSelect>
-                                        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove document"
-                                                      aria-label="Remove document"
+                                        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove deliverable"
+                                                      aria-label="Remove deliverable"
                                                       Disabled="@(EffectiveResults.Count == 1)"
                                                       IconStart="@(new Icons.Regular.Size20.Dismiss())"
                                                       @onclick="() => RemoveResultAsync(deliverable)" />
@@ -1286,7 +1286,7 @@
                                                         <FluentSelect TOption="string" class="binding-row__select result-macro-placement"
                                                                 Value="@(macroEntry.IsSlot ? "slot" : macroEntry.Before != null ? $"before|{macroEntry.Before}" : macroEntry.After != null ? $"after|{macroEntry.After}" : "")"
                                                                 ValueChanged="@(v => SetMacroPlacementAsync(deliverable, macroId, v))"
-                                                                aria-label="@($"Placement for macro {macroId} in document {deliverable.Id}")">
+                                                                aria-label="@($"Placement for macro {macroId} in deliverable {deliverable.Id}")">
                                                             <FluentOption TOption="string" Value="">appended</FluentOption>
                                                             @foreach (var placementSource in DeliverableAggregateSources(deliverable))
                                                             {
@@ -1311,7 +1311,7 @@
                                                                 <FluentSelect TOption="string" class="binding-row__select result-macro-foritem"
                                                                         Value="@(macroEntry.ForItem ?? "")"
                                                                         ValueChanged="@(v => SetMacroForItemAsync(deliverable, macroId, v))"
-                                                                        aria-label="@($"Fan item for macro {macroId} in document {deliverable.Id}")">
+                                                                        aria-label="@($"Fan item for macro {macroId} in deliverable {deliverable.Id}")">
                                                                     <FluentOption TOption="string" Value="">— whole section —</FluentOption>
                                                                     @foreach (var fanItem in fanItems)
                                                                     {
@@ -1352,7 +1352,7 @@
                                                 <FluentSelect TOption="string" class="binding-row__select result-macro-append"
                                                         Value=""
                                                         ValueChanged="@(v => AppendResultMacroAsync(deliverable, v))"
-                                                        aria-label="@($"Append macro to document {deliverable.Id}")">
+                                                        aria-label="@($"Append macro to deliverable {deliverable.Id}")">
                                                     <FluentOption TOption="string" Value="">append macro…</FluentOption>
                                                     @foreach (var candidateMacro in EffectiveMacros.Where(m => resultMacros.All(e => e.Id != m.Id)))
                                                     {
@@ -1372,7 +1372,7 @@
                                                 <input type="checkbox"
                                                        checked="@(deliverable.Signature == true)"
                                                        @onchange="args => ToggleResultSignatureAsync(deliverable, args.Value is bool isChecked && isChecked)"
-                                                       aria-label="@($"Signed for document {deliverable.Id}")" />
+                                                       aria-label="@($"Signed for deliverable {deliverable.Id}")" />
                                                 <span>signed</span>
                                             </label>
                                             @if (EffectiveSpecVersion >= 12)
@@ -1382,7 +1382,7 @@
                                                 <FluentSelect TOption="string" class="binding-row__select result-check"
                                                         Value="@(deliverable.Check ?? "")"
                                                         ValueChanged="@(v => SetResultCheckAsync(deliverable, v))"
-                                                        aria-label="@($"Check for document {deliverable.Id}")">
+                                                        aria-label="@($"Check for deliverable {deliverable.Id}")">
                                                     <FluentOption TOption="string" Value="">— no check —</FluentOption>
                                                     @foreach (var checkNode in EffectiveNodes.Where(n => n.IsCheck))
                                                     {
@@ -1405,8 +1405,8 @@
                                 <input class="node-field__input" placeholder="patient_letter"
                                        value="@newResultId"
                                        @onchange="args => newResultId = args.Value?.ToString() ?? string.Empty"
-                                       aria-label="New document id" />
-                                <FluentButton Appearance="Appearance.Stealth" Class="variable-chips__add" @onclick="AddResultAsync">+ Document</FluentButton>
+                                       aria-label="New deliverable id" />
+                                <FluentButton Appearance="Appearance.Stealth" Class="variable-chips__add" @onclick="AddResultAsync">+ Deliverable</FluentButton>
                             </div>
                         }
                         @if (!string.IsNullOrEmpty(declaredError))
@@ -1524,9 +1524,9 @@
                             <div>
                                 <h3 class="panel-title">New macro</h3>
                                 <p class="muted-text">
-                                    A named text the package owns, appended after a document's aggregated
-                                    sections when that document lists it (Documents pane). Publish stays
-                                    blocked until some document uses it.
+                                    A named text the package owns, appended after a deliverable's aggregated
+                                    sections when that deliverable lists it (Deliverables pane). Publish stays
+                                    blocked until some deliverable uses it.
                                 </p>
                             </div>
                         </div>
@@ -1576,9 +1576,9 @@
                                     @(newNodeKind == "aggregator"
                                         ? "A deterministic aggregator: collects other nodes' outputs in order, no prompt."
                                         : newNodeKind == ClassifierKind
-                                            ? "A classifier: a prompt that answers one of the values it declares, which a document's condition may test as node:<id>. Its values are declared on the node's card."
+                                            ? "A classifier: a prompt that answers one of the values it declares, which a deliverable's condition may test as node:<id>. Its values are declared on the node's card."
                                             : newNodeKind == CheckKind
-                                                ? "A check: a deterministic gate on a deliverable — terms-subset over two concept-list operands; no prompt, no model. A document names it as its check."
+                                                ? "A check: a deterministic gate on a deliverable — terms-subset over two concept-list operands; no prompt, no model. A deliverable names it as its check."
                                                 : newNodeKind == TemplateKind
                                                     ? "A template: its prompt renders deterministically and the render IS the output — no model. Everything else works as a prompt node."
                                                     : "Creates the node and its prompt together (they are one-to-one). The prompt's text is written under Prompts; variables and bindings follow on the node's card.")
@@ -1654,7 +1654,7 @@
                                     </FluentSelect>
                                 </label>
                                 <label class="input-field">
-                                    <span>fail with — the sentence a refused document carries</span>
+                                    <span>fail with — the sentence a refused deliverable carries</span>
                                     <FluentTextField Class="new-node-failwith" @bind-Value="newNodeFailWith" Placeholder="The note does not cover every clinical term found in the referral." />
                                 </label>
                             }
@@ -1896,7 +1896,7 @@
                             var anchoredOutputMacros = OutputMacrosAnchoredTo(selectedNode.Id);
                             <div class="node-section">
                                 <span class="node-section__head">Output macros</span>
-                                <p class="muted-text">Deliverable macros placed around this node's output. Moving one to another placement takes it out of this node's view; find it again in the Documents pane.</p>
+                                <p class="muted-text">Deliverable macros placed around this node's output. Moving one to another placement takes it out of this node's view; find it again in the Deliverables pane.</p>
                                 @foreach (var (result, entry, after) in anchoredOutputMacros)
                                 {
                                     <div class="node-output-macro">
@@ -1936,12 +1936,12 @@
                                             }
                                             <span class="muted-text">in</span>
                                             <FluentButton Appearance="Appearance.Lightweight" Class="result-macro__id"
-                                                          Title="@($"Edit document {result.Id} in the Documents pane")"
-                                                          aria-label="@($"Edit document {result.Id} in the Documents pane")"
+                                                          Title="@($"Edit deliverable {result.Id} in the Deliverables pane")"
+                                                          aria-label="@($"Edit deliverable {result.Id} in the Deliverables pane")"
                                                           @onclick="() => Select(ResultsKey)"><code>@result.Id</code></FluentButton>
                                             <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button node-output-macro-remove"
                                                           Title="@($"Remove from {result.Id}")"
-                                                          aria-label="@($"Remove macro {entry.Id} from document {result.Id}")"
+                                                          aria-label="@($"Remove macro {entry.Id} from deliverable {result.Id}")"
                                                           IconStart="@(new Icons.Regular.Size20.Dismiss())"
                                                           @onclick="() => RemoveResultMacroAsync(result, entry.Id)" />
                                         </div>
@@ -1977,7 +1977,7 @@
                                                           Value="@(attachDoc?.Id ?? "")"
                                                           ValueChanged="@(v => { outputMacroAttachDoc = string.IsNullOrEmpty(v) ? null : (selectedNode.Id, v); })"
                                                           aria-label="@($"Deliverable for an output macro before {selectedNode.Id}")">
-                                                <FluentOption TOption="string" Value="">in document…</FluentOption>
+                                                <FluentOption TOption="string" Value="">in deliverable…</FluentOption>
                                                 @foreach (var candidateDoc in aggregatingDocs)
                                                 {
                                                     <FluentOption TOption="string" Value="@candidateDoc.Id">@candidateDoc.Id</FluentOption>
@@ -2281,15 +2281,15 @@
                                     <div class="result-macro">
                                         <span class="result-macro-row">
                                             <FluentButton Appearance="Appearance.Stealth" Class="result-macro__id"
-                                                          Title="@($"Edit document {result.Id} in the Documents pane")"
-                                                          aria-label="@($"Edit document {result.Id} in the Documents pane")"
+                                                          Title="@($"Edit deliverable {result.Id} in the Deliverables pane")"
+                                                          aria-label="@($"Edit deliverable {result.Id} in the Deliverables pane")"
                                                           @onclick="() => Select(ResultsKey)"><code>@result.Id</code></FluentButton>
                                             @if (EffectiveSpecVersion >= 12)
                                             {
                                                 <FluentSelect TOption="string" class="binding-row__select result-macro-placement"
                                                         Value="@(entry.IsSlot ? "slot" : entry.Before != null ? $"before|{entry.Before}" : entry.After != null ? $"after|{entry.After}" : "")"
                                                         ValueChanged="@(v => SetMacroPlacementAsync(result, macro.Id, v))"
-                                                        aria-label="@($"Placement for macro {macro.Id} in document {result.Id}")">
+                                                        aria-label="@($"Placement for macro {macro.Id} in deliverable {result.Id}")">
                                                     <FluentOption TOption="string" Value="">appended</FluentOption>
                                                     @foreach (var placementSource in DeliverableAggregateSources(result))
                                                     {
@@ -2309,7 +2309,7 @@
                                                         <FluentSelect TOption="string" class="binding-row__select result-macro-foritem"
                                                                 Value="@(entry.ForItem ?? "")"
                                                                 ValueChanged="@(v => SetMacroForItemAsync(result, macro.Id, v))"
-                                                                aria-label="@($"Fan item for macro {macro.Id} in document {result.Id}")">
+                                                                aria-label="@($"Fan item for macro {macro.Id} in deliverable {result.Id}")">
                                                             <FluentOption TOption="string" Value="">— whole section —</FluentOption>
                                                             @foreach (var fanItem in fanItems)
                                                             {
@@ -2320,7 +2320,7 @@
                                                 }
                                             }
                                             <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-detach" Title="@($"Detach from {result.Id}")"
-                                                          aria-label="@($"Detach macro {macro.Id} from document {result.Id}")"
+                                                          aria-label="@($"Detach macro {macro.Id} from deliverable {result.Id}")"
                                                           IconStart="@(new Icons.Regular.Size20.Dismiss())"
                                                           @onclick="() => RemoveResultMacroAsync(result, macro.Id)" />
                                         </span>
@@ -2345,19 +2345,19 @@
                                                     <p class="slot-instruction__warning">No section instructs this slot yet — add <code>[[slot:@macro.Id]]</code> to a prompt, standard, or prelude (the snippet below), or it will never fill.</p>
                                                 }
                                                 <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit result-slot-instruction"
-                                                              aria-label="@($"Slot instruction for macro {macro.Id} in document {result.Id}")"
+                                                              aria-label="@($"Slot instruction for macro {macro.Id} in deliverable {result.Id}")"
                                                               @onclick="() => ToggleSlotSnippet(slotKey, macro.Id, entry.When)">Slot instruction</FluentButton>
                                                 @if (_slotSnippetShown.Contains(slotKey))
                                                 {
                                                     <FluentTextArea class="slot-instruction__text" Rows="4"
                                                             Value="@SlotSnippetText(slotKey)"
                                                             ValueChanged="@(v => _slotSnippetText[slotKey] = v ?? string.Empty)"
-                                                            aria-label="@($"Slot instruction text for macro {macro.Id} in document {result.Id}")" />
+                                                            aria-label="@($"Slot instruction text for macro {macro.Id} in deliverable {result.Id}")" />
                                                     <span class="slot-instruction__actions">
                                                         <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit result-slot-copy"
                                                                       @onclick="() => CopySlotInstructionAsync(slotKey)">Copy</FluentButton>
                                                         <FluentButton Appearance="Appearance.Stealth" Class="result-slot-reset"
-                                                                      aria-label="@($"Reset slot instruction for macro {macro.Id} in document {result.Id}")"
+                                                                      aria-label="@($"Reset slot instruction for macro {macro.Id} in deliverable {result.Id}")"
                                                                       @onclick="() => _slotSnippetText[slotKey] = BuildSlotInstruction(macro.Id, entry.When)">reset to generated</FluentButton>
                                                     </span>
                                                 }
@@ -2375,8 +2375,8 @@
                                     <FluentSelect TOption="string" class="binding-row__select result-macro-attach-doc"
                                             Value=""
                                             ValueChanged="@(v => AttachMacroToDocumentAsync(macro.Id, v))"
-                                            aria-label="@($"Attach macro {macro.Id} to a document")">
-                                        <FluentOption TOption="string" Value="">attach to a document…</FluentOption>
+                                            aria-label="@($"Attach macro {macro.Id} to a deliverable")">
+                                        <FluentOption TOption="string" Value="">attach to a deliverable…</FluentOption>
                                         @foreach (var candidateDoc in attachableDocs)
                                         {
                                             <FluentOption TOption="string" Value="@candidateDoc.Id">@candidateDoc.Label</FluentOption>
@@ -2385,7 +2385,7 @@
                                 }
                                 @if (attachedTo.Count == 0)
                                 {
-                                    <span class="muted-text">Not attached to any document.</span>
+                                    <span class="muted-text">Not attached to any deliverable.</span>
                                 }
                             </div>
                             @* #571: a macro is removed from its own pane — consistent with
@@ -3501,7 +3501,7 @@
             new("inputsEdit", () => inputsEdit != null ? 1 : 0, () => inputsEdit = null,
                 () => "inputs", () => inputsEdit != null),
             new("resultsEdit", () => resultsEdit != null ? 1 : 0, () => resultsEdit = null,
-                () => "documents", () => resultsEdit != null),
+                () => "deliverables", () => resultsEdit != null),
             // #432: the package's title and description.
             new("titleEdit", () => titleEdit != null ? 1 : 0, () => titleEdit = null,
                 () => "title", () => titleEdit != null),
@@ -4629,7 +4629,7 @@
             if (conditional.Count > 0)
             {
                 errors.Add(
-                    $"Document {string.Join(", ", conditional)} declares when, which requires specVersion 8. "
+                    $"Deliverable {string.Join(", ", conditional)} declares when, which requires specVersion 8. "
                     + $"Use \"Upgrade to specVersion {RunnableSpecVersion}\" and publish.");
             }
         }
@@ -4647,7 +4647,7 @@
 
             errors.AddRange(EffectiveResults
                 .Where(result => IsV9Form(result.When) && !IsV10Form(result.When))
-                .Select(result => $"Document '{result.Id}' declares a condition form that requires specVersion 9. {upgrade}"));
+                .Select(result => $"Deliverable '{result.Id}' declares a condition form that requires specVersion 9. {upgrade}"));
 
             errors.AddRange(EffectiveNodes
                 .Where(node => WorkflowInputFans.IsInputFan(node.ForEach))
@@ -4761,8 +4761,8 @@
             if (conditionDrafts.TryGetValue(conditioned.Id, out var draft) && IsUnwritable(draft))
             {
                 errors.Add(ConditionBuilderModel.IsComplete(draft)
-                    ? $"Document '{conditioned.Id}' condition has a clause the format cannot read; finish it or remove it."
-                    : $"Document '{conditioned.Id}' condition has a clause with no operand chosen.");
+                    ? $"Deliverable '{conditioned.Id}' condition has a clause the format cannot read; finish it or remove it."
+                    : $"Deliverable '{conditioned.Id}' condition has a clause with no operand chosen.");
                 continue;
             }
 
@@ -4779,7 +4779,7 @@
 
             if (EffectiveSpecVersion < 10 && expression.FirstV10Form != null)
             {
-                errors.Add($"Document '{conditioned.Id}' declares a condition expression that requires specVersion 10. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.");
+                errors.Add($"Deliverable '{conditioned.Id}' declares a condition expression that requires specVersion 10. Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish.");
                 continue;
             }
 
@@ -5029,7 +5029,7 @@
         {
             foreach (var removed in removedNodeIds.Where(id => ConditionText.ReadsNode(result.When, id)).Order(StringComparer.Ordinal))
             {
-                errors.Add($"Document '{result.Id}' tests 'node:{removed}', which is removed; change that document's condition or restore the node.");
+                errors.Add($"Deliverable '{result.Id}' tests 'node:{removed}', which is removed; change that deliverable's condition or restore the node.");
             }
         }
 
@@ -5271,8 +5271,8 @@
                     if (conditionDrafts.TryGetValue($"{result.Id}\n{entry.Id}", out var entryDraft) && IsUnwritable(entryDraft))
                     {
                         errors.Add(ConditionBuilderModel.IsComplete(entryDraft)
-                            ? $"Document '{result.Id}' macro '{entry.Id}' condition has a clause the format cannot read; finish it or remove it."
-                            : $"Document '{result.Id}' macro '{entry.Id}' condition has a clause with no operand chosen.");
+                            ? $"Deliverable '{result.Id}' macro '{entry.Id}' condition has a clause the format cannot read; finish it or remove it."
+                            : $"Deliverable '{result.Id}' macro '{entry.Id}' condition has a clause with no operand chosen.");
                     }
 
                     if (entry.When != null)
@@ -5966,7 +5966,7 @@
 
         return dependents.Count == 0
             ? null
-            : $"Input '{input.Id}' is tested by {string.Join(", ", dependents.Select(d => $"'{d}'"))}; change that document's condition first.";
+            : $"Input '{input.Id}' is tested by {string.Join(", ", dependents.Select(d => $"'{d}'"))}; change that deliverable's condition first.";
     }
 
     private async Task RemoveInputAsync(WorkflowManifestReader.InputView input)
@@ -6276,7 +6276,7 @@
         {
             declaredError =
                 $"Value '{value}' is what {string.Join(", ", dependents.Select(d => $"'{d}'"))} tests for; "
-                + "change that document's condition first.";
+                + "change that deliverable's condition first.";
             return;
         }
 
@@ -6707,7 +6707,7 @@
         {
             declaredError =
                 $"Value '{value}' is what {string.Join(", ", dependents.Select(d => $"'{d}'"))} tests for; "
-                + "change that document's condition first.";
+                + "change that deliverable's condition first.";
             return;
         }
 
@@ -6731,7 +6731,7 @@
 
         return dependents.Count == 0
             ? null
-            : $"Field '{owner}.{field.Id}' is tested by {string.Join(", ", dependents.Select(d => $"'{d}'"))}; change that document's condition first.";
+            : $"Field '{owner}.{field.Id}' is tested by {string.Join(", ", dependents.Select(d => $"'{d}'"))}; change that deliverable's condition first.";
     }
 
     /// <summary>The fields beside a field under an owner path.</summary>
@@ -7548,7 +7548,7 @@
 
         if (node == null)
         {
-            declaredError = "Add an aggregator node before declaring documents.";
+            declaredError = "Add an aggregator node before declaring deliverables.";
             return;
         }
 
@@ -7581,7 +7581,7 @@
 
         if (free == null)
         {
-            declaredError = "Every aggregator already owns a document; add an aggregator node first.";
+            declaredError = "Every aggregator already owns a deliverable; add an aggregator node first.";
             return;
         }
 
@@ -7837,7 +7837,7 @@
 
         if (EffectiveResults.Any(existing => existing.Id != result.Id && existing.Node == node))
         {
-            declaredError = $"Another document already uses '{node}': each deliverable needs its own aggregator.";
+            declaredError = $"Another deliverable already uses '{node}': each deliverable needs its own aggregator.";
             return;
         }
 
