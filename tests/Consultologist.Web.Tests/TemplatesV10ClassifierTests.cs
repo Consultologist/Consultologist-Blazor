@@ -243,7 +243,7 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
     public void TheOperandPicker_OffersEachClassifier_WithItsValuesAndTwoOperators()
     {
         var page = RenderEditor(EditorFixtures.V10Classifier());
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
 
         Assert.Contains("node:scope", Options(page, "fluent-select[aria-label='Condition operand for consult_note']"));
@@ -257,7 +257,7 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
     {
         var page = RenderEditor(EditorFixtures.V10Classifier());
         CapturePublish();
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
         page.Find("fluent-select[aria-label='Condition operator for consult_note']").Change("!=");
         page.Find("fluent-select[aria-label='Condition value for consult_note']").Change("out_of_scope");
@@ -283,7 +283,7 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
                 }
                 """);
         var page = RenderEditor(package);
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
         Assert.DoesNotContain(Options(page, "fluent-select[aria-label='Condition operand for consult_note']"), key => key?.StartsWith("node:") == true);
     }
@@ -316,6 +316,6 @@ public class TemplatesV10ClassifierTests : ClientRenderTestContext
         Publish(page);
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
-        Assert.Contains("Document 'consult_note' tests 'node:scope', which is removed; change that document's condition or restore the node.", Refusals(page));
+        Assert.Contains("Deliverable 'consult_note' tests 'node:scope', which is removed; change that deliverable's condition or restore the node.", Refusals(page));
     }
 }

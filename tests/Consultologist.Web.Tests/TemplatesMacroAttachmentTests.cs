@@ -9,9 +9,9 @@ namespace Consultologist.Web.Tests;
 
 /// <summary>
 /// #940: a macro's attachment — placement, gated-when, attach/detach — is edited
-/// from the macro's own pane as well as from the Documents pane, a transposed
+/// from the macro's own pane as well as from the Deliverables pane, a transposed
 /// per-macro view of the same relationship. Per-document ordering (↑↓) stays in
-/// the Documents pane only. UI only: the same attachment methods are driven, so
+/// the Deliverables pane only. UI only: the same attachment methods are driven, so
 /// the manifest round-trips identically to editing in Documents.
 /// </summary>
 public class TemplatesMacroAttachmentTests : ClientRenderTestContext
@@ -72,7 +72,7 @@ public class TemplatesMacroAttachmentTests : ClientRenderTestContext
     public void TheMacroPane_HasNoReorderControls()
     {
         // Ordering is a document concern — it needs the sibling macros, which the
-        // macro pane does not show. It stays in the Documents pane only.
+        // macro pane does not show. It stays in the Deliverables pane only.
         var page = RenderEditor(EditorFixtures.V12());
         Navigate(page, "disclaimer");
 
@@ -87,7 +87,7 @@ public class TemplatesMacroAttachmentTests : ClientRenderTestContext
         CapturePublish();
         Navigate(page, "disclaimer");
 
-        // Same method as the Documents pane — the entry gains its anchor.
+        // Same method as the Deliverables pane — the entry gains its anchor.
         page.Find(".result-macro-placement").Change("after|node:draft-section");
         Publish(page);
 
@@ -104,7 +104,7 @@ public class TemplatesMacroAttachmentTests : ClientRenderTestContext
         Navigate(page, "disclaimer");
 
         // The same ConditionField, addressed by the same target subject as the
-        // Documents pane — it rests collapsed until opened.
+        // Deliverables pane — it rests collapsed until opened.
         page.Find("fluent-button[aria-label='Add a condition for consult_note macro disclaimer']").Click();
         page.Find("fluent-select[aria-label^='Condition operand for consult_note macro disclaimer']").Change("node:scope");
         page.Find("fluent-select[aria-label^='Condition value for consult_note macro disclaimer']").Change("in_scope");
@@ -141,7 +141,7 @@ public class TemplatesMacroAttachmentTests : ClientRenderTestContext
         page.Find(".result-macro-detach").Click();
 
         Assert.Empty(page.FindAll(".macro-attachments .result-macro"));
-        Assert.Contains("Not attached to any document", page.Find(".macro-attachments").TextContent);
+        Assert.Contains("Not attached to any deliverable", page.Find(".macro-attachments").TextContent);
     }
 
     // ----- #941: the slot-instruction snippet generator -----
