@@ -30,7 +30,7 @@ public class TemplatesV7AuthoringTests : ClientRenderTestContext
 
     // #936: a deliverable is now a card of labeled sub-sections, not a flat row.
     private static IReadOnlyList<IElement> DocCards(IRenderedComponent<Templates> page) =>
-        page.FindAll("li.document-card");
+        page.FindAll("li.deliverable-card");
 
     [Fact]
     public void LegacyPackage_HasNoDeclaredSections()
@@ -39,7 +39,7 @@ public class TemplatesV7AuthoringTests : ClientRenderTestContext
 
         var navLabels = page.FindAll("button.editor-nav__item").Select(b => b.TextContent.Trim()).ToList();
         Assert.DoesNotContain("Inputs", navLabels);
-        Assert.DoesNotContain("Documents", navLabels);
+        Assert.DoesNotContain("Deliverables", navLabels);
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class TemplatesV7AuthoringTests : ClientRenderTestContext
     public void DocumentsPane_RendersTheDeclaredResultsWithAggregatorCandidates()
     {
         var page = RenderEditor();
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         var row = Assert.Single(DocCards(page));
         Assert.Equal("consult_note", row.QuerySelector("input.declared-row__id")!.GetAttribute("value"));
@@ -118,31 +118,31 @@ public class TemplatesV7AuthoringTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void AddingASecondDocument_NeedsAFreeAggregator()
+    public void AddingASecondDeliverable_NeedsAFreeAggregator()
     {
         var page = RenderEditor();
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         page.Find(".add-variable__form input.node-field__input").Change("patient_letter");
         page.Find(".add-variable__form fluent-button").Click();
 
         // The fixture has one aggregator and it is already spoken for.
-        Assert.Contains("already owns a document", page.Markup);
+        Assert.Contains("already owns a deliverable", page.Markup);
         Assert.Single(DocCards(page));
     }
 
     [Fact]
-    public void DeclaringDocuments_MarksThePackageDirty()
+    public void DeclaringDeliverables_MarksThePackageDirty()
     {
         var page = RenderEditor();
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         DocCards(page)[0].QuerySelector("input.node-field__input:not(.declared-row__id)")!.Change("Consult letter");
 
-        Assert.Contains("documents", page.Markup);
+        Assert.Contains("deliverables", page.Markup);
         Assert.False(
             page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish")).HasAttribute("disabled"),
-            "a pending document edit should enable Publish");
+            "a pending deliverable edit should enable Publish");
     }
 }
 
@@ -216,7 +216,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         // it never appears in the picker.
         var page = RenderEditor();
         DeclareEnum(page);
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         OpenCondition(page);
         var picker = page.Find("[data-when-for] fluent-select");
@@ -229,7 +229,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
     public void WithNoTestableInput_TheRowSaysSoRatherThanOfferingNothing()
     {
         var page = RenderEditor();
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         Assert.Contains("Declare an enum or boolean input", page.Markup);
         Assert.Empty(page.FindAll("[data-when-for] fluent-select"));
@@ -240,7 +240,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
     {
         var page = RenderEditor();
         DeclareEnum(page);
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         { OpenCondition(page); page.Find("[data-when-for] fluent-select").Change("prior_notes"); }
 
@@ -260,7 +260,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         // the validator rejects and finding out at publish.
         var page = RenderEditor();
         DeclareEnum(page);
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         { OpenCondition(page); page.Find("[data-when-for] fluent-select").Change("prior_notes"); }
 
         Navigate(page, "Inputs");
@@ -279,7 +279,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
     {
         var page = RenderEditor();
         DeclareEnum(page);
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         { OpenCondition(page); page.Find("[data-when-for] fluent-select").Change("prior_notes"); }
 
         // The condition's literal defaults to the first declared value.
@@ -300,7 +300,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         // The narrow half — the guard names one value, not the whole list.
         var page = RenderEditor();
         DeclareEnum(page);
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         { OpenCondition(page); page.Find("[data-when-for] fluent-select").Change("prior_notes"); }
 
         Navigate(page, "Inputs");
@@ -323,7 +323,7 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         page.FindAll("li.declared-row")[1].QuerySelector("input.declared-row__id")!.Change("referral");
 
         var documents = page.FindAll("button.editor-nav__item")
-            .First(button => button.TextContent.Contains("Documents"));
+            .First(button => button.TextContent.Contains("Deliverables"));
 
         Assert.DoesNotContain("●", documents.TextContent);
     }
@@ -335,14 +335,14 @@ public class TemplatesV8AuthoringTests : ClientRenderTestContext
         // condition, that IS a change to the document and has to show.
         var page = RenderEditor();
         DeclareEnum(page);
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         { OpenCondition(page); page.Find("[data-when-for] fluent-select").Change("prior_notes"); }
 
         Navigate(page, "Inputs");
         page.FindAll("li.declared-row")[1].QuerySelector("input.declared-row__id")!.Change("encounter_kind");
 
         var documents = page.FindAll("button.editor-nav__item")
-            .First(button => button.TextContent.Contains("Documents"));
+            .First(button => button.TextContent.Contains("Deliverables"));
 
         Assert.Contains("●", documents.TextContent);
     }

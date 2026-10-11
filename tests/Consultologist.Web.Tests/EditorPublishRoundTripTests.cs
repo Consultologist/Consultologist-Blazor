@@ -126,8 +126,8 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
     {
         var result = await PublishAndValidateAsync(page =>
         {
-            Navigate(page, "Documents");
-            page.FindAll("li.document-card")[0]
+            Navigate(page, "Deliverables");
+            page.FindAll("li.deliverable-card")[0]
                 .QuerySelector("input.node-field__input:not(.declared-row__id)")!
                 .Change("Consult letter");
             return Task.CompletedTask;
@@ -252,7 +252,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
             page.Find("li.declared-row__values input").Change("new_patient");
             page.Find("li.declared-row__values input").Change("follow_up");
 
-            Navigate(page, "Documents");
+            Navigate(page, "Deliverables");
             { OpenCondition(page); page.Find("[data-when-for] fluent-select").Change("prior_notes"); }
             return Task.CompletedTask;
         }, EditorFixtures.V8());
@@ -282,7 +282,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         Navigate(page, "Inputs");
         page.FindAll("fluent-select.declared-row__type")[1].Change("boolean");
 
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         { OpenCondition(page); page.Find("[data-when-for] fluent-select").Change("prior_notes"); }
     }
 
@@ -811,7 +811,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         Upgrade(page);
 
         Assert.Contains("Inputs", NavLabels(page));
-        Assert.Contains("Documents", NavLabels(page));
+        Assert.Contains("Deliverables", NavLabels(page));
     }
 
     [Fact]

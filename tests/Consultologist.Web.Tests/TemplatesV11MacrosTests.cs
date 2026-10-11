@@ -207,7 +207,7 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         // Landed on the new macro's pane; write its text, then reference it —
         // the desk's orphan mirror blocks an unreferenced macro.
         page.Find("fluent-text-area").Change("Thank you for this referral.");
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         page.Find(".result-macro-append").Change("closing_paragraph");
         Publish(page);
 
@@ -287,17 +287,17 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         Assert.Contains("detaches from:", remove.TextContent);
     }
 
-    // ----- the Documents pane: macro list + signed toggle -----
+    // ----- the Deliverables pane: macro list + signed toggle -----
 
     [Fact]
     public void TheDocumentsRow_IsOffered_At11AndNotBelow()
     {
         var eleven = RenderEditor(EditorFixtures.V11Macro());
-        Navigate(eleven, "Documents");
+        Navigate(eleven, "Deliverables");
         Assert.NotEmpty(eleven.FindAll("[data-v11-for]"));
 
         var ten = RenderEditor(EditorFixtures.V10Classifier());
-        Navigate(ten, "Documents");
+        Navigate(ten, "Deliverables");
         Assert.Empty(ten.FindAll("[data-v11-for]"));
     }
 
@@ -307,7 +307,7 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         var package = EditorFixtures.V11();
         CapturePublish();
         var page = RenderEditor(package);
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         page.Find(".result-signed input[type=checkbox]").Change(true);
         Publish(page);
@@ -323,7 +323,7 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         var package = EditorFixtures.V11Macro();
         CapturePublish();
         var page = RenderEditor(package);
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         page.Find(".result-signed input[type=checkbox]").Change(false);
         Publish(page);
@@ -346,9 +346,9 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         package = package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
         CapturePublish();
         var page = RenderEditor(package);
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
-        page.Find("input[aria-label='Label for document consult_note']").Change("Renamed note");
+        page.Find("input[aria-label='Label for deliverable consult_note']").Change("Renamed note");
         Publish(page);
 
         Assert.False(Result(sent!).GetProperty("signature").GetBoolean());
@@ -368,7 +368,7 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         page.Find("fluent-text-area").Change("Thank you for this referral.");
 
         // …referenced on the deliverable, then moved first.
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         page.Find(".result-macro-append").Change("closing_paragraph");
         page.FindAll(".result-macro-up")[1].Click();
         Publish(page);
@@ -391,7 +391,7 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         var package = EditorFixtures.V11Macro();
         CapturePublish();
         var page = RenderEditor(package);
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         page.Find(".result-macro-remove").Click();
         Publish(page);
@@ -443,7 +443,7 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         // the declaration in the nav and the deliverable's reference row.
         Assert.Empty(page.FindAll(".editor-nav__strike"));
         Assert.Contains(page.FindAll("button.editor-nav__item"), b => b.TextContent.Contains("disclaimer"));
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         Assert.NotEmpty(page.FindAll(".result-macro-remove"));
     }
 
@@ -660,7 +660,7 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
             .First(b => b.TextContent.Contains("Upgrade to specVersion 24", StringComparison.Ordinal))
             .Click();
 
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         // Place the disclaimer after the data:standards fan, then anchor it to one item.
         page.Find("fluent-select.result-macro-placement").Change("after|node:draft-section");
@@ -700,7 +700,7 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
             .First(b => b.TextContent.Contains("Upgrade to specVersion 24", StringComparison.Ordinal))
             .Click();
 
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         page.Find("fluent-select.result-macro-placement").Change("slot");
 
@@ -729,7 +729,7 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         page.FindAll("fluent-button")
             .First(b => b.TextContent.Contains("Upgrade to specVersion 24", StringComparison.Ordinal))
             .Click();
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         page.Find("fluent-select.result-macro-placement").Change("slot");
         page.Find("fluent-select.result-macro-placement").Change(string.Empty);
@@ -745,7 +745,7 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
     {
         // v12 shows the placement select, but slot arrives at 20.
         var page = RenderEditor(EditorFixtures.V12());
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         var values = page.FindAll("fluent-select.result-macro-placement fluent-option")
             .Select(option => option.GetAttribute("value"))
@@ -761,7 +761,7 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         // read back as Slot — or the select shows "appended" and the first
         // edit would silently drop slot (the #398 class the reader warns of).
         var page = RenderEditor(V20Slot());
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         // #904: FluentSelect carries the selection on the select's current-value,
         // not a per-option `selected` attribute.

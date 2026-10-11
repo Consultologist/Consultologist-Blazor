@@ -71,7 +71,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         // V10Classifier carries patient.age / patient.sex and node:scope.
         var page = RenderEditor(EditorFixtures.V10Classifier());
         CapturePublish();
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
         return page;
     }
@@ -91,7 +91,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
     public void Below10_TheRowIsTheV9Editor_WithNoBuilderAffordances()
     {
         var page = RenderEditor(EditorFixtures.V9Conditional());
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
 
         Assert.NotEmpty(page.FindAll("fluent-select[aria-label^='Condition operand for']"));
@@ -130,7 +130,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         Assert.Contains("choose…", page.Find(Sel("operand", " clause 2")).TextContent);
         Publish(page);
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
-        Assert.Contains("Document 'consult_note' condition has a clause with no operand chosen.", Refusals(page));
+        Assert.Contains("Deliverable 'consult_note' condition has a clause with no operand chosen.", Refusals(page));
         Assert.Contains("1 condition in progress", page.Markup);
     }
 
@@ -264,7 +264,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         Publish(page);
         // Still the one publish from above: this one was held.
         await WorkflowService.Received(1).PublishPackageAsync(Arg.Any<WorkflowPackagePublishRequest>());
-        Assert.Contains("Document 'consult_note' condition has a clause with no operand chosen.", Refusals(page));
+        Assert.Contains("Deliverable 'consult_note' condition has a clause with no operand chosen.", Refusals(page));
     }
 
     // ----- loading ---------------------------------------------------------
@@ -279,7 +279,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         WithDraftedCondition(package, when);
         var page = RenderEditor(package);
         CapturePublish();
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
 
         Assert.Equal(clauses, page.FindAll("fluent-select[aria-label^='Condition operand for consult_note']").Count);
@@ -297,7 +297,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         WithDraftedCondition(package, when);
         var page = RenderEditor(package);
         CapturePublish();
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
 
         Assert.Equal(when, page.Find("[aria-label='Condition for consult_note']").TextContent);
@@ -322,7 +322,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         WithDraftedCondition(package, "patient.age >= 65 and count(prior_notes) > 1");
         var page = RenderEditor(package);
         CapturePublish();
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
 
         // Shown as its two clauses, without the builder's affordances.
@@ -330,7 +330,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         Assert.Empty(page.FindAll("[aria-label^='Add condition clause']"));
         Publish(page);
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
-        Assert.Contains("Document 'consult_note' declares a condition expression that requires specVersion 10. Use \"Upgrade to specVersion 24\" and publish.", Refusals(page));
+        Assert.Contains("Deliverable 'consult_note' declares a condition expression that requires specVersion 10. Use \"Upgrade to specVersion 24\" and publish.", Refusals(page));
     }
 
     // ----- the desk --------------------------------------------------------
@@ -416,7 +416,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
     public void At10_TheOperandPicker_OffersNestedObjectPaths_ButNotArrayElementFields()
     {
         var page = RenderEditor(EditorFixtures.V10DeepConditionObject());
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
 
         var operands = Options(page, Sel("operand"));
@@ -432,7 +432,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
     {
         var page = RenderEditor(EditorFixtures.V10DeepConditionObject());
         CapturePublish();
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
 
         page.Find(Sel("operand")).Change("patient.contact.preferred");
@@ -465,7 +465,7 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
                 }
                 """);
         var page = RenderEditor(package);
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
 
         var operands = Options(page, Sel("operand"));

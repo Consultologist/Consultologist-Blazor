@@ -545,7 +545,7 @@ public class TemplatesV12OptionalMacroTests : ClientRenderTestContext
 }
 
 /// <summary>
-/// v12 § 4/§ 13/§ 14 (#621): the Documents pane authors the entry's
+/// v12 § 4/§ 13/§ 14 (#621): the Deliverables pane authors the entry's
 /// placement and when, and the deliverable's check — all offered at 12
 /// alone, all landing as the object forms the carriage preserves.
 /// </summary>
@@ -581,7 +581,7 @@ public class TemplatesV12DocumentsPaneTests : ClientRenderTestContext
     {
         var page = RenderEditor(EditorFixtures.V12());
         CapturePublish();
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         // The fixture's entry is the bare v11 string; placing it adorns it.
         page.Find(".result-macro-placement").Change("after|node:draft-section");
@@ -605,7 +605,7 @@ public class TemplatesV12DocumentsPaneTests : ClientRenderTestContext
     public void ThePlacementOptions_AreTheDeliverablesOwnSources()
     {
         var page = RenderEditor(EditorFixtures.V12Full());
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         var options = page.FindAll(".result-macro-placement fluent-option").Select(o => o.GetAttribute("value")).ToList();
         Assert.Contains("before|node:patient-header", options);
@@ -620,7 +620,7 @@ public class TemplatesV12DocumentsPaneTests : ClientRenderTestContext
     {
         var page = RenderEditor(EditorFixtures.V12());
         CapturePublish();
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         // The entry's own builder, addressed by the macro target's subject.
         // #936: a macro's "Gated when" rests collapsed until opened.
@@ -644,7 +644,7 @@ public class TemplatesV12DocumentsPaneTests : ClientRenderTestContext
 
         var page = RenderEditor(package);
         CapturePublish();
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         var options = page.FindAll(".result-check fluent-option").Select(o => o.GetAttribute("value")).ToList();
         Assert.Equal(new[] { "", "node:coverage" }, options);
@@ -658,7 +658,7 @@ public class TemplatesV12DocumentsPaneTests : ClientRenderTestContext
     public void BelowTwelve_NoneOfTheControlsAreOffered()
     {
         var page = RenderEditor(EditorFixtures.V11Macro());
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         Assert.Empty(page.FindAll(".result-macro-placement"));
         Assert.Empty(page.FindAll(".result-macro-when"));
@@ -734,7 +734,7 @@ public class TemplatesV12NodeKindsTests : ClientRenderTestContext
         page.Find("fluent-text-field[placeholder='Summarizing guidelines']").Change("Coverage check");
         page.FindAll("fluent-button").First(button => button.TextContent.Contains("Create")).Click();
 
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         page.Find(".result-check").Change("node:coverage");
         Publish(page);
 
@@ -767,7 +767,7 @@ public class TemplatesV12NodeKindsTests : ClientRenderTestContext
         page.Find("fluent-text-field[placeholder='Summarizing guidelines']").Change("Coverage check");
         page.FindAll("fluent-button").First(button => button.TextContent.Contains("Create")).Click();
 
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         page.Find(".result-check").Change("node:coverage");
         Publish(page);
 

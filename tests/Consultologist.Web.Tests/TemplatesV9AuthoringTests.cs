@@ -194,7 +194,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         Assert.True(page.Find("li.declared-field[data-field='patient.age'] fluent-button[title='Remove field']").HasAttribute("disabled"));
         page.Find("fluent-select[aria-label='Type for field patient.age']").Change(WorkflowInputTypes.Text);
 
-        Assert.Contains("Field 'patient.age' is tested by 'Consultation note'; change that document's condition first.", page.Find("p.editor-warning").TextContent);
+        Assert.Contains("Field 'patient.age' is tested by 'Consultation note'; change that deliverable's condition first.", page.Find("p.editor-warning").TextContent);
         Assert.Equal(WorkflowInputTypes.Number, page.Find("fluent-select[aria-label='Type for field patient.age']").GetAttribute("current-value"));
     }
 
@@ -240,7 +240,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         // an array, whose element fields are not read by path — only an
         // object's are. So labs offers its count and its bare form only.
         var page = RenderEditor(EditorFixtures.V9Structured());
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
 
         // Declaration order: prior_notes, patient, labs.
@@ -253,7 +253,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
     public void ChoosingANumberPath_OffersOrderingAndADecimalInput()
     {
         var page = RenderEditor(EditorFixtures.V9Structured());
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
 
         page.Find("fluent-select[aria-label='Condition operand for consult_note']").Change("patient.age");
@@ -279,7 +279,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
                 new WorkflowPackagePublishResponse("acct-1234567890ab", "v2026.08.2", "acct-1234567890ab@v2026.08.2"),
                 Array.Empty<string>()));
         var page = RenderEditor(EditorFixtures.V9Structured());
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
 
         page.Find("fluent-select[aria-label='Condition operand for consult_note']").Change(operand);
@@ -310,7 +310,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         page.Find("input[aria-label='New input id']").Change("seen_on");
         page.FindAll("fluent-button").First(button => button.TextContent.Trim() == "+ Input").Click();
         page.FindAll("fluent-select.declared-row__type").Last().Change(WorkflowInputTypes.Date);
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
 
         page.Find("fluent-select[aria-label='Condition operand for consult_note']").Change("seen_on");
@@ -331,7 +331,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Enum);
         page.Find("li.declared-row__values input").Change("new_patient");
         page.Find("li.declared-row__values input").Change("follow_up");
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
 
         Assert.Equal(new[] { "", "prior_notes" }, Options(page, "fluent-select[aria-label='Condition operand for consult_note']"));
@@ -352,7 +352,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         page.Find("fluent-select[aria-label='Type for field prior_notes.kind']").Change(WorkflowInputTypes.Enum);
         page.Find("input[aria-label='Add a value to prior_notes.kind']").Change("clinic");
         page.Find("input[aria-label='Add a value to prior_notes.kind']").Change("ward");
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
 
         Assert.DoesNotContain("prior_notes.kind", page.Find("[data-when-for]").TextContent);
@@ -365,7 +365,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var package = EditorFixtures.V9Structured();
         WithDraftedCondition(package, "patient.age >= 65");
         var page = RenderEditor(package);
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
 
         page.Find("fluent-select[aria-label='Condition operand for consult_note']").Change("patient.sex");
@@ -382,7 +382,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var package = EditorFixtures.V9Structured();
         WithDraftedCondition(package, "patient.family_name == Smith");
         var page = RenderEditor(package);
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
         OpenCondition(page);
 
         var picker = page.Find("fluent-select[aria-label='Condition operand for consult_note']");
@@ -517,7 +517,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains(
-            "Document 'consult_note' declares a condition form that requires specVersion 9. Use \"Upgrade to specVersion 24\" and publish.",
+            "Deliverable 'consult_note' declares a condition form that requires specVersion 9. Use \"Upgrade to specVersion 24\" and publish.",
             Refusals(page));
     }
 

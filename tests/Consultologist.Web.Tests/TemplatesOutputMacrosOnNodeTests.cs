@@ -13,7 +13,7 @@ namespace Consultologist.Web.Tests;
 /// macro whose before/after names this node — and edits them as the Documents
 /// row does: the whole placement list (appended / before·after any source /
 /// slot), the fan item, the gated-when (the same ConditionField target the
-/// Documents pane uses), remove, and an attach-here picker placing a library
+/// Deliverables pane uses), remove, and an attach-here picker placing a library
 /// macro before this node. Rows are the entries anchored to THIS node; moving
 /// one elsewhere takes it out of the view. Reordering stays in Documents.
 /// </summary>
@@ -96,7 +96,7 @@ public class TemplatesOutputMacrosOnNodeTests : ClientRenderTestContext
             .GetProperty("macros").EnumerateArray().Single().Clone();
 
     private const string Placement = "fluent-select[aria-label='Placement for macro closing around draft-section']";
-    private const string Remove = "fluent-button[aria-label='Remove macro closing from document consult_note']";
+    private const string Remove = "fluent-button[aria-label='Remove macro closing from deliverable consult_note']";
     private const string ConditionValue = "fluent-select[aria-label^='Condition value for consult_note macro closing']";
     private const string FanItem = "fluent-select[aria-label='Fan item for macro closing around draft-section']";
     private const string Attach = "fluent-select[aria-label='Attach an output macro before draft-section']";
@@ -174,7 +174,7 @@ public class TemplatesOutputMacrosOnNodeTests : ClientRenderTestContext
         CapturePublish();
         ShowNode(page, "draft-section");
 
-        // The same SetMacroPlacementAsync the Documents pane calls — the entry
+        // The same SetMacroPlacementAsync the Deliverables pane calls — the entry
         // moves from before to after this node.
         page.Find(Placement).Change("after|node:draft-section");
         Publish(page);

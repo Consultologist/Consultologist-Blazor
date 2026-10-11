@@ -8,14 +8,14 @@ using NSubstitute;
 namespace Consultologist.Web.Tests;
 
 /// <summary>
-/// #936: the Documents pane reorganised — each deliverable a card of labeled
+/// #936: the Deliverables pane reorganised — each deliverable a card of labeled
 /// sub-sections ("Produced when", "Appended content", "Checks"), the condition
 /// builders quieted to a resting "Always produced" until opened, each appended
 /// macro a link into the Macros pane, and the Macros pane naming where a macro
 /// is attached. UI only: the attachment model, the condition grammar and the
 /// publish path are untouched, which the surrounding suites already guard.
 /// </summary>
-public class TemplatesDocumentsPaneReorgTests : ClientRenderTestContext
+public class TemplatesDeliverablesPaneReorgTests : ClientRenderTestContext
 {
     private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse fixture)
     {
@@ -49,10 +49,10 @@ public class TemplatesDocumentsPaneReorgTests : ClientRenderTestContext
     public void TheDocumentCard_IsSplitIntoLabeledSubSections()
     {
         var page = RenderEditor(EditorFixtures.V12());
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
-        var card = Assert.Single(page.FindAll("li.document-card"));
-        var heads = card.QuerySelectorAll(".document-section__head").Select(h => h.TextContent.Trim()).ToList();
+        var card = Assert.Single(page.FindAll("li.deliverable-card"));
+        var heads = card.QuerySelectorAll(".deliverable-section__head").Select(h => h.TextContent.Trim()).ToList();
         Assert.Equal(new[] { "Produced when", "Appended content", "Checks" }, heads);
     }
 
@@ -62,7 +62,7 @@ public class TemplatesDocumentsPaneReorgTests : ClientRenderTestContext
         // consult_note carries `when: node:scope == in_scope`, so the field is not
         // blank and reads directly — no "Always produced" rest to click through.
         var page = RenderEditor(EditorFixtures.V12());
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         Assert.Empty(page.FindAll("[data-when-for] fluent-button.condition-field__resting"));
         Assert.NotEmpty(page.FindAll("[data-when-for] fluent-select[aria-label^='Condition operand for consult_note']"));
@@ -72,7 +72,7 @@ public class TemplatesDocumentsPaneReorgTests : ClientRenderTestContext
     public void AnAlwaysProducedDocument_RestsQuiet_UntilOpened()
     {
         var page = RenderEditor(WithoutDocumentWhen(EditorFixtures.V12()));
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         // At rest: the quiet control, no operand builder.
         var resting = Assert.Single(page.FindAll("[data-when-for] fluent-button.condition-field__resting"));
@@ -88,7 +88,7 @@ public class TemplatesDocumentsPaneReorgTests : ClientRenderTestContext
     public void AnAppendedMacro_LinksToItsPane_AndGatesQuietly()
     {
         var page = RenderEditor(EditorFixtures.V12());
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         // The macro id is a button that carries the macro's name.
         var id = Assert.Single(page.FindAll("[data-v11-for] fluent-button.result-macro__id"));
@@ -103,7 +103,7 @@ public class TemplatesDocumentsPaneReorgTests : ClientRenderTestContext
     public void OpeningAMacroGate_RevealsItsOwnBuilder_NotTheDocuments()
     {
         var page = RenderEditor(EditorFixtures.V12());
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         page.Find("fluent-button[aria-label='Add a condition for consult_note macro disclaimer']").Click();
 
@@ -117,7 +117,7 @@ public class TemplatesDocumentsPaneReorgTests : ClientRenderTestContext
     public void ClickingAMacroId_OpensThatMacroInTheMacrosPane()
     {
         var page = RenderEditor(EditorFixtures.V12());
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
         page.Find("[data-v11-for] fluent-button.result-macro__id").Click();
 
@@ -131,10 +131,10 @@ public class TemplatesDocumentsPaneReorgTests : ClientRenderTestContext
     public void TheSignedToggle_LivesUnderChecks_NotTheMacros()
     {
         var page = RenderEditor(EditorFixtures.V12());
-        Navigate(page, "Documents");
+        Navigate(page, "Deliverables");
 
-        var checks = page.FindAll("li.document-card .document-section")
-            .Single(section => section.QuerySelector(".document-section__head")!.TextContent.Trim() == "Checks");
+        var checks = page.FindAll("li.deliverable-card .deliverable-section")
+            .Single(section => section.QuerySelector(".deliverable-section__head")!.TextContent.Trim() == "Checks");
         Assert.NotEmpty(checks.QuerySelectorAll(".result-signed"));
     }
 
@@ -156,6 +156,6 @@ public class TemplatesDocumentsPaneReorgTests : ClientRenderTestContext
         Navigate(page, "disclaimer");
 
         var attached = Assert.Single(page.FindAll(".macro-attachments"));
-        Assert.Contains("Not attached to any document", attached.TextContent);
+        Assert.Contains("Not attached to any deliverable", attached.TextContent);
     }
 }
