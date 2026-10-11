@@ -55,8 +55,8 @@ member is a publish refusal naming it.
 | `snippet.<id>` | `.id`, `.name`, `.text` | a snippet rendered (§ 4) |
 | `snippet.<folder>` | iterable | each item a snippet with the three members above; folder size is resolved at job start (§ 4) |
 | `item` | `.id`, `.name`, `.text` (snippet fan) / `.id`, `.name`, `.value` (input fan) | the fan item the instance runs for; refused on a node that does not fan |
-| `macro.<id>` | `.prompt` | the slot marker's prompt text for this macro: its instruction composed with the mechanics sentence (§ 5.3) |
-| `macro.<folder>` | iterable | each item a macro exposing `.prompt` |
+| `macro.<id>` | `.id`, `.name`, `.text`, `.prompt` | `.text` is the macro's text rendered, read prompt-side like a snippet; `.prompt` is the slot marker's prompt text: its instruction composed with the mechanics sentence (§ 5.3) |
+| `macro.<folder>` | iterable | each item a macro with the four members above |
 
 **Renderers are pipes.** `{{ node.extract.text | concept_context }}` is the attested,
 byte-stable rendering a binding's `as: concept-context` gave; the closed renderer set is
@@ -322,17 +322,19 @@ collection (an `index.json` listing id, name and file per item). The names: `+ S
 - A node fans over a folder as it fans over a collection today (`forEach: sections`);
   `item.text` is the item's rendered text (`item.content` is retired, § 14).
 
-Snippets may read snippets, inputs, nodes and `macro.<id>.prompt` (the section-instructions
-pattern: a standard that carries the slot marker's text). Snippets may not read a macro's
-text, because a macro's text is never readable inline (§ 5).
+Snippets may read snippets, inputs, nodes, `macro.<id>.text` and `macro.<id>.prompt` (the
+section-instructions pattern: a standard that carries the slot marker's text). A snippet is
+a macro without an instruction, and the two differ only in what may be done with them: a
+snippet is only ever read; a macro may also be placed (§ 5).
 
 ## 5. Macros — text that is placed
 
 The library (`manifest.macros[]`: id, label, file, **`instruction`** (mandatory),
 `optional`/`default`) is the only kind of placed text. A macro's text is a Scriban template
-that renders at placement time and may read snippets, inputs and node outputs; it may not be
-read inline anywhere — if the same words belong in a prompt, the macro's text reads a
-snippet, and nothing is duplicated.
+that renders where it is used and may read snippets, inputs and node outputs. It may also
+be **read** inline as `{{ macro.<id>.text }}`, prompt-side, exactly as a snippet is — the
+same words in a prompt and after a reply are one file. What a macro's text may contain does
+not depend on how it is read (§ 5.2).
 
 ### 5.1 Instances
 
@@ -369,7 +371,8 @@ refused — two gates to one text is one row with `when: a or b`.
 ### 5.2 The reference rule and cycles
 
 Nothing on the reference path from a macro's text may reach a `macro.<id>.prompt`: the text
-is injected after the reply, and there is no second call to honour a marker it would carry.
+is placed after a reply somewhere, and there is no second call to honour a marker it would
+carry — and that holds however else the text is read, so one rule covers inline reads too.
 That is the one transitive rule, checked over the derived reference graph. Cycles anywhere
 in that graph — snippet to snippet, macro text to snippet to macro — are refused by a
 depth-first search that names the path.
@@ -523,7 +526,7 @@ across every record ever written, and stay; the provenance document may say "the
   changes bytes the hash covers; until it lands, plain text with manual escaping and no
   plain-text toggle. "+ variable" becomes an **insert reference** palette inserting
   `{{ input.x }}`, `{{ node.x.text | concept_context }}`, `{{ snippet.x.text }}`,
-  `{{ macro.x.prompt }}` at the cursor. Each pane lists what the text reads and, for a
+  `{{ macro.x.text }}`, `{{ macro.x.prompt }}` at the cursor. Each pane lists what the text reads and, for a
   snippet or macro, where it is read.
 - **Macro pane.** Title / id / file / **instruction** → text → **Instances** (node and
   deliverable rows) and **Read inline at** (derived).
@@ -547,14 +550,14 @@ across every record ever written, and stay; the provenance document may say "the
 | `schemaRefs: { s: concept-list }` + `output.schema: s` | `format: concept-list` |
 | `customSchemas` file | `formats/<id>.json` with the schema under `schema`, `producer: custom`; `onInvalid: fail` as the migration's explicit choice, named in the notice |
 | `data` scalar / collection | a snippet / a snippet folder, files moved under `snippets/` |
-| a prompt-side node macro (bare / `use: prompt`) | an inline read at the top (`before`) or bottom (`after`) of the template, wrapped in `{{ if }}` when it had a `when`; the macro becomes a snippet if it is never placed on an output |
+| a prompt-side node macro (bare / `use: prompt`) | an inline `{{ macro.x.text }}` read at the top (`before`) or bottom (`after`) of the template, wrapped in `{{ if }}` when it had a `when`; a macro never placed on any output becomes a **snippet** (it has no instruction to give) and the read becomes `snippet.x.text` |
 | an output-side node macro `at: slot` + `instruction` | the instruction moves to the library macro; the template keeps `{{ macro.x.prompt }}` |
 | a deliverable macro `before/after: node:x` (± `forItem`) | a node instance `{ id, at, forItem }` — the node's `outputHash` now covers it, and the record says so |
 | `raw: true` prompt | the text with `{{` escaped |
 | `results` / `result` | `deliverables` |
 
-A library macro placed on an output somewhere *and* read as prompt text elsewhere is split:
-the text becomes a snippet the macro's text reads, and the notice names both.
+A library macro placed on an output somewhere *and* used prompt-side elsewhere stays one
+macro: the prompt-side use is a `.text` read. Nothing is split.
 
 ## 15. Phasing
 
