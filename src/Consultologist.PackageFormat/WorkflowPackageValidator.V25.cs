@@ -995,6 +995,11 @@ public static partial class WorkflowPackageValidator
                     [TemplateObjects.Profile] = profile
                 };
 
+                foreach (var pipe in TemplatePipes.All)
+                {
+                    globals.Import(pipe, (Func<object?, string>)(_ => "placeholder"));
+                }
+
                 if (template.Context.Fan is SnippetFolderFan)
                 {
                     globals[TemplateObjects.Item] = SnippetProbe("item");
