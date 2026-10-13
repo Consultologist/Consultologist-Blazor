@@ -61,7 +61,13 @@ public static class TemplateObjects
     public const string Item = "item";
     public const string Macro = "macro";
 
-    public static readonly IReadOnlyList<string> All = new[] { Input, Node, Snippet, Item, Macro };
+    /// <summary>A4 (#999, 2026-10-13): the run facts (date, job, package, host) — the v11 `{{run:…}}` namespace as an object.</summary>
+    public const string Run = "run";
+
+    /// <summary>A4 (#999): the profile facts (name, signature) — the v11/v12 `{{profile:…}}` namespace as an object.</summary>
+    public const string Profile = "profile";
+
+    public static readonly IReadOnlyList<string> All = new[] { Input, Node, Snippet, Item, Macro, Run, Profile };
 
     /// <summary><c>data</c> became <c>snippet</c> at 25 (§ 4).</summary>
     public const string RetiredData = "data";
@@ -98,6 +104,12 @@ public static class TemplateMembers
     public static readonly IReadOnlyList<string> Macro = new[] { Id, Name, Text, Prompt };
     public static readonly IReadOnlyList<string> SnippetFanItem = new[] { Id, Name, Text };
     public static readonly IReadOnlyList<string> InputFanItem = new[] { Id, Name, Value };
+
+    /// <summary><c>run.date</c>, <c>.job</c>, <c>.package</c>, <c>.host</c> — the v11 run facts.</summary>
+    public static readonly IReadOnlyList<string> Run = WorkflowMacroPlaceholders.RunFacts.Order(StringComparer.Ordinal).ToList();
+
+    /// <summary><c>profile.name</c>, <c>.signature</c> — the v12 profile facts.</summary>
+    public static readonly IReadOnlyList<string> Profile = WorkflowMacroPlaceholders.ProfileFactsFor(25).Order(StringComparer.Ordinal).ToList();
 }
 
 /// <summary>

@@ -184,6 +184,27 @@ public class TemplateReferenceWalkerTests
     }
 
     [Fact]
+    public void RunAndProfileFacts_AreReads()
+    {
+        // A4 (#999): the v11/v12 {{run:…}}/{{profile:…}} namespaces as objects.
+        var refs = TemplateFixtures.Ok("{{ run.date }} {{ run.job }} {{ run.package }} {{ run.host }} {{ profile.name }}\n{{ profile.signature }} {{ with profile }}{{ name }}{{ end }}");
+
+        Assert.Equal(new[] { "date", "host", "job", "package" }, refs.RunFacts.Order());
+        Assert.Equal(new[] { "name", "signature" }, refs.ProfileFacts.Order());
+        Assert.Empty(refs.Inputs);
+    }
+
+    [Fact]
+    public void TheFactMembers_AreTheV11AndV12Vocabularies()
+    {
+        Assert.Equal(WorkflowMacroPlaceholders.RunFacts.Order(), TemplateMembers.Run);
+        Assert.Equal(WorkflowMacroPlaceholders.ProfileFactsFor(25).Order(), TemplateMembers.Profile);
+        Assert.Contains("run", TemplateObjects.All);
+        Assert.Contains("profile", TemplateObjects.All);
+        Assert.True(TemplateObjects.IsReserved("profile"));
+    }
+
+    [Fact]
     public void AnEmptyTemplate_ReadsNothing()
     {
         var refs = TemplateFixtures.Ok("Plain prose with no references.");
@@ -313,7 +334,12 @@ public class TemplateReferenceWalkerTests
     [InlineData("{{ item }}", "reads item, but the node does not fan")]
     [InlineData("{{ data.standards }}", "reads 'data'; at specVersion 25 data is 'snippet' — read snippet.<id>.text")]
     [InlineData("{{ bindings.x }}", "reads 'bindings'; at specVersion 25 a template reads objects")]
-    [InlineData("{{ consult_draft }}", "reads 'consult_draft', which is not an object (input, node, snippet, item, macro), a loop variable, or a Scriban builtin")]
+    [InlineData("{{ consult_draft }}", "reads 'consult_draft', which is not an object (input, node, snippet, item, macro, run, profile), a loop variable, or a Scriban builtin")]
+    [InlineData("{{ run }}", "reads 'run' bare; name the fact: run.date or run.host or run.job or run.package")]
+    [InlineData("{{ profile }}", "reads 'profile' bare; name the fact: profile.name or profile.signature")]
+    [InlineData("{{ run.user }}", "reads run.user, which is not a member (run has .date, .host, .job and .package)")]
+    [InlineData("{{ profile.email }}", "reads profile.email, which is not a member (profile has .name and .signature)")]
+    [InlineData("{{ run.date.year }}", "reads field 'year' of 'run.date', which is a text, not an object")]
     [InlineData("{{input:notes}}", "carries the placeholder '{{input:notes}}'; at specVersion 25 references are objects")]
     [InlineData("{{ classification:scope }}", "carries the placeholder '{{classification:scope}}'")]
     public void Refusals_NameTheRule(string template, string sentence)
