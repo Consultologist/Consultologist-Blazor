@@ -43,7 +43,16 @@ public sealed record ConsultPromptNodeActivityInput(
     // covers the exact prompt the model saw. Trailing optional; a payload
     // snapshotted before v23 replays with null and the activity renders as it did.
     IReadOnlyList<string>? Before = null,
-    IReadOnlyList<string>? After = null);
+    IReadOnlyList<string>? After = null,
+    // v25 (B2 #1001): the node's format identity, resolved at job-start from the
+    // package's own stamped formats version (see ConsultNodeDescriptor). When
+    // Format is set the activity never falls back to the global catalogue: a
+    // 25 node runs the agent its package was published against, or refuses.
+    // Dispatch on the producer is B4's. Trailing optionals — replay-safe.
+    string? Format = null,
+    string? Producer = null,
+    string? FormatHash = null,
+    string? Op = null);
 
 /// <summary>
 /// One node run. Deserialized concepts ride the recorded activity result so Durable
@@ -214,19 +223,7 @@ public sealed class RunPromptNodeActivity
             // package runs the agent it was published against — not the engine's
             // current global pin. The _catalog fallback covers a payload
             // snapshotted before phase 2 (an in-flight orchestration mid-upgrade).
-            string agentName;
-            string agentVersion;
-            if (input.AgentName is { Length: > 0 } pinnedName && input.AgentVersion is { Length: > 0 } pinnedVersion)
-            {
-                agentName = pinnedName;
-                agentVersion = pinnedVersion;
-            }
-            else
-            {
-                var entry = _catalog.GetEntry(input.OutputContract ?? OutputContracts.Text);
-                agentName = entry.AgentName;
-                agentVersion = entry.AgentVersion;
-            }
+            var (agentName, agentVersion) = ResolveAgentPin(input, _catalog);
 
             var agentResponse = await _agent.SendPromptAsync(
                 input.NodeId,
@@ -289,5 +286,34 @@ public sealed class RunPromptNodeActivity
 
             throw;
         }
+    }
+
+    /// <summary>
+    /// #923 phase 2: the job starter resolved the agent pin from the package's
+    /// own stamped catalog version and threaded it here, so the package runs
+    /// the agent it was published against — not the engine's current global
+    /// pin. The catalogue fallback covers a payload snapshotted before phase 2
+    /// (an in-flight orchestration mid-upgrade). v25 (B2 #1001): a node that
+    /// carries a format REFUSES that fallback — its agent is the stamped
+    /// catalogue's or nothing; resolving against whatever the engine runs today
+    /// would silently run a different agent (design § 3.3).
+    /// </summary>
+    internal static (string AgentName, string AgentVersion) ResolveAgentPin(ConsultPromptNodeActivityInput input, OutputContractCatalog catalog)
+    {
+        if (input.AgentName is { Length: > 0 } pinnedName && input.AgentVersion is { Length: > 0 } pinnedVersion)
+        {
+            return (pinnedName, pinnedVersion);
+        }
+
+        if (input.Format is not null)
+        {
+            throw new InvalidOperationException(
+                $"Node '{input.NodeId}' is a specVersion 25 node of format '{input.Format}' and carries no agent pin; "
+                + "a 25 node runs the agent its package was published against, never the engine's current catalogue. "
+                + "The job was started before the engine threaded formats — start it again.");
+        }
+
+        var entry = catalog.GetEntry(input.OutputContract ?? OutputContracts.Text);
+        return (entry.AgentName, entry.AgentVersion);
     }
 }

@@ -165,6 +165,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly IWorkflowPackageStore _packageStore;
     private readonly IWorkflowPackagePinResolver _pinResolver;
     private readonly OutputContractCatalog _catalog;
+    private readonly WorkflowFormatCatalog _formats;
     private readonly ICustomAgentProvisioner _customProvisioner;
     private readonly EngineAttestationResponse _engine;
     private readonly ITerminologyAttestationSource _terminology;
@@ -196,12 +197,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IConsultGenerationLinkStore links,
         Forms.IFormResponseStore formResponses,
         Forms.IFormResponseBlobStore formResponseBlobs,
-        IDocumentOcr ocr)
+        IDocumentOcr ocr,
+        WorkflowFormatCatalog formats)
     {
         _logger = logger;
         _packageStore = packageStore;
         _pinResolver = pinResolver;
         _catalog = catalog;
+        _formats = formats;
         _customProvisioner = customProvisioner;
         _engine = engine;
         _terminology = terminology;
@@ -749,7 +752,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // schema runs on (GET-or-create, cached), in the starter so the side-effect stays
         // out of the orchestrator; the resolved refs are baked into the recorded input.
         var customAgents = await ProvisionCustomAgentsAsync(_customProvisioner, package, cancellationToken);
-        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, customAgents, package.SourceFiles, package.Manifest.Macros)).ToList();
+        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, customAgents, package.SourceFiles, package.Manifest.Macros, package.Formats, package.Stamp?.Formats)).ToList();
 
         // Provenance: identify the artifacts and input that produce this consult.
         // v5/v6: the hash covers the draft only (definition version 2). v7: the
@@ -966,6 +969,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // resolved against (its own stamped version), not the global pin.
                 CatalogRef: package.CatalogRef ?? _catalog.ResolvedRef,
                 Collections: collectionSets,
+                // v25 (B2 #1001): the formats catalogue the package resolved against (its stamp's, else the global pin).
+                FormatsRef: package.FormatsRef ?? _formats.ResolvedRef,
                 Source: origin.Source,
                 ReplyToAddress: origin.ReplyToAddress,
                 Results: resultDescriptors,
@@ -1323,6 +1328,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     EffectiveInputHashVersion: effectiveInputHashVersion,
                     // #923 phase 2: the package's own catalog ref (its stamp's), not the global pin.
                     CatalogRef: package.CatalogRef ?? _catalog.ResolvedRef,
+                    FormatsRef: package.FormatsRef ?? _formats.ResolvedRef,
                     Source: origin.Source,
                     ScheduledAtUtc: request.ScheduledAtUtc,
                     SkippedDocuments: notProduced,
@@ -2768,8 +2774,21 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IReadOnlyDictionary<string, OutputContractEntry>? contractAgents = null,
         IReadOnlyDictionary<string, CustomAgentPin>? customAgents = null,
         IReadOnlyDictionary<string, string>? macroFiles = null,
-        IReadOnlyList<WorkflowMacroSpec>? macros = null)
+        IReadOnlyList<WorkflowMacroSpec>? macros = null,
+        WorkflowFormatCatalog? formats = null,
+        IReadOnlyDictionary<string, WorkflowStampedFormat>? stampedFormats = null)
     {
+        // v25 (B2 #1001, design § 3.7): a node that declares a format is
+        // resolved from its package's own stamped formats version — the stamp
+        // first (hash, producer, agent or op as recorded at publish), else the
+        // catalogue the package loaded against; a package-local format is
+        // custom and runs the catalogue's generic agent. Dispatch is B4's; here
+        // the identity travels. An aggregator declares no format.
+        if (node.Format is { } formatId)
+        {
+            return DescribeNodeAt25(node, formatId, formats, stampedFormats, macroFiles, macros);
+        }
+
         // v10 (#495): a classifier's contract is implied by its kind — the one
         // shape no package declares by schema id.
         var outputContract = WorkflowNodeKinds.IsClassifier(node)
@@ -2845,6 +2864,73 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 .Select(macro => new ConsultNodeMacroDescriptor(
                     macro.Id, macro.IsAfter, macro.When, macro.ForItem, ClassifiersReadBy(macro.Id, macros, macroFiles)))
                 .ToList());
+    }
+
+    private static ConsultNodeDescriptor DescribeNodeAt25(
+        WorkflowNodeSpec node,
+        string formatId,
+        WorkflowFormatCatalog? formats,
+        IReadOnlyDictionary<string, WorkflowStampedFormat>? stampedFormats,
+        IReadOnlyDictionary<string, string>? macroFiles,
+        IReadOnlyList<WorkflowMacroSpec>? macros)
+    {
+        string? producer = null;
+        string? formatHash = null;
+        string? op = null;
+        string? agentName = null;
+        string? agentVersion = null;
+
+        if (stampedFormats?.GetValueOrDefault(formatId) is { } stamped)
+        {
+            producer = stamped.Producer;
+            formatHash = stamped.FormatHash;
+            op = stamped.Op;
+            agentName = stamped.AgentName;
+            agentVersion = stamped.AgentVersion?.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+        else if (formats is not null && formats.TryGet(formatId, out var catalogueFormat))
+        {
+            producer = catalogueFormat!.Spec.Producer;
+            formatHash = WorkflowFormatSpecJson.Sha256Hex(catalogueFormat.CanonicalJson);
+            op = catalogueFormat.Entry.Op;
+            agentName = catalogueFormat.Entry.AgentName;
+            agentVersion = catalogueFormat.Entry.AgentVersion?.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+        else if (formats is not null)
+        {
+            // A package-local format with no stamp (a bare fixture): custom, the generic agent.
+            producer = WorkflowFormatProducers.Custom;
+            agentName = formats.CustomProducer.AgentName;
+            agentVersion = formats.CustomProducer.AgentVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                $"Node '{node.Id}' declares format '{formatId}', but the package carries no formats catalogue to resolve it against.");
+        }
+
+        return new ConsultNodeDescriptor(
+            node.Id,
+            node.Label,
+            node.Prompt,
+            null,
+            OutputContract: null,
+            FailIfEmpty: null,
+            ForEach: node.ForEach,
+            ConceptSource: WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(node.Id, node.Id),
+            Aggregate: node.Aggregate,
+            Reproducible: node.Reproducible == true ? true : null,
+            Template: producer == WorkflowFormatProducers.Rendered ? true : null,
+            AgentName: agentName,
+            AgentVersion: agentVersion,
+            Macros: node.Macros?
+                .Select(macro => new ConsultNodeMacroDescriptor(
+                    macro.Id, macro.IsAfter, macro.When, macro.ForItem, ClassifiersReadBy(macro.Id, macros, macroFiles)))
+                .ToList(),
+            Format: formatId,
+            Producer: producer,
+            FormatHash: formatHash,
+            Op: op);
     }
 
     /// <summary>The classifier ids a library macro's text names through {{classification:…}}, or null when it names none (so a v23 payload writes the bytes it wrote).</summary>

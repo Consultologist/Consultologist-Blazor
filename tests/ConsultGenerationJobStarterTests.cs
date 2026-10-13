@@ -71,7 +71,8 @@ public class ConsultGenerationJobStarterTests
             _links,
             _formResponses,
             _formResponseBlobs,
-            _ocr);
+            _ocr,
+            TestFormats.Catalog);
     }
 
     private readonly FakeTerminologySource _terminology = new();

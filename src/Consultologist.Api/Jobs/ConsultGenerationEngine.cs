@@ -117,7 +117,9 @@ public sealed class ConsultGenerationOrchestrator
                 // #514: by name, last.
                 ApiHost: input.ApiHost,
                 EngineCommit: input.EngineCommit,
-                EngineRelease: input.EngineRelease));
+                EngineRelease: input.EngineRelease,
+                // v25 (B2 #1001): by name, last.
+                FormatsRef: input.FormatsRef));
 
         // #157: a scheduled job sleeps here — visible as Scheduled (entity state
         // above) — then proceeds identically. CurrentUtcDateTime keeps the guard
@@ -273,7 +275,12 @@ public sealed class ConsultGenerationOrchestrator
                     node.AgentVersion,
                     // v23 #955: the resolved macro blocks for this node's prompt.
                     Before: beforeBlocks,
-                    After: afterBlocks),
+                    After: afterBlocks,
+                    // v25 (B2 #1001): the node's format identity, threaded with the pin.
+                    Format: node.Format,
+                    Producer: node.Producer,
+                    FormatHash: node.FormatHash,
+                    Op: node.Op),
                 AgentActivityRetryOptions)] = (node.Id, item?["id"]);
         }
 
