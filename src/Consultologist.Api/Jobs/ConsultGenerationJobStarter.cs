@@ -752,7 +752,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // schema runs on (GET-or-create, cached), in the starter so the side-effect stays
         // out of the orchestrator; the resolved refs are baked into the recorded input.
         var customAgents = await ProvisionCustomAgentsAsync(_customProvisioner, package, cancellationToken);
-        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, customAgents, package.SourceFiles, package.Manifest.Macros, package.Formats, package.Stamp?.Formats)).ToList();
+        var derivedEdges = DeriveEdges(package);
+        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, customAgents, package.SourceFiles, package.Manifest.Macros, package.Formats, package.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id))).ToList();
 
         // Provenance: identify the artifacts and input that produce this consult.
         // v5/v6: the hash covers the draft only (definition version 2). v7: the
@@ -1098,7 +1099,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             nodes.Where(node => gated.Contains(node.Id) && !WorkflowNodeKinds.IsCheck(node))
                 .Select(node => node.Id),
             StringComparer.Ordinal);
-        var edges = WorkflowNodeClosure.Edges(nodes);
+        // v25 (B3 #1002): a template's reads are edges too — the cascade and
+        // the prune below see them through the validator's own walk.
+        var derived = DeriveEdges(package);
+        var edges = WorkflowNodeClosure.Edges(nodes, derived);
 
         foreach (var result in package.Results ?? new List<WorkflowResolvedResult>())
         {
@@ -1164,7 +1168,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 .Where(check => !gated.Contains(check));
             var reachable = WorkflowNodeClosure.Reachable(
                 firing.Select(result => result.NodeId).Concat(checkRoots),
-                WorkflowNodeClosure.Edges(narrowed.Nodes!));
+                WorkflowNodeClosure.Edges(narrowed.Nodes!, derived));
             var live = narrowed.Nodes!
                 .Where(node => (reachable.Contains(node.Id) || WorkflowNodeKinds.IsClassifier(node)) && !gated.Contains(node.Id))
                 .ToList();
@@ -1173,6 +1177,27 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         return new FireSetDecision(narrowed, firing, skipped);
     }
+
+    /// <summary>
+    /// v25 (B3 #1002, design § 4): every snippet folder, keyed by folder id,
+    /// its items settled once by their input-only <c>when</c> — the set a fan
+    /// runs over and a template iterates. The stored package was validated at
+    /// publish, so a when parses; an unparseable one keeps the item.
+    /// </summary>
+    internal static Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>> SettledFolders(
+        WorkflowPackage package,
+        IReadOnlyDictionary<string, ConsultInputValue>? supplied) =>
+        (package.Data?.Collections ?? new Dictionary<string, WorkflowDataCollection>())
+            .ToDictionary(
+                entry => entry.Key,
+                entry => (IReadOnlyList<IReadOnlyDictionary<string, string>>)entry.Value.Items
+                    .Where(item => item.When is null
+                        || !WorkflowResultConditions.TryParseExpression(item.When, out var when, out _)
+                        || when is null
+                        || WorkflowResultConditions.Holds(when, supplied))
+                    .Select(item => (IReadOnlyDictionary<string, string>)item.Fields)
+                    .ToList(),
+                StringComparer.Ordinal);
 
     /// <summary>The block skeleton and the fans of a resolved (narrowed, pruned) package over the supplied inputs.</summary>
     internal sealed record SkeletonResolution(
@@ -1207,9 +1232,20 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             .Select(fan => $"'{inputsById[WorkflowInputFans.InputIdOf(fan.Key)].Label}'")
             .ToList();
 
+        // v25 (B3 #1002): the blocks of a snippet fan are the settled items
+        // (below), handed to the block resolver by the fan's literal forEach
+        // beside the input fans.
+        var at25 = IsAt25(package);
+        var settledFans = at25
+            ? inputFans.Concat(SettledFolders(package, supplied)
+                    .Select(folder => new KeyValuePair<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>(
+                        WorkflowFanSources.SnippetPrefix + folder.Key, folder.Value)))
+                .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal)
+            : inputFans;
+
         IReadOnlyList<IReadOnlyDictionary<string, string>> items = emptyFanLabels.Count > 0
             ? Array.Empty<IReadOnlyDictionary<string, string>>()
-            : WorkflowPackageBlocks.Resolve(package, inputFans)
+            : WorkflowPackageBlocks.Resolve(package, settledFans)
                 .Select(block => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(StringComparer.Ordinal)
                 {
                     ["id"] = block.Id,
@@ -1217,18 +1253,26 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 })
                 .ToList();
 
-        var dataSets = package.Nodes
-            .Where(node => node.ForEach != null && !WorkflowInputFans.IsInputFan(node.ForEach))
-            .Select(node => node.ForEach![WorkflowNodeBindingSources.DataPrefix.Length..])
-            .Distinct(StringComparer.Ordinal)
-            .ToDictionary(
-                collectionId => collectionId,
-                collectionId => (IReadOnlyList<IReadOnlyDictionary<string, string>>)(package.Data?.Collections.GetValueOrDefault(collectionId)
-                        ?? throw new InvalidOperationException($"Package {package.Ref} has no data collection '{collectionId}'."))
-                    .Items
-                    .Select(item => (IReadOnlyDictionary<string, string>)item.Fields)
-                    .ToList(),
-                StringComparer.Ordinal);
+        // v25 (B3 #1002, design § 4): EVERY snippet folder is snapshotted —
+        // a template iterates a folder it does not fan — and its effective
+        // size is settled here, once, from each item's input-only `when`: the
+        // fan's item count stays a start-time scalar, and the render iterates
+        // the same set the fan ran. Below 25 only the fanned data collections
+        // travel, whole.
+        var dataSets = at25
+            ? SettledFolders(package, supplied)
+            : package.Nodes
+                .Where(node => node.ForEach != null && !WorkflowInputFans.IsInputFan(node.ForEach))
+                .Select(node => node.ForEach![WorkflowNodeBindingSources.DataPrefix.Length..])
+                .Distinct(StringComparer.Ordinal)
+                .ToDictionary(
+                    collectionId => collectionId,
+                    collectionId => (IReadOnlyList<IReadOnlyDictionary<string, string>>)(package.Data?.Collections.GetValueOrDefault(collectionId)
+                            ?? throw new InvalidOperationException($"Package {package.Ref} has no data collection '{collectionId}'."))
+                        .Items
+                        .Select(item => (IReadOnlyDictionary<string, string>)item.Fields)
+                        .ToList(),
+                    StringComparer.Ordinal);
 
         var collectionSets = dataSets
             .Concat(inputFans)
@@ -2776,7 +2820,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IReadOnlyDictionary<string, string>? macroFiles = null,
         IReadOnlyList<WorkflowMacroSpec>? macros = null,
         WorkflowFormatCatalog? formats = null,
-        IReadOnlyDictionary<string, WorkflowStampedFormat>? stampedFormats = null)
+        IReadOnlyDictionary<string, WorkflowStampedFormat>? stampedFormats = null,
+        IReadOnlySet<string>? reads = null)
     {
         // v25 (B2 #1001, design § 3.7): a node that declares a format is
         // resolved from its package's own stamped formats version — the stamp
@@ -2786,7 +2831,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // the identity travels. An aggregator declares no format.
         if (node.Format is { } formatId)
         {
-            return DescribeNodeAt25(node, formatId, formats, stampedFormats, macroFiles, macros);
+            return DescribeNodeAt25(node, formatId, formats, stampedFormats, macroFiles, macros, reads);
         }
 
         // v10 (#495): a classifier's contract is implied by its kind — the one
@@ -2872,7 +2917,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         WorkflowFormatCatalog? formats,
         IReadOnlyDictionary<string, WorkflowStampedFormat>? stampedFormats,
         IReadOnlyDictionary<string, string>? macroFiles,
-        IReadOnlyList<WorkflowMacroSpec>? macros)
+        IReadOnlyList<WorkflowMacroSpec>? macros,
+        IReadOnlySet<string>? reads)
     {
         string? producer = null;
         string? formatHash = null;
@@ -2930,8 +2976,23 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             Format: formatId,
             Producer: producer,
             FormatHash: formatHash,
-            Op: op);
+            Op: op,
+            Reads: reads is { Count: > 0 } ? reads.Order(StringComparer.Ordinal).ToList() : null);
     }
+
+    /// <summary>A package at 25: one that declares formats on its nodes (an aggregator declares none, so any node suffices).</summary>
+    internal static bool IsAt25(WorkflowPackage package) => package.Nodes.Any(node => node.Format is not null);
+
+    /// <summary>
+    /// v25 (B3 #1002, design § 2): the derived edges of a 25 package, walked
+    /// at job start through the validator's own walk — the same function, so
+    /// the scheduler and the fire-set prune see the graph the validator saw.
+    /// Null below 25.
+    /// </summary>
+    internal static IReadOnlyDictionary<string, IReadOnlySet<string>>? DeriveEdges(WorkflowPackage package) =>
+        IsAt25(package) && package.SourceFiles is not null
+            ? WorkflowDerivedEdges.Derive(package.Manifest, package.SourceFiles, package.Formats)
+            : null;
 
     /// <summary>The classifier ids a library macro's text names through {{classification:…}}, or null when it names none (so a v23 payload writes the bytes it wrote).</summary>
     private static IReadOnlyList<string>? ClassifiersReadBy(

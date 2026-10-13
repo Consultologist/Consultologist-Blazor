@@ -360,8 +360,8 @@ public class DurablePayloadReplayTests
 
         Assert.Null(node.Reproducible);
         Assert.Equal(new[] { "in_scope", "out_of_scope" }, node.Values);
-        // #923 phase 2 appended AgentName/AgentVersion; #760 appended CustomSchemaHash; #955 appended Macros.
-        Assert.Equal(stored[..^1] + ",\"Reproducible\":null,\"Check\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null,\"CustomSchemaHash\":null,\"Macros\":null,\"Format\":null,\"Producer\":null,\"FormatHash\":null,\"Op\":null}", JsonSerializer.Serialize(node, Durable));
+        // #923 phase 2 appended AgentName/AgentVersion; #760 appended CustomSchemaHash; #955 appended Macros; #1001 the format identity; #1002 Reads.
+        Assert.Equal(stored[..^1] + ",\"Reproducible\":null,\"Check\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null,\"CustomSchemaHash\":null,\"Macros\":null,\"Format\":null,\"Producer\":null,\"FormatHash\":null,\"Op\":null,\"Reads\":null}", JsonSerializer.Serialize(node, Durable));
     }
 
     [Fact]

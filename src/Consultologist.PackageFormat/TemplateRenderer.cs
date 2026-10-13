@@ -20,8 +20,12 @@ public static class TemplatePipes
     public static readonly IReadOnlyList<string> All = new[] { ConceptContext, ConceptBullets };
 }
 
-/// <summary>An upstream node's output as the template reads it: its composed text, and the format type that says what <c>.value</c> parses to.</summary>
-public sealed record TemplateNodeOutput(string Text, string Type);
+/// <summary>
+/// An upstream node's output as the template reads it: its composed text, the
+/// format type that says what <c>.value</c> parses to, and the concept source
+/// the engine stamps when a pipe renders its concepts (null when none).
+/// </summary>
+public sealed record TemplateNodeOutput(string Text, string Type, string? ConceptSource = null);
 
 /// <summary>One item of a snippet folder: id, name and its template text (rendered when read).</summary>
 public sealed record TemplateFolderItem(string Id, string Name, string Text);
@@ -81,14 +85,14 @@ public static class TemplateRenderer
         string subject,
         string templateText,
         TemplateRenderScope scope,
-        IReadOnlyDictionary<string, Func<string, string>>? pipes = null)
+        IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes = null)
     {
         var globals = Globals(subject, scope, pipes);
         return RenderWith(subject, templateText, globals);
     }
 
     /// <summary>The globals a probe or a renderer pushes: the seven objects and the pipes, over this scope.</summary>
-    internal static ScriptObject Globals(string subject, TemplateRenderScope scope, IReadOnlyDictionary<string, Func<string, string>>? pipes)
+    internal static ScriptObject Globals(string subject, TemplateRenderScope scope, IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes)
     {
         var globals = new ScriptObject();
 
@@ -177,13 +181,18 @@ public static class TemplateRenderer
         foreach (var name in TemplatePipes.All)
         {
             var pipe = pipes is not null && pipes.TryGetValue(name, out var found) ? found : null;
-            globals.Import(name, (Func<object?, string>)(argument => ApplyPipe(subject, name, pipe, argument)));
+            globals.Import(name, (Func<object?, string>)(argument => ApplyPipe(subject, name, pipe, argument, scope.Nodes)));
         }
 
         return globals;
     }
 
-    private static string ApplyPipe(string subject, string name, Func<string, string>? pipe, object? argument)
+    /// <summary>
+    /// A pipe renders a node's text and nothing else (design § 1): the argument
+    /// must be the very string a <c>node.&lt;id&gt;.text</c> read produced, so
+    /// the pipe receives the node's output whole — its concept source with it.
+    /// </summary>
+    private static string ApplyPipe(string subject, string name, Func<TemplateNodeOutput, string>? pipe, object? argument, IReadOnlyDictionary<string, TemplateNodeOutput> nodes)
     {
         if (pipe is null)
         {
@@ -195,7 +204,14 @@ public static class TemplateRenderer
             throw new InvalidOperationException($"{subject} pipes a {Describe(argument)} through {name}; the pipe renders a node's text (node.<id>.text).");
         }
 
-        return pipe(text);
+        var output = nodes.Values.FirstOrDefault(node => ReferenceEquals(node.Text, text));
+
+        if (output is null)
+        {
+            throw new InvalidOperationException($"{subject} pipes text that is not a node's output through {name}; the pipe renders a node's text (node.<id>.text).");
+        }
+
+        return pipe(output);
     }
 
     private static string Describe(object? value) => value switch

@@ -184,6 +184,23 @@ public class ConsultNodeSchedulerTests
         keys.ToDictionary(k => k, _ => new NodeRunResult("x", null, "i", "o"), StringComparer.Ordinal);
 
     [Fact]
+    public void NodeDependencies_IncludeTheDerivedReads_AndTheyAlignPerItem()
+    {
+        // v25 (B3 #1002): a 25 descriptor carries no bindings; its Reads ARE
+        // its dependencies, item-aligned when the read node fans.
+        var extract = new ConsultNodeDescriptor("extract", "Extract", Format: "concept-list");
+        var perSection = new ConsultNodeDescriptor("section_notes", "Sections", ForEach: "snippet:sections", Format: "prose", Reads: new[] { "extract" });
+        var review = new ConsultNodeDescriptor("review", "Review", ForEach: "snippet:sections", Format: "prose", Reads: new[] { "extract", "section_notes" });
+        var nodesById = new[] { extract, perSection, review }.ToDictionary(n => n.Id, StringComparer.Ordinal);
+
+        Assert.Equal(new[] { "extract", "section_notes" }, ConsultNodeScheduler.NodeDependencies(review));
+        Assert.False(ConsultNodeScheduler.InstanceReady(perSection, "hpi", nodesById, Outputs()));
+        Assert.True(ConsultNodeScheduler.InstanceReady(perSection, "hpi", nodesById, Outputs("extract")));
+        Assert.False(ConsultNodeScheduler.InstanceReady(review, "hpi", nodesById, Outputs("extract", "section_notes:plan")));
+        Assert.True(ConsultNodeScheduler.InstanceReady(review, "hpi", nodesById, Outputs("extract", "section_notes:hpi")));
+    }
+
+    [Fact]
     public void InstanceKeys_ScalarById_InstancesComposite()
     {
         Assert.Equal("extract", ConsultNodeScheduler.InstanceKey("extract", null));

@@ -30,7 +30,7 @@ public class TemplateRendererTests
             Run,
             Profile);
 
-    private static string Render(string text, TemplateRenderScope scope, IReadOnlyDictionary<string, Func<string, string>>? pipes = null) =>
+    private static string Render(string text, TemplateRenderScope scope, IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes = null) =>
         TemplateRenderer.Render("Prompt 'p'", text, scope, pipes);
 
     [Fact]
@@ -153,24 +153,27 @@ public class TemplateRendererTests
     [Fact]
     public void Pipes_ApplyToText()
     {
-        var scope = Scope(nodes: new Dictionary<string, TemplateNodeOutput> { ["extract"] = new("""{"concepts":[]}""", "object") });
-        var pipes = new Dictionary<string, Func<string, string>>
+        var scope = Scope(nodes: new Dictionary<string, TemplateNodeOutput> { ["extract"] = new("""{"concepts":[]}""", "object", ConceptSource: "clinical-note") });
+        var pipes = new Dictionary<string, Func<TemplateNodeOutput, string>>
         {
-            [TemplatePipes.ConceptContext] = text => $"ctx({text})",
-            [TemplatePipes.ConceptBullets] = text => $"bul({text})",
+            [TemplatePipes.ConceptContext] = output => $"ctx({output.Text}|{output.ConceptSource})",
+            [TemplatePipes.ConceptBullets] = output => $"bul({output.Text})",
         };
 
-        Assert.Equal("""ctx({"concepts":[]}) bul({"concepts":[]})""", Render("{{ node.extract.text | concept_context }} {{ node.extract.text | concept_bullets }}", scope, pipes));
+        Assert.Equal("""ctx({"concepts":[]}|clinical-note) bul({"concepts":[]})""", Render("{{ node.extract.text | concept_context }} {{ node.extract.text | concept_bullets }}", scope, pipes));
     }
 
     [Fact]
     public void APipeOverAValue_IsRefused_AndAMissingPipeSaysSo()
     {
         var scope = Scope(nodes: new Dictionary<string, TemplateNodeOutput> { ["extract"] = new("""{"concepts":[]}""", "object") });
-        var pipes = new Dictionary<string, Func<string, string>> { [TemplatePipes.ConceptContext] = text => text };
+        var pipes = new Dictionary<string, Func<TemplateNodeOutput, string>> { [TemplatePipes.ConceptContext] = output => output.Text };
 
         var value = Assert.Throws<InvalidOperationException>(() => Render("{{ node.extract.value | concept_context }}", scope, pipes));
         Assert.Equal("Prompt 'p' pipes a object through concept_context; the pipe renders a node's text (node.<id>.text).", value.Message);
+
+        var literal = Assert.Throws<InvalidOperationException>(() => Render("{{ 'free text' | concept_context }}", scope, pipes));
+        Assert.Equal("Prompt 'p' pipes text that is not a node's output through concept_context; the pipe renders a node's text (node.<id>.text).", literal.Message);
 
         var missing = Assert.Throws<InvalidOperationException>(() => Render("{{ node.extract.text | concept_bullets }}", scope, pipes));
         Assert.Equal("Prompt 'p' pipes through concept_bullets, which this renderer does not provide.", missing.Message);

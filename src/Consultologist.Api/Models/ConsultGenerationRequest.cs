@@ -551,7 +551,15 @@ public sealed record ConsultNodeDescriptor(
     string? Format = null,
     string? Producer = null,
     string? FormatHash = null,
-    string? Op = null);
+    string? Op = null,
+    // v25 (B3 #1002, design § 2): the node ids this node's template and with
+    // read — the derived edges, closed over the snippets and macro texts the
+    // prompt reads — walked at job start through the validator's own walk
+    // (WorkflowDerivedEdges). The scheduler waits on them as it waited on
+    // bindings; the orchestrator threads exactly their outputs to the render.
+    // Sorted; null below 25 and for a node that reads nothing. Appended last,
+    // same positional-call rule.
+    IReadOnlyList<string>? Reads = null);
 
 /// <summary>
 /// v12 #624 (design § 13): a check node's snapshotted declaration — the

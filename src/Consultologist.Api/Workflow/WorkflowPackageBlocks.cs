@@ -112,21 +112,27 @@ public static class WorkflowPackageBlocks
             var source = nodesById.GetValueOrDefault(sourceId)
                 ?? throw new InvalidOperationException($"Package {package.Ref} result aggregator references unknown node '{sourceId}'.");
 
-            if (WorkflowInputFans.IsInputFan(source.ForEach))
+            if (source.ForEach != null && inputFans?.GetValueOrDefault(source.ForEach) is { } settled)
             {
                 // v9 (#426): one block per caller element, ids the engine minted.
-                // Before a job exists there is no request and so no items.
-                foreach (var item in inputFans?.GetValueOrDefault(source.ForEach!) ?? Array.Empty<IReadOnlyDictionary<string, string>>())
+                // v25 (B3 #1002): a snippet folder fan rides the same map, keyed
+                // by its literal forEach, with the items its input-only `when`s
+                // settled at job start — so the blocks are the instances.
+                foreach (var item in settled)
                 {
                     yield return new WorkflowDeliverableBlock(
                         resultId is null ? $"{sourceId}:{item["id"]}" : $"{resultId}:{sourceId}:{item["id"]}",
                         item.GetValueOrDefault("name", item["id"]),
-                        string.Empty);
+                        item.GetValueOrDefault("content", string.Empty));
                 }
+            }
+            else if (WorkflowInputFans.IsInputFan(source.ForEach))
+            {
+                // Before a job exists there is no request and so no items.
             }
             else if (source.ForEach != null)
             {
-                var collectionId = source.ForEach[WorkflowNodeBindingSources.DataPrefix.Length..];
+                var collectionId = WorkflowFanSources.CollectionIdOf(source.ForEach);
                 var collection = package.Data?.Collections.GetValueOrDefault(collectionId)
                     ?? throw new InvalidOperationException($"Package {package.Ref} has no data collection '{collectionId}'.");
 
@@ -153,7 +159,7 @@ public static class WorkflowPackageBlocks
     {
         var resultNode = package.Nodes?.FirstOrDefault(node => node.Id == package.ResultNodeId)
             ?? throw new InvalidOperationException($"Package {package.Ref} has no result node '{package.ResultNodeId}'.");
-        var collectionId = resultNode.ForEach?[WorkflowNodeBindingSources.DataPrefix.Length..]
+        var collectionId = (resultNode.ForEach is null ? null : WorkflowFanSources.CollectionIdOf(resultNode.ForEach))
             ?? throw new InvalidOperationException($"Package {package.Ref} result node '{resultNode.Id}' declares no forEach.");
 
         return package.Data?.Collections.GetValueOrDefault(collectionId)
