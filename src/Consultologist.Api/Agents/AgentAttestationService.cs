@@ -25,17 +25,20 @@ public sealed class AgentAttestationService : IHostedService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly TokenCredential _credential;
     private readonly OutputContractCatalog _catalog;
+    private readonly WorkflowFormatCatalog _formats;
     private readonly ILogger<AgentAttestationService> _logger;
 
     public AgentAttestationService(
         IHttpClientFactory httpClientFactory,
         TokenCredential credential,
         OutputContractCatalog catalog,
-        ILogger<AgentAttestationService> logger)
+        ILogger<AgentAttestationService> logger,
+        WorkflowFormatCatalog formats)
     {
         _httpClientFactory = httpClientFactory;
         _credential = credential;
         _catalog = catalog;
+        _formats = formats;
         _logger = logger;
     }
 
@@ -170,6 +173,130 @@ public sealed class AgentAttestationService : IHostedService
             mismatches.AddRange(agentMismatches.Select(m => $"{entry.AgentName}@{entry.AgentVersion}: {m}"));
         }
 
+        // v25 (B2 #1001): the formats catalogue, attested the same way — every
+        // attested format's agent and the custom producer's generic agent: the
+        // yaml at the index's version, the response format the entry's shape
+        // demands (FormatsCatalogCheck, the rule the agents repo's CI applied
+        // before publishing), and the deployed Foundry definition.
+        if (!registryBaseline)
+        {
+            try
+            {
+                mismatches.AddRange(CompareFormatsToBundled(_formats, FormatCatalogLoader.Load()));
+            }
+            catch (Exception ex)
+            {
+                mismatches.Add($"formats: bundled baseline could not be loaded ({ex.Message})");
+            }
+        }
+
+        var bindings = _formats.Formats.Values
+            .Where(f => f.Entry.AgentName is not null)
+            .Select(f => (Subject: $"format '{f.Id}'", Name: f.Entry.AgentName!, Version: f.Entry.AgentVersion!.Value, Spec: (WorkflowFormatSpec?)f.Spec))
+            .Append((Subject: "producers.custom", Name: _formats.CustomProducer.AgentName, Version: _formats.CustomProducer.AgentVersion, Spec: null));
+
+        foreach (var (subject, name, version, spec) in bindings)
+        {
+            var versionText = version.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string manifestYaml;
+
+            if (registryBaseline)
+            {
+                var fetched = await FetchRegistryManifestAsync(publicRegistryUri!, name, versionText, cancellationToken);
+
+                if (fetched == null)
+                {
+                    mismatches.Add($"{name}@{versionText}: definition not published to the public registry ({subject})");
+                    continue;
+                }
+
+                manifestYaml = fetched;
+            }
+            else
+            {
+                var manifestPath = Path.Combine(OutputContractCatalog.ResolveDirectory(), $"{name}.yaml");
+
+                if (!File.Exists(manifestPath))
+                {
+                    mismatches.Add($"{name}@{versionText}: {subject} has no git manifest at {manifestPath}");
+                    continue;
+                }
+
+                manifestYaml = await File.ReadAllTextAsync(manifestPath, cancellationToken);
+            }
+
+            var manifest = AttestedAgentManifest.Load(manifestYaml);
+            var formatMismatches = new List<string>();
+            FormatsCatalogCheck.CheckVersion(subject, manifest, version, formatMismatches);
+
+            if (spec is not null)
+            {
+                FormatsCatalogCheck.CheckResponseFormat(subject.Replace("format '", string.Empty).TrimEnd('\''), spec, manifest, formatMismatches);
+            }
+            else if (!string.Equals(manifest.Definition.Text?.Format?.Type, "text", StringComparison.Ordinal))
+            {
+                formatMismatches.Add($"{subject} agent '{name}' declares text.format.type '{manifest.Definition.Text?.Format?.Type ?? "(none)"}'; the generic structured agent answers text the engine parses and validates.");
+            }
+
+            var deployed = await FetchDeployedDefinitionAsync(endpoint, name, versionText, apiVersion, cancellationToken);
+            formatMismatches.AddRange(AttestedAgentManifest.Compare(manifest, deployed));
+
+            if (formatMismatches.Count == 0)
+            {
+                _logger.LogInformation("Agent attestation passed. Format={Subject}, Agent={AgentName}@{AgentVersion}", subject, name, versionText);
+                Console.Error.WriteLine($"[AgentAttestation] passed: {subject} -> {name}@{versionText}");
+            }
+
+            mismatches.AddRange(formatMismatches.Select(m => $"{name}@{versionText}: {m}"));
+        }
+
+        return mismatches;
+    }
+
+    /// <summary>
+    /// v25: the registry leg for the formats catalogue — the runtime catalogue
+    /// (registry@pin in Azure, the bundled file locally) must match the
+    /// bundled git catalogue version-for-version, format-for-format: the same
+    /// binding and the same file bytes (by canonical hash).
+    /// </summary>
+    internal static List<string> CompareFormatsToBundled(WorkflowFormatCatalog runtime, WorkflowFormatCatalog bundled)
+    {
+        var mismatches = new List<string>();
+
+        if (!string.Equals(runtime.ResolvedRef, bundled.ResolvedRef, StringComparison.Ordinal))
+        {
+            mismatches.Add($"formats: runtime {runtime.ResolvedRef} != bundled {bundled.ResolvedRef} (publish/pin/deploy drift)");
+        }
+
+        foreach (var key in runtime.Formats.Keys.Union(bundled.Formats.Keys, StringComparer.Ordinal).OrderBy(k => k, StringComparer.Ordinal))
+        {
+            var inRuntime = runtime.Formats.TryGetValue(key, out var runtimeFormat);
+            var inBundled = bundled.Formats.TryGetValue(key, out var bundledFormat);
+
+            if (!inRuntime || !inBundled)
+            {
+                mismatches.Add($"formats: format '{key}' is {(inRuntime ? "not in the bundled" : "not in the runtime")} catalogue");
+                continue;
+            }
+
+            if (!string.Equals(runtimeFormat!.Entry.AgentDisplay, bundledFormat!.Entry.AgentDisplay, StringComparison.Ordinal)
+                || !string.Equals(runtimeFormat.Entry.Op, bundledFormat.Entry.Op, StringComparison.Ordinal))
+            {
+                mismatches.Add($"formats: format '{key}' binds {runtimeFormat.Entry.AgentDisplay ?? runtimeFormat.Entry.Op ?? "nothing"} (runtime) != {bundledFormat.Entry.AgentDisplay ?? bundledFormat.Entry.Op ?? "nothing"} (bundled)");
+            }
+
+            if (!string.Equals(runtimeFormat.CanonicalJson, bundledFormat.CanonicalJson, StringComparison.Ordinal))
+            {
+                mismatches.Add($"formats: format '{key}' file differs between the runtime and bundled catalogues");
+            }
+        }
+
+        if (!string.Equals(runtime.CustomProducer.AgentDisplay, bundled.CustomProducer.AgentDisplay, StringComparison.Ordinal)
+            || !string.Equals(runtime.CustomProducer.Trailer, bundled.CustomProducer.Trailer, StringComparison.Ordinal))
+        {
+            mismatches.Add($"formats: producers.custom {runtime.CustomProducer.AgentDisplay} (runtime) != {bundled.CustomProducer.AgentDisplay} (bundled), or the trailer differs");
+        }
+
         return mismatches;
     }
 
@@ -251,12 +378,19 @@ public sealed class AgentAttestationService : IHostedService
     }
 
     /// <summary>The registry's published (redacted) definition, or null when unpublished.</summary>
-    private async Task<string?> FetchRegistryManifestAsync(
+    private Task<string?> FetchRegistryManifestAsync(
         string publicRegistryUri,
         OutputContractEntry entry,
+        CancellationToken cancellationToken) =>
+        FetchRegistryManifestAsync(publicRegistryUri, entry.AgentName, entry.AgentVersion, cancellationToken);
+
+    private async Task<string?> FetchRegistryManifestAsync(
+        string publicRegistryUri,
+        string agentName,
+        string agentVersion,
         CancellationToken cancellationToken)
     {
-        var url = $"{publicRegistryUri.TrimEnd('/')}/agent-definitions/{Uri.EscapeDataString(entry.AgentName)}/{Uri.EscapeDataString(entry.AgentVersion)}/definition.yaml";
+        var url = $"{publicRegistryUri.TrimEnd('/')}/agent-definitions/{Uri.EscapeDataString(agentName)}/{Uri.EscapeDataString(agentVersion)}/definition.yaml";
 
         var client = _httpClientFactory.CreateClient();
         client.Timeout = TimeSpan.FromSeconds(15);
