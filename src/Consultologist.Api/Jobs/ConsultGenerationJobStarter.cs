@@ -166,7 +166,6 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly IWorkflowPackagePinResolver _pinResolver;
     private readonly OutputContractCatalog _catalog;
     private readonly WorkflowFormatCatalog _formats;
-    private readonly ICustomAgentProvisioner _customProvisioner;
     private readonly EngineAttestationResponse _engine;
     private readonly ITerminologyAttestationSource _terminology;
     private readonly IAccountRateLimiter _rateLimiter;
@@ -185,7 +184,6 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IWorkflowPackageStore packageStore,
         IWorkflowPackagePinResolver pinResolver,
         OutputContractCatalog catalog,
-        ICustomAgentProvisioner customProvisioner,
         IAccountRateLimiter rateLimiter,
         IWorkflowPackageOwnership ownership,
         EngineAttestationResponse engine,
@@ -205,7 +203,6 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         _pinResolver = pinResolver;
         _catalog = catalog;
         _formats = formats;
-        _customProvisioner = customProvisioner;
         _engine = engine;
         _terminology = terminology;
         _rateLimiter = rateLimiter;
@@ -748,12 +745,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 .Where(node => node.ForEach != null)
                 .Select(node => new ConsultItemStepDescriptor(node.Id, node.Label))
                 .ToList();
-        // #760 (custom tier): provision the content-addressed no-tool agent each custom
-        // schema runs on (GET-or-create, cached), in the starter so the side-effect stays
-        // out of the orchestrator; the resolved refs are baked into the recorded input.
-        var customAgents = await ProvisionCustomAgentsAsync(_customProvisioner, package, cancellationToken);
         var derivedEdges = DeriveEdges(package);
-        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, customAgents, package.SourceFiles, package.Manifest.Macros, package.Formats, package.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id), inputs.Effective, package.Manifest)).ToList();
+        // v25 (B4 #1003): the formats catalogue a node resolves against - the
+        // package's own stamped version at 25, else the engine's pin, whose
+        // generic custom agent a 22-24 custom-schema node now runs on.
+        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, package.SourceFiles, package.Manifest.Macros, package.Formats ?? _formats, package.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id), inputs.Effective, package.Manifest)).ToList();
 
         // Provenance: identify the artifacts and input that produce this consult.
         // v5/v6: the hash covers the draft only (definition version 2). v7: the
@@ -2761,62 +2757,36 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         return null;
     }
 
-    // #760 (custom tier): the content-addressed agent + schema hash a custom node runs,
-    // resolved at job-start and threaded to the executor (keyed by schema id, since
-    // several custom schemas share the 'custom' contract id but have different agents).
-    internal sealed record CustomAgentPin(string AgentName, string AgentVersion, string SchemaHash);
-
     /// <summary>
-    /// #760: for each custom schema the package declares, GET-or-create its content-
-    /// addressed no-tool agent and record (agent, schema hash) keyed by schema id. Null
-    /// when the package declares none, so no Foundry call happens for the common case.
+    /// v25 (B4 #1003; #760 retired): the hash of a 22-24 custom schema, as the
+    /// record stamps it - the schema file parsed and re-serialised (formatting
+    /// normalised, no key removed: a custom schema may use "title" or
+    /// "description" as real property names, which CanonicalizeSchema would
+    /// strip), then SHA-256. Null when the node or package does not carry one.
     /// </summary>
-    internal static async Task<IReadOnlyDictionary<string, CustomAgentPin>?> ProvisionCustomAgentsAsync(
-        ICustomAgentProvisioner customProvisioner, WorkflowPackage package, CancellationToken cancellationToken)
+    internal static string? CustomSchemaHashOf(WorkflowNodeSpec node, WorkflowPackageManifest? manifest, IReadOnlyDictionary<string, string>? files)
     {
-        if (package.Manifest.CustomSchemas is not { Count: > 0 } customSchemas)
+        if (node.Output?.Schema is not { } schemaId
+            || manifest?.CustomSchemas?.GetValueOrDefault(schemaId) is not { } file
+            || files?.GetValueOrDefault(file) is not { } body)
         {
             return null;
         }
 
-        var model = Environment.GetEnvironmentVariable("CustomAgents__Model");
-        if (string.IsNullOrWhiteSpace(model))
+        try
         {
-            throw new InvalidOperationException(
-                $"Package '{package.Ref}' declares custom output schemas but CustomAgents__Model is not configured.");
+            return ConsultGenerationProvenance.Sha256Hex(System.Text.Json.Nodes.JsonNode.Parse(body)!.ToJsonString());
         }
-
-        var pins = new Dictionary<string, CustomAgentPin>(StringComparer.Ordinal);
-        foreach (var (schemaId, file) in customSchemas)
+        catch (System.Text.Json.JsonException)
         {
-            if (package.SourceFiles is null || !package.SourceFiles.TryGetValue(file, out var body))
-            {
-                throw new InvalidOperationException(
-                    $"Custom schema '{schemaId}' file '{file}' is missing from package '{package.Ref}'.");
-            }
-
-            // #760: embed the user's ORIGINAL schema in the agent — NOT
-            // WorkflowPackageValidator.CanonicalizeSchema, which strips every key
-            // named "title"/"description" (JSON Schema annotations in the catalog-
-            // match context). A custom schema may use those as real property names;
-            // stripping them corrupts the shape (a 'required' key with no matching
-            // property), which the strict json_schema model then rejects. Normalise
-            // only the formatting (a parse + reserialize, no key removal) so the
-            // content-addressed hash is whitespace-stable.
-            var schemaJson = System.Text.Json.Nodes.JsonNode.Parse(body)!.ToJsonString();
-            var agent = await customProvisioner.GetOrCreateAsync(schemaJson, model, cancellationToken);
-            pins[schemaId] = new CustomAgentPin(
-                agent.AgentName, agent.AgentVersion, ConsultGenerationProvenance.Sha256Hex(schemaJson));
+            return null;
         }
-
-        return pins;
     }
 
     internal static ConsultNodeDescriptor DescribeNode(
         WorkflowNodeSpec node,
         IReadOnlyDictionary<string, string>? schemaContracts,
         IReadOnlyDictionary<string, OutputContractEntry>? contractAgents = null,
-        IReadOnlyDictionary<string, CustomAgentPin>? customAgents = null,
         IReadOnlyDictionary<string, string>? macroFiles = null,
         IReadOnlyList<WorkflowMacroSpec>? macros = null,
         WorkflowFormatCatalog? formats = null,
@@ -2846,23 +2816,26 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     ?? throw new InvalidOperationException(
                         $"Node '{node.Id}' declares schema '{node.Output.Schema}' with no resolved output contract.");
 
-        // #923 phase 2 / #760: resolve the node's agent pin at job-start and thread it to
-        // the activity. A template runs no agent. A CUSTOM node runs its content-addressed
-        // agent (provisioned above, keyed by schema id) — custom has no catalog entry.
-        // Every other model node uses its contract's catalog agent (the text default when
-        // it declares none).
+        // #923 phase 2: resolve the node's agent pin at job-start and thread it to
+        // the activity. A template runs no agent. v25 (B4 #1003, #760 retired): a
+        // CUSTOM node runs the formats catalogue's generic agent - its schema goes
+        // into the prompt and the engine validates the reply - and records its
+        // schema's hash. Every other model node uses its contract's catalog agent
+        // (the text default when it declares none).
         string? agentName = null;
         string? agentVersion = null;
         string? customSchemaHash = null;
         if (node.Prompt is not null && !WorkflowNodeKinds.IsTemplate(node))
         {
-            if (string.Equals(outputContract, OutputContracts.Custom, StringComparison.Ordinal)
-                && node.Output is not null
-                && customAgents?.GetValueOrDefault(node.Output.Schema) is { } customPin)
+            if (string.Equals(outputContract, OutputContracts.Custom, StringComparison.Ordinal))
             {
-                agentName = customPin.AgentName;
-                agentVersion = customPin.AgentVersion;
-                customSchemaHash = customPin.SchemaHash;
+                if (formats is not null)
+                {
+                    agentName = formats.CustomProducer.AgentName;
+                    agentVersion = formats.CustomProducer.AgentVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                }
+
+                customSchemaHash = CustomSchemaHashOf(node, manifest, macroFiles);
             }
             else if (contractAgents?.GetValueOrDefault(outputContract ?? OutputContracts.Text) is { } entry)
             {

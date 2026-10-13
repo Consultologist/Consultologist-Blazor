@@ -25,8 +25,9 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     // v18 (#822): a node's own when — condition-gated node inclusion, cascade.
     // v20 (#863): inline macro slots — a section may emit [[slot:id]], filled at assembly.
     // v21 (#923): schemaRefs — an output schema may reference a catalog contract by name.
-    // v22 (#760): customSchemas — an inline user-defined output shape, run by a
-    // content-addressed generic no-tool agent (unattested).
+    // v22 (#760): customSchemas — an inline user-defined output shape; since B4
+    // (#1003) run by the formats catalogue's generic custom agent with the
+    // schema in the prompt, the reply validated by the engine (unattested).
     // v23 (#955): node macros — a library macro composed into a node's prompt,
     // before/after, gated by the node-level when; a classifier-gated one waits
     // for its classifier (scheduling dependency).

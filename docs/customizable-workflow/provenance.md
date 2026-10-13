@@ -332,7 +332,9 @@ system with no dependency on this application or its Azure tenant.
 > - **Custom nodes carry an unattested marker.** A node whose output is a *custom* shape
 >   (`customSchemas`, package-format v22) resolves to the reserved `custom` contract, runs
 >   on a content-addressed, engine-provisioned agent (`custom-{hash(schema + model)}`,
->   not a catalog contract), and the record stamps, per node, **`unattested: true`** with
+>   not a catalog contract) — since #1003 (v25 B4, 2026-10-13) on the formats
+>   catalogue's generic `custom-json` agent with the schema in the prompt and the reply
+>   engine-validated — and the record stamps, per node, **`unattested: true`** with
 >   the **custom schema hash** and that agent's name+version. This is the deliberate gap
 >   in the attestation chain: the shape is user-defined and the agent is not
 >   git-attested/CI-published, so the record says so rather than implying a catalog

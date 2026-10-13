@@ -56,7 +56,6 @@ public class ConsultGenerationJobStarterTests
             _packageStore,
             _pinResolver,
             TestCatalog.Instance,
-            Substitute.For<ICustomAgentProvisioner>(),
             _rateLimiter,
             _ownership,
             // #398: the build's attestation — the vendored indexes the test output carries.
