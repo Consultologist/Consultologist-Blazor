@@ -541,7 +541,17 @@ public sealed record ConsultNodeDescriptor(
     // classifier a scheduling dependency too (ConsultNodeScheduler.NodeDependencies),
     // so the node waits for its answer before the when is judged. Appended last,
     // same positional-call rule.
-    IReadOnlyList<ConsultNodeMacroDescriptor>? Macros = null);
+    IReadOnlyList<ConsultNodeMacroDescriptor>? Macros = null,
+    // v25 (B2 #1001, design § 3.7): the node's format — its id, its producer
+    // (attested | custom | rendered | computed), the hash of the format file's
+    // canonical JSON, and the engine operation when computed — resolved at
+    // job-start from the package's OWN stamped formats catalogue version and
+    // threaded here with the agent pin above. Null below 25. Appended last,
+    // same positional-call rule.
+    string? Format = null,
+    string? Producer = null,
+    string? FormatHash = null,
+    string? Op = null);
 
 /// <summary>
 /// v12 #624 (design § 13): a check node's snapshotted declaration — the

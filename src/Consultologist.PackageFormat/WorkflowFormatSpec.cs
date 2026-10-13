@@ -211,6 +211,15 @@ public static class WorkflowFormatSpecJson
     public static string CanonicalJson(WorkflowFormatSpec spec) =>
         CanonicalJson(ToJson(spec));
 
+    /// <summary>
+    /// The SHA-256 of a canonical JSON string, lowercase hex — the
+    /// <c>formatHash</c> a stamp and a record carry (§ 3.7). Hash the
+    /// canonical form, never the file's bytes: whitespace and key order are
+    /// not the shape.
+    /// </summary>
+    public static string Sha256Hex(string canonicalJson) =>
+        Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(canonicalJson)));
+
     private static string Canonical(JsonNode? node)
     {
         if (node is JsonObject obj)

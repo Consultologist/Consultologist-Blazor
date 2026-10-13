@@ -86,6 +86,25 @@ builder.Services.AddSingleton(_ =>
 // catalog they were published under rather than the global pin. The singleton
 // above stays the engine default.
 builder.Services.AddSingleton<CatalogResolver>();
+// v25 (B2 #1001): the formats catalogue — the same shape of plumbing as the
+// output contracts: content loaded from the public registry at Formats__Pin
+// (default formats@latest), the bundled agents/ directory locally, both fail
+// loud; a per-ref resolver for stamped packages beside the global singleton.
+builder.Services.AddSingleton(_ =>
+{
+    var publicUri = Environment.GetEnvironmentVariable("WorkflowPackages__PublicBlobServiceUri");
+    if (string.IsNullOrWhiteSpace(publicUri))
+    {
+        publicUri = StorageAccounts.DerivedUriFromEnvironment(StorageAccounts.PublicRole, "blob");
+    }
+
+    var pin = Environment.GetEnvironmentVariable(FormatCatalogLoader.PinSetting) ?? FormatCatalogLoader.DefaultPin;
+
+    return string.IsNullOrWhiteSpace(publicUri)
+        ? FormatCatalogLoader.Load()
+        : FormatCatalogLoader.LoadFromRegistryAsync(new Uri(publicUri), pin).GetAwaiter().GetResult();
+});
+builder.Services.AddSingleton<FormatCatalogResolver>();
 // #760 (custom tier): provisions the content-addressed no-tool agent a custom schema
 // runs on (lazily created, cached forever). Inert until a package declares a custom
 // schema AND runs — and until the engine identity holds Foundry agent-CREATE RBAC.

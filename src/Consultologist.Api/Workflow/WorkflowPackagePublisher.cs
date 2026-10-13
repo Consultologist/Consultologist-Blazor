@@ -46,6 +46,7 @@ public sealed class WorkflowPackagePublisher
     private readonly IAccountSettingsStore _settingsStore;
     private readonly IWorkflowPackageOwnership _ownership;
     private readonly OutputContractCatalog _catalog;
+    private readonly WorkflowFormatCatalog _formats;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<WorkflowPackagePublisher> _logger;
 
@@ -56,12 +57,14 @@ public sealed class WorkflowPackagePublisher
         OutputContractCatalog catalog,
         TimeProvider timeProvider,
         ILogger<WorkflowPackagePublisher> logger,
-        IWorkflowPackageOwnership ownership)
+        IWorkflowPackageOwnership ownership,
+        WorkflowFormatCatalog formats)
     {
         _packageStore = packageStore;
         _writer = writer;
         _settingsStore = settingsStore;
         _catalog = catalog;
+        _formats = formats;
         _timeProvider = timeProvider;
         _logger = logger;
         _ownership = ownership;
@@ -189,7 +192,9 @@ public sealed class WorkflowPackagePublisher
             .Where(entry => entry.SchemaJson != null)
             .ToDictionary(entry => entry.ContractId, entry => entry.SchemaJson!, StringComparer.Ordinal);
 
-        var validation = WorkflowPackageValidator.Validate(stamped, files, catalogSchemas);
+        // v25 (B2 #1001): the formats catalogue the engine loaded, for a package
+        // at 25; the validator ignores it below.
+        var validation = WorkflowPackageValidator.Validate(stamped, files, catalogSchemas, formats: _formats);
 
         if (!validation.IsValid)
         {
@@ -209,7 +214,7 @@ public sealed class WorkflowPackagePublisher
         // validator closed; a declared schema matching nothing is refused at
         // this desk rather than published to strand at load.
         var stampErrors = new List<string>();
-        var stamp = WorkflowPackageStamp.Compute(stamped, files, _catalog, stampErrors);
+        var stamp = WorkflowPackageStamp.Compute(stamped, files, _catalog, _formats, stampErrors);
 
         if (stampErrors.Count > 0)
         {
@@ -321,7 +326,7 @@ public sealed class WorkflowPackagePublisher
             return Array.Empty<string>();
         }
 
-        var now = WorkflowDataResolver.Resolve(stamped, files, new List<string>());
+        var now = WorkflowDataResolver.ResolveContent(stamped, files, new List<string>());
 
         var relabelled = now.Scalars
             .Where(pair => was.Scalars.TryGetValue(pair.Key, out var before)

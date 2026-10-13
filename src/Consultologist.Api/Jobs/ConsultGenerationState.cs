@@ -997,7 +997,11 @@ public sealed record ConsultGenerationOrchestrationInput(
     // The terminology server's release tag, beside TerminologyServerRef — the
     // release its commit shipped under, as Public/Terminology attests. Null
     // when the server carried no tag. Appended last, same rule.
-    string? TerminologyServerRelease = null);
+    string? TerminologyServerRelease = null,
+    // v25 (B2 #1001): the formats catalogue ref the package resolved against —
+    // its stamp's at 25, else the global pin — carried for B7 to record. Null
+    // below 25 on a job started before this field. Appended last, same rule.
+    string? FormatsRef = null);
 
 /// <summary>
 /// v11 #516: the chosen signature as it was at job start — the block's id,
@@ -1085,7 +1089,10 @@ public sealed record ConsultGenerationJobInitialize(
     IReadOnlyDictionary<string, string>? ResolvedInputTypes = null,
     // #802: the required ids overridden by the submitter's short-input
     // acknowledgement. Null when none. Appended last, same positional rule.
-    IReadOnlyList<string>? AcknowledgedShortInputs = null);
+    IReadOnlyList<string>? AcknowledgedShortInputs = null,
+    // v25 (B2 #1001): the formats catalogue ref (see ConsultGenerationOrchestrationInput).
+    // Not yet written into the record — B7's provenance bump records it. Appended last.
+    string? FormatsRef = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,

@@ -26,6 +26,19 @@ public static class WorkflowDataResolver
         Resolve(manifest.Data, "Data", files, errors);
 
     /// <summary>
+    /// v25 (B2 #1001): the package's text content whichever key carries it —
+    /// <c>data</c> below 25, <c>snippets</c> at 25 (the same table shape, so
+    /// the same resolution; the noun follows the key).
+    /// </summary>
+    public static WorkflowPackageData ResolveContent(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> files,
+        List<string> errors) =>
+        manifest.Data is not null || manifest.Snippets is null
+            ? Resolve(manifest.Data, "Data", files, errors)
+            : Resolve(manifest.Snippets, "Snippet", files, errors);
+
+    /// <summary>
     /// v25 (#999): the same resolution over <c>manifest.snippets</c> — the
     /// table is the same shape (id → file, or folder → "dir/" with an
     /// index.json), the noun in every sentence is "Snippet", and a folder

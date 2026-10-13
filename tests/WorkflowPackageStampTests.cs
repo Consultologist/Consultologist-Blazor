@@ -223,4 +223,137 @@ public class WorkflowPackageStampTests
             WorkflowPackageValidator.Validate(manifest, drifted, TestOutputContracts.CatalogSchemas,
                 new Dictionary<string, string> { ["other"] = "concept-list" }).Errors);
     }
+
+    // ----- v25 (B2 #1001): the formats members --------------------------------------
+
+    [Fact]
+    public void A25Package_StampsTheFormatsCatalogue_AndEveryFormatItNames()
+    {
+        var (manifest, files) = V25Package.Minimal();
+        var formats = V25Package.Catalog();
+        var errors = new List<string>();
+
+        var stamp = WorkflowPackageStamp.Compute(manifest, files, Catalog, formats, errors);
+
+        Assert.Empty(errors);
+        Assert.Equal(Catalog.ResolvedRef, stamp.CatalogRef);
+        Assert.Empty(stamp.Contracts);
+        Assert.Equal("formats@v2026.11.1", stamp.FormatsRef);
+        Assert.Equal(new[] { "classification", "concept-list", "prose", "terms-subset" }, stamp.Formats!.Keys.Order());
+
+        var prose = stamp.Formats["prose"];
+        Assert.Equal("attested", prose.Producer);
+        Assert.Equal("consult-prose", prose.AgentName); // the fixture catalogue (the design's example)
+        Assert.Equal(3, prose.AgentVersion);
+        Assert.Null(prose.Op);
+        Assert.Equal(WorkflowFormatSpecJson.Sha256Hex(formats.Formats["prose"].CanonicalJson), prose.FormatHash);
+        Assert.Equal(64, prose.FormatHash.Length);
+
+        var check = stamp.Formats["terms-subset"];
+        Assert.Equal("computed", check.Producer);
+        Assert.Equal("terms-subset", check.Op);
+        Assert.Null(check.AgentName);
+
+        // concept-list rides in through terms-subset's parameters, not a node.
+        Assert.DoesNotContain(manifest.Nodes!, n => n.Format == "concept-list" && n.Id == "coverage");
+        Assert.Equal("concept-extraction", stamp.Formats["concept-list"].AgentName);
+    }
+
+    [Fact]
+    public void A25Package_StampsALocalFormat_AsCustom_WithTheGenericAgent()
+    {
+        var (manifest, files) = V25Package.Minimal();
+        manifest = manifest with
+        {
+            Formats = new List<WorkflowFormatReference> { new("medication_list", "formats/medication_list.json") },
+            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("meds", "Meds", Prompt: "extract", Format: "medication_list", OnInvalid: "fail")).ToList(),
+        };
+        files["formats/medication_list.json"] = FormatFixtures.LocalCustom;
+        var errors = new List<string>();
+
+        var stamp = WorkflowPackageStamp.Compute(manifest, files, Catalog, V25Package.Catalog(), errors);
+
+        Assert.Empty(errors);
+        var meds = stamp.Formats!["medication_list"];
+        Assert.Equal("custom", meds.Producer);
+        Assert.Equal("custom-json", meds.AgentName);
+        Assert.Equal(1, meds.AgentVersion);
+        Assert.Equal(WorkflowFormatSpecJson.Sha256Hex(WorkflowFormatSpecJson.CanonicalJson(FormatFixtures.LocalCustom)), meds.FormatHash);
+    }
+
+    [Fact]
+    public void A25Package_WithoutACatalogue_CannotBeStamped()
+    {
+        var (manifest, files) = V25Package.Minimal();
+        var errors = new List<string>();
+
+        WorkflowPackageStamp.Compute(manifest, files, Catalog, null, errors);
+
+        Assert.Equal(new[] { "The format catalogue is not available on this engine; a specVersion 25 package cannot be stamped." }, errors);
+    }
+
+    [Fact]
+    public void A24Stamp_IsByteIdentical_WithOrWithoutTheCatalogue()
+    {
+        var (manifest, files) = V24Fixtures.Base();
+        var errors = new List<string>();
+
+        var without = WorkflowPackageStamp.Compute(manifest, files, Catalog, errors).ToJson();
+        var with = WorkflowPackageStamp.Compute(manifest, files, Catalog, V25Package.Catalog(), errors).ToJson();
+
+        Assert.Empty(errors);
+        Assert.Equal(without, with);
+        Assert.DoesNotContain("formats", with);
+    }
+
+    [Fact]
+    public void A25Stamp_ToJson_IsTheDocumentedBytes_AndRoundTrips()
+    {
+        var stamp = new WorkflowPackageStamp(
+            "output-contracts@v2026.07.2",
+            new Dictionary<string, string>(),
+            "formats@v2026.10.1",
+            new Dictionary<string, WorkflowStampedFormat>
+            {
+                ["terms-subset"] = new(new string('b', 64), "computed", Op: "terms-subset"),
+                ["prose"] = new(new string('a', 64), "attested", "test-json", 48),
+            });
+
+        var json = stamp.ToJson();
+
+        Assert.Equal(
+            "{\n  \"catalogRef\": \"output-contracts@v2026.07.2\",\n  \"contracts\": {},\n  \"formatsRef\": \"formats@v2026.10.1\",\n  \"formats\": {\n    \"prose\": {\n      \"formatHash\": \"" + new string('a', 64) + "\",\n      \"producer\": \"attested\",\n      \"agentName\": \"test-json\",\n      \"agentVersion\": 48\n    },\n    \"terms-subset\": {\n      \"formatHash\": \"" + new string('b', 64) + "\",\n      \"producer\": \"computed\",\n      \"op\": \"terms-subset\"\n    }\n  }\n}\n",
+            json);
+
+        var read = WorkflowPackageStamp.Read(json, "general@v2026.11.1");
+        Assert.Equal("formats@v2026.10.1", read.FormatsRef);
+        Assert.Equal(48, read.Formats!["prose"].AgentVersion);
+        Assert.Equal(json, read.ToJson());
+    }
+
+    [Theory]
+    [InlineData("""{ "catalogRef": "output-contracts@v2026.07.2", "contracts": {}, "formatsRef": "formats@latest", "formats": {} }""",
+        "Workflow package general@v2026.11.1 publish.json must declare formatsRef as formats@vYYYY.MM.N.")]
+    [InlineData("""{ "catalogRef": "output-contracts@v2026.07.2", "contracts": {}, "formatsRef": "output-contracts@v2026.10.1", "formats": {} }""",
+        "Workflow package general@v2026.11.1 publish.json must declare formatsRef as formats@vYYYY.MM.N.")]
+    [InlineData("""{ "catalogRef": "output-contracts@v2026.07.2", "contracts": {}, "formatsRef": "formats@v2026.10.1" }""",
+        "Workflow package general@v2026.11.1 publish.json must declare formatsRef and formats together (a specVersion 25 publish writes both).")]
+    [InlineData("""{ "catalogRef": "output-contracts@v2026.07.2", "contracts": {}, "formats": {} }""",
+        "Workflow package general@v2026.11.1 publish.json must declare formatsRef and formats together (a specVersion 25 publish writes both).")]
+    [InlineData("""{ "catalogRef": "output-contracts@v2026.07.2", "contracts": {}, "formatsRef": "formats@v2026.10.1", "formats": { "prose": { "formatHash": "abc", "producer": "attested", "agentName": "a", "agentVersion": 1 } } }""",
+        "Workflow package general@v2026.11.1 publish.json format 'prose' must carry a formatHash (64 hex characters).")]
+    [InlineData("""{ "catalogRef": "output-contracts@v2026.07.2", "contracts": {}, "formatsRef": "formats@v2026.10.1", "formats": { "prose": { "formatHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "producer": "magic" } } }""",
+        "Workflow package general@v2026.11.1 publish.json format 'prose' producer 'magic' is not one of attested, custom, rendered, computed.")]
+    [InlineData("""{ "catalogRef": "output-contracts@v2026.07.2", "contracts": {}, "formatsRef": "formats@v2026.10.1", "formats": { "prose": { "formatHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "producer": "attested", "agentName": "a" } } }""",
+        "Workflow package general@v2026.11.1 publish.json format 'prose' must carry agentName and agentVersion together.")]
+    [InlineData("""{ "catalogRef": "output-contracts@v2026.07.2", "contracts": {}, "formatsRef": "formats@v2026.10.1", "formats": { "prose": { "formatHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "producer": "attested", "agentName": "a", "agentVersion": 1, "op": "x" } } }""",
+        "Workflow package general@v2026.11.1 publish.json format 'prose' names both an agent and an op.")]
+    [InlineData("""{ "catalogRef": "output-contracts@v2026.07.2", "contracts": {}, "formatsRef": "formats@v2026.10.1", "formats": { "prose": { "formatHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "producer": "attested", "agentName": "a", "agentVersion": "1" } } }""",
+        "Workflow package general@v2026.11.1 publish.json property '$.formats.prose.agentVersion' is not part of the publication stamp.")]
+    public void Read_RefusesTheFormatsMembers_ByName(string json, string expected)
+    {
+        var exception = Assert.Throws<WorkflowPackageContentException>(() => WorkflowPackageStamp.Read(json, "general@v2026.11.1"));
+
+        Assert.Equal(expected, exception.Message);
+    }
 }

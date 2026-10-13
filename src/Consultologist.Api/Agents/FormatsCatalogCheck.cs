@@ -120,7 +120,7 @@ public static class FormatsCatalogCheck
         }
     }
 
-    private static void CheckVersion(string subject, AttestedAgentManifest manifest, int expected, List<string> errors)
+    internal static void CheckVersion(string subject, AttestedAgentManifest manifest, int expected, List<string> errors)
     {
         if (!int.TryParse(manifest.Version, out var declared) || declared != expected)
         {
@@ -133,7 +133,7 @@ public static class FormatsCatalogCheck
     /// the format's schema, strictly, as its json_schema response format; an
     /// enum format's agent declares the one-value answer object.
     /// </summary>
-    private static void CheckResponseFormat(string id, WorkflowFormatSpec spec, AttestedAgentManifest manifest, List<string> errors)
+    internal static void CheckResponseFormat(string id, WorkflowFormatSpec spec, AttestedAgentManifest manifest, List<string> errors)
     {
         var format = manifest.Definition.Text?.Format;
         var type = format?.Type ?? "(none)";

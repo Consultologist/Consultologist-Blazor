@@ -43,6 +43,8 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     private readonly WorkflowPackageBlobContainerFactory _containers;
     private readonly OutputContractCatalog _catalog;
     private readonly CatalogResolver _catalogResolver;
+    private readonly WorkflowFormatCatalog _formats;
+    private readonly FormatCatalogResolver _formatsResolver;
     private readonly ILogger<WorkflowPackageStore> _logger;
 
     // Published package versions are immutable, so resolved packages cache forever;
@@ -54,10 +56,14 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         WorkflowPackageBlobContainerFactory containerFactory,
         OutputContractCatalog catalog,
         CatalogResolver catalogResolver,
-        ILogger<WorkflowPackageStore> logger)
+        ILogger<WorkflowPackageStore> logger,
+        WorkflowFormatCatalog formats,
+        FormatCatalogResolver formatsResolver)
     {
         _catalog = catalog;
         _catalogResolver = catalogResolver;
+        _formats = formats;
+        _formatsResolver = formatsResolver;
         _logger = logger;
         _containers = containerFactory;
     }
@@ -91,7 +97,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
             : results.Count == 1 ? results[0].NodeId : null;
         var schemaContracts = loaded.SchemaContracts;
 
-        var package = new WorkflowPackage(manifest, prompts, nodes, schemaContracts, loaded.Data, resultNodeId, loaded.Files, results, loaded.Stamp, loaded.ContractAgents, loaded.CatalogRef);
+        var package = new WorkflowPackage(manifest, prompts, nodes, schemaContracts, loaded.Data, resultNodeId, loaded.Files, results, loaded.Stamp, loaded.ContractAgents, loaded.CatalogRef, loaded.Formats, loaded.FormatsRef);
 
         _packageCache.TryAdd(cacheKey, package);
         _logger.LogInformation("Workflow package resolved. Package={Package}, SpecVersion={SpecVersion}, Prompts={PromptCount}", cacheKey, manifest.SpecVersion, prompts?.Count ?? 0);
@@ -153,7 +159,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     /// reports them coherently); everything else fails loud on 404. Validation
     /// failures throw — the engine's fail-loud enforcement point.
     /// </summary>
-    private async Task<(Dictionary<string, WorkflowPromptTemplate> Prompts, Dictionary<string, string> SchemaContracts, WorkflowPackageData? Data, Dictionary<string, string> Files, WorkflowPackageStamp? Stamp, IReadOnlyDictionary<string, OutputContractEntry> ContractAgents, string CatalogRef)> LoadPromptsAsync(
+    private async Task<(Dictionary<string, WorkflowPromptTemplate> Prompts, Dictionary<string, string> SchemaContracts, WorkflowPackageData? Data, Dictionary<string, string> Files, WorkflowPackageStamp? Stamp, IReadOnlyDictionary<string, OutputContractEntry> ContractAgents, string CatalogRef, WorkflowFormatCatalog Formats, string FormatsRef)> LoadPromptsAsync(
         string name,
         string version,
         WorkflowPackageManifest manifest,
@@ -172,6 +178,10 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
             // v11 #513: macro templates are package files like prompts — they
             // must be in SourceFiles for the starter to snapshot.
             .Concat((manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.File))
+            // v25 (B2 #1001): a package-local format file is a package file like
+            // a custom schema — the load-time validator reads it, the starter
+            // snapshots it.
+            .Concat((manifest.Formats ?? new List<WorkflowFormatReference>()).Select(f => f.File))
             .Distinct(StringComparer.Ordinal);
 
         foreach (var path in paths)
@@ -179,7 +189,9 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
             files[path] = await DownloadTextAsync(name, $"{name}/{version}/{path}", cancellationToken);
         }
 
-        await GatherDataFilesAsync(name, version, manifest, files, cancellationToken);
+        await GatherDataFilesAsync(name, version, manifest.Data, files, cancellationToken);
+        // v25 (B2 #1001): snippets are the same table shape as data.
+        await GatherDataFilesAsync(name, version, manifest.Snippets, files, cancellationToken);
 
         // #433: the publication stamp, when the version has one — every version
         // published before it has none, and those keep re-matching as they
@@ -197,11 +209,17 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
             ? _catalog
             : await _catalogResolver.GetAsync(stamp.CatalogRef, cancellationToken);
 
+        // v25 (B2 #1001): the formats catalogue likewise — the stamped version
+        // when the stamp names one (a 25 publish), else the global pin.
+        var formats = stamp?.FormatsRef is { } formatsRef
+            ? await _formatsResolver.GetAsync(formatsRef, cancellationToken)
+            : _formats;
+
         var catalogSchemas = catalog.Entries.Values
             .Where(entry => entry.SchemaJson != null)
             .ToDictionary(entry => entry.ContractId, entry => entry.SchemaJson!, StringComparer.Ordinal);
 
-        var result = WorkflowPackageValidator.Validate(manifest, files, catalogSchemas, stamp?.Contracts);
+        var result = WorkflowPackageValidator.Validate(manifest, files, catalogSchemas, stamp?.Contracts, formats);
 
         foreach (var warning in result.Warnings)
         {
@@ -237,9 +255,9 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
 
         // Post-validation resolve: the validator has already guaranteed integrity,
         // so this collects no errors.
-        var data = WorkflowDataResolver.Resolve(manifest, files, new List<string>());
+        var data = WorkflowDataResolver.ResolveContent(manifest, files, new List<string>());
 
-        return (prompts, schemaContracts, data, files, stamp, catalog.Entries, catalog.ResolvedRef);
+        return (prompts, schemaContracts, data, files, stamp, catalog.Entries, catalog.ResolvedRef, formats, formats.ResolvedRef);
     }
 
     /// <summary>
@@ -324,11 +342,11 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     private async Task GatherDataFilesAsync(
         string name,
         string version,
-        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string>? table,
         Dictionary<string, string> files,
         CancellationToken cancellationToken)
     {
-        foreach (var (_, path) in manifest.Data ?? new Dictionary<string, string>())
+        foreach (var (_, path) in table ?? new Dictionary<string, string>())
         {
             if (!path.EndsWith('/'))
             {
