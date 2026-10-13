@@ -254,6 +254,19 @@ public class TemplateReferenceWalkerTests
     }
 
     [Fact]
+    public void AStringLiteralIndex_IsAMember_TheOnlySpellingOfAHyphenatedId()
+    {
+        // Scriban reads node.identify-problem as a subtraction; the bracket form is the static spelling.
+        var context = TemplateFixtures.Context();
+        var nodes = new Dictionary<string, TemplateNodeShape>(context.Nodes, StringComparer.Ordinal) { ["identify-problem"] = new("prose", "text") };
+        var refs = TemplateReferenceWalker.Walk("Prompt 'p'", """{{ node["identify-problem"].text }} {{ node["assessment"].text }} {{ input["patient"].name }}""", context with { Nodes = nodes });
+
+        Assert.True(refs.IsValid, string.Join(" | ", refs.Errors));
+        Assert.Equal(new[] { "assessment", "identify-problem" }, refs.Edges.Order());
+        Assert.Contains("patient", refs.Inputs);
+    }
+
+    [Fact]
     public void ALiteralIndex_OnANonArray_IsRefused()
     {
         TemplateFixtures.Refused("{{ node.extract.value[0] }}", "indexes node.extract.value, which is not an array");
@@ -264,7 +277,7 @@ public class TemplateReferenceWalkerTests
     public void ADynamicIndex_OnAReservedChain_IsRefused()
     {
         TemplateFixtures.Refused("{{ node.extract.value.concepts[input.notes] }}", "accesses node.extract.value.concepts dynamically (node.extract.value.concepts[…]); static member access only");
-        TemplateFixtures.Refused("{{ node[\"assessment\"].text }}", "accesses node dynamically (node[…]); static member access only — name the id: node.<id>");
+        TemplateFixtures.Refused("{{ node[input.notes].text }}", "accesses node dynamically (node[…]); static member access only — name the id: node.<id>");
         TemplateFixtures.Refused("{{ for s in snippet.sections }}{{ input.history[s.id] }}{{ end }}", "accesses input.history dynamically");
     }
 

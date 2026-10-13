@@ -19,7 +19,7 @@ namespace Consultologist.PackageFormat;
 /// Pipes and functions are opaque here; the strict render probe stays the
 /// second net.
 /// </summary>
-public static class TemplateReferenceWalker
+public static partial class TemplateReferenceWalker
 {
     /// <summary>
     /// Walks one template. <paramref name="subject"/> opens every sentence
@@ -332,7 +332,11 @@ public static class TemplateReferenceWalker
                         current = member.Target;
                         continue;
                     case ScriptIndexerExpression indexer:
-                        segments.Insert(0, new IndexSegment(indexer.Index));
+                        // A string literal index is a member spelled the only
+                        // way Scriban allows a hyphen: node["identify-problem"].
+                        segments.Insert(0, indexer.Index is ScriptLiteral { Value: string name }
+                            ? new MemberSegment(name)
+                            : new IndexSegment(indexer.Index));
                         current = indexer.Target;
                         continue;
                     case ScriptVariableGlobal variable:
