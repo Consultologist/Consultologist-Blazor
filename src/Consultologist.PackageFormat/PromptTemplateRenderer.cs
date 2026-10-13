@@ -176,7 +176,7 @@ public static class PromptTemplateRenderer
     /// reaches a template. A defensive fall back to the string keeps a replay
     /// of an older job honest rather than throwing on it.
     /// </summary>
-    private static object? Materialise(
+    internal static object? Materialise(
         string name,
         string value,
         IReadOnlyDictionary<string, string>? variableTypes,
@@ -273,6 +273,53 @@ public static class PromptTemplateRenderer
     /// declaration is in hand. Before v10 a nested value rendered as null,
     /// silently; now it renders as itself.
     /// </summary>
+    /// <summary>
+    /// B3 #1002: an input fan's element at 25 — <c>item.value</c> — typed by
+    /// the element declaration alone (no name, no tag): the plain string for a
+    /// text element, the carrier read back for a structured one, a scalar as
+    /// its declared type.
+    /// </summary>
+    internal static object? MaterialiseElement(string value, WorkflowDeclarationNode? element)
+    {
+        if (element is null)
+        {
+            return value;
+        }
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return element.Type switch
+            {
+                WorkflowInputTypes.Boolean or WorkflowInputTypes.Date or WorkflowInputTypes.Number => null,
+                WorkflowInputTypes.Array => new ScriptArray(),
+                WorkflowInputTypes.Object => EmptyScriptObject.Default,
+                _ => value
+            };
+        }
+
+        switch (element.Type)
+        {
+            case WorkflowInputTypes.Date when DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date):
+                return date.ToDateTime(TimeOnly.MinValue);
+            case WorkflowInputTypes.Boolean when bool.TryParse(value, out var flag):
+                return flag;
+            case WorkflowInputTypes.Number when decimal.TryParse(value, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var number):
+                return number;
+            case WorkflowInputTypes.Object or WorkflowInputTypes.Array:
+                try
+                {
+                    var parsed = ConsultInputValue.FromJson(value);
+                    return parsed.IsStructured ? ToScript(parsed, element) : Scalar(parsed, null) ?? value;
+                }
+                catch (JsonException)
+                {
+                    return value;
+                }
+            default:
+                return value;
+        }
+    }
+
     private static object? ToScript(ConsultInputValue value, WorkflowDeclarationNode? node) => value.Kind switch
     {
         ConsultInputKind.Array => new ScriptArray(value.Elements!.Select(element => ToScript(element, node?.Items))),

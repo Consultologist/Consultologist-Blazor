@@ -73,7 +73,8 @@ public class DurablePayloadReplayTests
         // with exactly one more trailing null.
         // #923 phase 2 appended AgentName/AgentVersion last — two more trailing
         // nulls a pre-phase-2 payload binds and writes back.
-        Assert.Equal(stored[..^1] + ",\"Values\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null,\"Before\":null,\"After\":null,\"Format\":null,\"Producer\":null,\"FormatHash\":null,\"Op\":null}", JsonSerializer.Serialize(input, Durable));
+        // #1001 appended the format identity; #1002 the 25 render scope — six more trailing nulls.
+        Assert.Equal(stored[..^1] + ",\"Values\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null,\"Before\":null,\"After\":null,\"Format\":null,\"Producer\":null,\"FormatHash\":null,\"Op\":null,\"NodeTexts\":null,\"Folders\":null,\"Item\":null,\"ForEach\":null,\"Run\":null,\"Profile\":null}", JsonSerializer.Serialize(input, Durable));
         Assert.Null(input.Values);
         Assert.Equal(
             "Seen 2026-08-10. Bill it.",
@@ -360,8 +361,8 @@ public class DurablePayloadReplayTests
 
         Assert.Null(node.Reproducible);
         Assert.Equal(new[] { "in_scope", "out_of_scope" }, node.Values);
-        // #923 phase 2 appended AgentName/AgentVersion; #760 appended CustomSchemaHash; #955 appended Macros.
-        Assert.Equal(stored[..^1] + ",\"Reproducible\":null,\"Check\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null,\"CustomSchemaHash\":null,\"Macros\":null,\"Format\":null,\"Producer\":null,\"FormatHash\":null,\"Op\":null}", JsonSerializer.Serialize(node, Durable));
+        // #923 phase 2 appended AgentName/AgentVersion; #760 appended CustomSchemaHash; #955 appended Macros; #1001 the format identity; #1002 Reads.
+        Assert.Equal(stored[..^1] + ",\"Reproducible\":null,\"Check\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null,\"CustomSchemaHash\":null,\"Macros\":null,\"Format\":null,\"Producer\":null,\"FormatHash\":null,\"Op\":null,\"Reads\":null}", JsonSerializer.Serialize(node, Durable));
     }
 
     [Fact]

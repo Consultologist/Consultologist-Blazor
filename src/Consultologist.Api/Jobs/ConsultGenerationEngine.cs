@@ -173,10 +173,9 @@ public sealed class ConsultGenerationOrchestrator
         var failedAggregators = new Dictionary<string, string>(StringComparer.Ordinal);
         var nodeLevelCompleted = new HashSet<string>(StringComparer.Ordinal);
 
-        string CollectionIdOf(ConsultNodeDescriptor node) =>
-            node.ForEach!.StartsWith(WorkflowNodeBindingSources.DataPrefix, StringComparison.Ordinal)
-                ? node.ForEach[WorkflowNodeBindingSources.DataPrefix.Length..]
-                : node.ForEach;
+        // v25 (B3 #1002): a snippet folder fan (snippet:<folder>) keys its
+        // snapshot by the folder id, as a data collection fan did.
+        string CollectionIdOf(ConsultNodeDescriptor node) => WorkflowFanSources.CollectionIdOf(node.ForEach!);
 
         // v6: each forEach node fans over ITS collection's items; v5 keeps the
         // single shared set. Failed-item keys are collection-scoped in v6 (item
@@ -246,6 +245,41 @@ public sealed class ConsultGenerationOrchestrator
         {
             var instanceKey = ConsultNodeScheduler.InstanceKey(node.Id, item?["id"]);
             started.Add(instanceKey);
+
+            // v25 (B3 #1002, design § 1): a node with a format renders over
+            // the seven objects in the activity; the orchestrator threads what
+            // only it holds — the outputs this instance reads, the settled
+            // folders, the facts — and no flat variables, no before/after
+            // blocks (instances compose on the output side, B5).
+            if (node.Format is not null)
+            {
+                pendingTasks[context.CallActivityAsync<NodeRunResult>(
+                    ConsultGenerationActivityNames.RunPromptNode,
+                    new ConsultPromptNodeActivityInput(
+                        instanceKey,
+                        node.PromptId!,
+                        new Dictionary<string, string>(effectiveInputs, StringComparer.Ordinal),
+                        input.WorkflowPackage,
+                        null,
+                        node.ConceptSource,
+                        input.InputTypes is null ? null : new Dictionary<string, string>(input.InputTypes, StringComparer.Ordinal),
+                        node.Values,
+                        node.Template,
+                        node.AgentName,
+                        node.AgentVersion,
+                        Format: node.Format,
+                        Producer: node.Producer,
+                        FormatHash: node.FormatHash,
+                        Op: node.Op,
+                        NodeTexts: ConsultRenderPayload.NodeTextsFor(node, item, nodesById, outputs),
+                        Folders: ConsultRenderPayload.FoldersFor(collections),
+                        Item: item,
+                        ForEach: node.ForEach,
+                        Run: ConsultRenderPayload.RunFactsFor(context.CurrentUtcDateTime, context.InstanceId, input.WorkflowPackage, input.ApiHost),
+                        Profile: ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature)),
+                    AgentActivityRetryOptions)] = (node.Id, item?["id"]);
+                return;
+            }
 
             var variables = ConsultNodeVariableResolver.Resolve(
                 node, effectiveInputs, item, input.DataScalars, nodesById, outputs);
@@ -1349,7 +1383,13 @@ internal static class ConsultNodeScheduler
         var macroTextDeps = (node.Macros ?? new List<ConsultNodeMacroDescriptor>())
             .SelectMany(macro => macro.Reads ?? Array.Empty<string>());
 
-        return bindingDeps.Concat(macroWhenDeps).Concat(macroTextDeps).Distinct(StringComparer.Ordinal);
+        // v25 (B3 #1002, design § 2): the derived edges — what the node's
+        // template and with read, closed over the snippets and macro texts
+        // the prompt reads — snapshotted on the descriptor at job start. A 25
+        // node carries no bindings, so these ARE its dependencies.
+        var derivedDeps = node.Reads ?? Array.Empty<string>();
+
+        return bindingDeps.Concat(macroWhenDeps).Concat(macroTextDeps).Concat(derivedDeps).Distinct(StringComparer.Ordinal);
     }
 }
 

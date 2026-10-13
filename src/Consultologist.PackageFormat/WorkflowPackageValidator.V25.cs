@@ -47,9 +47,6 @@ public static partial class WorkflowPackageValidator
         public string? FanSource => Node.ForEach;
     }
 
-    /// <summary>A template walked: who it is, what it read, and its text for the render probe.</summary>
-    private sealed record WalkedTemplate(TemplateKind Kind, string Id, string Subject, string Text, TemplateReferences References, TemplateReferenceContext Context);
-
     private static void ValidateAt25(
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, string> files,
@@ -84,8 +81,16 @@ public static partial class WorkflowPackageValidator
             snippets.Collections.Keys.ToHashSet(StringComparer.Ordinal),
             macroIds, TemplateReferenceContext.NoIds, fan);
 
-        var walked = WalkTemplatesAt25(manifest, files, nodes, snippets, ContextFor, errors, warnings);
-        var edges = DeriveEdgesAt25(manifest, nodes, walked, errors);
+        // ONE walk of every template — the job starter derives its scheduler
+        // edges through the same function (B3 #1002).
+        var walk = WorkflowDerivedEdges.WalkAll(
+            manifest, files,
+            nodes.Values.Select(n => new WorkflowDerivedEdges.WalkNode(
+                n.Node, nodeShapes.GetValueOrDefault(n.Node.Id), n.Format?.Spec.Parameters, n.Fan)).ToList(),
+            snippets, ContextFor);
+        var walked = walk.Templates;
+        TakeSentences(walk, errors, warnings);
+        var edges = DeriveEdgesAt25(manifest, nodes, walk, errors);
         ValidateFanEdgesAt25(nodes, edges, errors);
 
         var classifiers = ClassifiersAt25(nodes, inputsById);
@@ -544,135 +549,49 @@ public static partial class WorkflowPackageValidator
 
     // ----- §§ 1–2: the templates walked, the edges derived ------------------------
 
-    private static string SnippetItemKey(string folder, string item) => $"{folder}/{item}";
+    private static string SnippetItemKey(string folder, string item) => WorkflowDerivedEdges.SnippetItemKey(folder, item);
 
-    /// <summary>
-    /// Every prompt (per node, with that node's fan), every snippet and folder
-    /// item, every macro text — walked once each; the walker's sentences pass
-    /// through, deduplicated where one prompt serves several nodes.
-    /// </summary>
-    private static IReadOnlyList<WalkedTemplate> WalkTemplatesAt25(
-        WorkflowPackageManifest manifest,
-        IReadOnlyDictionary<string, string> files,
-        IReadOnlyDictionary<string, NodeAt25> nodes,
-        WorkflowPackageData snippets,
-        Func<TemplateFan?, TemplateReferenceContext> contextFor,
-        List<string> errors,
-        List<string> warnings)
+    /// <summary>The walker's sentences, each once — a prompt walked for several nodes repeats them.</summary>
+    private static void TakeSentences(WorkflowDerivedEdges.Walk walk, List<string> errors, List<string> warnings)
     {
-        var walked = new List<WalkedTemplate>();
         var seenErrors = new HashSet<string>(StringComparer.Ordinal);
         var seenWarnings = new HashSet<string>(StringComparer.Ordinal);
-        var promptsById = (manifest.Prompts ?? new List<WorkflowPromptSpec>()).ToDictionary(p => p.Id, StringComparer.Ordinal);
 
-        void Take(TemplateReferences refs)
+        foreach (var template in walk.Templates)
         {
-            errors.AddRange(refs.Errors.Where(seenErrors.Add));
-            warnings.AddRange(refs.Warnings.Where(seenWarnings.Add));
+            errors.AddRange(template.References.Errors.Where(seenErrors.Add));
+            warnings.AddRange(template.References.Warnings.Where(seenWarnings.Add));
         }
-
-        foreach (var node in nodes.Values.Where(n => n.Node.Prompt != null && n.Format is not null))
-        {
-            if (!promptsById.TryGetValue(node.Node.Prompt!, out var prompt) || !files.TryGetValue(prompt.File, out var text))
-            {
-                continue; // named elsewhere
-            }
-
-            var context = contextFor(node.Fan);
-            var refs = TemplateReferenceWalker.Walk($"Prompt '{prompt.Id}'", text, context);
-            Take(refs);
-            walked.Add(new WalkedTemplate(TemplateKind.Prompt, node.Node.Id, $"Prompt '{prompt.Id}'", text, refs, context));
-        }
-
-        var snippetContext = contextFor(null);
-
-        foreach (var (id, text) in snippets.Scalars)
-        {
-            var refs = TemplateReferenceWalker.Walk($"Snippet '{id}'", text, snippetContext);
-            Take(refs);
-            walked.Add(new WalkedTemplate(TemplateKind.Snippet, id, $"Snippet '{id}'", text, refs, snippetContext));
-        }
-
-        foreach (var (folder, collection) in snippets.Collections)
-        {
-            foreach (var item in collection.Items)
-            {
-                var text = item.Fields.GetValueOrDefault("content") ?? string.Empty;
-                var subject = $"Snippet '{folder}/{item.Id}'";
-                var refs = TemplateReferenceWalker.Walk(subject, text, snippetContext);
-                Take(refs);
-                walked.Add(new WalkedTemplate(TemplateKind.Snippet, SnippetItemKey(folder, item.Id), subject, text, refs, snippetContext));
-            }
-        }
-
-        foreach (var macro in manifest.Macros ?? new List<WorkflowMacroSpec>())
-        {
-            if (macro.File is null || !files.TryGetValue(macro.File, out var text))
-            {
-                continue;
-            }
-
-            var refs = TemplateReferenceWalker.Walk($"Macro '{macro.Id}'", text, snippetContext);
-            Take(refs);
-            walked.Add(new WalkedTemplate(TemplateKind.Macro, macro.Id, $"Macro '{macro.Id}'", text, refs, snippetContext));
-        }
-
-        return walked;
     }
 
     /// <summary>
-    /// The edges: what each node's prompt reads (node.&lt;id&gt;), what its
-    /// <c>with</c> names, what it aggregates — one map for the fan rules, the
-    /// reachability and the acyclicity.
+    /// The edges: what each node's prompt reads (node.&lt;id&gt;, closed over
+    /// the snippets and macro texts it reads), what its <c>with</c> names,
+    /// what it aggregates — one map for the fan rules, the reachability and
+    /// the acyclicity.
     /// </summary>
     private static IReadOnlyDictionary<string, HashSet<string>> DeriveEdgesAt25(
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, NodeAt25> nodes,
-        IReadOnlyList<WalkedTemplate> walked,
+        WorkflowDerivedEdges.Walk walk,
         List<string> errors)
     {
-        var derived = new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
-
         foreach (var node in nodes.Values)
         {
-            var reads = new HashSet<string>(StringComparer.Ordinal);
-
-            foreach (var prompt in walked.Where(w => w.Kind == TemplateKind.Prompt && w.Id == node.Node.Id))
+            if (node.Format is not null && node.Node.With != null && (node.Format.Spec.Parameters?.Count ?? 0) == 0)
             {
-                reads.UnionWith(prompt.References.Edges);
+                errors.Add($"Node '{node.Node.Id}' declares with, but format '{node.Format.Id}' declares no parameters.");
             }
 
-            if (node.Format is not null)
+            if (walk.Parameters.TryGetValue(node.Node.Id, out var parameters))
             {
-                var parameters = node.Format.Spec.Parameters ?? new Dictionary<string, WorkflowFormatParameterSpec>(StringComparer.Ordinal);
-
-                if (node.Node.With != null && parameters.Count == 0)
-                {
-                    errors.Add($"Node '{node.Node.Id}' declares with, but format '{node.Format.Id}' declares no parameters.");
-                }
-                else if (parameters.Count > 0)
-                {
-                    var refs = TemplateReferenceWalker.WalkParameters(
-                        $"Node '{node.Node.Id}'",
-                        node.Node.With ?? new Dictionary<string, JsonNode?>(StringComparer.Ordinal),
-                        parameters,
-                        prompt_context(node));
-                    errors.AddRange(refs.Errors);
-                    reads.UnionWith(refs.Edges);
-                }
+                errors.AddRange(parameters.Errors);
             }
-
-            derived[node.Node.Id] = reads;
         }
 
         return WorkflowNodeClosure.Edges(
             (manifest.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal).ToList(),
-            derived);
-
-        TemplateReferenceContext prompt_context(NodeAt25 node) =>
-            walked.FirstOrDefault(w => w.Kind == TemplateKind.Prompt && w.Id == node.Node.Id)?.Context
-            ?? walked.FirstOrDefault()?.Context
-            ?? TemplateReferenceContext.Empty;
+            walk.Edges);
     }
 
     /// <summary>
@@ -761,7 +680,7 @@ public static partial class WorkflowPackageValidator
     private static void ValidateMacroUseAt25(
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, NodeAt25> nodes,
-        IReadOnlyList<WalkedTemplate> walked,
+        IReadOnlyList<WorkflowDerivedEdges.WalkedTemplate> walked,
         WorkflowPackageData snippets,
         IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
         IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
@@ -964,7 +883,7 @@ public static partial class WorkflowPackageValidator
 
     // ----- § 5.2: the reference graph ----------------------------------------------
 
-    private static void ValidateReferenceGraphAt25(IReadOnlyList<WalkedTemplate> walked, WorkflowPackageData snippets, List<string> errors)
+    private static void ValidateReferenceGraphAt25(IReadOnlyList<WorkflowDerivedEdges.WalkedTemplate> walked, WorkflowPackageData snippets, List<string> errors)
     {
         var graph = new TemplateReferenceGraph();
 
@@ -1004,7 +923,7 @@ public static partial class WorkflowPackageValidator
     // ----- the strict render probe over the seven objects ----------------------------
 
     private static void RenderProbeAt25(
-        IReadOnlyList<WalkedTemplate> walked,
+        IReadOnlyList<WorkflowDerivedEdges.WalkedTemplate> walked,
         IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
         IReadOnlyDictionary<string, NodeAt25> nodes,
         WorkflowPackageData snippets,
@@ -1076,6 +995,11 @@ public static partial class WorkflowPackageValidator
                     [TemplateObjects.Profile] = profile
                 };
 
+                foreach (var pipe in TemplatePipes.All)
+                {
+                    globals.Import(pipe, (Func<object?, string>)(_ => "placeholder"));
+                }
+
                 if (template.Context.Fan is SnippetFolderFan)
                 {
                     globals[TemplateObjects.Item] = SnippetProbe("item");
@@ -1132,7 +1056,7 @@ public static partial class WorkflowPackageValidator
     private static void ValidateDeliverablesAt25(
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, NodeAt25> nodes,
-        IReadOnlyList<WalkedTemplate> walked,
+        IReadOnlyList<WorkflowDerivedEdges.WalkedTemplate> walked,
         IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
         IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
         List<string> errors)
