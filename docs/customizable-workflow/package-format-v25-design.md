@@ -50,7 +50,7 @@ member is a publish refusal naming it.
 
 | Object | Members | Value |
 |---|---|---|
-| `input.<id>` | the value (bare), `.label` on an enum (§ 8) | the supplied input, **typed** as declared — a date formats, a boolean branches, an object paths, an array iterates (the v8/v9 semantics, unchanged) |
+| `input.<id>` | the value (bare) | the supplied input, **typed** as declared — a date formats, a boolean branches, an object paths, an array iterates (the v8/v9 semantics, unchanged) |
 | `node.<id>` | `.text`, `.value` | `.text` is the node's **composed** output as text (§ 6); `.value` is the parsed output on an `object`, `enum` or `array` format — fields path, arrays iterate, every path checked against the format's schema at publish. The bare read is refused by a sentence naming `.text`. |
 | `snippet.<id>` | `.id`, `.name`, `.text` | a snippet rendered (§ 4) |
 | `snippet.<folder>` | iterable | each item a snippet with the three members above; folder size is resolved at job start (§ 4) |
@@ -242,7 +242,7 @@ named here so the word is reserved. A `text` format validates nothing and carrie
 { "id": "meds", "prompt": "meds", "format": "medication_list", "onInvalid": "fail" }
 
 { "id": "scope", "prompt": "scope", "format": "classification",
-  "with": { "values": [ { "value": "in_scope", "label": "In scope" }, "out_of_scope" ] } }
+  "with": { "values": [ "in_scope", "out_of_scope" ] } }
 
 { "id": "coverage", "format": "terms-subset",
   "with": { "of": "node.extract", "in": "node.source",
@@ -434,20 +434,15 @@ None → the macro is unused and the validator says so. Items of a fanned folder
 the read are named in a **warning**: a section whose standard carries no instruction cannot
 emit the marker — intended in `section-instructions`, worth telling the author.
 
-## 8. Enum value labels
+## 8. Enum values — unchanged at 25
 
 Enum values stay snake_case (`^[a-z][a-z0-9_]*$`): bare literals in `when`, a
-classification's answer set, printable where patient text is not. v25 adds an optional
-free-text **label** per value:
-
-```jsonc
-"values": ["family_medicine", { "value": "medical_oncology", "label": "Medical oncology" }]
-```
-
-A plain string stays valid (label = value). The Create page shows the label and stores the
-value; conditions, reasons and the record keep the value; `{{ input.consult_specialty.label }}`
-renders the label; a label on a value not declared is refused. A `classification` node's
-`with.values` take the same shape.
+classification's answer set, printable where patient text is not. Revision 1 and the first
+cut of revision 2 added an optional free-text **label** per value (`{ value, label }`, with
+`input.<id>.label` on the object and the Create page showing the label). That is **moved to
+v26** (2026-10-12): it is independent of everything else in this version, it is the one
+change that touches the Create page's rendering of an input, and 25 is large enough. At 25
+`values` entries are strings, as at 24, and `input.<id>` has no `.label` member.
 
 ## 9. A form slot may be an object
 
@@ -506,7 +501,7 @@ across every record ever written, and stay; the provenance document may say "the
 - **package-format** (bump to 25): the object grammar and closed members (§ 1), derived
   edges (§ 2), the **format file definition** and producer vocabulary (§ 3.1–3.2), the node
   shape (§ 3.6), snippets (§ 4), the macro library and instance shape (§ 5), the mechanics
-  sentence (§ 5.3), enum labels (§ 8), the object form slot (§ 9), every refusal of § 10;
+  sentence (§ 5.3), the object form slot (§ 9), every refusal of § 10;
   schema generated from the model; conformance vectors for every refusal (cross-field ones
   `SHAPE_BLIND`).
 - **agents** (a catalogue version): `agents/formats.json` with its two sections, the five
@@ -535,7 +530,7 @@ across every record ever written, and stay; the provenance document may say "the
   catalogue entries read-only with their detail line (§ 3.8).
 - **Deliverables pane** (#985): prepend / append with applies-when, the one-line note for
   node-placed instances, the two-way picker exclusion (#983).
-- **Inputs pane:** a label field beside each enum value chip; the object-form slot's fields.
+- **Inputs pane:** the object-form slot's fields as today's object fields.
 
 ## 14. Migration 24 → 25 (the editor's upgrade; mechanical, byte-identical in what the model sees)
 
@@ -567,7 +562,7 @@ grammar and validation PRs.
 - **A — format** (`Consultologist.PackageFormat`, the package-format registry): the object
   grammar, closed members and the AST walk; derived edges from templates and `with`; the
   format file and producer vocabulary; the node shape; snippets and folders; the macro
-  library and instances; the reference rule and cycle check; enum labels; the object form
+  library and instances; the reference rule and cycle check; the object form
   slot; the mechanics sentence; every § 10 refusal; `AcceptedSpecVersions` += 25.
 - **B — engine + provenance + catalogue**: objects at render with closed members; the
   catalogue index with two sections, the format files and the `custom-json` agent (agents
@@ -585,6 +580,8 @@ grammar and validation PRs.
 
 ## Deferred, by name
 
+- **Enum value labels** — `{ value, label }` entries, `input.<id>.label`, the Create page
+  showing the label — **v26** (§ 8).
 - A per-node alias map for one prompt with different upstream nodes (§ 2).
 - A schemaless `type: json` input (§ 9).
 - Snippet conditions on anything but inputs — dynamic fan sizes during a run; the v26
