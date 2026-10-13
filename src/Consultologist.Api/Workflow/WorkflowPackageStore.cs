@@ -426,9 +426,9 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     /// always-fires reading the result Condition takes.
     /// </summary>
     private static IReadOnlyList<WorkflowResolvedMacroCondition>? MacroConditionsOf(
-        IReadOnlyList<WorkflowResultMacroSpec>? macros)
+        IReadOnlyList<WorkflowDeliverableMacroSpec>? macros)
     {
-        var conditions = (macros ?? Array.Empty<WorkflowResultMacroSpec>())
+        var conditions = (macros ?? Array.Empty<WorkflowDeliverableMacroSpec>())
             .Where(entry => entry.When != null)
             .Select(entry => WorkflowResultConditions.TryParseExpression(entry.When, out var condition, out _)
                 ? new WorkflowResolvedMacroCondition(entry.Id, condition!)
@@ -439,7 +439,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         return conditions.Count == 0 ? null : conditions;
     }
 
-    private static IReadOnlyList<ConsultMacroPlacement>? PlacementsOf(IReadOnlyList<WorkflowResultMacroSpec>? entries)
+    private static IReadOnlyList<ConsultMacroPlacement>? PlacementsOf(IReadOnlyList<WorkflowDeliverableMacroSpec>? entries)
     {
         // An anchor, not the object form, is what makes a placement: a
         // when-only entry (§ 14) is an object and IsBare said "placed", so

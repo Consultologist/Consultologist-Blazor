@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
@@ -17,7 +18,7 @@ public sealed record WorkflowPackageManifest(
     Dictionary<string, string>? Data = null,
     string? Result = null,
     List<WorkflowInputSpec>? Inputs = null,
-    List<WorkflowResultSpec>? Results = null,
+    List<WorkflowDeliverableSpec>? Results = null,
     // v9 (package-format-v9-design.md § 4, #432): what the package is called
     // and what it is for. Authored content, the safety class of a label.
     // Typed rather than tolerated so the publisher's re-serialisation keeps
@@ -58,7 +59,63 @@ public sealed record WorkflowPackageManifest(
     // schema id lives in exactly one of Schemas, SchemaRefs or CustomSchemas.
     // Trailing optional, omitted when null, so every earlier manifest writes the
     // bytes it always wrote. The version gate is the validator's.
-    Dictionary<string, string>? CustomSchemas = null);
+    Dictionary<string, string>? CustomSchemas = null,
+    // v25 (package-format-v25-design.md § 11, #998): the deliverables under
+    // the key the version says — `deliverables` at ≥ 25, `results` (and the
+    // `result` sugar) below. The reader takes either; which one a version
+    // accepts is the validator's rule, and WithDeliverablesKeyFor is the
+    // writer's normaliser. Trailing optional, omitted when null, so every
+    // earlier manifest writes the bytes it always wrote.
+    List<WorkflowDeliverableSpec>? Deliverables = null,
+    // v25 (§ 4): snippets — Scriban templates a template READS (snippet.<id>.text),
+    // never attached — replace data at 25. Same shape as data: id → file, or
+    // folder → "dir/" with an index.json (id, name, file, when). Trailing
+    // optional; below 25 refused by name by the validator.
+    Dictionary<string, string>? Snippets = null,
+    // v25 (§ 3.6): the package-local formats — { id, file }, every file a
+    // custom format (WorkflowFormatSpec); catalogue ids are referenced from a
+    // node by id alone and never listed here. Trailing optional; below 25
+    // refused by name by the validator.
+    List<WorkflowFormatReference>? Formats = null)
+{
+    /// <summary>
+    /// The deliverables whichever key carried them: <c>deliverables</c> at
+    /// 25, <c>results</c> before; empty when neither. The v5/v6 <c>result</c>
+    /// string (one node reference) is a different shape and stays the
+    /// validator's.
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<WorkflowDeliverableSpec> EffectiveDeliverables =>
+        Deliverables ?? Results ?? (IReadOnlyList<WorkflowDeliverableSpec>)Array.Empty<WorkflowDeliverableSpec>();
+
+    /// <summary>
+    /// The same manifest with its deliverables under the key the given
+    /// specVersion writes: <c>deliverables</c> at ≥ 25, <c>results</c> below.
+    /// A manifest with neither key is returned as it is.
+    /// </summary>
+    public WorkflowPackageManifest WithDeliverablesKeyFor(int specVersion)
+    {
+        var list = Deliverables ?? Results;
+
+        if (list is null)
+        {
+            return this;
+        }
+
+        return specVersion >= 25
+            ? this with { Deliverables = list, Results = null }
+            : this with { Deliverables = null, Results = list };
+    }
+}
+
+/// <summary>
+/// v25 (§ 3.6): one package-local format — the id a node's <c>format</c>
+/// names and the file holding its <see cref="WorkflowFormatSpec"/>. The file
+/// carries no id; this entry is where the id lives.
+/// </summary>
+public sealed record WorkflowFormatReference(
+    string Id,
+    string File);
 
 /// <summary>
 /// One declared macro (v11 § 4): a package-owned template file, applied to a
@@ -73,7 +130,13 @@ public sealed record WorkflowMacroSpec(
     string Label,
     string File,
     bool? Optional = null,
-    bool? Default = null);
+    bool? Default = null,
+    // v25 (package-format-v25-design.md § 5, #998): what the model is told when
+    // the macro's slot marker is read inline (macro.<id>.prompt) — composed
+    // with the mechanics sentence. Mandatory at ≥ 25 (a macro is placed text,
+    // and placed text needs an instruction); below 25 refused by name. Trailing
+    // optional, omitted when null.
+    string? Instruction = null);
 
 /// <summary>
 /// One declared input slot of a specVersion-7 package: the id nodes bind as
@@ -412,7 +475,7 @@ public static class WorkflowExpectedContent
 /// label naming an aggregator node. The string "result" form remains valid as
 /// one-entry sugar (external/consultologist-package-format/package-format-v7.md § 3).
 /// </summary>
-public sealed record WorkflowResultSpec(
+public sealed record WorkflowDeliverableSpec(
     string Id,
     string Node,
     string Label,
@@ -426,8 +489,8 @@ public sealed record WorkflowResultSpec(
     // would write "signature": false onto every earlier manifest. Below 11
     // both are refused by name by the validator. v12 (§ 4): each entry is a
     // bare id (the v11 form, byte-for-byte) or a placed object — see
-    // WorkflowResultMacroSpec.
-    List<WorkflowResultMacroSpec>? Macros = null,
+    // WorkflowDeliverableMacroSpec.
+    List<WorkflowDeliverableMacroSpec>? Macros = null,
     bool? Signature = null,
     // v12 (§ 13): the check node gating this deliverable — the
     // post-production mirror of when. Below 12 refused by name.
@@ -440,8 +503,8 @@ public sealed record WorkflowResultSpec(
 /// form, so every v11 manifest round-trips byte for byte; the object form
 /// below specVersion 12 is refused by the validator, never by the reader.
 /// </summary>
-[JsonConverter(typeof(WorkflowResultMacroSpecConverter))]
-public sealed record WorkflowResultMacroSpec(
+[JsonConverter(typeof(WorkflowDeliverableMacroSpecConverter))]
+public sealed record WorkflowDeliverableMacroSpec(
     string Id,
     string? Before = null,
     string? After = null,
@@ -455,31 +518,42 @@ public sealed record WorkflowResultMacroSpec(
     // it emits in a section's output; the engine fills the marker at assembly.
     // Mutually exclusive with before/after/forItem (the model owns the position);
     // the entry's when/optional gate still governs inclusion. Trailing optional.
-    bool? Slot = null)
+    bool? Slot = null,
+    // v25 (package-format-v25-design.md § 5.1, #998): the deliverable instance —
+    // `prepend` | `append`, document scope only. Node-anchored before/after and
+    // forItem become node instances at 25, and the slot becomes the inline
+    // macro.<id>.prompt read; below 25 `at` is refused by name. Trailing optional.
+    string? At = null)
 {
+    public const string Prepend = "prepend";
+    public const string Append = "append";
+
     /// <summary>An id and nothing else — the v11 form. Every adornment must
     /// count: the writer keys the bare-string form on this, so an entry that
     /// carries only a when or a forItem would silently drop it on republish.</summary>
-    public bool IsBare => Before is null && After is null && When is null && ForItem is null && Slot is null;
+    public bool IsBare => Before is null && After is null && When is null && ForItem is null && Slot is null && At is null;
 
     /// <summary>#863: the model, not the deliverable, chooses where this macro lands.</summary>
     public bool IsSlot => Slot == true;
 
-    public static implicit operator WorkflowResultMacroSpec?(string? id) => id is null ? null : new(id);
+    /// <summary>v25: a document-scope instance, placed before or after the whole deliverable.</summary>
+    public bool IsAppend => At == Append;
+
+    public static implicit operator WorkflowDeliverableMacroSpec?(string? id) => id is null ? null : new(id);
 
     public override string ToString() => Id;
 }
 
-public sealed class WorkflowResultMacroSpecConverter : JsonConverter<WorkflowResultMacroSpec>
+public sealed class WorkflowDeliverableMacroSpecConverter : JsonConverter<WorkflowDeliverableMacroSpec>
 {
     // The object form, read without this converter on the outer shape.
-    private sealed record Shape(string? Id, string? Before, string? After, string? When, string? ForItem, bool? Slot);
+    private sealed record Shape(string? Id, string? Before, string? After, string? When, string? ForItem, bool? Slot, string? At);
 
-    public override WorkflowResultMacroSpec Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public override WorkflowDeliverableMacroSpec Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.String)
         {
-            return new WorkflowResultMacroSpec(reader.GetString()!);
+            return new WorkflowDeliverableMacroSpec(reader.GetString()!);
         }
 
         if (reader.TokenType != JsonTokenType.StartObject)
@@ -495,10 +569,10 @@ public sealed class WorkflowResultMacroSpecConverter : JsonConverter<WorkflowRes
             throw new JsonException("A placed macro entry must declare id.");
         }
 
-        return new WorkflowResultMacroSpec(shape.Id, shape.Before, shape.After, shape.When, shape.ForItem, shape.Slot);
+        return new WorkflowDeliverableMacroSpec(shape.Id, shape.Before, shape.After, shape.When, shape.ForItem, shape.Slot, shape.At);
     }
 
-    public override void Write(Utf8JsonWriter writer, WorkflowResultMacroSpec value, JsonSerializerOptions options)
+    public override void Write(Utf8JsonWriter writer, WorkflowDeliverableMacroSpec value, JsonSerializerOptions options)
     {
         if (value.IsBare)
         {
@@ -508,6 +582,11 @@ public sealed class WorkflowResultMacroSpecConverter : JsonConverter<WorkflowRes
 
         writer.WriteStartObject();
         writer.WriteString("id", value.Id);
+
+        if (value.At != null)
+        {
+            writer.WriteString("at", value.At);
+        }
 
         if (value.Before != null)
         {
@@ -678,7 +757,7 @@ public sealed record WorkflowNodeSpec(
     List<string>? Values = null,
     // v11 (§ 6, #550): the package's claim that this node's output is the
     // same for the same input — carried for the rerun verdict, never
-    // enforced at run time. bool? on purpose (see WorkflowResultSpec); below
+    // enforced at run time. bool? on purpose (see WorkflowDeliverableSpec); below
     // 11 refused by name by the validator.
     bool? Reproducible = null,
     // v12 (§ 13): the check node's declaration — kind "check" with the
@@ -701,7 +780,36 @@ public sealed record WorkflowNodeSpec(
     // the node-level `when` grammar. Absorbs the prelude — a bare entry is the
     // before/always form. Trailing optional, omitted when null; below 23 refused
     // by name by the validator.
-    List<WorkflowNodeMacroSpec>? Macros = null);
+    List<WorkflowNodeMacroSpec>? Macros = null,
+    // v25 (package-format-v25-design.md §§ 3.5–3.6, #998): the node's FORMAT —
+    // a catalogue id or a package-local id from manifest.formats — replaces
+    // the output schema and the classifier/check/template kinds; `with`
+    // supplies the parameters the format declares (object references or
+    // literals, typed by the declaration — TemplateReferenceWalker.WalkParameters);
+    // `onInvalid` is the node's policy on a reply the format refuses
+    // (WorkflowOnInvalid). Trailing optionals, omitted when null; below 25 each
+    // is refused by name by the validator.
+    string? Format = null,
+    Dictionary<string, JsonNode?>? With = null,
+    string? OnInvalid = null);
+
+/// <summary>
+/// v25 (§ 3.5): what happens on a reply the format's validation refuses —
+/// package-defined on the node, never on the format and never by the user at
+/// run time. <c>retry</c> re-sends once with the errors as a repair message (a
+/// later rung; the word is reserved); <c>flag</c> keeps the reply and records
+/// the outcome. A closed set, like every vocabulary here.
+/// </summary>
+public static class WorkflowOnInvalid
+{
+    public const string Fail = "fail";
+    public const string Retry = "retry";
+    public const string Flag = "flag";
+
+    public static readonly IReadOnlyList<string> All = new[] { Fail, Retry, Flag };
+
+    public static bool IsKnown(string? policy) => policy != null && All.Contains(policy, StringComparer.Ordinal);
+}
 
 /// <summary>
 /// The node kinds a manifest may spell (v10 § 4; check since v12 § 13).
@@ -777,7 +885,13 @@ public sealed record WorkflowDataIndexFile(
 public sealed record WorkflowDataIndexItem(
     string? Id,
     string? Name,
-    string? File);
+    string? File,
+    // v25 (package-format-v25-design.md § 4, #998): a snippet folder item's
+    // condition — input-only, resolved at job start so a fan's item count stays
+    // a start-time scalar. Trailing optional; below 25 refused by name by the
+    // validator, and never read by the data resolver (a template's own `if`
+    // gates a read).
+    string? When = null);
 
 /// <summary>
 /// A binding value in a manifest: either a plain source string

@@ -74,7 +74,7 @@ public class ConformanceFixtureExport
 
         Invalid("invalid-results-before-v7", 6,
             "A declared result set on a v6 manifest, which knows only a single result.",
-            v6 with { Results = new List<WorkflowResultSpec> { new("note", "node:assemble-note", "Note") } });
+            v6 with { Results = new List<WorkflowDeliverableSpec> { new("note", "node:assemble-note", "Note") } });
 
         // From the multi-deliverable baseline, which declares results and no
         // result: adding result to v7-minimal changes nothing, because minimal
@@ -114,7 +114,7 @@ public class ConformanceFixtureExport
         // instead — a different error wearing this case's name.
         Invalid("invalid-empty-results", 8,
             "A result set declaring no deliverables. A package that can produce nothing is not a package.",
-            v7Multi with { SpecVersion = 8, Results = new List<WorkflowResultSpec>() });
+            v7Multi with { SpecVersion = 8, Results = new List<WorkflowDeliverableSpec>() });
 
         // v9 (#453). Generated here ahead of the registry release; published
         // with the v9 prose by #430. Tags are required at 9, so the minimal v9
@@ -608,13 +608,13 @@ public class ConformanceFixtureExport
             var manifest = V11Fixtures.Minimal();
             Invalid("invalid-macro-reference-undeclared", 11,
                 "A result naming a macro the manifest does not declare.",
-                manifest with { Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<WorkflowResultMacroSpec> { "ghost" } } : r).ToList() });
+                manifest with { Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<WorkflowDeliverableMacroSpec> { "ghost" } } : r).ToList() });
         }
         {
             var (manifest, files) = V11Fixtures.WithMacro();
             Bundle("invalid-macro-listed-twice", 11,
                 "The same macro twice on one deliverable.",
-                (manifest with { Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<WorkflowResultMacroSpec> { "disclaimer", "disclaimer" } } : r).ToList() }, files));
+                (manifest with { Results = manifest.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<WorkflowDeliverableMacroSpec> { "disclaimer", "disclaimer" } } : r).ToList() }, files));
         }
         {
             var (manifest, files) = V11Fixtures.WithMacro();
@@ -658,7 +658,7 @@ public class ConformanceFixtureExport
             v10Minimal with { Macros = new List<WorkflowMacroSpec> { new("closing", "Closing", "macros/closing.md") } });
         Invalid("invalid-result-macros-at-v10", 10,
             "A deliverable's macro list on a v10 manifest.",
-            v10WithResults with { Results = v10WithResults.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<WorkflowResultMacroSpec> { "closing" } } : r).ToList() });
+            v10WithResults with { Results = v10WithResults.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<WorkflowDeliverableMacroSpec> { "closing" } } : r).ToList() });
         Invalid("invalid-result-signature-at-v10", 10,
             "A deliverable's signature flag on a v10 manifest — presence, not truth, is the error.",
             v10WithResults with { Results = v10WithResults.Results!.Select((r, i) => i == 0 ? r with { Signature = false } : r).ToList() });
@@ -1195,7 +1195,7 @@ public class ConformanceFixtureExport
             itemTokenOnResult = itemTokenOnResult with
             {
                 Results = itemTokenOnResult.Results!.Select((r, i) => i == 0
-                    ? r with { Macros = new List<WorkflowResultMacroSpec> { new(V24Fixtures.MacroId) } }
+                    ? r with { Macros = new List<WorkflowDeliverableMacroSpec> { new(V24Fixtures.MacroId) } }
                     : r).ToList()
             };
             Invalid("invalid-macro-item-token-on-result", 24,
@@ -1244,7 +1244,7 @@ public class ConformanceFixtureExport
                 new("draft-decline-letter", "prompts/draft-decline-letter.md", new List<string> { "consult_draft", "scope" }),
                 new("draft-information-request", "prompts/draft-information-request.md", new List<string> { "consult_draft" })
             },
-            Results = new List<WorkflowResultSpec>
+            Results = new List<WorkflowDeliverableSpec>
             {
                 new("plan", "node:assemble-plan", "Plan", When: "node:scope == in_scope"),
                 new("decline_letter", "node:assemble-decline", "Decline letter", When: "node:scope == out_of_scope"),

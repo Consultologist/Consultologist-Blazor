@@ -114,6 +114,18 @@ internal static class PackageFormatSchema
             Remove(properties, "customSchemas");
         }
 
+        // v25 (#998, package-format-v25-design.md §§ 3.6, 4, 11): deliverables
+        // (the key results becomes), snippets (what data becomes) and the
+        // package-local formats arrive at 25. Below it none of the members
+        // exists, and the published v5–v24 bytes must not move; the model
+        // reads them at every version and the validator refuses them by name.
+        if (specVersion < 25)
+        {
+            Remove(properties, "deliverables");
+            Remove(properties, "snippets");
+            Remove(properties, "formats");
+        }
+
         if (specVersion < 9)
         {
             Remove(properties, "title");
@@ -221,6 +233,13 @@ internal static class PackageFormatSchema
             Remove(properties, "default");
         }
 
+        // v25 (#998, § 5): the instruction a macro's slot marker carries
+        // arrives at 25. Below it the member does not exist.
+        if (specVersion < 25)
+        {
+            Remove(properties, "instruction");
+        }
+
         Close(item);
     }
 
@@ -280,6 +299,16 @@ internal static class PackageFormatSchema
         if (specVersion < 11)
         {
             Remove(properties, "reproducible");
+        }
+
+        // v25 (#998, §§ 3.5–3.6): a node's format, its with parameters and its
+        // onInvalid policy arrive at 25. Below it none of the members exists,
+        // and the published v5–v24 bytes must not move.
+        if (specVersion < 25)
+        {
+            Remove(properties, "format");
+            Remove(properties, "with");
+            Remove(properties, "onInvalid");
         }
 
         // v18 (#822): a node's own when arrives at 18; a string needs no
@@ -644,7 +673,7 @@ internal static class PackageFormatSchema
         }
 
         // v11 (§ 4/§ 5): a deliverable's macro list and its signature flag.
-        // The exporter cannot see through WorkflowResultMacroSpecConverter
+        // The exporter cannot see through WorkflowDeliverableMacroSpecConverter
         // (the bindings precedent above): it reports the record, so the items
         // shape is hand-written — the v11 string form alone below 12, the
         // string-or-placed-object oneOf at 12 (v12 § 4).

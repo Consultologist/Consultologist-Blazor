@@ -269,6 +269,12 @@ named here so the word is reserved. A `text` format validates nothing and carrie
 
 - **`format`** — a catalogue id or a package-local id from `manifest.formats[]`
   (`{ id, file }`, local files only; catalogue ids are reserved).
+- **`id`** — snake_case at ≥ 25 (`^[a-z][a-z0-9_]*$`, as every other declared id), because a
+  template reads a node as a Scriban member and Scriban reads `node.identify-problem` as a
+  subtraction (A3, #998, 2026-10-13). A hyphenated id is refused by name with the rename in
+  the sentence; the migration (§ 14) rewrites the id and every reference. The bracket
+  spelling `node["identify-problem"].text` remains a valid static access, never the
+  expected one.
 - **`prompt`** — required unless the producer is `computed`, refused then.
 - **`with`** — only the parameters the format declares, every declared one supplied; values
   are object references or literals typed by the declaration (A2, #997, 2026-10-13): a
@@ -497,6 +503,7 @@ replacement, and a schema-catchable conformance vector where the key leaves the 
 | `nodes[].macros[].use`, `.at: slot`, `.instruction` | the member read and the library field (§ 5) |
 | `results`, `result` | `deliverables` (§ 11) |
 | `deliverables[].macros[].before/after: node:x`, `forItem` | a node instance (§ 5.1) |
+| `nodes[].id` with a hyphen | the snake_case id (§ 3.6) |
 
 ## 11. `results` becomes `deliverables`
 
@@ -572,6 +579,7 @@ across every record ever written, and stay; the provenance document may say "the
 | a deliverable macro `before/after: node:x` (± `forItem`) | a node instance `{ id, at, forItem }` — the node's `outputHash` now covers it, and the record says so |
 | `raw: true` prompt | the text with `{{` escaped |
 | `results` / `result` | `deliverables` |
+| a node id with a hyphen (`identify-problem`) | `identify_problem`, in the id and in every reference (`aggregate`, `check`, `when`, `with`, templates) |
 
 A library macro placed on an output somewhere *and* used prompt-side elsewhere stays one
 macro: the prompt-side use is a `.text` read. Nothing is split.

@@ -255,7 +255,7 @@ public class WorkflowV24ItemTokenTests
         manifest = manifest with
         {
             Results = manifest.Results!.Select((r, i) => i == 0
-                ? r with { Macros = new List<WorkflowResultMacroSpec> { new(V24Fixtures.MacroId) } }
+                ? r with { Macros = new List<WorkflowDeliverableMacroSpec> { new(V24Fixtures.MacroId) } }
                 : r).ToList()
         };
         Assert.Contains(

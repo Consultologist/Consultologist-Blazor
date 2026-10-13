@@ -50,7 +50,7 @@ public static class V7Fixtures
         {
             Nodes = nodes,
             Result = null,
-            Results = new List<WorkflowResultSpec>
+            Results = new List<WorkflowDeliverableSpec>
             {
                 new("consult_note", "node:assemble-note", "Consultation note"),
                 new("patient_letter", "node:assemble-letter", "Patient letter")
@@ -173,7 +173,7 @@ public class WorkflowV7ValidationTests
     {
         var manifest = V6Fixtures.SingleCollection() with
         {
-            Results = new List<WorkflowResultSpec> { new("consult", "node:assemble-note", "Note") }
+            Results = new List<WorkflowDeliverableSpec> { new("consult", "node:assemble-note", "Note") }
         };
 
         Assert.Contains(V6Fixtures.Validate(manifest).Errors,
@@ -201,7 +201,7 @@ public class WorkflowV7ValidationTests
     [Fact]
     public void EmptyResults_IsRejected()
     {
-        var manifest = V7Fixtures.MultiDeliverable() with { Results = new List<WorkflowResultSpec>() };
+        var manifest = V7Fixtures.MultiDeliverable() with { Results = new List<WorkflowDeliverableSpec>() };
 
         Assert.Contains(V7Fixtures.Validate(manifest).Errors,
             e => e.Contains("results must declare at least one deliverable"));
@@ -291,7 +291,7 @@ public class WorkflowV7ValidationTests
             new("assemble-summary", "Assemble summary",
                 Aggregate: new List<string> { "node:extract-patient-concepts" })
         };
-        manifest.Results!.Add(new WorkflowResultSpec("summary", "node:assemble-summary", "Summary"));
+        manifest.Results!.Add(new WorkflowDeliverableSpec("summary", "node:assemble-summary", "Summary"));
         manifest = manifest with { Nodes = nodes };
 
         Assert.Contains(V7Fixtures.Validate(manifest).Errors,
@@ -314,7 +314,7 @@ public class WorkflowV7ValidationTests
             new("assemble-summary", "Assemble summary",
                 Aggregate: new List<string> { "node:extract-patient-concepts" })
         };
-        manifest.Results!.Add(new WorkflowResultSpec("summary", "node:assemble-summary", "Summary"));
+        manifest.Results!.Add(new WorkflowDeliverableSpec("summary", "node:assemble-summary", "Summary"));
         manifest = manifest with { Nodes = nodes };
 
         Assert.Contains(

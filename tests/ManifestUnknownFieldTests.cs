@@ -76,6 +76,21 @@ public class ManifestUnknownFieldTests
     }
 
     [Fact]
+    public void TheV25Members_AreMembersTheReaderKnows()
+    {
+        // #998: typed on the record ahead of the bump, so the strict reader
+        // accepts them on any version; refusing them below 25 is the
+        // validator's, by name.
+        var manifest = JsonSerializer.Deserialize<WorkflowPackageManifest>(
+            WithExtra("\"deliverables\": [], \"snippets\": { \"s\": \"s.md\" }, \"formats\": [ { \"id\": \"f\", \"file\": \"formats/f.json\" } ]"),
+            WorkflowPackageManifestJson.ReadOptions);
+
+        Assert.NotNull(manifest!.Deliverables);
+        Assert.Equal("s.md", manifest.Snippets!["s"]);
+        Assert.Equal("f", manifest.Formats!.Single().Id);
+    }
+
+    [Fact]
     public void TheDescription_NamesThePropertyAndNotADotNetType()
     {
         var exception = Assert.Throws<JsonException>(() =>

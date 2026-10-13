@@ -55,7 +55,7 @@ public static class V8Fixtures
         {
             SpecVersion = 8,
             Inputs = Typed().Inputs,
-            Results = new List<WorkflowResultSpec>
+            Results = new List<WorkflowDeliverableSpec>
             {
                 new("consult_note", "node:assemble-note", "Consultation note"),
                 new("patient_letter", "node:assemble-letter", "Patient letter", When: when)
@@ -312,7 +312,7 @@ public class WorkflowV8ValidationTests
         // on encounter_kind, which an emailed .txt can answer. Verified this
         // session by an emailed consult that reached the fire-set evaluation.
         var manifest = V8Fixtures.Conditional();
-        var results = new List<WorkflowResultSpec>
+        var results = new List<WorkflowDeliverableSpec>
         {
             manifest.Results![0] with { When = "encounter_kind == new_patient" },
             manifest.Results![1] with { When = "encounter_kind == follow_up" }
@@ -638,7 +638,7 @@ public class WorkflowV8ConditionTests
         var baseline = V8Fixtures.Conditional();
         var manifest = baseline with
         {
-            Results = new List<WorkflowResultSpec>
+            Results = new List<WorkflowDeliverableSpec>
             {
                 new("consult_note", "node:assemble-note", "Consultation note",
                     When: "encounter_kind == new_patient"),
