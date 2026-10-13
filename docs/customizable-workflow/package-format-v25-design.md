@@ -56,7 +56,9 @@ member is a publish refusal naming it.
 | `snippet.<folder>` | iterable | each item a snippet with the three members above; folder size is resolved at job start (§ 4) |
 | `item` | `.id`, `.name`, `.text` (snippet fan) / `.id`, `.name`, `.value` (input fan) | the fan item the instance runs for; refused on a node that does not fan |
 | `macro.<id>` | `.id`, `.name`, `.text`, `.prompt` | `.text` is the macro's text rendered, read prompt-side like a snippet; `.prompt` is the slot marker's prompt text: its instruction composed with the mechanics sentence (§ 5.3) |
-| `macro.<folder>` | iterable | each item a macro with the four members above |
+| `macro.<folder>` | iterable | each item a macro with the four members above (no manifest shape at 25 — see Deferred) |
+| `run` | `.date`, `.job`, `.package`, `.host` | the run facts, as the v11 `{{run:…}}` tokens gave them (A4, #999, 2026-10-13) |
+| `profile` | `.name`, `.signature` | the profile facts, as the v11/v12 `{{profile:…}}` tokens gave them; a `profile.signature` read signs, and a deliverable is signed once |
 
 **Renderers are pipes.** `{{ node.extract.text | concept_context }}` is the attested,
 byte-stable rendering a binding's `as: concept-context` gave; the closed renderer set is
@@ -347,8 +349,9 @@ collection (an `index.json` listing id, name and file per item). The names: `+ S
   item rows depend on. A `when` on a snippet that is not in a folder, or one reading a node,
   is refused by a sentence saying the template's own `if` does that. Conditions on anything
   but inputs are the **v26** scheduler redesign, by name.
-- A node fans over a folder as it fans over a collection today (`forEach: sections`);
-  `item.text` is the item's rendered text (`item.content` is retired, § 14).
+- A node fans over a folder as it fans over a collection today — spelled `forEach:
+  snippet:<folder>`, one grammar beside `input:<id>` (A4, #999; the bare folder name is not
+  accepted); `item.text` is the item's rendered text (`item.content` is retired, § 14).
 
 Snippets may read snippets, inputs, nodes, `macro.<id>.text` and `macro.<id>.prompt` (the
 section-instructions pattern: a standard that carries the slot marker's text). A snippet is
@@ -490,7 +493,8 @@ are siblings; their origin kinds ride this version's provenance bump.
 ## 10. Refused by name at ≥ 25
 
 Each below 25 keeps its frozen rules; each at ≥ 25 is a sentence naming the key and the
-replacement, and a schema-catchable conformance vector where the key leaves the schema.
+replacement — the form is "`<key>` is retired at specVersion 25; <replacement>." (A4, #999) —
+and a schema-catchable conformance vector where the key leaves the schema.
 
 | Refused | Replaced by |
 |---|---|
@@ -608,11 +612,21 @@ grammar and validation PRs.
   with speech-to-text is **v26**, by name. **Folded in:** #969, #984. **Made structural:**
   #941, #942.
 
+**The bump is the last sub-issue (2026-10-13).** A4 (#999) wires the validator at ≥ 25 behind the
+unchanged accepted set; A5 (#1018) flips `AcceptedSpecVersions`, `SupportedSpecVersions` and the
+editor's two mirrors together, lists v25 in the registry and exports its schema and vectors —
+after B7 (the engine runs 25) and C6 (the editor migrates 24 → 25), because the editor's upgrade
+button only rewrites the number, the format catalogue does not exist before B1/B2, and the
+registry's `supported` list mirrors the engine's run set.
+
 ## Deferred, by name
 
 - **Enum value labels** — `{ value, label }` entries, `input.<id>.label`, the Create page
   showing the label — **v26** (§ 8).
 - A per-node alias map for one prompt with different upstream nodes (§ 2).
+- **Macro folders** (`macro.<folder>`): the walker reads them, but the manifest has no shape
+  for a folder of macros at 25 (`macros[]` is a flat library); a shape waits for a package
+  that needs one (A4, #999, 2026-10-13).
 - A schemaless `type: json` input (§ 9).
 - Snippet conditions on anything but inputs — dynamic fan sizes during a run; the v26
   scheduler redesign (§ 4).
