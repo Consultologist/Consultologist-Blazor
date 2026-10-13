@@ -112,9 +112,9 @@ macros may be placed on it. It replaces `schemas`, `schemaRefs`, `customSchemas`
   "producer": "custom",        // attested | custom | rendered | computed (§ 3.2)
   "outputMacros": false,       // may macros be placed on this output — true only on text
   "description": "…",
-  "schema": { … },             // only with type object, and only with producer custom (a catalogue schema is in the catalogue file)
-  "values": [ … ],             // only with type enum (the § 8 shape; a classification's come through a parameter)
-  "parameters": { … }          // only with producer computed: name → { kind: node | text, format?: <catalogue id> }
+  "schema": { … },             // required on every type object (a custom file carries the package's shape, a catalogue file its own); refused elsewhere
+  "values": [ … ],             // only with type enum (the § 8 shape) — or the set comes through a parameter of kind values (classification)
+  "parameters": { … }          // only with producer attested or computed: name → { kind: node | text | values, format?: <catalogue id> }
 }
 ```
 
@@ -126,16 +126,24 @@ inside it. One file shape, one validator, for both.
 
 | Producer | Meaning | What the file must carry | Who stands behind it |
 |---|---|---|---|
-| `attested` | a purpose-built agent from the catalogue, git-attested | nothing beyond the shape | the catalogue entry's agent |
+| `attested` | a purpose-built agent from the catalogue, git-attested | `schema` if `type: object`; `parameters` if it takes typed input (classification's `values`) | the catalogue entry's agent |
 | `custom` | the package's own shape, served by the catalogue's generic structured agent and **validated by the engine** (§ 3.4) | `schema`, `type: object` | the generic agent + the engine's validation |
 | `rendered` | no agent: the output is the rendered prompt's bytes (the v12 template kind) | `type: text`, `outputMacros: false` | the engine |
 | `computed` | an engine operation over typed parameters; no prompt (the v12 check kind) | `parameters`, `type: object` with the result `schema` | the engine's published operation set |
 
-Cross-checks at publish: `schema` ⇒ `custom`; `attested` ⇒ a catalogue id (a package-local
-file may not claim it — no agent would stand behind a shape the catalogue never published);
-`outputMacros` true ⇒ `type: text`; `rendered` and `computed` ⇒ `outputMacros: false`;
-`parameters` ⇒ `computed`. **Every non-custom format comes from the catalogue; a
-package-local format is always `custom`.**
+Cross-checks at publish (A1, #996, 2026-10-13): `schema` ⇔ `type: object` — every object
+format carries its shape, since the engine validates every object reply (§ 3.5); `custom` and
+`computed` ⇒ `type: object`; `rendered` ⇒ `type: text`; `outputMacros` true ⇒ `type: text`;
+`rendered` and `computed` ⇒ `outputMacros: false`; `values` ⇒ `type: enum`, and an enum takes
+its set from `values` or from one parameter of kind `values`, never both; `parameters` ⇒
+`attested` or `computed`, required on `computed`. A parameter means one thing per producer: on
+a computed format it is an operand the engine evaluates; on an attested one it is typed input
+the engine passes to the agent (the classification trailer path) — one declaration, so the
+node's `with` is typed the same way for both and the record carries the same thing. **Every
+non-custom format comes from the catalogue; a package-local format is always `custom`** (a
+package-local file may not claim `attested` — no agent would stand behind a shape the
+catalogue never published). The catalogue index binds by producer: `attested` ⇒ an agent,
+`computed` ⇒ an `op` the engine publishes, `rendered` ⇒ neither, `custom` ⇒ never an entry.
 
 ### 3.3 The catalogue
 
@@ -165,7 +173,7 @@ versioned together. The index has two sections:
 |---|---|---|---|---|
 | `prose` | text | attested | allowed | a node with no contract |
 | `rendered` | text | rendered | no | `kind: template` |
-| `classification` | enum | attested | no | `kind: classifier` — `values` come through a parameter |
+| `classification` | enum | attested | no | `kind: classifier` — parameter `values` (kind `values`) carries the answer set |
 | `concept-list` | object | attested | no | the `schemaRefs` entry |
 | `terms-subset` | object `{ pass, uncovered[], untested[] }` | computed | no | `kind: check` — parameters `of`, `in` (nodes of format `concept-list`), `failWith` (text) |
 
