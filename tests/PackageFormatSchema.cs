@@ -114,6 +114,18 @@ internal static class PackageFormatSchema
             Remove(properties, "customSchemas");
         }
 
+        // v25 (#998, package-format-v25-design.md §§ 3.6, 4, 11): deliverables
+        // (the key results becomes), snippets (what data becomes) and the
+        // package-local formats arrive at 25. Below it none of the members
+        // exists, and the published v5–v24 bytes must not move; the model
+        // reads them at every version and the validator refuses them by name.
+        if (specVersion < 25)
+        {
+            Remove(properties, "deliverables");
+            Remove(properties, "snippets");
+            Remove(properties, "formats");
+        }
+
         if (specVersion < 9)
         {
             Remove(properties, "title");
@@ -219,6 +231,13 @@ internal static class PackageFormatSchema
         {
             Remove(properties, "optional");
             Remove(properties, "default");
+        }
+
+        // v25 (#998, § 5): the instruction a macro's slot marker carries
+        // arrives at 25. Below it the member does not exist.
+        if (specVersion < 25)
+        {
+            Remove(properties, "instruction");
         }
 
         Close(item);

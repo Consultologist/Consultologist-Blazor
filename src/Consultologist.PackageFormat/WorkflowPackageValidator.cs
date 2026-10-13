@@ -2792,7 +2792,7 @@ public static class WorkflowPackageValidator
         List<string> errors,
         List<string> warnings)
     {
-        var results = manifest.Results ?? new List<WorkflowDeliverableSpec>();
+        var results = manifest.EffectiveDeliverables;
 
         // The result-side keys gate below 11 by name, macros declared or not.
         if (manifest.SpecVersion < 11)
@@ -3655,7 +3655,7 @@ public static class WorkflowPackageValidator
             }
         }
 
-        var results = manifest.Results ?? new List<WorkflowDeliverableSpec>();
+        var results = manifest.EffectiveDeliverables;
 
         if (results.Count == 0)
         {

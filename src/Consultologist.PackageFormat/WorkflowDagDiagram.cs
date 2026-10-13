@@ -284,7 +284,7 @@ public static class WorkflowDagDiagram
         // loop above never sees it — and it would be missing from the diagram
         // of the very package whose deliverables turn on it. Added after the
         // bound sources so a package with no conditions draws exactly as before.
-        foreach (var result in manifest.Results ?? new List<WorkflowDeliverableSpec>())
+        foreach (var result in manifest.EffectiveDeliverables)
         {
             if (result.When != null
                 && WorkflowResultConditions.TryParseExpression(result.When, out var expression, out _)

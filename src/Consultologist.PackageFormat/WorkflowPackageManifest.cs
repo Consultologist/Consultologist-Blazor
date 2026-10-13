@@ -58,7 +58,63 @@ public sealed record WorkflowPackageManifest(
     // schema id lives in exactly one of Schemas, SchemaRefs or CustomSchemas.
     // Trailing optional, omitted when null, so every earlier manifest writes the
     // bytes it always wrote. The version gate is the validator's.
-    Dictionary<string, string>? CustomSchemas = null);
+    Dictionary<string, string>? CustomSchemas = null,
+    // v25 (package-format-v25-design.md § 11, #998): the deliverables under
+    // the key the version says — `deliverables` at ≥ 25, `results` (and the
+    // `result` sugar) below. The reader takes either; which one a version
+    // accepts is the validator's rule, and WithDeliverablesKeyFor is the
+    // writer's normaliser. Trailing optional, omitted when null, so every
+    // earlier manifest writes the bytes it always wrote.
+    List<WorkflowDeliverableSpec>? Deliverables = null,
+    // v25 (§ 4): snippets — Scriban templates a template READS (snippet.<id>.text),
+    // never attached — replace data at 25. Same shape as data: id → file, or
+    // folder → "dir/" with an index.json (id, name, file, when). Trailing
+    // optional; below 25 refused by name by the validator.
+    Dictionary<string, string>? Snippets = null,
+    // v25 (§ 3.6): the package-local formats — { id, file }, every file a
+    // custom format (WorkflowFormatSpec); catalogue ids are referenced from a
+    // node by id alone and never listed here. Trailing optional; below 25
+    // refused by name by the validator.
+    List<WorkflowFormatReference>? Formats = null)
+{
+    /// <summary>
+    /// The deliverables whichever key carried them: <c>deliverables</c> at
+    /// 25, <c>results</c> before; empty when neither. The v5/v6 <c>result</c>
+    /// string (one node reference) is a different shape and stays the
+    /// validator's.
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<WorkflowDeliverableSpec> EffectiveDeliverables =>
+        Deliverables ?? Results ?? (IReadOnlyList<WorkflowDeliverableSpec>)Array.Empty<WorkflowDeliverableSpec>();
+
+    /// <summary>
+    /// The same manifest with its deliverables under the key the given
+    /// specVersion writes: <c>deliverables</c> at ≥ 25, <c>results</c> below.
+    /// A manifest with neither key is returned as it is.
+    /// </summary>
+    public WorkflowPackageManifest WithDeliverablesKeyFor(int specVersion)
+    {
+        var list = Deliverables ?? Results;
+
+        if (list is null)
+        {
+            return this;
+        }
+
+        return specVersion >= 25
+            ? this with { Deliverables = list, Results = null }
+            : this with { Deliverables = null, Results = list };
+    }
+}
+
+/// <summary>
+/// v25 (§ 3.6): one package-local format — the id a node's <c>format</c>
+/// names and the file holding its <see cref="WorkflowFormatSpec"/>. The file
+/// carries no id; this entry is where the id lives.
+/// </summary>
+public sealed record WorkflowFormatReference(
+    string Id,
+    string File);
 
 /// <summary>
 /// One declared macro (v11 § 4): a package-owned template file, applied to a
@@ -73,7 +129,13 @@ public sealed record WorkflowMacroSpec(
     string Label,
     string File,
     bool? Optional = null,
-    bool? Default = null);
+    bool? Default = null,
+    // v25 (package-format-v25-design.md § 5, #998): what the model is told when
+    // the macro's slot marker is read inline (macro.<id>.prompt) — composed
+    // with the mechanics sentence. Mandatory at ≥ 25 (a macro is placed text,
+    // and placed text needs an instruction); below 25 refused by name. Trailing
+    // optional, omitted when null.
+    string? Instruction = null);
 
 /// <summary>
 /// One declared input slot of a specVersion-7 package: the id nodes bind as
@@ -777,7 +839,13 @@ public sealed record WorkflowDataIndexFile(
 public sealed record WorkflowDataIndexItem(
     string? Id,
     string? Name,
-    string? File);
+    string? File,
+    // v25 (package-format-v25-design.md § 4, #998): a snippet folder item's
+    // condition — input-only, resolved at job start so a fan's item count stays
+    // a start-time scalar. Trailing optional; below 25 refused by name by the
+    // validator, and never read by the data resolver (a template's own `if`
+    // gates a read).
+    string? When = null);
 
 /// <summary>
 /// A binding value in a manifest: either a plain source string
