@@ -111,6 +111,9 @@ public static partial class TemplateReferenceWalker
     /// <summary>The fan item, awaiting a member.</summary>
     private sealed record ItemTarget : Target;
 
+    /// <summary><c>run</c> or <c>profile</c>, awaiting a fact name.</summary>
+    private sealed record FactsTarget(string Object) : Target;
+
     /// <summary>A typed value (null shape = untyped, members pass).</summary>
     private sealed record ShapeTarget(TemplateValueShape? Shape) : Target;
 
@@ -416,6 +419,10 @@ public static partial class TemplateReferenceWalker
 
                     return new ItemTarget();
 
+                case TemplateObjects.Run:
+                case TemplateObjects.Profile:
+                    return new FactsTarget(root);
+
                 case TemplateObjects.RetiredData:
                     Errors.Add($"{_subject} reads 'data'; at specVersion 25 data is 'snippet' — read snippet.<id>.text.");
                     return Refused;
@@ -431,7 +438,7 @@ public static partial class TemplateReferenceWalker
                 return Opaque;
             }
 
-            Errors.Add($"{_subject} reads '{root}', which is not an object (input, node, snippet, item, macro), a loop variable, or a Scriban builtin.");
+            Errors.Add($"{_subject} reads '{root}', which is not an object (input, node, snippet, item, macro, run, profile), a loop variable, or a Scriban builtin.");
             return Refused;
         }
 
@@ -440,7 +447,8 @@ public static partial class TemplateReferenceWalker
             TemplateObjects.Input => "input.<id>",
             TemplateObjects.Node => "node.<id>.text or node.<id>.value",
             TemplateObjects.Snippet => "snippet.<id>.text",
-            _ => "macro.<id>.text or macro.<id>.prompt"
+            TemplateObjects.Macro => "macro.<id>.text or macro.<id>.prompt",
+            _ => root
         };
 
         private Target ResolveObjectId(string root, string id)
@@ -504,6 +512,8 @@ public static partial class TemplateReferenceWalker
             SnippetTarget => TemplateMembers.Snippet.Contains(name, StringComparer.Ordinal),
             MacroTarget => TemplateMembers.Macro.Contains(name, StringComparer.Ordinal),
             NodeTarget => TemplateMembers.Node.Contains(name, StringComparer.Ordinal),
+            FactsTarget { Object: TemplateObjects.Run } => TemplateMembers.Run.Contains(name, StringComparer.Ordinal),
+            FactsTarget { Object: TemplateObjects.Profile } => TemplateMembers.Profile.Contains(name, StringComparer.Ordinal),
             ShapeTarget { Shape: { IsObject: true } shape } => shape.Fields?.ContainsKey(name) ?? false,
             _ => false
         };
@@ -573,6 +583,9 @@ public static partial class TemplateReferenceWalker
 
                 case ItemTarget:
                     return StepItem(name, walked);
+
+                case FactsTarget facts:
+                    return StepFacts(facts.Object, name, walked);
 
                 case ObjectTarget:
                     return Refused;
@@ -651,6 +664,31 @@ public static partial class TemplateReferenceWalker
             }
         }
 
+        private Target StepFacts(string obj, string name, StringBuilder walked)
+        {
+            var members = obj == TemplateObjects.Run ? TemplateMembers.Run : TemplateMembers.Profile;
+
+            if (!members.Contains(name, StringComparer.Ordinal))
+            {
+                Errors.Add($"{_subject} reads {walked}, which is not a member ({obj} has {Describe(members)}).");
+                return Refused;
+            }
+
+            if (obj == TemplateObjects.Run)
+            {
+                _refs.ReadRunFact(name);
+            }
+            else
+            {
+                _refs.ReadProfileFact(name);
+            }
+
+            return new ShapeTarget(TemplateValueShape.Text);
+
+            static string Describe(IReadOnlyList<string> members) =>
+                string.Join(", ", members.Take(members.Count - 1).Select(m => "." + m)) + " and ." + members[^1];
+        }
+
         private Target StepShape(TemplateValueShape shape, string name, string before, StringBuilder walked)
         {
             if (shape.IsUnknown)
@@ -720,7 +758,7 @@ public static partial class TemplateReferenceWalker
         /// <summary>A chain's last word: a node needs .text or .value, a snippet or macro a member, a folder a loop.</summary>
         private Target Finalize(Target target, string walked, ChainUse use)
         {
-            if (use == ChainUse.With && target is NodeTarget or SnippetTarget or MacroTarget or ItemTarget)
+            if (use == ChainUse.With && target is NodeTarget or SnippetTarget or MacroTarget or ItemTarget or FactsTarget)
             {
                 return target;
             }
@@ -737,6 +775,10 @@ public static partial class TemplateReferenceWalker
 
                 case MacroTarget { Id: { } id }:
                     Errors.Add($"{_subject} reads macro '{id}' bare; read {walked}.text or {walked}.prompt.");
+                    return Refused;
+
+                case FactsTarget facts:
+                    Errors.Add($"{_subject} reads '{facts.Object}' bare; name the fact: {facts.Object}.{string.Join(" or " + facts.Object + ".", facts.Object == TemplateObjects.Run ? TemplateMembers.Run : TemplateMembers.Profile)}.");
                     return Refused;
 
                 case ItemTarget:

@@ -16,6 +16,8 @@ public sealed record TemplateReferences(
     IReadOnlySet<string> MacroPrompts,
     IReadOnlySet<string> MacroFolders,
     IReadOnlySet<string> ItemMembers,
+    IReadOnlySet<string> RunFacts,
+    IReadOnlySet<string> ProfileFacts,
     IReadOnlyList<string> Errors,
     IReadOnlyList<string> Warnings)
 {
@@ -43,6 +45,8 @@ internal sealed class TemplateReferenceCollector
     private readonly HashSet<string> _macroPrompts = new(StringComparer.Ordinal);
     private readonly HashSet<string> _macroFolders = new(StringComparer.Ordinal);
     private readonly HashSet<string> _itemMembers = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _runFacts = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _profileFacts = new(StringComparer.Ordinal);
 
     public List<string> Errors { get; } = new();
 
@@ -68,7 +72,11 @@ internal sealed class TemplateReferenceCollector
 
     public void ReadItem(string member) => _itemMembers.Add(member);
 
+    public void ReadRunFact(string member) => _runFacts.Add(member);
+
+    public void ReadProfileFact(string member) => _profileFacts.Add(member);
+
     public TemplateReferences ToReferences() => new(
         _inputs, _nodes, _snippets, _snippetFolders, _macroTexts, _macroPrompts, _macroFolders, _itemMembers,
-        Errors, Warnings);
+        _runFacts, _profileFacts, Errors, Warnings);
 }
