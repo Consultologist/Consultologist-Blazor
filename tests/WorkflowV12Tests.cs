@@ -86,7 +86,7 @@ public class WorkflowV12GateTests
         {
             Macros = manifest.Macros!.Select(m => m with { Optional = true, Default = true }).ToList(),
             Results = manifest.Results!.Select((r, i) => i == 0
-                ? r with { Macros = new List<WorkflowResultMacroSpec> { new("disclaimer", Before: "node:section-instructions") } }
+                ? r with { Macros = new List<WorkflowDeliverableMacroSpec> { new("disclaimer", Before: "node:section-instructions") } }
                 : r).ToList()
         };
 
@@ -167,7 +167,7 @@ public class WorkflowV12PlacementTests
         return (manifest with
         {
             Results = manifest.Results!.Select((r, i) => i == 0
-                ? r with { Macros = new List<WorkflowResultMacroSpec> { new("disclaimer", before, after) } }
+                ? r with { Macros = new List<WorkflowDeliverableMacroSpec> { new("disclaimer", before, after) } }
                 : r).ToList()
         }, files);
     }
@@ -1000,7 +1000,7 @@ public class WorkflowV12ConditionalMacroTests
         {
             Macros = new List<WorkflowMacroSpec> { new(macroId, "Gated paragraph", $"macros/{macroId}.md") },
             Results = manifest.Results!.Select((r, i) => i == 0
-                ? r with { Macros = new List<WorkflowResultMacroSpec> { new(macroId, When: when) } }
+                ? r with { Macros = new List<WorkflowDeliverableMacroSpec> { new(macroId, When: when) } }
                 : r).ToList()
         };
         var all = new Dictionary<string, string>(files) { [$"macros/{macroId}.md"] = template };
@@ -1028,7 +1028,7 @@ public class WorkflowV12ConditionalMacroTests
             Results = manifest.Results!.Select((r, i) => i == 0
                 ? r with
                 {
-                    Macros = new List<WorkflowResultMacroSpec>
+                    Macros = new List<WorkflowDeliverableMacroSpec>
                     {
                         new("arm_in", When: "node:scope == in_scope"),
                         new("arm_out", When: "node:scope == out_of_scope")
@@ -1054,7 +1054,7 @@ public class WorkflowV12ConditionalMacroTests
         {
             SpecVersion = 11,
             Results = manifest.Results!.Select((r, i) => i == 0
-                ? r with { Macros = new List<WorkflowResultMacroSpec> { new("disclaimer", Before: "node:section-instructions", When: "node:scope == in_scope") } }
+                ? r with { Macros = new List<WorkflowDeliverableMacroSpec> { new("disclaimer", Before: "node:section-instructions", When: "node:scope == in_scope") } }
                 : r).ToList()
         };
 
@@ -1113,7 +1113,7 @@ public class WorkflowV12ConditionalMacroTests
         manifest = manifest with
         {
             Results = manifest.Results!.Select((r, i) => i == 0
-                ? r with { Macros = new List<WorkflowResultMacroSpec> { new("disclaimer", Before: "node:section-instructions", When: "node:scope == in_scope") } }
+                ? r with { Macros = new List<WorkflowDeliverableMacroSpec> { new("disclaimer", Before: "node:section-instructions", When: "node:scope == in_scope") } }
                 : r).ToList()
         };
         var placed = WorkflowV10StructureTests.Write(manifest);
@@ -1394,7 +1394,7 @@ public class WorkflowV12ConditionalMacroCompositionTests
             Results = manifest.Results!.Select((r, i) => i == 0
                 ? r with
                 {
-                    Macros = new List<WorkflowResultMacroSpec>
+                    Macros = new List<WorkflowDeliverableMacroSpec>
                     {
                         new("disclaimer", Before: "node:section-instructions"),
                         new("gated", When: "node:scope == in_scope"),

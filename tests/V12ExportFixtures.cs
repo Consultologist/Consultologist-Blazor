@@ -39,7 +39,7 @@ public static class V12ExportFixtures
             Results = manifest.Results!.Select((r, i) => i == 0
                 ? r with
                 {
-                    Macros = new List<WorkflowResultMacroSpec>
+                    Macros = new List<WorkflowDeliverableMacroSpec>
                     {
                         // v19 (#845): forItem anchors to one item of the fan the anchor section aggregates.
                         new("disclaimer", Before: anchor, After: alsoAfter ? anchor : null, ForItem: forItem)
@@ -85,7 +85,7 @@ public static class V12ExportFixtures
                     new("second", "Second signature", "macros/second.md")
                 },
                 Results = manifest.Results!.Select((r, i) => i == 0
-                    ? r with { Macros = new List<WorkflowResultMacroSpec> { "disclaimer", "second" } }
+                    ? r with { Macros = new List<WorkflowDeliverableMacroSpec> { "disclaimer", "second" } }
                     : r).ToList()
             };
             return (manifest, mutable);
@@ -110,7 +110,7 @@ public static class V12ExportFixtures
             Results = manifest.Results!.Select((r, i) => i == 0
                 ? r with
                 {
-                    Macros = new List<WorkflowResultMacroSpec>
+                    Macros = new List<WorkflowDeliverableMacroSpec>
                     {
                         new("gated", When: when),
                         new("other", When: "node:scope == out_of_scope")
@@ -254,11 +254,11 @@ public static class V12ExportFixtures
             .Select(n => n.Aggregate != null && n.Id == "assemble-note"
                 ? n with { Aggregate = new List<string>(n.Aggregate) { "node:patient-header" } }
                 : n).ToList(),
-            Results = new List<WorkflowResultSpec>
+            Results = new List<WorkflowDeliverableSpec>
             {
                 baseline.Results![0] with
                 {
-                    Macros = new List<WorkflowResultMacroSpec>
+                    Macros = new List<WorkflowDeliverableMacroSpec>
                     {
                         new("disclaimer", Before: "node:patient-header"),
                         new("formal_note", When: "node:tone == formal"),

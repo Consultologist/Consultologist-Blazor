@@ -644,7 +644,7 @@ internal static class PackageFormatSchema
         }
 
         // v11 (§ 4/§ 5): a deliverable's macro list and its signature flag.
-        // The exporter cannot see through WorkflowResultMacroSpecConverter
+        // The exporter cannot see through WorkflowDeliverableMacroSpecConverter
         // (the bindings precedent above): it reports the record, so the items
         // shape is hand-written — the v11 string form alone below 12, the
         // string-or-placed-object oneOf at 12 (v12 § 4).

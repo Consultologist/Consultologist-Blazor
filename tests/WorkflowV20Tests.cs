@@ -31,7 +31,7 @@ public static class V20Fixtures
             Results = manifest.Results!.Select((r, i) => i == 0
                 ? r with
                 {
-                    Macros = new List<WorkflowResultMacroSpec>
+                    Macros = new List<WorkflowDeliverableMacroSpec>
                     {
                         new("disclaimer", Before: alsoAnchor ? "node:section-instructions" : null, ForItem: forItem, Slot: true)
                     }
@@ -119,12 +119,12 @@ public class WorkflowV20SlotTests
     [Fact]
     public void ASlot_RoundTripsThroughTheConverter()
     {
-        var entry = new WorkflowResultMacroSpec("disclaimer", Slot: true);
+        var entry = new WorkflowDeliverableMacroSpec("disclaimer", Slot: true);
 
         // The converter is registered on the type; read back the way the engine
         // does (WorkflowPackageManifestJson.ReadOptions — case-insensitive).
         var json = System.Text.Json.JsonSerializer.Serialize(entry);
-        var back = System.Text.Json.JsonSerializer.Deserialize<WorkflowResultMacroSpec>(
+        var back = System.Text.Json.JsonSerializer.Deserialize<WorkflowDeliverableMacroSpec>(
             json, WorkflowPackageManifestJson.ReadOptions);
 
         Assert.Contains("\"slot\":true", json);

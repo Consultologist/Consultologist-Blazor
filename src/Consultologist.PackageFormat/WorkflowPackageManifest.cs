@@ -17,7 +17,7 @@ public sealed record WorkflowPackageManifest(
     Dictionary<string, string>? Data = null,
     string? Result = null,
     List<WorkflowInputSpec>? Inputs = null,
-    List<WorkflowResultSpec>? Results = null,
+    List<WorkflowDeliverableSpec>? Results = null,
     // v9 (package-format-v9-design.md § 4, #432): what the package is called
     // and what it is for. Authored content, the safety class of a label.
     // Typed rather than tolerated so the publisher's re-serialisation keeps
@@ -412,7 +412,7 @@ public static class WorkflowExpectedContent
 /// label naming an aggregator node. The string "result" form remains valid as
 /// one-entry sugar (external/consultologist-package-format/package-format-v7.md § 3).
 /// </summary>
-public sealed record WorkflowResultSpec(
+public sealed record WorkflowDeliverableSpec(
     string Id,
     string Node,
     string Label,
@@ -426,8 +426,8 @@ public sealed record WorkflowResultSpec(
     // would write "signature": false onto every earlier manifest. Below 11
     // both are refused by name by the validator. v12 (§ 4): each entry is a
     // bare id (the v11 form, byte-for-byte) or a placed object — see
-    // WorkflowResultMacroSpec.
-    List<WorkflowResultMacroSpec>? Macros = null,
+    // WorkflowDeliverableMacroSpec.
+    List<WorkflowDeliverableMacroSpec>? Macros = null,
     bool? Signature = null,
     // v12 (§ 13): the check node gating this deliverable — the
     // post-production mirror of when. Below 12 refused by name.
@@ -440,8 +440,8 @@ public sealed record WorkflowResultSpec(
 /// form, so every v11 manifest round-trips byte for byte; the object form
 /// below specVersion 12 is refused by the validator, never by the reader.
 /// </summary>
-[JsonConverter(typeof(WorkflowResultMacroSpecConverter))]
-public sealed record WorkflowResultMacroSpec(
+[JsonConverter(typeof(WorkflowDeliverableMacroSpecConverter))]
+public sealed record WorkflowDeliverableMacroSpec(
     string Id,
     string? Before = null,
     string? After = null,
@@ -465,21 +465,21 @@ public sealed record WorkflowResultMacroSpec(
     /// <summary>#863: the model, not the deliverable, chooses where this macro lands.</summary>
     public bool IsSlot => Slot == true;
 
-    public static implicit operator WorkflowResultMacroSpec?(string? id) => id is null ? null : new(id);
+    public static implicit operator WorkflowDeliverableMacroSpec?(string? id) => id is null ? null : new(id);
 
     public override string ToString() => Id;
 }
 
-public sealed class WorkflowResultMacroSpecConverter : JsonConverter<WorkflowResultMacroSpec>
+public sealed class WorkflowDeliverableMacroSpecConverter : JsonConverter<WorkflowDeliverableMacroSpec>
 {
     // The object form, read without this converter on the outer shape.
     private sealed record Shape(string? Id, string? Before, string? After, string? When, string? ForItem, bool? Slot);
 
-    public override WorkflowResultMacroSpec Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public override WorkflowDeliverableMacroSpec Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.String)
         {
-            return new WorkflowResultMacroSpec(reader.GetString()!);
+            return new WorkflowDeliverableMacroSpec(reader.GetString()!);
         }
 
         if (reader.TokenType != JsonTokenType.StartObject)
@@ -495,10 +495,10 @@ public sealed class WorkflowResultMacroSpecConverter : JsonConverter<WorkflowRes
             throw new JsonException("A placed macro entry must declare id.");
         }
 
-        return new WorkflowResultMacroSpec(shape.Id, shape.Before, shape.After, shape.When, shape.ForItem, shape.Slot);
+        return new WorkflowDeliverableMacroSpec(shape.Id, shape.Before, shape.After, shape.When, shape.ForItem, shape.Slot);
     }
 
-    public override void Write(Utf8JsonWriter writer, WorkflowResultMacroSpec value, JsonSerializerOptions options)
+    public override void Write(Utf8JsonWriter writer, WorkflowDeliverableMacroSpec value, JsonSerializerOptions options)
     {
         if (value.IsBare)
         {
@@ -678,7 +678,7 @@ public sealed record WorkflowNodeSpec(
     List<string>? Values = null,
     // v11 (§ 6, #550): the package's claim that this node's output is the
     // same for the same input — carried for the rerun verdict, never
-    // enforced at run time. bool? on purpose (see WorkflowResultSpec); below
+    // enforced at run time. bool? on purpose (see WorkflowDeliverableSpec); below
     // 11 refused by name by the validator.
     bool? Reproducible = null,
     // v12 (§ 13): the check node's declaration — kind "check" with the

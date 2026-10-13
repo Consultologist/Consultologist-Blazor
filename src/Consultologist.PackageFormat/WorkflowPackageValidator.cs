@@ -1668,7 +1668,7 @@ public static class WorkflowPackageValidator
     /// <summary>The v7 result set: authored ids and labels over distinct aggregator nodes (package-format-v7.md § 3).</summary>
     private static void ValidateResultSet(
         WorkflowPackageManifest manifest,
-        List<WorkflowResultSpec> results,
+        List<WorkflowDeliverableSpec> results,
         IReadOnlyDictionary<string, WorkflowNodeSpec> nodesById,
         IReadOnlyDictionary<string, WorkflowInputSpec> declaredInputs,
         WorkflowPackageData data,
@@ -1762,7 +1762,7 @@ public static class WorkflowPackageValidator
     /// </summary>
     private static void ValidateResultCheck(
         WorkflowPackageManifest manifest,
-        WorkflowResultSpec result,
+        WorkflowDeliverableSpec result,
         IReadOnlyDictionary<string, WorkflowNodeSpec> checks,
         HashSet<string> namedChecks,
         List<string> errors)
@@ -1808,7 +1808,7 @@ public static class WorkflowPackageValidator
     /// </summary>
     private static void ValidateResultCondition(
         WorkflowPackageManifest manifest,
-        WorkflowResultSpec result,
+        WorkflowDeliverableSpec result,
         IReadOnlyDictionary<string, WorkflowInputSpec> declaredInputs,
         IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
         List<string> errors)
@@ -2054,7 +2054,7 @@ public static class WorkflowPackageValidator
     /// </summary>
     private static void ValidateMacroConditions(
         WorkflowPackageManifest manifest,
-        WorkflowResultSpec result,
+        WorkflowDeliverableSpec result,
         IReadOnlyDictionary<string, WorkflowInputSpec> declaredInputs,
         IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
         List<string> errors)
@@ -2064,7 +2064,7 @@ public static class WorkflowPackageValidator
             return;
         }
 
-        foreach (var entry in (result.Macros ?? new List<WorkflowResultMacroSpec>()).Where(e => e.When != null))
+        foreach (var entry in (result.Macros ?? new List<WorkflowDeliverableMacroSpec>()).Where(e => e.When != null))
         {
             var prefix = $"Result '{result.Id}' macro '{entry.Id}' condition";
 
@@ -2433,7 +2433,7 @@ public static class WorkflowPackageValidator
 
     /// <summary>The v8 rules, verbatim: the conformance suite and the editor quote these sentences.</summary>
     private static void ValidateV8Condition(
-        WorkflowResultSpec result,
+        WorkflowDeliverableSpec result,
         WorkflowResultCondition condition,
         WorkflowInputSpec input,
         List<string> errors)
@@ -2792,7 +2792,7 @@ public static class WorkflowPackageValidator
         List<string> errors,
         List<string> warnings)
     {
-        var results = manifest.Results ?? new List<WorkflowResultSpec>();
+        var results = manifest.Results ?? new List<WorkflowDeliverableSpec>();
 
         // The result-side keys gate below 11 by name, macros declared or not.
         if (manifest.SpecVersion < 11)
@@ -2841,7 +2841,7 @@ public static class WorkflowPackageValidator
                 // Keyed on the fields, not the entry's shape: a when-only
                 // entry must earn the gate sentence for when, never the
                 // placement one.
-                foreach (var entry in result.Macros ?? new List<WorkflowResultMacroSpec>())
+                foreach (var entry in result.Macros ?? new List<WorkflowDeliverableMacroSpec>())
                 {
                     if ((entry.Before ?? entry.After) != null)
                     {
@@ -2940,7 +2940,7 @@ public static class WorkflowPackageValidator
         {
             var seen = new HashSet<string>(StringComparer.Ordinal);
 
-            foreach (var entry in result.Macros ?? new List<WorkflowResultMacroSpec>())
+            foreach (var entry in result.Macros ?? new List<WorkflowDeliverableMacroSpec>())
             {
                 // v12 (§ 4): an entry is a bare id or a placed object; the id
                 // rules hold for both — a placed macro counts as referenced.
@@ -3039,7 +3039,7 @@ public static class WorkflowPackageValidator
             // embedded token, and never by two tokens.
             if (manifest.SpecVersion >= 12)
             {
-                var carrying = (result.Macros ?? new List<WorkflowResultMacroSpec>())
+                var carrying = (result.Macros ?? new List<WorkflowDeliverableMacroSpec>())
                     .Select(e => e.Id)
                     .Distinct(StringComparer.Ordinal)
                     .Where(id => tokenCounts.GetValueOrDefault(id) > 0)
@@ -3048,7 +3048,7 @@ public static class WorkflowPackageValidator
 
                 // § 14: whether a document is signed must not turn on a
                 // classifier's answer — the § 5 never-optional rule's sibling.
-                foreach (var gated in (result.Macros ?? new List<WorkflowResultMacroSpec>())
+                foreach (var gated in (result.Macros ?? new List<WorkflowDeliverableMacroSpec>())
                     .Where(e => e.When != null && tokenCounts.GetValueOrDefault(e.Id) > 0))
                 {
                     errors.Add($"Result '{result.Id}' gates macro '{gated.Id}' with when, and the macro carries {{{{profile:signature}}}}; a conditional signature was rejected (#516) and stays rejected.");
@@ -3056,7 +3056,7 @@ public static class WorkflowPackageValidator
 
                 // #863: a slot is placed wherever the model drops its marker, so a
                 // slot macro carrying the signature is a conditional signature too.
-                foreach (var slotted in (result.Macros ?? new List<WorkflowResultMacroSpec>())
+                foreach (var slotted in (result.Macros ?? new List<WorkflowDeliverableMacroSpec>())
                     .Where(e => e.Slot == true && tokenCounts.GetValueOrDefault(e.Id) > 0))
                 {
                     errors.Add($"Result '{result.Id}' places macro '{slotted.Id}' as a slot, and the macro carries {{{{profile:signature}}}}; a deliverable is signed once, not wherever the model drops a marker.");
@@ -3108,7 +3108,7 @@ public static class WorkflowPackageValidator
             {
                 foreach (var result in results)
                 {
-                    foreach (var entry in result.Macros ?? new List<WorkflowResultMacroSpec>())
+                    foreach (var entry in result.Macros ?? new List<WorkflowDeliverableMacroSpec>())
                     {
                         if (itemFields.TryGetValue(entry.Id, out var fields))
                         {
@@ -3171,7 +3171,7 @@ public static class WorkflowPackageValidator
         if (manifest.SpecVersion >= 20)
         {
             var slotIds = results
-                .SelectMany(result => result.Macros ?? new List<WorkflowResultMacroSpec>())
+                .SelectMany(result => result.Macros ?? new List<WorkflowDeliverableMacroSpec>())
                 .Where(entry => entry.Slot == true)
                 .Select(entry => entry.Id)
                 .ToHashSet(StringComparer.Ordinal);
@@ -3655,7 +3655,7 @@ public static class WorkflowPackageValidator
             }
         }
 
-        var results = manifest.Results ?? new List<WorkflowResultSpec>();
+        var results = manifest.Results ?? new List<WorkflowDeliverableSpec>();
 
         if (results.Count == 0)
         {

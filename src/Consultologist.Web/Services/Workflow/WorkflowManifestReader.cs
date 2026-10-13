@@ -129,7 +129,7 @@ public static class WorkflowManifestReader
 
     /// <summary>
     /// One entry of a deliverable's macro list (v12 § 4/§ 14) — the mirror
-    /// of WorkflowResultMacroSpec, IsBare discipline included: a bare entry
+    /// of WorkflowDeliverableMacroSpec, IsBare discipline included: a bare entry
     /// writes the v11 string, an adorned one the object, and When counts.
     /// </summary>
     public sealed record ResultMacroView(string Id, string? Before = null, string? After = null, string? When = null, string? ForItem = null, bool? Slot = null)
@@ -137,7 +137,7 @@ public static class WorkflowManifestReader
         public bool IsBare => Before is null && After is null && When is null && ForItem is null && Slot is null;
 
         // v20 (#863): the model places this macro inline via a [[slot:<id>]]
-        // marker; it names no anchor. Mirror of WorkflowResultMacroSpec.IsSlot.
+        // marker; it names no anchor. Mirror of WorkflowDeliverableMacroSpec.IsSlot.
         public bool IsSlot => Slot == true;
     }
 
