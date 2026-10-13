@@ -19,8 +19,10 @@ internal static class WorkflowPackageContentValidation
     public const int MaxFileBytes = 256 * 1024;
     public const int MaxTotalBytes = 2 * 1024 * 1024;
 
-    private static readonly Regex RootFilePattern = new("^(prompts|schemas|macros)/[A-Za-z0-9._-]+$", RegexOptions.Compiled);
-    private static readonly Regex DataFilePattern = new("^data/[a-z0-9-]+/[A-Za-z0-9._-]+$", RegexOptions.Compiled);
+    // v25 (B2 #1001): formats/<file> (a package-local format) joins the root
+    // set; snippets/<file> and snippets/<folder>/<file> mirror data's two shapes.
+    private static readonly Regex RootFilePattern = new("^(prompts|schemas|macros|formats)/[A-Za-z0-9._-]+$", RegexOptions.Compiled);
+    private static readonly Regex DataFilePattern = new("^(data|snippets)/[a-z0-9-]+/[A-Za-z0-9._-]+$", RegexOptions.Compiled);
 
     /// <summary>
     /// A data path with no directory segment is a **single-value** entry —
@@ -36,7 +38,7 @@ internal static class WorkflowPackageContentValidation
     /// This pattern matches <c>data/..</c> — the traversal guard below is what
     /// rejects that, and it has to keep doing so.
     /// </summary>
-    private static readonly Regex DataValuePattern = new("^data/[A-Za-z0-9._-]+$", RegexOptions.Compiled);
+    private static readonly Regex DataValuePattern = new("^(data|snippets)/[A-Za-z0-9._-]+$", RegexOptions.Compiled);
 
     private static readonly JsonSerializerOptions IndexJsonOptions = new()
     {
@@ -55,7 +57,7 @@ internal static class WorkflowPackageContentValidation
             if ((!RootFilePattern.IsMatch(path) && !DataFilePattern.IsMatch(path) && !DataValuePattern.IsMatch(path))
                 || path.Split('/').Any(segment => segment.Trim('.').Length == 0))
             {
-                errors.Add($"File path '{path}' is not allowed: expected prompts/<file>, schemas/<file>, macros/<file>, data/<collection>/<file>, or data/<file>.");
+                errors.Add($"File path '{path}' is not allowed: expected prompts/<file>, schemas/<file>, macros/<file>, formats/<file>, data/<collection>/<file>, data/<file>, snippets/<folder>/<file>, or snippets/<file>.");
                 continue;
             }
 
@@ -116,7 +118,18 @@ internal static class WorkflowPackageContentValidation
             referenced.Add(path);
         }
 
-        foreach (var (_, path) in manifest.Data ?? new Dictionary<string, string>())
+        // v25 (B2 #1001): the package-local format files, and the snippets —
+        // the same table shape as data (a file, or a folder with an index and
+        // its items), referenced the same way.
+        foreach (var format in manifest.Formats ?? new List<WorkflowFormatReference>())
+        {
+            referenced.Add(format.File);
+        }
+
+        var tables = (manifest.Data ?? new Dictionary<string, string>())
+            .Concat(manifest.Snippets ?? new Dictionary<string, string>());
+
+        foreach (var (_, path) in tables)
         {
             if (!path.EndsWith('/'))
             {

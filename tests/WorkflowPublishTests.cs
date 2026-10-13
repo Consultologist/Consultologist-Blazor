@@ -148,7 +148,8 @@ public class WorkflowPackagePublisherTests
             Catalog,
             new FixedTimeProvider(nowUtc ?? new DateTimeOffset(2026, 7, 16, 12, 0, 0, TimeSpan.Zero)),
             NullLogger<WorkflowPackagePublisher>.Instance,
-            ownership ?? new FakeOwnership());
+            ownership ?? new FakeOwnership(),
+            TestFormats.Catalog);
         return (publisher, writer, settings);
     }
 
@@ -760,6 +761,39 @@ public class WorkflowPackagePublisherTests
         Assert.Contains(result.Errors, error => error.StartsWith("Target and NewPackageSlug are exclusive", StringComparison.Ordinal));
     }
 
+    // ----- v25 (B2 #1001): the formats catalogue at the publish desk ---------
+
+    [Fact]
+    public async Task A25Publish_IsStillRefusedByTheVersionGate_UntilA5()
+    {
+        // The publisher now passes the loaded formats catalogue into the
+        // validator and the stamp; neither is reachable for a 25 package until
+        // the bump accepts 25. The gate speaks first.
+        var (publisher, writer, _) = CreatePublisher();
+        var (manifest, files) = V25Package.Minimal();
+
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: files), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Errors, e => e.Contains("specVersion 25 is not supported"));
+        Assert.Empty(writer.Blobs);
+    }
+
+    [Fact]
+    public async Task A24Publish_StampsTheSameBytes_WithTheFormatsCatalogueLoaded()
+    {
+        var (publisher, writer, _) = CreatePublisher();
+        var manifest = V5Fixtures.Manifest();
+        var files = V5Fixtures.Files(manifest);
+
+        var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: files), CancellationToken.None);
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        var stamp = writer.Blobs[StampBlob("v2026.07.1")];
+        Assert.Equal(WorkflowPackageStamp.Compute(manifest, files, Catalog, new List<string>()).ToJson(), stamp);
+        Assert.DoesNotContain("formats", stamp);
+    }
+
     // ----- #433: the publication stamp -------------------------------------
 
     private static string StampBlob(string version) => $"{AccountName}/{version}/{WorkflowPackageStamp.FileName}";
@@ -861,7 +895,7 @@ public class WorkflowPackagePublisherTests
 
         Assert.False(result.Succeeded);
         Assert.Contains(
-            "File path 'publish.json' is not allowed: expected prompts/<file>, schemas/<file>, macros/<file>, data/<collection>/<file>, or data/<file>.",
+            "File path 'publish.json' is not allowed: expected prompts/<file>, schemas/<file>, macros/<file>, formats/<file>, data/<collection>/<file>, data/<file>, snippets/<folder>/<file>, or snippets/<file>.",
             result.Errors);
         Assert.Empty(writer.Blobs);
     }

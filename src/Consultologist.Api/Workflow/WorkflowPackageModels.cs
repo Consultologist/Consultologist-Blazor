@@ -60,7 +60,13 @@ public sealed record WorkflowPackage(
     // #923 phase 2: the concrete ref of that effective catalog — the package's
     // stamped CatalogRef when stamped, else the global ResolvedRef — stamped on
     // the job record so provenance reflects what actually ran.
-    string? CatalogRef = null)
+    string? CatalogRef = null,
+    // v25 (B2 #1001): the formats catalogue this package resolves its formats
+    // against — its own stamped version when stamped at 25, else the global
+    // pin — and that catalogue's concrete ref. Null below 25 and for bare
+    // fixtures; the starter reads each node's agent, binding or op from it.
+    WorkflowFormatCatalog? Formats = null,
+    string? FormatsRef = null)
 {
     public string Ref => $"{Manifest.Name}@{Manifest.Version}";
 
