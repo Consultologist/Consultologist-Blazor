@@ -79,8 +79,16 @@ At publish the validator parses each template with Scriban and walks the syntax 
 - every `node.<id>` is an **edge** (scheduling dependency, reachability, the diagram);
 - every `input.<id>`, `snippet.<id>`, `item.<member>`, `macro.<id>` is a **read**;
 - a reference inside a conditional branch is still an edge — conservative, stated;
-- **dynamic access is refused** (`node[name]`): static member access only;
-- a reference that does not resolve, or a member outside the closed set, is refused by name.
+- **dynamic access is refused** (`node[name]`): static member access only. A literal integer
+  index on an array path (`node.extract.value.concepts[0].term`) is static and steps into the
+  element; a string-literal index is a member spelled the only way Scriban allows a hyphen
+  (`node["identify-problem"].text` — Scriban reads `node.identify-problem` as a subtraction);
+- a reference that does not resolve, or a member outside the closed set, is refused by name;
+- **loop, `with` and `capture` variables are typed from what they bind** (A2, #997,
+  2026-10-13): `for s in snippet.sections` gives `s` the snippet members, `for c in
+  node.extract.value.concepts` the schema's element, `for h in input.history` the declared
+  element; anything else is untyped and its members pass. A variable named one of the five
+  objects is refused.
 
 **The second edge source** is a computed node's parameters (§ 3.6): each value in `with`
 is an object reference in the same grammar, parsed by the same walker, typed against the
@@ -262,8 +270,14 @@ named here so the word is reserved. A `text` format validates nothing and carrie
 - **`format`** — a catalogue id or a package-local id from `manifest.formats[]`
   (`{ id, file }`, local files only; catalogue ids are reserved).
 - **`prompt`** — required unless the producer is `computed`, refused then.
-- **`with`** — only the parameters the format declares; values are object references or
-  literals typed by the declaration. `of` must name a node whose format is `concept-list`.
+- **`with`** — only the parameters the format declares, every declared one supplied; values
+  are object references or literals typed by the declaration (A2, #997, 2026-10-13): a
+  `node` parameter is a bare `node.<id>` (it names the node, so it is an edge; `.text`/`.value`
+  refused there) whose format must match the declaration's when one is named — `of` must name
+  a node of format `concept-list`; a `text` parameter is a string literal or an `input.<id>`
+  reference to a text input; a `values` parameter is a list of snake_case values (the enum
+  rules) or an `input.<id>` reference to an enum input. A string that is exactly an object
+  reference is read as one; anything else is a literal.
 - **`onInvalid`** — § 3.5.
 - `forEach`, `aggregate`, `when` (v18), `failIfEmpty`, `reproducible` — unchanged.
 - **Refused by name at ≥ 25:** `kind`, `values`, `op`, `of`, `in`, `failWith`,
