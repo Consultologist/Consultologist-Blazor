@@ -184,9 +184,9 @@ public class TemplateRendererTests
     {
         var scope = Scope(nodes: new Dictionary<string, TemplateNodeOutput> { ["extract"] = new("x", "text") });
 
-        Assert.Equal("Prompt 'p' reads node.extract.nope, which is not declared.", Assert.Throws<InvalidOperationException>(() => Render("{{ node.extract.nope }}", scope)).Message);
-        Assert.Equal("Prompt 'p' reads node.other.text, which is not declared.".Replace(".text", string.Empty), Assert.Throws<InvalidOperationException>(() => Render("{{ node.other.text }}", scope)).Message);
-        Assert.Equal("Prompt 'p' reads input.nope, which is not declared.", Assert.Throws<InvalidOperationException>(() => Render("{{ input.nope }}", scope)).Message);
+        Assert.Equal("Prompt 'p' reads node.extract.nope, which this render has no value for.", Assert.Throws<InvalidOperationException>(() => Render("{{ node.extract.nope }}", scope)).Message);
+        Assert.Equal("Prompt 'p' reads node.other.text, which this render has no value for.".Replace(".text", string.Empty), Assert.Throws<InvalidOperationException>(() => Render("{{ node.other.text }}", scope)).Message);
+        Assert.Equal("Prompt 'p' reads input.nope, which this render has no value for.", Assert.Throws<InvalidOperationException>(() => Render("{{ input.nope }}", scope)).Message);
         Assert.Throws<InvalidOperationException>(() => Render("{{ data.x }}", scope));
         Assert.Throws<InvalidOperationException>(() => Render("{{ item.id }}", scope));
     }

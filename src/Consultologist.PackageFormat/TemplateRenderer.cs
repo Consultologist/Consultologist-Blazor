@@ -351,7 +351,7 @@ public static class TemplateRenderer
                 return true;
             }
 
-            throw new InvalidOperationException($"{_subject} reads {_path}.{member}, which is not declared.");
+            throw new InvalidOperationException($"{_subject} reads {_path}.{member}, which this render has no value for.");
         }
     }
 
@@ -382,7 +382,7 @@ public static class TemplateRenderer
         {
             if (!_members.TryGetValue(member, out var produce))
             {
-                throw new InvalidOperationException($"{_subject} reads {_path}.{member}, which is not declared.");
+                throw new InvalidOperationException($"{_subject} reads {_path}.{member}, which this render has no value for.");
             }
 
             if (!_read.TryGetValue(member, out value))

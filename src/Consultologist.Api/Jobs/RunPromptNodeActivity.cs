@@ -52,7 +52,19 @@ public sealed record ConsultPromptNodeActivityInput(
     string? Format = null,
     string? Producer = null,
     string? FormatHash = null,
-    string? Op = null);
+    string? Op = null,
+    // v25 (B3 #1002, design § 1): the 25 render scope — what the orchestrator
+    // holds and the activity cannot re-resolve: the outputs of the nodes this
+    // node reads (item-aligned), the snippet folders as settled at job start,
+    // the fan item and its source, the run and profile facts. Variables is
+    // the effective inputs map at 25. All null below 25. Appended last, same
+    // positional-call rule.
+    IReadOnlyDictionary<string, string>? NodeTexts = null,
+    IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? Folders = null,
+    IReadOnlyDictionary<string, string>? Item = null,
+    string? ForEach = null,
+    TemplateRunFacts? Run = null,
+    TemplateProfileFacts? Profile = null);
 
 /// <summary>
 /// One node run. Deserialized concepts ride the recorded activity result so Durable
@@ -176,15 +188,20 @@ public sealed class RunPromptNodeActivity
             // v9 (#425): the package is already in hand for the template, so
             // its declarations ride along and an object's fields render as
             // their own types — what the publish-time probe checked against.
-            var rendered = PromptTemplateRenderer.Render(
-                prompt,
-                input.Variables,
-                input.VariableTypes,
-                WorkflowVariableDeclarations.For(package.Manifest),
-                // v23 #955: the node's resolved macro blocks compose around the
-                // prompt here, so `sent`/InputHash below cover them.
-                input.Before,
-                input.After);
+            // v25 (B3 #1002): a node with a format renders over the seven
+            // objects from the scope the orchestrator threaded and the package
+            // in hand; below 25 the flat map, as ever.
+            var rendered = input.Format is not null
+                ? ConsultRenderPayload.RenderAt25(input, package, prompt.TemplateText)
+                : PromptTemplateRenderer.Render(
+                    prompt,
+                    input.Variables,
+                    input.VariableTypes,
+                    WorkflowVariableDeclarations.For(package.Manifest),
+                    // v23 #955: the node's resolved macro blocks compose around the
+                    // prompt here, so `sent`/InputHash below cover them.
+                    input.Before,
+                    input.After);
             // v12 #634 (design § 15): the first early return — the render IS
             // the answer. The catalog, the agent and the classifier trailer
             // are never touched; the validator guarantees a template never

@@ -246,6 +246,41 @@ public sealed class ConsultGenerationOrchestrator
             var instanceKey = ConsultNodeScheduler.InstanceKey(node.Id, item?["id"]);
             started.Add(instanceKey);
 
+            // v25 (B3 #1002, design § 1): a node with a format renders over
+            // the seven objects in the activity; the orchestrator threads what
+            // only it holds — the outputs this instance reads, the settled
+            // folders, the facts — and no flat variables, no before/after
+            // blocks (instances compose on the output side, B5).
+            if (node.Format is not null)
+            {
+                pendingTasks[context.CallActivityAsync<NodeRunResult>(
+                    ConsultGenerationActivityNames.RunPromptNode,
+                    new ConsultPromptNodeActivityInput(
+                        instanceKey,
+                        node.PromptId!,
+                        new Dictionary<string, string>(effectiveInputs, StringComparer.Ordinal),
+                        input.WorkflowPackage,
+                        null,
+                        node.ConceptSource,
+                        input.InputTypes is null ? null : new Dictionary<string, string>(input.InputTypes, StringComparer.Ordinal),
+                        node.Values,
+                        node.Template,
+                        node.AgentName,
+                        node.AgentVersion,
+                        Format: node.Format,
+                        Producer: node.Producer,
+                        FormatHash: node.FormatHash,
+                        Op: node.Op,
+                        NodeTexts: ConsultRenderPayload.NodeTextsFor(node, item, nodesById, outputs),
+                        Folders: ConsultRenderPayload.FoldersFor(collections),
+                        Item: item,
+                        ForEach: node.ForEach,
+                        Run: ConsultRenderPayload.RunFactsFor(context.CurrentUtcDateTime, context.InstanceId, input.WorkflowPackage, input.ApiHost),
+                        Profile: ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature)),
+                    AgentActivityRetryOptions)] = (node.Id, item?["id"]);
+                return;
+            }
+
             var variables = ConsultNodeVariableResolver.Resolve(
                 node, effectiveInputs, item, input.DataScalars, nodesById, outputs);
 
