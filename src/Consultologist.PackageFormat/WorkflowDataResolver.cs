@@ -22,16 +22,29 @@ public static class WorkflowDataResolver
     public static WorkflowPackageData Resolve(
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, string> files,
+        List<string> errors) =>
+        Resolve(manifest.Data, "Data", files, errors);
+
+    /// <summary>
+    /// v25 (#999): the same resolution over <c>manifest.snippets</c> — the
+    /// table is the same shape (id → file, or folder → "dir/" with an
+    /// index.json), the noun in every sentence is "Snippet", and a folder
+    /// item's <c>when</c> is carried on the item.
+    /// </summary>
+    public static WorkflowPackageData Resolve(
+        IReadOnlyDictionary<string, string>? table,
+        string noun,
+        IReadOnlyDictionary<string, string> files,
         List<string> errors)
     {
         var scalars = new Dictionary<string, string>(StringComparer.Ordinal);
         var collections = new Dictionary<string, WorkflowDataCollection>(StringComparer.Ordinal);
 
-        foreach (var (id, path) in manifest.Data ?? new Dictionary<string, string>())
+        foreach (var (id, path) in table ?? new Dictionary<string, string>())
         {
             if (path.EndsWith('/'))
             {
-                var collection = ResolveCollection(id, path, files, errors);
+                var collection = ResolveCollection(id, path, files, errors, noun);
                 if (collection != null)
                 {
                     collections[id] = collection;
@@ -43,7 +56,7 @@ public static class WorkflowDataResolver
             }
             else
             {
-                errors.Add($"Data entry '{id}' file '{path}' is missing from the package.");
+                errors.Add($"{noun} entry '{id}' file '{path}' is missing from the package.");
             }
         }
 
@@ -54,13 +67,14 @@ public static class WorkflowDataResolver
         string id,
         string directory,
         IReadOnlyDictionary<string, string> files,
-        List<string> errors)
+        List<string> errors,
+        string noun = "Data")
     {
         var indexPath = directory + IndexFileName;
 
         if (!files.TryGetValue(indexPath, out var indexJson))
         {
-            errors.Add($"Data collection '{id}' is missing '{indexPath}'.");
+            errors.Add($"{noun} collection '{id}' is missing '{indexPath}'.");
             return null;
         }
 
@@ -71,29 +85,29 @@ public static class WorkflowDataResolver
         }
         catch (JsonException ex)
         {
-            errors.Add($"Data collection '{id}' index.json is not valid JSON: {ex.Message}");
+            errors.Add($"{noun} collection '{id}' index.json is not valid JSON: {ex.Message}");
             return null;
         }
 
         if (index?.Fields is not { Count: > 0 })
         {
-            errors.Add($"Data collection '{id}' index.json declares no fields.");
+            errors.Add($"{noun} collection '{id}' index.json declares no fields.");
             return null;
         }
 
         if (!index.Fields.Contains("id") || !index.Fields.Contains("name"))
         {
-            errors.Add($"Data collection '{id}' fields must include 'id' and 'name'.");
+            errors.Add($"{noun} collection '{id}' fields must include 'id' and 'name'.");
         }
 
         foreach (var field in index.Fields.Where(f => !SupportedFields.Contains(f)))
         {
-            errors.Add($"Data collection '{id}' declares field '{field}' with no source in specVersion 5.0 (supported: id, name, content).");
+            errors.Add($"{noun} collection '{id}' declares field '{field}' with no source in specVersion 5.0 (supported: id, name, content).");
         }
 
         if (index.Items is not { Count: > 0 })
         {
-            errors.Add($"Data collection '{id}' declares no items.");
+            errors.Add($"{noun} collection '{id}' declares no items.");
             return null;
         }
 
@@ -105,13 +119,13 @@ public static class WorkflowDataResolver
         {
             if (string.IsNullOrWhiteSpace(item.Id) || string.IsNullOrWhiteSpace(item.Name))
             {
-                errors.Add($"Data collection '{id}' has an item without an id or name.");
+                errors.Add($"{noun} collection '{id}' has an item without an id or name.");
                 continue;
             }
 
             if (!seenIds.Add(item.Id))
             {
-                errors.Add($"Data collection '{id}' has duplicate item id '{item.Id}'.");
+                errors.Add($"{noun} collection '{id}' has duplicate item id '{item.Id}'.");
                 continue;
             }
 
@@ -125,21 +139,21 @@ public static class WorkflowDataResolver
             {
                 if (string.IsNullOrWhiteSpace(item.File))
                 {
-                    errors.Add($"Data collection '{id}' item '{item.Id}' declares no file (the collection declares a 'content' field).");
+                    errors.Add($"{noun} collection '{id}' item '{item.Id}' declares no file (the collection declares a 'content' field).");
                     continue;
                 }
 
                 var filePath = directory + item.File;
                 if (!files.TryGetValue(filePath, out var content))
                 {
-                    errors.Add($"Data collection '{id}' item '{item.Id}' file '{filePath}' is missing from the package.");
+                    errors.Add($"{noun} collection '{id}' item '{item.Id}' file '{filePath}' is missing from the package.");
                     continue;
                 }
 
                 fields["content"] = content;
             }
 
-            items.Add(new WorkflowDataItem(item.Id, fields));
+            items.Add(new WorkflowDataItem(item.Id, fields, item.When));
         }
 
         return new WorkflowDataCollection(index.Fields, items);
