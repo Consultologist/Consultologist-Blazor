@@ -24,10 +24,34 @@ public static class WorkflowNodeClosure
     /// permanently unresolved and be reported as a cycle. The dangling
     /// reference has its own error; it must not also invent a second, wrong one.
     /// </summary>
-    public static IReadOnlyDictionary<string, HashSet<string>> Edges(IReadOnlyList<WorkflowNodeSpec> nodes)
+    public static IReadOnlyDictionary<string, HashSet<string>> Edges(IReadOnlyList<WorkflowNodeSpec> nodes) =>
+        Edges(nodes, null);
+
+    /// <summary>
+    /// v25 (#999): the edges a template's reads and a node's <c>with</c>
+    /// derived — node id → the node ids it reads — joined with the declared
+    /// structure (aggregate sources, and below 25 the bindings and check
+    /// operands). One map for acyclicity, reachability and the starter's
+    /// prune, whichever version produced it.
+    /// </summary>
+    public static IReadOnlyDictionary<string, HashSet<string>> Edges(
+        IReadOnlyList<WorkflowNodeSpec> nodes,
+        IReadOnlyDictionary<string, IReadOnlySet<string>>? derived)
     {
         var declared = nodes.Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
         var edges = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+
+        foreach (var (fromId, targets) in derived ?? new Dictionary<string, IReadOnlySet<string>>())
+        {
+            foreach (var targetId in targets)
+            {
+                if (declared.Contains(targetId))
+                {
+                    edges.TryAdd(fromId, new HashSet<string>(StringComparer.Ordinal));
+                    edges[fromId].Add(targetId);
+                }
+            }
+        }
 
         void Add(string fromId, string targetId)
         {

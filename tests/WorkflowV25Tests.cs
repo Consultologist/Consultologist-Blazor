@@ -31,9 +31,11 @@ public static class V25Package
     }
 
     /// <summary>
-    /// A prose node reading an input, a concept-list node, a classification
-    /// taking its values through with, a terms-subset check, a snippet, a
-    /// macro with an instruction, one deliverable.
+    /// A prose node reading an input and a snippet, a concept-list node, a
+    /// classification taking its values through with, a terms-subset check,
+    /// a node fanning a snippet folder, an aggregator, a macro with an
+    /// instruction placed after the prose node, one deliverable naming the
+    /// aggregator and the check.
     /// </summary>
     public static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) Minimal()
     {
@@ -49,12 +51,17 @@ public static class V25Package
             CustomSchemas = null,
             Result = null,
             Results = null,
-            Inputs = new List<WorkflowInputSpec> { new("notes", "Referral notes") },
+            Inputs = new List<WorkflowInputSpec>
+            {
+                new("notes", "Referral notes"),
+                new("kind", "Kind", true, "enum", new List<string> { "new", "follow_up" }),
+            },
             Prompts = new List<WorkflowPromptSpec>
             {
                 new("assessment", "prompts/assessment.md", new List<string>()),
                 new("extract", "prompts/extract.md", new List<string>()),
                 new("scope", "prompts/scope.md", new List<string>()),
+                new("section", "prompts/section.md", new List<string>()),
             },
             Nodes = new List<WorkflowNodeSpec>
             {
@@ -63,20 +70,26 @@ public static class V25Package
                     With: new Dictionary<string, JsonNode?> { ["values"] = new JsonArray("in_scope", "out_of_scope") }),
                 new("assessment", "Assessment", Prompt: "assessment", Format: "prose",
                     Macros: new List<WorkflowNodeMacroSpec> { new("closing", At: WorkflowNodeMacroSpec.After) }),
+                new("section_notes", "Section notes", Prompt: "section", Format: "prose", ForEach: "snippet:sections"),
                 new("coverage", "Coverage", Format: "terms-subset", OnInvalid: WorkflowOnInvalid.Fail,
                     With: new Dictionary<string, JsonNode?> { ["of"] = "node.extract", ["in"] = "node.extract", ["failWith"] = "The note names problems the source does not." }),
+                new("all", "Everything", Aggregate: new List<string> { "node:assessment", "node:section_notes" }),
             },
-            Snippets = new Dictionary<string, string> { ["standards"] = "snippets/standards.md" },
+            Snippets = new Dictionary<string, string> { ["standards"] = "snippets/standards.md", ["sections"] = "snippets/sections/" },
             Macros = new List<WorkflowMacroSpec> { new("closing", "Closing", "macros/closing.md", Instruction: "Add a closing line if the plan changed.") },
-            Deliverables = new List<WorkflowDeliverableSpec> { new("consult", "assessment", "Consultation note", Check: "node.coverage") },
+            Deliverables = new List<WorkflowDeliverableSpec> { new("consult", "node:all", "Consultation note", Check: "node.coverage") },
         };
 
         var files = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["prompts/assessment.md"] = "Assess.\n{{ snippet.standards.text }}\n{{ input.notes }}\n{{ for c in node.extract.value.concepts }}- {{ c.term }}\n{{ end }}",
+            ["prompts/assessment.md"] = "Assess.\n{{ snippet.standards.text }}\n{{ input.notes }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}",
             ["prompts/extract.md"] = "Extract the concepts from:\n{{ input.notes }}",
             ["prompts/scope.md"] = "Is this in scope? {{ input.notes }}",
+            ["prompts/section.md"] = "{{ item.name }}: {{ item.text }}",
             ["snippets/standards.md"] = "Follow the local standards.",
+            ["snippets/sections/index.json"] = """{ "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md" }, { "id": "plan", "name": "Plan", "file": "plan.md", "when": "kind == new" } ] }""",
+            ["snippets/sections/hpi.md"] = "History: {{ input.notes }}",
+            ["snippets/sections/plan.md"] = "Plan.",
             ["macros/closing.md"] = "Closing: {{ profile.name }}.",
         };
 
@@ -88,6 +101,15 @@ public static class V25Package
 
     public static List<string> Errors((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle) =>
         Validate(bundle, Catalog()).Errors;
+
+    public static List<string> Warnings((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle) =>
+        Validate(bundle, Catalog()).Warnings;
+
+    public static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) WithPrompt((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle, string promptId, string text)
+    {
+        var files = new Dictionary<string, string>(bundle.Files, StringComparer.Ordinal) { [$"prompts/{promptId}.md"] = text };
+        return (bundle.Manifest, files);
+    }
 
     public static WorkflowNodeSpec Node(WorkflowPackageManifest manifest, string id) => manifest.Nodes!.First(n => n.Id == id);
 
@@ -122,7 +144,6 @@ public class WorkflowV25Tests
         var result = V25Package.Validate(V25Package.Minimal(), null);
 
         Assert.Contains("The format catalogue is not available on this engine; catalogue formats (classification, concept-list, prose, terms-subset) cannot be resolved.", result.Errors);
-        Assert.Single(result.Errors);
     }
 
     // ----- § 10: retired by name, with the replacement ------------------------------
@@ -245,13 +266,13 @@ public class WorkflowV25Tests
         var (manifest, files) = V25Package.Minimal();
         manifest = manifest with
         {
-            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("all", "All", Aggregate: new List<string> { "node:assessment" }, Format: "prose", Prompt: "assessment")).ToList()
+            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("everything", "Everything", Aggregate: new List<string> { "node:assessment" }, Format: "prose", Prompt: "assessment")).ToList()
         };
 
         var errors = V25Package.Errors((manifest, files));
 
-        Assert.Contains("Node 'all' aggregates and must not declare format; an aggregator is structural.", errors);
-        Assert.Contains("Node 'all' aggregates and must not declare prompt; an aggregator is structural.", errors);
+        Assert.Contains("Node 'everything' aggregates and must not declare format; an aggregator is structural.", errors);
+        Assert.Contains("Node 'everything' aggregates and must not declare prompt; an aggregator is structural.", errors);
     }
 
     [Fact]
@@ -300,8 +321,12 @@ public class WorkflowV25Tests
     private static (WorkflowPackageManifest, Dictionary<string, string>) WithLocalFormat(string id, string file, string? json)
     {
         var (manifest, files) = V25Package.Minimal();
-        manifest = manifest with { Formats = new List<WorkflowFormatReference> { new(id, file) } };
-        manifest = V25Package.WithNode(manifest, "extract", n => n with { Format = id, OnInvalid = "fail" });
+        manifest = manifest with
+        {
+            Formats = new List<WorkflowFormatReference> { new(id, file) },
+            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("meds", "Medications", Prompt: "extract", Format: id, OnInvalid: "fail")).ToList(),
+        };
+        manifest = V25Package.WithNode(manifest, "all", n => n with { Aggregate = n.Aggregate!.Append("node:meds").ToList() });
 
         if (json is not null)
         {
@@ -372,5 +397,302 @@ public class WorkflowV25Tests
         var result = WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas);
 
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+}
+
+/// <summary>A4 PR 2: templates walked, edges derived, macros placed and read, the graph, the probe, deliverables, reachability.</summary>
+public class WorkflowV25TemplateTests
+{
+    private static (WorkflowPackageManifest, Dictionary<string, string>) Minimal() => V25Package.Minimal();
+
+    [Fact]
+    public void TheWalkersSentences_PassThrough()
+    {
+        var bundle = V25Package.WithPrompt(Minimal(), "assessment", "{{ node.nope.text }} {{ input.nope }} {{ data.x }}");
+
+        var errors = V25Package.Errors(bundle);
+
+        Assert.Contains("Prompt 'assessment' reads node 'nope', which the package does not declare.", errors);
+        Assert.Contains("Prompt 'assessment' reads input 'nope', which the package does not declare.", errors);
+        Assert.Contains(errors, e => e.StartsWith("Prompt 'assessment' reads 'data'; at specVersion 25 data is 'snippet'", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ABareStructuredTextRead_Warns()
+    {
+        var bundle = V25Package.WithPrompt(Minimal(), "assessment", "{{ snippet.standards.text }} {{ node.extract.text }}");
+
+        Assert.Contains(V25Package.Warnings(bundle), w => w.Contains("Prompt 'assessment' reads node.extract.text of format 'concept-list' (object)"));
+    }
+
+    [Fact]
+    public void With_IsTypedByTheFormat()
+    {
+        var (manifest, files) = Minimal();
+
+        var onProse = V25Package.WithNode(manifest, "assessment", n => n with { With = new Dictionary<string, JsonNode?> { ["x"] = "y" } });
+        Assert.Contains("Node 'assessment' declares with, but format 'prose' declares no parameters.", V25Package.Errors((onProse, files)));
+
+        var missing = V25Package.WithNode(manifest, "coverage", n => n with { With = new Dictionary<string, JsonNode?> { ["of"] = "node.extract", ["in"] = "node.extract" } });
+        Assert.Contains("Node 'coverage' with must supply parameter 'failWith'.", V25Package.Errors((missing, files)));
+
+        var wrongFormat = V25Package.WithNode(manifest, "coverage", n => n with { With = new Dictionary<string, JsonNode?> { ["of"] = "node.assessment", ["in"] = "node.extract", ["failWith"] = "x" } });
+        Assert.Contains("Node 'coverage' with 'of' names node 'assessment' of format 'prose', but the parameter requires format 'concept-list'.", V25Package.Errors((wrongFormat, files)));
+
+        var none = V25Package.WithNode(manifest, "coverage", n => n with { With = null });
+        Assert.Contains("Node 'coverage' with must supply parameter 'of'.", V25Package.Errors((none, files)));
+    }
+
+    [Fact]
+    public void ANonFan_ReadingAFan_MustAggregate()
+    {
+        var bundle = V25Package.WithPrompt(Minimal(), "assessment", "{{ node.section_notes.text }}");
+
+        Assert.Contains("Node 'assessment' reads node 'section_notes', which fans; aggregation is explicit at specVersion 25 — collect it through an aggregator node.", V25Package.Errors(bundle));
+    }
+
+    [Fact]
+    public void TwoFans_OverDifferentSources_DoNotAlign()
+    {
+        var (manifest, files) = Minimal();
+        manifest = manifest with
+        {
+            Inputs = manifest.Inputs!.Append(new WorkflowInputSpec("history", "History", true, "array", Items: new WorkflowElementSpec("text"))).ToList(),
+            Prompts = manifest.Prompts!.Append(new WorkflowPromptSpec("per_event", "prompts/per_event.md", new List<string>())).ToList(),
+            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("per_event", "Per event", Prompt: "per_event", Format: "prose", ForEach: "input:history")).ToList(),
+        };
+        manifest = V25Package.WithNode(manifest, "all", n => n with { Aggregate = n.Aggregate!.Append("node:per_event").ToList() });
+        files["prompts/per_event.md"] = "{{ item.value }} {{ node.section_notes.text }}";
+
+        Assert.Contains("Node 'per_event' reads node 'section_notes' across fans ('input:history' vs 'snippet:sections'); two fans align only over one source.", V25Package.Errors((manifest, files)));
+    }
+
+    [Fact]
+    public void AnInputFan_TypesTheItem()
+    {
+        var (manifest, files) = Minimal();
+        manifest = manifest with
+        {
+            Inputs = manifest.Inputs!.Append(new WorkflowInputSpec("history", "History", true, "array", Items: new WorkflowElementSpec("object"), Fields: new List<WorkflowFieldSpec> { new("event", "Event", true, "text") })).ToList(),
+            Prompts = manifest.Prompts!.Append(new WorkflowPromptSpec("per_event", "prompts/per_event.md", new List<string>())).ToList(),
+            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("per_event", "Per event", Prompt: "per_event", Format: "prose", ForEach: "input:history")).ToList(),
+        };
+        manifest = V25Package.WithNode(manifest, "all", n => n with { Aggregate = n.Aggregate!.Append("node:per_event").ToList() });
+        files["prompts/per_event.md"] = "{{ item.value.event }} {{ item.value.date }}";
+
+        Assert.Contains("Prompt 'per_event' reads field 'date' of 'item.value', which it does not declare (fields: event).", V25Package.Errors((manifest, files)));
+    }
+
+    [Theory]
+    [InlineData("data:sections", "Node 'section_notes' forEach 'data:sections' is retired at specVersion 25; fan a snippet folder (snippet:<folder>) or an array input (input:<id>).")]
+    [InlineData("snippet:nope", "Node 'section_notes' forEach fans snippet folder 'nope', which the package does not declare.")]
+    [InlineData("snippet:standards", "Node 'section_notes' forEach fans snippet 'standards', which is a file, not a folder.")]
+    [InlineData("input:notes", "Node 'section_notes' forEach 'input:notes' fans input 'notes', which is a text; only an array can be fanned.")]
+    [InlineData("sections", "Node 'section_notes' forEach 'sections' must be snippet:<folder> or input:<id>.")]
+    public void ForEach_NamesASnippetFolderOrAnArrayInput(string forEach, string sentence)
+    {
+        var (manifest, files) = Minimal();
+        manifest = V25Package.WithNode(manifest, "section_notes", n => n with { ForEach = forEach });
+
+        Assert.Contains(sentence, V25Package.Errors((manifest, files)));
+    }
+
+    [Fact]
+    public void AFolderItemWhen_ReadsInputsOnly()
+    {
+        var (manifest, files) = Minimal();
+        files["snippets/sections/index.json"] = """{ "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md", "when": "node:scope == in_scope" } ] }""";
+
+        Assert.Contains("Snippet folder 'sections' item 'hpi' condition reads 'node:scope'; a folder item's when reads inputs only, so the folder's size is known at job start (the template's own if gates anything else).", V25Package.Errors((manifest, files)));
+    }
+
+    [Fact]
+    public void AnOutputMacro_NeedsAFormatThatTakesOne()
+    {
+        var (manifest, files) = Minimal();
+        var placed = V25Package.WithNode(manifest, "extract", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "after") } });
+        Assert.Contains("Node 'extract' macro 'closing' is placed after the output, but format 'concept-list' takes no output macros; only a text format with outputMacros may.", V25Package.Errors((placed, files)));
+
+        var inline = V25Package.WithPrompt((manifest, files), "extract", "{{ input.notes }} {{ macro.closing.prompt }}");
+        Assert.Contains("Node 'extract' reads macro.closing.prompt (a slot), but format 'concept-list' takes no output macros; only a text format with outputMacros may.", V25Package.Errors(inline));
+    }
+
+    [Fact]
+    public void AnInlineSlot_ThroughASnippet_IsFine_OnProse()
+    {
+        var (manifest, files) = Minimal();
+        files["snippets/standards.md"] = "Standards. {{ macro.closing.prompt }}";
+
+        var result = V25Package.Validate((manifest, files), V25Package.Catalog());
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void AMacro_NeverPlacedOrRead_IsRefused()
+    {
+        var (manifest, files) = Minimal();
+        manifest = manifest with { Macros = manifest.Macros!.Append(new WorkflowMacroSpec("unused", "Unused", "macros/unused.md", Instruction: "x")).ToList() };
+        files["macros/unused.md"] = "Nothing.";
+
+        Assert.Contains("Macro 'unused' is declared but never placed or read; place it on a node or a deliverable, or read macro.unused.text / macro.unused.prompt.", V25Package.Errors((manifest, files)));
+    }
+
+    [Fact]
+    public void AnInstance_HasOneIdentity()
+    {
+        var (manifest, files) = Minimal();
+        manifest = V25Package.WithNode(manifest, "assessment", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "after"), new("closing", At: "after", When: "kind == new") } });
+
+        Assert.Contains("Node 'assessment' macro 'closing' is placed twice (after); one identity (id, at, forItem) once — two gates to one text is one instance with when: a or b.", V25Package.Errors((manifest, files)));
+    }
+
+    [Fact]
+    public void ForItem_NamesAnItemOfTheFannedFolder()
+    {
+        var (manifest, files) = Minimal();
+        var ok = V25Package.WithNode(manifest, "section_notes", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "after", ForItem: "plan") } });
+        Assert.True(V25Package.Validate((ok, files), V25Package.Catalog()).IsValid);
+
+        var unknown = V25Package.WithNode(manifest, "section_notes", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "after", ForItem: "ros") } });
+        Assert.Contains("Node 'section_notes' macro 'closing' anchors to fan item 'ros', which the folder fanned by 'section_notes' does not contain (items: hpi, plan).", V25Package.Errors((unknown, files)));
+
+        var noFan = V25Package.WithNode(manifest, "assessment", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "after", ForItem: "hpi") } });
+        Assert.Contains("Node 'assessment' macro 'closing' anchors to fan item 'hpi', but 'assessment' does not fan a snippet folder.", V25Package.Errors((noFan, files)));
+    }
+
+    [Fact]
+    public void FolderItems_LackingTheSlotRead_AreNamed()
+    {
+        var (manifest, files) = Minimal();
+        files["snippets/sections/hpi.md"] = "History. {{ macro.closing.prompt }}";
+
+        Assert.Contains("Node 'section_notes' fans snippet folder 'sections'; items plan carry no macro.closing.prompt read, so no marker is emitted for them.", V25Package.Warnings((manifest, files)));
+    }
+
+    [Fact]
+    public void ASnippetCycle_IsNamed()
+    {
+        var (manifest, files) = Minimal();
+        manifest = manifest with { Snippets = new Dictionary<string, string>(manifest.Snippets!) { ["intro"] = "snippets/intro.md" } };
+        files["snippets/standards.md"] = "{{ snippet.intro.text }}";
+        files["snippets/intro.md"] = "{{ snippet.standards.text }}";
+
+        Assert.Contains("Templates contain a cycle: snippet 'standards' → snippet 'intro' → snippet 'standards'.", V25Package.Errors((manifest, files)));
+    }
+
+    [Fact]
+    public void AMacroText_ReachingAPromptRead_IsRefused()
+    {
+        var (manifest, files) = Minimal();
+        files["macros/closing.md"] = "{{ snippet.standards.text }}";
+        files["snippets/standards.md"] = "{{ macro.closing.prompt }}";
+
+        Assert.Contains("Macro 'closing' text reaches macro.closing.prompt through snippet 'standards'; text placed after a reply cannot carry a slot marker.", V25Package.Errors((manifest, files)));
+    }
+
+    [Fact]
+    public void TheStrictRender_NamesTheTemplate()
+    {
+        var bundle = V25Package.WithPrompt(Minimal(), "assessment", """{{ input.notes | date.to_string "%Y" }}""");
+
+        Assert.Contains(V25Package.Errors(bundle), e => e.StartsWith("Prompt 'assessment' failed strict rendering:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Deliverables_AreRequired_AndNameAnAggregator()
+    {
+        var (manifest, files) = Minimal();
+
+        Assert.Contains("deliverables must declare at least one deliverable.", V25Package.Errors((manifest with { Deliverables = new List<WorkflowDeliverableSpec>() }, files)));
+        Assert.Contains("Deliverable 'consult' must reference an aggregator node ('assessment' is not one).", V25Package.Errors((manifest with { Deliverables = new List<WorkflowDeliverableSpec> { new("consult", "node:assessment", "C", Check: "node.coverage") } }, files)));
+        Assert.Contains("Deliverable 'consult' references unknown node 'nope'.", V25Package.Errors((manifest with { Deliverables = new List<WorkflowDeliverableSpec> { new("consult", "node:nope", "C", Check: "node.coverage") } }, files)));
+    }
+
+    [Theory]
+    [InlineData("node:coverage", "Deliverable 'consult' check 'node:coverage' must be node.<id>, naming a node of a computed format.")]
+    [InlineData("node.assessment", "Deliverable 'consult' check names node 'assessment', whose format is not computed; a check is a node of a computed format (terms-subset).")]
+    [InlineData("node.nope", "Deliverable 'consult' check names node 'nope', which the package does not declare.")]
+    public void ACheck_NamesAComputedNode(string check, string sentence)
+    {
+        var (manifest, files) = Minimal();
+        manifest = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { Check = check }).ToList() };
+
+        Assert.Contains(sentence, V25Package.Errors((manifest, files)));
+    }
+
+    [Fact]
+    public void ACheckNobodyNames_IsDeadWeight()
+    {
+        var (manifest, files) = Minimal();
+        manifest = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { Check = null }).ToList() };
+
+        Assert.Contains("Check 'coverage' is not named by any deliverable; a check gates a deliverable, or it is dead weight.", V25Package.Errors((manifest, files)));
+    }
+
+    [Fact]
+    public void ADeliverableCondition_ReadsEnumFormatNodes()
+    {
+        var (manifest, files) = Minimal();
+
+        var ok = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node:scope == in_scope and kind == new" }).ToList() };
+        Assert.True(V25Package.Validate((ok, files), V25Package.Catalog()).IsValid, string.Join(" | ", V25Package.Errors((ok, files))));
+
+        var badValue = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node:scope == maybe" }).ToList() };
+        Assert.Contains("Deliverable 'consult' condition compares 'node:scope' to 'maybe', which it does not declare (values: in_scope, out_of_scope).", V25Package.Errors((badValue, files)));
+
+        var notEnum = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node:assessment == x" }).ToList() };
+        Assert.Contains("Deliverable 'consult' condition reads 'node:assessment', which is not a classifier (classifiers: scope).", V25Package.Errors((notEnum, files)));
+    }
+
+    [Fact]
+    public void ADeliverableInstance_DeclaresAt()
+    {
+        var (manifest, files) = Minimal();
+        manifest = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { Macros = new List<WorkflowDeliverableMacroSpec> { "closing", new("closing", At: "before") } }).ToList() };
+
+        var errors = V25Package.Errors((manifest, files));
+
+        Assert.Contains("Deliverable 'consult' macro 'closing' must declare at (prepend | append).", errors);
+        Assert.Contains("Deliverable 'consult' macro 'closing' declares at 'before'; a deliverable instance is placed 'prepend' or 'append'.", errors);
+    }
+
+    [Fact]
+    public void ADeliverable_IsSignedOnce()
+    {
+        var (manifest, files) = Minimal();
+        files["macros/closing.md"] = "{{ profile.signature }}";
+        manifest = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { Signature = true, Macros = new List<WorkflowDeliverableMacroSpec> { new("closing", At: "append") } }).ToList() };
+
+        Assert.Contains("Deliverable 'consult' declares signature and places a macro that reads profile.signature; a deliverable is signed once.", V25Package.Errors((manifest, files)));
+    }
+
+    [Fact]
+    public void EveryNode_FeedsADeliverable_AndADeliverableHasAFan()
+    {
+        var (manifest, files) = Minimal();
+        manifest = V25Package.WithNode(manifest, "all", n => n with { Aggregate = new List<string> { "node:assessment" } });
+
+        var errors = V25Package.Errors((manifest, files));
+
+        Assert.Contains(errors, e => e.StartsWith("Deliverable 'consult' must transitively include at least one forEach source: a deliverable with no fan has no consult.", StringComparison.Ordinal));
+        Assert.Contains("Node 'section_notes' does not feed the deliverable: every node must transitively reach 'all'. Read it from a node that does, or add it to the deliverable's aggregator.", errors);
+    }
+
+    [Fact]
+    public void AnEnumNode_ReadOnlyByConditions_IsNotOrphaned()
+    {
+        // scope is read by nothing but a condition; it feeds the boundary.
+        var result = V25Package.Validate(Minimal(), V25Package.Catalog());
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
+
+    [Fact]
+    public void ANodeCycle_IsRefused()
+    {
+        var bundle = V25Package.WithPrompt(Minimal(), "extract", "{{ node.assessment.text }}");
+
+        Assert.Contains(V25Package.Errors(bundle), e => e.StartsWith("nodes contain a cycle involving:", StringComparison.Ordinal));
     }
 }

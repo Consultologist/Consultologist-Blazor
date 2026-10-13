@@ -125,6 +125,23 @@ internal static class PackageFormatSchema
             Remove(properties, "snippets");
             Remove(properties, "formats");
         }
+        else
+        {
+            // v25 (#999, package-format-v25.md): the retired keys leave the
+            // schema, so a 24-shaped manifest at 25 is schema-catchable; the
+            // replacements are enriched below with the sections.
+            // The exporter emits deliverables as a $ref to results' items (one
+            // record type, two members); give deliverables the shape itself
+            // before results leaves.
+            Object(properties, "deliverables")["items"] = Object(properties, "results")["items"]!.DeepClone();
+
+            foreach (var retired in new[] { "preludes", "data", "schemas", "schemaRefs", "customSchemas", "result", "results" })
+            {
+                Remove(properties, retired);
+            }
+
+            EnrichFormats(Object(properties, "formats"));
+        }
 
         if (specVersion < 9)
         {
@@ -168,6 +185,13 @@ internal static class PackageFormatSchema
             Remove(properties, "results");
             root["required"] = Required("name", "version", "specVersion", "templating", "nodes", "result");
         }
+        else if (specVersion >= 25)
+        {
+            // v25 (#999): deliverables is the one list, and required.
+            EnrichInputs(Object(properties, "inputs"), specVersion);
+            EnrichResults(Object(properties, "deliverables"), specVersion);
+            root["required"] = Required("name", "version", "specVersion", "templating", "nodes", "inputs", "tags", "deliverables");
+        }
         else
         {
             EnrichInputs(Object(properties, "inputs"), specVersion);
@@ -202,6 +226,18 @@ internal static class PackageFormatSchema
         var properties = Object(item, "properties");
         Object(properties, "id")["minLength"] = 1;
         Object(properties, "file")["minLength"] = 1;
+
+        // v25 (#999): a prompt is a template over objects — no variables, no
+        // prelude, no raw flag. The three leave the schema.
+        if (specVersion >= 25)
+        {
+            Remove(properties, "variables");
+            Remove(properties, "prelude");
+            Remove(properties, "raw");
+            Close(item);
+            return;
+        }
+
         Object(properties, "prelude")["minLength"] = 1;
 
         // v15 (#731): the raw toggle arrives at 15; a boolean needs no
@@ -239,6 +275,11 @@ internal static class PackageFormatSchema
         {
             Remove(properties, "instruction");
         }
+        else
+        {
+            Object(properties, "instruction")["minLength"] = 1;
+            item["required"] = Required("id", "label", "file", "instruction");
+        }
 
         Close(item);
     }
@@ -254,34 +295,34 @@ internal static class PackageFormatSchema
         Object(properties, "label")["minLength"] = 1;
         // v9 (#426): a fan may also walk a caller-supplied array. Below 9
         // only a data: collection can be fanned, and the schema says so.
-        Object(properties, "forEach")["pattern"] = specVersion >= 9 ? "^(data|input):.+$" : "^data:.+$";
+        // v25 (#999): a fan walks a snippet folder or an array input.
+        Object(properties, "forEach")["pattern"] = specVersion >= 25 ? "^(snippet|input):.+$" : specVersion >= 9 ? "^(data|input):.+$" : "^data:.+$";
+
+        if (specVersion >= 25)
+        {
+            // v25 (#999): a node id is a Scriban member; the retired members
+            // leave; the format, its with and its onInvalid arrive.
+            Object(properties, "id")["pattern"] = DeclaredId;
+
+            foreach (var retired in new[] { "bindings", "output", "kind", "values", "op", "of", "in", "failWith" })
+            {
+                Remove(properties, retired);
+            }
+
+            Object(properties, "format")["pattern"] = "^[a-z][a-z0-9_-]*$";
+            Object(properties, "with")["type"] = "object";
+            Object(properties, "onInvalid")["enum"] = new JsonArray(WorkflowOnInvalid.All.Select(v => JsonValue.Create(v)).ToArray<JsonNode?>());
+        }
 
         // The exporter cannot see through WorkflowBindingValueConverter: it
         // reports the record, so `bindings` arrives as a bare object. On the
         // wire a binding is a source string, or { from, as } — and the converter
         // itself rejects any other property, which is why this closes.
-        var bindings = Object(properties, "bindings");
-        Require(bindings.ContainsKey("type"), "bindings lost its type; the converter's shape is hand-written and needs revisiting");
-        bindings["additionalProperties"] = new JsonObject
+        if (specVersion < 25)
         {
-            ["oneOf"] = new JsonArray(
-                new JsonObject { ["type"] = "string", ["pattern"] = BindingSource },
-                new JsonObject
-                {
-                    ["type"] = "object",
-                    ["properties"] = new JsonObject
-                    {
-                        ["from"] = new JsonObject { ["type"] = "string", ["pattern"] = BindingSource },
-                        ["as"] = new JsonObject { ["enum"] = new JsonArray("concept-bullets", "concept-context") }
-                    },
-                    ["required"] = Required("from"),
-                    ["additionalProperties"] = false
-                })
-        };
+            EnrichBindingsAndOutput(properties);
+        }
 
-        var output = Object(properties, "output");
-        Object(Object(output, "properties"), "failIfEmpty")["minLength"] = 1;
-        Close(output);
 
         if (specVersion < 6)
         {
@@ -368,7 +409,7 @@ internal static class PackageFormatSchema
             Remove(properties, "kind");
             Remove(properties, "values");
         }
-        else
+        else if (specVersion < 25)
         {
             // v12 (§ 13): the check kind joins the enum at 12; below it the
             // published v10/v11 bytes carry the two kinds they always did.
@@ -388,7 +429,7 @@ internal static class PackageFormatSchema
             Remove(properties, "in");
             Remove(properties, "failWith");
         }
-        else
+        else if (specVersion < 25)
         {
             Object(properties, "op")["enum"] = new JsonArray(WorkflowCheckOps.All.Select(op => JsonValue.Create(op)).ToArray<JsonNode?>());
             Object(properties, "of")["pattern"] = NodeRef;
@@ -397,6 +438,34 @@ internal static class PackageFormatSchema
         }
 
         Close(item);
+    }
+
+
+    /// <summary>The v5–v24 binding and output shapes; at 25 neither member exists.</summary>
+    private static void EnrichBindingsAndOutput(JsonObject properties)
+    {
+        var bindings = Object(properties, "bindings");
+        Require(bindings.ContainsKey("type"), "bindings lost its type; the converter's shape is hand-written and needs revisiting");
+        bindings["additionalProperties"] = new JsonObject
+        {
+            ["oneOf"] = new JsonArray(
+                new JsonObject { ["type"] = "string", ["pattern"] = BindingSource },
+                new JsonObject
+                {
+                    ["type"] = "object",
+                    ["properties"] = new JsonObject
+                    {
+                        ["from"] = new JsonObject { ["type"] = "string", ["pattern"] = BindingSource },
+                        ["as"] = new JsonObject { ["enum"] = new JsonArray("concept-bullets", "concept-context") }
+                    },
+                    ["required"] = Required("from"),
+                    ["additionalProperties"] = false
+                })
+        };
+
+        var output = Object(properties, "output");
+        Object(Object(output, "properties"), "failIfEmpty")["minLength"] = 1;
+        Close(output);
     }
 
     private static void EnrichInputs(JsonObject inputs, int specVersion)
@@ -694,15 +763,23 @@ internal static class PackageFormatSchema
                 // v12 § 4 placement object; v19 (#845) adds forItem — a data-fan
                 // item id. additionalProperties is false, so the member must be
                 // present in the schema for a valid v19 manifest to pass.
-                var placed = new JsonObject
-                {
-                    ["id"] = new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId },
-                    ["before"] = new JsonObject { ["type"] = "string", ["pattern"] = NodeRef },
-                    ["after"] = new JsonObject { ["type"] = "string", ["pattern"] = NodeRef },
-                    ["when"] = new JsonObject { ["type"] = "string", ["minLength"] = 1 }
-                };
+                var placed = specVersion >= 25
+                    // v25 (#999): a deliverable instance — prepend or append, document scope only.
+                    ? new JsonObject
+                    {
+                        ["id"] = new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId },
+                        ["at"] = new JsonObject { ["enum"] = new JsonArray(WorkflowDeliverableMacroSpec.Prepend, WorkflowDeliverableMacroSpec.Append) },
+                        ["when"] = new JsonObject { ["type"] = "string", ["minLength"] = 1 }
+                    }
+                    : new JsonObject
+                    {
+                        ["id"] = new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId },
+                        ["before"] = new JsonObject { ["type"] = "string", ["pattern"] = NodeRef },
+                        ["after"] = new JsonObject { ["type"] = "string", ["pattern"] = NodeRef },
+                        ["when"] = new JsonObject { ["type"] = "string", ["minLength"] = 1 }
+                    };
 
-                if (specVersion >= 19)
+                if (specVersion >= 19 && specVersion < 25)
                 {
                     placed["forItem"] = new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId };
                 }
@@ -711,23 +788,31 @@ internal static class PackageFormatSchema
                 // [[slot:<id>]] marker it emits; mutually exclusive with the
                 // anchors, so only the boolean is expressed here (the validator
                 // enforces the exclusion).
-                if (specVersion >= 20)
+                if (specVersion >= 20 && specVersion < 25)
                 {
                     placed["slot"] = new JsonObject { ["type"] = "boolean" };
                 }
 
-                macros["items"] = new JsonObject
-                {
-                    ["oneOf"] = new JsonArray(
-                        new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId },
-                        new JsonObject
-                        {
-                            ["type"] = "object",
-                            ["properties"] = placed,
-                            ["required"] = Required("id"),
-                            ["additionalProperties"] = false
-                        })
-                };
+                macros["items"] = specVersion >= 25
+                    ? new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = placed,
+                        ["required"] = Required("id", "at"),
+                        ["additionalProperties"] = false
+                    }
+                    : new JsonObject
+                    {
+                        ["oneOf"] = new JsonArray(
+                            new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId },
+                            new JsonObject
+                            {
+                                ["type"] = "object",
+                                ["properties"] = placed,
+                                ["required"] = Required("id"),
+                                ["additionalProperties"] = false
+                            })
+                    };
             }
 
             macros["minItems"] = 1;
@@ -741,9 +826,22 @@ internal static class PackageFormatSchema
         }
         else
         {
-            Object(properties, "check")["pattern"] = NodeRef;
+            // v25 (#999): the check is an object reference, node.<id>, naming a computed-format node.
+            Object(properties, "check")["pattern"] = specVersion >= 25 ? "^node\\.[a-z][a-z0-9_]*$" : NodeRef;
         }
 
+        Close(item);
+    }
+
+    /// <summary>v25 (#999): the package-local formats — { id, file }, every file a custom format.</summary>
+    private static void EnrichFormats(JsonObject formats)
+    {
+        formats["minItems"] = 1;
+        var item = Object(formats, "items");
+        var properties = Object(item, "properties");
+        Object(properties, "id")["pattern"] = DeclaredId;
+        Object(properties, "file")["minLength"] = 1;
+        item["required"] = Required("id", "file");
         Close(item);
     }
 

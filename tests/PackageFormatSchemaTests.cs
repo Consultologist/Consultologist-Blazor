@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Consultologist.Api.Workflow;
 
@@ -250,5 +251,54 @@ public class PackageFormatSchemaTests
         Assert.Equal(
             JsonUnmappedMemberHandling.Disallow,
             WorkflowPackageManifestJson.ReadOptions.UnmappedMemberHandling);
+    }
+
+    /// <summary>
+    /// A4 (#999): the v25 schema is generated but published only at A5 (the
+    /// bump); this pins its shape until then — every retired key gone, the
+    /// replacements present and required.
+    /// </summary>
+    [Fact]
+    public void TheV25Schema_Renders_WithoutTheRetiredKeys()
+    {
+        var schema = PackageFormatSchema.Build(25);
+        var properties = (JsonObject)schema["properties"]!;
+
+        foreach (var retired in new[] { "preludes", "data", "schemas", "schemaRefs", "customSchemas", "result", "results" })
+        {
+            Assert.False(properties.ContainsKey(retired), retired);
+        }
+
+        Assert.True(properties.ContainsKey("deliverables"));
+        Assert.True(properties.ContainsKey("snippets"));
+        Assert.True(properties.ContainsKey("formats"));
+        Assert.Contains("deliverables", schema["required"]!.AsArray().Select(r => r!.GetValue<string>()));
+        Assert.Null(schema["oneOf"]);
+
+        var node = (JsonObject)properties["nodes"]!["items"]!["properties"]!;
+        foreach (var retired in new[] { "bindings", "output", "kind", "values", "op", "of", "in", "failWith" })
+        {
+            Assert.False(node.ContainsKey(retired), retired);
+        }
+
+        Assert.Equal("^(snippet|input):.+$", node["forEach"]!["pattern"]!.GetValue<string>());
+        Assert.NotNull(node["format"]);
+        Assert.NotNull(node["with"]);
+        Assert.Equal(3, node["onInvalid"]!["enum"]!.AsArray().Count);
+
+        var prompt = (JsonObject)properties["prompts"]!["items"]!["properties"]!;
+        foreach (var retired in new[] { "variables", "prelude", "raw" })
+        {
+            Assert.False(prompt.ContainsKey(retired), retired);
+        }
+
+        var macro = (JsonObject)properties["macros"]!["items"]!;
+        Assert.Contains("instruction", macro["required"]!.AsArray().Select(r => r!.GetValue<string>()));
+
+        var placement = (JsonObject)properties["deliverables"]!["items"]!["properties"]!["macros"]!["items"]!;
+        Assert.Equal(new[] { "id", "at", "when" }, ((JsonObject)placement["properties"]!).Select(p => p.Key));
+        Assert.Equal("^node\\.[a-z][a-z0-9_]*$", properties["deliverables"]!["items"]!["properties"]!["check"]!["pattern"]!.GetValue<string>());
+
+        Assert.NotEmpty(PackageFormatSchema.Render(25));
     }
 }

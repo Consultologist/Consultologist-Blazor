@@ -865,7 +865,10 @@ public sealed record WorkflowNodeOutputSpec(
 /// </summary>
 public sealed record WorkflowDataItem(
     string Id,
-    IReadOnlyDictionary<string, string> Fields);
+    IReadOnlyDictionary<string, string> Fields,
+    // v25 (#999): a snippet folder item's condition, carried for the
+    // validator (input-only) and the job start (the folder's effective size).
+    string? When = null);
 
 /// <summary>A resolved data collection: the declared item shape plus the items, in index order.</summary>
 public sealed record WorkflowDataCollection(
