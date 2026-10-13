@@ -784,7 +784,12 @@ public record ConsultGenerationNodeStatus(
     // block as a user-defined, ungrounded shape. Null on every attested node.
     bool? Unattested = null,
     string? CustomSchemaHash = null,
-    string? CustomAgent = null);
+    string? CustomAgent = null,
+    // v25 (B4 #1003): the reply's validation against its format; surfaced by B7.
+    ConsultValidationOutcome? Validation = null);
+
+/// <summary>v25 (B4 #1003): a reply validated against its format — valid, or every way it missed.</summary>
+public record ConsultValidationOutcome(bool Valid, IReadOnlyList<string> Errors);
 
 public record ConsultGenerationJobHistoryEvent(string Kind, string Label, string? Detail, DateTimeOffset OccurredAt);
 

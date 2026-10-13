@@ -64,7 +64,12 @@ public sealed record ConsultPromptNodeActivityInput(
     IReadOnlyDictionary<string, string>? Item = null,
     string? ForEach = null,
     TemplateRunFacts? Run = null,
-    TemplateProfileFacts? Profile = null);
+    TemplateProfileFacts? Profile = null,
+    // v25 (B4 #1003, design §§ 3.5–3.7): the node's resolved with and its
+    // onInvalid policy, threaded from the descriptor for the dispatch on the
+    // producer. Null below 25. Appended last, same rule.
+    IReadOnlyDictionary<string, string>? With = null,
+    string? OnInvalid = null);
 
 /// <summary>
 /// One node run. Deserialized concepts ride the recorded activity result so Durable
@@ -93,7 +98,12 @@ public sealed record NodeRunResult(
     // null is "not recorded", never zero (aggregates, checks and roll-ups
     // record none — no activity ran).
     DateTimeOffset? StartedAtUtc = null,
-    long? DurationMs = null);
+    long? DurationMs = null,
+    // v25 (B4 #1003, design § 3.5): the reply's validation against its format
+    // (null on a text format), and a computed node's check outcome (null
+    // otherwise). Appended last, same positional-call rule.
+    ConsultValidationOutcome? Validation = null,
+    ConsultCheckOutcome? Check = null);
 
 /// <summary>
 /// The generic DAG prompt node: renders the node's prompt with orchestrator-resolved

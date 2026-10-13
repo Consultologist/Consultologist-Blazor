@@ -753,7 +753,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // out of the orchestrator; the resolved refs are baked into the recorded input.
         var customAgents = await ProvisionCustomAgentsAsync(_customProvisioner, package, cancellationToken);
         var derivedEdges = DeriveEdges(package);
-        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, customAgents, package.SourceFiles, package.Manifest.Macros, package.Formats, package.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id))).ToList();
+        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, customAgents, package.SourceFiles, package.Manifest.Macros, package.Formats, package.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id), inputs.Effective, package.Manifest)).ToList();
 
         // Provenance: identify the artifacts and input that produce this consult.
         // v5/v6: the hash covers the draft only (definition version 2). v7: the
@@ -2821,7 +2821,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IReadOnlyList<WorkflowMacroSpec>? macros = null,
         WorkflowFormatCatalog? formats = null,
         IReadOnlyDictionary<string, WorkflowStampedFormat>? stampedFormats = null,
-        IReadOnlySet<string>? reads = null)
+        IReadOnlySet<string>? reads = null,
+        IReadOnlyDictionary<string, string>? effectiveInputs = null,
+        WorkflowPackageManifest? manifest = null)
     {
         // v25 (B2 #1001, design § 3.7): a node that declares a format is
         // resolved from its package's own stamped formats version — the stamp
@@ -2831,7 +2833,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // the identity travels. An aggregator declares no format.
         if (node.Format is { } formatId)
         {
-            return DescribeNodeAt25(node, formatId, formats, stampedFormats, macroFiles, macros, reads);
+            return DescribeNodeAt25(node, formatId, formats, stampedFormats, macroFiles, macros, reads, effectiveInputs, manifest);
         }
 
         // v10 (#495): a classifier's contract is implied by its kind — the one
@@ -2918,7 +2920,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IReadOnlyDictionary<string, WorkflowStampedFormat>? stampedFormats,
         IReadOnlyDictionary<string, string>? macroFiles,
         IReadOnlyList<WorkflowMacroSpec>? macros,
-        IReadOnlySet<string>? reads)
+        IReadOnlySet<string>? reads,
+        IReadOnlyDictionary<string, string>? effectiveInputs,
+        WorkflowPackageManifest? manifest)
     {
         string? producer = null;
         string? formatHash = null;
@@ -2955,6 +2959,13 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 $"Node '{node.Id}' declares format '{formatId}', but the package carries no formats catalogue to resolve it against.");
         }
 
+        // v25 (B4 #1003, design § 3.6): the node's with, resolved once here —
+        // a values parameter into Values (a list, or an enum input's declared
+        // values), a node parameter to the bare node id, a text parameter to
+        // its literal or the referenced input's value — and its onInvalid.
+        var resolved = ConsultNodeParameters.Resolve(
+            node, FormatSpecFor(formatId, formats, macroFiles, manifest)?.Parameters, manifest, effectiveInputs);
+
         return new ConsultNodeDescriptor(
             node.Id,
             node.Label,
@@ -2965,10 +2976,13 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             ForEach: node.ForEach,
             ConceptSource: WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(node.Id, node.Id),
             Aggregate: node.Aggregate,
+            Values: resolved.Values,
             Reproducible: node.Reproducible == true ? true : null,
             Template: producer == WorkflowFormatProducers.Rendered ? true : null,
             AgentName: agentName,
             AgentVersion: agentVersion,
+            // v25 (B4 #1003): a custom producer's stamp hash is its format's.
+            CustomSchemaHash: producer == WorkflowFormatProducers.Custom ? formatHash : null,
             Macros: node.Macros?
                 .Select(macro => new ConsultNodeMacroDescriptor(
                     macro.Id, macro.IsAfter, macro.When, macro.ForItem, ClassifiersReadBy(macro.Id, macros, macroFiles)))
@@ -2977,7 +2991,29 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             Producer: producer,
             FormatHash: formatHash,
             Op: op,
-            Reads: reads is { Count: > 0 } ? reads.Order(StringComparer.Ordinal).ToList() : null);
+            Reads: reads is { Count: > 0 } ? reads.Order(StringComparer.Ordinal).ToList() : null,
+            With: resolved.With,
+            OnInvalid: node.OnInvalid);
+    }
+
+    /// <summary>The spec of a node's format: a package-local file (via the manifest's formats[] and the source files) or the catalogue's; null when neither resolves.</summary>
+    internal static WorkflowFormatSpec? FormatSpecFor(
+        string formatId,
+        WorkflowFormatCatalog? formats,
+        IReadOnlyDictionary<string, string>? files,
+        WorkflowPackageManifest? manifest)
+    {
+        var local = manifest?.Formats?.FirstOrDefault(f => string.Equals(f.Id, formatId, StringComparison.Ordinal));
+
+        if (local?.File is not null
+            && files is not null
+            && files.TryGetValue(local.File, out var json)
+            && WorkflowFormatSpecJson.TryRead(json, $"Format '{formatId}'", new List<string>(), out var spec))
+        {
+            return spec;
+        }
+
+        return formats is not null && formats.TryGet(formatId, out var catalogue) ? catalogue!.Spec : null;
     }
 
     /// <summary>A package at 25: one that declares formats on its nodes (an aggregator declares none, so any node suffices).</summary>

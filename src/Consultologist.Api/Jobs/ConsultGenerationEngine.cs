@@ -253,6 +253,23 @@ public sealed class ConsultGenerationOrchestrator
             // blocks (instances compose on the output side, B5).
             if (node.Format is not null)
             {
+                // v25 (B4 #1003, design § 3.7): a computed node — no prompt, no
+                // model — runs its operation over the outputs its with names.
+                if (string.Equals(node.Producer, WorkflowFormatProducers.Computed, StringComparison.Ordinal))
+                {
+                    pendingTasks[context.CallActivityAsync<NodeRunResult>(
+                        ConsultGenerationActivityNames.RunComputedNode,
+                        new ConsultComputedNodeActivityInput(
+                            instanceKey,
+                            node.Op ?? string.Empty,
+                            node.With ?? new Dictionary<string, string>(StringComparer.Ordinal),
+                            ConsultRenderPayload.NodeTextsFor(node, item, nodesById, outputs),
+                            node.Format,
+                            node.FormatHash),
+                        AgentActivityRetryOptions)] = (node.Id, item?["id"]);
+                    return;
+                }
+
                 pendingTasks[context.CallActivityAsync<NodeRunResult>(
                     ConsultGenerationActivityNames.RunPromptNode,
                     new ConsultPromptNodeActivityInput(
@@ -276,7 +293,9 @@ public sealed class ConsultGenerationOrchestrator
                         Item: item,
                         ForEach: node.ForEach,
                         Run: ConsultRenderPayload.RunFactsFor(context.CurrentUtcDateTime, context.InstanceId, input.WorkflowPackage, input.ApiHost),
-                        Profile: ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature)),
+                        Profile: ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature),
+                        With: node.With,
+                        OnInvalid: node.OnInvalid),
                     AgentActivityRetryOptions)] = (node.Id, item?["id"]);
                 return;
             }
@@ -1234,7 +1253,11 @@ public sealed class ConsultGenerationOrchestrator
     /// </summary>
     internal static (bool? Unattested, string? CustomSchemaHash, string? CustomAgent) CustomStamp(ConsultNodeDescriptor node)
     {
-        var custom = string.Equals(node.OutputContract, OutputContracts.Custom, StringComparison.Ordinal);
+        // v25 (B4 #1003, design § 3.4): a 25 custom producer carries the same
+        // stamp (hash = the format's formatHash, agent = the generic custom
+        // agent) until B7 rewords the marker to "custom shape, engine-validated".
+        var custom = string.Equals(node.OutputContract, OutputContracts.Custom, StringComparison.Ordinal)
+            || string.Equals(node.Producer, WorkflowFormatProducers.Custom, StringComparison.Ordinal);
         return (
             custom ? true : null,
             custom ? node.CustomSchemaHash : null,
@@ -1247,10 +1270,12 @@ public sealed class ConsultGenerationOrchestrator
         var stamp = CustomStamp(node);
         return new(node.Id, node.Label, result.Concepts, result.InputHash, result.OutputHash,
             completedNodeCount, totalNodeCount, result.HashVersion, result.Classification, result.Tokens,
+            Check: result.Check,
             NodeStartedAtUtc: result.StartedAtUtc, DurationMs: result.DurationMs,
             Unattested: stamp.Unattested,
             CustomSchemaHash: stamp.CustomSchemaHash,
-            CustomAgent: stamp.CustomAgent);
+            CustomAgent: stamp.CustomAgent,
+            Validation: result.Validation);
     }
 
     internal static ConsultGenerationNodeItemUpdate ItemUpdateFrom(
@@ -1265,7 +1290,8 @@ public sealed class ConsultGenerationOrchestrator
             NodeStartedAtUtc: result.StartedAtUtc, DurationMs: result.DurationMs,
             Unattested: stamp.Unattested,
             CustomSchemaHash: stamp.CustomSchemaHash,
-            CustomAgent: stamp.CustomAgent);
+            CustomAgent: stamp.CustomAgent,
+            Validation: result.Validation);
     }
 
     internal static ConsultGenerationDeliveryRecord DeliveryRecordFor(Email.EmailIntakeReplyOutcome? outcome) =>
