@@ -199,3 +199,111 @@ public class WorkflowV25ManifestModelTests
         Assert.NotNull(read.Snippets);
     }
 }
+
+public class WorkflowV25NodeModelTests
+{
+    private static WorkflowNodeSpec FirstNode(WorkflowPackageManifest manifest) => manifest.Nodes!.First();
+
+    [Fact]
+    public void FormatWithAndOnInvalid_RoundTrip_WithNestedJsonPreserved()
+    {
+        var (manifest, _) = V25Fixtures.Base();
+        var node = FirstNode(manifest) with
+        {
+            Format = "terms-subset",
+            With = new Dictionary<string, JsonNode?>
+            {
+                ["of"] = "node.extract",
+                ["values"] = new JsonArray("in_scope", "out_of_scope"),
+                ["nested"] = new JsonObject { ["a"] = 1 }
+            },
+            OnInvalid = WorkflowOnInvalid.Fail
+        };
+        var at25 = manifest with { Nodes = manifest.Nodes!.Select(n => n.Id == node.Id ? node : n).ToList() };
+
+        var read = V25Fixtures.RoundTrip(at25, out var json);
+        var readNode = FirstNode(read);
+
+        Assert.Equal("terms-subset", readNode.Format);
+        Assert.Equal("fail", readNode.OnInvalid);
+        Assert.Equal("node.extract", readNode.With!["of"]!.GetValue<string>());
+        Assert.Equal(2, readNode.With["values"]!.AsArray().Count);
+        Assert.Equal(1, readNode.With["nested"]!["a"]!.GetValue<int>());
+
+        var wire = V25Fixtures.Keys(json)["nodes"]![0]!;
+        Assert.Equal("terms-subset", wire["format"]!.GetValue<string>());
+        Assert.NotNull(wire["with"]);
+        Assert.Equal("fail", wire["onInvalid"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void OnInvalid_IsAClosedSet()
+    {
+        Assert.Equal(new[] { "fail", "retry", "flag" }, WorkflowOnInvalid.All);
+        Assert.True(WorkflowOnInvalid.IsKnown("flag"));
+        Assert.False(WorkflowOnInvalid.IsKnown("ignore"));
+        Assert.False(WorkflowOnInvalid.IsKnown(null));
+    }
+
+    [Fact]
+    public void AV24Node_WritesTheBytesItAlwaysWrote()
+    {
+        var (manifest, _) = V24Fixtures.Base();
+
+        var wire = V25Fixtures.Keys(JsonSerializer.Serialize(manifest, V25Fixtures.Wire))["nodes"]![0]!;
+
+        Assert.Null(wire["format"]);
+        Assert.Null(wire["with"]);
+        Assert.Null(wire["onInvalid"]);
+    }
+
+    [Fact]
+    public void ADeliverableInstance_RoundTrips_AndIsNotBare()
+    {
+        var entries = new List<WorkflowDeliverableMacroSpec>
+        {
+            "closing",
+            new("disclaimer", At: WorkflowDeliverableMacroSpec.Prepend, When: "input:jurisdiction == on"),
+            new("signature", At: WorkflowDeliverableMacroSpec.Append)
+        };
+
+        var json = JsonSerializer.Serialize(entries, V25Fixtures.Wire);
+        var wire = JsonNode.Parse(json)!.AsArray();
+
+        Assert.Equal(JsonValueKind.String, wire[0]!.GetValueKind());
+        Assert.Equal("""{"id":"disclaimer","at":"prepend","when":"input:jurisdiction == on"}""", wire[1]!.ToJsonString());
+        Assert.Equal("""{"id":"signature","at":"append"}""", wire[2]!.ToJsonString());
+
+        var read = JsonSerializer.Deserialize<List<WorkflowDeliverableMacroSpec>>(json, WorkflowPackageManifestJson.ReadOptions)!;
+
+        Assert.True(read[0].IsBare);
+        Assert.False(read[1].IsBare);
+        Assert.Equal("prepend", read[1].At);
+        Assert.False(read[1].IsAppend);
+        Assert.True(read[2].IsAppend);
+        Assert.Null(read[2].Before);
+    }
+
+    [Fact]
+    public void AnAtOnly_Instance_SurvivesRepublish()
+    {
+        // The IsBare trap: an adornment the writer does not key on drops on republish.
+        var once = JsonSerializer.Serialize(new WorkflowDeliverableMacroSpec("x", At: "append"), V25Fixtures.Wire);
+        var twice = JsonSerializer.Serialize(JsonSerializer.Deserialize<WorkflowDeliverableMacroSpec>(once, WorkflowPackageManifestJson.ReadOptions), V25Fixtures.Wire);
+
+        Assert.Equal(once, twice);
+        Assert.Contains("\"at\"", twice);
+    }
+
+    [Fact]
+    public void TheNodeKeys_ReadCaseInsensitively_TheWorkerLesson()
+    {
+        const string json = """{ "Id": "n", "Label": "N", "Format": "prose", "OnInvalid": "flag", "With": { "A": 1 } }""";
+
+        var node = JsonSerializer.Deserialize<WorkflowNodeSpec>(json, WorkflowPackageManifestJson.ReadOptions)!;
+
+        Assert.Equal("prose", node.Format);
+        Assert.Equal("flag", node.OnInvalid);
+        Assert.Equal(1, node.With!["A"]!.GetValue<int>());
+    }
+}

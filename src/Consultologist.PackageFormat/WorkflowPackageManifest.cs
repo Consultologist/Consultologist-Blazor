@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
@@ -517,15 +518,26 @@ public sealed record WorkflowDeliverableMacroSpec(
     // it emits in a section's output; the engine fills the marker at assembly.
     // Mutually exclusive with before/after/forItem (the model owns the position);
     // the entry's when/optional gate still governs inclusion. Trailing optional.
-    bool? Slot = null)
+    bool? Slot = null,
+    // v25 (package-format-v25-design.md § 5.1, #998): the deliverable instance —
+    // `prepend` | `append`, document scope only. Node-anchored before/after and
+    // forItem become node instances at 25, and the slot becomes the inline
+    // macro.<id>.prompt read; below 25 `at` is refused by name. Trailing optional.
+    string? At = null)
 {
+    public const string Prepend = "prepend";
+    public const string Append = "append";
+
     /// <summary>An id and nothing else — the v11 form. Every adornment must
     /// count: the writer keys the bare-string form on this, so an entry that
     /// carries only a when or a forItem would silently drop it on republish.</summary>
-    public bool IsBare => Before is null && After is null && When is null && ForItem is null && Slot is null;
+    public bool IsBare => Before is null && After is null && When is null && ForItem is null && Slot is null && At is null;
 
     /// <summary>#863: the model, not the deliverable, chooses where this macro lands.</summary>
     public bool IsSlot => Slot == true;
+
+    /// <summary>v25: a document-scope instance, placed before or after the whole deliverable.</summary>
+    public bool IsAppend => At == Append;
 
     public static implicit operator WorkflowDeliverableMacroSpec?(string? id) => id is null ? null : new(id);
 
@@ -535,7 +547,7 @@ public sealed record WorkflowDeliverableMacroSpec(
 public sealed class WorkflowDeliverableMacroSpecConverter : JsonConverter<WorkflowDeliverableMacroSpec>
 {
     // The object form, read without this converter on the outer shape.
-    private sealed record Shape(string? Id, string? Before, string? After, string? When, string? ForItem, bool? Slot);
+    private sealed record Shape(string? Id, string? Before, string? After, string? When, string? ForItem, bool? Slot, string? At);
 
     public override WorkflowDeliverableMacroSpec Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
@@ -557,7 +569,7 @@ public sealed class WorkflowDeliverableMacroSpecConverter : JsonConverter<Workfl
             throw new JsonException("A placed macro entry must declare id.");
         }
 
-        return new WorkflowDeliverableMacroSpec(shape.Id, shape.Before, shape.After, shape.When, shape.ForItem, shape.Slot);
+        return new WorkflowDeliverableMacroSpec(shape.Id, shape.Before, shape.After, shape.When, shape.ForItem, shape.Slot, shape.At);
     }
 
     public override void Write(Utf8JsonWriter writer, WorkflowDeliverableMacroSpec value, JsonSerializerOptions options)
@@ -570,6 +582,11 @@ public sealed class WorkflowDeliverableMacroSpecConverter : JsonConverter<Workfl
 
         writer.WriteStartObject();
         writer.WriteString("id", value.Id);
+
+        if (value.At != null)
+        {
+            writer.WriteString("at", value.At);
+        }
 
         if (value.Before != null)
         {
@@ -763,7 +780,36 @@ public sealed record WorkflowNodeSpec(
     // the node-level `when` grammar. Absorbs the prelude — a bare entry is the
     // before/always form. Trailing optional, omitted when null; below 23 refused
     // by name by the validator.
-    List<WorkflowNodeMacroSpec>? Macros = null);
+    List<WorkflowNodeMacroSpec>? Macros = null,
+    // v25 (package-format-v25-design.md §§ 3.5–3.6, #998): the node's FORMAT —
+    // a catalogue id or a package-local id from manifest.formats — replaces
+    // the output schema and the classifier/check/template kinds; `with`
+    // supplies the parameters the format declares (object references or
+    // literals, typed by the declaration — TemplateReferenceWalker.WalkParameters);
+    // `onInvalid` is the node's policy on a reply the format refuses
+    // (WorkflowOnInvalid). Trailing optionals, omitted when null; below 25 each
+    // is refused by name by the validator.
+    string? Format = null,
+    Dictionary<string, JsonNode?>? With = null,
+    string? OnInvalid = null);
+
+/// <summary>
+/// v25 (§ 3.5): what happens on a reply the format's validation refuses —
+/// package-defined on the node, never on the format and never by the user at
+/// run time. <c>retry</c> re-sends once with the errors as a repair message (a
+/// later rung; the word is reserved); <c>flag</c> keeps the reply and records
+/// the outcome. A closed set, like every vocabulary here.
+/// </summary>
+public static class WorkflowOnInvalid
+{
+    public const string Fail = "fail";
+    public const string Retry = "retry";
+    public const string Flag = "flag";
+
+    public static readonly IReadOnlyList<string> All = new[] { Fail, Retry, Flag };
+
+    public static bool IsKnown(string? policy) => policy != null && All.Contains(policy, StringComparer.Ordinal);
+}
 
 /// <summary>
 /// The node kinds a manifest may spell (v10 § 4; check since v12 § 13).

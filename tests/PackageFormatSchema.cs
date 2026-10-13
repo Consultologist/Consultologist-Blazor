@@ -301,6 +301,16 @@ internal static class PackageFormatSchema
             Remove(properties, "reproducible");
         }
 
+        // v25 (#998, §§ 3.5–3.6): a node's format, its with parameters and its
+        // onInvalid policy arrive at 25. Below it none of the members exists,
+        // and the published v5–v24 bytes must not move.
+        if (specVersion < 25)
+        {
+            Remove(properties, "format");
+            Remove(properties, "with");
+            Remove(properties, "onInvalid");
+        }
+
         // v18 (#822): a node's own when arrives at 18; a string needs no
         // enriching, and the published v5–v17 bytes must not move.
         if (specVersion < 18)
