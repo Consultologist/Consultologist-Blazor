@@ -18,7 +18,7 @@ namespace Consultologist.PackageFormat;
 /// checks apply at publish time. Pre-v5 formats were retired by the v5-only
 /// rebase.
 /// </summary>
-public static class WorkflowPackageValidator
+public static partial class WorkflowPackageValidator
 {
     /// <summary>
     /// The formats a package may be PUBLISHED against, which is deliberately not
@@ -83,14 +83,36 @@ public static class WorkflowPackageValidator
     /// the stamp names; it is not re-matched here. Null — every unstamped
     /// version, and every caller but the store — keeps the closure as it was.
     /// </param>
+    /// <param name="formats">
+    /// v25 (#999): the format catalogue the engine loaded — needed to resolve a
+    /// node's catalogue format id (prose, classification, …). Null until B2
+    /// passes the loaded one; a 25 package naming a catalogue format is then
+    /// refused by a sentence naming the missing catalogue, never silently.
+    /// </param>
     public static ValidationResult Validate(
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, string> files,
         IReadOnlyDictionary<string, string> catalogSchemas,
-        IReadOnlyDictionary<string, string>? stampedContracts = null)
+        IReadOnlyDictionary<string, string>? stampedContracts = null,
+        WorkflowFormatCatalog? formats = null) =>
+        Validate(manifest, files, catalogSchemas, stampedContracts, formats, AcceptedSpecVersions);
+
+    /// <summary>
+    /// The seam the v25 tests use while 25 is wired but not yet accepted (A4,
+    /// #999): <paramref name="accepted"/> replaces <see cref="AcceptedSpecVersions"/>
+    /// for this call only. The bump (A5) adds 25 to the real set.
+    /// </summary>
+    internal static ValidationResult Validate(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> files,
+        IReadOnlyDictionary<string, string> catalogSchemas,
+        IReadOnlyDictionary<string, string>? stampedContracts,
+        WorkflowFormatCatalog? formats,
+        IReadOnlyCollection<int> accepted)
     {
         var errors = new List<string>();
         var warnings = new List<string>();
+        var at25 = manifest.SpecVersion >= 25;
 
         if (manifest.Templating is null
             || !string.Equals(manifest.Templating.Engine, "scriban", StringComparison.OrdinalIgnoreCase))
@@ -117,7 +139,7 @@ public static class WorkflowPackageValidator
                 errors.Add($"Duplicate prompt id '{prompt.Id}'.");
             }
 
-            if (prompt.Prelude != null && (manifest.Preludes is null || !manifest.Preludes.ContainsKey(prompt.Prelude)))
+            if (!at25 && prompt.Prelude != null && (manifest.Preludes is null || !manifest.Preludes.ContainsKey(prompt.Prelude)))
             {
                 errors.Add($"Prompt '{prompt.Id}' references undefined prelude '{prompt.Prelude}'.");
             }
@@ -125,6 +147,13 @@ public static class WorkflowPackageValidator
             if (!files.TryGetValue(prompt.File, out var templateText))
             {
                 errors.Add($"Prompt '{prompt.Id}' file '{prompt.File}' is missing from the package.");
+                continue;
+            }
+
+            // v25: a prompt has no variables, prelude or raw flag — refused by
+            // name in ValidateAt25 — and is walked as an object template there.
+            if (at25)
+            {
                 continue;
             }
 
@@ -150,7 +179,7 @@ public static class WorkflowPackageValidator
             ValidateTemplate(prompt, templateText, ProbeTypes(manifest), errors, warnings);
         }
 
-        foreach (var (preludeId, preludePath) in manifest.Preludes ?? new Dictionary<string, string>())
+        foreach (var (preludeId, preludePath) in at25 ? new Dictionary<string, string>() : manifest.Preludes ?? new Dictionary<string, string>())
         {
             if (!files.ContainsKey(preludePath))
             {
@@ -162,9 +191,13 @@ public static class WorkflowPackageValidator
         // gate (WorkflowPackageStore.SupportedSpecVersions) moves last, so a v8
         // package is well-formedness-checked while running it still refuses
         // with SpecVersionNotYetExecutable (package-format-v8-design.md § 8).
-        if (!AcceptedSpecVersions.Contains(manifest.SpecVersion))
+        if (!accepted.Contains(manifest.SpecVersion))
         {
             errors.Add($"specVersion {manifest.SpecVersion} is not supported: this engine accepts specVersion {DescribeAcceptedSpecVersions()} (pre-v5 packages are archived; see registry-operations.md).");
+        }
+        else if (at25)
+        {
+            ValidateAt25(manifest, files, formats, errors, warnings);
         }
         else
         {
