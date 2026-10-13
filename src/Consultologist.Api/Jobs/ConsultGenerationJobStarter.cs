@@ -2948,10 +2948,17 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         }
         else if (formats is not null)
         {
-            // A package-local format with no stamp (a bare fixture): custom, the generic agent.
+            // A package-local format with no stamp (a bare fixture): custom, the
+            // generic agent; the hash is the local file's own (B4 #1003), so the
+            // record and the activity's bytes-sent check hold without a stamp.
             producer = WorkflowFormatProducers.Custom;
             agentName = formats.CustomProducer.AgentName;
             agentVersion = formats.CustomProducer.AgentVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            if (FormatSpecFor(formatId, null, macroFiles, manifest) is { } localSpec)
+            {
+                formatHash = WorkflowFormatSpecJson.Sha256Hex(WorkflowFormatSpecJson.CanonicalJson(localSpec));
+            }
         }
         else
         {

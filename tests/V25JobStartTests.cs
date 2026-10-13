@@ -26,7 +26,9 @@ public class V25JobStartTests
     };
 
     /// <summary>The design's minimal package with a second folder nobody fans, as the store would hand it to the starter.</summary>
-    internal static WorkflowPackage Package(Func<WorkflowPackageManifest, WorkflowPackageManifest>? change = null)
+    internal static WorkflowPackage Package(
+        Func<WorkflowPackageManifest, WorkflowPackageManifest>? change = null,
+        Func<Dictionary<string, string>, Dictionary<string, string>>? changeFiles = null)
     {
         var (manifest, files) = V25Package.Minimal();
         manifest = manifest with
@@ -39,6 +41,7 @@ public class V25JobStartTests
             ["snippets/extras/billing.md"] = "Bill as a follow-up.",
         };
         manifest = change?.Invoke(manifest) ?? manifest;
+        files = changeFiles?.Invoke(files) ?? files;
 
         Assert.Equal(new List<string>(), V25Package.Errors((manifest, files)));
 
