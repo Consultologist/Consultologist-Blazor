@@ -394,7 +394,7 @@ public static class WorkflowPackageValidator
                 continue;
             }
 
-            ValidateStructuredOutputSubset(schemaId, schemaNode, errors);
+            ValidateStructuredOutputSubset($"Custom schema '{schemaId}'", schemaNode, errors);
         }
     }
 
@@ -409,8 +409,11 @@ public static class WorkflowPackageValidator
     /// properties in required (optionality is a nullable type — type: ["T",
     /// "null"] — never omission from required), and nesting is bounded. These are
     /// exactly the constraints a strict json_schema agent can enforce.
+    /// <paramref name="subject"/> opens every sentence ("Custom schema 'x'",
+    /// "Format 'x' schema"); shared with <see cref="WorkflowFormatValidator"/>
+    /// since a v25 format's schema obeys the same subset.
     /// </summary>
-    private static void ValidateStructuredOutputSubset(string schemaId, JsonNode? node, List<string> errors)
+    internal static void ValidateStructuredOutputSubset(string subject, JsonNode? node, List<string> errors)
     {
         Walk(node, "", 0);
 
@@ -423,7 +426,7 @@ public static class WorkflowPackageValidator
 
             if (depth > MaxCustomSchemaDepth)
             {
-                errors.Add($"Custom schema '{schemaId}' nests deeper than {MaxCustomSchemaDepth} levels{At(path)}; flatten it to fit the strict structured-output subset.");
+                errors.Add($"{subject} nests deeper than {MaxCustomSchemaDepth} levels{At(path)}; flatten it to fit the strict structured-output subset.");
                 return;
             }
 
@@ -438,7 +441,7 @@ public static class WorkflowPackageValidator
                     || !addl.TryGetValue(out bool allowsExtra)
                     || allowsExtra)
                 {
-                    errors.Add($"Custom schema '{schemaId}' object{At(path)} must set additionalProperties:false (the strict structured-output subset).");
+                    errors.Add($"{subject} object{At(path)} must set additionalProperties:false (the strict structured-output subset).");
                 }
 
                 var required = (obj["required"] as JsonArray)?
@@ -454,7 +457,7 @@ public static class WorkflowPackageValidator
                     {
                         if (!required.Contains(name))
                         {
-                            errors.Add($"Custom schema '{schemaId}' property '{name}'{At(path)} must be listed in required (optionality is expressed by a nullable type, not omission).");
+                            errors.Add($"{subject} property '{name}'{At(path)} must be listed in required (optionality is expressed by a nullable type, not omission).");
                         }
 
                         Walk(value, path.Length == 0 ? name : $"{path}.{name}", depth + 1);
@@ -1547,7 +1550,7 @@ public static class WorkflowPackageValidator
     /// declared-id rule, so they are safe wherever result ids are — authored
     /// package content, never patient data.
     /// </summary>
-    private static void ValidateEnumValues(string subject, List<string>? values, List<string> errors, string noun = "enum value")
+    internal static void ValidateEnumValues(string subject, List<string>? values, List<string> errors, string noun = "enum value")
     {
         if (values is not { Count: > 0 })
         {
