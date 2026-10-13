@@ -5,8 +5,10 @@
        sentences, the wire value and its canonical forms, the condition
        grammar and its evaluation, fans, the data resolver, rendering, and
        the publication stamp. Nothing that defines the engine: no Azure, no
-       Functions, no storage, no catalog — the catalog reaches the stamp
-       through IOutputContractResolver. Scriban is here because the
+       Functions, no storage, no catalog loader — the catalog reaches the
+       stamp through IOutputContractResolver, and the v25 format catalogue's
+       MODEL (index + files + cross-checks) lives here so the engine, the
+       agents repo's CI and the validator read one definition. Scriban is here because the
        validator's publish-time probe parses and renders every prompt; the
        version it asserts against is the loaded assembly's, which in the
        one process that hosts both is the engine's. -->
