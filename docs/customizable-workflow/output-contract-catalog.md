@@ -264,3 +264,13 @@ control flow; multiple/non-terminal maps (each waits for a demanding workflow).
 > (`customSchemas`) → an engine-provisioned, content-addressed, unattested agent; and
 > `text`/`classification` as before. All resolve through the package's own stamped
 > catalog.
+>
+> **Amendment 2026-10-13 (#1003, package-format v25 B4).** The content-addressed
+> per-schema agents are retired. A custom shape — `customSchemas` at v22–24, a
+> package-local format at v25 — runs on the formats catalogue's one generic agent
+> (`producers.custom`, `custom-json`): the engine appends the catalogue's trailer sentence
+> and the schema to the rendered prompt, strips any code fence from the reply, parses it
+> and validates it against the schema; the node's `onInvalid` (v25) decides what an invalid
+> reply does (a 22–24 node fails). The agent is attested like every other; what is
+> package-authored is the shape, and the record still says so (`unattested`, the schema
+> hash, the agent) until B7 rewords the marker. Design: package-format-v25-design.md § 3.4.

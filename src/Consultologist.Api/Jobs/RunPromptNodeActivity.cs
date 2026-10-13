@@ -64,7 +64,12 @@ public sealed record ConsultPromptNodeActivityInput(
     IReadOnlyDictionary<string, string>? Item = null,
     string? ForEach = null,
     TemplateRunFacts? Run = null,
-    TemplateProfileFacts? Profile = null);
+    TemplateProfileFacts? Profile = null,
+    // v25 (B4 #1003, design §§ 3.5–3.7): the node's resolved with and its
+    // onInvalid policy, threaded from the descriptor for the dispatch on the
+    // producer. Null below 25. Appended last, same rule.
+    IReadOnlyDictionary<string, string>? With = null,
+    string? OnInvalid = null);
 
 /// <summary>
 /// One node run. Deserialized concepts ride the recorded activity result so Durable
@@ -93,7 +98,12 @@ public sealed record NodeRunResult(
     // null is "not recorded", never zero (aggregates, checks and roll-ups
     // record none — no activity ran).
     DateTimeOffset? StartedAtUtc = null,
-    long? DurationMs = null);
+    long? DurationMs = null,
+    // v25 (B4 #1003, design § 3.5): the reply's validation against its format
+    // (null on a text format), and a computed node's check outcome (null
+    // otherwise). Appended last, same positional-call rule.
+    ConsultValidationOutcome? Validation = null,
+    ConsultCheckOutcome? Check = null);
 
 /// <summary>
 /// The generic DAG prompt node: renders the node's prompt with orchestrator-resolved
@@ -107,17 +117,20 @@ public sealed class RunPromptNodeActivity
     private readonly AgentSectionGenerator _agent;
     private readonly OutputContractCatalog _catalog;
     private readonly ILogger<RunPromptNodeActivity> _logger;
+    private readonly WorkflowFormatCatalog _formats;
 
     public RunPromptNodeActivity(
         IWorkflowPackageStore packageStore,
         AgentSectionGenerator agent,
         OutputContractCatalog catalog,
-        ILogger<RunPromptNodeActivity> logger)
+        ILogger<RunPromptNodeActivity> logger,
+        WorkflowFormatCatalog formats)
     {
         _packageStore = packageStore;
         _agent = agent;
         _catalog = catalog;
         _logger = logger;
+        _formats = formats;
     }
 
     /// <summary>
@@ -221,6 +234,30 @@ public sealed class RunPromptNodeActivity
                 return templateResult with { StartedAtUtc = startedAtUtc, DurationMs = stopwatch.ElapsedMilliseconds };
             }
 
+            // v25 (B4 #1003): a node with a format — and a 22–24 custom-schema
+            // node, #760 retired — dispatches on its producer: what is sent and
+            // to whom is planned, the one call is made, the reply is settled
+            // under the node's onInvalid.
+            if (ConsultNodeDispatch.Applies(input))
+            {
+                var plan = ConsultNodeDispatch.Plan(input, package, rendered, _catalog, _formats);
+                var planInputHash = ConsultGenerationProvenance.Sha256Hex(plan.Sent);
+                var reply = await _agent.SendPromptAsync(input.NodeId, plan.Sent, plan.AgentName, plan.AgentVersion, cancellationToken);
+                var settled = ConsultNodeDispatch.Settle(plan, input.NodeId, reply.Text, planInputHash, reply.Tokens);
+
+                _logger.LogInformation(
+                    "Prompt node completed. NodeId={NodeId}, Producer={Producer}, Valid={Valid}, ConceptCount={ConceptCount}, InputHash={InputHash}, OutputHash={OutputHash}, ElapsedMs={ElapsedMs}",
+                    input.NodeId,
+                    input.Producer ?? OutputContracts.Custom,
+                    settled.Validation?.Valid,
+                    settled.Concepts?.Count,
+                    settled.InputHash,
+                    settled.OutputHash,
+                    stopwatch.ElapsedMilliseconds);
+
+                return settled with { StartedAtUtc = startedAtUtc, DurationMs = stopwatch.ElapsedMilliseconds };
+            }
+
             // v10 (#495): a classifier's prompt ends with the values it may
             // answer, in one deterministic form; the message sent is what is
             // hashed. The values reach here on the activity input.
@@ -258,24 +295,6 @@ public sealed class RunPromptNodeActivity
             var concepts = string.Equals(input.OutputContract, OutputContracts.ConceptList, StringComparison.Ordinal)
                 ? ConceptOutputContract.Deserialize(rawOutput, input.ConceptSource ?? input.NodeId)
                 : null;
-
-            // #760 (custom tier): a custom node's strict json_schema agent already
-            // guarantees a conforming object; parse it as a sanity check only. A
-            // malformed body (never expected) throws a retryable InvalidDataException —
-            // not InvalidOperationException, so the Durable retry policy retries it. The
-            // raw JSON rides RawOutput, consumed as-is by a downstream template/prompt.
-            if (string.Equals(input.OutputContract, OutputContracts.Custom, StringComparison.Ordinal))
-            {
-                try
-                {
-                    _ = System.Text.Json.Nodes.JsonNode.Parse(rawOutput);
-                }
-                catch (System.Text.Json.JsonException ex)
-                {
-                    throw new InvalidDataException(
-                        $"Custom node '{input.NodeId}' returned output that is not valid JSON.", ex);
-                }
-            }
 
             _logger.LogInformation(
                 "Prompt node completed. NodeId={NodeId}, ConceptCount={ConceptCount}, InputHash={InputHash}, OutputHash={OutputHash}, ElapsedMs={ElapsedMs}",

@@ -30,9 +30,10 @@ public static class OutputContracts
 
     /// <summary>
     /// v22 (#760): a custom, user-defined output shape. A routing marker, NOT a
-    /// catalog entry — a custom schema has no catalog agent; it is run by a
-    /// content-addressed generic no-tool agent provisioned per run, and its
-    /// output is explicitly unattested/ungrounded.
+    /// catalog entry — a custom schema has no catalog agent. v25 (B4 #1003): it
+    /// runs on the formats catalogue's generic custom agent with the schema in
+    /// the prompt and the reply validated by the engine; the content-addressed
+    /// per-schema agents are retired.
     /// </summary>
     public const string Custom = "custom";
 }

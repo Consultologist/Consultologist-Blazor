@@ -399,6 +399,12 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             output.CustomAgent = input.CustomAgent;
         }
 
+        // v25 (B4 #1003): the reply's validation, when its format validates.
+        if (input.Validation != null)
+        {
+            output.Validation = input.Validation;
+        }
+
         var progress = state.GetOrAddItemProgress(input.ItemId, input.ItemName);
         progress.Step = input.NodeId;
         progress.CompletedStepCount = input.CompletedChainCount;
@@ -446,6 +452,12 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             node.Unattested = true;
             node.CustomSchemaHash = input.CustomSchemaHash;
             node.CustomAgent = input.CustomAgent;
+        }
+
+        // v25 (B4 #1003): the reply's validation, when its format validates.
+        if (input.Validation != null)
+        {
+            node.Validation = input.Validation;
         }
 
         state.CompletedStageCount = input.CompletedNodeCount;
@@ -1123,7 +1135,10 @@ public sealed record ConsultGenerationNodeUpdate(
     // node and on payloads from before. Appended last, the positional-call rule.
     bool? Unattested = null,
     string? CustomSchemaHash = null,
-    string? CustomAgent = null);
+    string? CustomAgent = null,
+    // v25 (B4 #1003, design § 3.5): the reply's validation against its format.
+    // Null on a text format and on payloads from before. Appended last, same rule.
+    ConsultValidationOutcome? Validation = null);
 
 /// <summary>v10 (#496): what the boundary decided — the one Decide signal.</summary>
 public sealed record ConsultGenerationDecision(
@@ -1300,7 +1315,9 @@ public sealed record ConsultGenerationNodeItemUpdate(
     // Appended last, the positional-call rule.
     bool? Unattested = null,
     string? CustomSchemaHash = null,
-    string? CustomAgent = null);
+    string? CustomAgent = null,
+    // v25 (B4 #1003): the item reply's validation against its format. Appended last.
+    ConsultValidationOutcome? Validation = null);
 
 public sealed class ConsultGenerationJobState
 {
@@ -1778,7 +1795,8 @@ public sealed class ConsultGenerationJobState
                     pair.Value.ErrorStack,
                     pair.Value.Unattested,
                     pair.Value.CustomSchemaHash,
-                    pair.Value.CustomAgent)),
+                    pair.Value.CustomAgent,
+                    pair.Value.Validation)),
             AgentVersions: AgentVersions,
             EffectiveInputHashVersion: EffectiveInputHashVersion,
             CatalogRef: CatalogRef,
@@ -1940,6 +1958,11 @@ public sealed class ConsultNodeOutputState
     public bool? Unattested { get; set; }
     public string? CustomSchemaHash { get; set; }
     public string? CustomAgent { get; set; }
+
+    // v25 (B4 #1003, design § 3.5): the reply's validation against its format
+    // — valid with no errors, or every way it missed. Null on a text format
+    // and on records from before.
+    public ConsultValidationOutcome? Validation { get; set; }
 }
 
 public static class ConsultGenerationNodeStatuses
@@ -1967,6 +1990,9 @@ public static class ConsultGenerationJobStatuses
 public static class ConsultGenerationActivityNames
 {
     public const string RunPromptNode = "run-prompt-node";
+    // v25 (B4 #1003, design § 3.7): a computed node — no prompt, no model; the
+    // operation over its resolved with.
+    public const string RunComputedNode = "run-computed-node";
     // v10 (#496): the boundary — decide the fire set over the classifier values.
     public const string DecideDeliverables = "decide-deliverables";
 }

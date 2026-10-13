@@ -73,47 +73,40 @@ public class DescribeNodeAgentPinTests
     }
 
     [Fact]
-    public void ACustomNode_CarriesItsContentAddressedAgentAndSchemaHash()
+    public void ACustomNode_CarriesTheGenericAgent_AndItsSchemaHash()
     {
-        // #760: a custom node's contract is 'custom' (no catalog entry); its agent comes
-        // from the provisioned map, keyed by schema id, and its hash rides the descriptor.
-        var node = new WorkflowNodeSpec("shape", "Shape", Prompt: "p", Output: new WorkflowNodeOutputSpec("my-shape"));
-        var schemaContracts = new Dictionary<string, string>(StringComparer.Ordinal) { ["my-shape"] = OutputContracts.Custom };
-        var customAgents = new Dictionary<string, ConsultGenerationJobStarter.CustomAgentPin>(StringComparer.Ordinal)
-        {
-            ["my-shape"] = new("custom-abc123", "1", "hash-abc"),
-        };
+        // #760 → B4 #1003: a custom node's contract is 'custom' (no catalog entry);
+        // its agent is the formats catalogue's generic custom agent, and the hash of
+        // its own schema rides the descriptor for the record.
+        var (manifest, files) = V22Fixtures.Custom();
+        var node = manifest.Nodes!.First(n => n.Id == "create-typical-trajectory");
+        var schemaContracts = new Dictionary<string, string>(StringComparer.Ordinal) { ["my-note"] = OutputContracts.Custom };
 
-        var descriptor = ConsultGenerationJobStarter.DescribeNode(node, schemaContracts, ContractAgents, customAgents);
+        var descriptor = ConsultGenerationJobStarter.DescribeNode(node, schemaContracts, ContractAgents, files, formats: TestFormats.Catalog, manifest: manifest);
 
         Assert.Equal(OutputContracts.Custom, descriptor.OutputContract);
-        Assert.Equal("custom-abc123", descriptor.AgentName);
+        Assert.Equal("custom-json", descriptor.AgentName);
         Assert.Equal("1", descriptor.AgentVersion);
-        Assert.Equal("hash-abc", descriptor.CustomSchemaHash);
+        Assert.Equal(ConsultGenerationJobStarter.CustomSchemaHashOf(node, manifest, files), descriptor.CustomSchemaHash);
+        Assert.NotNull(descriptor.CustomSchemaHash);
     }
 
     [Fact]
-    public void TwoCustomNodes_EachCarryTheirOwnAgent_KeyedBySchemaId()
+    public void TwoCustomNodes_ShareTheGenericAgent_WithTheirOwnSchemaHashes()
     {
-        // The two share contract id 'custom' but have different content-addressed agents.
-        var schemaContracts = new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["shape-a"] = OutputContracts.Custom,
-            ["shape-b"] = OutputContracts.Custom,
-        };
-        var customAgents = new Dictionary<string, ConsultGenerationJobStarter.CustomAgentPin>(StringComparer.Ordinal)
-        {
-            ["shape-a"] = new("custom-aaa", "1", "ha"),
-            ["shape-b"] = new("custom-bbb", "1", "hb"),
-        };
+        var (manifest, files) = V22Fixtures.Custom();
+        var otherFiles = new Dictionary<string, string>(files, StringComparer.Ordinal) { ["schemas/other.json"] = """{"type":"object","additionalProperties":false,"required":["b"],"properties":{"b":{"type":"string"}}}""" };
+        var twoSchemas = manifest with { CustomSchemas = new Dictionary<string, string>(manifest.CustomSchemas!, StringComparer.Ordinal) { ["other"] = "schemas/other.json" } };
+        var schemaContracts = new Dictionary<string, string>(StringComparer.Ordinal) { ["my-note"] = OutputContracts.Custom, ["other"] = OutputContracts.Custom };
 
         var a = ConsultGenerationJobStarter.DescribeNode(
-            new WorkflowNodeSpec("a", "A", Prompt: "p", Output: new WorkflowNodeOutputSpec("shape-a")), schemaContracts, ContractAgents, customAgents);
+            new WorkflowNodeSpec("a", "A", Prompt: "p", Output: new WorkflowNodeOutputSpec("my-note")), schemaContracts, ContractAgents, otherFiles, formats: TestFormats.Catalog, manifest: twoSchemas);
         var b = ConsultGenerationJobStarter.DescribeNode(
-            new WorkflowNodeSpec("b", "B", Prompt: "p", Output: new WorkflowNodeOutputSpec("shape-b")), schemaContracts, ContractAgents, customAgents);
+            new WorkflowNodeSpec("b", "B", Prompt: "p", Output: new WorkflowNodeOutputSpec("other")), schemaContracts, ContractAgents, otherFiles, formats: TestFormats.Catalog, manifest: twoSchemas);
 
-        Assert.Equal("custom-aaa", a.AgentName);
-        Assert.Equal("custom-bbb", b.AgentName);
+        Assert.Equal("custom-json", a.AgentName);
+        Assert.Equal("custom-json", b.AgentName);
+        Assert.NotEqual(a.CustomSchemaHash, b.CustomSchemaHash);
     }
 
     [Fact]

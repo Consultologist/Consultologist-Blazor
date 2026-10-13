@@ -166,7 +166,6 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly IWorkflowPackagePinResolver _pinResolver;
     private readonly OutputContractCatalog _catalog;
     private readonly WorkflowFormatCatalog _formats;
-    private readonly ICustomAgentProvisioner _customProvisioner;
     private readonly EngineAttestationResponse _engine;
     private readonly ITerminologyAttestationSource _terminology;
     private readonly IAccountRateLimiter _rateLimiter;
@@ -185,7 +184,6 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IWorkflowPackageStore packageStore,
         IWorkflowPackagePinResolver pinResolver,
         OutputContractCatalog catalog,
-        ICustomAgentProvisioner customProvisioner,
         IAccountRateLimiter rateLimiter,
         IWorkflowPackageOwnership ownership,
         EngineAttestationResponse engine,
@@ -205,7 +203,6 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         _pinResolver = pinResolver;
         _catalog = catalog;
         _formats = formats;
-        _customProvisioner = customProvisioner;
         _engine = engine;
         _terminology = terminology;
         _rateLimiter = rateLimiter;
@@ -748,12 +745,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 .Where(node => node.ForEach != null)
                 .Select(node => new ConsultItemStepDescriptor(node.Id, node.Label))
                 .ToList();
-        // #760 (custom tier): provision the content-addressed no-tool agent each custom
-        // schema runs on (GET-or-create, cached), in the starter so the side-effect stays
-        // out of the orchestrator; the resolved refs are baked into the recorded input.
-        var customAgents = await ProvisionCustomAgentsAsync(_customProvisioner, package, cancellationToken);
         var derivedEdges = DeriveEdges(package);
-        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, customAgents, package.SourceFiles, package.Manifest.Macros, package.Formats, package.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id))).ToList();
+        // v25 (B4 #1003): the formats catalogue a node resolves against - the
+        // package's own stamped version at 25, else the engine's pin, whose
+        // generic custom agent a 22-24 custom-schema node now runs on.
+        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, package.SourceFiles, package.Manifest.Macros, package.Formats ?? _formats, package.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id), inputs.Effective, package.Manifest)).ToList();
 
         // Provenance: identify the artifacts and input that produce this consult.
         // v5/v6: the hash covers the draft only (definition version 2). v7: the
@@ -2761,67 +2757,43 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         return null;
     }
 
-    // #760 (custom tier): the content-addressed agent + schema hash a custom node runs,
-    // resolved at job-start and threaded to the executor (keyed by schema id, since
-    // several custom schemas share the 'custom' contract id but have different agents).
-    internal sealed record CustomAgentPin(string AgentName, string AgentVersion, string SchemaHash);
-
     /// <summary>
-    /// #760: for each custom schema the package declares, GET-or-create its content-
-    /// addressed no-tool agent and record (agent, schema hash) keyed by schema id. Null
-    /// when the package declares none, so no Foundry call happens for the common case.
+    /// v25 (B4 #1003; #760 retired): the hash of a 22-24 custom schema, as the
+    /// record stamps it - the schema file parsed and re-serialised (formatting
+    /// normalised, no key removed: a custom schema may use "title" or
+    /// "description" as real property names, which CanonicalizeSchema would
+    /// strip), then SHA-256. Null when the node or package does not carry one.
     /// </summary>
-    internal static async Task<IReadOnlyDictionary<string, CustomAgentPin>?> ProvisionCustomAgentsAsync(
-        ICustomAgentProvisioner customProvisioner, WorkflowPackage package, CancellationToken cancellationToken)
+    internal static string? CustomSchemaHashOf(WorkflowNodeSpec node, WorkflowPackageManifest? manifest, IReadOnlyDictionary<string, string>? files)
     {
-        if (package.Manifest.CustomSchemas is not { Count: > 0 } customSchemas)
+        if (node.Output?.Schema is not { } schemaId
+            || manifest?.CustomSchemas?.GetValueOrDefault(schemaId) is not { } file
+            || files?.GetValueOrDefault(file) is not { } body)
         {
             return null;
         }
 
-        var model = Environment.GetEnvironmentVariable("CustomAgents__Model");
-        if (string.IsNullOrWhiteSpace(model))
+        try
         {
-            throw new InvalidOperationException(
-                $"Package '{package.Ref}' declares custom output schemas but CustomAgents__Model is not configured.");
+            return ConsultGenerationProvenance.Sha256Hex(System.Text.Json.Nodes.JsonNode.Parse(body)!.ToJsonString());
         }
-
-        var pins = new Dictionary<string, CustomAgentPin>(StringComparer.Ordinal);
-        foreach (var (schemaId, file) in customSchemas)
+        catch (System.Text.Json.JsonException)
         {
-            if (package.SourceFiles is null || !package.SourceFiles.TryGetValue(file, out var body))
-            {
-                throw new InvalidOperationException(
-                    $"Custom schema '{schemaId}' file '{file}' is missing from package '{package.Ref}'.");
-            }
-
-            // #760: embed the user's ORIGINAL schema in the agent — NOT
-            // WorkflowPackageValidator.CanonicalizeSchema, which strips every key
-            // named "title"/"description" (JSON Schema annotations in the catalog-
-            // match context). A custom schema may use those as real property names;
-            // stripping them corrupts the shape (a 'required' key with no matching
-            // property), which the strict json_schema model then rejects. Normalise
-            // only the formatting (a parse + reserialize, no key removal) so the
-            // content-addressed hash is whitespace-stable.
-            var schemaJson = System.Text.Json.Nodes.JsonNode.Parse(body)!.ToJsonString();
-            var agent = await customProvisioner.GetOrCreateAsync(schemaJson, model, cancellationToken);
-            pins[schemaId] = new CustomAgentPin(
-                agent.AgentName, agent.AgentVersion, ConsultGenerationProvenance.Sha256Hex(schemaJson));
+            return null;
         }
-
-        return pins;
     }
 
     internal static ConsultNodeDescriptor DescribeNode(
         WorkflowNodeSpec node,
         IReadOnlyDictionary<string, string>? schemaContracts,
         IReadOnlyDictionary<string, OutputContractEntry>? contractAgents = null,
-        IReadOnlyDictionary<string, CustomAgentPin>? customAgents = null,
         IReadOnlyDictionary<string, string>? macroFiles = null,
         IReadOnlyList<WorkflowMacroSpec>? macros = null,
         WorkflowFormatCatalog? formats = null,
         IReadOnlyDictionary<string, WorkflowStampedFormat>? stampedFormats = null,
-        IReadOnlySet<string>? reads = null)
+        IReadOnlySet<string>? reads = null,
+        IReadOnlyDictionary<string, string>? effectiveInputs = null,
+        WorkflowPackageManifest? manifest = null)
     {
         // v25 (B2 #1001, design § 3.7): a node that declares a format is
         // resolved from its package's own stamped formats version — the stamp
@@ -2831,7 +2803,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // the identity travels. An aggregator declares no format.
         if (node.Format is { } formatId)
         {
-            return DescribeNodeAt25(node, formatId, formats, stampedFormats, macroFiles, macros, reads);
+            return DescribeNodeAt25(node, formatId, formats, stampedFormats, macroFiles, macros, reads, effectiveInputs, manifest);
         }
 
         // v10 (#495): a classifier's contract is implied by its kind — the one
@@ -2844,23 +2816,26 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     ?? throw new InvalidOperationException(
                         $"Node '{node.Id}' declares schema '{node.Output.Schema}' with no resolved output contract.");
 
-        // #923 phase 2 / #760: resolve the node's agent pin at job-start and thread it to
-        // the activity. A template runs no agent. A CUSTOM node runs its content-addressed
-        // agent (provisioned above, keyed by schema id) — custom has no catalog entry.
-        // Every other model node uses its contract's catalog agent (the text default when
-        // it declares none).
+        // #923 phase 2: resolve the node's agent pin at job-start and thread it to
+        // the activity. A template runs no agent. v25 (B4 #1003, #760 retired): a
+        // CUSTOM node runs the formats catalogue's generic agent - its schema goes
+        // into the prompt and the engine validates the reply - and records its
+        // schema's hash. Every other model node uses its contract's catalog agent
+        // (the text default when it declares none).
         string? agentName = null;
         string? agentVersion = null;
         string? customSchemaHash = null;
         if (node.Prompt is not null && !WorkflowNodeKinds.IsTemplate(node))
         {
-            if (string.Equals(outputContract, OutputContracts.Custom, StringComparison.Ordinal)
-                && node.Output is not null
-                && customAgents?.GetValueOrDefault(node.Output.Schema) is { } customPin)
+            if (string.Equals(outputContract, OutputContracts.Custom, StringComparison.Ordinal))
             {
-                agentName = customPin.AgentName;
-                agentVersion = customPin.AgentVersion;
-                customSchemaHash = customPin.SchemaHash;
+                if (formats is not null)
+                {
+                    agentName = formats.CustomProducer.AgentName;
+                    agentVersion = formats.CustomProducer.AgentVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                }
+
+                customSchemaHash = CustomSchemaHashOf(node, manifest, macroFiles);
             }
             else if (contractAgents?.GetValueOrDefault(outputContract ?? OutputContracts.Text) is { } entry)
             {
@@ -2918,7 +2893,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IReadOnlyDictionary<string, WorkflowStampedFormat>? stampedFormats,
         IReadOnlyDictionary<string, string>? macroFiles,
         IReadOnlyList<WorkflowMacroSpec>? macros,
-        IReadOnlySet<string>? reads)
+        IReadOnlySet<string>? reads,
+        IReadOnlyDictionary<string, string>? effectiveInputs,
+        WorkflowPackageManifest? manifest)
     {
         string? producer = null;
         string? formatHash = null;
@@ -2944,16 +2921,30 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         }
         else if (formats is not null)
         {
-            // A package-local format with no stamp (a bare fixture): custom, the generic agent.
+            // A package-local format with no stamp (a bare fixture): custom, the
+            // generic agent; the hash is the local file's own (B4 #1003), so the
+            // record and the activity's bytes-sent check hold without a stamp.
             producer = WorkflowFormatProducers.Custom;
             agentName = formats.CustomProducer.AgentName;
             agentVersion = formats.CustomProducer.AgentVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            if (FormatSpecFor(formatId, null, macroFiles, manifest) is { } localSpec)
+            {
+                formatHash = WorkflowFormatSpecJson.Sha256Hex(WorkflowFormatSpecJson.CanonicalJson(localSpec));
+            }
         }
         else
         {
             throw new InvalidOperationException(
                 $"Node '{node.Id}' declares format '{formatId}', but the package carries no formats catalogue to resolve it against.");
         }
+
+        // v25 (B4 #1003, design § 3.6): the node's with, resolved once here —
+        // a values parameter into Values (a list, or an enum input's declared
+        // values), a node parameter to the bare node id, a text parameter to
+        // its literal or the referenced input's value — and its onInvalid.
+        var resolved = ConsultNodeParameters.Resolve(
+            node, FormatSpecFor(formatId, formats, macroFiles, manifest)?.Parameters, manifest, effectiveInputs);
 
         return new ConsultNodeDescriptor(
             node.Id,
@@ -2965,10 +2956,13 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             ForEach: node.ForEach,
             ConceptSource: WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(node.Id, node.Id),
             Aggregate: node.Aggregate,
+            Values: resolved.Values,
             Reproducible: node.Reproducible == true ? true : null,
             Template: producer == WorkflowFormatProducers.Rendered ? true : null,
             AgentName: agentName,
             AgentVersion: agentVersion,
+            // v25 (B4 #1003): a custom producer's stamp hash is its format's.
+            CustomSchemaHash: producer == WorkflowFormatProducers.Custom ? formatHash : null,
             Macros: node.Macros?
                 .Select(macro => new ConsultNodeMacroDescriptor(
                     macro.Id, macro.IsAfter, macro.When, macro.ForItem, ClassifiersReadBy(macro.Id, macros, macroFiles)))
@@ -2977,7 +2971,29 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             Producer: producer,
             FormatHash: formatHash,
             Op: op,
-            Reads: reads is { Count: > 0 } ? reads.Order(StringComparer.Ordinal).ToList() : null);
+            Reads: reads is { Count: > 0 } ? reads.Order(StringComparer.Ordinal).ToList() : null,
+            With: resolved.With,
+            OnInvalid: node.OnInvalid);
+    }
+
+    /// <summary>The spec of a node's format: a package-local file (via the manifest's formats[] and the source files) or the catalogue's; null when neither resolves.</summary>
+    internal static WorkflowFormatSpec? FormatSpecFor(
+        string formatId,
+        WorkflowFormatCatalog? formats,
+        IReadOnlyDictionary<string, string>? files,
+        WorkflowPackageManifest? manifest)
+    {
+        var local = manifest?.Formats?.FirstOrDefault(f => string.Equals(f.Id, formatId, StringComparison.Ordinal));
+
+        if (local?.File is not null
+            && files is not null
+            && files.TryGetValue(local.File, out var json)
+            && WorkflowFormatSpecJson.TryRead(json, $"Format '{formatId}'", new List<string>(), out var spec))
+        {
+            return spec;
+        }
+
+        return formats is not null && formats.TryGet(formatId, out var catalogue) ? catalogue!.Spec : null;
     }
 
     /// <summary>A package at 25: one that declares formats on its nodes (an aggregator declares none, so any node suffices).</summary>

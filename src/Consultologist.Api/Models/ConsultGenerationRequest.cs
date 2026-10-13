@@ -559,7 +559,22 @@ public sealed record ConsultNodeDescriptor(
     // bindings; the orchestrator threads exactly their outputs to the render.
     // Sorted; null below 25 and for a node that reads nothing. Appended last,
     // same positional-call rule.
-    IReadOnlyList<string>? Reads = null);
+    IReadOnlyList<string>? Reads = null,
+    // v25 (B4 #1003, design §§ 3.5–3.6): the node's with, resolved at job
+    // start — a node parameter as the bare node id, a text parameter as its
+    // literal or the referenced input's value — and its onInvalid policy
+    // (fail | retry | flag; retry reserved, runs as fail). A values parameter
+    // resolves into Values above. Null below 25. Appended last, same rule.
+    IReadOnlyDictionary<string, string>? With = null,
+    string? OnInvalid = null);
+
+/// <summary>
+/// v25 (B4 #1003, design § 3.5): a reply validated against its format after
+/// parsing — whether it conformed, and every way it did not (paths, never the
+/// reply's text). Valid with no errors on a conforming reply; absent on a text
+/// format and on records from before.
+/// </summary>
+public sealed record ConsultValidationOutcome(bool Valid, IReadOnlyList<string> Errors);
 
 /// <summary>
 /// v12 #624 (design § 13): a check node's snapshotted declaration — the
@@ -706,7 +721,9 @@ public sealed record ConsultGenerationNodeStatusResponse(
     // block as a user-defined, ungrounded shape. Null on every attested node.
     bool? Unattested = null,
     string? CustomSchemaHash = null,
-    string? CustomAgent = null);
+    string? CustomAgent = null,
+    // v25 (B4 #1003): the reply's validation against its format. Appended last.
+    ConsultValidationOutcome? Validation = null);
 
 /// <summary>#390: the body of a reschedule — a job id in the route, a time here.</summary>
 public sealed record RescheduleConsultRequest(DateTimeOffset? ScheduledAtUtc);

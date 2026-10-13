@@ -132,6 +132,14 @@ public static class WorkflowFormatValidator
         }
 
         WorkflowPackageValidator.ValidateStructuredOutputSubset($"{subject} schema", spec.Schema, errors);
+
+        // B4 #1003: a format's schema uses only the keywords the engine
+        // validates replies against; anything else would publish a constraint
+        // nobody enforces.
+        foreach (var unsupported in JsonSchemaSubsetValidator.UnsupportedKeywords(spec.Schema))
+        {
+            errors.Add($"{subject} schema {unsupported}");
+        }
     }
 
     private static void ValidateValues(string subject, WorkflowFormatSpec spec, bool isEnum, List<string> errors)

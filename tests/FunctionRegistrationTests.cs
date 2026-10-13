@@ -52,4 +52,14 @@ public class FunctionRegistrationTests
         Assert.Equal("RunAsync", method.Name);
         Assert.Contains(method.GetParameters(), p => p.GetCustomAttribute<ActivityTriggerAttribute>() != null);
     }
+
+    [Fact]
+    public void RunComputedNode_IsTheActivity_NotAHelper()
+    {
+        var method = FunctionMethods().Single(m =>
+            m.GetCustomAttribute<FunctionAttribute>()!.Name == Api.Jobs.ConsultGenerationActivityNames.RunComputedNode);
+
+        Assert.Equal("RunAsync", method.Name);
+        Assert.Contains(method.GetParameters(), p => p.GetCustomAttribute<ActivityTriggerAttribute>() != null);
+    }
 }

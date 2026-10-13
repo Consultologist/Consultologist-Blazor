@@ -4,10 +4,11 @@ namespace Consultologist.Web.Services.Provenance;
 
 /// <summary>
 /// #933: the custom tier's marker (#760), read the one way both pages read it.
-/// A custom-schema node runs on an engine-provisioned, content-addressed agent
-/// — not a catalog contract, not git-attested, not SNOMED-grounded — and the
-/// record stamps its output <c>unattested</c> with the schema hash and the
-/// agent. The catalog doctrine says such output must be shown as such, never
+/// A custom-schema node's shape is the package's own — not a catalog contract,
+/// not SNOMED-grounded; since B4 (#1003) it runs on the catalogue's generic
+/// custom agent with the schema in the prompt, engine-validated (B7 rewords
+/// this marker to say so) — and the record stamps its output
+/// <c>unattested</c> with the schema hash and the agent. The catalog doctrine says such output must be shown as such, never
 /// mistaken for a catalog-contract deliverable. The descriptor's contract is
 /// literally <c>custom</c>, so a custom node is recognised before it completes
 /// and on records from before the engine stamped every row (#980 stamps the
