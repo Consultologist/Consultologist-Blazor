@@ -236,6 +236,99 @@ foreach (var package in chain.Packages.OrderBy(p => p.Name, StringComparer.Ordin
     }
 }
 
+// v25 (B1 #1000): a formats.json beside the contracts is the second
+// catalogue. A published package at 25 names catalogue formats by id — on
+// its nodes and in its with parameters — and strands if the candidate no
+// longer publishes one of them. (The "same parameters" question — the stamped
+// formatHash — joins once the stamp carries it, B2.) Today no package at 25
+// is published, so this loop finds nothing to check; it runs so that the
+// first one is covered from the day it exists.
+var formatsIndexPath = Path.Combine(catalogDir, WorkflowFormatRegistry.IndexFileName);
+
+if (File.Exists(formatsIndexPath))
+{
+    var formatsCheck = FormatsCatalogCheck.Run(catalogDir);
+
+    if (!formatsCheck.IsValid)
+    {
+        foreach (var error in formatsCheck.Errors)
+        {
+            Console.Error.WriteLine("error: " + error);
+        }
+
+        return 2;
+    }
+
+    var formats = formatsCheck.Catalog!;
+    var formatChecked = 0;
+    Console.Out.WriteLine($"candidate: {formats.ResolvedRef} ({formats.Formats.Count} formats)");
+
+    foreach (var package in chain.Packages.OrderBy(p => p.Name, StringComparer.Ordinal))
+    {
+        foreach (var version in package.Versions)
+        {
+            var reference = $"{package.Name}@{version}";
+            var spec = package.SpecVersions?.GetValueOrDefault(version);
+
+            if (spec is not int specVersion || specVersion < 25 || !WorkflowPackageStore.SupportedSpecVersions.Contains(specVersion))
+            {
+                continue;
+            }
+
+            WorkflowPackageManifest? manifest;
+            try
+            {
+                manifest = JsonSerializer.Deserialize<WorkflowPackageManifest>(
+                    await DownloadAsync($"{package.Name}/{version}/manifest.json"),
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"error: {reference} manifest could not be read: {ex.Message}");
+                return 2;
+            }
+
+            var local = (manifest?.Formats ?? new List<WorkflowFormatReference>()).Select(f => f.Id).ToHashSet(StringComparer.Ordinal);
+            var referenced = new SortedSet<string>(StringComparer.Ordinal);
+
+            foreach (var node in manifest?.Nodes ?? new List<WorkflowNodeSpec>())
+            {
+                if (node.Format is { } id && !local.Contains(id))
+                {
+                    referenced.Add(id);
+                }
+            }
+
+            foreach (var id in referenced.SelectMany(id => formats.TryGet(id, out var f) ? (f!.Spec.Parameters?.Values.Select(p => p.Format).OfType<string>() ?? Enumerable.Empty<string>()) : Enumerable.Empty<string>()).ToList())
+            {
+                referenced.Add(id);
+            }
+
+            if (referenced.Count == 0)
+            {
+                continue;
+            }
+
+            formatChecked++;
+
+            foreach (var id in referenced)
+            {
+                if (formats.TryGet(id, out _))
+                {
+                    Console.Out.WriteLine($"  {reference} format '{id}' -> {formats.ResolvedRef}");
+                }
+                else
+                {
+                    Console.Error.WriteLine($"error: {reference} names catalogue format '{id}', which {formats.ResolvedRef} does not publish.");
+                    stranded.Add($"{reference} (format {id})");
+                }
+            }
+        }
+    }
+
+    Console.Out.WriteLine($"{formatChecked} package version(s) at 25 or later name a catalogue format");
+}
+
 Console.Out.WriteLine(
     $"{checkedCount} package version(s) declare a schema ({stampedCount} stamped), {skipped} skipped (unsupported specVersion or no schema), "
         + $"{stranded.Count} would be stranded");

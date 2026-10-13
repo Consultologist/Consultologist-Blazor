@@ -64,6 +64,11 @@
          agent selection, attested per entry (output-contract-catalog.md). -->
     <None Include="..\..\external\consultologist-agents\agents\output-contracts.json" Link="agents\output-contracts.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\external\consultologist-agents\agents\schemas\*.json" Link="agents\schemas\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- v25 (#1000): the formats catalogue — the index and one file per format —
+         rides along once the agents submodule carries it; globs, so a pin that
+         predates the catalogue builds with nothing to copy. -->
+    <None Include="..\..\external\consultologist-agents\agents\formats*.json" Link="agents\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\external\consultologist-agents\agents\formats\*.json" Link="agents\formats\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- #449: the format registry version this engine was built against, so the
          deployed app can attest it beside its commit (GET /api/Public/Engine). -->
     <None Include="..\..\external\consultologist-package-format\spec-versions.json" Link="package-format\spec-versions.json" CopyToOutputDirectory="PreserveNewest" />
