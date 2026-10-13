@@ -171,6 +171,7 @@ public static class WorkflowPackageValidator
             ValidateMetadata(manifest, errors);
             ValidateSchemaRefs(manifest, catalogSchemas, errors);
             ValidateCustomSchemas(manifest, files, errors);
+            ValidateV25Members(manifest, files, errors);
             ValidateDerivedFrom(manifest, errors);
             ValidateNodes(manifest, files, catalogSchemas, stampedContracts, errors, warnings);
             WarnUnreachableByEmail(manifest, warnings);
@@ -353,6 +354,104 @@ public static class WorkflowPackageValidator
     /// json_schema is strict, so a body the model cannot enforce is refused here,
     /// at author/publish time, not at run.
     /// </summary>
+    // v25 (package-format-v25-design.md, #998 A3): the manifest model carries
+    // the 25 members ahead of the bump (A4 wires and accepts them), so a
+    // manifest below 25 that spells one must be refused by name here — the
+    // posture every gated member has had since v8 — or it would parse and
+    // pass where yesterday the strict reader refused it as unmapped.
+    private static void ValidateV25Members(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> files,
+        List<string> errors)
+    {
+        if (manifest.SpecVersion >= 25)
+        {
+            return;
+        }
+
+        if (manifest.Deliverables != null)
+        {
+            errors.Add("deliverables requires specVersion 25.");
+        }
+
+        if (manifest.Snippets != null)
+        {
+            errors.Add("snippets requires specVersion 25.");
+        }
+
+        if (manifest.Formats != null)
+        {
+            errors.Add("formats requires specVersion 25.");
+        }
+
+        foreach (var macro in manifest.Macros ?? new List<WorkflowMacroSpec>())
+        {
+            if (macro.Instruction != null)
+            {
+                errors.Add($"Macro '{macro.Id}' declares instruction, which requires specVersion 25.");
+            }
+        }
+
+        foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
+        {
+            if (node.Format != null)
+            {
+                errors.Add($"Node '{node.Id}' declares format, which requires specVersion 25.");
+            }
+
+            if (node.With != null)
+            {
+                errors.Add($"Node '{node.Id}' declares with, which requires specVersion 25.");
+            }
+
+            if (node.OnInvalid != null)
+            {
+                errors.Add($"Node '{node.Id}' declares onInvalid, which requires specVersion 25.");
+            }
+        }
+
+        foreach (var result in manifest.Results ?? new List<WorkflowDeliverableSpec>())
+        {
+            foreach (var entry in result.Macros ?? new List<WorkflowDeliverableMacroSpec>())
+            {
+                if (entry.At != null)
+                {
+                    errors.Add($"Result '{result.Id}' macro '{entry.Id}' declares at, which requires specVersion 25.");
+                }
+            }
+        }
+
+        // A data collection's index.json is read without a strict reader (the
+        // resolver's), so an item's when was ignored before the member existed;
+        // now that it is read, name it.
+        foreach (var (id, path) in manifest.Data ?? new Dictionary<string, string>())
+        {
+            if (!path.EndsWith('/') || !files.TryGetValue(path + WorkflowDataResolver.IndexFileName, out var indexJson))
+            {
+                continue;
+            }
+
+            WorkflowDataIndexFile? index;
+
+            try
+            {
+                index = JsonSerializer.Deserialize<WorkflowDataIndexFile>(indexJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (JsonException)
+            {
+                continue; // the resolver names the malformed index
+            }
+
+            foreach (var item in index?.Items ?? new List<WorkflowDataIndexItem>())
+            {
+                if (item.When != null)
+                {
+                    errors.Add($"Data collection '{id}' item '{item.Id}' declares when, which requires specVersion 25.");
+                }
+            }
+        }
+    }
+
     private static void ValidateCustomSchemas(
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, string> files,

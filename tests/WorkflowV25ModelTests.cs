@@ -307,3 +307,104 @@ public class WorkflowV25NodeModelTests
         Assert.Equal(1, node.With!["A"]!.GetValue<int>());
     }
 }
+
+/// <summary>
+/// Below 25 every new member is refused by name — the v22/v23 posture — so a
+/// v24 manifest spelling one does not parse and pass where the strict reader
+/// used to refuse it as unmapped. Nothing a v24 manifest could say before
+/// changes meaning.
+/// </summary>
+public class WorkflowV25BelowGateTests
+{
+    private static List<string> ErrorsAt24(Func<WorkflowPackageManifest, WorkflowPackageManifest> change, Action<Dictionary<string, string>>? withFiles = null)
+    {
+        var (manifest, files) = V24Fixtures.Base();
+        withFiles?.Invoke(files);
+        return V25Fixtures.Errors((change(manifest), files));
+    }
+
+    [Fact]
+    public void TheV24Fixture_IsValid_AsBefore()
+    {
+        Assert.Empty(ErrorsAt24(m => m));
+    }
+
+    [Fact]
+    public void Deliverables_Below25_IsRefusedByName()
+    {
+        Assert.Contains("deliverables requires specVersion 25.", ErrorsAt24(m => m with { Deliverables = m.Results, Results = null }));
+    }
+
+    [Fact]
+    public void Snippets_Below25_IsRefusedByName()
+    {
+        Assert.Contains("snippets requires specVersion 25.", ErrorsAt24(m => m with { Snippets = new Dictionary<string, string> { ["s"] = "snippets/s.md" } }));
+    }
+
+    [Fact]
+    public void Formats_Below25_IsRefusedByName()
+    {
+        Assert.Contains("formats requires specVersion 25.", ErrorsAt24(m => m with { Formats = new List<WorkflowFormatReference> { new("f", "formats/f.json") } }));
+    }
+
+    [Fact]
+    public void AMacroInstruction_Below25_IsRefusedByName()
+    {
+        var errors = ErrorsAt24(
+            m => m with { Macros = new List<WorkflowMacroSpec> { new("closing", "Closing", "macros/closing.md", Instruction: "x") } },
+            files => files["macros/closing.md"] = "Closing.");
+
+        Assert.Contains("Macro 'closing' declares instruction, which requires specVersion 25.", errors);
+    }
+
+    [Theory]
+    [InlineData("format")]
+    [InlineData("with")]
+    [InlineData("onInvalid")]
+    public void ANodeMember_Below25_IsRefusedByName(string member)
+    {
+        var errors = ErrorsAt24(m =>
+        {
+            var node = m.Nodes!.First();
+            var changed = member switch
+            {
+                "format" => node with { Format = "prose" },
+                "with" => node with { With = new Dictionary<string, JsonNode?> { ["of"] = "node.x" } },
+                _ => node with { OnInvalid = "fail" }
+            };
+            return m with { Nodes = m.Nodes!.Select(n => n.Id == node.Id ? changed : n).ToList() };
+        });
+
+        var id = V24Fixtures.Base().Manifest.Nodes!.First().Id;
+        Assert.Contains($"Node '{id}' declares {member}, which requires specVersion 25.", errors);
+    }
+
+    [Fact]
+    public void ADeliverableInstanceAt_Below25_IsRefusedByName()
+    {
+        var errors = ErrorsAt24(
+            m => m with
+            {
+                Macros = new List<WorkflowMacroSpec> { new("closing", "Closing", "macros/closing.md") },
+                Results = m.Results!.Select((r, i) => i == 0 ? r with { Macros = new List<WorkflowDeliverableMacroSpec> { new("closing", At: "append") } } : r).ToList()
+            },
+            files => files["macros/closing.md"] = "Closing.");
+
+        var id = V24Fixtures.Base().Manifest.Results!.First().Id;
+        Assert.Contains($"Result '{id}' macro 'closing' declares at, which requires specVersion 25.", errors);
+    }
+
+    [Fact]
+    public void AFolderItemWhen_Below25_IsRefusedByName()
+    {
+        var errors = ErrorsAt24(
+            m => m with { Data = new Dictionary<string, string>(m.Data ?? new()) { ["notes"] = "data/notes/" } },
+            files =>
+            {
+                files["data/notes/index.json"] = """{ "fields": ["id", "name", "content"], "items": [ { "id": "a", "name": "A", "file": "a.md", "when": "input:kind == new" } ] }""";
+                files["data/notes/a.md"] = "A.";
+            });
+
+        Assert.Contains("Data collection 'notes' item 'a' declares when, which requires specVersion 25.", errors);
+    }
+}
