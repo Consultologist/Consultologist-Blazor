@@ -785,6 +785,7 @@
                     else if (SelectedScalar() is { } scalar)
                     {
                         <WorkflowEditorPane Title="@scalar.Id"
+                                            EditorExtra="@(At25 ? InsertReferencePalette((scalar.Path, null, false)) : null)"
                                             Subtitle="@(addedScalars.ContainsKey(scalar.Id) ? "— new, unpublished" : string.Empty)"
                                             IdentityId="@scalar.Id"
                                             IdentityFile="@scalar.Path"
@@ -842,6 +843,7 @@
                     else if (SelectedAdded() is { } addedItem)
                     {
                         <WorkflowEditorPane Title="@addedItem.Name"
+                                            EditorExtra="@(At25 ? InsertReferencePalette((AddedPath(addedItem), null, false)) : null)"
                                             Subtitle="— new, unpublished"
                                             IdentityId="@addedItem.Id"
                                             IdentityFile="@AddedPath(addedItem)"
@@ -2064,6 +2066,7 @@
                                     <p class="muted-text">Shared prompt <code>@promptView.File</code> — also used by @(string.Join(", ", alsoUsedBy.Select(n => $"'{n}'"))). Editing here changes it for all of them.</p>
                                 }
                                 <WorkflowEditorPane ShowHeader="false" EditLabel="Prompt text"
+                                                    EditorExtra="@(At25 ? InsertReferencePalette((promptView.File, selectedNode.ForEach != null ? selectedNode : null, false)) : null)"
                                                     Text="@GetText(promptView.File)"
                                                     Raw="@EffectivePromptRaw(nodePrompt)"
                                                     TextChanged="@(value => OnTextChangedAsync(promptView.File, value))">
@@ -2386,6 +2389,7 @@
                     else if (SelectedStandard() is { } standard)
                     {
                         <WorkflowEditorPane Title="@StandardName(standard)"
+                                            EditorExtra="@(At25 ? InsertReferencePalette((standard.File, null, false)) : null)"
                                             IdentityId="@standard.Id"
                                             IdentityFile="@standard.File"
                                             EditLabel="@ItemNoun"
@@ -2426,6 +2430,7 @@
                     else if (SelectedPrompt() is { } prompt)
                     {
                         <WorkflowEditorPane Title="@prompt.Id"
+                                            EditorExtra="@(At25 ? InsertReferencePalette((prompt.File, FanningReaderOf(prompt.Id), false)) : null)"
                                             IdentityId="@prompt.Id"
                                             IdentityFile="@prompt.File"
                                             EditLabel="Prompt text"
@@ -2439,7 +2444,7 @@
                                with Scriban. #832: shown at v15+ for a declared prompt, but
                                disabled (not hidden) when the prompt has variables, since plain
                                text interpolates nothing (the server refuses raw + variables). *@
-                            @if (EffectiveSpecVersion >= 15 && IsRawTogglablePrompt(prompt.Id))
+                            @if (!At25 && EffectiveSpecVersion >= 15 && IsRawTogglablePrompt(prompt.Id))
                             {
                                 var hasVariables = EffectiveVariables(prompt).Any();
                                 <div class="prompt-raw-row">
@@ -2461,6 +2466,10 @@
                                     }
                                 </div>
                             }
+                            @* v25 (C4 #1010): variables and bindings are retired — a template's reads are
+                               derived from the objects it references (the Reads list and the palette). *@
+                            @if (!At25)
+                            {
                             <div class="prompt-variables">
                                 <span class="muted-text">Variables</span>
                                 <ul class="prompt-variables__list">
@@ -2533,9 +2542,10 @@
                                 Declared placeholders are usable in the text; a new variable's source can be
                                 set here or in Graph — publish waits until every variable has one.
                             </p>
+                            }
                             @* v20 (#863): once a macro is set to "slot", a section prompt's output can place it
                                inline. The hint appears only when a slot-mode macro exists, so it stays actionable. *@
-                            @if (EffectiveSpecVersion >= 20 && EffectiveResults.Any(r => r.Macros?.Any(m => m.IsSlot) == true))
+                            @if (!At25 && EffectiveSpecVersion >= 20 && EffectiveResults.Any(r => r.Macros?.Any(m => m.IsSlot) == true))
                             {
                                 <p class="muted-text">
                                     Instruct the model to write <code>[[slot:&lt;macro-id&gt;]]</code> where a slot-mode
@@ -2622,6 +2632,7 @@
                     else if (SelectedMacro() is { } macro)
                     {
                         <WorkflowEditorPane Title="@macro.Label"
+                                            EditorExtra="@(At25 ? InsertReferencePalette((macro.File, null, true)) : null)"
                                             IdentityId="@macro.Id"
                                             IdentityFile="@macro.File"
                                             EditLabel="Macro text"
@@ -4425,6 +4436,213 @@
                 }
             }
         </div>
+    </text>;
+
+    // ----- v25 (C4 #1010): the insert-reference palette -----
+
+    private string? insertPick;
+    private string? insertPipe;
+
+    /// <summary>One reference the palette offers: the Scriban text it inserts, its label, its object group, and whether a renderer pipe applies.</summary>
+    private sealed record ReferenceChoice(string Value, string Label, string Group, bool TakesPipe = false);
+
+    /// <summary>The first node using this prompt that fans — the only reader whose template may read item.*.</summary>
+    private WorkflowManifestReader.NodeView? FanningReaderOf(string promptId) =>
+        EffectiveNodes.FirstOrDefault(n => n.Prompt == promptId && n.ForEach != null);
+
+    /// <summary>A format's schema as a JsonNode — the package's own file, or the catalogue's entry — or null.</summary>
+    private System.Text.Json.Nodes.JsonNode? FormatSchemaOf(string formatId)
+    {
+        if (LiveFormats.FirstOrDefault(f => f.Id == formatId) is { } local)
+        {
+            return PF.WorkflowFormatSpecJson.TryRead(GetText(local.File), $"Format '{formatId}'", new List<string>(), out var spec) ? spec?.Schema : null;
+        }
+
+        var entry = formatsCatalog?.Formats?.FirstOrDefault(f => f.Id == formatId);
+        return entry?.Schema is { } schema ? System.Text.Json.Nodes.JsonNode.Parse(schema.GetRawText()) : null;
+    }
+
+    /// <summary>
+    /// What the palette offers for a text at 25, in the objects' order: inputs (an array as a
+    /// loop), nodes (.text; .value and its fields on an object format, an array field as a
+    /// loop, .value on an enum), snippets (a folder as a loop), the fan item's members where
+    /// the reading node fans, macros (.text; .prompt — never from a macro's own text, § 5.2),
+    /// run and profile facts.
+    /// </summary>
+    private IReadOnlyList<ReferenceChoice> ReferenceChoices(string file, WorkflowManifestReader.NodeView? fanNode, bool isMacroText)
+    {
+        var choices = new List<ReferenceChoice>();
+
+        foreach (var input in EffectiveInputs)
+        {
+            if (input.Type == WorkflowInputTypes.Array)
+            {
+                choices.Add(new ReferenceChoice($"{{{{ for h in input.{input.Id} }}}}\n- {{{{ h }}}}\n{{{{ end }}}}", $"for h in input.{input.Id} (each item)", "inputs"));
+            }
+            else
+            {
+                choices.Add(new ReferenceChoice($"{{{{ input.{input.Id} }}}}", $"input.{input.Id}", "inputs"));
+            }
+        }
+
+        var readingNode = EffectivePrompts.FirstOrDefault(p => p.File == file) is { } prompt
+            ? EffectiveNodes.FirstOrDefault(n => n.Prompt == prompt.Id)?.Id
+            : null;
+
+        foreach (var node in EffectiveNodes.Where(n => n.Id != readingNode))
+        {
+            var format = node.Format is { } formatId ? FormatOptions.FirstOrDefault(f => f.Id == formatId) : null;
+            choices.Add(new ReferenceChoice($"{{{{ node.{node.Id}.text }}}}", $"node.{node.Id}.text", "nodes", TakesPipe: true));
+
+            if (format is { Type: "enum" })
+            {
+                choices.Add(new ReferenceChoice($"{{{{ node.{node.Id}.value }}}}", $"node.{node.Id}.value", "nodes"));
+            }
+            else if (format is { Type: "object" or "array" })
+            {
+                choices.Add(new ReferenceChoice($"{{{{ node.{node.Id}.value }}}}", $"node.{node.Id}.value", "nodes"));
+                var shape = PF.TemplateValueShape.FromSchema(FormatSchemaOf(format.Id));
+
+                if (shape.IsObject && shape.Fields is { } fields)
+                {
+                    foreach (var (fieldName, fieldShape) in fields.OrderBy(f => f.Key, StringComparer.Ordinal))
+                    {
+                        if (fieldShape.IsArray)
+                        {
+                            choices.Add(new ReferenceChoice($"{{{{ for c in node.{node.Id}.value.{fieldName} }}}}\n- {{{{ c }}}}\n{{{{ end }}}}", $"for c in node.{node.Id}.value.{fieldName} (each item)", "nodes"));
+                        }
+                        else
+                        {
+                            choices.Add(new ReferenceChoice($"{{{{ node.{node.Id}.value.{fieldName} }}}}", $"node.{node.Id}.value.{fieldName}", "nodes"));
+                        }
+                    }
+                }
+                else if (shape.IsArray)
+                {
+                    choices.Add(new ReferenceChoice($"{{{{ for c in node.{node.Id}.value }}}}\n- {{{{ c }}}}\n{{{{ end }}}}", $"for c in node.{node.Id}.value (each item)", "nodes"));
+                }
+            }
+        }
+
+        foreach (var snippet in EffectiveScalars.Where(sc => !ScalarIsRemoved(sc) && sc.Path != file))
+        {
+            choices.Add(new ReferenceChoice($"{{{{ snippet.{snippet.Id}.text }}}}", $"snippet.{snippet.Id}.text", "snippets"));
+        }
+
+        foreach (var folder in EffectiveCollections)
+        {
+            choices.Add(new ReferenceChoice($"{{{{ for s in snippet.{folder.Id} }}}}\n{{{{ s.text }}}}\n{{{{ end }}}}", $"for s in snippet.{folder.Id} (each item)", "snippets"));
+        }
+
+        if (fanNode is { ForEach: { } forEach })
+        {
+            var members = PF.WorkflowFanSources.IsSnippetFan(forEach) ? new[] { "id", "name", "text" } : new[] { "id", "name", "value" };
+            foreach (var member in members)
+            {
+                choices.Add(new ReferenceChoice($"{{{{ item.{member} }}}}", $"item.{member}", "the fan item"));
+            }
+        }
+
+        foreach (var macro in EffectiveMacros.Where(m => m.File != file))
+        {
+            choices.Add(new ReferenceChoice($"{{{{ macro.{macro.Id}.text }}}}", $"macro.{macro.Id}.text", "macros"));
+            if (!isMacroText)
+            {
+                choices.Add(new ReferenceChoice($"{{{{ macro.{macro.Id}.prompt }}}}", $"macro.{macro.Id}.prompt (slot)", "macros"));
+            }
+        }
+
+        foreach (var fact in PF.WorkflowMacroPlaceholders.RunFacts)
+        {
+            choices.Add(new ReferenceChoice($"{{{{ run.{fact} }}}}", $"run.{fact}", "run"));
+        }
+
+        foreach (var fact in PF.WorkflowMacroPlaceholders.ProfileFactsFor(EffectiveSpecVersion))
+        {
+            choices.Add(new ReferenceChoice($"{{{{ profile.{fact} }}}}", $"profile.{fact}", "profile"));
+        }
+
+        return choices;
+    }
+
+    /// <summary>Append the picked reference (with its pipe) to the file's text on its own line — the cursor is the code editor rung's.</summary>
+    private async Task InsertReferenceAsync(string file, IReadOnlyList<ReferenceChoice> choices)
+    {
+        if (string.IsNullOrEmpty(insertPick) || choices.FirstOrDefault(c => c.Value == insertPick) is not { } choice)
+        {
+            return;
+        }
+
+        var snippet = choice.TakesPipe && !string.IsNullOrEmpty(insertPipe)
+            ? choice.Value.Replace(" }}", $" | {insertPipe} }}}}")
+            : choice.Value;
+        var text = GetText(file);
+        var appended = text.Length == 0 ? snippet : text.EndsWith('\n') ? text + snippet : text + "\n" + snippet;
+        insertPick = null;
+        insertPipe = null;
+        await OnTextChangedAsync(file, appended);
+    }
+
+    /// <summary>
+    /// v25 (C4 #1010): the insert-reference palette above a text editor — pick an object
+    /// reference (grouped), a renderer pipe for a node's text, Insert appends it; under it the
+    /// template's reads and the walker's warnings, from the walk.
+    /// </summary>
+    private RenderFragment<(string File, WorkflowManifestReader.NodeView? FanNode, bool IsMacroText)> InsertReferencePalette => spec => @<text>
+        @{
+            var choices = ReferenceChoices(spec.File, spec.FanNode, spec.IsMacroText);
+            var picked = choices.FirstOrDefault(c => c.Value == insertPick);
+            var walked = TemplateWalkOf(spec.File);
+        }
+        <details class="insert-reference">
+            <summary>+ reference</summary>
+            <div class="insert-reference__row">
+                <FluentSelect TOption="string" class="binding-row__select insert-reference__pick"
+                        Value="@(insertPick ?? "")"
+                        ValueChanged="@(v => { insertPick = string.IsNullOrEmpty(v) ? null : v; if (picked?.TakesPipe != true) { insertPipe = null; } })"
+                        aria-label="@($"Reference to insert into {spec.File}")">
+                    <FluentOption TOption="string" Value="">choose a reference…</FluentOption>
+                    @foreach (var group in choices.GroupBy(c => c.Group))
+                    {
+                        <FluentOption TOption="string" Value="@($"group:{group.Key}")" Disabled="true">— @group.Key —</FluentOption>
+                        @foreach (var choice in group)
+                        {
+                            <FluentOption TOption="string" Value="@choice.Value">@choice.Label</FluentOption>
+                        }
+                    }
+                </FluentSelect>
+                @if (picked is { TakesPipe: true })
+                {
+                    <FluentSelect TOption="string" class="binding-row__select insert-reference__pipe"
+                            Value="@(insertPipe ?? "")"
+                            ValueChanged="@(v => insertPipe = string.IsNullOrEmpty(v) ? null : v)"
+                            aria-label="Renderer for the reference">
+                        <FluentOption TOption="string" Value="">plain</FluentOption>
+                        @foreach (var pipe in PF.TemplatePipes.All)
+                        {
+                            <FluentOption TOption="string" Value="@pipe">@pipe</FluentOption>
+                        }
+                    </FluentSelect>
+                }
+                <FluentButton Appearance="Appearance.Outline" Disabled="@(picked is null)"
+                              aria-label="@($"Insert reference into {spec.File}")"
+                              @onclick="() => InsertReferenceAsync(spec.File, choices)">Insert</FluentButton>
+            </div>
+            <p class="muted-text">Appended at the end of the text — move it where it belongs. A literal <code>{{</code> is escaped as <code>{{ "{{" }}</code>.</p>
+        </details>
+        @if (walked is { } template)
+        {
+            var reads = ReadsOf(template.References);
+            <p class="muted-text template-reads">Reads: @(reads.Count == 0 ? "nothing yet" : string.Join(", ", reads.Select(r => r.Reference)))</p>
+            @foreach (var warning in template.References.Warnings)
+            {
+                <p class="muted-text node-reads__warning">@warning</p>
+            }
+            @if (template.References.Errors.Count > 0)
+            {
+                <p class="muted-text node-reads__unresolved">@template.References.Errors.Count @(template.References.Errors.Count == 1 ? "reference does" : "references do") not resolve — Publish says which.</p>
+            }
+        }
     </text>;
 
     /// <summary>The "Read by" rows: each a button opening the reader's pane, or the empty sentence.</summary>
@@ -12713,6 +12931,8 @@
     /// </summary>
     private void ResetFormScratch()
     {
+        insertPick = null;
+        insertPipe = null;
         newMacroId = null;
         newMacroLabel = null;
         newMacroError = null;
