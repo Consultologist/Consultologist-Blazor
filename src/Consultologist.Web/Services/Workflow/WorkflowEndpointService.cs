@@ -27,6 +27,10 @@ public interface IWorkflowEndpointService
     /// <summary>#852: the latest catalog's output-contract schemas (contractId -> schema JSON), for
     /// validating an imported package client-side the way the server does. Null when unavailable.</summary>
     Task<IReadOnlyDictionary<string, string>?> GetCatalogSchemasAsync();
+    /// <summary>v25 (C1 #1007): the engine's pinned formats catalogue (design § 3.8) — what the
+    /// node pane's format picker offers and the Formats pane lists read-only. Null when the
+    /// endpoint is unavailable; cached for the service's lifetime.</summary>
+    Task<WorkflowFormatsView?> GetFormatsAsync();
     Task<IReadOnlyList<string>?> GetLineageAsync(string packageRef);
     Task<string?> GetCurrentDiagramAsync(string? packageRef = null);
     Task<string?> GetDiagramForManifestAsync(JsonElement manifest);
@@ -34,6 +38,42 @@ public interface IWorkflowEndpointService
 
 /// <summary>The deployed engine's attestation, the three refs History resolves numbers through.</summary>
 public record EngineView(string? Commit, string? PackageFormat, string? Provenance, string? ApiHost = null, string? Release = null);
+
+/// <summary>
+/// v25 (C1 #1007): the formats catalogue as GET WorkflowFormats describes it — its
+/// version and ref, every format with the facts the picker, the node pane and the
+/// Formats pane's detail line need, and the custom producer's agent. Mirrors the
+/// server's WorkflowFormatsResponse (PascalCase wire; ReadFromJsonAsync binds
+/// case-insensitively).
+/// </summary>
+public record WorkflowFormatsView(
+    string? Version,
+    string? Ref,
+    IReadOnlyList<WorkflowFormatEntryView>? Formats,
+    WorkflowFormatCustomView? Custom);
+
+/// <summary>One catalogue format: id, description, type, producer, what the node pane renders
+/// (outputMacros, values, parameters), its schema, file and hash, and the detail line's facts.</summary>
+public record WorkflowFormatEntryView(
+    string Id,
+    string? Description,
+    string? Type,
+    string? Producer,
+    bool OutputMacros,
+    IReadOnlyList<string>? Values,
+    Dictionary<string, WorkflowFormatParameterView>? Parameters,
+    JsonElement? Schema,
+    string? File,
+    string? FormatHash,
+    string? AgentName,
+    int? AgentVersion,
+    string? Op,
+    bool Attested);
+
+public record WorkflowFormatParameterView(string? Kind, string? Format);
+
+/// <summary>The generic agent every custom format runs on — name and version.</summary>
+public record WorkflowFormatCustomView(string? AgentName, int? AgentVersion);
 
 /// <summary>One entry of a specific catalog version's document (public registry blob).</summary>
 public record PublicCatalogEntry(string? AgentName, string? AgentVersion, string? SchemaFile = null);
@@ -538,6 +578,49 @@ public sealed class WorkflowEndpointService : IWorkflowEndpointService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Catalog document {Version} unavailable; agent display falls back.", version);
+            return null;
+        }
+    }
+
+    private WorkflowFormatsView? _formatsCache;
+
+    public async Task<WorkflowFormatsView?> GetFormatsAsync()
+    {
+        if (_formatsCache is not null)
+        {
+            return _formatsCache;
+        }
+
+        var formatsUrl = _locations.Url(ApiRoutes.WorkflowFormats);
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, formatsUrl);
+            await AddAuthorizationAsync(request);
+
+            using var response = await _httpClient.SendAsync(request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Formats catalogue request failed with status {StatusCode}.", response.StatusCode);
+                return null;
+            }
+
+            var view = await response.Content.ReadFromJsonAsync<WorkflowFormatsView>();
+            if (view?.Formats is null)
+            {
+                return null;
+            }
+
+            _formatsCache = view;
+            return view;
+        }
+        catch (AccessTokenNotAvailableException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Formats catalogue unavailable; the editor offers the package's own formats only.");
             return null;
         }
     }

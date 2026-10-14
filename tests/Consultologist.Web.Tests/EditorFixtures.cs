@@ -743,4 +743,75 @@ public static class EditorFixtures
         """, 7,
         ("preludes/guidance.md", "Use short SNOMED search terms."),
         ("preludes/unused.md", "An unused prelude."));
+
+    // ----- v25 (C1 #1007) -----
+
+    public const string MedicationListFormatFile = "formats/medication_list.json";
+
+    /// <summary>A package-local custom format: an object shape the engine validates; the custom-json agent writes it.</summary>
+    public const string MedicationListFormat = """
+        {
+          "type": "object",
+          "producer": "custom",
+          "description": "The medications the referral names, each with its dose.",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["medications"],
+            "properties": {
+              "medications": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["name", "dose"], "properties": { "name": { "type": "string" }, "dose": { "type": ["string", "null"] } } } }
+            }
+          }
+        }
+        """;
+
+    /// <summary>
+    /// The 25 shape (design § 3): a concept-list node, a classification taking its
+    /// values through with, a prose node with a top-level failIfEmpty, a node on a
+    /// package-local custom format, a terms-subset check over the concept-list node,
+    /// a node fanning a snippet folder, an aggregator, and one deliverable naming
+    /// the aggregator and the check. No kind, no output, no schemas; formats[]
+    /// declares the local format. Every node feeds the deliverable: the prose
+    /// node reads the concept-list and the medications; the classifier is exempt.
+    /// </summary>
+    public static WorkflowPackageContentResponse V25() => Package("""
+        {
+          "name": "acct-1234567890ab",
+          "version": "v2026.10.1",
+          "specVersion": 25,
+          "tags": [],
+          "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
+          "inputs": [
+            { "id": "notes", "label": "Referral notes", "required": true },
+            { "id": "kind", "label": "Kind", "required": true, "type": "enum", "values": ["new", "follow_up"] }
+          ],
+          "formats": [ { "id": "medication_list", "file": "formats/medication_list.json" } ],
+          "prompts": [
+            { "id": "extract", "file": "prompts/extract.md", "variables": [] },
+            { "id": "scope", "file": "prompts/scope.md", "variables": [] },
+            { "id": "assessment", "file": "prompts/assessment.md", "variables": [] },
+            { "id": "meds", "file": "prompts/meds.md", "variables": [] },
+            { "id": "section", "file": "prompts/section.md", "variables": [] }
+          ],
+          "snippets": { "sections": "snippets/sections/" },
+          "nodes": [
+            { "id": "extract", "label": "Extract concepts", "prompt": "extract", "format": "concept-list", "onInvalid": "fail" },
+            { "id": "scope", "label": "Scope", "prompt": "scope", "format": "classification", "onInvalid": "fail", "with": { "values": ["in_scope", "out_of_scope"] } },
+            { "id": "assessment", "label": "Assessment", "prompt": "assessment", "format": "prose", "failIfEmpty": "Nothing to assess." },
+            { "id": "meds", "label": "Medications", "prompt": "meds", "format": "medication_list", "onInvalid": "flag" },
+            { "id": "coverage", "label": "Coverage", "format": "terms-subset", "onInvalid": "fail", "with": { "of": "node.extract", "in": "node.extract", "failWith": "The note names problems the source does not." } },
+            { "id": "section_notes", "label": "Section notes", "prompt": "section", "format": "prose", "forEach": "snippet:sections" },
+            { "id": "all", "label": "Everything", "aggregate": ["node:assessment", "node:section_notes"] }
+          ],
+          "deliverables": [ { "id": "consult", "node": "node:all", "label": "Consultation note", "check": "node.coverage" } ]
+        }
+        """, 25,
+        ("prompts/extract.md", "Extract the concepts from:\n{{ input.notes }}"),
+        ("prompts/scope.md", "Is this in scope? {{ input.notes }}"),
+        ("prompts/assessment.md", "Assess.\n{{ input.notes }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}\n{{ for m in node.meds.value.medications }}- {{ m.name }}\n{{ end }}"),
+        ("prompts/meds.md", "List the medications in:\n{{ input.notes }}"),
+        ("prompts/section.md", "{{ item.name }}: {{ item.text }}"),
+        ("snippets/sections/index.json", """{ "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md" } ] }"""),
+        ("snippets/sections/hpi.md", "History: {{ input.notes }}"),
+        (MedicationListFormatFile, MedicationListFormat));
 }

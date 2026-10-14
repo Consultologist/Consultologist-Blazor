@@ -583,6 +583,21 @@ across every record ever written, and stay; the provenance document may say "the
   node-placed instances, the two-way picker exclusion (#983).
 - **Inputs pane:** the object-form slot's fields as today's object fields.
 
+*(C1 #1007, 2026-10-14 — the node pane's picker and the Formats pane are built, gated on
+`EffectiveSpecVersion >= 25` and inert until A5 moves the editor's version constants.
+Decisions: an existing node's format **may be re-picked**, and a re-pick **resets `with` and
+`onInvalid`** — they belong to the old format; the pane re-renders the new entry's fields
+and the desk names what is then missing. `onInvalid` offers all three words, `retry`
+labelled as reserved ("runs as fail until its rung"), with no desk refusal since the format
+accepts it. A new package format is born as the smallest custom shape — type object,
+producer custom, an empty object schema and a blank description the desk refuses until
+written (explicit init). The "+ Node" form picks a format or aggregator in the kind
+selector's place; a computed format mints no prompt. With no catalogue loaded the picker
+offers the package's own formats, keeps a node's catalogue pick by id, and the desk takes a
+non-local id on trust, as the validator does without a catalogue. The Formats pane absorbs
+#934 (editor custom-schema authoring), closed as superseded: `customSchemas` migrates to
+`formats/<id>.json` with `producer: custom` (§ 14), so the ≤24 flow is never built.)*
+
 ## 14. Migration 24 → 25 (the editor's upgrade; mechanical, byte-identical in what the model sees)
 
 | At 24 | At 25 |

@@ -335,4 +335,75 @@ public class ManifestReaderTests
             """));
         Assert.True(nodes[0].Reproducible);
     }
+
+    // ----- v25 (C1 #1007): the node's format, with and onInvalid; formats[]; deliverables[] -----
+
+    [Fact]
+    public void ReadNodes_ReadsTheV25FormatWithAndOnInvalid()
+    {
+        var nodes = WorkflowManifestReader.ReadNodes(Parse("""
+            { "nodes": [
+                { "id": "scope", "label": "Scope", "prompt": "scope", "format": "classification", "onInvalid": "fail",
+                  "with": { "values": ["in_scope", "out_of_scope"] } },
+                { "id": "coverage", "label": "Coverage", "format": "terms-subset", "onInvalid": "flag",
+                  "with": { "of": "node.extract", "in": "node.extract", "failWith": "Uncovered." } },
+                { "id": "assessment", "label": "Assessment", "prompt": "assessment", "format": "prose", "failIfEmpty": "Nothing to assess." }
+            ] }
+            """));
+
+        Assert.Equal("classification", nodes[0].Format);
+        Assert.Equal("fail", nodes[0].OnInvalid);
+        Assert.Equal(new[] { "in_scope", "out_of_scope" }, nodes[0].With!["values"].EnumerateArray().Select(v => v.GetString()).ToArray());
+        Assert.Null(nodes[0].Kind);
+        Assert.Null(nodes[0].OutputSchema);
+
+        Assert.Equal("terms-subset", nodes[1].Format);
+        Assert.Equal("node.extract", nodes[1].With!["of"].GetString());
+        Assert.Equal("Uncovered.", nodes[1].With!["failWith"].GetString());
+        Assert.Null(nodes[1].Prompt);
+
+        // B5 #1004: failIfEmpty is top-level once output is retired.
+        Assert.Equal("Nothing to assess.", nodes[2].FailIfEmpty);
+        Assert.Null(nodes[2].With);
+        Assert.Null(nodes[2].OnInvalid);
+    }
+
+    [Fact]
+    public void ReadNodes_LeavesTheV25FieldsNullBelow25()
+    {
+        var node = Assert.Single(WorkflowManifestReader.ReadNodes(Parse("""
+            { "nodes": [ { "id": "extract", "label": "E", "prompt": "p", "bindings": {}, "output": { "schema": "concept-list", "failIfEmpty": "Empty." } } ] }
+            """)));
+
+        Assert.Null(node.Format);
+        Assert.Null(node.With);
+        Assert.Null(node.OnInvalid);
+        Assert.Equal("concept-list", node.OutputSchema);
+        Assert.Equal("Empty.", node.FailIfEmpty);
+    }
+
+    [Fact]
+    public void ReadFormats_ReadsIdAndFile_AndIsEmptyWhenAbsent()
+    {
+        var formats = WorkflowManifestReader.ReadFormats(Parse("""
+            { "formats": [ { "id": "medication_list", "file": "formats/medication_list.json" }, { "Id": "plan_shape", "File": "formats/plan_shape.json" } ] }
+            """));
+
+        Assert.Equal(
+            new[] { ("medication_list", "formats/medication_list.json"), ("plan_shape", "formats/plan_shape.json") },
+            formats.Select(f => (f.Id, f.File)).ToArray());
+        Assert.Empty(WorkflowManifestReader.ReadFormats(Parse("""{ "nodes": [] }""")));
+    }
+
+    [Fact]
+    public void ReadNodes_MarksADeliverablesNodeAsResult_At25()
+    {
+        var nodes = WorkflowManifestReader.ReadNodes(Parse("""
+            { "deliverables": [ { "id": "consult", "node": "node:all", "label": "Note" } ],
+              "nodes": [ { "id": "all", "label": "All", "aggregate": ["node:a"] }, { "id": "a", "label": "A", "prompt": "a", "format": "prose" } ] }
+            """));
+
+        Assert.True(nodes[0].IsResult);
+        Assert.False(nodes[1].IsResult);
+    }
 }

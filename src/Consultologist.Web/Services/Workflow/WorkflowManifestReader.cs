@@ -41,7 +41,14 @@ public static class WorkflowManifestReader
         // v23 (#955): the macros composed into this node's prompt, before/after,
         // each with its optional node-level when. Null before 23 and on any node
         // without one.
-        IReadOnlyList<NodeMacroView>? Macros = null)
+        IReadOnlyList<NodeMacroView>? Macros = null,
+        // v25 (C1 #1007, design § 3): the node's format, its parameters as written
+        // (`with`, each value the JSON the manifest holds) and its invalid-reply
+        // policy. Null on every node below 25; the format replaces kind, output.schema,
+        // values and the check's members, which stay readable for the ≤24 panes.
+        string? Format = null,
+        IReadOnlyDictionary<string, JsonElement>? With = null,
+        string? OnInvalid = null)
     {
         public bool IsClassifier => Kind == Consultologist.PackageFormat.WorkflowNodeKinds.Classifier;
 
@@ -234,6 +241,9 @@ public static class WorkflowManifestReader
 
             var id = ReadString(node, "id") ?? string.Empty;
             var hasOutput = TryGetProperty(node, "output", out var output) && output.ValueKind == JsonValueKind.Object;
+            // v25 (B5 #1004): failIfEmpty is a top-level node key once output is retired;
+            // read there when no output object carries it.
+            var failIfEmpty = hasOutput ? ReadString(output, "failIfEmpty") : ReadString(node, "failIfEmpty");
             nodes.Add(new NodeView(
                 id,
                 ReadString(node, "label") ?? id,
@@ -244,7 +254,7 @@ public static class WorkflowManifestReader
                 hasOutput,
                 aggregate,
                 hasOutput ? ReadString(output, "schema") : null,
-                hasOutput ? ReadString(output, "failIfEmpty") : null,
+                failIfEmpty,
                 ReadString(node, "kind"),
                 ReadStringArray(node, "values"),
                 ReadBool(node, "reproducible") == true,
@@ -253,10 +263,42 @@ public static class WorkflowManifestReader
                 ReadString(node, "in"),
                 ReadString(node, "failWith"),
                 ReadString(node, "when"),
-                ReadNodeMacroEntries(node)));
+                ReadNodeMacroEntries(node),
+                ReadString(node, "format"),
+                ReadWith(node),
+                ReadString(node, "onInvalid")));
         }
 
         return nodes;
+    }
+
+    /// <summary>v25: a node's `with` object as written — parameter name to its JSON value; null when absent or not an object.</summary>
+    private static IReadOnlyDictionary<string, JsonElement>? ReadWith(JsonElement node)
+    {
+        if (!TryGetProperty(node, "with", out var with) || with.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return with.EnumerateObject().ToDictionary(entry => entry.Name, entry => entry.Value.Clone(), StringComparer.Ordinal);
+    }
+
+    /// <summary>v25 (C1 #1007): one package-local format — its id and file (`formats[]`).</summary>
+    public sealed record FormatView(string Id, string File);
+
+    /// <summary>The declared package-local formats with their file paths; empty below 25 and when none.</summary>
+    public static IReadOnlyList<FormatView> ReadFormats(JsonElement manifest)
+    {
+        if (!TryGetProperty(manifest, "formats", out var formats) || formats.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<FormatView>();
+        }
+
+        return formats.EnumerateArray()
+            .Where(entry => entry.ValueKind == JsonValueKind.Object)
+            .Select(entry => new FormatView(ReadString(entry, "id") ?? string.Empty, ReadString(entry, "file") ?? string.Empty))
+            .Where(entry => entry.Id.Length > 0)
+            .ToList();
     }
 
     /// <summary>The manifest's schema ids — the package's output-contract choices.</summary>
@@ -546,7 +588,8 @@ public static class WorkflowManifestReader
     {
         var results = new List<ResultView>();
 
-        if (!TryGetProperty(manifest, "results", out var array) || array.ValueKind != JsonValueKind.Array)
+        // v25 (A3 #998): results[] is spelled deliverables[] — the same record shape.
+        if ((!TryGetProperty(manifest, "results", out var array) && !TryGetProperty(manifest, "deliverables", out array)) || array.ValueKind != JsonValueKind.Array)
         {
             return results;
         }
@@ -600,7 +643,9 @@ public static class WorkflowManifestReader
     {
         var ids = new HashSet<string>(StringComparer.Ordinal);
 
-        if (TryGetProperty(manifest, "results", out var results) && results.ValueKind == JsonValueKind.Array)
+        // v25 (A3 #998): results[] is spelled deliverables[] — the same shape.
+        if ((TryGetProperty(manifest, "results", out var results) || TryGetProperty(manifest, "deliverables", out results))
+            && results.ValueKind == JsonValueKind.Array)
         {
             foreach (var result in results.EnumerateArray())
             {

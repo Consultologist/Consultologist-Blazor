@@ -147,6 +147,8 @@ public static class ApiRoutes
     public const string WorkflowPackageMinePackages = "WorkflowPackages/MinePackages";
     public const string WorkflowPackageDiagramPreview = "WorkflowPackages/Diagram";
     public const string WorkflowPackageLineage = "WorkflowPackages/Lineage";
+    // v25 (C1 #1007): the formats catalogue as the editor reads it (B6's endpoint).
+    public const string WorkflowFormats = "WorkflowFormats";
     public const string OperatorUsage = "Operator/Usage";
     public const string IntakeFormsResponses = "Intake/Forms/Responses";
     public const string PublicChain = "Public/Chain";

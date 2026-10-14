@@ -83,6 +83,8 @@ public abstract class ClientRenderTestContext : BunitContext
             .AddInMemoryCollection(new Dictionary<string, string?> { ["AzureFunction:PublicRegistryBaseUrl"] = "https://consultpubcaeast.blob.core.windows.net" })
             .Build());
         WorkflowService.GetMyPackagesAsync().Returns((IReadOnlyList<PublicPackageView>?)null);
+        // v25 (C1 #1007): the formats catalogue is absent unless a test supplies one.
+        WorkflowService.GetFormatsAsync().Returns((WorkflowFormatsView?)null);
     }
 
     /// <summary>
