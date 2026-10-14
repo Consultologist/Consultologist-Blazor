@@ -71,7 +71,12 @@ internal static class ConsultRenderPayload
     /// render over a partial scope would send a different prompt than the
     /// record says.
     /// </summary>
-    public static string RenderAt25(ConsultPromptNodeActivityInput input, WorkflowPackage package, string promptText)
+    /// <param name="promptReads">B5 #1004: when given, the macro.&lt;id&gt;.prompt reads this render evaluated — the slots the prompt that ran sanctions.</param>
+    public static string RenderAt25(ConsultPromptNodeActivityInput input, WorkflowPackage package, string promptText, ISet<string>? promptReads = null) =>
+        TemplateRenderer.Render($"Prompt '{input.PromptId}'", promptText, ScopeAt25(input, package), ConceptPipes.All, promptReads);
+
+    /// <summary>The 25 scope, completed from the payload and the package — what the prompt renders over, and (B5 #1004) what its instances and fills render over at completion.</summary>
+    public static TemplateRenderScope ScopeAt25(ConsultPromptNodeActivityInput input, WorkflowPackage package)
     {
         if (input.Run is null || input.Profile is null || input.NodeTexts is null)
         {
@@ -124,7 +129,7 @@ internal static class ConsultRenderPayload
                 macro => new TemplateMacroSource(macro.Id, macro.Label, package.SourceFiles![macro.File!], macro.Instruction ?? string.Empty),
                 StringComparer.Ordinal);
 
-        var scope = new TemplateRenderScope(
+        return new TemplateRenderScope(
             input.Variables,
             input.VariableTypes,
             inputsById,
@@ -135,12 +140,10 @@ internal static class ConsultRenderPayload
             macros,
             input.Run,
             input.Profile);
-
-        return TemplateRenderer.Render($"Prompt '{input.PromptId}'", promptText, scope, ConceptPipes.All);
     }
 
     /// <summary>The type a node's format declares — the stamped catalogue's, or a package-local format file's — so <c>.value</c> parses accordingly; text when unknown.</summary>
-    private static string FormatTypeOf(WorkflowPackage package, WorkflowNodeSpec? node)
+    internal static string FormatTypeOf(WorkflowPackage package, WorkflowNodeSpec? node)
     {
         if (node?.Format is not { } formatId)
         {

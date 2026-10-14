@@ -304,7 +304,9 @@ public sealed class ConsultGenerationOrchestrator
                         // v25 (B5 #1004): what an instance's when is judged against,
                         // as the orchestrator holds it — the completion runs in the activity.
                         Supplied: input.SuppliedInputs is null ? null : new Dictionary<string, string>(input.SuppliedInputs, StringComparer.Ordinal),
-                        Classifications: Classifications()),
+                        Classifications: Classifications(),
+                        FailIfEmpty: node.FailIfEmpty,
+                        Instances: node.Macros),
                     AgentActivityRetryOptions)] = (node.Id, item?["id"]);
                 return;
             }
@@ -506,14 +508,20 @@ public sealed class ConsultGenerationOrchestrator
                 .Select(placement => placement.Id)
                 .ToHashSet(StringComparer.Ordinal);
 
-            var (slotFilledText, slotEntries) = ConsultSlotFiller.Fill(
-                text,
-                authorizedSlotIds,
-                input.MacroTexts,
-                effectiveInputs,
-                input.DataScalars,
-                Classifications(),
-                facts);
+            // v25 (B5 #1004, design § 7): at 25 a marker is sanctioned only by the
+            // prompt that read macro.<id>.prompt, so it was filled — or removed and
+            // named — at that node; the document-level fill is retired, and a
+            // deliverable's text is its sources' composed outputs, untouched here.
+            var (slotFilledText, slotEntries) = at25
+                ? (text, null)
+                : ConsultSlotFiller.Fill(
+                    text,
+                    authorizedSlotIds,
+                    input.MacroTexts,
+                    effectiveInputs,
+                    input.DataScalars,
+                    Classifications(),
+                    facts);
 
             // Slot fills sit inside the section bodies, ahead of the trailing
             // appended macros — a slot entry precedes the composed appends in the
@@ -771,6 +779,19 @@ public sealed class ConsultGenerationOrchestrator
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     var (errorType, errorStack) = FailureFactsOf(ex);
+
+                    // v25 (B5 #1004): an empty reply under failIfEmpty is judged in
+                    // the activity (on the reply, before anything composes) and
+                    // fails the node exactly as the ≤24 check below does — the
+                    // author's sentence, never an engine message.
+                    if (node.Format is not null && node.FailIfEmpty != null && ConsultNodeCompletion.IsEmptyReplyFailure(errorType))
+                    {
+                        await FailNodeAsync(
+                            context, entityId, node, nodes, outputs,
+                            totalBlockCount, completedBlockCount, failedBlockCount, logger);
+                        return false;
+                    }
+
                     var skippedNodes = nodes
                         .Where(other => other.Id != nodeId && !outputs.ContainsKey(other.Id))
                         .Select(other => new ConsultItemStepDescriptor(other.Id, other.Label))
@@ -786,7 +807,9 @@ public sealed class ConsultGenerationOrchestrator
                     return false;
                 }
 
-                if (node.FailIfEmpty != null && (result.Concepts?.Count ?? 0) == 0)
+                // Below 25 "empty" is "no concepts", judged here; a 25 node judged
+                // its reply in the activity (B5 #1004).
+                if (node.Format is null && node.FailIfEmpty != null && (result.Concepts?.Count ?? 0) == 0)
                 {
                     await FailNodeAsync(
                         context, entityId, node, nodes, outputs,
@@ -830,6 +853,17 @@ public sealed class ConsultGenerationOrchestrator
                 catch (Exception ex)
                 {
                     var (itemErrorType, itemErrorStack) = FailureFactsOf(ex);
+
+                    // v25 (B5 #1004): the item's empty reply, judged in the activity,
+                    // fails the item with the author's sentence as the ≤24 check does.
+                    if (node.Format is not null && node.FailIfEmpty != null && ConsultNodeCompletion.IsEmptyReplyFailure(itemErrorType))
+                    {
+                        await FailItemAsync(node, itemId, node.FailIfEmpty);
+                        PublishStatus(ConsultGenerationJobStatuses.Running);
+                        StartReadyInstances();
+                        continue;
+                    }
+
                     await FailItemAsync(node, itemId, $"{node.Label} failed: {ex.Message}",
                         itemErrorStack is null ? null : $"{itemErrorType}\n{itemErrorStack}");
                     PublishStatus(ConsultGenerationJobStatuses.Running);
@@ -837,7 +871,7 @@ public sealed class ConsultGenerationOrchestrator
                     continue;
                 }
 
-                if (node.FailIfEmpty != null && (result.Concepts?.Count ?? 0) == 0)
+                if (node.Format is null && node.FailIfEmpty != null && (result.Concepts?.Count ?? 0) == 0)
                 {
                     await FailItemAsync(node, itemId, node.FailIfEmpty);
                     PublishStatus(ConsultGenerationJobStatuses.Running);

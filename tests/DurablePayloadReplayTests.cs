@@ -74,7 +74,7 @@ public class DurablePayloadReplayTests
         // #923 phase 2 appended AgentName/AgentVersion last — two more trailing
         // nulls a pre-phase-2 payload binds and writes back.
         // #1001 appended the format identity; #1002 the 25 render scope — six more trailing nulls; #1004 the two facts an instance's when reads.
-        Assert.Equal(stored[..^1] + ",\"Values\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null,\"Before\":null,\"After\":null,\"Format\":null,\"Producer\":null,\"FormatHash\":null,\"Op\":null,\"NodeTexts\":null,\"Folders\":null,\"Item\":null,\"ForEach\":null,\"Run\":null,\"Profile\":null,\"With\":null,\"OnInvalid\":null,\"Supplied\":null,\"Classifications\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(stored[..^1] + ",\"Values\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null,\"Before\":null,\"After\":null,\"Format\":null,\"Producer\":null,\"FormatHash\":null,\"Op\":null,\"NodeTexts\":null,\"Folders\":null,\"Item\":null,\"ForEach\":null,\"Run\":null,\"Profile\":null,\"With\":null,\"OnInvalid\":null,\"Supplied\":null,\"Classifications\":null,\"FailIfEmpty\":null,\"Instances\":null}", JsonSerializer.Serialize(input, Durable));
         Assert.Null(input.Values);
         Assert.Equal(
             "Seen 2026-08-10. Bill it.",
