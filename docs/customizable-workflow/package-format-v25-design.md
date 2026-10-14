@@ -598,6 +598,26 @@ non-local id on trust, as the validator does without a catalogue. The Formats pa
 #934 (editor custom-schema authoring), closed as superseded: `customSchemas` migrates to
 `formats/<id>.json` with `producer: custom` (§ 14), so the ≤24 flow is never built.)*
 
+*(C2 #1008, 2026-10-14 — the Snippets pane is built: at 25 the Data group's machinery runs
+under the `snippets` table, keyed on the version at every difference (the manifest key, the
+`snippets/` root, a snippet born as `snippets/<id>.md`, a folder as `snippets/<id>/` with the
+default `id, name, content` index fields, the fan spelled `snippet:<folder>`, the fan item's
+`id, name, text`), so below 25 the Data group is byte-identical. Ids are snake_case in the
+registry's own sentence; a folder's directory takes the underscore, so the Api's path policy
+widened its `snippets/<folder>/` segment (data's never did). A folder item's **`when`** is the
+existing condition builder restricted to inputs — no `node:` operand, no `item:id` — written
+into `index.json` beside `id/name/file` only when set; the desk says the registry's snippet
+sentences word for word (an id not snake_case; a `when` that does not parse, or reads a node,
+an item or arithmetic; a `forEach` fanning a file, an undeclared folder, a retired `data:`
+collection or neither spelling). Where each snippet is read comes from **the engine's own
+walk** run in the editor (`EditorPackageWalk`: the composed manifest, the assembled files and
+the served catalogue bound back into the library's `WorkflowFormatCatalog`, then
+`WorkflowDerivedEdges.PrepareNodes` + `WalkAll`): a snippet's pane lists its readers — a
+prompt, another snippet, a folder item, a macro — and a folder's item panes the templates
+iterating it and the nodes fanning it, each row opening that pane; Remove is refused while
+read. C4's Reads list and "every reference resolves" desk reuse the same walk. Without the
+catalogue the list says what it cannot see (a prompt on a catalogue format is not walked).)*
+
 ## 14. Migration 24 → 25 (the editor's upgrade; mechanical, byte-identical in what the model sees)
 
 | At 24 | At 25 |
