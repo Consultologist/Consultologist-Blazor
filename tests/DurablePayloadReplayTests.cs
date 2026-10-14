@@ -380,6 +380,22 @@ public class DurablePayloadReplayTests
     }
 
     [Fact]
+    public void AStoredMacroPlacement_WithoutAt_BindsNull()
+    {
+        // B8 #1027: a ≤24 placement stored before the 25 placement word existed
+        // binds At null and re-serialises with exactly one more trailing null —
+        // the descriptor's placements are stored payloads.
+        const string stored = """
+            {"Id":"disclaimer","Before":"node:draft","After":null,"ForItem":null,"Slot":null}
+            """;
+
+        var placement = JsonSerializer.Deserialize<ConsultMacroPlacement>(stored, Durable)!;
+
+        Assert.Null(placement.At);
+        Assert.Equal(stored[..^1] + ",\"At\":null}", JsonSerializer.Serialize(placement, Durable));
+    }
+
+    [Fact]
     public void AStoredNodeDescriptor_WithoutReproducible_BindsNull()
     {
         // v11 #550: node snapshots stored before the flag existed —

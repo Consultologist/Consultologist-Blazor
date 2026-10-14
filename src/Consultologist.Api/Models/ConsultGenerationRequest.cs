@@ -667,7 +667,11 @@ public sealed record ConsultResultDescriptor(
 // [[slot:<id>]] marker in a section's output — mutually exclusive with the
 // Before/After/ForItem anchors (a slot has no static anchor). Only true or
 // null, never false. Appended last, this is a durable payload.
-public sealed record ConsultMacroPlacement(string Id, string? Before = null, string? After = null, string? ForItem = null, bool? Slot = null);
+// v25 (B8 #1027, design § 5.1): At is the 25 placement — prepend | append on
+// the deliverable — the identity's second half beside Id; the ≤24 anchors are
+// null on such an entry and At is null on every ≤24 entry. Appended last,
+// this is a durable payload.
+public sealed record ConsultMacroPlacement(string Id, string? Before = null, string? After = null, string? ForItem = null, bool? Slot = null, string? At = null);
 
 /// <summary>
 /// A deliverable the package declared and this job did not produce, because its

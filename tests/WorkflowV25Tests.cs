@@ -615,6 +615,28 @@ public class WorkflowV25TemplateTests
     }
 
     [Fact]
+    public void ADeliverableMacro_ReadingAFannedNode_IsRefused()
+    {
+        // B8 #1027 (design § 2): a deliverable instance's reads are the
+        // deliverable's edges; a fanned node has no item at a deliverable.
+        var (manifest, files) = Minimal();
+        manifest = manifest with
+        {
+            Deliverables = new List<WorkflowDeliverableSpec>
+            {
+                new("consult", "node:all", "Consultation note", Check: "node.coverage",
+                    Macros: new List<WorkflowDeliverableMacroSpec> { new("closing", At: WorkflowDeliverableMacroSpec.Append) }),
+            },
+        };
+        files["macros/closing.md"] = "Closing: {{ node.section_notes.text }}.";
+
+        Assert.Contains("Deliverable 'consult' macro 'closing' reads node 'section_notes', which fans; a deliverable macro reads scalar nodes and aggregators — place the macro on the node to read its items.", V25Package.Errors((manifest, files)));
+
+        files["macros/closing.md"] = "Closing: {{ node.scope.text }}.";
+        Assert.True(V25Package.Validate((manifest, files), V25Package.Catalog()).IsValid, string.Join(" | ", V25Package.Errors((manifest, files))));
+    }
+
+    [Fact]
     public void FailIfEmpty_LivesOnTheNode_At25()
     {
         // B5 #1004 (design § 3.6): output is refused at 25, so failIfEmpty moves

@@ -97,7 +97,7 @@ public static partial class WorkflowPackageValidator
         ValidateMacroUseAt25(manifest, nodes, walk, inputsById, classifiers, errors, warnings);
         ValidateReferenceGraphAt25(walked, snippets, errors);
         RenderProbeAt25(walked, inputsById, nodes, snippets, manifest, errors);
-        ValidateDeliverablesAt25(manifest, nodes, walked, inputsById, classifiers, errors);
+        ValidateDeliverablesAt25(manifest, nodes, walk, inputsById, classifiers, errors);
 
         var specs = (manifest.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal).ToList();
         ValidateReachabilityAt25(manifest, specs, nodes, edges, errors);
@@ -1024,11 +1024,12 @@ public static partial class WorkflowPackageValidator
     private static void ValidateDeliverablesAt25(
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, NodeAt25> nodes,
-        IReadOnlyList<WorkflowDerivedEdges.WalkedTemplate> walked,
+        WorkflowDerivedEdges.Walk walk,
         IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
         IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
         List<string> errors)
     {
+        var walked = walk.Templates;
         var deliverables = manifest.Deliverables;
 
         if (deliverables is not { Count: > 0 })
@@ -1147,6 +1148,17 @@ public static partial class WorkflowPackageValidator
                 if (!seen.Add($"{entry.Id}\n{entry.At}"))
                 {
                     errors.Add($"{where} is placed twice ({entry.At}); one identity (id, at) once.");
+                }
+
+                // B8 #1027 (design § 2): a deliverable instance's reads are the
+                // deliverable's edges — scalar nodes and aggregators; a fanned
+                // node has no item at a deliverable, so the read is refused.
+                foreach (var read in walk.MacroEdges(entry.Id).Order(StringComparer.Ordinal))
+                {
+                    if (nodes.TryGetValue(read, out var readNode) && readNode.Fan is not null)
+                    {
+                        errors.Add($"{where} reads node '{read}', which fans; a deliverable macro reads scalar nodes and aggregators — place the macro on the node to read its items.");
+                    }
                 }
 
                 if (entry.When != null)
