@@ -1599,6 +1599,13 @@
       var content = await WorkflowService.GetCurrentPackageContentAsync();
       workflowNodes = WorkflowManifestReader.ReadNodes(content.Manifest);
       workflowCollections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files);
+
+      // A 25 package fans snippet folders, which live under the snippets table
+      // (#1008); data is retired there, so the two never coexist.
+      if (workflowCollections.Count == 0)
+      {
+        workflowCollections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files, WorkflowManifestReader.SnippetsKey);
+      }
     }
     catch (AccessTokenNotAvailableException exception)
     {

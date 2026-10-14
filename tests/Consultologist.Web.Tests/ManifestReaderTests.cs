@@ -258,6 +258,51 @@ public class ManifestReaderTests
             Parse("""{ "data": { "standards": "data/standards/" } }""")));
     }
 
+    // ----- v25 #1008: the snippets table is data's shape under another key; a folder item carries its when -----
+
+    [Fact]
+    public void ReadScalarEntries_ReadsTheSnippetsTable_WhenAsked()
+    {
+        var manifest = Parse("""
+            { "snippets": { "sections": "snippets/sections/", "standards": "snippets/standards.md" } }
+            """);
+
+        // The default key is still data, so nothing below 25 changes.
+        Assert.Empty(WorkflowManifestReader.ReadScalarEntries(manifest));
+
+        var entry = Assert.Single(WorkflowManifestReader.ReadScalarEntries(manifest, WorkflowManifestReader.SnippetsKey));
+        Assert.Equal("standards", entry.Id);
+        Assert.Equal("snippets/standards.md", entry.Path);
+        Assert.Equal(new[] { "standards" }, WorkflowManifestReader.ReadScalars(manifest, WorkflowManifestReader.SnippetsKey).ToArray());
+    }
+
+    [Fact]
+    public void ReadCollections_ReadsASnippetFolder_WithEachItemsWhen()
+    {
+        var manifest = Parse("""{ "Snippets": { "sections": "snippets/sections/" } }""");
+        var files = new Dictionary<string, string>
+        {
+            ["snippets/sections/index.json"] = """
+                { "fields": ["id", "name", "content"], "items": [
+                    { "id": "hpi", "name": "HPI", "file": "hpi.md" },
+                    { "id": "plan", "name": "Plan", "file": "plan.md", "when": "kind == new" },
+                    { "id": "blank", "name": "Blank", "file": "blank.md", "when": "  " }
+                ] }
+                """
+        };
+
+        Assert.Empty(WorkflowManifestReader.ReadCollections(manifest, files));
+
+        var folder = Assert.Single(WorkflowManifestReader.ReadCollections(manifest, files, WorkflowManifestReader.SnippetsKey));
+        Assert.Equal("sections", folder.Id);
+        Assert.Equal("snippets/sections/", folder.Directory);
+        Assert.Collection(folder.Items,
+            hpi => { Assert.Equal("snippets/sections/hpi.md", hpi.File); Assert.Null(hpi.When); },
+            plan => Assert.Equal("kind == new", plan.When),
+            // A blank when is no when: the item is always included.
+            blank => Assert.Null(blank.When));
+    }
+
     // ----- v11 #564: macros, the deliverable's list and signed flag, reproducible -----
 
     [Fact]

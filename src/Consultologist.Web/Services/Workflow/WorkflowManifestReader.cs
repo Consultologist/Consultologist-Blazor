@@ -174,7 +174,12 @@ public static class WorkflowManifestReader
     /// <summary>The package's templating engine and pinned version (Scriban) — set by the platform, shown read-only.</summary>
     public sealed record TemplatingView(string Engine, string EngineVersion);
 
-    public sealed record DataItemView(string Id, string Name, string File);
+    /// <summary>
+    /// One collection (≤24 data) or snippet-folder (25) item. <paramref name="When"/>
+    /// is the item's input-only condition as written in index.json (25; null
+    /// when absent — the item is always included).
+    /// </summary>
+    public sealed record DataItemView(string Id, string Name, string File, string? When = null);
 
     public sealed record CollectionView(string Id, string Directory, IReadOnlyList<DataItemView> Items);
 
@@ -357,8 +362,17 @@ public static class WorkflowManifestReader
     /// Scalar data entries: values of the data map that are not directories.
     /// Ids only — what the binding dropdown needs.
     /// </summary>
-    public static IReadOnlyList<string> ReadScalars(JsonElement manifest) =>
-        ReadScalarEntries(manifest).Select(entry => entry.Id).ToList();
+    public static IReadOnlyList<string> ReadScalars(JsonElement manifest, string key = DataKey) =>
+        ReadScalarEntries(manifest, key).Select(entry => entry.Id).ToList();
+
+    /// <summary>The ≤24 table: <c>data</c>.</summary>
+    public const string DataKey = "data";
+
+    /// <summary>
+    /// The 25 table (#1008): <c>snippets</c> — the same shape as data (id → file,
+    /// or folder → "dir/" with an index.json), read as <c>{{ snippet.&lt;id&gt;.text }}</c>.
+    /// </summary>
+    public const string SnippetsKey = "snippets";
 
     /// <summary>
     /// The same entries with their file paths, which editing needs: a scalar's
@@ -370,11 +384,11 @@ public static class WorkflowManifestReader
     /// value. Anything writing these paths has to get that one character
     /// right, in both directions.
     /// </summary>
-    public static IReadOnlyList<ScalarView> ReadScalarEntries(JsonElement manifest)
+    public static IReadOnlyList<ScalarView> ReadScalarEntries(JsonElement manifest, string key = DataKey)
     {
         var scalars = new List<ScalarView>();
 
-        if (!TryGetProperty(manifest, "data", out var data) || data.ValueKind != JsonValueKind.Object)
+        if (!TryGetProperty(manifest, key, out var data) || data.ValueKind != JsonValueKind.Object)
         {
             return scalars;
         }
@@ -397,11 +411,11 @@ public static class WorkflowManifestReader
     /// The manifest's collections joined with each directory's index.json (from
     /// the files dict) so the editor can render one card per item.
     /// </summary>
-    public static IReadOnlyList<CollectionView> ReadCollections(JsonElement manifest, IReadOnlyDictionary<string, string> files)
+    public static IReadOnlyList<CollectionView> ReadCollections(JsonElement manifest, IReadOnlyDictionary<string, string> files, string key = DataKey)
     {
         var collections = new List<CollectionView>();
 
-        if (!TryGetProperty(manifest, "data", out var data) || data.ValueKind != JsonValueKind.Object)
+        if (!TryGetProperty(manifest, key, out var data) || data.ValueKind != JsonValueKind.Object)
         {
             return collections;
         }
@@ -435,7 +449,8 @@ public static class WorkflowManifestReader
                             }
 
                             var id = ReadString(item, "id") ?? file;
-                            items.Add(new DataItemView(id, ReadString(item, "name") ?? id, directory + file));
+                            var when = ReadString(item, "when");
+                            items.Add(new DataItemView(id, ReadString(item, "name") ?? id, directory + file, string.IsNullOrWhiteSpace(when) ? null : when));
                         }
                     }
                 }
