@@ -500,6 +500,137 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
     }
 
+    // ----- the desk: the registry's macro sentences, word for word -----
+
+    /// <summary>The fixture with its manifest reshaped (and optionally a file replaced).</summary>
+    private static WorkflowPackageContentResponse Reshaped(Action<System.Text.Json.Nodes.JsonObject> reshape, params (string Path, string Text)[] files)
+    {
+        var package = EditorFixtures.V25();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        reshape(root);
+        var replaced = new Dictionary<string, string>(package.Files, StringComparer.Ordinal);
+        foreach (var (path, text) in files)
+        {
+            replaced[path] = text;
+        }
+
+        return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone(), Files = replaced };
+    }
+
+    private static System.Text.Json.Nodes.JsonObject NodeObject(System.Text.Json.Nodes.JsonObject root, string id) =>
+        root["nodes"]!.AsArray().First(n => n!["id"]!.GetValue<string>() == id)!.AsObject();
+
+    private static System.Text.Json.Nodes.JsonObject DeliverableObject(System.Text.Json.Nodes.JsonObject root) =>
+        root["deliverables"]!.AsArray().First()!.AsObject();
+
+    private static void MakePending(IRenderedComponent<Templates> page)
+    {
+        Navigate(page, "standards");
+        page.Find(".editor-pane fluent-text-area").Change("Follow the local standards, edited.");
+    }
+
+    private IReadOnlyList<string> DeskRefusals(WorkflowPackageContentResponse fixture)
+    {
+        CapturePublish();
+        var page = RenderEditor(fixture);
+        MakePending(page);
+        Publish(page);
+        return Refusals(page);
+    }
+
+    public static IEnumerable<object[]> DeskCases()
+    {
+        yield return new object[] { "blank instruction", new Action<System.Text.Json.Nodes.JsonObject>(root => root["macros"]!.AsArray()[0]!["instruction"] = "  "),
+            "Macro 'closing' must declare an instruction at specVersion 25; placed text tells the model when to emit its marker." };
+        yield return new object[] { "aggregator places", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "all")["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ "closing" ]""")),
+            "Node 'all' aggregates and must not place macros; place them on the nodes it aggregates or on the deliverable." };
+        yield return new object[] { "undeclared on node", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "assessment")["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ "nope" ]""")),
+            "Node 'assessment' macro 'nope' is not a declared macro." };
+        yield return new object[] { "node at vocabulary", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "assessment")["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ { "id": "closing", "at": "inside" } ]""")),
+            "Node 'assessment' macro 'closing' declares at 'inside'; a node instance is placed 'before' or 'after' the node's output." };
+        yield return new object[] { "node placed twice", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "assessment")["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ { "id": "closing", "at": "after" }, { "id": "closing", "at": "after", "when": "kind == new" } ]""")),
+            "Node 'assessment' macro 'closing' is placed twice (after); one identity (id, at, forItem) once — two gates to one text is one instance with when: a or b." };
+        yield return new object[] { "format takes none", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "scope")["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ "closing" ]""")),
+            "Node 'scope' macro 'closing' is placed before the output, but format 'classification' takes no output macros; only a text format with outputMacros may." };
+        yield return new object[] { "forItem without a fan", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "assessment")["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ { "id": "closing", "at": "after", "forItem": "hpi" } ]""")),
+            "Node 'assessment' macro 'closing' anchors to fan item 'hpi', but 'assessment' does not fan a snippet folder." };
+        yield return new object[] { "forItem not in the folder", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "section_notes")["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ { "id": "tool_note", "at": "before", "forItem": "ros" } ]""")),
+            "Node 'section_notes' macro 'tool_note' anchors to fan item 'ros', which the folder fanned by 'section_notes' does not contain (items: hpi, plan)." };
+        yield return new object[] { "node when against an enum node", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "assessment")["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ { "id": "closing", "at": "after", "when": "node:scope == maybe" } ]""")),
+            "Node 'assessment' macro 'closing' condition compares 'node:scope' to 'maybe', which it does not declare (values: in_scope, out_of_scope)." };
+        yield return new object[] { "deliverable at missing", new Action<System.Text.Json.Nodes.JsonObject>(root => DeliverableObject(root)["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ "closing" ]""")),
+            "Deliverable 'consult' macro 'closing' must declare at (prepend | append)." };
+        yield return new object[] { "deliverable at vocabulary", new Action<System.Text.Json.Nodes.JsonObject>(root => DeliverableObject(root)["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ { "id": "closing", "at": "slot" } ]""")),
+            "Deliverable 'consult' macro 'closing' declares at 'slot'; a deliverable instance is placed 'prepend' or 'append'." };
+        yield return new object[] { "deliverable placed twice", new Action<System.Text.Json.Nodes.JsonObject>(root => DeliverableObject(root)["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ { "id": "closing", "at": "prepend" }, { "id": "closing", "at": "prepend", "when": "kind == new" } ]""")),
+            "Deliverable 'consult' macro 'closing' is placed twice (prepend); one identity (id, at) once." };
+        yield return new object[] { "deliverable undeclared", new Action<System.Text.Json.Nodes.JsonObject>(root => DeliverableObject(root)["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ { "id": "nope", "at": "append" } ]""")),
+            "Deliverable 'consult' macro 'nope' is not a declared macro." };
+        yield return new object[] { "unused macro", new Action<System.Text.Json.Nodes.JsonObject>(root => root["macros"]!.AsArray().Add(System.Text.Json.Nodes.JsonNode.Parse("""{ "id": "spare", "label": "Spare", "file": "macros/closing.md", "instruction": "Never." }"""))),
+            "Macro 'spare' is declared but never placed or read; place it on a node or a deliverable, or read macro.spare.text / macro.spare.prompt." };
+    }
+
+    [Theory]
+    [MemberData(nameof(DeskCases))]
+    public void TheDesk_SaysTheRegistrysMacroSentence(string _, Action<System.Text.Json.Nodes.JsonObject> reshape, string sentence)
+    {
+        var refusals = DeskRefusals(Reshaped(reshape));
+
+        Assert.Contains(sentence, refusals);
+        Assert.Null(sent);
+    }
+
+    [Fact]
+    public void TheDesk_RefusesADeliverableMacro_ReadingAFanningNode()
+    {
+        var refusals = DeskRefusals(Reshaped(_ => { }, ("macros/closing.md", "Closing: {{ node.section_notes.text }}")));
+
+        Assert.Contains("Deliverable 'consult' macro 'closing' reads node 'section_notes', which fans; a deliverable macro reads scalar nodes and aggregators — place the macro on the node to read its items.", refusals);
+    }
+
+    [Fact]
+    public void TheDesk_RefusesAnInlineSlot_OnAFormatTakingNoOutputMacros()
+    {
+        var refusals = DeskRefusals(Reshaped(_ => { }, ("prompts/scope.md", "Is this in scope? {{ input.notes }} {{ macro.tool_note.prompt }}")));
+
+        Assert.Contains("Node 'scope' reads macro.tool_note.prompt (a slot), but format 'classification' takes no output macros; only a text format with outputMacros may.", refusals);
+    }
+
+    [Fact]
+    public void AnUnplacedDeliverableRow_AndABlankNewInstruction_BlockPublish_ByName()
+    {
+        var page = RenderEditor();
+        CapturePublish();
+
+        Navigate(page, DeliverablesPane);
+        page.Find("fluent-select[aria-label='Append macro to deliverable consult']").Change("tool_note");
+
+        Navigate(page, "+ Macro");
+        page.Find("fluent-text-field[placeholder='closing_paragraph']").Change("spare");
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Create macro")).Click();
+        page.Find(".editor-pane fluent-text-area:not(.macro-instruction)").Change("Spare text.");
+        Publish(page);
+
+        var refusals = Refusals(page);
+        Assert.Contains("Deliverable 'consult' macro 'tool_note' must declare at (prepend | append).", refusals);
+        Assert.Contains("Macro 'spare' must declare an instruction at specVersion 25; placed text tells the model when to emit its marker.", refusals);
+        Assert.Contains("Macro 'spare' is declared but never placed or read; place it on a node or a deliverable, or read macro.spare.text / macro.spare.prompt.", refusals);
+        Assert.Null(sent);
+    }
+
+    [Fact]
+    public void TheMacroWhenBuilder_OffersTheEnumFormatNode_WithItsValues()
+    {
+        var page = RenderEditor();
+        Navigate(page, "closing");
+
+        page.Find("fluent-button[aria-label='Add a condition for assessment macro closing']").Click();
+        var operands = OptionValues(page, "fluent-select[aria-label^='Condition operand for assessment macro closing']");
+        Assert.Contains("node:scope", operands);
+        page.Find("fluent-select[aria-label^='Condition operand for assessment macro closing']").Change("node:scope");
+        Assert.Equal(new[] { "in_scope", "out_of_scope" }, OptionValues(page, "fluent-select[aria-label^='Condition value for assessment macro closing']").Where(v => !string.IsNullOrEmpty(v)));
+    }
+
     [Fact]
     public void TheFixtureItself_PublishesAccepted()
     {

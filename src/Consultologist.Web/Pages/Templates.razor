@@ -5051,6 +5051,27 @@
     /// non-aggregator whose format declares outputMacros. A format the editor cannot
     /// resolve (no catalogue loaded) is taken on trust, as the validator takes it.
     /// </summary>
+    /// <summary>
+    /// v25 (C3 #1009): a node a condition may compare — a classifier by kind below 25;
+    /// at 25 a node whose format is an enum (the validator's "node: against an
+    /// enum-format node"), its values the with.values it declares.
+    /// </summary>
+    private bool ClassifierLike(WorkflowManifestReader.NodeView node) =>
+        At25
+            ? node.Aggregate == null && node.Format != null && FormatOptions.FirstOrDefault(f => f.Id == node.Format)?.Type == "enum"
+            : node.IsClassifier;
+
+    private IReadOnlyList<string>? ClassifierValues(WorkflowManifestReader.NodeView node) =>
+        At25
+            ? node.With is { } with && with.TryGetValue("values", out var values) && values.ValueKind == JsonValueKind.Array
+                ? values.EnumerateArray().Where(v => v.ValueKind == JsonValueKind.String).Select(v => v.GetString()!).ToList()
+                : FormatOptions.FirstOrDefault(f => f.Id == node.Format) is { } enumFormat ? EnumFormatValues(enumFormat.Id) : null
+            : node.Values;
+
+    /// <summary>A catalogue enum format's own values (a classification declares them per node; a fixed enum carries its own).</summary>
+    private IReadOnlyList<string>? EnumFormatValues(string formatId) =>
+        formatsCatalog?.Formats?.FirstOrDefault(f => f.Id == formatId)?.Values;
+
     private bool FormatTakesOutputMacros(WorkflowManifestReader.NodeView node) =>
         node.Aggregate == null
         && (node.Format == null
@@ -6880,6 +6901,323 @@
         }
     }
 
+    /// <summary>
+    /// v25 C3 (#1009): the desk's mirror of the registry's macro rules at 25
+    /// (WorkflowPackageValidator.V25: the library, ValidateMacroUseAt25, the inline
+    /// slot gate, the unused macro, the deliverable instances), word for word.
+    /// Nothing below 25 — the ≤24 blocks keep their own sentences there.
+    /// </summary>
+    private IEnumerable<string> MacroErrors25()
+    {
+        if (!At25)
+        {
+            yield break;
+        }
+
+        var macros = EffectiveMacros;
+        var macroIds = macros.Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
+        var walk = PackageWalk;
+
+        // ----- the library -----
+        var seenMacroIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var macro in macros)
+        {
+            if (!PF.WorkflowDeclaredIds.IsValid(macro.Id))
+            {
+                yield return $"Macro id '{macro.Id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
+            }
+
+            if (!seenMacroIds.Add(macro.Id))
+            {
+                yield return $"Duplicate macro id '{macro.Id}'.";
+            }
+
+            if (string.IsNullOrWhiteSpace(macro.Label))
+            {
+                yield return $"Macro '{macro.Id}' must declare a label.";
+            }
+
+            if (string.IsNullOrWhiteSpace(MacroInstruction(macro)))
+            {
+                yield return $"Macro '{macro.Id}' must declare an instruction at specVersion 25; placed text tells the model when to emit its marker.";
+            }
+
+            if (AddedMacroForFile(macro.File) == null && !content!.Files.ContainsKey(macro.File))
+            {
+                yield return $"Macro '{macro.Id}' file '{macro.File}' is missing from the package.";
+            }
+            else if (string.IsNullOrWhiteSpace(GetText(macro.File)))
+            {
+                yield return $"Macro '{macro.Id}' file '{macro.File}' is empty.";
+            }
+        }
+
+        // ----- node instances -----
+        var placed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var node in EffectiveNodes)
+        {
+            var nodeMacros = EffectiveNodeMacros(node);
+            if (nodeMacros.Count == 0)
+            {
+                continue;
+            }
+
+            if (node.Aggregate != null)
+            {
+                yield return $"Node '{node.Id}' aggregates and must not place macros; place them on the nodes it aggregates or on the deliverable.";
+                continue;
+            }
+
+            var fanItems = NodeFanItems(node);
+            var format = FormatOptions.FirstOrDefault(f => f.Id == node.Format);
+            var identities = new HashSet<string>(StringComparer.Ordinal);
+
+            for (var index = 0; index < nodeMacros.Count; index++)
+            {
+                var entry = nodeMacros[index];
+                var where = $"Node '{node.Id}' macro '{entry.Id}'";
+
+                // #571: a removed macro's instances leave in the same publish.
+                if (removedMacroIds.Contains(entry.Id))
+                {
+                    continue;
+                }
+
+                placed.Add(entry.Id);
+
+                if (!macroIds.Contains(entry.Id))
+                {
+                    yield return $"{where} is not a declared macro.";
+                    continue;
+                }
+
+                if (entry.At != null && entry.At != PF.WorkflowNodeMacroSpec.Before && entry.At != PF.WorkflowNodeMacroSpec.After)
+                {
+                    yield return $"{where} declares at '{entry.At}'; a node instance is placed 'before' or 'after' the node's output.";
+                    continue;
+                }
+
+                var position = entry.IsAfter ? "after" : "before";
+                if (!identities.Add($"{entry.Id}\n{position}\n{entry.ForItem}"))
+                {
+                    yield return $"{where} is placed twice ({position}{(entry.ForItem is { } dup ? $", forItem '{dup}'" : "")}); one identity (id, at, forItem) once — two gates to one text is one instance with when: a or b.";
+                    continue;
+                }
+
+                if (format != null && !format.OutputMacros)
+                {
+                    yield return $"{where} is placed {position} the output, but format '{format.Id}' takes no output macros; only a text format with outputMacros may.";
+                }
+
+                if (entry.ForItem != null)
+                {
+                    if (fanItems.Count == 0)
+                    {
+                        yield return $"{where} anchors to fan item '{entry.ForItem}', but '{node.Id}' does not fan a snippet folder.";
+                    }
+                    else if (fanItems.All(item => item.Id != entry.ForItem))
+                    {
+                        yield return $"{where} anchors to fan item '{entry.ForItem}', which the folder fanned by '{node.Id}' does not contain (items: {string.Join(", ", fanItems.Select(item => item.Id))}).";
+                    }
+                }
+
+                var macroPrefix = $"{where} condition";
+
+                if (conditionDrafts.TryGetValue($"node-macro:{node.Id}\n{index}", out var macroDraft) && IsUnwritable(macroDraft))
+                {
+                    yield return ConditionBuilderModel.IsComplete(macroDraft)
+                        ? $"{macroPrefix} has a clause the format cannot read; finish it or remove it."
+                        : $"{macroPrefix} has a clause with no operand chosen.";
+                    continue;
+                }
+
+                foreach (var complaint in ClauseComplaints25(macroPrefix, entry.When, node.Id, fanItems))
+                {
+                    yield return complaint;
+                }
+            }
+        }
+
+        // ----- inline slots: the format gate -----
+        if (walk is not null)
+        {
+            foreach (var node in EffectiveNodes.Where(n => n.Aggregate == null && n.Prompt != null))
+            {
+                var slots = walk.PromptReadsOf(node.Id);
+                if (slots.Count == 0)
+                {
+                    continue;
+                }
+
+                var format = FormatOptions.FirstOrDefault(f => f.Id == node.Format);
+                if (format != null && !format.OutputMacros)
+                {
+                    yield return $"Node '{node.Id}' reads macro.{slots.Order(StringComparer.Ordinal).First()}.prompt (a slot), but format '{format.Id}' takes no output macros; only a text format with outputMacros may.";
+                }
+            }
+        }
+
+        // ----- deliverable instances -----
+        var fanningNodes = EffectiveNodes.Where(n => n.ForEach != null).Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var result in EffectiveResults)
+        {
+            var entries = result.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>();
+            var identities = new HashSet<string>(StringComparer.Ordinal);
+            var signatureReaders = 0;
+
+            foreach (var entry in entries)
+            {
+                var where = $"Deliverable '{result.Id}' macro '{entry.Id}'";
+
+                if (removedMacroIds.Contains(entry.Id))
+                {
+                    continue;
+                }
+
+                placed.Add(entry.Id);
+
+                if (!macroIds.Contains(entry.Id))
+                {
+                    yield return $"{where} is not a declared macro.";
+                    continue;
+                }
+
+                if (entry.At == null)
+                {
+                    yield return $"{where} must declare at (prepend | append).";
+                    continue;
+                }
+
+                if (!entry.IsPrepend && !entry.IsAppend)
+                {
+                    yield return $"{where} declares at '{entry.At}'; a deliverable instance is placed 'prepend' or 'append'.";
+                    continue;
+                }
+
+                if (!identities.Add($"{entry.Id}\n{entry.At}"))
+                {
+                    yield return $"{where} is placed twice ({entry.At}); one identity (id, at) once.";
+                    continue;
+                }
+
+                if (walk is not null)
+                {
+                    foreach (var readNode in walk.MacroEdges(entry.Id).Where(fanningNodes.Contains).Order(StringComparer.Ordinal))
+                    {
+                        yield return $"{where} reads node '{readNode}', which fans; a deliverable macro reads scalar nodes and aggregators — place the macro on the node to read its items.";
+                    }
+
+                    if (walk.MacroReadsSignature(entry.Id))
+                    {
+                        signatureReaders++;
+                    }
+                }
+
+                var macroPrefix = $"{where} condition";
+
+                if (conditionDrafts.TryGetValue($"{result.Id}\n{entry.Id}", out var macroDraft) && IsUnwritable(macroDraft))
+                {
+                    yield return ConditionBuilderModel.IsComplete(macroDraft)
+                        ? $"{macroPrefix} has a clause the format cannot read; finish it or remove it."
+                        : $"{macroPrefix} has a clause with no operand chosen.";
+                    continue;
+                }
+
+                foreach (var complaint in ClauseComplaints25(macroPrefix, entry.When, null, Array.Empty<WorkflowManifestReader.DataItemView>()))
+                {
+                    yield return complaint;
+                }
+            }
+
+            if (result.Signature == true && signatureReaders > 0)
+            {
+                yield return $"Deliverable '{result.Id}' declares signature and places a macro that reads profile.signature; a deliverable is signed once.";
+            }
+            else if (signatureReaders > 1)
+            {
+                yield return $"Deliverable '{result.Id}' places more than one macro that reads profile.signature; a deliverable is signed once.";
+            }
+        }
+
+        // ----- unused: placed nowhere and read by no template -----
+        foreach (var macro in macros)
+        {
+            var read = walk is not null && walk.Templates.Any(t => t.References.MacroTexts.Contains(macro.Id) || t.References.MacroPrompts.Contains(macro.Id));
+            if (!placed.Contains(macro.Id) && !read)
+            {
+                yield return $"Macro '{macro.Id}' is declared but never placed or read; place it on a node or a deliverable, or read macro.{macro.Id}.text / macro.{macro.Id}.prompt.";
+            }
+        }
+    }
+
+    /// <summary>
+    /// The node-level when grammar at 25 for a macro instance: a node: operand against
+    /// an enum-format node, item:id only on a node fanning a snippet folder (<paramref name="nodeId"/>
+    /// null = a deliverable, which never reads an item), inputs by the v9 rules.
+    /// </summary>
+    private IEnumerable<string> ClauseComplaints25(string prefix, string? when, string? nodeId, IReadOnlyList<WorkflowManifestReader.DataItemView> fanItems)
+    {
+        if (string.IsNullOrWhiteSpace(when))
+        {
+            yield break;
+        }
+
+        if (!PF.WorkflowResultConditions.TryParseExpression(when, out var expression, out var parseError) || expression is null)
+        {
+            yield return $"{prefix} {parseError}";
+            yield break;
+        }
+
+        foreach (var clause in expression.Leaves)
+        {
+            if (clause.IsItemValue)
+            {
+                if (nodeId is null)
+                {
+                    yield return $"{prefix} reads '{clause.Operand}', but only a node instance on a node that fans a snippet folder reads an item.";
+                }
+                else if (fanItems.Count == 0)
+                {
+                    yield return $"{prefix} reads '{clause.Operand}', but '{nodeId}' does not fan a snippet folder.";
+                }
+                else if (ItemClauseComplaint(prefix, clause, nodeId, fanItems) is { Length: > 0 } itemComplaint)
+                {
+                    yield return itemComplaint;
+                }
+
+                continue;
+            }
+
+            if (clause.IsNodeValue)
+            {
+                if (NodeClauseComplaint(prefix, clause) is { Length: > 0 } nodeComplaint)
+                {
+                    yield return nodeComplaint;
+                }
+
+                continue;
+            }
+
+            if (clause.IsArithmetic || clause.PathDepth >= 2)
+            {
+                continue;
+            }
+
+            var tested = EffectiveInputs.FirstOrDefault(input => input.Id == clause.InputId);
+
+            if (tested == null)
+            {
+                yield return $"{prefix} reads undeclared input '{clause.InputId}'.";
+                continue;
+            }
+
+            if (V9ConditionComplaint(prefix, clause, tested) is { } complaint)
+            {
+                yield return complaint;
+            }
+        }
+    }
+
     private IEnumerable<string> FormatErrors()
     {
         if (EffectiveSpecVersion < 25)
@@ -7123,7 +7461,7 @@
     private string? NodeClauseComplaint(string prefix, PF.WorkflowResultCondition clause)
     {
         var operand = clause.Operand;
-        var classifiers = EffectiveNodes.Where(node => node.IsClassifier).ToDictionary(node => node.Id, StringComparer.Ordinal);
+        var classifiers = EffectiveNodes.Where(ClassifierLike).ToDictionary(node => node.Id, StringComparer.Ordinal);
         if (clause.NodeId is null || !classifiers.TryGetValue(clause.NodeId, out var classifier))
         {
             return $"{prefix} reads '{operand}', which is not a classifier (classifiers: {string.Join(", ", classifiers.Keys.Order(StringComparer.Ordinal))}).";
@@ -7144,9 +7482,10 @@
             return $"{prefix} compares against nothing; write a value after the operator.";
         }
 
-        return classifier.Values?.Contains(clause.Literal, StringComparer.Ordinal) == true
+        var classifierValues = ClassifierValues(classifier);
+        return classifierValues?.Contains(clause.Literal, StringComparer.Ordinal) == true
             ? string.Empty
-            : $"{prefix} compares '{operand}' to '{clause.Literal}', which it does not declare (values: {string.Join(", ", classifier.Values ?? new List<string>())}).";
+            : $"{prefix} compares '{operand}' to '{clause.Literal}', which it does not declare (values: {string.Join(", ", classifierValues ?? new List<string>())}).";
     }
 
     /// <summary>v24 (#957): the desk's mirror of the validator's item:id arm — read only by a
@@ -8395,8 +8734,8 @@
             if (EffectiveSpecVersion >= 10)
             {
                 operands.AddRange(EffectiveNodes
-                    .Where(node => node.IsClassifier)
-                    .Select(node => new ConditionOperand($"{NodeKeyPrefix}{node.Id}", NodeValueType, node.Values)));
+                    .Where(ClassifierLike)
+                    .Select(node => new ConditionOperand($"{NodeKeyPrefix}{node.Id}", NodeValueType, ClassifierValues(node))));
             }
 
             foreach (var input in EffectiveInputs)
@@ -11911,6 +12250,7 @@
             unbound.AddRange(SchemaErrors());
             unbound.AddRange(FormatErrors());
             unbound.AddRange(SnippetErrors());
+            unbound.AddRange(MacroErrors25());
             unbound.AddRange(PreludeErrors());
 
             if (unbound.Count > 0)
