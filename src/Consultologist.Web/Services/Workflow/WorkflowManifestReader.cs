@@ -588,7 +588,8 @@ public static class WorkflowManifestReader
     {
         var results = new List<ResultView>();
 
-        if (!TryGetProperty(manifest, "results", out var array) || array.ValueKind != JsonValueKind.Array)
+        // v25 (A3 #998): results[] is spelled deliverables[] — the same record shape.
+        if ((!TryGetProperty(manifest, "results", out var array) && !TryGetProperty(manifest, "deliverables", out array)) || array.ValueKind != JsonValueKind.Array)
         {
             return results;
         }

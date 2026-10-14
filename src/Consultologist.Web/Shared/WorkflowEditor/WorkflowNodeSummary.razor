@@ -6,6 +6,8 @@
    pending-added variables, #140), and each card offers a "+ variable" form.
    The server validator remains the authority on publish. *@
 @using Consultologist.Web.Services.Workflow
+@using System.Text.Json
+@using PF = Consultologist.PackageFormat
 
 @foreach (var node in (Only == null ? Nodes : Nodes.Where(n => n.Id == Only)))
 {
@@ -49,6 +51,10 @@
                         {
                             <span> · template</span>
                         }
+                        @if (At25 && node.Format != null)
+                        {
+                            <span> · @FormatLabel(node.Format)</span>
+                        }
                         @if (NodeModified?.Invoke(node.Id) == true)
                         {
                             <span class="binding-row__pending" title="Pending change"> ●</span>
@@ -78,7 +84,7 @@
 
                 RenderFragment valuesField =
                     @<text>
-                        @if (node.IsClassifier)
+                        @if (!At25 && node.IsClassifier)
                         {
                             @* v10 (#498): the values a classifier may answer — the enum input's chips. *@
                             <label class="node-field node-field--wide">
@@ -111,7 +117,7 @@
 
                 RenderFragment checkFields =
                     @<text>
-                        @if (node.IsCheck)
+                        @if (!At25 && node.IsCheck)
                         {
                             @* v12 § 13 (#621): the check's four members — op is read-only. *@
                             <label class="node-field">
@@ -157,7 +163,7 @@
 
                 RenderFragment promptField =
                     @<text>
-                        @if (node.Aggregate == null && !node.IsClassifier && !node.IsCheck && AllowPromptChange)
+                        @if (TakesPrompt(node) && AllowPromptChange)
                         {
                             <label class="node-field">
                                 <span>prompt</span>
@@ -165,6 +171,11 @@
                                               Value="@(node.Prompt ?? string.Empty)"
                                               ValueChanged="@(v => EmitNodeChangeAsync(node, prompt: v))"
                                               aria-label="Node prompt">
+                                    @if (At25 && node.Prompt == null)
+                                    {
+                                        @* v25: explicit init — a node re-picked onto a prompted format names its prompt here. *@
+                                        <FluentOption TOption="string" Value="">choose…</FluentOption>
+                                    }
                                     @if (node.Prompt != null && !PromptOptions.Contains(node.Prompt))
                                     {
                                         <FluentOption TOption="string" Value="@node.Prompt">@node.Prompt</FluentOption>
@@ -180,7 +191,7 @@
 
                 RenderFragment forEachField =
                     @<text>
-                        @if (node.Aggregate == null && !node.IsClassifier && !node.IsCheck)
+                        @if (At25 ? node.Aggregate == null && !IsComputed(node) : node.Aggregate == null && !node.IsClassifier && !node.IsCheck)
                         {
                             <label class="node-field">
                                 <span>for each</span>
@@ -202,9 +213,134 @@
                         }
                     </text>;
 
+                RenderFragment formatField =
+                    @<text>
+                        @if (At25 && node.Aggregate == null)
+                        {
+                            @* v25 (C1 #1007, design § 3): the format replaces kind, output.schema, values and
+                               the check's members. Explicit init: "choose…" until the author picks; a re-pick
+                               resets the parameters and the policy, which belong to the old format. *@
+                            <label class="node-field">
+                                <span>format</span>
+                                <FluentSelect TOption="string" class="binding-row__select node-format"
+                                              Value="@(node.Format ?? string.Empty)"
+                                              ValueChanged="@(v => EmitFormatAsync(node, v))"
+                                              aria-label="Node format">
+                                    <FluentOption TOption="string" Value="">choose…</FluentOption>
+                                    @if (node.Format != null && FormatOptions.All(f => f.Id != node.Format))
+                                    {
+                                        <FluentOption TOption="string" Value="@node.Format">@node.Format</FluentOption>
+                                    }
+                                    @foreach (var format in FormatOptions)
+                                    {
+                                        <FluentOption TOption="string" Value="@format.Id">@format.Id — @format.Producer</FluentOption>
+                                    }
+                                </FluentSelect>
+                            </label>
+                            @if (FormatOf(node) is { Description: { Length: > 0 } formatDescription })
+                            {
+                                <p class="muted-text node-field--wide node-format__description">@formatDescription</p>
+                            }
+                        }
+                    </text>;
+
+                RenderFragment parametersField =
+                    @<text>
+                        @if (At25 && node.Aggregate == null && FormatOf(node) is { Parameters: { Count: > 0 } formatParameters })
+                        {
+                            @* v25: the format's declared parameters as fields, each writing the node's with. *@
+                            @foreach (var parameter in formatParameters)
+                            {
+                                var parameterName = parameter.Name;
+                                @if (parameter.Kind == PF.WorkflowFormatParameterKinds.Values)
+                                {
+                                    <label class="node-field node-field--wide">
+                                        <span>@parameterName</span>
+                                        <span class="node-values" data-values-for="@node.Id">
+                                            @foreach (var value in WithStrings(node, parameterName))
+                                            {
+                                                var declaredValue = value;
+                                                <span class="input-field__chip" data-node-value="@declaredValue">
+                                                    @declaredValue
+                                                    <span @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                                                        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove value"
+                                                                      aria-label="@($"Remove value {declaredValue}")"
+                                                                      IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                                      @onclick="() => EmitWithStringsAsync(node, parameterName, WithStrings(node, parameterName).Where(v => v != declaredValue).ToList())" />
+                                                    </span>
+                                                </span>
+                                            }
+                                            <input class="node-field__input" placeholder="in_scope"
+                                                   @onchange="args => AddWithValueAsync(node, parameterName, args.Value?.ToString())"
+                                                   aria-label="@($"Add a value to node {node.Id}")" />
+                                        </span>
+                                    </label>
+                                    @if (valuesError is { } valuesProblem)
+                                    {
+                                        <span class="editor-warning">@valuesProblem</span>
+                                    }
+                                }
+                                else if (parameter.Kind == PF.WorkflowFormatParameterKinds.Node)
+                                {
+                                    var operands = NodeOperandOptions?.Invoke(parameter.Format) ?? Array.Empty<(string, string)>();
+                                    var current = WithString(node, parameterName) ?? string.Empty;
+                                    <label class="node-field">
+                                        <span>@parameterName@(parameter.Format != null ? $" — a {parameter.Format} node" : "")</span>
+                                        <FluentSelect TOption="string" class="binding-row__select node-with" data-with="@parameterName"
+                                                      Value="@current"
+                                                      ValueChanged="@(v => EmitWithStringAsync(node, parameterName, v))"
+                                                      aria-label="@($"{parameterName} for node {node.Id}")">
+                                            <FluentOption TOption="string" Value="">choose…</FluentOption>
+                                            @if (current.Length > 0 && operands.All(o => o.Ref != current))
+                                            {
+                                                <FluentOption TOption="string" Value="@current">@current</FluentOption>
+                                            }
+                                            @foreach (var (operandRef, operandLabel) in operands)
+                                            {
+                                                <FluentOption TOption="string" Value="@operandRef">@operandLabel</FluentOption>
+                                            }
+                                        </FluentSelect>
+                                    </label>
+                                }
+                                else
+                                {
+                                    <label class="node-field node-field--wide">
+                                        <span>@parameterName</span>
+                                        <input class="binding-row__select node-field__input node-with" data-with="@parameterName"
+                                               value="@(WithString(node, parameterName) ?? string.Empty)"
+                                               @onchange="args => EmitWithStringAsync(node, parameterName, args.Value?.ToString())"
+                                               aria-label="@($"{parameterName} for node {node.Id}")" />
+                                    </label>
+                                }
+                            }
+                        }
+                    </text>;
+
+                RenderFragment onInvalidField =
+                    @<text>
+                        @if (At25 && node.Aggregate == null && FormatOf(node) is { Validatable: true })
+                        {
+                            @* v25 (design § 3.4): the policy when the reply fails the format's validation.
+                               retry is accepted by the format but reserved — it runs as fail until its rung. *@
+                            <label class="node-field">
+                                <span>on invalid</span>
+                                <FluentSelect TOption="string" class="binding-row__select node-on-invalid"
+                                              Value="@(node.OnInvalid ?? string.Empty)"
+                                              ValueChanged="@(v => EmitNodeChangeAsync(node, onInvalid: v))"
+                                              aria-label="Node on-invalid policy">
+                                    <FluentOption TOption="string" Value="">choose…</FluentOption>
+                                    @foreach (var policy in PF.WorkflowOnInvalid.All)
+                                    {
+                                        <FluentOption TOption="string" Value="@policy">@OnInvalidLabel(policy)</FluentOption>
+                                    }
+                                </FluentSelect>
+                            </label>
+                        }
+                    </text>;
+
                 RenderFragment outputField =
                     @<text>
-                        @if (node.Aggregate == null && !node.IsClassifier && !node.IsCheck)
+                        @if (!At25 && node.Aggregate == null && !node.IsClassifier && !node.IsCheck)
                         {
                             <label class="node-field">
                                 <span>output</span>
@@ -232,7 +368,7 @@
 
                 RenderFragment failIfEmptyField =
                     @<text>
-                        @if (node.Aggregate == null && !node.IsClassifier && !node.IsCheck && node.OutputSchema != null)
+                        @if (At25 ? node.Aggregate == null && FormatOf(node) is { JudgesReply: true } : node.Aggregate == null && !node.IsClassifier && !node.IsCheck && node.OutputSchema != null)
                         {
                             <label class="node-field node-field--wide">
                                 <span>fail if empty</span>
@@ -266,9 +402,9 @@
             {
                 <div class="node-section">
                     <span class="node-section__head">Identity</span>
-                    <div class="node-fields">@labelField@forEachField@outputField</div>
+                    <div class="node-fields">@labelField@forEachField@formatField@outputField</div>
                 </div>
-                @if (node.Aggregate == null && !node.IsClassifier && !node.IsCheck && AllowPromptChange)
+                @if (TakesPrompt(node) && AllowPromptChange)
                 {
                     <div class="node-section">
                         <span class="node-section__head">Prompt</span>
@@ -277,13 +413,13 @@
                 }
                 <div class="node-section">
                     <span class="node-section__head">Options</span>
-                    <div class="node-fields">@reproducibleField@failIfEmptyField@valuesField@checkFields</div>
+                    <div class="node-fields">@reproducibleField@failIfEmptyField@valuesField@checkFields@parametersField@onInvalidField</div>
                     @OptionsExtra
                 </div>
             }
             else
             {
-                <div class="node-fields">@labelField@valuesField@checkFields@promptField@forEachField@outputField@failIfEmptyField@reproducibleField</div>
+                <div class="node-fields">@labelField@valuesField@checkFields@formatField@parametersField@onInvalidField@promptField@forEachField@outputField@failIfEmptyField@reproducibleField</div>
             }
         }
         @{
@@ -461,7 +597,27 @@
         bool Reproducible = false,
         // v12 § 13 (#621): the check's editable members — effective values on
         // every emission, the Reproducible rule, so no edit clobbers another.
-        string? Of = null, string? In = null, string? FailWith = null);
+        string? Of = null, string? In = null, string? FailWith = null,
+        // v25 (C1 #1007): the format, its parameters and the invalid-reply policy —
+        // effective values on every emission, the same rule; null on every ≤24 node.
+        string? Format = null, IReadOnlyDictionary<string, JsonElement>? With = null, string? OnInvalid = null);
+
+    /// <summary>
+    /// v25 (C1 #1007): one format the picker offers — a catalogue entry or a package
+    /// format — with the facts the fields need: its producer and type, whether the
+    /// engine validates the reply (an object or enum shape), whether there is a reply
+    /// to judge empty (an agent writes it), and its declared parameters in order.
+    /// </summary>
+    public sealed record FormatOption(string Id, string Producer, string Type, string? Description, IReadOnlyList<FormatParameter> Parameters)
+    {
+        public bool Validatable => Type is "object" or "enum";
+
+        public bool JudgesReply => Producer is PF.WorkflowFormatProducers.Attested or PF.WorkflowFormatProducers.Custom;
+
+        public bool Computed => Producer == PF.WorkflowFormatProducers.Computed;
+    }
+
+    public sealed record FormatParameter(string Name, string Kind, string? Format);
 
     /// <summary>An aggregator's full effective ordered source list after one change (#117).</summary>
     public sealed record AggregateChange(string NodeId, List<string> Sources);
@@ -485,6 +641,103 @@
     // v12 § 13 (#621): the operand choices a check's of/in may name —
     // (node:<id>, "<id> — <schema>") pairs, built by the page.
     [Parameter] public IReadOnlyList<(string Ref, string Label)> CheckOperandOptions { get; set; } = Array.Empty<(string, string)>();
+
+    // v25 (C1 #1007): the formats the picker offers — empty below 25, which is the
+    // gate for every 25 field — and the node operands a node-kind parameter may name
+    // (node.<id>), filtered by the page to the parameter's required format.
+    [Parameter] public IReadOnlyList<FormatOption> FormatOptions { get; set; } = Array.Empty<FormatOption>();
+    [Parameter] public Func<string?, IReadOnlyList<(string Ref, string Label)>>? NodeOperandOptions { get; set; }
+
+    private bool At25 => FormatOptions.Count > 0;
+
+    private FormatOption? FormatOf(WorkflowManifestReader.NodeView node) =>
+        node.Format == null ? null : FormatOptions.FirstOrDefault(f => f.Id == node.Format);
+
+    private string FormatLabel(string formatId) =>
+        FormatOptions.FirstOrDefault(f => f.Id == formatId) is { } format ? $"{format.Id} · {format.Producer}" : formatId;
+
+    private bool IsComputed(WorkflowManifestReader.NodeView node) => FormatOf(node)?.Computed == true;
+
+    /// <summary>Whether the node drives a prompt: below 25 every non-aggregator but a check; at 25 every non-aggregator whose format is not computed.</summary>
+    private bool TakesPrompt(WorkflowManifestReader.NodeView node) =>
+        At25 ? node.Aggregate == null && !IsComputed(node)
+             : node.Aggregate == null && !node.IsClassifier && !node.IsCheck;
+
+    internal static string OnInvalidLabel(string policy) =>
+        policy == PF.WorkflowOnInvalid.Retry ? $"{policy} — reserved: runs as fail until its rung" : policy;
+
+    private static string? WithString(WorkflowManifestReader.NodeView node, string name) =>
+        node.With != null && node.With.TryGetValue(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    private static IReadOnlyList<string> WithStrings(WorkflowManifestReader.NodeView node, string name) =>
+        node.With != null && node.With.TryGetValue(name, out var value) && value.ValueKind == JsonValueKind.Array
+            ? value.EnumerateArray().Where(v => v.ValueKind == JsonValueKind.String).Select(v => v.GetString()!).ToList()
+            : Array.Empty<string>();
+
+    private static IReadOnlyDictionary<string, JsonElement>? WithSet(IReadOnlyDictionary<string, JsonElement>? with, string name, JsonElement? value)
+    {
+        var next = with == null ? new Dictionary<string, JsonElement>(StringComparer.Ordinal) : new Dictionary<string, JsonElement>(with, StringComparer.Ordinal);
+        if (value is { } element)
+        {
+            next[name] = element;
+        }
+        else
+        {
+            next.Remove(name);
+        }
+
+        return next.Count == 0 ? null : next;
+    }
+
+    private Task EmitFormatAsync(WorkflowManifestReader.NodeView node, string? format)
+    {
+        var next = string.IsNullOrEmpty(format) ? null : format;
+        if (next == node.Format)
+        {
+            return Task.CompletedTask;
+        }
+
+        // A re-pick resets with and onInvalid — they belong to the old format.
+        return OnNodeChanged.InvokeAsync(new NodeChange(node.Id, node.Label, node.ForEach, node.OutputSchema, node.FailIfEmpty, node.Prompt, node.Values, node.Reproducible, node.Of, node.In, node.FailWith,
+            Format: next, With: null, OnInvalid: null));
+    }
+
+    private Task EmitWithStringAsync(WorkflowManifestReader.NodeView node, string name, string? value)
+    {
+        var trimmed = value?.Trim();
+        var with = WithSet(node.With, name, string.IsNullOrEmpty(trimmed) ? null : JsonSerializer.SerializeToElement(trimmed));
+        return OnNodeChanged.InvokeAsync(new NodeChange(node.Id, node.Label, node.ForEach, node.OutputSchema, node.FailIfEmpty, node.Prompt, node.Values, node.Reproducible, node.Of, node.In, node.FailWith,
+            node.Format, with, node.OnInvalid));
+    }
+
+    private Task EmitWithStringsAsync(WorkflowManifestReader.NodeView node, string name, List<string> values)
+    {
+        var with = WithSet(node.With, name, JsonSerializer.SerializeToElement(values));
+        return OnNodeChanged.InvokeAsync(new NodeChange(node.Id, node.Label, node.ForEach, node.OutputSchema, node.FailIfEmpty, node.Prompt, node.Values, node.Reproducible, node.Of, node.In, node.FailWith,
+            node.Format, with, node.OnInvalid));
+    }
+
+    /// <summary>v25: a values parameter's next value — snake_case, not yet declared (the v10 classifier rule).</summary>
+    private async Task AddWithValueAsync(WorkflowManifestReader.NodeView node, string name, string? value)
+    {
+        var candidate = (value ?? string.Empty).Trim();
+
+        if (!System.Text.RegularExpressions.Regex.IsMatch(candidate, "^[a-z][a-z0-9_]*$"))
+        {
+            valuesError = $"Value '{candidate}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
+            return;
+        }
+
+        var current = WithStrings(node, name);
+        if (current.Contains(candidate, StringComparer.Ordinal))
+        {
+            valuesError = $"Node '{node.Id}' already declares '{candidate}'.";
+            return;
+        }
+
+        valuesError = null;
+        await EmitWithStringsAsync(node, name, current.Append(candidate).ToList());
+    }
     [Parameter] public bool AllowPromptChange { get; set; }
     [Parameter] public string? Only { get; set; }
 
@@ -590,10 +843,10 @@
     }
 
     private Task EmitReproducibleAsync(WorkflowManifestReader.NodeView node, bool reproducible) =>
-        OnNodeChanged.InvokeAsync(new NodeChange(node.Id, node.Label, node.ForEach, node.OutputSchema, node.FailIfEmpty, node.Prompt, node.Values, reproducible, node.Of, node.In, node.FailWith));
+        OnNodeChanged.InvokeAsync(new NodeChange(node.Id, node.Label, node.ForEach, node.OutputSchema, node.FailIfEmpty, node.Prompt, node.Values, reproducible, node.Of, node.In, node.FailWith, node.Format, node.With, node.OnInvalid));
 
     private Task EmitValuesAsync(WorkflowManifestReader.NodeView node, List<string> values) =>
-        OnNodeChanged.InvokeAsync(new NodeChange(node.Id, node.Label, node.ForEach, node.OutputSchema, node.FailIfEmpty, node.Prompt, values, node.Reproducible, node.Of, node.In, node.FailWith));
+        OnNodeChanged.InvokeAsync(new NodeChange(node.Id, node.Label, node.ForEach, node.OutputSchema, node.FailIfEmpty, node.Prompt, values, node.Reproducible, node.Of, node.In, node.FailWith, node.Format, node.With, node.OnInvalid));
 
     private async Task EmitNodeChangeAsync(
         WorkflowManifestReader.NodeView node,
@@ -604,7 +857,8 @@
         string? prompt = null,
         string? checkOf = null,
         string? checkIn = null,
-        string? failWith = null)
+        string? failWith = null,
+        string? onInvalid = null)
     {
         var effectiveLabel = label ?? node.Label;
         var effectiveForEach = forEach != null ? (forEach.Length == 0 ? null : forEach) : node.ForEach;
@@ -614,8 +868,9 @@
             : node.FailIfEmpty;
         var effectivePrompt = string.IsNullOrEmpty(prompt) ? node.Prompt : prompt;
 
-        // Dropping the contract drops its empty-output message too.
-        if (effectiveSchema is null)
+        // Dropping the contract drops its empty-output message too (≤24; at 25
+        // failIfEmpty rides the format, which the pane gates itself).
+        if (effectiveSchema is null && !At25)
         {
             effectiveFailIfEmpty = null;
         }
@@ -623,10 +878,12 @@
         var effectiveOf = checkOf != null ? (checkOf.Length == 0 ? null : checkOf) : node.Of;
         var effectiveIn = checkIn != null ? (checkIn.Length == 0 ? null : checkIn) : node.In;
         var effectiveFailWith = failWith != null ? (failWith.Length == 0 ? null : failWith) : node.FailWith;
+        var effectiveOnInvalid = onInvalid != null ? (onInvalid.Length == 0 ? null : onInvalid) : node.OnInvalid;
 
         // #572: the effective values ride every emission, the Reproducible
         // rule — a null here let a label edit clobber a pending values edit.
-        await OnNodeChanged.InvokeAsync(new NodeChange(node.Id, effectiveLabel, effectiveForEach, effectiveSchema, effectiveFailIfEmpty, effectivePrompt, node.Values, Reproducible: node.Reproducible, Of: effectiveOf, In: effectiveIn, FailWith: effectiveFailWith));
+        await OnNodeChanged.InvokeAsync(new NodeChange(node.Id, effectiveLabel, effectiveForEach, effectiveSchema, effectiveFailIfEmpty, effectivePrompt, node.Values, Reproducible: node.Reproducible, Of: effectiveOf, In: effectiveIn, FailWith: effectiveFailWith,
+            Format: node.Format, With: node.With, OnInvalid: effectiveOnInvalid));
     }
 
     private sealed class AddForm

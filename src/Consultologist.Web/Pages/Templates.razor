@@ -1479,6 +1479,8 @@
                                              AllowPromptChange="@(EffectiveSpecVersion >= 6)"
                                              OfferReproducible="@(EffectiveSpecVersion >= 11)"
                                              CheckOperandOptions="@CheckOperandChoices"
+                                             FormatOptions="@FormatOptions"
+                                             NodeOperandOptions="@NodeOperandChoices"
                                              NodeModified="@(id => nodeEdits.ContainsKey(id) || nodeWhenEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id))"
                                              RemovedNodes="@RemovedNodes"
                                              RowsFor="@RowsFor"
@@ -1573,7 +1575,9 @@
                             <div>
                                 <h3 class="panel-title">New node</h3>
                                 <p class="muted-text">
-                                    @(newNodeKind == "aggregator"
+                                    @(EffectiveSpecVersion >= 25
+                                        ? "Pick the node's format: what it produces and who produces it. A prompted format creates the node and its prompt together; a computed format takes its operands as parameters and no prompt; an aggregator collects other nodes' outputs."
+                                        : newNodeKind == "aggregator"
                                         ? "A deterministic aggregator: collects other nodes' outputs in order, no prompt."
                                         : newNodeKind == ClassifierKind
                                             ? "A classifier: a prompt that answers one of the values it declares, which a deliverable's condition may test as node:<id>. Its values are declared on the node's card."
@@ -1590,6 +1594,25 @@
                             <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false">@newNodeError</FluentMessageBar>
                         }
                         <div class="new-item-fields">
+                            @if (EffectiveSpecVersion >= 25)
+                            {
+                                @* v25 (C1 #1007): the format replaces the kind — an aggregator or one
+                                   of the formats the picker offers. Explicit init: born unchosen, refused
+                                   until picked. *@
+                                <label class="input-field">
+                                    <span>format</span>
+                                    <FluentSelect TOption="string" class="binding-row__select new-node-format" @bind-Value="newNodeFormat" aria-label="New node format">
+                                        <FluentOption TOption="string" Value="">choose…</FluentOption>
+                                        <FluentOption TOption="string" Value="@AggregatorChoice">aggregator — collects other nodes' outputs in order, no prompt</FluentOption>
+                                        @foreach (var format in FormatOptions)
+                                        {
+                                            <FluentOption TOption="string" Value="@format.Id">@format.Id — @format.Producer</FluentOption>
+                                        }
+                                    </FluentSelect>
+                                </label>
+                            }
+                            else
+                            {
                             <label class="input-field">
                                 <span>kind</span>
                                 <FluentSelect TOption="string" class="binding-row__select" @bind-Value="newNodeKind">
@@ -1611,6 +1634,7 @@
                                     }
                                 </FluentSelect>
                             </label>
+                            }
                             <label class="input-field">
                                 <span>id (lowercase, letters/digits/-/_)@(newNodePrompt.Length > 0 ? " — optional, defaults to the prompt's name" : "")</span>
                                 <FluentTextField @bind-Value="newNodeId" Placeholder="@(newNodePrompt.Length > 0 ? newNodePrompt : "summarize-guidelines")" />
@@ -1619,7 +1643,7 @@
                                 <span>label@(newNodePrompt.Length > 0 ? " — optional, defaults to the prompt's name" : "")</span>
                                 <FluentTextField @bind-Value="newNodeLabel" Placeholder="Summarizing guidelines" />
                             </label>
-                            @if (newNodeKind == CheckKind)
+                            @if (EffectiveSpecVersion < 25 && newNodeKind == CheckKind)
                             {
                                 @* Explicit init: of and in start unchosen; the desk
                                    refuses publish with the validator's sentences
@@ -1658,7 +1682,7 @@
                                     <FluentTextField Class="new-node-failwith" @bind-Value="newNodeFailWith" Placeholder="The note does not cover every clinical term found in the referral." />
                                 </label>
                             }
-                            @if (newNodeKind != "aggregator" && newNodeKind != CheckKind)
+                            @if (EffectiveSpecVersion >= 25 ? NewNodeTakesPrompt : newNodeKind != "aggregator" && newNodeKind != CheckKind)
                             {
                                 @if (EffectiveSpecVersion >= 6)
                                 {
@@ -1673,7 +1697,7 @@
                                         </FluentSelect>
                                     </label>
                                 }
-                                @if (newNodeKind != ClassifierKind)
+                                @if (EffectiveSpecVersion >= 25 || newNodeKind != ClassifierKind)
                                 {
                                 <label class="input-field">
                                     <span>for each</span>
@@ -1685,6 +1709,8 @@
                                         }
                                     </FluentSelect>
                                 </label>
+                                @if (EffectiveSpecVersion < 25)
+                                {
                                 <label class="input-field">
                                     <span>output</span>
                                     <FluentSelect TOption="string" class="binding-row__select" @bind-Value="newNodeOutput">
@@ -1699,6 +1725,7 @@
                                 @if (newNodeKind == TemplateKind)
                                 {
                                     <p class="muted-text">The template renders this; a contract here validates the render, it does not call a model.</p>
+                                }
                                 }
                                 }
                             }
@@ -1761,6 +1788,8 @@
                                              AllowPromptChange="@(EffectiveSpecVersion >= 6)"
                                              OfferReproducible="@(EffectiveSpecVersion >= 11)"
                                              CheckOperandOptions="@CheckOperandChoices"
+                                             FormatOptions="@FormatOptions"
+                                             NodeOperandOptions="@NodeOperandChoices"
                                              NodeModified="@(id => nodeEdits.ContainsKey(id) || nodeWhenEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id))"
                                              RowsFor="@RowsFor"
                                              ValidateVariableName="@ValidateVariableNameForNode"
@@ -4156,12 +4185,30 @@
         public string? In { get; set; }
         public string? FailWith { get; set; }
 
+        // v25 (C1 #1007): the format, its parameters and the invalid-reply policy;
+        // Computed = the format takes no prompt (no prompt entry is minted).
+        public string? Format { get; set; }
+        public Dictionary<string, JsonElement>? With { get; set; }
+        public string? OnInvalid { get; set; }
+        public bool Computed { get; set; }
+
         public bool IsClassifier => Kind == ClassifierKind;
 
         public bool IsCheck => Kind == CheckKind;
 
         public bool IsTemplate => Kind == TemplateKind;
+
+        /// <summary>Whether the node mints or names a prompt: never for an aggregator, a check or a computed format.</summary>
+        public bool HasPrompt => Aggregate == null && !IsCheck && !Computed;
     }
+
+    // v25 (C1 #1007): the "+ Node" form's format choice; this word is the aggregator.
+    private const string AggregatorChoice = "aggregator";
+    private string newNodeFormat = string.Empty;
+
+    private bool NewNodeTakesPrompt =>
+        newNodeFormat.Length > 0 && newNodeFormat != AggregatorChoice
+        && FormatOptions.FirstOrDefault(f => f.Id == newNodeFormat)?.Computed != true;
 
     /// <summary>The one node kind a manifest spells (v10): prompt is the default and aggregator a property.</summary>
     private const string ClassifierKind = "classifier";
@@ -4183,6 +4230,121 @@
             .Where(n => n.HasOutput && n.Aggregate == null && !n.IsCheck)
             .Select(n => ($"node:{n.Id}", $"{n.Id} — {n.OutputSchema}"))
             .ToList();
+
+    // ----- v25 (C1 #1007): the formats the node pane picks from -----
+
+    // The engine's pinned formats catalogue, read once per load at 25 (null when
+    // the endpoint is unavailable — the picker then offers the package's own
+    // formats and says so).
+    private WorkflowFormatsView? formatsCatalog;
+    private bool formatsCatalogUnavailable;
+
+    private async Task LoadFormatsCatalogAsync()
+    {
+        formatsCatalog = null;
+        formatsCatalogUnavailable = false;
+        if (EffectiveSpecVersion < 25)
+        {
+            return;
+        }
+
+        formatsCatalog = await WorkflowService.GetFormatsAsync();
+        formatsCatalogUnavailable = formatsCatalog == null;
+    }
+
+    /// <summary>
+    /// What the picker offers at 25 — the catalogue's formats, then the package's
+    /// own (custom) formats whose files read as a spec. Empty below 25: the card's
+    /// gate for every 25 field.
+    /// </summary>
+    private IReadOnlyList<WorkflowNodeSummary.FormatOption> FormatOptions =>
+        EffectiveSpecVersion < 25 || content == null
+            ? Array.Empty<WorkflowNodeSummary.FormatOption>()
+            : (formatsCatalog?.Formats ?? Array.Empty<WorkflowFormatEntryView>())
+                .Select(entry => new WorkflowNodeSummary.FormatOption(
+                    entry.Id,
+                    entry.Producer ?? string.Empty,
+                    entry.Type ?? string.Empty,
+                    entry.Description,
+                    (entry.Parameters ?? new Dictionary<string, WorkflowFormatParameterView>())
+                        .Select(pair => new WorkflowNodeSummary.FormatParameter(pair.Key, pair.Value.Kind ?? string.Empty, pair.Value.Format))
+                        .ToList()))
+                .Concat(LocalFormatOptions)
+                .ToList();
+
+    /// <summary>The package's own formats as options — each file read as a spec; one that does not read is listed by id alone, so a node naming it keeps its pick.</summary>
+    private IEnumerable<WorkflowNodeSummary.FormatOption> LocalFormatOptions =>
+        LiveFormats.Select(format =>
+        {
+            var spec = PF.WorkflowFormatSpecJson.TryRead(GetText(format.File), $"Format '{format.Id}'", new List<string>(), out var read) ? read : null;
+            return new WorkflowNodeSummary.FormatOption(
+                format.Id,
+                spec?.Producer ?? PF.WorkflowFormatProducers.Custom,
+                spec?.Type ?? "object",
+                spec?.Description,
+                (spec?.Parameters ?? new Dictionary<string, PF.WorkflowFormatParameterSpec>())
+                    .Select(pair => new WorkflowNodeSummary.FormatParameter(pair.Key, pair.Value.Kind, pair.Value.Format))
+                    .ToList());
+        });
+
+    private IReadOnlyList<WorkflowManifestReader.FormatView> DeclaredFormats =>
+        content == null
+            ? Array.Empty<WorkflowManifestReader.FormatView>()
+            : WorkflowManifestReader.ReadFormats(content.Manifest);
+
+    /// <summary>The package's formats as the panes see them (declared; the Formats pane adds and removes).</summary>
+    private IEnumerable<WorkflowManifestReader.FormatView> LiveFormats => DeclaredFormats;
+
+    /// <summary>
+    /// v25: what a node-kind parameter may name — node.&lt;id&gt; over the nodes with a
+    /// format, narrowed to the parameter's required format when it declares one;
+    /// labeled with the format so the author sees the contract.
+    /// </summary>
+    private IReadOnlyList<(string Ref, string Label)> NodeOperandChoices(string? requiredFormat) =>
+        EffectiveNodes
+            .Where(n => n.Aggregate == null && n.Format != null && (requiredFormat == null || n.Format == requiredFormat))
+            .Select(n => ($"node.{n.Id}", $"{n.Id} — {n.Format}"))
+            .ToList();
+
+    /// <summary>A node's with as a manifest object (each value the JSON the pane holds), or null when empty.</summary>
+    private static System.Text.Json.Nodes.JsonObject? WithNode(IReadOnlyDictionary<string, JsonElement>? with)
+    {
+        if (with == null || with.Count == 0)
+        {
+            return null;
+        }
+
+        var node = new System.Text.Json.Nodes.JsonObject();
+        foreach (var (name, value) in with)
+        {
+            node[name] = System.Text.Json.Nodes.JsonNode.Parse(value.GetRawText());
+        }
+
+        return node;
+    }
+
+    private static bool WithEquals(IReadOnlyDictionary<string, JsonElement>? a, IReadOnlyDictionary<string, JsonElement>? b)
+    {
+        if ((a?.Count ?? 0) != (b?.Count ?? 0))
+        {
+            return false;
+        }
+
+        if (a == null || b == null)
+        {
+            return true;
+        }
+
+        foreach (var (name, value) in a)
+        {
+            if (!b.TryGetValue(name, out var other) || other.GetRawText() != value.GetRawText())
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     // Standalone pending prompts (#170): publishable only once some node
     // points at them (the orphan rule).
@@ -4270,7 +4432,7 @@
     // not an aggregator) whose id is this prompt — the prompt is named after
     // the node. Returns null for a declared or standalone-added prompt.
     private AddedNode? AddedNodeOwnPrompt(string promptId) =>
-        addedNodes.FirstOrDefault(a => a.Aggregate == null && a.PromptRef == null && a.Id == promptId);
+        addedNodes.FirstOrDefault(a => a.HasPrompt && a.PromptRef == null && a.Id == promptId);
 
     /// <summary>Whether the raw toggle applies to this prompt — declared, or a prompt still
     /// pending (a standalone added prompt, or the fresh prompt an added node mints).</summary>
@@ -4522,8 +4684,8 @@
     private WorkflowManifestReader.NodeView AddedNodeView(AddedNode added) => new(
         added.Id,
         added.Label,
-        // v12 § 13 (#621): a check has no prompt family at all.
-        added.Aggregate != null || added.IsCheck ? null : added.PromptRef ?? added.Id,
+        // v12 § 13 (#621): a check has no prompt family at all; v25: nor a computed format.
+        added.HasPrompt ? added.PromptRef ?? added.Id : null,
         added.ForEach,
         Array.Empty<WorkflowManifestReader.BindingView>(),
         IsResult: DeliverableRootIds.Contains(added.Id),
@@ -4537,7 +4699,10 @@
         Op: added.Op,
         Of: added.Of,
         In: added.In,
-        FailWith: added.FailWith);
+        FailWith: added.FailWith,
+        Format: added.Format,
+        With: added.With,
+        OnInvalid: added.OnInvalid);
 
     // Pending v7 declarations, each the whole list when dirty (the
     // aggregate-source idiom) and null when unchanged.
@@ -5303,16 +5468,31 @@
                     errors.Add($"Result '{result.Id}' references {{{{profile:signature}}}} more than once across its macros; a deliverable is signed once.");
                 }
 
-                // The result's check shape.
-                if (result.Check is { } check)
+                // The result's check shape. v25 (C1 #1007): the check is node.<id>
+                // naming a node whose format is computed; the ≤24 kind rule stays below 25.
+                if (result.Check is { } check && EffectiveSpecVersion >= 25)
                 {
-                    if (!check.StartsWith("node:", StringComparison.Ordinal))
+                    var checkNodeId = check.StartsWith("node.", StringComparison.Ordinal) ? check["node.".Length..]
+                        : check.StartsWith("node:", StringComparison.Ordinal) ? check["node:".Length..] : null;
+                    if (checkNodeId == null)
                     {
-                        errors.Add($"Result '{result.Id}' check '{check}' must be a node:<id> reference.");
+                        errors.Add($"Deliverable '{result.Id}' check '{check}' must be a node.<id> reference.");
                     }
-                    else if (EffectiveNodes.FirstOrDefault(n => n.Id == check["node:".Length..]) is not { IsCheck: true })
+                    else if (EffectiveNodes.FirstOrDefault(n => n.Id == checkNodeId) is not { } checkNode
+                        || FormatOptions.FirstOrDefault(f => f.Id == checkNode.Format)?.Computed != true)
                     {
-                        errors.Add($"Result '{result.Id}' check names '{check["node:".Length..]}', which is not a check node.");
+                        errors.Add($"Deliverable '{result.Id}' check names '{checkNodeId}', whose format is not computed.");
+                    }
+                }
+                else if (result.Check is { } check24)
+                {
+                    if (!check24.StartsWith("node:", StringComparison.Ordinal))
+                    {
+                        errors.Add($"Result '{result.Id}' check '{check24}' must be a node:<id> reference.");
+                    }
+                    else if (EffectiveNodes.FirstOrDefault(n => n.Id == check24["node:".Length..]) is not { IsCheck: true })
+                    {
+                        errors.Add($"Result '{result.Id}' check names '{check24["node:".Length..]}', which is not a check node.");
                     }
                 }
             }
@@ -7042,9 +7222,13 @@
     private ConditionTarget NodeConditionTarget(WorkflowManifestReader.NodeView node) =>
         new($"node-when:{node.Id}", node.Id, NodeWhenValue(node), text => SetNodeWhen(node.Id, text));
 
-    // #948: the node's kind as it reads in the pane's identity strip.
-    private static string NodeKindLabel(WorkflowManifestReader.NodeView node) =>
-        node.IsClassifier ? "classifier"
+    // #948: the node's kind as it reads in the pane's identity strip; v25: the
+    // format and its producer (the record's ContractLabel idiom).
+    private string NodeKindLabel(WorkflowManifestReader.NodeView node) =>
+        EffectiveSpecVersion >= 25 && node.Aggregate == null
+            ? node.Format == null ? "no format yet"
+                : FormatOptions.FirstOrDefault(f => f.Id == node.Format) is { } format ? $"{format.Id} · {format.Producer}" : node.Format
+        : node.IsClassifier ? "classifier"
         : node.IsCheck ? "check"
         : node.IsTemplate ? "template"
         : node.Aggregate != null ? "aggregator"
@@ -7881,7 +8065,11 @@
                         // v12 § 13: the check's editable members ride too.
                         Of = edit.Of,
                         In = edit.In,
-                        FailWith = edit.FailWith
+                        FailWith = edit.FailWith,
+                        // v25: the format, its parameters and the policy ride too.
+                        Format = edit.Format,
+                        With = edit.With,
+                        OnInvalid = edit.OnInvalid
                     };
                 }
 
@@ -7905,7 +8093,7 @@
     private IReadOnlyList<WorkflowManifestReader.PromptView> EffectivePrompts =>
         prompts.Where(p => nodes.Any(n => n.Prompt == p.Id && !removedNodeIds.Contains(n.Id))
                 || !nodes.Any(n => n.Prompt == p.Id))
-            .Concat(addedNodes.Where(a => a.Aggregate == null && a.PromptRef == null).Select(a => new WorkflowManifestReader.PromptView(
+            .Concat(addedNodes.Where(a => a.HasPrompt && a.PromptRef == null).Select(a => new WorkflowManifestReader.PromptView(
                 a.Id, AddedPromptFile(a.Id), Array.Empty<string>(), null, a.Raw)))
             .Concat(addedPrompts.Select(p => new WorkflowManifestReader.PromptView(
                 p.Id, AddedStandalonePromptFile(p.Id), Array.Empty<string>(), null, p.Raw)))
@@ -8101,11 +8289,20 @@
 
     private async Task AddNodeAsync()
     {
-        var aggregator = newNodeKind == "aggregator";
-        var classifier = newNodeKind == ClassifierKind;
-        var check = newNodeKind == CheckKind;
-        var template = newNodeKind == TemplateKind;
-        var promptRef = aggregator || check || newNodePrompt.Length == 0 ? null : newNodePrompt;
+        var at25 = EffectiveSpecVersion >= 25;
+        if (at25 && newNodeFormat.Length == 0)
+        {
+            newNodeError = "Choose a format — or aggregator.";
+            return;
+        }
+
+        var aggregator = at25 ? newNodeFormat == AggregatorChoice : newNodeKind == "aggregator";
+        var classifier = !at25 && newNodeKind == ClassifierKind;
+        var check = !at25 && newNodeKind == CheckKind;
+        var template = !at25 && newNodeKind == TemplateKind;
+        var format = at25 && !aggregator ? newNodeFormat : null;
+        var computed = format != null && FormatOptions.FirstOrDefault(f => f.Id == format)?.Computed == true;
+        var promptRef = aggregator || check || computed || newNodePrompt.Length == 0 ? null : newNodePrompt;
 
         // With an existing prompt chosen, the node defaults to the prompt's
         // own name — the house convention (node and prompt sharing an id is
@@ -8136,7 +8333,7 @@
 
         // Only a freshly minted prompt (named after the node) can collide
         // with an existing prompt id.
-        if (promptRef == null && !aggregator && !check && EffectivePrompts.Any(p => p.Id == id))
+        if (promptRef == null && !aggregator && !check && !computed && EffectivePrompts.Any(p => p.Id == id))
         {
             newNodeError = $"A prompt named '{id}' already exists — choose it in the prompt field, or pick another node id.";
             return;
@@ -8151,8 +8348,8 @@
         {
             Id = id,
             Label = label,
-            ForEach = aggregator || classifier || check || newNodeForEach.Length == 0 ? null : newNodeForEach,
-            OutputSchema = aggregator || classifier || check || newNodeOutput.Length == 0 ? null : newNodeOutput,
+            ForEach = aggregator || classifier || check || computed || newNodeForEach.Length == 0 ? null : newNodeForEach,
+            OutputSchema = aggregator || classifier || check || at25 || newNodeOutput.Length == 0 ? null : newNodeOutput,
             Aggregate = aggregator ? new List<string>() : null,
             PromptRef = promptRef,
             Kind = classifier ? ClassifierKind : check ? CheckKind : template ? TemplateKind : null,
@@ -8162,7 +8359,11 @@
             Op = check ? newNodeCheckOp : null,
             Of = check && newNodeCheckOf.Length > 0 ? newNodeCheckOf : null,
             In = check && newNodeCheckIn.Length > 0 ? newNodeCheckIn : null,
-            FailWith = check ? newNodeFailWith?.Trim() : null
+            FailWith = check ? newNodeFailWith?.Trim() : null,
+            // v25: born with its format alone — with and onInvalid are the pane's
+            // (explicit init; the desk names what is missing).
+            Format = format,
+            Computed = computed
         });
         newNodeId = newNodeLabel = null;
         newNodeForEach = string.Empty;
@@ -8177,7 +8378,7 @@
         // Land on the next step: the aggregator's source list or an existing
         // prompt's bindings on the node card, or the new prompt's text —
         // a check has no prompt, so its card is the destination.
-        selectedKey = aggregator || check || promptRef != null ? NodeKeyFor(id) : AddedPromptFile(id);
+        selectedKey = aggregator || check || computed || promptRef != null ? NodeKeyFor(id) : AddedPromptFile(id);
         await PendingChangedAsync();
     }
 
@@ -8245,6 +8446,16 @@
             addedNode.OutputSchema = change.OutputSchema;
             addedNode.FailIfEmpty = change.FailIfEmpty;
             addedNode.Reproducible = change.Reproducible;
+            // v25: the format, its parameters and the policy; a re-pick may
+            // change whether the node takes a prompt.
+            addedNode.Format = change.Format;
+            addedNode.With = change.With == null ? null : new Dictionary<string, JsonElement>(change.With, StringComparer.Ordinal);
+            addedNode.OnInvalid = change.OnInvalid;
+            if (change.Format != null)
+            {
+                addedNode.Computed = FormatOptions.FirstOrDefault(f => f.Id == change.Format)?.Computed == true;
+            }
+
             if (addedNode.IsCheck)
             {
                 addedNode.Of = change.Of;
@@ -8257,7 +8468,7 @@
                 addedNode.Values = change.Values.ToList();
             }
 
-            if (addedNode.Aggregate == null && change.Prompt != null)
+            if (addedNode.HasPrompt && change.Prompt != null)
             {
                 addedNode.PromptRef = change.Prompt == addedNode.Id ? null : change.Prompt;
             }
@@ -8281,6 +8492,10 @@
             && change.Of == original.Of
             && change.In == original.In
             && change.FailWith == original.FailWith
+            // v25: the format, the policy and the parameters (by value).
+            && change.Format == original.Format
+            && change.OnInvalid == original.OnInvalid
+            && WithEquals(change.With, original.With)
             && (change.Prompt == null || change.Prompt == original.Prompt)
             // #572: null-tolerant on BOTH sides — a non-classifier is null
             // everywhere, and null no longer means "unchanged".
@@ -9135,6 +9350,8 @@
             }
 
             ProjectLoadedContent();
+            // v25 (C1 #1007): the formats catalogue, read once a 25 package is loaded.
+            await LoadFormatsCatalogAsync();
             await RestoreDraftAsync();
             // #815: restore the undo/redo history for this package (or start fresh).
             await RestoreHistoryAsync();
@@ -9183,9 +9400,13 @@
 
     private sealed record DraftBinding(string NodeId, string Variable, string From, string? As);
 
-    private sealed record DraftNodeEdit(string NodeId, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string? Prompt = null, List<string>? Values = null, bool Reproducible = false, string? Of = null, string? In = null, string? FailWith = null);
+    private sealed record DraftNodeEdit(string NodeId, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string? Prompt = null, List<string>? Values = null, bool Reproducible = false, string? Of = null, string? In = null, string? FailWith = null,
+        // v25 (C1 #1007): trailing, so a pre-25 draft reads as before.
+        string? Format = null, Dictionary<string, JsonElement>? With = null, string? OnInvalid = null);
 
-    private sealed record DraftAddedNode(string Id, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string PromptText, List<string>? Aggregate = null, string? PromptRef = null, string? Kind = null, List<string>? Values = null, bool Reproducible = false, string? Op = null, string? Of = null, string? In = null, string? FailWith = null, bool Raw = false);
+    private sealed record DraftAddedNode(string Id, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string PromptText, List<string>? Aggregate = null, string? PromptRef = null, string? Kind = null, List<string>? Values = null, bool Reproducible = false, string? Op = null, string? Of = null, string? In = null, string? FailWith = null, bool Raw = false,
+        // v25 (C1 #1007): trailing.
+        string? Format = null, Dictionary<string, JsonElement>? With = null, string? OnInvalid = null, bool Computed = false);
 
     private sealed record DraftAddedPrompt(string Id, string Text, bool Raw = false);
 
@@ -9645,7 +9866,11 @@
                     Of = draftAddedNode.Of,
                     In = draftAddedNode.In,
                     FailWith = draftAddedNode.FailWith,
-                    Raw = draftAddedNode.Raw
+                    Raw = draftAddedNode.Raw,
+                    Format = draftAddedNode.Format,
+                    With = draftAddedNode.With,
+                    OnInvalid = draftAddedNode.OnInvalid,
+                    Computed = draftAddedNode.Computed
                 });
             }
         }
@@ -9749,6 +9974,9 @@
                     && draftNodeEdit.OutputSchema == original.OutputSchema
                     && draftNodeEdit.FailIfEmpty == original.FailIfEmpty
                     && draftNodeEdit.Reproducible == original.Reproducible
+                    && draftNodeEdit.Format == original.Format
+                    && draftNodeEdit.OnInvalid == original.OnInvalid
+                    && WithEquals(draftNodeEdit.With, original.With)
                     && (draftNodeEdit.Prompt == null || draftNodeEdit.Prompt == original.Prompt)
                     && ((IEnumerable<string>?)draftNodeEdit.Values ?? Array.Empty<string>()).SequenceEqual(original.Values ?? Array.Empty<string>(), StringComparer.Ordinal)))
             {
@@ -9761,7 +9989,7 @@
             // the original here, the one place null can still enter nodeEdits.
             nodeEdits[draftNodeEdit.NodeId] = new WorkflowNodeSummary.NodeChange(
                 draftNodeEdit.NodeId, draftNodeEdit.Label, draftNodeEdit.ForEach, draftNodeEdit.OutputSchema, draftNodeEdit.FailIfEmpty, draftNodeEdit.Prompt, draftNodeEdit.Values ?? original.Values?.ToList(), draftNodeEdit.Reproducible,
-                draftNodeEdit.Of, draftNodeEdit.In, draftNodeEdit.FailWith);
+                draftNodeEdit.Of, draftNodeEdit.In, draftNodeEdit.FailWith, draftNodeEdit.Format, draftNodeEdit.With, draftNodeEdit.OnInvalid);
         }
 
         // v18 (#822): rehydrate pending node whens (its own dict).
@@ -9852,8 +10080,10 @@
             variableAdds.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             variableRemovals.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             addedCollections.ToList(),
-            nodeEdits.Values.Select(edit => new DraftNodeEdit(edit.NodeId, edit.Label, edit.ForEach, edit.OutputSchema, edit.FailIfEmpty, edit.Prompt, edit.Values?.ToList(), edit.Reproducible, edit.Of, edit.In, edit.FailWith)).ToList(),
-            addedNodes.Select(a => new DraftAddedNode(a.Id, a.Label, a.ForEach, a.OutputSchema, a.FailIfEmpty, a.PromptText, a.Aggregate, a.PromptRef, a.Kind, a.Values, a.Reproducible, a.Op, a.Of, a.In, a.FailWith, a.Raw)).ToList(),
+            nodeEdits.Values.Select(edit => new DraftNodeEdit(edit.NodeId, edit.Label, edit.ForEach, edit.OutputSchema, edit.FailIfEmpty, edit.Prompt, edit.Values?.ToList(), edit.Reproducible, edit.Of, edit.In, edit.FailWith,
+                edit.Format, edit.With == null ? null : new Dictionary<string, JsonElement>(edit.With, StringComparer.Ordinal), edit.OnInvalid)).ToList(),
+            addedNodes.Select(a => new DraftAddedNode(a.Id, a.Label, a.ForEach, a.OutputSchema, a.FailIfEmpty, a.PromptText, a.Aggregate, a.PromptRef, a.Kind, a.Values, a.Reproducible, a.Op, a.Of, a.In, a.FailWith, a.Raw,
+                a.Format, a.With, a.OnInvalid, a.Computed)).ToList(),
             removedNodeIds.ToList(),
             aggregateEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             resultEdit,
@@ -10157,7 +10387,7 @@
                         unbound.Add($"Aggregator '{addedNode.Id}' has no sources yet — add at least one on its card.");
                     }
                 }
-                else if (addedNode.PromptRef == null && !addedNode.IsCheck && string.IsNullOrWhiteSpace(addedNode.PromptText))
+                else if (addedNode.HasPrompt && addedNode.PromptRef == null && string.IsNullOrWhiteSpace(addedNode.PromptText))
                 {
                     unbound.Add($"Node '{addedNode.Id}' has no prompt text yet — write it under Prompts.");
                 }
@@ -10520,6 +10750,7 @@
         newNodeForEach = string.Empty;
         newNodeOutput = string.Empty;
         newNodeKind = "prompt";
+        newNodeFormat = string.Empty;
         newFieldIds.Clear();
     }
 
@@ -10640,7 +10871,7 @@
         // Pending fresh prompts and standalone pending prompts bring their
         // files; a removed node takes its prompt's file away only when no
         // other effective node still uses the prompt.
-        foreach (var addedNode in addedNodes.Where(a => a.Aggregate == null && a.PromptRef == null))
+        foreach (var addedNode in addedNodes.Where(a => a.HasPrompt && a.PromptRef == null))
         {
             files[AddedPromptFile(addedNode.Id)] = addedNode.PromptText;
         }
@@ -11162,6 +11393,48 @@
                 continue;
             }
 
+            // v25 (C1 #1007): a node with a format — prompt and bindings only when the
+            // format takes a prompt; format, with, onInvalid and a top-level failIfEmpty;
+            // never kind, output or values.
+            if (addedNode.Format != null)
+            {
+                if (addedNode.HasPrompt && addedNode.PromptRef == null
+                    && (root["prompts"] ?? root["Prompts"]) is System.Text.Json.Nodes.JsonArray promptsArrayFor25)
+                {
+                    var ownPrompt25 = new System.Text.Json.Nodes.JsonObject
+                    {
+                        ["id"] = addedNode.Id,
+                        ["file"] = AddedPromptFile(addedNode.Id),
+                        ["variables"] = new System.Text.Json.Nodes.JsonArray(
+                            AddedVariables(addedNode.Id)
+                                .Select(v => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(v))
+                                .ToArray())
+                    };
+                    if (addedNode.Raw) { ownPrompt25["raw"] = true; }
+                    promptsArrayFor25.Add(ownPrompt25);
+                }
+
+                var node25 = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["id"] = addedNode.Id,
+                    ["label"] = addedNode.Label
+                };
+                // Bindings are retired at 25: a template's reads are derived.
+                if (addedNode.HasPrompt)
+                {
+                    node25["prompt"] = addedNode.PromptRef ?? addedNode.Id;
+                }
+
+                if (addedNode.ForEach != null) { node25["forEach"] = addedNode.ForEach; }
+                node25["format"] = addedNode.Format;
+                if (WithNode(addedNode.With) is { } with25) { node25["with"] = with25; }
+                if (addedNode.OnInvalid != null) { node25["onInvalid"] = addedNode.OnInvalid; }
+                if (!string.IsNullOrWhiteSpace(addedNode.FailIfEmpty)) { node25["failIfEmpty"] = addedNode.FailIfEmpty; }
+                if (addedNode.Reproducible) { node25["reproducible"] = true; }
+                nodesArray.Add(node25);
+                continue;
+            }
+
             if (addedNode.PromptRef == null
                 && (root["prompts"] ?? root["Prompts"]) is System.Text.Json.Nodes.JsonArray promptsArrayForAdd)
             {
@@ -11585,7 +11858,31 @@
                 nodeObject[nodeObject.ContainsKey("ForEach") ? "ForEach" : "forEach"] = pair.Value.ForEach;
             }
 
-            if (pair.Value.OutputSchema is null)
+            // v25 (C1 #1007): the format, its parameters, the policy and a top-level
+            // failIfEmpty — write-or-remove; a computed format drops the prompt and its
+            // bindings; output and kind are left as loaded (the 24→25 migration's, C6).
+            if (pair.Value.Format != null)
+            {
+                nodeObject[nodeObject.ContainsKey("Format") ? "Format" : "format"] = pair.Value.Format;
+                foreach (var (memberKey, memberValue) in new[] { ("with", WithNode(pair.Value.With)), ("onInvalid", (System.Text.Json.Nodes.JsonNode?)pair.Value.OnInvalid), ("failIfEmpty", (System.Text.Json.Nodes.JsonNode?)(string.IsNullOrWhiteSpace(pair.Value.FailIfEmpty) ? null : pair.Value.FailIfEmpty)) })
+                {
+                    nodeObject.Remove(memberKey);
+                    nodeObject.Remove(char.ToUpperInvariant(memberKey[0]) + memberKey[1..]);
+                    if (memberValue is not null)
+                    {
+                        nodeObject[memberKey] = memberValue;
+                    }
+                }
+
+                if (FormatOptions.FirstOrDefault(f => f.Id == pair.Value.Format)?.Computed == true)
+                {
+                    foreach (var key in new[] { "prompt", "Prompt", "bindings", "Bindings" })
+                    {
+                        nodeObject.Remove(key);
+                    }
+                }
+            }
+            else if (pair.Value.OutputSchema is null)
             {
                 nodeObject.Remove("output");
                 nodeObject.Remove("Output");
