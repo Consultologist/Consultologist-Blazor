@@ -4702,7 +4702,8 @@
                     entry.Description,
                     (entry.Parameters ?? new Dictionary<string, WorkflowFormatParameterView>())
                         .Select(pair => new WorkflowNodeSummary.FormatParameter(pair.Key, pair.Value.Kind ?? string.Empty, pair.Value.Format))
-                        .ToList()))
+                        .ToList(),
+                    entry.OutputMacros))
                 .Concat(LocalFormatOptions)
                 .ToList();
 
@@ -4718,8 +4719,20 @@
                 spec?.Description,
                 (spec?.Parameters ?? new Dictionary<string, PF.WorkflowFormatParameterSpec>())
                     .Select(pair => new WorkflowNodeSummary.FormatParameter(pair.Key, pair.Value.Kind, pair.Value.Format))
-                    .ToList());
+                    .ToList(),
+                spec?.AllowsOutputMacros ?? false);
         });
+
+    /// <summary>
+    /// v25 (C3 #1009): whether a node may carry a macro instance or an inline slot — a
+    /// non-aggregator whose format declares outputMacros. A format the editor cannot
+    /// resolve (no catalogue loaded) is taken on trust, as the validator takes it.
+    /// </summary>
+    private bool FormatTakesOutputMacros(WorkflowManifestReader.NodeView node) =>
+        node.Aggregate == null
+        && (node.Format == null
+            || FormatOptions.FirstOrDefault(f => f.Id == node.Format) is not { } format
+            || format.OutputMacros);
 
     private IReadOnlyList<WorkflowManifestReader.FormatView> DeclaredFormats =>
         content == null
@@ -12987,7 +13000,35 @@
         // v23 (#955): a node's macro attachments — the whole list, each a bare id
         // (before/always) or a placement object { id, at, when, optional }. An
         // empty list removes the field.
+        //
+        // C3 (#1009): a removed library macro leaves every node's list in the
+        // same publish (the #571 rule the deliverables already follow) — a loaded
+        // list naming it is rewritten without it, a pending one filtered. A
+        // local map, not nodeMacroEdits: pending state is untouched and
+        // "(restore)" stays honest.
+        var nodeMacrosToWrite = new Dictionary<string, IReadOnlyList<WorkflowManifestReader.NodeMacroView>>(StringComparer.Ordinal);
         foreach (var pair in nodeMacroEdits)
+        {
+            nodeMacrosToWrite[pair.Key] = pair.Value;
+        }
+
+        if (removedMacroIds.Count > 0)
+        {
+            foreach (var loadedNode in nodes)
+            {
+                if (!nodeMacrosToWrite.ContainsKey(loadedNode.Id) && loadedNode.Macros is { } loadedMacros && loadedMacros.Any(e => removedMacroIds.Contains(e.Id)))
+                {
+                    nodeMacrosToWrite[loadedNode.Id] = loadedMacros;
+                }
+            }
+
+            foreach (var key in nodeMacrosToWrite.Keys.ToList())
+            {
+                nodeMacrosToWrite[key] = nodeMacrosToWrite[key].Where(e => !removedMacroIds.Contains(e.Id)).ToList();
+            }
+        }
+
+        foreach (var pair in nodeMacrosToWrite)
         {
             if (removedNodeIds.Contains(pair.Key) || NodeFor(pair.Key) is not { } nodeObject)
             {
