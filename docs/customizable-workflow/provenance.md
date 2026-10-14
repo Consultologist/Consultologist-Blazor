@@ -403,3 +403,13 @@ system with no dependency on this application or its Azure tenant.
 > Not in this version: the version flip (`AcceptedSpecVersions`/`SupportedSpecVersions`
 > += 25) is A5's (#1018), after B8 (#1027, the 25 run path) and C6.
 
+> **Amendment, 2026-10-14 (#1027 — specVersion 25 B8: the 25 run path).** No change to the
+> record's shape. A 25 deliverable's `assembledDocuments[].appended` carries its prepend and
+> append macros as `macro` entries in document order, as before; its `nodes[]` descriptors
+> carry `reads` on the deliverable's descriptor too (the placed macros' node reads — the
+> deliverable's edges, not on the record). Two ≤24 behaviours changed, both from a job that
+> could never complete to one that does: a check that settled before its deliverable's
+> aggregator now releases the document, and a check gated out by its own `when` no longer
+> holds its deliverable — the document composes unchecked, as the design always said
+> (a gated-out check "simply does not run and its deliverable still fires").
+

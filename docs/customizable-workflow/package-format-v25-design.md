@@ -404,6 +404,14 @@ after-blocks. Inline slots have no order: the model places the marker. **Identit
 (id, at, forItem); the same macro before *and* after is allowed, the same identity twice is
 refused — two gates to one text is one row with `when: a or b`.
 
+*(B8 #1027, 2026-10-14 — a deliverable instance's text is rendered over the job's scope in
+its own activity when the deliverable composes, prepend-blocks in order, the sections, then
+append-blocks, attributed in document order. Its node reads are the **deliverable's edges**
+(§ 2): the document composes only once every one has settled, and the fire set skips the
+deliverable when one was gated. A read of a fanned node is refused by name — a deliverable has
+no item; place the macro on the node to read its items. The deliverable's own identity is
+(id, at), each gate judged on its instance.)*
+
 ### 5.2 The reference rule and cycles
 
 Nothing on the reference path from a macro's text may reach a `macro.<id>.prompt`: the text

@@ -120,6 +120,28 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
             return null;
         }
 
+        // v25 (B8 #1027, design § 11): deliverables[] — the same resolved shape
+        // as results[] with the 25 placement (at: prepend | append) on every
+        // entry, an identity of (id, at) for its when, and the check spelled
+        // node.<id> passed through as written (the engine reads either spelling).
+        if (manifest.Deliverables is { Count: > 0 })
+        {
+            return manifest.Deliverables
+                .Select(deliverable => new WorkflowResolvedResult(
+                    deliverable.Id,
+                    deliverable.Node[WorkflowNodeBindingSources.NodePrefix.Length..],
+                    deliverable.Label,
+                    WorkflowResultConditions.TryParseExpression(deliverable.When, out var condition, out _)
+                        ? condition
+                        : null,
+                    deliverable.Macros?.Select(entry => entry.Id).Distinct(StringComparer.Ordinal).ToList(),
+                    deliverable.Signature,
+                    PlacementsAt25(deliverable.Macros),
+                    deliverable.Check,
+                    MacroConditionsAt25(deliverable.Macros)))
+                .ToList();
+        }
+
         if (manifest.Results is { Count: > 0 })
         {
             return manifest.Results
@@ -147,9 +169,39 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
                 .ToList();
         }
 
-        var nodeId = manifest.Result![WorkflowNodeBindingSources.NodePrefix.Length..];
+        if (manifest.Result is null)
+        {
+            // Nothing to resolve: the validator refused the manifest already,
+            // and a null-forgiven read would throw a bare reference error.
+            return null;
+        }
+
+        var nodeId = manifest.Result[WorkflowNodeBindingSources.NodePrefix.Length..];
         var label = manifest.Nodes?.FirstOrDefault(node => node.Id == nodeId)?.Label ?? nodeId;
         return new List<WorkflowResolvedResult> { new("consult", nodeId, label) };
+    }
+
+    /// <summary>B8 #1027: every 25 entry is placed — prepend or append — so every entry is a placement, keyed (id, at).</summary>
+    private static IReadOnlyList<ConsultMacroPlacement>? PlacementsAt25(IReadOnlyList<WorkflowDeliverableMacroSpec>? entries)
+    {
+        var placed = entries?
+            .Select(entry => new ConsultMacroPlacement(entry.Id, At: entry.At ?? WorkflowDeliverableMacroSpec.Append))
+            .ToList();
+        return placed is { Count: > 0 } ? placed : null;
+    }
+
+    /// <summary>B8 #1027: a 25 entry's when, keyed by its identity (id, at) — two gates on one id are two instances.</summary>
+    private static IReadOnlyList<WorkflowResolvedMacroCondition>? MacroConditionsAt25(IReadOnlyList<WorkflowDeliverableMacroSpec>? macros)
+    {
+        var conditions = (macros ?? Array.Empty<WorkflowDeliverableMacroSpec>())
+            .Where(entry => entry.When != null)
+            .Select(entry => WorkflowResultConditions.TryParseExpression(entry.When, out var condition, out _)
+                ? new WorkflowResolvedMacroCondition(entry.Id, condition!, entry.At ?? WorkflowDeliverableMacroSpec.Append)
+                : null)
+            .Where(entry => entry != null)
+            .Select(entry => entry!)
+            .ToList();
+        return conditions.Count == 0 ? null : conditions;
     }
 
     /// <summary>

@@ -131,6 +131,24 @@ public static class WorkflowDerivedEdges
         public bool HasPrompt(string nodeId) => _byKey.ContainsKey((TemplateKind.Prompt, nodeId));
 
         /// <summary>
+        /// B8 #1027 (design § 2, § 5.1): the node ids a macro's TEXT reads, closed
+        /// over the snippets and macro texts it reads — the edges a deliverable
+        /// instance of that macro gives the deliverable (its release waits on
+        /// them, the fire-set cascade skips through them). Empty for a macro the
+        /// walk did not see.
+        /// </summary>
+        public IReadOnlySet<string> MacroEdges(string macroId)
+        {
+            var edges = new HashSet<string>(StringComparer.Ordinal);
+            VisitKey((TemplateKind.Macro, macroId), new HashSet<(TemplateKind, string)>(), refs => edges.UnionWith(refs.Edges));
+            return edges;
+        }
+
+        /// <summary>Whether a macro's text reads <c>profile.signature</c> (the 25 signature carrier, where ≤24 read a token).</summary>
+        public bool MacroReadsSignature(string macroId) =>
+            _byKey.TryGetValue((TemplateKind.Macro, macroId), out var refs) && refs.ProfileFacts.Contains("signature");
+
+        /// <summary>
         /// The slots a node's prompt sanctions (design § 7): every
         /// <c>macro.&lt;id&gt;.prompt</c> read its template reaches — directly,
         /// through a snippet or macro text it reads (transitively), through the
@@ -312,6 +330,51 @@ public static class WorkflowDerivedEdges
         var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor);
 
         return WalkAll(manifest, files, nodes, snippets, contextFor).Edges;
+    }
+
+    /// <summary>
+    /// B8 #1027: each deliverable's reads — the union of its placed macros'
+    /// <see cref="Walk.MacroEdges"/>, sorted — keyed by deliverable id, for
+    /// every deliverable of the manifest (a deliverable placing no macro reads
+    /// nothing and maps to an empty set). The job starter's and the boundary's
+    /// call, beside <see cref="Derive"/>.
+    /// </summary>
+    public static IReadOnlyDictionary<string, IReadOnlySet<string>> DeliverableReads(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> files,
+        WorkflowFormatCatalog? formats)
+    {
+        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor);
+        var walk = WalkAll(manifest, files, nodes, snippets, contextFor);
+        var reads = new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
+
+        foreach (var deliverable in manifest.EffectiveDeliverables)
+        {
+            var set = new SortedSet<string>(StringComparer.Ordinal);
+
+            foreach (var entry in deliverable.Macros ?? new List<WorkflowDeliverableMacroSpec>())
+            {
+                set.UnionWith(walk.MacroEdges(entry.Id));
+            }
+
+            reads[deliverable.Id] = set;
+        }
+
+        return reads;
+    }
+
+    /// <summary>B8 #1027: the macro ids whose text reads <c>profile.signature</c> — the 25 signature carrier the starter's snapshot gate reads.</summary>
+    public static IReadOnlySet<string> SignatureReaders(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> files,
+        WorkflowFormatCatalog? formats)
+    {
+        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor);
+        var walk = WalkAll(manifest, files, nodes, snippets, contextFor);
+        return (manifest.Macros ?? new List<WorkflowMacroSpec>())
+            .Select(macro => macro.Id)
+            .Where(walk.MacroReadsSignature)
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     /// <summary>

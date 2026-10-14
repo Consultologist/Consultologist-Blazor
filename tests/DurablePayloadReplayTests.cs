@@ -105,7 +105,7 @@ public class DurablePayloadReplayTests
         // trailing null too — Macros, appended last on the record it rides.
         var withRefs = stored
             .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null,\"MacroChoices\":null,\"TranscriptInputs\":null,\"AmbientNoteInputs\":null,\"AcknowledgedShortInputs\":null}", StringComparison.Ordinal)
-            .Replace("\"Label\":\"Consultation note\"}", "\"Label\":\"Consultation note\",\"Macros\":null,\"Signature\":null,\"MacroPlacements\":null,\"Check\":null}", StringComparison.Ordinal);
+            .Replace("\"Label\":\"Consultation note\"}", "\"Label\":\"Consultation note\",\"Macros\":null,\"Signature\":null,\"MacroPlacements\":null,\"Check\":null,\"Reads\":null}", StringComparison.Ordinal);
         Assert.Equal(withRefs[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"FormatsRef\":null}", JsonSerializer.Serialize(input, Durable));
         // v11 #513/#516: the macro and signature slots and the descriptor's
         // trailing fields bind null.
@@ -238,6 +238,26 @@ public class DurablePayloadReplayTests
     }
 
     [Fact]
+    public void TheDeliverableMacrosPayloads_RoundTrip_InTheirOrder()
+    {
+        // B8 #1027: the first pins of the render activity's input and result —
+        // every slot present, so a later trailing optional lands after them.
+        const string storedInput = """
+            {"ResultId":"consult","WorkflowPackage":"general@v2026.10.8","Placements":[{"Id":"closing","Before":null,"After":null,"ForItem":null,"Slot":null,"At":"append"}],"Variables":{"notes":"x"},"VariableTypes":null,"NodeTexts":{"all":"The note."},"Folders":null,"Run":{"Date":"2026-10-14","Job":"j","Package":"general@v2026.10.8","Host":"h"},"Profile":{"Name":"Dr","Signature":"Dr, MD"}}
+            """;
+        const string storedResult = """
+            {"Prepend":[],"Append":[{"Id":"closing","Text":"Bye."}],"SignatureRead":false}
+            """;
+
+        var input = JsonSerializer.Deserialize<ConsultDeliverableMacrosActivityInput>(storedInput, Durable)!;
+        var result = JsonSerializer.Deserialize<ConsultDeliverableMacrosResult>(storedResult, Durable)!;
+
+        Assert.Equal("append", Assert.Single(input.Placements).At);
+        Assert.Equal(storedInput, JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(storedResult, JsonSerializer.Serialize(result, Durable));
+    }
+
+    [Fact]
     public void AStoredDecisionResult_WithoutExcludedMacros_BindsNull()
     {
         // v12 #631: the activity's recorded result, same rule.
@@ -274,7 +294,24 @@ public class DurablePayloadReplayTests
 
         Assert.Null(descriptor.MacroPlacements);
         Assert.Equal(new[] { "closing" }, descriptor.Macros);
-        Assert.Equal(stored[..^1] + ",\"MacroPlacements\":null,\"Check\":null}", JsonSerializer.Serialize(descriptor, Durable));
+        // #1027 appended Reads — the deliverable's edges at 25.
+        Assert.Equal(stored[..^1] + ",\"MacroPlacements\":null,\"Check\":null,\"Reads\":null}", JsonSerializer.Serialize(descriptor, Durable));
+    }
+
+    [Fact]
+    public void AStoredDecideInput_WithoutEffectiveInputs_BindsNull()
+    {
+        // B8 #1027: the boundary's input stored by a deciding job before the
+        // effective map rode it binds null and re-serialises with one more
+        // trailing null — a sleeping job's boundary call replays this.
+        const string stored = """
+            {"WorkflowPackage":"general@v2026.08.1","SuppliedInputs":null,"Classifications":{"scope":"in_scope"}}
+            """;
+
+        var input = JsonSerializer.Deserialize<ConsultDecideActivityInput>(stored, Durable)!;
+
+        Assert.Null(input.EffectiveInputs);
+        Assert.Equal(stored[..^1] + ",\"EffectiveInputs\":null}", JsonSerializer.Serialize(input, Durable));
     }
 
     [Fact]
@@ -377,6 +414,22 @@ public class DurablePayloadReplayTests
 
         Assert.Null(entry.AsOf);
         Assert.Equal(stored[..^1] + ",\"AsOf\":null}", JsonSerializer.Serialize(entry, Durable));
+    }
+
+    [Fact]
+    public void AStoredMacroPlacement_WithoutAt_BindsNull()
+    {
+        // B8 #1027: a ≤24 placement stored before the 25 placement word existed
+        // binds At null and re-serialises with exactly one more trailing null —
+        // the descriptor's placements are stored payloads.
+        const string stored = """
+            {"Id":"disclaimer","Before":"node:draft","After":null,"ForItem":null,"Slot":null}
+            """;
+
+        var placement = JsonSerializer.Deserialize<ConsultMacroPlacement>(stored, Durable)!;
+
+        Assert.Null(placement.At);
+        Assert.Equal(stored[..^1] + ",\"At\":null}", JsonSerializer.Serialize(placement, Durable));
     }
 
     [Fact]

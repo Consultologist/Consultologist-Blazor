@@ -654,9 +654,15 @@ public sealed record ConsultResultDescriptor(
     // last, this is a durable payload.
     IReadOnlyList<ConsultMacroPlacement>? MacroPlacements = null,
     // v12 #624 (design § 13): the check node gating this deliverable
-    // (node:<id>, prefix intact) — the post-production mirror of when.
+    // (node:<id>, prefix intact; node.<id> at 25 — ConsultCheckRefs reads
+    // either) — the post-production mirror of when. Appended last, same rule.
+    string? Check = null,
+    // v25 (B8 #1027, design § 2): the node ids this deliverable's placed
+    // macros read — the deliverable's edges: its document is composed only
+    // once every one has settled, and the fire-set cascade skips it when one
+    // was gated. Sorted; null below 25 and when its macros read no node.
     // Appended last, same rule.
-    string? Check = null);
+    IReadOnlyList<string>? Reads = null);
 
 /// <summary>
 /// v12 #619 (design § 4): one placed macro on one deliverable — the id and
@@ -667,7 +673,11 @@ public sealed record ConsultResultDescriptor(
 // [[slot:<id>]] marker in a section's output — mutually exclusive with the
 // Before/After/ForItem anchors (a slot has no static anchor). Only true or
 // null, never false. Appended last, this is a durable payload.
-public sealed record ConsultMacroPlacement(string Id, string? Before = null, string? After = null, string? ForItem = null, bool? Slot = null);
+// v25 (B8 #1027, design § 5.1): At is the 25 placement — prepend | append on
+// the deliverable — the identity's second half beside Id; the ≤24 anchors are
+// null on such an entry and At is null on every ≤24 entry. Appended last,
+// this is a durable payload.
+public sealed record ConsultMacroPlacement(string Id, string? Before = null, string? After = null, string? ForItem = null, bool? Slot = null, string? At = null);
 
 /// <summary>
 /// A deliverable the package declared and this job did not produce, because its

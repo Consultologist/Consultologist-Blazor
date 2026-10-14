@@ -15,7 +15,12 @@ namespace Consultologist.Api.Jobs;
 public sealed record ConsultDecideActivityInput(
     string WorkflowPackage,
     IReadOnlyDictionary<string, string>? SuppliedInputs,
-    IReadOnlyDictionary<string, string> Classifications);
+    IReadOnlyDictionary<string, string> Classifications,
+    // v25 (B8 #1027): the effective inputs the start resolved — what a 25
+    // node's text parameters resolve from when the boundary re-describes the
+    // nodes (the starter's own call). Null below 25 and on payloads from
+    // before. Appended last, the positional-call rule.
+    IReadOnlyDictionary<string, string>? EffectiveInputs = null);
 
 /// <summary>
 /// What the boundary decided. Results empty = nothing applies (the
@@ -74,7 +79,7 @@ public sealed class DecideActivity
             pair => ConsultInputValue.FromJson(pair.Value),
             StringComparer.Ordinal);
 
-        var result = Decide(package, supplied, input.Classifications, _formats);
+        var result = Decide(package, supplied, input.Classifications, _formats, input.EffectiveInputs);
 
         _logger.LogInformation(
             "Boundary decided. Package={Package}, Firing={Firing}, Skipped={Skipped}, Nodes={Nodes}, Blocks={Blocks}, EmptyFans={EmptyFans}",
@@ -93,7 +98,8 @@ public sealed class DecideActivity
         WorkflowPackage package,
         IReadOnlyDictionary<string, ConsultInputValue>? supplied,
         IReadOnlyDictionary<string, string> classifications,
-        WorkflowFormatCatalog? engineFormats = null)
+        WorkflowFormatCatalog? engineFormats = null,
+        IReadOnlyDictionary<string, string>? effectiveInputs = null)
     {
         var fireSet = ConsultGenerationJobStarter.DecideFireSet(package, supplied, classifications);
 
@@ -133,23 +139,29 @@ public sealed class DecideActivity
         // moment. A when-skipped result never reaches this loop: skip stays
         // skip, and nothing is recorded for a document that does not exist.
         var excludedMacros = new List<ConsultExcludedMacro>();
+        var deliverableReads = ConsultGenerationJobStarter.DeliverableReads(narrowed);
         var firingDescriptors = fireSet.Firing
             .Select(result =>
             {
-                var judged = ConsultGenerationJobStarter.DecideMacroWhens(result, supplied, classifications);
+                var judged = ConsultGenerationJobStarter.DecidePlacementWhens(result, supplied, classifications);
                 excludedMacros.AddRange(judged.Excluded);
-                return new ConsultResultDescriptor(
-                    result.Id, result.NodeId, result.Label, judged.Macros, result.Signature,
-                    ConsultGenerationJobStarter.FilterPlacements(result.MacroPlacements, judged.Macros), result.Check);
+                // The boundary never sees the request: the choice filter is
+                // the engine's (FilterDescriptorMacros), so no choices here.
+                return ConsultGenerationJobStarter.DescribeResult(result, judged.Macros, judged.Placements, null, deliverableReads?.GetValueOrDefault(result.Id));
             })
             .ToList();
+
+        // v25 (B8 #1027): the stage-two descriptors are described as the
+        // starter described stage one's — the stamp, the derived edges (a 25
+        // node's only dependencies) and the effective inputs.
+        var derivedEdges = ConsultGenerationJobStarter.DeriveEdges(narrowed);
 
         return new ConsultDecisionResult(
             firingDescriptors,
             fireSet.Skipped,
             narrowed.Nodes!.Select(node => ConsultGenerationJobStarter.DescribeNode(
                 node, narrowed.SchemaContracts, narrowed.ContractAgents, narrowed.SourceFiles, narrowed.Manifest.Macros,
-                narrowed.Formats ?? engineFormats, manifest: narrowed.Manifest)).ToList(),
+                narrowed.Formats ?? engineFormats, narrowed.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id), effectiveInputs, narrowed.Manifest)).ToList(),
             skeleton.Items,
             skeleton.CollectionSets,
             skeleton.CollectionRosters,

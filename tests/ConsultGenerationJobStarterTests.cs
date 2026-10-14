@@ -4002,17 +4002,25 @@ public class ConsultGenerationJobStarterTests
         ILogger<ConsultGenerationJobStarter>? logger = null) =>
         StartAndCaptureAsync(V7Fixtures.Minimal(), request, logger);
 
-    private async Task<StartCapture> StartAndCaptureAsync(
+    private Task<StartCapture> StartAndCaptureAsync(
         WorkflowPackageManifest manifest,
+        ConsultGenerationRequest request,
+        ILogger<ConsultGenerationJobStarter>? logger = null) =>
+        StartAndCaptureAsync(
+            ExecutableV7Package(manifest, new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }),
+            request,
+            logger);
+
+    /// <summary>The capture over a package as the store would hand it over — a 25 package with its resolved deliverables, formats and files (B8 #1027).</summary>
+    private async Task<StartCapture> StartAndCaptureAsync(
+        WorkflowPackage package,
         ConsultGenerationRequest request,
         ILogger<ConsultGenerationJobStarter>? logger = null)
     {
         _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
             .Returns(new WorkflowPackageRef("general", "latest"));
         _packageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>())
-            .Returns(ExecutableV7Package(
-                manifest,
-                new List<WorkflowResolvedResult> { new("consult", "assemble-note", "Assemble note") }));
+            .Returns(package);
 
         ConsultGenerationJobInitialize? initialize = null;
         await _entities.SignalEntityAsync(
@@ -4036,6 +4044,38 @@ public class ConsultGenerationJobStarterTests
             CancellationToken.None);
 
         return new StartCapture(outcome, initialize, orchestrationInput);
+    }
+
+    [Fact]
+    public async Task A25Package_Decides_AndItsDeliverablesReachTheOrchestrationInput_Resolved()
+    {
+        // B8 #1027: the design's package through the store's own resolution —
+        // the enum-format classifier makes the job decide, the deliverable
+        // carries its check as written, its placements with their at, and its
+        // reads; the stage-one descriptors carry the classifier's values.
+        var package = V25RunPathTests.Package(V25RunPathTests.WithDeliverableMacros());
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["notes"] = ConsultInputValue.OfText(Referral),
+                ["kind"] = ConsultInputValue.OfText("new"),
+            });
+
+        var captured = await StartAndCaptureAsync(package, request);
+
+        Assert.True(captured.Outcome.Error is null, captured.Outcome.ErrorDetail);
+        var input = captured.OrchestrationInput!;
+        Assert.True(input.Deciding);
+        Assert.Equal(package.FormatsRef, input.FormatsRef);
+        var scope = input.Nodes!.First(n => n.Id == "scope");
+        Assert.Equal(new[] { "in_scope", "out_of_scope" }, scope.Values);
+        Assert.Equal("classification", scope.Format);
+        var consult = Assert.Single(input.Results!);
+        Assert.Equal("node.coverage", consult.Check);
+        Assert.Equal(new[] { "scope" }, consult.Reads);
+        // A deciding job's whens wait for the boundary: every placement rides, with its at.
+        Assert.Equal(new[] { ("closing", "prepend"), ("closing", "append"), ("scope_line", "prepend") }, consult.MacroPlacements!.Select(p => (p.Id, p.At!)));
     }
 
     [Fact]

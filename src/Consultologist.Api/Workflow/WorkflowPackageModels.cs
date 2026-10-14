@@ -35,8 +35,8 @@ public sealed record WorkflowResolvedResult(
     // Condition, so the deciders evaluate a structure.
     IReadOnlyList<WorkflowResolvedMacroCondition>? MacroConditions = null);
 
-/// <summary>One when-gated macro entry of a resolved result (v12 § 14).</summary>
-public sealed record WorkflowResolvedMacroCondition(string MacroId, WorkflowConditionExpression Condition);
+/// <summary>One when-gated macro entry of a resolved result (v12 § 14). v25 (B8 #1027): <c>At</c> completes the identity — (id, at) — of a deliverable instance; null below 25.</summary>
+public sealed record WorkflowResolvedMacroCondition(string MacroId, WorkflowConditionExpression Condition, string? At = null);
 
 public sealed record WorkflowPackage(
     WorkflowPackageManifest Manifest,
