@@ -5776,7 +5776,7 @@
                         errors.Add($"Deliverable '{result.Id}' check '{check}' must be a node.<id> reference.");
                     }
                     else if (EffectiveNodes.FirstOrDefault(n => n.Id == checkNodeId) is not { } checkNode
-                        || FormatOptions.FirstOrDefault(f => f.Id == checkNode.Format)?.Computed != true)
+                        || (FormatOptions.FirstOrDefault(f => f.Id == checkNode.Format)?.Computed != true && !FormatIsTrustedUnseen(checkNode.Format)))
                     {
                         errors.Add($"Deliverable '{result.Id}' check names '{checkNodeId}', whose format is not computed.");
                     }
@@ -5856,6 +5856,201 @@
                 .Where(n => n.IsTemplate && n.Reproducible)
                 .Select(n => $"Template '{n.Id}' declares reproducible; a template is deterministic by construction, and the claim is not its to make."));
         }
+
+        // ----- v25 (C1 #1007): the desk's mirror of the A4 node rules and the with rules -----
+        if (EffectiveSpecVersion >= 25)
+        {
+            errors.AddRange(NodeFormatErrors());
+        }
+
+        return errors;
+    }
+
+    /// <summary>
+    /// v25 (C1 #1007): the validator's node rules at 25 (WorkflowPackageValidator.V25
+    /// ValidateNodesAt25) and the with rules (TemplateReferenceWalker.WalkParameters),
+    /// word for word, said at the desk before the registry says them. The format
+    /// facts come from the picker's options (the catalogue + the package's own);
+    /// with no catalogue, a catalogue id is taken on trust, as the validator does
+    /// without one.
+    /// </summary>
+    private IEnumerable<string> NodeFormatErrors()
+    {
+        var errors = new List<string>();
+        var options = FormatOptions;
+        var promptIds = EffectivePrompts.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var node in EffectiveNodes)
+        {
+            if (node.Aggregate != null)
+            {
+                foreach (var (name, present) in new[] { ("format", node.Format != null), ("prompt", node.Prompt != null), ("with", node.With != null), ("onInvalid", node.OnInvalid != null) })
+                {
+                    if (present)
+                    {
+                        errors.Add($"Node '{node.Id}' aggregates and must not declare {name}; an aggregator is structural.");
+                    }
+                }
+
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(node.Format))
+            {
+                errors.Add($"Node '{node.Id}' must declare a format at specVersion 25.");
+                continue;
+            }
+
+            var format = options.FirstOrDefault(f => f.Id == node.Format);
+            if (format == null)
+            {
+                // With no catalogue a non-local id is taken on trust (the validator's
+                // own stance without one); its facts cannot be judged here.
+                if (!FormatIsTrustedUnseen(node.Format))
+                {
+                    errors.Add($"Node '{node.Id}' declares format '{node.Format}', which is neither a package format nor a catalogue format.");
+                }
+
+                continue;
+            }
+
+            if (format.Computed && node.Prompt != null)
+            {
+                errors.Add($"Node '{node.Id}' declares prompt, but format '{format.Id}' is computed and takes none.");
+            }
+            else if (!format.Computed && string.IsNullOrWhiteSpace(node.Prompt))
+            {
+                errors.Add($"Node '{node.Id}' must declare a prompt; format '{format.Id}' is {format.Producer}.");
+            }
+            else if (node.Prompt != null && !promptIds.Contains(node.Prompt))
+            {
+                errors.Add($"Node '{node.Id}' names prompt '{node.Prompt}', which the package does not declare.");
+            }
+
+            if (!format.Validatable && node.OnInvalid != null)
+            {
+                errors.Add($"Node '{node.Id}' declares onInvalid, but format '{format.Id}' is text and validates nothing.");
+            }
+            else if (format.Validatable && string.IsNullOrWhiteSpace(node.OnInvalid))
+            {
+                errors.Add($"Node '{node.Id}' must declare onInvalid ({string.Join(" | ", PF.WorkflowOnInvalid.All)}); format '{format.Id}' is validated.");
+            }
+            else if (node.OnInvalid != null && !PF.WorkflowOnInvalid.IsKnown(node.OnInvalid))
+            {
+                errors.Add($"Node '{node.Id}' onInvalid '{node.OnInvalid}' is not one of {string.Join(", ", PF.WorkflowOnInvalid.All)}.");
+            }
+
+            if (node.FailIfEmpty != null && string.IsNullOrWhiteSpace(node.FailIfEmpty))
+            {
+                errors.Add($"Node '{node.Id}' failIfEmpty must not be blank.");
+            }
+            else if (node.FailIfEmpty != null && format.Producer is PF.WorkflowFormatProducers.Rendered or PF.WorkflowFormatProducers.Computed)
+            {
+                errors.Add($"Node '{node.Id}' declares failIfEmpty, but format '{format.Id}' is {format.Producer} and has no reply to judge.");
+            }
+
+            // The with rules: every supplied name declared, every declared name
+            // supplied, and a node operand naming a node of the required format.
+            var subject = $"Node '{node.Id}'";
+            var declared = string.Join(", ", format.Parameters.Select(p => p.Name));
+            var with = node.With ?? new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+
+            if (format.Parameters.Count == 0 && with.Count > 0)
+            {
+                errors.Add($"{subject} declares with, but format '{format.Id}' takes no parameters.");
+            }
+
+            foreach (var name in with.Keys.Where(n => format.Parameters.All(p => p.Name != n)))
+            {
+                if (format.Parameters.Count > 0)
+                {
+                    errors.Add($"{subject} with '{name}' names no parameter of the format (parameters: {declared}).");
+                }
+            }
+
+            foreach (var parameter in format.Parameters)
+            {
+                if (!with.TryGetValue(parameter.Name, out var value))
+                {
+                    errors.Add($"{subject} with must supply parameter '{parameter.Name}'.");
+                    continue;
+                }
+
+                // The walker's sentences (TemplateReferenceWalker.Parameters), word for word
+                // where the desk can judge; an input.<id> reference is left to the registry.
+                var prefix = $"{subject} with '{parameter.Name}'";
+                var text = value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+                if (parameter.Kind == PF.WorkflowFormatParameterKinds.Node)
+                {
+                    if (text == null || !text.StartsWith("node.", StringComparison.Ordinal))
+                    {
+                        errors.Add($"{prefix} must be a bare node reference (node.<id>); got {value.GetRawText()}.");
+                    }
+                    else
+                    {
+                        var operandId = text["node.".Length..];
+                        var target = EffectiveNodes.FirstOrDefault(n => n.Id == operandId);
+                        if (target == null)
+                        {
+                            errors.Add($"{prefix} names node '{operandId}', which the package does not declare.");
+                        }
+                        else if (parameter.Format != null && target.Format != parameter.Format)
+                        {
+                            errors.Add($"{prefix} names node '{operandId}' of format '{target.Format}', but the parameter requires format '{parameter.Format}'.");
+                        }
+                    }
+                }
+                else if (parameter.Kind == PF.WorkflowFormatParameterKinds.Values)
+                {
+                    if (value.ValueKind == JsonValueKind.Array)
+                    {
+                        // The v10 classifier's desk rule, kept at 25 (explicit init: born with none).
+                        var count = value.GetArrayLength();
+                        if (count < 2)
+                        {
+                            errors.Add($"Node '{node.Id}' declares {count} value{(count == 1 ? string.Empty : "s")}; a classifier must declare at least two values it may answer.");
+                        }
+                    }
+                    else if (text == null || !text.StartsWith("input.", StringComparison.Ordinal))
+                    {
+                        errors.Add($"{prefix} must be a list of snake_case values or an input.<id> reference to an enum input; got {value.GetRawText()}.");
+                    }
+                }
+                else if (text == null)
+                {
+                    errors.Add($"{prefix} must be a text literal or an input.<id> reference to a text input; got {value.GetRawText()}.");
+                }
+            }
+        }
+
+        return errors;
+    }
+
+    /// <summary>With no catalogue loaded, a format id that is not the package's own is a catalogue id taken on trust.</summary>
+    private bool FormatIsTrustedUnseen(string? formatId) =>
+        formatsCatalog == null && formatId != null && LiveFormats.All(f => f.Id != formatId);
+
+    /// <summary>
+    /// v25 (C1 #1007): the Formats pane's desk rules — each package format's body
+    /// as the registry reads it (the sentences shown under its editor), and a
+    /// removed format still named by a node (the SchemaErrors idiom).
+    /// </summary>
+    private IEnumerable<string> FormatErrors()
+    {
+        if (EffectiveSpecVersion < 25)
+        {
+            return Array.Empty<string>();
+        }
+
+        var errors = new List<string>();
+        foreach (var format in LiveFormats)
+        {
+            errors.AddRange(FormatBodyErrors(format.Id, GetText(format.File)));
+        }
+
+        errors.AddRange(removedFormatIds
+            .SelectMany(id => FormatReferencedBy(id).Select(nodeId => (id, nodeId)))
+            .Select(pair => $"Format '{pair.id}' is removed but node '{pair.nodeId}' still names it as its format; change that node's format first."));
 
         return errors;
     }
@@ -10778,6 +10973,7 @@
             unbound.AddRange(DeclaredSectionErrors());
             unbound.AddRange(PackageMetadataErrors());
             unbound.AddRange(SchemaErrors());
+            unbound.AddRange(FormatErrors());
             unbound.AddRange(PreludeErrors());
 
             if (unbound.Count > 0)
