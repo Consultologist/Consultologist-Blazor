@@ -592,6 +592,27 @@ public class WorkflowV25TemplateTests
     }
 
     [Fact]
+    public void FailIfEmpty_LivesOnTheNode_At25()
+    {
+        // B5 #1004 (design § 3.6): output is refused at 25, so failIfEmpty moves
+        // up to the node — a sentence, judged on the reply; a producer with no
+        // reply takes none.
+        var (manifest, files) = Minimal();
+
+        var onProse = V25Package.WithNode(manifest, "assessment", n => n with { FailIfEmpty = "The assessment is empty." });
+        Assert.True(V25Package.Validate((onProse, files), V25Package.Catalog()).IsValid);
+
+        var onConceptList = V25Package.WithNode(manifest, "extract", n => n with { FailIfEmpty = "No concepts were found." });
+        Assert.True(V25Package.Validate((onConceptList, files), V25Package.Catalog()).IsValid);
+
+        var blank = V25Package.WithNode(manifest, "assessment", n => n with { FailIfEmpty = " " });
+        Assert.Contains("Node 'assessment' failIfEmpty must not be blank.", V25Package.Errors((blank, files)));
+
+        var onComputed = V25Package.WithNode(manifest, "coverage", n => n with { FailIfEmpty = "Empty." });
+        Assert.Contains("Node 'coverage' declares failIfEmpty, but format 'terms-subset' is computed and has no reply to judge.", V25Package.Errors((onComputed, files)));
+    }
+
+    [Fact]
     public void TheStrictRender_NamesTheTemplate()
     {
         var bundle = V25Package.WithPrompt(Minimal(), "assessment", """{{ input.notes | date.to_string "%Y" }}""");

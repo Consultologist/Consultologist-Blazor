@@ -81,18 +81,23 @@ public sealed record TemplateRenderScope(
 /// </summary>
 public static class TemplateRenderer
 {
+    /// <param name="promptReads">B5 #1004 (design § 7): when given, every
+    /// <c>macro.&lt;id&gt;.prompt</c> this render evaluated is added — the slots
+    /// the prompt that ran sanctions, exactly the instructions the model saw
+    /// (a read behind a branch not taken is not one of them).</param>
     public static string Render(
         string subject,
         string templateText,
         TemplateRenderScope scope,
-        IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes = null)
+        IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes = null,
+        ISet<string>? promptReads = null)
     {
-        var globals = Globals(subject, scope, pipes);
+        var globals = Globals(subject, scope, pipes, promptReads);
         return RenderWith(subject, templateText, globals);
     }
 
     /// <summary>The globals a probe or a renderer pushes: the seven objects and the pipes, over this scope.</summary>
-    internal static ScriptObject Globals(string subject, TemplateRenderScope scope, IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes)
+    internal static ScriptObject Globals(string subject, TemplateRenderScope scope, IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes, ISet<string>? promptReads = null)
     {
         var globals = new ScriptObject();
 
@@ -155,7 +160,11 @@ public static class TemplateRenderer
             {
                 [TemplateMembers.Id] = () => source.Id,
                 [TemplateMembers.Name] = () => source.Name,
-                [TemplateMembers.Prompt] = () => WorkflowMacroMechanics.Prompt(source.Id, source.Instruction),
+                [TemplateMembers.Prompt] = () =>
+                {
+                    promptReads?.Add(source.Id);
+                    return WorkflowMacroMechanics.Prompt(source.Id, source.Instruction);
+                },
             };
             var text = new Lazy<string>(() => RenderWith($"Macro '{id}'", source.Text, globals));
             members[TemplateMembers.Text] = () => text.Value;

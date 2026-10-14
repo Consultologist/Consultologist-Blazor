@@ -441,6 +441,11 @@ public static partial class WorkflowPackageValidator
             {
                 errors.Add($"Node '{node.Id}' declares onInvalid, which requires specVersion 25.");
             }
+
+            if (node.FailIfEmpty != null)
+            {
+                errors.Add($"Node '{node.Id}' declares failIfEmpty at the node, which requires specVersion 25; below 25 it is output.failIfEmpty.");
+            }
         }
 
         foreach (var result in manifest.Results ?? new List<WorkflowDeliverableSpec>())

@@ -791,7 +791,15 @@ public sealed record WorkflowNodeSpec(
     // is refused by name by the validator.
     string? Format = null,
     Dictionary<string, JsonNode?>? With = null,
-    string? OnInvalid = null);
+    string? OnInvalid = null,
+    // v25 (design § 3.6, B5 #1004): `failIfEmpty` moves up to the node — its
+    // ≤24 home, output.failIfEmpty, is refused by name at 25 with the rest of
+    // `output`. The sentence the job fails with when the reply is empty: a
+    // blank reply on a text format, an empty top-level array on an array
+    // format (a concept-list with no concepts, as ever). Judged on the reply
+    // before anything is composed around it. Trailing optional, omitted when
+    // null; below 25 refused by name by the validator.
+    string? FailIfEmpty = null);
 
 /// <summary>
 /// v25 (§ 3.5): what happens on a reply the format's validation refuses —

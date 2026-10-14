@@ -380,6 +380,21 @@ public class WorkflowV25BelowGateTests
     }
 
     [Fact]
+    public void ANodeLevelFailIfEmpty_Below25_IsRefusedByName()
+    {
+        // B5 #1004: below 25 the sentence lives in output.failIfEmpty; the node
+        // member is 25's.
+        var errors = ErrorsAt24(m =>
+        {
+            var node = m.Nodes!.First();
+            return m with { Nodes = m.Nodes!.Select(n => n.Id == node.Id ? n with { FailIfEmpty = "Empty." } : n).ToList() };
+        });
+
+        var id = V24Fixtures.Base().Manifest.Nodes!.First().Id;
+        Assert.Contains($"Node '{id}' declares failIfEmpty at the node, which requires specVersion 25; below 25 it is output.failIfEmpty.", errors);
+    }
+
+    [Fact]
     public void ADeliverableInstanceAt_Below25_IsRefusedByName()
     {
         var errors = ErrorsAt24(
