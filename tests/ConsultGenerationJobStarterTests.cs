@@ -2829,8 +2829,8 @@ public class ConsultGenerationJobStarterTests
                 ? new Consultologist.Api.Forms.FormResponsePayload(
                     1, "triage-intake", "17", new DateTimeOffset(2026, 9, 1, 14, 2, 11, TimeSpan.Zero),
                     held == null
-                        ? new Dictionary<string, string>()
-                        : new Dictionary<string, string> { ["consult_draft"] = held })
+                        ? FormResponseJson.Strings(new Dictionary<string, string>())
+                        : FormResponseJson.Strings(new Dictionary<string, string> { ["consult_draft"] = held }))
                 : null);
     }
 
@@ -2901,6 +2901,78 @@ public class ConsultGenerationJobStarterTests
 
         Assert.Equal(ConsultGenerationJobStartError.InputFormRefMismatch, outcome.Error);
         Assert.Contains("does not carry input 'consult_draft'", outcome.ErrorDetail);
+    }
+
+    // ----- v25 (B6 #1005): an object form slot verified against its held JSON object -----
+
+    private static WorkflowPackageManifest WithIntakeSlot()
+    {
+        var minimal = V7Fixtures.Minimal();
+        return minimal with
+        {
+            SpecVersion = 9,
+            Inputs = (minimal.Inputs ?? new List<WorkflowInputSpec>()).Append(new WorkflowInputSpec(
+                "intake", "Intake", Required: false, Type: WorkflowInputTypes.Object,
+                Fields: new List<WorkflowFieldSpec>
+                {
+                    new("allergies", "Allergies", Type: WorkflowInputTypes.Array, Items: new WorkflowElementSpec(WorkflowInputTypes.Text)),
+                    new("on_letrozole", "On letrozole", Type: WorkflowInputTypes.Boolean),
+                })).ToList(),
+        };
+    }
+
+    private void WithHeldObject(string json)
+    {
+        var row = new Consultologist.Api.Forms.FormResponseRow(
+            "user-1", "triage-intake", "17", new DateTimeOffset(2026, 9, 1, 14, 2, 11, TimeSpan.Zero),
+            new[] { "intake" }, "org-form-responses", "user-1/triage-intake-17.json", null);
+        _formResponses.TryGetAsync("user-1", "triage-intake", "17", Arg.Any<CancellationToken>()).Returns(row);
+        _formResponseBlobs.ReadAsync(Arg.Any<Consultologist.Api.Forms.FormResponseBlobPointer>(), Arg.Any<CancellationToken>())
+            .Returns(new Consultologist.Api.Forms.FormResponsePayload(
+                2, "triage-intake", "17", new DateTimeOffset(2026, 9, 1, 14, 2, 11, TimeSpan.Zero),
+                new Dictionary<string, System.Text.Json.JsonElement> { ["intake"] = FormResponseJson.Parse(json) }));
+    }
+
+    private static ConsultGenerationRequest IntakeRequest(ConsultInputValue intake) => new(
+        null,
+        Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = ConsultInputValue.OfText(Referral),
+            ["intake"] = intake,
+        },
+        InputFormRefs: new Dictionary<string, ConsultInputFormRef> { ["intake"] = new("triage-intake", "17") });
+
+    [Fact]
+    public async Task AnObjectSlot_FilledFromItsHeldObject_IsVerified_AndStampedOnce()
+    {
+        WithHeldObject("""{ "on_letrozole": true, "allergies": ["latex"] }""");
+        var filled = ConsultInputValue.OfObject(new[]
+        {
+            new ConsultInputEntry("allergies", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("latex") })),
+            new ConsultInputEntry("on_letrozole", ConsultInputValue.OfBoolean(true)),
+        });
+
+        var captured = await StartAndCaptureAsync(WithIntakeSlot(), IntakeRequest(filled));
+
+        Assert.True(captured.Outcome.Error is null, captured.Outcome.ErrorDetail);
+        var input = captured.OrchestrationInput!;
+        Assert.Equal("""{"allergies":["latex"],"on_letrozole":true}""", input.Inputs!["intake"]);
+        var origin = Assert.Single(input.InputDocumentOrigins!["intake"]);
+        Assert.Equal(ConsultInputOriginKinds.FormResponse, origin.Kind);
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(input.Inputs["intake"]), origin.TextSha256);
+        Assert.False(input.InputDocumentOrigins.ContainsKey("consult_draft"));
+    }
+
+    [Fact]
+    public async Task AHeldObjectMissingARequiredField_RefusesTheStart_ByName()
+    {
+        WithHeldObject("""{ "allergies": ["latex"] }""");
+        var claimed = ConsultInputValue.OfObject(new[] { new ConsultInputEntry("allergies", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("latex") })) });
+
+        var outcome = (await StartAndCaptureAsync(WithIntakeSlot(), IntakeRequest(claimed))).Outcome;
+
+        Assert.Equal(ConsultGenerationJobStartError.InputFormRefMismatch, outcome.Error);
+        Assert.Equal("The response's answer for input 'intake' is missing required field 'on_letrozole'.", outcome.ErrorDetail);
     }
 
     [Fact]
@@ -3857,7 +3929,7 @@ public class ConsultGenerationJobStarterTests
         _formResponseBlobs.ReadAsync(Arg.Any<Consultologist.Api.Forms.FormResponseBlobPointer>(), Arg.Any<CancellationToken>())
             .Returns(new Consultologist.Api.Forms.FormResponsePayload(
                 1, "triage-intake", "17", new DateTimeOffset(2026, 9, 1, 14, 2, 11, TimeSpan.Zero),
-                new Dictionary<string, string> { ["prior_notes"] = "[\"held one\"]" }));
+                FormResponseJson.Strings(new Dictionary<string, string> { ["prior_notes"] = "[\"held one\"]" })));
 
         var request = new ConsultGenerationRequest(
             null,
@@ -3903,7 +3975,7 @@ public class ConsultGenerationJobStarterTests
         _formResponseBlobs.ReadAsync(Arg.Any<Consultologist.Api.Forms.FormResponseBlobPointer>(), Arg.Any<CancellationToken>())
             .Returns(new Consultologist.Api.Forms.FormResponsePayload(
                 1, "triage-intake", "17", new DateTimeOffset(2026, 9, 1, 14, 2, 11, TimeSpan.Zero),
-                new Dictionary<string, string> { ["prior_notes"] = "[\"held one\"]" }));
+                FormResponseJson.Strings(new Dictionary<string, string> { ["prior_notes"] = "[\"held one\"]" })));
 
         var request = new ConsultGenerationRequest(
             null,

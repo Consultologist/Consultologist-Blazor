@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Consultologist.Api.Auth;
 using Consultologist.Api.Forms;
 using Consultologist.Api.Jobs;
@@ -69,7 +70,7 @@ public class FormsRunAtOnceTests
 
         var result = await CreateDoor().StartRunAsync(
             _client, "user-1", "triage-intake", "17",
-            new Dictionary<string, string> { ["consult_draft"] = Referral, ["urgent"] = "Urgent" },
+            FormResponseJson.Strings(new Dictionary<string, string> { ["consult_draft"] = Referral, ["urgent"] = "Urgent" }),
             CancellationToken.None);
 
         await _starter.Received(1).StartAsync(
@@ -101,7 +102,7 @@ public class FormsRunAtOnceTests
 
         await CreateDoor().StartRunAsync(
             _client, "user-1", "triage-intake", "17",
-            new Dictionary<string, string> { ["consult_draft"] = Referral },
+            FormResponseJson.Strings(new Dictionary<string, string> { ["consult_draft"] = Referral }),
             CancellationToken.None);
 
         await _starter.Received(1).StartAsync(
@@ -117,7 +118,7 @@ public class FormsRunAtOnceTests
         // E2's Other answer: named, and nothing runs — the response stays held.
         var result = await CreateDoor().StartRunAsync(
             _client, "user-1", "triage-intake", "17",
-            new Dictionary<string, string> { ["consult_draft"] = Referral, ["urgent"] = "As soon as the family arrives" },
+            FormResponseJson.Strings(new Dictionary<string, string> { ["consult_draft"] = Referral, ["urgent"] = "As soon as the family arrives" }),
             CancellationToken.None);
 
         var serialized = System.Text.Json.JsonSerializer.Serialize(result);
@@ -137,7 +138,7 @@ public class FormsRunAtOnceTests
 
         var result = await door.StartRunAsync(
             _client, "user-1", "triage-intake", "17",
-            new Dictionary<string, string> { ["consult_draft"] = Referral },
+            FormResponseJson.Strings(new Dictionary<string, string> { ["consult_draft"] = Referral }),
             CancellationToken.None);
 
         Assert.Contains("held for the picker", System.Text.Json.JsonSerializer.Serialize(result));
@@ -154,7 +155,7 @@ public class FormsRunAtOnceTests
 
         var result = await CreateDoor().StartRunAsync(
             _client, "user-1", "triage-intake", "17",
-            new Dictionary<string, string> { ["consult_draft"] = Referral },
+            FormResponseJson.Strings(new Dictionary<string, string> { ["consult_draft"] = Referral }),
             CancellationToken.None);
 
         Assert.Contains("Rate limit reached.", System.Text.Json.JsonSerializer.Serialize(result));
@@ -173,12 +174,12 @@ public class FormsRunAtOnceTests
     {
         var (request, refusal) = FormsIntake.BuildRunRequest(
             Declarations(),
-            new Dictionary<string, string>
+            FormResponseJson.Strings(new Dictionary<string, string>
             {
                 ["consult_draft"] = Referral,
                 ["urgent"] = "",
                 ["never_declared"] = "ignored entirely"
-            },
+            }),
             "triage-intake", "17");
 
         Assert.Null(refusal);
@@ -186,12 +187,60 @@ public class FormsRunAtOnceTests
         Assert.Equal(new[] { "consult_draft" }, request.InputFormRefs!.Keys);
     }
 
+    // ----- v25 (B6 #1005): an object form slot filled from its held JSON object -----
+
+    private static List<WorkflowInputSpec> DeclarationsWithIntake()
+    {
+        var declarations = Declarations();
+        declarations.Add(new WorkflowInputSpec("intake", "Intake", Required: false, Type: WorkflowInputTypes.Object,
+            Fields: new List<WorkflowFieldSpec>
+            {
+                new("allergies", "Allergies", Type: WorkflowInputTypes.Array, Items: new WorkflowElementSpec(WorkflowInputTypes.Text)),
+                new("on_letrozole", "On letrozole", Type: WorkflowInputTypes.Boolean),
+                new("last_visit", "Last visit", Required: false, Type: WorkflowInputTypes.Date),
+            }));
+        return declarations;
+    }
+
+    [Fact]
+    public void TheBuilder_FillsAnObjectSlot_FromItsHeldJsonObject()
+    {
+        var (request, refusal) = FormsIntake.BuildRunRequest(
+            DeclarationsWithIntake(),
+            new Dictionary<string, JsonElement>
+            {
+                ["consult_draft"] = FormResponseJson.Text(Referral),
+                ["intake"] = FormResponseJson.Parse("""{ "on_letrozole": true, "allergies": ["penicillin", "latex"] }"""),
+            },
+            "triage-intake", "17");
+
+        Assert.Null(refusal);
+        Assert.Equal("""{"allergies":["penicillin","latex"],"on_letrozole":true}""", request!.Inputs!["intake"].AsJson());
+        Assert.Equal(new ConsultInputFormRef("triage-intake", "17"), request.InputFormRefs!["intake"]);
+    }
+
+    [Fact]
+    public void AHeldObjectMissingARequiredField_RefusesTheWholeStart_ByName()
+    {
+        var (request, refusal) = FormsIntake.BuildRunRequest(
+            DeclarationsWithIntake(),
+            new Dictionary<string, JsonElement>
+            {
+                ["consult_draft"] = FormResponseJson.Text(Referral),
+                ["intake"] = FormResponseJson.Parse("""{ "allergies": ["latex"] }"""),
+            },
+            "triage-intake", "17");
+
+        Assert.Null(request);
+        Assert.Equal("The response's answer for input 'intake' is missing required field 'on_letrozole'.", refusal);
+    }
+
     [Fact]
     public void AnswersForNoDeclaredInput_AreRefusedByName()
     {
         var (request, refusal) = FormsIntake.BuildRunRequest(
             Declarations(),
-            new Dictionary<string, string> { ["never_declared"] = "x" },
+            FormResponseJson.Strings(new Dictionary<string, string> { ["never_declared"] = "x" }),
             "triage-intake", "17");
 
         Assert.Null(request);
