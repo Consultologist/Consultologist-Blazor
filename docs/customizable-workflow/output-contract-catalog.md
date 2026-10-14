@@ -272,5 +272,7 @@ control flow; multiple/non-terminal maps (each waits for a demanding workflow).
 > and the schema to the rendered prompt, strips any code fence from the reply, parses it
 > and validates it against the schema; the node's `onInvalid` (v25) decides what an invalid
 > reply does (a 22–24 node fails). The agent is attested like every other; what is
-> package-authored is the shape, and the record still says so (`unattested`, the schema
-> hash, the agent) until B7 rewords the marker. Design: package-format-v25-design.md § 3.4.
+> package-authored is the shape. A 22–24 record still says so (`unattested`, the schema
+> hash, the agent); a 25 record says *custom shape, engine-validated* instead — `producer:
+> custom`, `formatHash` and the generic agent on the node, `validation` on the row, no
+> `unattested` key (#1006, provenance@v2026.10.1). Design: package-format-v25-design.md § 3.4.
