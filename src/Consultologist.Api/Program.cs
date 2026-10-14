@@ -164,6 +164,8 @@ builder.Services.AddSingleton<IWorkflowPackageRegistryReader, WorkflowPackageReg
 builder.Services.AddSingleton<CatalogStrandSweeper>();
 builder.Services.AddSingleton<OperatorCatalogStrands>();
 builder.Services.AddSingleton<OperatorPinHealth>();
+// v25 (B6 #1005): the formats catalogue read endpoint for the editor.
+builder.Services.AddSingleton<WorkflowFormats>();
 // #553: the operator usage panel — reads only the derived store.
 builder.Services.AddSingleton<OperatorUsage>();
 builder.Services.AddHostedService<PinHealthStartupService>();

@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
 
 namespace Consultologist.Api.Tests;
 
@@ -41,6 +42,20 @@ public class FunctionRegistrationTests
             .ToList();
 
         Assert.Empty(duplicates);
+    }
+
+    [Fact]
+    public void WorkflowFormats_IsAnAuthenticatedGet_WithPreflight()
+    {
+        // v25 (B6 #1005): the catalogue read endpoint — one HTTP trigger on
+        // its own route, GET for the editor and OPTIONS for the browser's
+        // preflight (FunctionCors answers it).
+        var method = FunctionMethods().Single(m => m.GetCustomAttribute<FunctionAttribute>()!.Name == "WorkflowFormats");
+        var trigger = Assert.Single(method.GetParameters().Select(p => p.GetCustomAttribute<HttpTriggerAttribute>()).Where(a => a != null))!;
+
+        Assert.Equal("WorkflowFormats", trigger.Route);
+        Assert.Equal(new[] { "get", "options" }, trigger.Methods);
+        Assert.Equal(AuthorizationLevel.Anonymous, trigger.AuthLevel);
     }
 
     [Fact]
