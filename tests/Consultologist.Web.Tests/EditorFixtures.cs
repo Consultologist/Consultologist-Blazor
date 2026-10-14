@@ -769,7 +769,8 @@ public static class EditorFixtures
     /// The 25 shape (design § 3): a concept-list node, a classification taking its
     /// values through with, a prose node with a top-level failIfEmpty, a node on a
     /// package-local custom format, a terms-subset check over the concept-list node,
-    /// a node fanning a snippet folder, an aggregator, and one deliverable naming
+    /// a node fanning a snippet folder (two items, one gated on the kind input — C2
+    /// #1008), a single snippet read by the assessment prompt, an aggregator, and one deliverable naming
     /// the aggregator and the check. No kind, no output, no schemas; formats[]
     /// declares the local format. Every node feeds the deliverable: the prose
     /// node reads the concept-list and the medications; the classifier is exempt.
@@ -793,7 +794,7 @@ public static class EditorFixtures
             { "id": "meds", "file": "prompts/meds.md", "variables": [] },
             { "id": "section", "file": "prompts/section.md", "variables": [] }
           ],
-          "snippets": { "sections": "snippets/sections/" },
+          "snippets": { "standards": "snippets/standards.md", "sections": "snippets/sections/" },
           "nodes": [
             { "id": "extract", "label": "Extract concepts", "prompt": "extract", "format": "concept-list", "onInvalid": "fail" },
             { "id": "scope", "label": "Scope", "prompt": "scope", "format": "classification", "onInvalid": "fail", "with": { "values": ["in_scope", "out_of_scope"] } },
@@ -808,10 +809,12 @@ public static class EditorFixtures
         """, 25,
         ("prompts/extract.md", "Extract the concepts from:\n{{ input.notes }}"),
         ("prompts/scope.md", "Is this in scope? {{ input.notes }}"),
-        ("prompts/assessment.md", "Assess.\n{{ input.notes }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}\n{{ for m in node.meds.value.medications }}- {{ m.name }}\n{{ end }}"),
+        ("prompts/assessment.md", "Assess.\n{{ snippet.standards.text }}\n{{ input.notes }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}\n{{ for m in node.meds.value.medications }}- {{ m.name }}\n{{ end }}"),
         ("prompts/meds.md", "List the medications in:\n{{ input.notes }}"),
         ("prompts/section.md", "{{ item.name }}: {{ item.text }}"),
-        ("snippets/sections/index.json", """{ "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md" } ] }"""),
+        ("snippets/standards.md", "Follow the local standards."),
+        ("snippets/sections/index.json", """{ "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md" }, { "id": "plan", "name": "Plan", "file": "plan.md", "when": "kind == new" } ] }"""),
         ("snippets/sections/hpi.md", "History: {{ input.notes }}"),
+        ("snippets/sections/plan.md", "Plan."),
         (MedicationListFormatFile, MedicationListFormat));
 }

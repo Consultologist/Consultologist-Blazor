@@ -19,6 +19,25 @@ public class WorkflowPackageClosureV25Tests
         Assert.Empty(errors);
     }
 
+    // C2 (#1008): a 25 folder id is snake_case, so its directory is too —
+    // data's directory segment keeps refusing the underscore it never took.
+    [Fact]
+    public void ASnippetFolderDirectory_TakesSnakeCase_ADataDirectoryStillDoesNot()
+    {
+        var errors = new List<string>();
+
+        WorkflowPackageContentValidation.ValidateFilePaths(new Dictionary<string, string>
+        {
+            ["snippets/care_sections/index.json"] = "{}",
+            ["snippets/care_sections/hpi.md"] = "x",
+            ["snippets/care-sections/hpi.md"] = "x",
+            ["data/care_sections/hpi.md"] = "x"
+        }, errors);
+
+        var error = Assert.Single(errors);
+        Assert.StartsWith("File path 'data/care_sections/hpi.md' is not allowed", error);
+    }
+
     [Fact]
     public void AStrayFile_IsStillNamed()
     {

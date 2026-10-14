@@ -1195,3 +1195,29 @@ fluent-text-area.format-body::part(control) {
 	color: var(--consultologist-error);
 	font-size: 0.78rem;
 }
+
+/* v25 C2 (#1008): where a snippet is read — one row per reader, each a link to its pane. */
+ul.snippet-readers {
+	list-style: none;
+	margin: 0 0 0.75rem;
+	padding: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.25rem 0.5rem;
+}
+
+.snippet-readers__row {
+	font: inherit;
+	font-size: 0.85rem;
+	color: var(--accent-fill-rest, #0078d4);
+	background: none;
+	border: 1px solid var(--neutral-stroke-rest, #d1d1d1);
+	border-radius: 4px;
+	padding: 0.1rem 0.5rem;
+	cursor: pointer;
+}
+
+span.snippet-readers__row {
+	cursor: default;
+	color: inherit;
+}

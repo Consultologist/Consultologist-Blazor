@@ -534,12 +534,22 @@
                         <span>Schemas</span>
                     </button>
                     }
-                    <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.NumberSymbol())" /> Data</span>
+                    @* C2 (#1008): at 25 this group is Snippets — the same machinery
+                       under the snippets table (a snippet is a Scriban template read
+                       as snippet.<id>.text; a folder is today's collection). *@
+                    @if (At25)
+                    {
+                        <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.DocumentText())" /> Snippets</span>
+                    }
+                    else
+                    {
+                        <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.NumberSymbol())" /> Data</span>
+                    }
                     @* A value has no items, so it sits flat in the same Data
                        group rather than as a folder with nothing inside. *@
                     @if (!EffectiveScalars.Any())
                     {
-                        <EmptyState Compact Class="editor-nav__empty" Description="No data values yet." />
+                        <EmptyState Compact Class="editor-nav__empty" Description="@(At25 ? "No snippets yet." : "No data values yet.")" />
                     }
                     @foreach (var scalar in EffectiveScalars)
                     {
@@ -563,7 +573,7 @@
                             {
                                 <div class="editor-nav__item editor-nav__item--nested">
                                     <span class="editor-nav__dot"></span>
-                                    <span class="muted-text">not bound by any workflow node yet</span>
+                                    <span class="muted-text">@(At25 ? "not read by any template yet" : "not bound by any workflow node yet")</span>
                                 </div>
                             }
                         }
@@ -572,11 +582,11 @@
                             class="editor-nav__item editor-nav__add @(selectedKey == AddScalarKey ? "editor-nav__item--selected" : "")"
                             @onclick="() => Select(AddScalarKey)">
                         <span class="editor-nav__dot"></span>
-                        <span>+ Data value</span>
+                        <span>@(At25 ? "+ Snippet" : "+ Data value")</span>
                     </button>
                     @if (!EffectiveCollections.Any())
                     {
-                        <EmptyState Compact Class="editor-nav__empty" Description="No data folders yet." />
+                        <EmptyState Compact Class="editor-nav__empty" Description="@(At25 ? "No snippet folders yet." : "No data folders yet.")" />
                     }
                     @foreach (var collection in EffectiveCollections)
                     {
@@ -601,7 +611,7 @@
                                     <button type="button"
                                             class="editor-nav__item editor-nav__item--nested @(selectedKey == item.File ? "editor-nav__item--selected" : "")"
                                             @onclick="() => Select(item.File)">
-                                        <span class="editor-nav__dot">@(edits.ContainsKey(item.File) || standardNameEdits.ContainsKey(item.File) ? "●" : "")</span>
+                                        <span class="editor-nav__dot">@(edits.ContainsKey(item.File) || standardNameEdits.ContainsKey(item.File) || itemWhenEdits.ContainsKey(item.File) ? "●" : "")</span>
                                         <span>@StandardName(item)</span>
                                     </button>
                                 }
@@ -632,7 +642,7 @@
                             {
                                 <div class="editor-nav__item editor-nav__item--nested">
                                     <span class="editor-nav__dot"></span>
-                                    <span class="muted-text">not used by any workflow node yet</span>
+                                    <span class="muted-text">@(At25 ? "not fanned or iterated by anything yet" : "not used by any workflow node yet")</span>
                                 </div>
                             }
                         </details>
@@ -641,7 +651,7 @@
                             class="editor-nav__item editor-nav__add @(selectedKey == AddCollectionKey ? "editor-nav__item--selected" : "")"
                             @onclick="() => Select(AddCollectionKey)">
                         <span class="editor-nav__dot"></span>
-                        <span>+ Data folder</span>
+                        <span>@(At25 ? "+ Snippet folder" : "+ Data folder")</span>
                     </button>
                 </nav>
 
@@ -652,7 +662,14 @@
                         <div class="pane-header">
                             <div>
                                 <h3 class="panel-title">New @newCollection item</h3>
-                                <p class="muted-text">Adds a generated section to every future consult.</p>
+                                @if (At25)
+                                {
+                                    <p class="muted-text">A snippet in the folder: a Scriban template a fanning node reads as <code>item.text</code>, included on every run unless its condition says otherwise.</p>
+                                }
+                                else
+                                {
+                                    <p class="muted-text">Adds a generated section to every future consult.</p>
+                                }
                             </div>
                         </div>
                         @if (newItemError != null)
@@ -671,7 +688,7 @@
                         </div>
                         <div class="pane-split">
                             <label class="input-field pane-editor">
-                                <span>Standard</span>
+                                <span>@ItemNoun</span>
                                 <FluentTextArea @bind-Value="newItemContent" Rows="14" />
                             </label>
                             <div class="pane-preview">
@@ -691,12 +708,23 @@
                     {
                         <div class="pane-header">
                             <div>
-                                <h3 class="panel-title">New data folder</h3>
-                                <p class="muted-text">
-                                    A new collection of items beside the existing folders. Add at least one
-                                    item before publishing; workflow nodes can be connected to it in a later
-                                    graph edit.
-                                </p>
+                                <h3 class="panel-title">@(At25 ? "New snippet folder" : "New data folder")</h3>
+                                @if (At25)
+                                {
+                                    <p class="muted-text">
+                                        A folder of snippets a node fans over (<code>forEach: snippet:&lt;folder&gt;</code>)
+                                        or a template iterates (<code>{{ for s in snippet.&lt;folder&gt; }}</code>). Add at
+                                        least one item before publishing.
+                                    </p>
+                                }
+                                else
+                                {
+                                    <p class="muted-text">
+                                        A new collection of items beside the existing folders. Add at least one
+                                        item before publishing; workflow nodes can be connected to it in a later
+                                        graph edit.
+                                    </p>
+                                }
                             </div>
                         </div>
                         @if (newCollectionError != null)
@@ -705,8 +733,8 @@
                         }
                         <div class="new-item-fields">
                             <label class="input-field">
-                                <span>folder id (lowercase, digits, hyphens)</span>
-                                <FluentTextField @bind-Value="newCollectionId" Placeholder="guidelines" />
+                                <span>@(At25 ? "folder id (snake_case)" : "folder id (lowercase, digits, hyphens)")</span>
+                                <FluentTextField @bind-Value="newCollectionId" Placeholder="@(At25 ? "sections" : "guidelines")" />
                             </label>
                         </div>
                         <div class="action-row">
@@ -719,12 +747,23 @@
                     {
                         <div class="pane-header">
                             <div>
-                                <h3 class="panel-title">New data value</h3>
-                                <p class="muted-text">
-                                    A single piece of text the package owns — a specialty, a note type — that
-                                    prompts read as <code>data:&lt;id&gt;</code>. Unlike a folder it has no items;
-                                    it is one value, the same for every consult this package runs.
-                                </p>
+                                <h3 class="panel-title">@(At25 ? "New snippet" : "New data value")</h3>
+                                @if (At25)
+                                {
+                                    <p class="muted-text">
+                                        A Scriban template the package owns — a standard, a house style — that a
+                                        prompt, a macro or another snippet reads as <code>{{ snippet.&lt;id&gt;.text }}</code>.
+                                        It is never attached to a node: the reading template decides where it goes.
+                                    </p>
+                                }
+                                else
+                                {
+                                    <p class="muted-text">
+                                        A single piece of text the package owns — a specialty, a note type — that
+                                        prompts read as <code>data:&lt;id&gt;</code>. Unlike a folder it has no items;
+                                        it is one value, the same for every consult this package runs.
+                                    </p>
+                                }
                             </div>
                         </div>
                         @if (newScalarError != null)
@@ -733,13 +772,13 @@
                         }
                         <div class="new-item-fields">
                             <label class="input-field">
-                                <span>value id (lowercase, digits, underscores, hyphens)</span>
-                                <FluentTextField @bind-Value="newScalarId" Placeholder="specialty" />
+                                <span>@(At25 ? "snippet id (snake_case)" : "value id (lowercase, digits, underscores, hyphens)")</span>
+                                <FluentTextField @bind-Value="newScalarId" Placeholder="@(At25 ? "standards" : "specialty")" />
                             </label>
                         </div>
                         <div class="action-row">
                             <FluentButton Appearance="Appearance.Accent" @onclick="AddScalarAsync">
-                                Create value
+                                @(At25 ? "Create snippet" : "Create value")
                             </FluentButton>
                         </div>
                     }
@@ -749,15 +788,14 @@
                                             Subtitle="@(addedScalars.ContainsKey(scalar.Id) ? "— new, unpublished" : string.Empty)"
                                             IdentityId="@scalar.Id"
                                             IdentityFile="@scalar.Path"
-                                            EditLabel="Value"
+                                            EditLabel="@(At25 ? "Snippet" : "Value")"
                                             Text="@GetText(scalar.Path)"
                                             Modified="@ScalarHasPending(scalar)"
                                             TextChanged="@(value => OnTextChangedAsync(scalar.Path, value))">
                             <HeaderActions>
-                                @{ var holders = NodesBinding(scalar.Id); }
                                 @PaneDiscardButton(scalar.Path, ScalarCanDiscard(scalar), () => RevertFileEdits(scalar.Path))
                                 <FluentButton Appearance="Appearance.Outline"
-                                              Disabled="@(holders.Count > 0)"
+                                              Disabled="@(!ScalarIsUnused(scalar.Id))"
                                               @onclick="() => RemoveScalarAsync(scalar.Id)">
                                     Remove
                                 </FluentButton>
@@ -766,7 +804,15 @@
                                 @* Said before the button is reached for, not after
                                    it is pressed: deleting a bound value produces a
                                    package the server refuses to publish. *@
-                                @if (NodesBinding(scalar.Id) is { Count: > 0 } bindingNodes)
+                                @if (At25)
+                                {
+                                    @* v25 (#1008): a snippet is read, never bound — the walk names its readers. *@
+                                    @if (!ScalarIsUnused(scalar.Id))
+                                    {
+                                        <p class="muted-text">Change the readers below first to delete this snippet.</p>
+                                    }
+                                }
+                                else if (NodesBinding(scalar.Id) is { Count: > 0 } bindingNodes)
                                 {
                                     <p class="muted-text">
                                         Bound by @(bindingNodes.Count == 1 ? "node" : "nodes")
@@ -775,10 +821,21 @@
                                         first to delete this value.
                                     </p>
                                 }
-                                <p class="muted-text">
-                                    Bound as <code>data:@scalar.Id</code>. Inserted into prompts exactly as
-                                    typed — a trailing newline becomes a line break mid-sentence.
-                                </p>
+                                @if (At25)
+                                {
+                                    <p class="muted-text">
+                                        Read as <code>{{ snippet.@(scalar.Id).text }}</code> — rendered as a template
+                                        where it is read, exactly as typed.
+                                    </p>
+                                    @SnippetReadersList((scalar.Id, false))
+                                }
+                                else
+                                {
+                                    <p class="muted-text">
+                                        Bound as <code>data:@scalar.Id</code>. Inserted into prompts exactly as
+                                        typed — a trailing newline becomes a line break mid-sentence.
+                                    </p>
+                                }
                             </ChildContent>
                         </WorkflowEditorPane>
                     }
@@ -788,7 +845,7 @@
                                             Subtitle="— new, unpublished"
                                             IdentityId="@addedItem.Id"
                                             IdentityFile="@AddedPath(addedItem)"
-                                            EditLabel="Standard"
+                                            EditLabel="@ItemNoun"
                                             Text="@addedItem.Content"
                                             Modified="true"
                                             TextChanged="@(async value => { addedItem.Content = value; await PendingChangedAsync(); })">
@@ -798,7 +855,16 @@
                                 </FluentButton>
                             </HeaderActions>
                             <ChildContent>
-                                <p class="muted-text">Adds a generated section to every future consult.</p>
+                                @if (At25)
+                                {
+                                    <p class="muted-text">Read as <code>item.text</code> by the node fanning '@addedItem.Collection'.</p>
+                                    @ConditionField(("Included when", AddedItemWhenTarget(addedItem), "Every run"))
+                                    @SnippetReadersList((addedItem.Collection, true))
+                                }
+                                else
+                                {
+                                    <p class="muted-text">Adds a generated section to every future consult.</p>
+                                }
                             </ChildContent>
                         </WorkflowEditorPane>
                     }
@@ -1839,7 +1905,7 @@
                                     <span>for each</span>
                                     <FluentSelect TOption="string" class="binding-row__select" @bind-Value="newNodeForEach" aria-label="New node forEach">
                                         <FluentOption TOption="string" Value="">— runs once —</FluentOption>
-                                        @foreach (var option in WorkflowNodeSummary.ForEachOptions(CollectionIds, ArrayInputIds))
+                                        @foreach (var option in WorkflowNodeSummary.ForEachOptions(CollectionIds, ArrayInputIds, At25))
                                         {
                                             <FluentOption TOption="string" Value="@option">@option</FluentOption>
                                         }
@@ -2182,12 +2248,12 @@
                         <WorkflowEditorPane Title="@StandardName(standard)"
                                             IdentityId="@standard.Id"
                                             IdentityFile="@standard.File"
-                                            EditLabel="Standard"
+                                            EditLabel="@ItemNoun"
                                             Text="@GetText(standard.File)"
                                             Modified="@edits.ContainsKey(standard.File)"
                                             TextChanged="@(value => OnTextChangedAsync(standard.File, value))">
                             <HeaderActions>
-                                @PaneDiscardButton(standard.File, edits.ContainsKey(standard.File), () => RevertFileEdits(standard.File))
+                                @PaneDiscardButton(standard.File, edits.ContainsKey(standard.File) || itemWhenEdits.ContainsKey(standard.File), () => RevertItemEdits(standard.File))
                                 <FluentButton Appearance="Appearance.Outline" @onclick="() => RemoveItemAsync(standard.File)">
                                     Remove
                                 </FluentButton>
@@ -2199,11 +2265,21 @@
                                     <input class="node-field__input"
                                            value="@StandardName(standard)"
                                            @onchange="args => RenameStandardAsync(standard, args.Value?.ToString())"
-                                           aria-label="@($"Name for standard {standard.Id}")" />
+                                           aria-label="@($"Name for {ItemNoun.ToLowerInvariant()} {standard.Id}")" />
                                 </label>
-                                <p class="muted-text">
-                                    Standards guide organization and tone only. Patient facts still come from the draft consult.
-                                </p>
+                                @if (At25)
+                                {
+                                    <p class="muted-text">Read as <code>item.text</code> by the node fanning this folder.</p>
+                                    @* v25 (#1008): the item's input-only when — a folder's size is settled at job start. *@
+                                    @ConditionField(("Included when", ItemWhenTarget(standard), "Every run"))
+                                    @SnippetReadersList((FolderOfItem(standard.File), true))
+                                }
+                                else
+                                {
+                                    <p class="muted-text">
+                                        Standards guide organization and tone only. Patient facts still come from the draft consult.
+                                    </p>
+                                }
                             </ChildContent>
                         </WorkflowEditorPane>
                     }
@@ -2654,7 +2730,12 @@
   // v24 (#957): Extra — operands only THIS target may read (a node macro on a data
   // fan reads item:id), offered before the package-wide list. Trailing: every
   // other target constructs as it did.
-  private sealed record ConditionTarget(string Key, string Subject, string? When, Action<string?> Write, IReadOnlyList<ConditionOperand>? Extra = null);
+  /// <summary>
+  /// A condition the builder edits. <paramref name="InputsOnly"/> (v25 #1008): a snippet
+  /// folder item's when reads inputs only, so the builder offers no node: operand and no
+  /// Extra — the registry's rule ("so the folder's size is known at job start").
+  /// </summary>
+  private sealed record ConditionTarget(string Key, string Subject, string? When, Action<string?> Write, IReadOnlyList<ConditionOperand>? Extra = null, bool InputsOnly = false);
 
   private sealed record ConditionScope(ConditionTarget Target, ConditionGroup Root, IReadOnlyList<int> Path);
 
@@ -3224,6 +3305,9 @@
         public string Id { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;
+
+        /// <summary>v25 (#1008): the item's input-only when, written into index.json; null = always included.</summary>
+        public string? When { get; set; }
     }
 
     private readonly List<AddedItem> addedItems = new();
@@ -3643,6 +3727,9 @@
             // not the manifest — AffectsManifest is false, like file-body edits).
             new("standardNameEdits", () => standardNameEdits.Count, standardNameEdits.Clear,
                 () => $"{standardNameEdits.Count} standard {Plural(standardNameEdits.Count, "name")}", () => false),
+            // v25 (#1008): a folder item's when — lives in index.json, not the manifest.
+            new("itemWhenEdits", () => itemWhenEdits.Count, itemWhenEdits.Clear,
+                () => $"{itemWhenEdits.Count} snippet {Plural(itemWhenEdits.Count, "condition")}", () => false),
             // v15 (#731): pending raw toggles on declared prompts.
             new("promptRawEdits", () => promptRawEdits.Count, promptRawEdits.Clear,
                 () => $"{promptRawEdits.Count} raw {Plural(promptRawEdits.Count, "prompt")}", () => promptRawEdits.Count > 0),
@@ -3752,7 +3839,144 @@
         || key == AddPreludeKey
         || addedItems.Any(added => added.Key == key);
 
-    private string AddedPath(AddedItem item) => $"data/{item.Collection}/{item.Id}.md";
+    private string AddedPath(AddedItem item) => $"{DataRoot}{item.Collection}/{item.Id}.md";
+
+    /// <summary>
+    /// C2 (#1008): at 25 the Data group is the Snippets group — the same
+    /// machinery under the snippets table. Every difference between the two
+    /// is keyed here: the manifest key, the directory root, a value's path, the
+    /// fan spelling, the nouns.
+    /// </summary>
+    private bool At25 => EffectiveSpecVersion >= 25;
+
+    private string DataTableKey => At25 ? WorkflowManifestReader.SnippetsKey : WorkflowManifestReader.DataKey;
+
+    private string DataRoot => At25 ? "snippets/" : "data/";
+
+    private string CollectionDirectory(string collectionId) => $"{DataRoot}{collectionId}/";
+
+    /// <summary>How a node fans this folder: snippet:&lt;folder&gt; at 25, data:&lt;collection&gt; below.</summary>
+    private string FanRef(string collectionId) => At25 ? $"{PF.WorkflowFanSources.SnippetPrefix}{collectionId}" : $"data:{collectionId}";
+
+    /// <summary>The folder a forEach names, under either spelling; null for an input fan or none.</summary>
+    private static string? FanFolderOf(string? forEach) =>
+        forEach is null ? null
+        : forEach.StartsWith("data:", StringComparison.Ordinal) ? forEach["data:".Length..]
+        : PF.WorkflowFanSources.IsSnippetFan(forEach) ? PF.WorkflowFanSources.CollectionIdOf(forEach)
+        : null;
+
+    private string ItemNoun => At25 ? "Snippet" : "Standard";
+
+    // v25 (#1008): the engine's walk over the effective package, memoised on the
+    // pending tick (bumped by every committed change) and the catalogue
+    // instance. Null below 25 or when the composed manifest does not read.
+    private int walkTick;
+    private (int Tick, WorkflowFormatsView? Catalogue, PF.WorkflowDerivedEdges.Walk? Walk) walkCache = (-1, null, null);
+
+    private PF.WorkflowDerivedEdges.Walk? PackageWalk
+    {
+        get
+        {
+            if (!At25 || content == null)
+            {
+                return null;
+            }
+
+            if (walkCache.Tick != walkTick || !ReferenceEquals(walkCache.Catalogue, formatsCatalog))
+            {
+                walkCache = (walkTick, formatsCatalog, EditorPackageWalk.Walk(
+                    ComposeManifest().GetRawText(), AssembleFiles(), EditorPackageWalk.CatalogFrom(formatsCatalog)));
+            }
+
+            return walkCache.Walk;
+        }
+    }
+
+    /// <summary>One place a snippet is read: the walk's subject and the pane that holds it (null when it has none).</summary>
+    private sealed record SnippetReader(string Subject, string? Key);
+
+    /// <summary>
+    /// Where a snippet (or a folder) is read, from the walk: every template whose
+    /// references name it — a prompt, another snippet, a folder item, a macro —
+    /// and, for a folder, every node fanning it. The Snippets pane's "Read by"
+    /// list, the delete guard and the nav's "not read" line all read this.
+    /// </summary>
+    private IReadOnlyList<SnippetReader> SnippetReaders(string id, bool folder)
+    {
+        var readers = new List<SnippetReader>();
+
+        if (PackageWalk is { } walk)
+        {
+            foreach (var template in walk.Templates)
+            {
+                var reads = folder ? template.References.SnippetFolders.Contains(id) : template.References.Snippets.Contains(id);
+
+                if (reads)
+                {
+                    readers.Add(new SnippetReader(template.Subject, PaneKeyOf(template)));
+                }
+            }
+        }
+
+        if (folder)
+        {
+            readers.AddRange(EffectiveNodes
+                .Where(node => node.ForEach == FanRef(id))
+                .Select(node => new SnippetReader($"Node '{node.Id}' fans it", $"{NodeKeyPrefix}{node.Id}")));
+        }
+
+        return readers;
+    }
+
+    /// <summary>The pane a walked template is edited on: a prompt's, a snippet's, a folder item's, a macro's file.</summary>
+    private string? PaneKeyOf(PF.WorkflowDerivedEdges.WalkedTemplate template) => template.Kind switch
+    {
+        PF.TemplateKind.Prompt => EffectivePrompts.FirstOrDefault(p => p.Id == template.Id)?.File,
+        PF.TemplateKind.Macro => EffectiveMacros.FirstOrDefault(m => m.Id == template.Id)?.File,
+        PF.TemplateKind.Snippet when template.Id.IndexOf('/') is var slash && slash > 0 =>
+            EffectiveCollections.FirstOrDefault(c => c.Id == template.Id[..slash])?.Items.FirstOrDefault(i => i.Id == template.Id[(slash + 1)..])?.File
+            ?? addedItems.FirstOrDefault(a => a.Collection == template.Id[..slash] && a.Id == template.Id[(slash + 1)..])?.Key,
+        PF.TemplateKind.Snippet => ScalarPath(template.Id),
+        _ => null
+    };
+
+    /// <summary>The "Read by" rows: each a button opening the reader's pane, or the empty sentence.</summary>
+    private RenderFragment<(string Id, bool Folder)> SnippetReadersList => spec => @<text>
+        @{ var readers = SnippetReaders(spec.Id, spec.Folder); }
+        @if (readers.Count > 0)
+        {
+            <p class="muted-text">Read by</p>
+            <ul class="snippet-readers" aria-label="@($"Readers of {spec.Id}")">
+                @foreach (var reader in readers)
+                {
+                    <li>
+                        @if (reader.Key is { } key)
+                        {
+                            <button type="button" class="snippet-readers__row" @onclick="() => Select(key)">@reader.Subject</button>
+                        }
+                        else
+                        {
+                            <span class="snippet-readers__row">@reader.Subject</span>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+        else if (spec.Folder)
+        {
+            <p class="muted-text">Not fanned or iterated by anything yet — a node fans it as <code>snippet:@spec.Id</code>; a template iterates it as <code>{{ for s in snippet.@spec.Id }}</code>.</p>
+        }
+        else
+        {
+            <p class="muted-text">Not read by any template yet — read it as <code>{{ snippet.@(spec.Id).text }}</code>.</p>
+        }
+        @if (formatsCatalog is null)
+        {
+            <p class="muted-text">The format catalogue is unavailable, so reads from prompts on catalogue formats are not listed.</p>
+        }
+    </text>;
+
+    private string FanNoun => At25 ? "snippet folder" : "data: collection";
 
     private AddedItem? SelectedAdded() => addedItems.FirstOrDefault(a => a.Key == selectedKey);
 
@@ -3769,15 +3993,15 @@
     // the sidebar and index composition treat both alike.
     private IEnumerable<WorkflowManifestReader.CollectionView> EffectiveCollections =>
         collections.Concat(addedCollections.Select(id => new WorkflowManifestReader.CollectionView(
-            id, $"data/{id}/", Array.Empty<WorkflowManifestReader.DataItemView>())));
+            id, CollectionDirectory(id), Array.Empty<WorkflowManifestReader.DataItemView>())));
 
     private bool CollectionIsUnused(string collectionId) =>
-        !nodes.Any(n => n.ForEach == $"data:{collectionId}");
+        At25 ? SnippetReaders(collectionId, folder: true).Count == 0 : !nodes.Any(n => n.ForEach == FanRef(collectionId));
 
     // Single-value data entries (#309). A value's key IS its path, derived the
     // same way whether pending or published, so selection needs no second
     // scheme — the standards pane already selects by file.
-    private static string ScalarPath(string id) => $"data/{id}.txt";
+    private string ScalarPath(string id) => At25 ? $"snippets/{id}.md" : $"data/{id}.txt";
 
     // The loaded values plus one synthetic view per pending value, so the
     // sidebar and the composition treat both alike.
@@ -3805,7 +4029,8 @@
 
     // A collection is unused when nothing forEaches it; a value when nothing
     // binds it. Different edge kinds, same question.
-    private bool ScalarIsUnused(string scalarId) => NodesBinding(scalarId).Count == 0;
+    private bool ScalarIsUnused(string scalarId) =>
+        At25 ? SnippetReaders(scalarId, folder: false).Count == 0 : NodesBinding(scalarId).Count == 0;
 
     // Published values marked for deletion. Derived from removedFiles rather
     // than tracked separately, so PendingCount, Discard, Load and the draft
@@ -3836,7 +4061,15 @@
         // belongs to the directory segment, and a value is a file. note_type
         // is published and running, so forbidding '_' here would refuse an id
         // that already exists.
-        if (!ItemIdPattern.IsMatch(id))
+        // At 25 the registry's rule, in its words (WorkflowPackageValidator.V25
+        // ResolveSnippetsAt25): a snippet id is snake_case.
+        if (At25 && !PF.WorkflowDeclaredIds.IsValid(id))
+        {
+            newScalarError = SnippetIdSentence(id);
+            return;
+        }
+
+        if (!At25 && !ItemIdPattern.IsMatch(id))
         {
             newScalarError = "The value id must be lowercase letters, digits, '_' or '-', starting with a letter or digit.";
             return;
@@ -3844,7 +4077,7 @@
 
         if (DataEntryIds.Contains(id, StringComparer.Ordinal))
         {
-            newScalarError = $"A data entry named '{id}' already exists.";
+            newScalarError = At25 ? $"A snippet named '{id}' already exists." : $"A data entry named '{id}' already exists.";
             return;
         }
 
@@ -3896,7 +4129,15 @@
     {
         var id = newCollectionId?.Trim() ?? string.Empty;
 
-        if (!CollectionIdPattern.IsMatch(id))
+        // At 25 a folder id is snake_case like every declared id (the Api's
+        // snippets/<folder>/ directory rule takes the underscore, #1008).
+        if (At25 && !PF.WorkflowDeclaredIds.IsValid(id))
+        {
+            newCollectionError = SnippetIdSentence(id);
+            return;
+        }
+
+        if (!At25 && !CollectionIdPattern.IsMatch(id))
         {
             newCollectionError = "The folder id must be lowercase letters, digits or '-', starting with a letter or digit.";
             return;
@@ -3904,7 +4145,7 @@
 
         if (DataEntryIds.Contains(id, StringComparer.Ordinal))
         {
-            newCollectionError = $"A data entry named '{id}' already exists.";
+            newCollectionError = At25 ? $"A snippet named '{id}' already exists." : $"A data entry named '{id}' already exists.";
             return;
         }
 
@@ -3915,6 +4156,10 @@
         selectedKey = NewKeyFor(id);
         await PendingChangedAsync();
     }
+
+    /// <summary>The validator's snake_case sentence for a snippet or folder id, word for word.</summary>
+    private static string SnippetIdSentence(string id) =>
+        $"Snippet id '{id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
 
     private async Task RemoveCollectionAsync(string collectionId)
     {
@@ -4046,6 +4291,52 @@
     // #946: does a collection carry a pending item-name rename? (gates index.json recompose.)
     private bool CollectionHasNameEdits(WorkflowManifestReader.CollectionView collection) =>
         standardNameEdits.Keys.Any(file => file.StartsWith(collection.Directory, StringComparison.Ordinal));
+
+    // v25 (#1008): a published folder item's edited when (its index.json items[].when),
+    // keyed by the item's file path, self-removing when it equals the loaded value.
+    // A pending item carries its own (AddedItem.When). Null/blank = always included.
+    private readonly Dictionary<string, string?> itemWhenEdits = new(StringComparer.Ordinal);
+
+    private const string ItemWhenKeyPrefix = "item-when:";
+
+    private string? ItemWhenValue(WorkflowManifestReader.DataItemView item) =>
+        itemWhenEdits.TryGetValue(item.File, out var edited) ? edited : item.When;
+
+    private void SetItemWhen(WorkflowManifestReader.DataItemView item, string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text) ? string.IsNullOrWhiteSpace(item.When) : text == item.When)
+        {
+            itemWhenEdits.Remove(item.File);
+        }
+        else
+        {
+            itemWhenEdits[item.File] = text;
+        }
+    }
+
+    /// <summary>The folder a loaded item belongs to, by its directory.</summary>
+    private string FolderOfItem(string file) =>
+        collections.FirstOrDefault(c => file.StartsWith(c.Directory, StringComparison.Ordinal))?.Id ?? string.Empty;
+
+    /// <summary>A published folder item's "Included when": inputs only, written to itemWhenEdits.</summary>
+    private ConditionTarget ItemWhenTarget(WorkflowManifestReader.DataItemView item) =>
+        new($"{ItemWhenKeyPrefix}{item.File}", $"{FolderOfItem(item.File)} item {item.Id}", ItemWhenValue(item), text => SetItemWhen(item, text), InputsOnly: true);
+
+    /// <summary>A pending folder item's "Included when": inputs only, written on the item itself.</summary>
+    private ConditionTarget AddedItemWhenTarget(AddedItem added) =>
+        new($"{ItemWhenKeyPrefix}{added.Key}", $"{added.Collection} item {added.Id}", added.When,
+            text => added.When = string.IsNullOrWhiteSpace(text) ? null : text, InputsOnly: true);
+
+    private bool CollectionHasWhenEdits(WorkflowManifestReader.CollectionView collection) =>
+        itemWhenEdits.Keys.Any(file => file.StartsWith(collection.Directory, StringComparison.Ordinal));
+
+    /// <summary>The standard pane's discard: the text edit, the when edit and any in-progress condition draft.</summary>
+    private void RevertItemEdits(string file)
+    {
+        RevertFileEdits(file);
+        itemWhenEdits.Remove(file);
+        conditionDrafts.Remove($"{ItemWhenKeyPrefix}{file}");
+    }
 
     // Path -> edited text, only where it differs from the loaded package;
     // mirrored to localStorage so drafts survive refresh on this browser.
@@ -5403,7 +5694,7 @@
                         }
                         else if (fanItems.Count == 0)
                         {
-                            errors.Add($"{where} anchors to fan item '{entry.ForItem}', but '{node.Id}' does not fan a data: collection.");
+                            errors.Add($"{where} anchors to fan item '{entry.ForItem}', but '{node.Id}' does not fan a {FanNoun}.");
                         }
                         else if (fanItems.All(item => item.Id != entry.ForItem))
                         {
@@ -6035,6 +6326,117 @@
     /// as the registry reads it (the sentences shown under its editor), and a
     /// removed format still named by a node (the SchemaErrors idiom).
     /// </summary>
+    /// <summary>
+    /// v25 C2 (#1008): the desk's mirror of the registry's snippet rules
+    /// (WorkflowPackageValidator.V25 ResolveSnippetsAt25 and the forEach
+    /// resolution), word for word — a snippet or folder id snake_case; a folder
+    /// item's when parsed, refused when it reads anything but an input (node:,
+    /// item:, arithmetic), then each clause against the declared inputs; a
+    /// node's forEach a declared folder spelled snippet:&lt;folder&gt; (or an array
+    /// input), never data:. Nothing below 25.
+    /// </summary>
+    private IEnumerable<string> SnippetErrors()
+    {
+        if (!At25)
+        {
+            yield break;
+        }
+
+        var folders = EffectiveCollections.ToList();
+        var files = EffectiveScalars.Where(s => !ScalarIsRemoved(s)).ToList();
+
+        foreach (var id in folders.Select(f => f.Id).Concat(files.Select(f => f.Id)))
+        {
+            if (!PF.WorkflowDeclaredIds.IsValid(id))
+            {
+                yield return SnippetIdSentence(id);
+            }
+        }
+
+        foreach (var folder in folders)
+        {
+            var conditioned = folder.Items
+                .Where(item => !removedFiles.Contains(item.File))
+                .Select(item => (item.Id, When: ItemWhenValue(item)))
+                .Concat(addedItems.Where(a => a.Collection == folder.Id).Select(a => (a.Id, a.When)))
+                .Where(pair => !string.IsNullOrWhiteSpace(pair.When));
+
+            foreach (var (itemId, when) in conditioned)
+            {
+                var prefix = $"Snippet folder '{folder.Id}' item '{itemId}' condition";
+
+                if (!PF.WorkflowResultConditions.TryParseExpression(when!, out var expression, out var syntaxError) || expression is null)
+                {
+                    yield return $"{prefix} {syntaxError}";
+                    continue;
+                }
+
+                var offending = expression.Leaves.FirstOrDefault(leaf => leaf.IsNodeValue || leaf.IsItemValue || leaf.IsArithmetic);
+
+                if (offending is not null)
+                {
+                    yield return $"{prefix} reads '{offending.Operand}'; a folder item's when reads inputs only, so the folder's size is known at job start (the template's own if gates anything else).";
+                    continue;
+                }
+
+                foreach (var clause in expression.Leaves)
+                {
+                    if (clause.PathDepth >= 2)
+                    {
+                        continue;
+                    }
+
+                    var tested = EffectiveInputs.FirstOrDefault(input => input.Id == clause.InputId);
+
+                    if (tested == null)
+                    {
+                        yield return $"{prefix} reads undeclared input '{clause.InputId}'.";
+                        break;
+                    }
+
+                    if (V9ConditionComplaint(prefix, clause, tested) is { } complaint)
+                    {
+                        yield return complaint;
+                        break;
+                    }
+                }
+            }
+        }
+
+        var folderIds = folders.Select(f => f.Id).ToHashSet(StringComparer.Ordinal);
+        var fileIds = files.Select(f => f.Id).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var node in EffectiveNodes)
+        {
+            if (node.ForEach is not { } forEach)
+            {
+                continue;
+            }
+
+            if (forEach.StartsWith("data:", StringComparison.Ordinal))
+            {
+                yield return $"Node '{node.Id}' forEach '{forEach}' is retired at specVersion 25; fan a snippet folder (snippet:<folder>) or an array input (input:<id>).";
+            }
+            else if (PF.WorkflowFanSources.IsSnippetFan(forEach))
+            {
+                var folderId = PF.WorkflowFanSources.CollectionIdOf(forEach);
+
+                if (fileIds.Contains(folderId))
+                {
+                    yield return $"Node '{node.Id}' forEach fans snippet '{folderId}', which is a file, not a folder.";
+                }
+                else if (!folderIds.Contains(folderId))
+                {
+                    yield return $"Node '{node.Id}' forEach fans snippet folder '{folderId}', which the package does not declare.";
+                }
+            }
+            else if (!forEach.StartsWith(WorkflowInputFans.Prefix, StringComparison.Ordinal))
+            {
+                yield return $"Node '{node.Id}' forEach '{forEach}' must be snippet:<folder> or input:<id>.";
+            }
+        }
+    }
+
     private IEnumerable<string> FormatErrors()
     {
         if (EffectiveSpecVersion < 25)
@@ -7523,7 +7925,8 @@
 
     /// <summary>The operands a target's clauses may read: its own (v24 item:id on a fan node's macro) before the package-wide list.</summary>
     private IReadOnlyList<ConditionOperand> OperandsFor(ConditionTarget target) =>
-        target.Extra is { Count: > 0 } extra ? extra.Concat(ConditionOperands).ToList() : ConditionOperands;
+        target.InputsOnly ? ConditionOperands.Where(operand => !operand.Key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)).ToList()
+        : target.Extra is { Count: > 0 } extra ? extra.Concat(ConditionOperands).ToList() : ConditionOperands;
 
     /// <summary>v24 (#957): the one item operand a condition reads, and its pseudo-type (a closed set, like a classifier's values).</summary>
     private const string ItemIdKey = "item:id";
@@ -7928,12 +8331,12 @@
     /// fan a data: collection (an input fan's items are the caller's).</summary>
     private IReadOnlyList<WorkflowManifestReader.DataItemView> NodeFanItems(WorkflowManifestReader.NodeView node)
     {
-        if (node.ForEach is not { } forEach || !forEach.StartsWith("data:", StringComparison.Ordinal))
+        // data:<collection> below 25, snippet:<folder> at 25 (#1008) — one folder, two spellings.
+        if (FanFolderOf(node.ForEach) is not { } collectionId)
         {
             return Array.Empty<WorkflowManifestReader.DataItemView>();
         }
 
-        var collectionId = forEach["data:".Length..];
         return EffectiveCollections.FirstOrDefault(c => c.Id == collectionId)?.Items
             ?? (IReadOnlyList<WorkflowManifestReader.DataItemView>)Array.Empty<WorkflowManifestReader.DataItemView>();
     }
@@ -7943,9 +8346,13 @@
     private static IReadOnlyList<string> FanItemFields(WorkflowManifestReader.NodeView node) =>
         node.ForEach is not { } forEach ? Array.Empty<string>()
         : forEach.StartsWith("data:", StringComparison.Ordinal) ? DataFanFields
+        : PF.WorkflowFanSources.IsSnippetFan(forEach) ? SnippetFanFields
         : PF.WorkflowInputFans.ItemFields;
 
     private static readonly IReadOnlyList<string> DataFanFields = new[] { "id", "name", "content" };
+
+    /// <summary>A snippet fan item at 25: id, name and the item's rendered text (content is retired).</summary>
+    private static readonly IReadOnlyList<string> SnippetFanFields = new[] { PF.TemplateMembers.Id, PF.TemplateMembers.Name, PF.TemplateMembers.Text };
 
     /// <summary>The fan nodes a library macro is composed into (v23+), with the item fields each exposes.</summary>
     private IEnumerable<WorkflowManifestReader.NodeView> FanNodesComposing(string macroId) =>
@@ -8425,13 +8832,11 @@
         }
 
         var anchorNodeId = anchor.StartsWith("node:", StringComparison.Ordinal) ? anchor["node:".Length..] : anchor;
-        if (EffectiveNodes.FirstOrDefault(n => n.Id == anchorNodeId)?.ForEach is not { } forEach
-            || !forEach.StartsWith("data:", StringComparison.Ordinal))
+        if (FanFolderOf(EffectiveNodes.FirstOrDefault(n => n.Id == anchorNodeId)?.ForEach) is not { } collectionId)
         {
             return Array.Empty<WorkflowManifestReader.DataItemView>();
         }
 
-        var collectionId = forEach["data:".Length..];
         return EffectiveCollections.FirstOrDefault(c => c.Id == collectionId)?.Items
             ?? (IReadOnlyList<WorkflowManifestReader.DataItemView>)Array.Empty<WorkflowManifestReader.DataItemView>();
     }
@@ -9881,15 +10286,19 @@
     // by LoadAsync (registry load) and ImportPackageAsync (#847, an uploaded zip).
     private void ProjectLoadedContent()
     {
+        walkTick++;
         prompts = WorkflowManifestReader.ReadPrompts(content!.Manifest);
         nodes = WorkflowManifestReader.ReadNodes(content.Manifest);
-        collections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files);
-        scalarEntries = WorkflowManifestReader.ReadScalarEntries(content.Manifest);
+        collections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files, DataTableKey);
+        scalarEntries = WorkflowManifestReader.ReadScalarEntries(content.Manifest, DataTableKey);
         publishedScalarIds = scalarEntries.Select(entry => entry.Id).ToList();
         schemaIds = WorkflowManifestReader.ReadSchemaIds(content.Manifest);
     }
 
-    private sealed record DraftAdded(string Collection, string Id, string Name, string Content);
+    private sealed record DraftAdded(string Collection, string Id, string Name, string Content, string? When = null);
+
+    /// <summary>v25 (#1008): a published folder item's pending when, by file.</summary>
+    private sealed record DraftItemWhen(string File, string? When);
 
     private sealed record DraftBinding(string NodeId, string Variable, string From, string? As);
 
@@ -9987,7 +10396,9 @@
         List<DraftNodeMacros>? NodeMacroEdits = null,
         // v25 (C1 #1007): the package's own formats. Trailing optional.
         List<DraftAddedFormat>? AddedFormats = null,
-        List<string>? RemovedFormats = null);
+        List<string>? RemovedFormats = null,
+        // v25 (C2 #1008): pending folder-item whens. Trailing optional.
+        List<DraftItemWhen>? ItemWhens = null);
 
     private sealed record DraftAddedFormat(string Id, string Body);
 
@@ -10163,7 +10574,7 @@
                 && validCollections.Contains(draftItem.Collection)
                 && !loadedIds.Contains((draftItem.Collection, draftItem.Id)))
             {
-                addedItems.Add(new AddedItem { Collection = draftItem.Collection, Id = draftItem.Id, Name = draftItem.Name, Content = draftItem.Content });
+                addedItems.Add(new AddedItem { Collection = draftItem.Collection, Id = draftItem.Id, Name = draftItem.Name, Content = draftItem.Content, When = draftItem.When });
             }
         }
 
@@ -10254,10 +10665,24 @@
             }
         }
 
+        // v25 (#1008): a drafted item when is kept only while that item file still exists.
+        if ((payload.ItemWhens?.Count ?? 0) > 0)
+        {
+            var whenItemFiles = WorkflowManifestReader.ReadCollections(content!.Manifest, content!.Files, DataTableKey)
+                .SelectMany(c => c.Items).Select(item => item.File).ToHashSet(StringComparer.Ordinal);
+            foreach (var draftItemWhen in payload.ItemWhens!)
+            {
+                if (whenItemFiles.Contains(draftItemWhen.File))
+                {
+                    itemWhenEdits[draftItemWhen.File] = draftItemWhen.When;
+                }
+            }
+        }
+
         // #946: a drafted standard name is kept only while that item file still exists.
         if ((payload.StandardNames?.Count ?? 0) > 0)
         {
-            var loadedItemFiles = WorkflowManifestReader.ReadCollections(content!.Manifest, content!.Files)
+            var loadedItemFiles = WorkflowManifestReader.ReadCollections(content!.Manifest, content!.Files, DataTableKey)
                 .SelectMany(c => c.Items).Select(item => item.File).ToHashSet(StringComparer.Ordinal);
             foreach (var draftStandardName in payload.StandardNames!)
             {
@@ -10563,6 +10988,7 @@
     /// </summary>
     private async Task PendingChangedAsync()
     {
+        walkTick++;
         publishSuccess = null;
         publishWarnings.Clear();
         // #812: any change (an edit, or a scoped discard) disarms a pending
@@ -10594,7 +11020,7 @@
         new DraftPayload(
             15,
             edits,
-            addedItems.Select(a => new DraftAdded(a.Collection, a.Id, a.Name, a.Content)).ToList(),
+            addedItems.Select(a => new DraftAdded(a.Collection, a.Id, a.Name, a.Content, a.When)).ToList(),
             removedFiles.ToList(),
             bindingEdits.Select(pair =>
             {
@@ -10644,7 +11070,8 @@
                 pair.Key,
                 pair.Value.Select(e => new DraftNodeMacro(e.Id, e.At, e.When, e.Optional, e.ForItem)).ToList())).ToList(),
             addedFormats.Select(pair => new DraftAddedFormat(pair.Key, pair.Value)).ToList(),
-            removedFormatIds.ToList());
+            removedFormatIds.ToList(),
+            itemWhenEdits.Select(pair => new DraftItemWhen(pair.Key, pair.Value)).ToList());
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -10845,13 +11272,26 @@
             }
         }
 
+        // v25 (#1008): an item's when rides index.json beside id/name/file — written
+        // only when set (loaded ⊕ edit; a pending item's own), never as a blank key.
+        static System.Text.Json.Nodes.JsonObject Item(string id, string name, string file, string? when)
+        {
+            var item = new System.Text.Json.Nodes.JsonObject { ["id"] = id, ["name"] = name, ["file"] = file };
+            if (!string.IsNullOrWhiteSpace(when))
+            {
+                item["when"] = when;
+            }
+
+            return item;
+        }
+
         var items = collection.Items
             .Where(item => !removedFiles.Contains(item.File))
             // #946: apply any pending rename to the item's name.
-            .Select(item => new { id = item.Id, name = StandardName(item), file = item.File[collection.Directory.Length..] })
+            .Select(item => Item(item.Id, StandardName(item), item.File[collection.Directory.Length..], ItemWhenValue(item)))
             .Concat(addedItems
                 .Where(a => a.Collection == collection.Id)
-                .Select(a => new { id = a.Id, name = a.Name, file = $"{a.Id}.md" }))
+                .Select(a => Item(a.Id, a.Name, $"{a.Id}.md", a.When)))
             .ToList();
 
         return JsonSerializer.Serialize(new { fields, items }, new JsonSerializerOptions { WriteIndented = true });
@@ -10883,7 +11323,9 @@
             {
                 if (!addedItems.Any(a => a.Collection == folderId))
                 {
-                    unbound.Add($"Data folder '{folderId}' has no items yet — add at least one before publishing.");
+                    unbound.Add(At25
+                        ? $"Snippet folder '{folderId}' has no items yet — add at least one before publishing."
+                        : $"Data folder '{folderId}' has no items yet — add at least one before publishing.");
                 }
             }
 
@@ -10908,7 +11350,9 @@
 
                 if (authored && string.IsNullOrWhiteSpace(GetText(scalar.Path)))
                 {
-                    unbound.Add($"Data value '{scalar.Id}' has no text yet — enter a value before publishing.");
+                    unbound.Add(At25
+                        ? $"Snippet '{scalar.Id}' has no text yet — write it before publishing."
+                        : $"Data value '{scalar.Id}' has no text yet — enter a value before publishing.");
                 }
             }
 
@@ -10974,6 +11418,7 @@
             unbound.AddRange(PackageMetadataErrors());
             unbound.AddRange(SchemaErrors());
             unbound.AddRange(FormatErrors());
+            unbound.AddRange(SnippetErrors());
             unbound.AddRange(PreludeErrors());
 
             if (unbound.Count > 0)
@@ -11458,7 +11903,7 @@
         foreach (var collection in EffectiveCollections)
         {
             if (CollectionHasMembershipChanges(collection) || addedCollections.Contains(collection.Id)
-                || CollectionHasNameEdits(collection))
+                || CollectionHasNameEdits(collection) || CollectionHasWhenEdits(collection))
             {
                 files[collection.Directory + "index.json"] = ComposeIndexJson(collection);
             }
@@ -11721,7 +12166,11 @@
         // directory value's trailing slash is what marks it as a collection.
         if (addedCollections.Count > 0 || addedScalars.Count > 0 || RemovedScalarIds.Any())
         {
-            var dataKey = root["Data"] is not null ? "Data" : "data";
+            // At 25 the table is snippets (data is retired there, #1008); the
+            // loaded key's casing is kept either way.
+            var dataKey = At25
+                ? (root["Snippets"] is not null ? "Snippets" : "snippets")
+                : (root["Data"] is not null ? "Data" : "data");
             if (root[dataKey] is not System.Text.Json.Nodes.JsonObject dataObject)
             {
                 dataObject = new System.Text.Json.Nodes.JsonObject();
@@ -11730,7 +12179,7 @@
 
             foreach (var folderId in addedCollections)
             {
-                dataObject[folderId] = $"data/{folderId}/";
+                dataObject[folderId] = CollectionDirectory(folderId);
             }
 
             // No trailing slash — that one character is the whole difference,

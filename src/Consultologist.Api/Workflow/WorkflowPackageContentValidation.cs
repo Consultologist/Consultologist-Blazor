@@ -21,8 +21,11 @@ internal static class WorkflowPackageContentValidation
 
     // v25 (B2 #1001): formats/<file> (a package-local format) joins the root
     // set; snippets/<file> and snippets/<folder>/<file> mirror data's two shapes.
+    // C2 (#1008): a snippet folder's id is snake_case at 25 (the validator's
+    // rule), so its directory segment takes the underscore data's never did —
+    // the editor names a folder snippets/<id>/, as it names data/<id>/ today.
     private static readonly Regex RootFilePattern = new("^(prompts|schemas|macros|formats)/[A-Za-z0-9._-]+$", RegexOptions.Compiled);
-    private static readonly Regex DataFilePattern = new("^(data|snippets)/[a-z0-9-]+/[A-Za-z0-9._-]+$", RegexOptions.Compiled);
+    private static readonly Regex DataFilePattern = new("^(data/[a-z0-9-]+|snippets/[a-z0-9_-]+)/[A-Za-z0-9._-]+$", RegexOptions.Compiled);
 
     /// <summary>
     /// A data path with no directory segment is a **single-value** entry —
