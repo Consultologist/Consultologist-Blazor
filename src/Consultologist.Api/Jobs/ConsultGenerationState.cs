@@ -186,6 +186,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.Collections ??= input.Collections?.ToList();
         State.EffectiveInputHashVersion ??= input.EffectiveInputHashVersion;
         State.CatalogRef ??= input.CatalogRef;
+        State.FormatsRef ??= input.FormatsRef;
         State.PackageFormatRef ??= input.PackageFormatRef;
         State.ProvenanceRef ??= input.ProvenanceRef;
         State.Terminology ??= input.Terminology;
@@ -1128,8 +1129,8 @@ public sealed record ConsultGenerationJobInitialize(
     // #802: the required ids overridden by the submitter's short-input
     // acknowledgement. Null when none. Appended last, same positional rule.
     IReadOnlyList<string>? AcknowledgedShortInputs = null,
-    // v25 (B2 #1001): the formats catalogue ref (see ConsultGenerationOrchestrationInput).
-    // Not yet written into the record — B7's provenance bump records it. Appended last.
+    // v25 (B2 #1001): the formats catalogue ref (see ConsultGenerationOrchestrationInput);
+    // written into the record since B7 #1006 (provenance@v2026.10.1). Appended last.
     string? FormatsRef = null);
 
 public sealed record ConsultGenerationNodeUpdate(
@@ -1464,6 +1465,13 @@ public sealed class ConsultGenerationJobState
     // the build's own, write-once like CatalogRef; null before 2026-08-25.
     public string? PackageFormatRef { get; set; }
     public string? ProvenanceRef { get; set; }
+
+    // v25 (B7 #1006, provenance@v2026.10.1): the formats catalogue version
+    // the job ran under (formats@vYYYY.MM.N) — a 25 package's own stamp,
+    // else the engine's pin (which a 22–24 custom-schema node runs its
+    // generic agent from since #1003). Write-once like CatalogRef; null on
+    // records from before.
+    public string? FormatsRef { get; set; }
 
     // v12 #618: the optional-macro resolutions at start; write-once; null
     // when the package declares no optional macros and on records from
@@ -1842,6 +1850,7 @@ public sealed class ConsultGenerationJobState
             CatalogRef: CatalogRef,
             PackageFormatRef: PackageFormatRef,
             ProvenanceRef: ProvenanceRef,
+            FormatsRef: FormatsRef,
             Terminology: Terminology,
             TerminologyServerRef: TerminologyServerRef,
             MacroChoices: MacroChoices,

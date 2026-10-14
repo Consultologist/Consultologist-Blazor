@@ -659,7 +659,15 @@
                         @if (unattestedNodes.Count > 0)
                         {
                             <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false" Class="result-unattested">
-                                This result contains output from a user-defined schema (@UnattestedNodes.CountSentence(unattestedNodes.Count)): not an attested clinical contract, no terminology grounding — @string.Join("; ", unattestedNodes.Values.Select(entry => $"{entry.Label}: {UnattestedNodes.Detail(entry)}")).
+                                @* B7 #1006: the 22–24 sentence word for word when every marked block is unattested; a 25 custom shape says what it is. *@
+                                @if (unattestedNodes.Values.All(entry => entry.Kind == UnattestedNodes.UnattestedKind))
+                                {
+                                    <text>This result contains output from a user-defined schema (@UnattestedNodes.CountSentence(unattestedNodes.Count)): not an attested clinical contract, no terminology grounding — @string.Join("; ", unattestedNodes.Values.Select(entry => $"{entry.Label}: {UnattestedNodes.Detail(entry)}")).</text>
+                                }
+                                else
+                                {
+                                    <text>This result contains output from a package-defined shape (@UnattestedNodes.Summary(unattestedNodes)): checked by the engine against its declared schema, not an attested clinical contract, no terminology grounding — @string.Join("; ", unattestedNodes.Values.Select(entry => $"{entry.Label}: {UnattestedNodes.Detail(entry)}")).</text>
+                                }
                             </FluentMessageBar>
                         }
                         @if (assembledDocuments.Count > 0)
@@ -817,9 +825,9 @@
                                             <section class="note-section">
                                                 <h3>
                                                     @standard.Name
-                                                    @if (unattestedNodes.ContainsKey(standard.Id.Split(':')[0]))
+                                                    @if (unattestedNodes.TryGetValue(standard.Id.Split(':')[0], out var markedEntry))
                                                     {
-                                                        <span class="note-section__unattested" title="@UnattestedNodes.Sentence">unattested</span>
+                                                        <span class="note-section__unattested" title="@UnattestedNodes.SentenceFor(markedEntry.Kind)">@UnattestedNodes.Pill(markedEntry.Kind)</span>
                                                     }
                                                 </h3>
                                                 <p>@prose</p>

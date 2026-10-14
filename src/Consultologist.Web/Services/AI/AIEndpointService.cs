@@ -667,7 +667,10 @@ public record ConsultGenerationJobResponse(
     // #639: the consult's terminal-failure frames, and each failed
     // section's — type and stack only, the message discipline unchanged.
     string? FailureStack = null,
-    IReadOnlyDictionary<string, string>? FailedBlockStacks = null);
+    IReadOnlyDictionary<string, string>? FailedBlockStacks = null,
+    // v25 (B7 #1006): the formats catalogue version the job ran under
+    // (formats@vYYYY.MM.N); null on records from before.
+    string? FormatsRef = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.TerminologySnapshot (#403).</summary>
 public record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);
@@ -747,7 +750,19 @@ public record ConsultGenerationNodeDescriptor(
     // the run diagram needed to draw them.
     IReadOnlyDictionary<string, ConsultNodeBindingDescriptor>? Bindings = null,
     ConsultCheckDescriptor? Check = null,
-    bool? Template = null);
+    bool? Template = null,
+    // v25 (B7 #1006): the node's format identity and what ran — always
+    // serialized by the API since B2/B4, declared here for the provenance
+    // panel, the custom-shape reading and the run diagram's edges (Reads is
+    // the derived edges, where Bindings were below 25). Null below 25.
+    string? Format = null,
+    string? Producer = null,
+    string? FormatHash = null,
+    string? Op = null,
+    string? AgentName = null,
+    string? AgentVersion = null,
+    IReadOnlyList<string>? Reads = null,
+    string? OnInvalid = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultNodeBindingDescriptor (#642).</summary>
 public record ConsultNodeBindingDescriptor(string From, string? As = null);
@@ -792,11 +807,11 @@ public record ConsultGenerationNodeStatus(
     bool? Unattested = null,
     string? CustomSchemaHash = null,
     string? CustomAgent = null,
-    // v25 (B4 #1003): the reply's validation against its format; surfaced by B7.
+    // v25 (B4 #1003): the reply's validation against its format (History shows it since B7).
     ConsultValidationOutcome? Validation = null,
     // v25 (B5 #1004, design § 6): the reply's own digest beside the output's,
     // what the completion appended (in output order) and excluded (by name);
-    // surfaced by B7.
+    // History shows them since B7.
     string? AgentOutputHash = null,
     IReadOnlyList<ConsultAppendedEntry>? Appended = null,
     IReadOnlyList<ConsultNodeExclusion>? Excluded = null);

@@ -74,10 +74,14 @@ public class V25DispatchTests
         Assert.Equal("custom", node.Producer);
         Assert.Equal("flag", node.OnInvalid);
         Assert.Equal("custom-json", node.AgentName);
+        // B7 #1006 (provenance@v2026.10.1): a 25 custom producer is a custom
+        // shape, engine-validated — the descriptor says what ran, the row
+        // carries no #760 stamp.
         var stamp = ConsultGenerationOrchestrator.CustomStamp(node);
-        Assert.True(stamp.Unattested);
-        Assert.Equal("custom-json@1", stamp.CustomAgent);
+        Assert.Equal(((bool?)null, (string?)null, (string?)null), stamp);
         Assert.Null(node.OutputContract);
+        Assert.Equal("custom", node.Producer);
+        Assert.NotNull(node.FormatHash);
     }
 
     [Fact]

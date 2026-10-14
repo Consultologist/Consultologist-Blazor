@@ -974,15 +974,18 @@ public class ConsultGenerationNodeEntityTests
 
         entity.Initialize(new ConsultGenerationJobInitialize(
             "job-1", "user-1", items,
-            CatalogRef: "output-contracts@v2026.07.1")).GetAwaiter().GetResult();
+            CatalogRef: "output-contracts@v2026.07.1", FormatsRef: "formats@v2026.10.1")).GetAwaiter().GetResult();
 
         // Write-once: a second Initialize (Durable replay) must not overwrite.
         entity.Initialize(new ConsultGenerationJobInitialize(
             "job-1", "user-1", items,
-            CatalogRef: "output-contracts@v2026.07.9")).GetAwaiter().GetResult();
+            CatalogRef: "output-contracts@v2026.07.9", FormatsRef: "formats@v2026.10.9")).GetAwaiter().GetResult();
 
         Assert.Equal("output-contracts@v2026.07.1", state().CatalogRef);
         Assert.Equal("output-contracts@v2026.07.1", state().ToResponse().CatalogRef);
+        // B7 #1006 (provenance@v2026.10.1): the formats catalogue ref, written once and served.
+        Assert.Equal("formats@v2026.10.1", state().FormatsRef);
+        Assert.Equal("formats@v2026.10.1", state().ToResponse().FormatsRef);
     }
 
     [Fact]

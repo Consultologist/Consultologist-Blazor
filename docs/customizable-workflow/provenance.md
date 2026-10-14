@@ -343,7 +343,7 @@ system with no dependency on this application or its Azure tenant.
 >   contract), it simply is not *attested*.
 
 > **Amendment, 2026-10-14 (#1004 — specVersion 25 B5: the completion order and the two
-> per-node hashes; inert until B7 runs 25).** At specVersion 25 a node's output is
+> per-node hashes; documented in the registry by #1006, provenance@v2026.10.1).** At specVersion 25 a node's output is
 > composed **at the node**, when it completes (design §§ 6–7): the reply is validated,
 > judged against `failIfEmpty`, its sanctioned `[[slot:<id>]]` markers are filled where the
 > model placed them, and its before/after macro instances compose around the result. Three
@@ -357,8 +357,8 @@ system with no dependency on this application or its Azure tenant.
 >   nothing was stripped. This is **per-node definition 6**, the first rung that moves the
 >   output side; `ConsultGenerationProvenance.NodeHashVersionAt25` carries it, and a node of a
 >   package below 25 keeps stamping 5 — its output never composes at the node. The registry's
->   ladder gains row 6 with B7's provenance bump (the registry refuses an unbumped version);
->   until then the engine's number is pinned one above the published ladder by test.
+>   ladder gained row 6 with provenance@v2026.10.1 (#1006); the engine holds both numbers
+>   equal to the published ladder by test.
 > - **`appended[]` and `excluded[]` per node row.** What the completion placed, in output
 >   order (`{ kind: macro | slot, id }`), and what it withheld or removed, by name
 >   (`{ kind, id, reason }`): an instance whose `when` refused (the condition explainer's
@@ -368,4 +368,38 @@ system with no dependency on this application or its Azure tenant.
 >   signature.
 > - **The rerun verdict** compares `outputHash` as before, under the same `hashVersion`; two
 >   25 runs that composed the same output agree, and a 25 row never compares with a 5 row.
+
+> **Amendment, 2026-10-14 (#1006 — specVersion 25 B7: `provenance@v2026.10.1`).** The registry
+> now documents what the engine writes for a 25 package (the record's shape did not move for
+> a package below 25, except as noted):
+>
+> - **`formatsRef`** at the job level — `formats@vYYYY.MM.N`, the formats catalogue the run
+>   resolved every 25 node's `format` through. Written for every job from engine v2026.10.3:
+>   below 25 it names the engine's pinned catalogue, which matters there too, because a 22–24
+>   custom-schema node runs that catalogue's generic `custom-json` agent since #1003.
+> - **`nodes[]`** documents `format`, `producer`, `formatHash`, `op`, `reads` (the derived
+>   edges — where `bindings` were; a 25 node carries no bindings), `with`, `onInvalid` and
+>   `failIfEmpty` at the node, and — served since #923/#760/v23, undocumented until now —
+>   `agentName`/`agentVersion`, `customSchemaHash`, `macros`.
+> - **`nodeOutputs[]`** documents `validation`, `agentOutputHash`, `appended[]` and
+>   `excluded[]` (B4/B5), and **per-node definition 6** is on the ladder
+>   (hash-definitions.md § 4) with its worked examples; a 25 node stamps 6, a node below 25
+>   keeps stamping 5.
+> - **The custom tier at 25 — custom shape, engine-validated.** A 25 custom producer's row
+>   carries none of `unattested`, `customSchemaHash` and `customAgent` (decided 2026-10-14:
+>   dropped, never written `false`; the reader's rule "true or absent" holds): the node's
+>   `producer: custom`, its `formatHash` and the catalogue's attested generic agent say what
+>   ran, and `validation` says the engine checked the reply against the declared schema.
+>   The Web reads it as a second kind beside the 22–24 marker (`UnattestedNodes`): the chip,
+>   the provenance list, the row pill, the contract label, the legend, the Consults bar and
+>   the Help glossary say *custom shape, engine-validated*; a 22–24 record's wording is
+>   unchanged, word for word.
+> - **Origin variants, by fields, no new kind:** a `form-response` origin whose bytes came
+>   from a questionnaire file (#991: `fileSha256`, no source ids) and a `transcript` origin
+>   from a transcript file loaded on the Create page (#994). History names the first.
+> - The `slot` kind on a document's `appended[]` (specVersion 20) is documented; at 25 a slot
+>   entry sits on the node row.
+>
+> Not in this version: the version flip (`AcceptedSpecVersions`/`SupportedSpecVersions`
+> += 25) is A5's (#1018), after B8 (#1027, the 25 run path) and C6.
 

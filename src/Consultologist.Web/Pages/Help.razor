@@ -110,6 +110,12 @@
 
             <dt>Rerun</dt>
             <dd>Runs a completed consult again on the same inputs and package version; the verdict says whether every reproducible stage matched.</dd>
+
+            <dt>Unattested</dt>
+            <dd>A block produced from a user-defined output schema (packages at format 22–24): not an attested clinical contract, no terminology grounding. The record names its schema hash and the agent that ran it.</dd>
+
+            <dt>Custom shape, engine-validated</dt>
+            <dd>A block produced from a package-defined output shape (format 25): the engine checked the reply against the shape's declared schema, and the catalogue's attested generic agent produced it. The shape is the author's, not a clinical contract; no terminology grounding. The record names the format, its file's hash and the agent.</dd>
         </dl>
     </div>
 </section>
