@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Consultologist.PackageFormat;
 
 namespace Consultologist.Api.Tests;
@@ -112,8 +113,10 @@ public class FormResponseCoercionTests
     }
 
     [Fact]
-    public void StructuresAreAbsentFromTheTable_ByDesign()
+    public void StructuresAreAbsentFromTheStringTable_ByDesign()
     {
+        // The STRING table (a flow's answer is text) fills no structure; a
+        // structure fills from a JSON value of a payload v2 answer (below).
         var (obj, objMisfit) = FormResponseCoercion.Coerce(Node("object"), "{\"a\":1}");
         Assert.Null(obj);
         Assert.Equal("cannot be filled from a form answer", objMisfit);
@@ -121,5 +124,108 @@ public class FormResponseCoercionTests
         var (arr, arrMisfit) = FormResponseCoercion.Coerce(Node("array", itemsType: "object"), "[\"x\"]");
         Assert.Null(arr);
         Assert.Equal("cannot be filled from a form answer", arrMisfit);
+    }
+
+    // ----- v25 (B6 #1005): a JSON answer, the payload v2 shape -----
+
+    private static JsonElement Json(string json) => JsonDocument.Parse(json).RootElement.Clone();
+
+    private static WorkflowDeclarationNode Intake() => new("object", "Intake", true, null,
+        new[]
+        {
+            new WorkflowDeclarationNode("array", "Allergies", true, new WorkflowDeclarationNode("text", "Allergy", false, null, null, null), null, null, "allergies"),
+            new WorkflowDeclarationNode("boolean", "On letrozole", true, null, null, null, "on_letrozole"),
+            new WorkflowDeclarationNode("date", "Last visit", false, null, null, null, "last_visit"),
+            new WorkflowDeclarationNode("object", "Address", false, null,
+                new[] { new WorkflowDeclarationNode("text", "City", true, null, null, null, "city") }, null, "address"),
+        }, null, "intake");
+
+    [Fact]
+    public void AJsonString_GoesThroughTheStringTable()
+    {
+        var node = Node("enum", new[] { "Routine", "Urgent" });
+
+        Assert.Equal("Urgent", FormResponseCoercion.Coerce(node, Json("\"Urgent\"")).Value!.Text);
+        Assert.Equal("is not one of the declared values", FormResponseCoercion.Coerce(node, Json("\"urgent\"")).Misfit);
+        Assert.Equal((null, null), FormResponseCoercion.Coerce(Node("text"), Json("\"\"")));
+        Assert.Equal((null, null), FormResponseCoercion.Coerce(Node("text"), Json("null")));
+    }
+
+    [Fact]
+    public void AJsonNumber_FillsANumber_OrLandsAsItsSpellingInText()
+    {
+        Assert.Equal("1.50", JsonSerializer.Serialize(FormResponseCoercion.Coerce(Node("number"), Json("1.50")).Value).Trim('"'));
+        Assert.Equal("7", FormResponseCoercion.Coerce(Node("text"), Json("7")).Value!.Text);
+        Assert.Equal("2026", FormResponseCoercion.Coerce(Node("date"), Json("2026")).Value!.Text);
+        Assert.Equal("is a JSON number; the slot is an object", FormResponseCoercion.Coerce(Intake(), Json("7")).Misfit);
+    }
+
+    [Fact]
+    public void AJsonBoolean_FillsABoolean_AndIsNamedElsewhere()
+    {
+        Assert.True(FormResponseCoercion.Coerce(Node("boolean"), Json("true")).Value!.Flag);
+        Assert.Equal("false", FormResponseCoercion.Coerce(Node("text"), Json("false")).Value!.Text);
+        Assert.Equal("is not a plain decimal number", FormResponseCoercion.Coerce(Node("number"), Json("true")).Misfit);
+        Assert.Equal("is not Yes, No, true or false", FormResponseCoercion.Coerce(Node("boolean"), Json("1")).Misfit);
+        Assert.Equal("is a JSON boolean; the slot is an array", FormResponseCoercion.Coerce(Node("array", itemsType: "text"), Json("true")).Misfit);
+    }
+
+    [Fact]
+    public void AJsonArray_FillsElementByElement_AgainstTheItems()
+    {
+        var numbers = FormResponseCoercion.Coerce(Node("array", itemsType: "number"), Json("[1, 2.5]"));
+        Assert.Null(numbers.Misfit);
+        Assert.Equal(2, numbers.Value!.Elements!.Count);
+
+        Assert.Equal("element 1 is not a plain decimal number", FormResponseCoercion.Coerce(Node("array", itemsType: "number"), Json("[1, \"x\"]")).Misfit);
+        Assert.Equal("element 0 is null", FormResponseCoercion.Coerce(Node("array", itemsType: "text"), Json("[null]")).Misfit);
+        Assert.Equal((null, null), FormResponseCoercion.Coerce(Node("array", itemsType: "text"), Json("[]")));
+        Assert.Equal("is a JSON array; the slot is a text", FormResponseCoercion.Coerce(Node("text"), Json("[\"a\"]")).Misfit);
+    }
+
+    [Fact]
+    public void AJsonObject_FillsTheDeclaredFields_InDeclaredOrder()
+    {
+        var (value, misfit) = FormResponseCoercion.Coerce(Intake(), Json("""{ "on_letrozole": true, "allergies": ["penicillin", "latex"], "address": { "city": "Halifax" } }"""));
+
+        Assert.Null(misfit);
+        Assert.Equal(new[] { "allergies", "on_letrozole", "address" }, value!.Fields!.Select(f => f.Id));
+        Assert.Equal("""{"allergies":["penicillin","latex"],"on_letrozole":true,"address":{"city":"Halifax"}}""", value.AsJson());
+    }
+
+    [Fact]
+    public void AMissingRequiredField_IsNamed_AndABlankOptionalOne_IsOmitted()
+    {
+        Assert.Equal("is missing required field 'on_letrozole'", FormResponseCoercion.Coerce(Intake(), Json("""{ "allergies": ["latex"] }""")).Misfit);
+
+        var (value, misfit) = FormResponseCoercion.Coerce(Intake(), Json("""{ "allergies": ["latex"], "on_letrozole": "No", "last_visit": "" }"""));
+        Assert.Null(misfit);
+        Assert.Equal(new[] { "allergies", "on_letrozole" }, value!.Fields!.Select(f => f.Id));
+    }
+
+    [Fact]
+    public void AnUndeclaredMember_ANullMember_AndAMisfitField_AreNamed()
+    {
+        Assert.Equal("has a field 'weight' it does not declare (fields: allergies, on_letrozole, last_visit, address)",
+            FormResponseCoercion.Coerce(Intake(), Json("""{ "weight": 70 }""")).Misfit);
+        Assert.Equal("field 'last_visit' is null; omit an optional field instead",
+            FormResponseCoercion.Coerce(Intake(), Json("""{ "allergies": ["x"], "on_letrozole": true, "last_visit": null }""")).Misfit);
+        Assert.Equal("field 'on_letrozole' is not Yes, No, true or false",
+            FormResponseCoercion.Coerce(Intake(), Json("""{ "allergies": ["x"], "on_letrozole": "maybe" }""")).Misfit);
+        Assert.Equal("field 'address' is missing required field 'city'",
+            FormResponseCoercion.Coerce(Intake(), Json("""{ "allergies": ["x"], "on_letrozole": true, "address": {} }""")).Misfit);
+        Assert.Equal("is a JSON object; the slot is a text", FormResponseCoercion.Coerce(Node("text"), Json("{}")).Misfit);
+    }
+
+    [Fact]
+    public void CoerceDeclared_TriesEachUnionArm()
+    {
+        var union = new WorkflowInputSpec("when", "When", Type: new WorkflowTypeSet(new[] { "date", "text" }));
+
+        Assert.Equal("2026-08-29", FormResponseCoercion.CoerceDeclared(union, Json("\"2026-08-29\"")).Value!.Text);
+        Assert.Equal("is a JSON array; the slot is a text", FormResponseCoercion.CoerceDeclared(union, Json("[1]")).Misfit);
+
+        var single = new WorkflowInputSpec("n", "N", Type: new WorkflowTypeSet(new[] { "number" }));
+        Assert.Equal("is not a plain decimal number", FormResponseCoercion.CoerceDeclared(single, Json("\"x\"")).Misfit);
     }
 }

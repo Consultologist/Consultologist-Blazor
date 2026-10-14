@@ -592,6 +592,29 @@ public class WorkflowV25TemplateTests
     }
 
     [Fact]
+    public void AnObjectFormSlot_IsAccepted_At25_WhenItDeclaresFields()
+    {
+        // B6 #1005 (design § 9): the v13 refusal lifts at 25 for an object
+        // with declared fields; an object with none, and an array of
+        // objects, are still refused by name.
+        var (manifest, files) = Minimal();
+        WorkflowPackageManifest WithIntake(WorkflowInputSpec intake) => manifest with { Inputs = manifest.Inputs!.Append(intake).ToList() };
+
+        var ok = WithIntake(new WorkflowInputSpec("intake", "Intake", Required: false, Type: new WorkflowTypeSet(new[] { WorkflowInputTypes.Object }),
+            Fields: new List<WorkflowFieldSpec> { new("allergies", "Allergies", Type: "array", Items: new WorkflowElementSpec("text")) },
+            ExpectedContent: WorkflowExpectedContent.Form));
+        Assert.True(V25Package.Validate((ok, files), V25Package.Catalog()).IsValid, string.Join(" | ", V25Package.Errors((ok, files))));
+
+        var noFields = WithIntake(new WorkflowInputSpec("intake", "Intake", Required: false, Type: new WorkflowTypeSet(new[] { WorkflowInputTypes.Object }), ExpectedContent: WorkflowExpectedContent.Form));
+        Assert.Contains("Input 'intake' declares expectedContent 'form' on an object with no fields; declare the fields a response fills.", V25Package.Errors((noFields, files)));
+
+        var arrayOfObjects = WithIntake(new WorkflowInputSpec("visits", "Visits", Required: false, Type: new WorkflowTypeSet(new[] { WorkflowInputTypes.Array }),
+            Items: new WorkflowElementSpec("object"), Fields: new List<WorkflowFieldSpec> { new("on", "On", Type: "date") },
+            ExpectedContent: WorkflowExpectedContent.Form));
+        Assert.Contains("Input 'visits' declares expectedContent 'form', which a slot of type 'array' cannot be filled from.", V25Package.Errors((arrayOfObjects, files)));
+    }
+
+    [Fact]
     public void FailIfEmpty_LivesOnTheNode_At25()
     {
         // B5 #1004 (design § 3.6): output is refused at 25, so failIfEmpty moves
