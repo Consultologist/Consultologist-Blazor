@@ -28,6 +28,87 @@ public class TemplatesV25DeskTests : ClientRenderTestContext
         return Render<Templates>();
     }
 
+    /// <summary>C4 (#1010): the fixture reshaped (manifest and/or files) — the refusals of publishing it.</summary>
+    private IReadOnlyList<string> PublishRefusals(WorkflowPackageContentResponse package)
+    {
+        WorkflowService.PublishPackageAsync(Arg.Any<WorkflowPackagePublishRequest>())
+            .Returns(new WorkflowPublishOutcome(
+                new WorkflowPackagePublishResponse("acct-1234567890ab", "v2026.10.2", "acct-1234567890ab@v2026.10.2"),
+                Array.Empty<string>()));
+        WorkflowService.GetCurrentPackageContentAsync().Returns(package);
+        WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
+        var page = Render<Templates>();
+        Services.GetRequiredService<WorkflowEditorSession>().SelectedKey = "node:assessment";
+        page.Render();
+        page.Find("input[aria-label='Node label']").Change("Assessment (edited)");
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Publish")).Click();
+        return Refusals(page);
+    }
+
+    private static WorkflowPackageContentResponse Reshaped(Action<System.Text.Json.Nodes.JsonObject>? reshape = null, params (string Path, string Text)[] files)
+    {
+        var package = EditorFixtures.V25();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        reshape?.Invoke(root);
+        var replaced = new Dictionary<string, string>(package.Files, StringComparer.Ordinal);
+        foreach (var (path, text) in files)
+        {
+            replaced[path] = text;
+        }
+
+        return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone(), Files = replaced };
+    }
+
+    private static System.Text.Json.Nodes.JsonObject PromptObject(System.Text.Json.Nodes.JsonObject root, string id) =>
+        root["prompts"]!.AsArray().First(p => p!["id"]!.GetValue<string>() == id)!.AsObject();
+
+    private static System.Text.Json.Nodes.JsonObject NodeObject(System.Text.Json.Nodes.JsonObject root, string id) =>
+        root["nodes"]!.AsArray().First(n => n!["id"]!.GetValue<string>() == id)!.AsObject();
+
+    public static IEnumerable<object[]> TemplateCases()
+    {
+        yield return new object[] { "prompt variables", new Action<System.Text.Json.Nodes.JsonObject>(root => PromptObject(root, "scope")["variables"] = System.Text.Json.Nodes.JsonNode.Parse("""[ "referral" ]""")), null!,
+            "Prompt 'scope' declares variables, which are retired at specVersion 25; a template reads objects (input.<id>, node.<id>.text, snippet.<id>.text, item.<member>, macro.<id>.text) and its reads are derived." };
+        yield return new object[] { "prompt raw false", new Action<System.Text.Json.Nodes.JsonObject>(root => PromptObject(root, "scope")["raw"] = false), null!,
+            "Prompt 'scope' declares raw, which is retired at specVersion 25; escape a literal '{{' as {{ \"{{\" }} or wrap it in {%{ … }%}." };
+        yield return new object[] { "node bindings", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "scope")["bindings"] = new System.Text.Json.Nodes.JsonObject()), null!,
+            "Node 'scope' declares bindings, which are retired at specVersion 25; a template reads objects (input.<id>, node.<id>.text, snippet.<id>.text, item.<member>, macro.<id>.text) and its reads are derived." };
+        yield return new object[] { "undeclared node", null!, ("prompts/assessment.md", "Assess {{ node.nope.text }} {{ snippet.standards.text }} {{ macro.tool_note.prompt }}"),
+            "Prompt 'assessment' reads node 'nope', which the package does not declare." };
+        yield return new object[] { "unclosed brace names the line", null!, ("prompts/scope.md", "Is this in scope?\n{{ input.notes"),
+            "Prompt 'scope' does not parse at line 2: '{{' is not closed; escape a literal '{{' as {{ \"{{\" }} or wrap it in {%{ … }%}." };
+        yield return new object[] { "bare node", null!, ("prompts/scope.md", "{{ node.extract }} {{ input.notes }}"),
+            "Prompt 'scope' reads node 'extract' bare; read node.extract.text (its composed output) or node.extract.value." };
+        yield return new object[] { "retired data root", null!, ("prompts/scope.md", "{{ data.standards }} {{ input.notes }}"),
+            "Prompt 'scope' reads 'data'; at specVersion 25 data is 'snippet' — read snippet.<id>.text." };
+        yield return new object[] { "a non-member", null!, ("prompts/scope.md", "{{ snippet.standards.body }} {{ input.notes }}"),
+            "Prompt 'scope' reads snippet.standards.body, which is not a member (a snippet has .id, .name and .text)." };
+        yield return new object[] { "value on a text format", null!, ("prompts/scope.md", "{{ node.assessment.value }} {{ input.notes }}"),
+            "Prompt 'scope' reads node.assessment.value, but format 'prose' is text and has no value; read node.assessment.text." };
+    }
+
+    [Theory]
+    [MemberData(nameof(TemplateCases))]
+    public void TheDesk_SaysTheRegistrysTemplateSentence(string _, Action<System.Text.Json.Nodes.JsonObject>? reshape, (string Path, string Text)? file, string sentence)
+    {
+        var refusals = file is { } replaced
+            ? PublishRefusals(Reshaped(reshape, replaced))
+            : PublishRefusals(Reshaped(reshape));
+
+        Assert.Contains(sentence, refusals);
+    }
+
+    [Fact]
+    public void TheDesk_SaysASentenceOnce_WhenTwoNodesSharePrompt()
+    {
+        // meds and assessment both on the same text: one sentence, as the validator de-duplicates.
+        var refusals = PublishRefusals(Reshaped(
+            root => NodeObject(root, "meds")["prompt"] = "assessment",
+            ("prompts/assessment.md", "Assess {{ node.nope.text }} {{ snippet.standards.text }} {{ macro.tool_note.prompt }}")));
+
+        Assert.Single(refusals, r => r == "Prompt 'assessment' reads node 'nope', which the package does not declare.");
+    }
+
     /// <summary>The fixture's manifest with one node replaced by the given JSON object.</summary>
     private static string WithNode(string nodeId, string nodeJson)
     {

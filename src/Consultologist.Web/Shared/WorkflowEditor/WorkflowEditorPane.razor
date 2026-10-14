@@ -52,6 +52,13 @@
 
 @ChildContent
 
+@* v25 (C4 #1010): the host's controls that belong to the text itself — the
+   insert-reference palette and the template's reads line — sit right above the editor. *@
+@if (EditorExtra != null)
+{
+    <div class="pane-editor-extra">@EditorExtra</div>
+}
+
 <div class="pane-split">
     <label class="input-field pane-editor">
         <span>@EditLabel</span>
@@ -98,5 +105,8 @@
     [Parameter] public bool Raw { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public RenderFragment? HeaderActions { get; set; }
+
+    /// <summary>v25 (C4 #1010): controls rendered above the editor — the host's insert-reference palette and reads line.</summary>
+    [Parameter] public RenderFragment? EditorExtra { get; set; }
     [Parameter] public EventCallback<string> TextChanged { get; set; }
 }

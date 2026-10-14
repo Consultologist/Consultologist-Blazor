@@ -644,6 +644,27 @@ registry doc's `when` examples spell `input:<id>`, but the condition grammar tak
 input id (`kind == new`) — the fixture and the builder use the bare form; the doc is to be
 corrected.)*
 
+*(C4 #1010, 2026-10-14 — the derived **Reads** list, the **insert-reference palette** and the
+desk's "every reference resolves" are built, gated on 25. **Node pane:** the Inputs (bindings)
+section gives way to Reads — what the node's prompt references, from the engine's walk (inputs,
+nodes by `.text`/`.value`, snippets, folders, the fan item's members, macros by `.text`/`.prompt`,
+run and profile facts), a computed node's parameter reads, each row a link to the thing; the
+walker's warnings word for word and an early word when a reference does not resolve; an
+aggregator keeps its ordered sources. **Text panes** (prompt, snippet, folder item, macro): the
+palette offers the objects a template may read — grouped, an object format's fields from its
+schema, arrays and folders as loops, the fan item only where the reading node fans, never a
+slot read from a macro's own text — with a renderer pipe for a node's text, and **appends** the
+reference on its own line (decision: no cursor helper; insertion at the cursor is the code
+editor rung's); the Variables form, the plain-text toggle and the slot hint are ≤24; a reads
+line and the warnings sit under the palette. **Compose:** a new prompt is its id and file (no
+`variables`, no `raw`); a re-pointed node writes no `bindings`. **Desk:** the retired keys in
+the validator's sentences, then every walked template's own sentences once each (the walker
+names the line that does not parse). Decisions: palette on all three text panes; warnings shown
+non-blocking. Found and fixed: the walker refused the renderer pipes (`{{ node.x.text |
+concept_context }}`) as an unknown root — the closed pipe set is now accepted by the walk and
+judged when it renders; and the editor's reader-pane lookup went by prompt id where the walk
+keys a prompt by the node reading it.)*
+
 ## 14. Migration 24 → 25 (the editor's upgrade; mechanical, byte-identical in what the model sees)
 
 | At 24 | At 25 |

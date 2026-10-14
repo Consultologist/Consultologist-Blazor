@@ -88,6 +88,19 @@ public class TemplateReferenceWalkerTests
         Assert.Empty(refs.Nodes);
     }
 
+    // C4 (#1010): the renderer pipes of § 1 are the engine's closed set — accepted by the
+    // walk, judged when they render. An unknown pipe name is still an unknown root.
+    [Fact]
+    public void ARendererPipe_OnANodesText_IsAccepted_AnUnknownPipeIsNot()
+    {
+        var piped = TemplateFixtures.Ok("{{ node.extract.text | concept_context }} {{ node.assessment.text | concept_bullets }}");
+        Assert.Equal(new[] { "assessment", "extract" }, piped.Edges.Order());
+        Assert.Equal(new TemplateNodeRead(true, false), piped.Nodes["extract"]);
+
+        var unknown = TemplateFixtures.Walk("{{ node.extract.text | frobnicate }}");
+        Assert.Contains(unknown.Errors, e => e.Contains("reads 'frobnicate', which is not an object"));
+    }
+
     [Fact]
     public void NodeText_IsAnEdge_AndNodeValue_IsAnEdge()
     {

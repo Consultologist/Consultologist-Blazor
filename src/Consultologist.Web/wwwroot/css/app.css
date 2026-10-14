@@ -1221,3 +1221,30 @@ span.snippet-readers__row {
 	cursor: default;
 	color: inherit;
 }
+
+/* v25 C4 (#1010): the insert-reference palette above a text editor. */
+.pane-editor-extra {
+	margin: 0 0 0.5rem;
+}
+
+details.insert-reference > summary {
+	cursor: pointer;
+	font-size: 0.85rem;
+	color: var(--accent-fill-rest, #0078d4);
+}
+
+.insert-reference__row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	align-items: center;
+	margin: 0.25rem 0;
+}
+
+.insert-reference__pick {
+	min-width: 18rem;
+}
+
+.template-reads {
+	font-size: 0.8rem;
+}

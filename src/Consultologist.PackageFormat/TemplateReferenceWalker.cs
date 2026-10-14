@@ -176,6 +176,25 @@ public static partial class TemplateReferenceWalker
         {
             // The piped value may be a folder (snippet.sections | array.size).
             ResolveExpression(node.From, ChainUse.Iterable);
+
+            // A renderer pipe (§ 1: {{ node.x.text | concept_context }}) is the closed
+            // set the engine provides — opaque here, checked when it renders (C4 #1010;
+            // before this it was refused as an unknown root). Anything else is walked.
+            var pipeTarget = node.To is ScriptFunctionCall call ? call.Target : node.To;
+
+            if (pipeTarget is ScriptVariable pipe && TemplatePipes.All.Contains(pipe.Name))
+            {
+                if (node.To is ScriptFunctionCall pipeCall)
+                {
+                    foreach (var argument in pipeCall.Arguments)
+                    {
+                        ResolveExpression(argument, ChainUse.Iterable);
+                    }
+                }
+
+                return;
+            }
+
             VisitNode(node.To);
         }
 
