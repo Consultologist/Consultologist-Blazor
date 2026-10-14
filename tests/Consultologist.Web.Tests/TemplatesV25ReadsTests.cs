@@ -164,6 +164,41 @@ public class TemplatesV25ReadsTests : ClientRenderTestContext
         Assert.Equal(new[] { "input.notes" }, Reads(page, "meds"));
     }
 
+    // ----- compose at 25: the retired keys are never written -----
+
+    [Fact]
+    public void ANewPromptedNode_ComposesAPrompt_WithoutVariablesOrRaw_AndRepointingWritesNoBindings()
+    {
+        WorkflowPackagePublishRequest? sent = null;
+        WorkflowService.PublishPackageAsync(Arg.Do<WorkflowPackagePublishRequest>(r => sent = r))
+            .Returns(new WorkflowPublishOutcome(new WorkflowPackagePublishResponse("acct-1234567890ab", "v2026.10.2", "acct-1234567890ab@v2026.10.2"), Array.Empty<string>()));
+        var page = RenderEditor();
+
+        // + Node on a prompted format mints its own prompt.
+        Navigate(page, "+ Node");
+        page.Find("fluent-select.new-node-format").Change("prose");
+        page.Find("fluent-text-field[placeholder='summarize-guidelines']").Change("plan");
+        page.Find("fluent-text-field[placeholder='Summarizing guidelines']").Change("Plan");
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Create")).Click();
+        page.Find("fluent-text-area").Change("Plan from {{ input.notes }}.");
+        ShowNode(page, "all");
+        page.Find("fluent-select[aria-label='Add aggregate source']").Change("node:plan");
+
+        // Re-point meds at the scope prompt (the section prompt reads the fan item, which meds has not).
+        ShowNode(page, "meds");
+        page.Find("fluent-select[aria-label='Node prompt']").Change("scope");
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish")).Click();
+
+        Assert.NotNull(sent);
+        var root = JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement;
+        var plan = root.GetProperty("prompts").EnumerateArray().Single(p => p.GetProperty("id").GetString() == "plan");
+        Assert.False(plan.TryGetProperty("variables", out _));
+        Assert.False(plan.TryGetProperty("raw", out _));
+        var meds = root.GetProperty("nodes").EnumerateArray().Single(n => n.GetProperty("id").GetString() == "meds");
+        Assert.Equal("scope", meds.GetProperty("prompt").GetString());
+        Assert.False(meds.TryGetProperty("bindings", out _));
+    }
+
     [Fact]
     public void AReaderRow_FindsThePrompt_WhenItsIdDiffersFromTheNodes()
     {

@@ -182,6 +182,11 @@ public class TemplatesFormatsPaneTests : ClientRenderTestContext
         page.Find("fluent-select.node-format").Change("plan_shape");
         page.Find("fluent-select.node-on-invalid").Change("fail");
 
+        // C4 (#1010): the desk now says "every reference resolves" — the assessment prompt
+        // read node.meds.value.medications, a field the plan shape does not declare; read its steps.
+        Navigate(page, "assessment");
+        page.Find(".editor-pane fluent-text-area").Change("Assess.\n{{ snippet.standards.text }}\n{{ macro.tool_note.prompt }}\n{{ input.notes }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}\n{{ for s in node.meds.value.steps }}- {{ s }}\n{{ end }}");
+
         Publish(page);
 
         Assert.Empty(Refusals(page));

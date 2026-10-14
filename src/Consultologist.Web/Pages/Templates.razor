@@ -6322,7 +6322,7 @@
         // failure mode renaming was built to avoid; catch the manual case too.
         var declared = inputs.Select(input => input.Id).ToHashSet(StringComparer.Ordinal);
 
-        foreach (var node in EffectiveNodes)
+        foreach (var node in At25 ? Enumerable.Empty<WorkflowManifestReader.NodeView>() : EffectiveNodes)
         {
             foreach (var row in RowsFor(node).Where(row => row.From.StartsWith("input:", StringComparison.Ordinal)))
             {
@@ -7282,6 +7282,78 @@
             }
         }
     }
+
+    /// <summary>
+    /// v25 C4 (#1010): "every reference resolves" — the desk's mirror of the registry's
+    /// template rules at 25: the retired keys (a prompt's variables, a prompt's raw, a
+    /// node's bindings) in the validator's sentences, then every walked template's
+    /// own sentences from the walker (an undeclared object, a member outside the
+    /// closed set, a bare read, a line that does not parse), de-duplicated as the
+    /// validator de-duplicates them. Warnings are not refusals; the Reads list shows them.
+    /// </summary>
+    private IEnumerable<string> TemplateErrors25()
+    {
+        if (!At25 || content == null)
+        {
+            yield break;
+        }
+
+        const string objects = "a template reads objects (input.<id>, node.<id>.text, snippet.<id>.text, item.<member>, macro.<id>.text) and its reads are derived";
+
+        foreach (var prompt in EffectivePrompts)
+        {
+            if (EffectiveVariables(prompt).Any())
+            {
+                yield return $"Prompt '{prompt.Id}' declares variables, which are retired at specVersion 25; {objects}.";
+            }
+
+            if (LoadedPromptDeclaresRaw(prompt.Id))
+            {
+                yield return $"Prompt '{prompt.Id}' declares raw, which is retired at specVersion 25; escape a literal '{{{{' as {{{{ \"{{{{\" }}}} or wrap it in {{%{{ … }}%}}.";
+            }
+        }
+
+        foreach (var node in EffectiveNodes.Where(n => LoadedNodeDeclaresBindings(n.Id)))
+        {
+            yield return $"Node '{node.Id}' declares bindings, which are retired at specVersion 25; {objects}.";
+        }
+
+        if (PackageWalk is { } walk)
+        {
+            var said = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (var template in walk.Templates)
+            {
+                foreach (var error in template.References.Errors)
+                {
+                    if (said.Add(error))
+                    {
+                        yield return error;
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>Whether the loaded manifest's prompt carries a raw key at all (the validator refuses either value).</summary>
+    private bool LoadedPromptDeclaresRaw(string promptId) =>
+        content != null
+        && content.Manifest.TryGetProperty("prompts", out var promptsArray)
+        && promptsArray.ValueKind == JsonValueKind.Array
+        && promptsArray.EnumerateArray().Any(p =>
+            p.ValueKind == JsonValueKind.Object
+            && p.TryGetProperty("id", out var id) && id.GetString() == promptId
+            && (p.TryGetProperty("raw", out _) || p.TryGetProperty("Raw", out _)));
+
+    /// <summary>Whether the loaded manifest's node carries a bindings key at all.</summary>
+    private bool LoadedNodeDeclaresBindings(string nodeId) =>
+        content != null
+        && content.Manifest.TryGetProperty("nodes", out var nodesArray)
+        && nodesArray.ValueKind == JsonValueKind.Array
+        && nodesArray.EnumerateArray().Any(n =>
+            n.ValueKind == JsonValueKind.Object
+            && n.TryGetProperty("id", out var id) && id.GetString() == nodeId
+            && (n.TryGetProperty("bindings", out _) || n.TryGetProperty("Bindings", out _)));
 
     /// <summary>
     /// v25 C3 (#1009): the desk's mirror of the registry's macro rules at 25
@@ -12600,7 +12672,8 @@
 
             // Re-pointed nodes and nodes born onto an existing prompt: every
             // variable of that prompt needs an explicitly chosen source.
-            foreach (var node in EffectiveNodes.Where(HasFreshBindings))
+            // C4 (#1010): at 25 bindings are retired — the reads are derived (TemplateErrors25).
+            foreach (var node in At25 ? Enumerable.Empty<WorkflowManifestReader.NodeView>() : EffectiveNodes.Where(HasFreshBindings))
             {
                 var freshPrompt = EffectivePrompts.FirstOrDefault(p => p.Id == node.Prompt);
 
@@ -12613,7 +12686,7 @@
                 }
             }
 
-            foreach (var prompt in EffectivePrompts)
+            foreach (var prompt in At25 ? Enumerable.Empty<WorkflowManifestReader.PromptView>() : EffectivePrompts)
             {
                 foreach (var variable in AddedVariables(prompt.Id))
                 {
@@ -12633,6 +12706,7 @@
             unbound.AddRange(FormatErrors());
             unbound.AddRange(SnippetErrors());
             unbound.AddRange(MacroErrors25());
+            unbound.AddRange(TemplateErrors25());
             unbound.AddRange(PreludeErrors());
 
             if (unbound.Count > 0)
@@ -13502,7 +13576,7 @@
 
         // Variable declarations: each edited prompt's variables array becomes
         // the effective set (declared order minus removals, adds appended).
-        if ((root["prompts"] ?? root["Prompts"]) is System.Text.Json.Nodes.JsonArray promptsArray)
+        if (!At25 && (root["prompts"] ?? root["Prompts"]) is System.Text.Json.Nodes.JsonArray promptsArray)
         {
             foreach (var prompt in prompts)
             {
@@ -13531,7 +13605,7 @@
         // v15 (#731): write or remove `raw` on each edited prompt — the node
         // reproducible write-or-remove idiom. Offered only for variable-free
         // prompts, so no binding cascade.
-        if (promptRawEdits.Count > 0 && (root["prompts"] ?? root["Prompts"]) is System.Text.Json.Nodes.JsonArray rawPromptsArray)
+        if (!At25 && promptRawEdits.Count > 0 && (root["prompts"] ?? root["Prompts"]) is System.Text.Json.Nodes.JsonArray rawPromptsArray)
         {
             foreach (var (rawPromptId, raw) in promptRawEdits)
             {
@@ -13645,16 +13719,13 @@
                 if (addedNode.HasPrompt && addedNode.PromptRef == null
                     && (root["prompts"] ?? root["Prompts"]) is System.Text.Json.Nodes.JsonArray promptsArrayFor25)
                 {
+                    // C4 (#1010): variables and raw are retired at 25 — a prompt is its id
+                    // and file; its reads are derived.
                     var ownPrompt25 = new System.Text.Json.Nodes.JsonObject
                     {
                         ["id"] = addedNode.Id,
-                        ["file"] = AddedPromptFile(addedNode.Id),
-                        ["variables"] = new System.Text.Json.Nodes.JsonArray(
-                            AddedVariables(addedNode.Id)
-                                .Select(v => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(v))
-                                .ToArray())
+                        ["file"] = AddedPromptFile(addedNode.Id)
                     };
-                    if (addedNode.Raw) { ownPrompt25["raw"] = true; }
                     promptsArrayFor25.Add(ownPrompt25);
                 }
 
@@ -14101,14 +14172,18 @@
                 var standalonePromptObject = new System.Text.Json.Nodes.JsonObject
                 {
                     ["id"] = pending.Id,
-                    ["file"] = AddedStandalonePromptFile(pending.Id),
-                    ["variables"] = new System.Text.Json.Nodes.JsonArray(
+                    ["file"] = AddedStandalonePromptFile(pending.Id)
+                };
+                // C4 (#1010): variables and raw are retired at 25 — neither key is written there.
+                if (!At25)
+                {
+                    standalonePromptObject["variables"] = new System.Text.Json.Nodes.JsonArray(
                         AddedVariables(pending.Id)
                             .Select(v => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(v))
-                            .ToArray())
-                };
-                // #835: the plain-text (raw) choice on a standalone added prompt.
-                if (pending.Raw) { standalonePromptObject["raw"] = true; }
+                            .ToArray());
+                    // #835: the plain-text (raw) choice on a standalone added prompt.
+                    if (pending.Raw) { standalonePromptObject["raw"] = true; }
+                }
                 promptsArrayForStandalone.Add(standalonePromptObject);
             }
         }
@@ -14134,7 +14209,11 @@
                 nodeObject[nodeObject.ContainsKey("Prompt") ? "Prompt" : "prompt"] = pair.Value.Prompt;
                 nodeObject.Remove("bindings");
                 nodeObject.Remove("Bindings");
-                nodeObject["bindings"] = new System.Text.Json.Nodes.JsonObject();
+                // C4 (#1010): bindings are retired at 25 — the key is never written there.
+                if (!At25)
+                {
+                    nodeObject["bindings"] = new System.Text.Json.Nodes.JsonObject();
+                }
             }
 
             if (pair.Value.ForEach is null)
@@ -14313,7 +14392,8 @@
         }
 
         // Rebinds and added-variable bindings (the indexer adds missing keys).
-        foreach (var pair in bindingEdits)
+        // C4 (#1010): none at 25 — bindings are retired; the loops are gated for the rule's sake.
+        foreach (var pair in At25 ? Enumerable.Empty<KeyValuePair<string, (string From, string? As)>>() : bindingEdits)
         {
             var parts = pair.Key.Split('\n', 2);
 
