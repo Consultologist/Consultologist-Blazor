@@ -363,6 +363,20 @@ public static class WorkflowDerivedEdges
         return reads;
     }
 
+    /// <summary>B8 #1027: the macro ids whose text reads <c>profile.signature</c> — the 25 signature carrier the starter's snapshot gate reads.</summary>
+    public static IReadOnlySet<string> SignatureReaders(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> files,
+        WorkflowFormatCatalog? formats)
+    {
+        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor);
+        var walk = WalkAll(manifest, files, nodes, snippets, contextFor);
+        return (manifest.Macros ?? new List<WorkflowMacroSpec>())
+            .Select(macro => macro.Id)
+            .Where(walk.MacroReadsSignature)
+            .ToHashSet(StringComparer.Ordinal);
+    }
+
     /// <summary>
     /// The nodes as the walk needs them, resolved silently: local formats from
     /// <c>manifest.formats[]</c>, catalogue formats from <paramref name="formats"/>,

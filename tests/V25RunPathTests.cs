@@ -69,6 +69,139 @@ public class V25RunPathTests
         Assert.Null(WorkflowPackageStore.ResolveResultSet(manifest with { Deliverables = null }));
     }
 
+    private static readonly Dictionary<string, ConsultInputValue> NewPatient = new(StringComparer.Ordinal)
+    {
+        ["notes"] = "Referral.",
+        ["kind"] = "new",
+    };
+
+    /// <summary>The package as the store would hand it to the starter: results resolved by the store, the design catalogue, every file.</summary>
+    internal static WorkflowPackage Package((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle)
+    {
+        var errors = new List<string>();
+        var data = WorkflowDataResolver.ResolveContent(bundle.Manifest, bundle.Files, errors);
+        Assert.Empty(errors);
+        return new WorkflowPackage(
+            bundle.Manifest,
+            Nodes: bundle.Manifest.Nodes,
+            Data: data,
+            SourceFiles: bundle.Files,
+            Results: WorkflowPackageStore.ResolveResultSet(bundle.Manifest),
+            Formats: V25Package.Catalog(),
+            FormatsRef: V25Package.Catalog().ResolvedRef);
+    }
+
+    [Fact]
+    public void A25Classifier_IsARole_NotAKind_AndThePackageDecides()
+    {
+        var package = Package(V25Package.Minimal());
+        WorkflowNodeSpec Node(string id) => package.Nodes!.First(n => n.Id == id);
+
+        Assert.True(WorkflowNodeRoles.IsClassifierOf(Node("scope"), package));
+        Assert.False(WorkflowNodeRoles.IsClassifierOf(Node("assessment"), package));
+        Assert.True(WorkflowNodeRoles.IsCheckOf(Node("coverage"), package));
+        Assert.False(WorkflowNodeRoles.IsCheckOf(Node("extract"), package));
+        Assert.True(package.Nodes!.Any(node => WorkflowNodeRoles.IsClassifierOf(node, package)));
+        Assert.Equal("coverage", ConsultCheckRefs.NodeIdOf("node.coverage"));
+        Assert.Equal("coverage", ConsultCheckRefs.NodeIdOf("node:coverage"));
+    }
+
+    [Fact]
+    public void TheFireSet_KeepsTheClassifierAndTheCheck_ThroughThePrune()
+    {
+        // Gate a node nobody needs so the prune runs: the enum-format
+        // classifier survives as a declared one did, and the check rooted
+        // through node.coverage (the dot spelling) survives with it.
+        var (manifest, files) = V25Package.Minimal();
+        manifest = manifest with
+        {
+            Prompts = manifest.Prompts!.Append(new WorkflowPromptSpec("extra", "prompts/extra.md", new List<string>())).ToList(),
+            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("extra", "Extra", Prompt: "extra", Format: "prose", When: "kind == follow_up")).ToList(),
+            Deliverables = manifest.Deliverables!.Append(new WorkflowDeliverableSpec("extra_doc", "node:extra_all", "Extra", When: "kind == follow_up")).ToList(),
+        };
+        manifest = manifest with { Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("extra_all", "Extra all", Aggregate: new List<string> { "node:extra" })).ToList() };
+        files = new Dictionary<string, string>(files, StringComparer.Ordinal) { ["prompts/extra.md"] = "{{ input.notes }}" };
+        var package = Package((manifest, files));
+
+        var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, new Dictionary<string, string> { ["scope"] = "in_scope" });
+
+        Assert.Equal(new[] { "consult" }, decision.Firing.Select(r => r.Id));
+        var live = decision.Package.Nodes!.Select(n => n.Id).ToList();
+        Assert.Contains("scope", live);
+        Assert.Contains("coverage", live);
+        Assert.DoesNotContain("extra", live);
+    }
+
+    [Fact]
+    public void AGatedComputedCheck_IsNotContent_AndItsDeliverableStillFires()
+    {
+        var package = Package((V25Package.WithNode(V25Package.Minimal().Manifest, "coverage", n => n with { When = "kind == follow_up" }), V25Package.Minimal().Files));
+
+        var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, new Dictionary<string, string> { ["scope"] = "in_scope" });
+
+        Assert.Equal(new[] { "consult" }, decision.Firing.Select(r => r.Id));
+        Assert.DoesNotContain("coverage", decision.Package.Nodes!.Select(n => n.Id));
+    }
+
+    [Fact]
+    public void ADeliverableWhoseMacroReadsAGatedNode_IsSkipped_NamingIt()
+    {
+        // scope_line (prepended on the deliverable) reads node.scope; gate
+        // scope... a classifier may not carry a when, so gate a prose node the
+        // macro reads instead.
+        var (manifest, files) = WithDeliverableMacros();
+        manifest = V25Package.WithNode(manifest, "assessment", n => n with { When = "kind == follow_up" });
+        files["macros/scope_line.md"] = "Scope: {{ node.assessment.text }}.";
+        var package = Package((manifest, files));
+
+        var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, new Dictionary<string, string> { ["scope"] = "in_scope" });
+
+        var skipped = Assert.Single(decision.Skipped);
+        Assert.Contains("needs node 'assessment'", skipped.Reason);
+    }
+
+    [Fact]
+    public void PlacementWhens_AreJudgedByIdentity_OneRefusalPerInstance()
+    {
+        var (manifest, files) = WithDeliverableMacros();
+        var result = Assert.Single(WorkflowPackageStore.ResolveResultSet(manifest)!);
+
+        var (macros, excluded, placements) = ConsultGenerationJobStarter.DecidePlacementWhens(result, NewPatient, new Dictionary<string, string> { ["scope"] = "in_scope" });
+
+        // The prepend of closing is gated on follow_up and refused; its append and scope_line stay.
+        Assert.Equal(new[] { ("closing", "append"), ("scope_line", "prepend") }, placements!.Select(p => (p.Id, p.At!)));
+        Assert.Equal(new[] { "closing", "scope_line" }, macros);
+        var refusal = Assert.Single(excluded);
+        Assert.Equal(("consult", "closing", "needs kind to be 'follow_up'; it is 'new'"), (refusal.ResultId, refusal.MacroId, refusal.Reason));
+
+        var described = ConsultGenerationJobStarter.DescribeResult(result, macros, placements, null, new HashSet<string> { "scope" });
+        Assert.Equal(new[] { "scope" }, described.Reads);
+        Assert.Equal("node.coverage", described.Check);
+        Assert.Equal(2, described.MacroPlacements!.Count);
+    }
+
+    [Fact]
+    public void TheBoundary_DescribesStageTwo_AsTheStarterDescribedStageOne()
+    {
+        var package = Package(WithDeliverableMacros());
+        var effective = new Dictionary<string, string> { ["notes"] = "Referral.", ["kind"] = "new" };
+
+        var decision = DecideActivity.Decide(package, NewPatient, new Dictionary<string, string> { ["scope"] = "in_scope" }, effectiveInputs: effective);
+
+        var consult = Assert.Single(decision.Results);
+        Assert.Equal(new[] { "scope" }, consult.Reads);
+        Assert.Equal("node.coverage", consult.Check);
+        Assert.Equal(new[] { ("closing", "append"), ("scope_line", "prepend") }, consult.MacroPlacements!.Select(p => (p.Id, p.At!)));
+        var assessment = decision.Nodes.First(n => n.Id == "assessment");
+        Assert.Equal(new[] { "extract" }, assessment.Reads);
+        Assert.NotNull(assessment.FormatHash);
+        var coverage = decision.Nodes.First(n => n.Id == "coverage");
+        Assert.Equal("The note names problems the source does not.", coverage.With!["failWith"]);
+        var scope = decision.Nodes.First(n => n.Id == "scope");
+        Assert.Equal(new[] { "in_scope", "out_of_scope" }, scope.Values);
+        Assert.Equal(new[] { "closing" }, decision.ExcludedMacros!.Select(e => e.MacroId));
+    }
+
     [Fact]
     public void ADeliverablesReads_AreItsPlacedMacrosNodeReads()
     {

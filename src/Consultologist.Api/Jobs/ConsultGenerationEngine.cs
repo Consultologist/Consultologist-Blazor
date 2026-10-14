@@ -975,7 +975,9 @@ public sealed class ConsultGenerationOrchestrator
             var answers = Classifications();
             var decision = await context.CallActivityAsync<ConsultDecisionResult>(
                 ConsultGenerationActivityNames.DecideDeliverables,
-                new ConsultDecideActivityInput(input.WorkflowPackage!, input.SuppliedInputs, answers),
+                new ConsultDecideActivityInput(input.WorkflowPackage!, input.SuppliedInputs, answers,
+                    // v25 (B8 #1027): the effective map, for the boundary's re-describe.
+                    EffectiveInputs: at25 ? new Dictionary<string, string>(effectiveInputs, StringComparer.Ordinal) : null),
                 AgentActivityRetryOptions);
 
             if (decision.Results.Count == 0)

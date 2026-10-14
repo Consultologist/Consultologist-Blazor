@@ -634,7 +634,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // conditions is the whole trick: block expansion, deliverable
         // resolution and the outcome rule all walk the result list and need no
         // change at all.
-        var deciding = package.Nodes.Any(WorkflowNodeKinds.IsClassifier);
+        // v25 (B8 #1027): a 25 classifier is an enum format, not a kind.
+        var deciding = package.Nodes.Any(node => WorkflowNodeRoles.IsClassifierOf(node, package));
         var skipped = new List<ConsultSkippedDocument>();
         // #434: the deliverables as declared, before the fire set narrows
         // package.Results — the born-Failed record lists every one of them.
@@ -792,32 +793,22 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // classifier answers are in hand; its starter descriptors are
         // superseded by the decision's either way.
         var excludedMacros = new List<ConsultExcludedMacro>();
+        var deliverableReads = DeliverableReads(package);
         var resultDescriptors = package.Results?
             .Select(result =>
             {
                 var whenKept = result.Macros;
+                var whenPlacements = result.MacroPlacements;
 
                 if (!deciding)
                 {
-                    var judged = DecideMacroWhens(result, inputs.Supplied, classifications: null);
+                    var judged = DecidePlacementWhens(result, inputs.Supplied, classifications: null);
                     whenKept = judged.Macros;
+                    whenPlacements = judged.Placements;
                     excludedMacros.AddRange(judged.Excluded);
                 }
 
-                // v12 #618: a declined optional macro leaves the list here,
-                // at the descriptor's birth — the engine appends exactly what
-                // the descriptor carries, as it always has. v12 #619: its
-                // placement entry leaves in the same motion (lockstep — a
-                // placement without its macro would mis-place the composer).
-                var kept = FilterMacros(whenKept, macroChoices.Resolved);
-                return new ConsultResultDescriptor(
-                    result.Id,
-                    result.NodeId,
-                    result.Label,
-                    kept,
-                    result.Signature,
-                    FilterPlacements(result.MacroPlacements, kept),
-                    result.Check);
+                return DescribeResult(result, whenKept, whenPlacements, macroChoices.Resolved, deliverableReads?.GetValueOrDefault(result.Id));
             })
             .ToList();
 
@@ -892,6 +883,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // optional macros, so scanning the snapshotted templates is exact.
         var signatureTokenCarried = macroTexts?.Values
             .Any(WorkflowMacroPlaceholders.CarriesSignatureToken) == true;
+        // v25 (B8 #1027): at 25 the carrier is a macro text reading
+        // profile.signature (the walk's fact), placed on a deliverable.
+        if (!signatureTokenCarried && IsAt25(package) && package.SourceFiles is not null)
+        {
+            var signatureReaders = WorkflowDerivedEdges.SignatureReaders(package.Manifest, package.SourceFiles, package.Formats);
+            signatureTokenCarried = package.Results?.Any(result => result.MacroPlacements?.Any(p => p.At != null && signatureReaders.Contains(p.Id)) == true) == true;
+        }
+
         if (package.Results?.Any(result => result.Signature == true) == true || signatureTokenCarried)
         {
             var signatureSetting = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.ProfileSignatures, cancellationToken);
@@ -1092,13 +1091,18 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         }
 
         var gatedContent = new HashSet<string>(
-            nodes.Where(node => gated.Contains(node.Id) && !WorkflowNodeKinds.IsCheck(node))
+            nodes.Where(node => gated.Contains(node.Id) && !WorkflowNodeRoles.IsCheckOf(node, package))
                 .Select(node => node.Id),
             StringComparer.Ordinal);
         // v25 (B3 #1002): a template's reads are edges too — the cascade and
         // the prune below see them through the validator's own walk.
         var derived = DeriveEdges(package);
         var edges = WorkflowNodeClosure.Edges(nodes, derived);
+        // v25 (B8 #1027): a deliverable's placed macros read nodes too — the
+        // deliverable's own edges, rooted beside its aggregator.
+        var deliverableReads = DeliverableReads(package);
+        IEnumerable<string> RootsOf(WorkflowResolvedResult result) =>
+            new[] { result.NodeId }.Concat(deliverableReads?.GetValueOrDefault(result.Id) ?? (IEnumerable<string>)Array.Empty<string>());
 
         foreach (var result in package.Results ?? new List<WorkflowResolvedResult>())
         {
@@ -1116,7 +1120,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // Checks are not reachable from a result node (of/in point
             // check→operand), so they never trip this.
             if (gatedContent.Count > 0
-                && WorkflowNodeClosure.Reachable(new[] { result.NodeId }, edges)
+                && WorkflowNodeClosure.Reachable(RootsOf(result), edges)
                     .FirstOrDefault(id => gatedContent.Contains(id)) is { } holed)
             {
                 skipped.Add(new ConsultSkippedDocument(
@@ -1158,15 +1162,13 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             var checkRoots = firing
                 .Select(result => result.Check)
                 .Where(check => check != null)
-                .Select(check => check!.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
-                    ? check[WorkflowNodeBindingSources.NodePrefix.Length..]
-                    : check!)
+                .Select(check => ConsultCheckRefs.NodeIdOf(check!))
                 .Where(check => !gated.Contains(check));
             var reachable = WorkflowNodeClosure.Reachable(
-                firing.Select(result => result.NodeId).Concat(checkRoots),
+                firing.SelectMany(RootsOf).Concat(checkRoots),
                 WorkflowNodeClosure.Edges(narrowed.Nodes!, derived));
             var live = narrowed.Nodes!
-                .Where(node => (reachable.Contains(node.Id) || WorkflowNodeKinds.IsClassifier(node)) && !gated.Contains(node.Id))
+                .Where(node => (reachable.Contains(node.Id) || WorkflowNodeRoles.IsClassifierOf(node, package)) && !gated.Contains(node.Id))
                 .ToList();
             narrowed = narrowed with { Nodes = live };
         }
@@ -1690,6 +1692,82 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         var kept = macros.Where(id => !resolved.TryGetValue(id, out var value) || value).ToList();
         return kept.Count == 0 ? null : kept;
+    }
+
+    /// <summary>
+    /// v25 (B8 #1027, design § 2): each deliverable's reads — its placed
+    /// macros' node reads through the validator's own walk — null below 25.
+    /// </summary>
+    internal static IReadOnlyDictionary<string, IReadOnlySet<string>>? DeliverableReads(WorkflowPackage package) =>
+        IsAt25(package) && package.SourceFiles is not null
+            ? WorkflowDerivedEdges.DeliverableReads(package.Manifest, package.SourceFiles, package.Formats)
+            : null;
+
+    /// <summary>
+    /// The deliverable's descriptor from its resolved result and what the
+    /// gates kept: the choice filter last (v12 #618), placements in lockstep
+    /// (v12 #619), the check as written, the reads (B8 #1027). One birthplace
+    /// for the starter and the boundary.
+    /// </summary>
+    internal static ConsultResultDescriptor DescribeResult(
+        Workflow.WorkflowResolvedResult result,
+        IReadOnlyList<string>? whenKept,
+        IReadOnlyList<ConsultMacroPlacement>? whenPlacements,
+        IReadOnlyDictionary<string, bool>? choices,
+        IReadOnlySet<string>? reads)
+    {
+        var kept = FilterMacros(whenKept, choices);
+        return new ConsultResultDescriptor(
+            result.Id,
+            result.NodeId,
+            result.Label,
+            kept,
+            result.Signature,
+            FilterPlacements(whenPlacements, kept),
+            result.Check,
+            Reads: reads is { Count: > 0 } ? reads.Order(StringComparer.Ordinal).ToList() : null);
+    }
+
+    /// <summary>
+    /// v25 (B8 #1027): the when-gated entries judged by their identity (id, at)
+    /// — a 25 deliverable may place one macro twice, each with its own gate —
+    /// so the placements are judged one by one and the kept ids follow; below
+    /// 25 (no At on any condition) this is <see cref="DecideMacroWhens"/> with
+    /// the placements untouched. Every refused instance is recorded by name.
+    /// </summary>
+    internal static (IReadOnlyList<string>? Macros, List<ConsultExcludedMacro> Excluded, IReadOnlyList<ConsultMacroPlacement>? Placements) DecidePlacementWhens(
+        Workflow.WorkflowResolvedResult result,
+        IReadOnlyDictionary<string, ConsultInputValue>? supplied,
+        IReadOnlyDictionary<string, string>? classifications)
+    {
+        if (result.MacroConditions is not { Count: > 0 } conditions || conditions.All(c => c.At is null) || result.MacroPlacements is null)
+        {
+            var (macros, excluded) = DecideMacroWhens(result, supplied, classifications);
+            return (macros, excluded, result.MacroPlacements);
+        }
+
+        var refused = new List<ConsultExcludedMacro>();
+        var keptPlacements = new List<ConsultMacroPlacement>();
+
+        foreach (var placement in result.MacroPlacements)
+        {
+            var gate = conditions.FirstOrDefault(c => string.Equals(c.MacroId, placement.Id, StringComparison.Ordinal) && string.Equals(c.At, placement.At, StringComparison.Ordinal));
+
+            if (gate is not null && !PackageFormat.WorkflowResultConditions.Holds(gate.Condition, supplied, classifications))
+            {
+                refused.Add(new ConsultExcludedMacro(
+                    result.Id, placement.Id, PackageFormat.WorkflowResultConditions.Explain(gate.Condition, supplied, classifications)));
+                continue;
+            }
+
+            keptPlacements.Add(placement);
+        }
+
+        var keptIds = (result.Macros ?? Array.Empty<string>())
+            .Where(id => keptPlacements.Any(p => string.Equals(p.Id, id, StringComparison.Ordinal)))
+            .ToList();
+
+        return (keptIds.Count == 0 ? null : keptIds, refused, keptPlacements.Count == 0 ? null : keptPlacements);
     }
 
     /// <summary>
@@ -2931,7 +3009,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             ForEach: node.ForEach,
             ConceptSource: WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(node.Id, node.Id),
             Aggregate: node.Aggregate,
-            Values: resolved.Values,
+            // v25 (B8 #1027): an enum format's own answer set when no with
+            // parameter supplied one — the closure and the dispatch read it.
+            Values: resolved.Values ?? (FormatSpecFor(formatId, formats, macroFiles, manifest) is { Type: WorkflowInputTypes.Enum } enumSpec ? enumSpec.Values : null),
             Reproducible: node.Reproducible == true ? true : null,
             Template: producer == WorkflowFormatProducers.Rendered ? true : null,
             AgentName: agentName,

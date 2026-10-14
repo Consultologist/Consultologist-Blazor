@@ -654,9 +654,15 @@ public sealed record ConsultResultDescriptor(
     // last, this is a durable payload.
     IReadOnlyList<ConsultMacroPlacement>? MacroPlacements = null,
     // v12 #624 (design § 13): the check node gating this deliverable
-    // (node:<id>, prefix intact) — the post-production mirror of when.
+    // (node:<id>, prefix intact; node.<id> at 25 — ConsultCheckRefs reads
+    // either) — the post-production mirror of when. Appended last, same rule.
+    string? Check = null,
+    // v25 (B8 #1027, design § 2): the node ids this deliverable's placed
+    // macros read — the deliverable's edges: its document is composed only
+    // once every one has settled, and the fire-set cascade skips it when one
+    // was gated. Sorted; null below 25 and when its macros read no node.
     // Appended last, same rule.
-    string? Check = null);
+    IReadOnlyList<string>? Reads = null);
 
 /// <summary>
 /// v12 #619 (design § 4): one placed macro on one deliverable — the id and
