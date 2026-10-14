@@ -69,7 +69,13 @@ public sealed record ConsultPromptNodeActivityInput(
     // onInvalid policy, threaded from the descriptor for the dispatch on the
     // producer. Null below 25. Appended last, same rule.
     IReadOnlyDictionary<string, string>? With = null,
-    string? OnInvalid = null);
+    string? OnInvalid = null,
+    // v25 (B5 #1004, design §§ 5–7): the two facts an instance's `when` is
+    // judged against that only the orchestrator holds — the supplied-inputs
+    // map as the job was started with (JSON per input, the Initialize shape)
+    // and the classifiers' answers so far. Null below 25. Appended last, same rule.
+    IReadOnlyDictionary<string, string>? Supplied = null,
+    IReadOnlyDictionary<string, string>? Classifications = null);
 
 /// <summary>
 /// One node run. Deserialized concepts ride the recorded activity result so Durable
@@ -103,7 +109,15 @@ public sealed record NodeRunResult(
     // (null on a text format), and a computed node's check outcome (null
     // otherwise). Appended last, same positional-call rule.
     ConsultValidationOutcome? Validation = null,
-    ConsultCheckOutcome? Check = null);
+    ConsultCheckOutcome? Check = null,
+    // v25 (B5 #1004, design § 6): the digest of the reply as returned — the
+    // model's, the render, the operation's result — beside OutputHash, which
+    // at 25 is over RawOutput after the node's instances compose and its
+    // slots fill (definition 6); and what that completion placed and
+    // excluded. Null below 25. Appended last, same positional-call rule.
+    string? AgentOutputHash = null,
+    IReadOnlyList<ConsultAppendedEntry>? Appended = null,
+    IReadOnlyList<ConsultNodeExclusion>? Excluded = null);
 
 /// <summary>
 /// The generic DAG prompt node: renders the node's prompt with orchestrator-resolved
@@ -222,6 +236,13 @@ public sealed class RunPromptNodeActivity
             if (input.Template == true)
             {
                 var templateResult = TemplateResult(rendered, input.OutputContract, input.ConceptSource, input.NodeId);
+
+                // v25 (B5 #1004, design § 6): a rendered node's pair stamps 6 and
+                // its reply IS the render — agentOutputHash is the same digest.
+                if (input.Format is not null)
+                {
+                    templateResult = templateResult with { HashVersion = ConsultGenerationProvenance.NodeHashVersionAt25, AgentOutputHash = templateResult.OutputHash };
+                }
 
                 _logger.LogInformation(
                     "Template node completed. NodeId={NodeId}, ConceptCount={ConceptCount}, Hash={Hash}, ElapsedMs={ElapsedMs}",

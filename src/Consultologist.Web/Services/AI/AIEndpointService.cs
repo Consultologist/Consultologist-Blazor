@@ -701,7 +701,14 @@ public record ConsultFailedDocumentResponse(
 /// appended macro, a slot the model placed inline (#863), or the signature
 /// block (AsOf carries its as-of date; null on macro/slot entries).
 /// </summary>
-public record ConsultAppendedEntryResponse(string Kind, string Id, string? AsOf = null);
+public record ConsultAppendedEntry(string Kind, string Id, string? AsOf = null);
+
+/// <summary>
+/// Mirrors Consultologist.Api.Models.ConsultNodeExclusion (v25 B5 #1004): one
+/// thing a node's completion withheld or removed, by name — an instance whose
+/// when refused, a slot marker no read sanctioned — and the sentence why.
+/// </summary>
+public record ConsultNodeExclusion(string Kind, string Id, string Reason);
 
 /// <summary>One v7 deliverable: authored identity, the document, and its digest.</summary>
 public record ConsultGenerationResultDocumentResponse(
@@ -715,7 +722,7 @@ public record ConsultGenerationResultDocumentResponse(
     bool? Unsigned = null,
     // #869 (v11 #513 / #863): what was appended after the sections, in applied
     // order — appended macros, model-placed slots, and the signature block.
-    IReadOnlyList<ConsultAppendedEntryResponse>? Appended = null);
+    IReadOnlyList<ConsultAppendedEntry>? Appended = null);
 
 /// <summary>
 /// One node of the job's workflow DAG (v5: one kind, ForEach as multiplicity).
@@ -786,7 +793,13 @@ public record ConsultGenerationNodeStatus(
     string? CustomSchemaHash = null,
     string? CustomAgent = null,
     // v25 (B4 #1003): the reply's validation against its format; surfaced by B7.
-    ConsultValidationOutcome? Validation = null);
+    ConsultValidationOutcome? Validation = null,
+    // v25 (B5 #1004, design § 6): the reply's own digest beside the output's,
+    // what the completion appended (in output order) and excluded (by name);
+    // surfaced by B7.
+    string? AgentOutputHash = null,
+    IReadOnlyList<ConsultAppendedEntry>? Appended = null,
+    IReadOnlyList<ConsultNodeExclusion>? Excluded = null);
 
 /// <summary>v25 (B4 #1003): a reply validated against its format — valid, or every way it missed.</summary>
 public record ConsultValidationOutcome(bool Valid, IReadOnlyList<string> Errors);

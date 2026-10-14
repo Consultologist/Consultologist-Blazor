@@ -259,15 +259,33 @@ public static class ConsultGenerationProvenance
     /// 2 (2026-08-10, typed inputs), 3 (#357, ISO dates), 4 (#358, absent
     /// optionals render nothing), 5 (#425, structure materialises — current).
     /// A change to PromptTemplateRenderer's bytes moves this and the registry
-    /// together; ProvenanceVersionSetTests holds them equal.
+    /// together; ProvenanceVersionSetTests holds them equal. A node of a
+    /// package below 25 stamps this number; a 25 node stamps
+    /// <see cref="NodeHashVersionAt25"/>.
     /// </summary>
     public const int NodeHashVersion = 5;
 
     /// <summary>
+    /// Definition 6 (v25, B5 #1004; hash-definitions.md § 4): the pair a
+    /// specVersion 25 node stamps. The input side is the 25 object render
+    /// (seven objects, closed members, snippets and macro texts rendered when
+    /// read; a custom node's trailer and schema, an enum's answer set, inside
+    /// the bytes). The output side moves for the first time: outputHash is over
+    /// the node's OUTPUT — the reply after its sanctioned slots fill and its
+    /// before/after instances compose, what node.&lt;id&gt;.text, the aggregator
+    /// and the deliverable read — while agentOutputHash, beside it, is over the
+    /// reply as returned. Equal on a node with nothing composed and nothing
+    /// stripped. Nodes below 25 keep stamping 5: their output never composes at
+    /// the node. The registry's ladder carries both; the newest is this one.
+    /// </summary>
+    public const int NodeHashVersionAt25 = 6;
+
+    /// <summary>
     /// Lowercase-hex SHA-256 of the UTF-8 text — the per-node provenance hash: a node's
     /// InputHash covers the exact rendered prompt the agent receives (template +
-    /// prelude + variables), its OutputHash the raw assistant text, so two runs can be
-    /// compared node by node (dag-improvements #6) — under the same NodeHashVersion.
+    /// prelude + variables), its OutputHash the raw assistant text below 25 and the
+    /// composed output at 25 (definition 6), so two runs can be compared node by
+    /// node (dag-improvements #6) — under the same NodeHashVersion.
     /// </summary>
     public static string Sha256Hex(string text)
     {

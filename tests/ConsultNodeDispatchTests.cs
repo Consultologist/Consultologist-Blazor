@@ -53,6 +53,10 @@ public class ConsultNodeDispatchTests
         Assert.Equal("in_scope", result.Classification);
         Assert.True(result.Validation!.Valid);
         Assert.Equal(ConsultGenerationProvenance.Sha256Hex("in_scope"), result.OutputHash);
+        // B5 #1004 (design § 6): the reply's own digest is over the bytes as
+        // returned, beside the normalised answer's; a 25 pair stamps 6.
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex("""{ "value": "In_Scope " }"""), result.AgentOutputHash);
+        Assert.Equal(ConsultGenerationProvenance.NodeHashVersionAt25, result.HashVersion);
     }
 
     [Fact]
@@ -73,6 +77,11 @@ public class ConsultNodeDispatchTests
         Assert.Equal("Asthma", Assert.Single(result.Concepts!).Term);
         Assert.Equal("extract", result.Concepts![0].Source);
         Assert.Equal(ConsultGenerationProvenance.Sha256Hex(result.RawOutput), result.OutputHash);
+        // B5 #1004: agentOutputHash is taken BEFORE the fences are stripped —
+        // the two digests differ exactly when something was stripped.
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(reply), result.AgentOutputHash);
+        Assert.NotEqual(result.OutputHash, result.AgentOutputHash);
+        Assert.Equal(ConsultGenerationProvenance.NodeHashVersionAt25, result.HashVersion);
     }
 
     [Fact]
@@ -87,6 +96,9 @@ public class ConsultNodeDispatchTests
 
         Assert.Null(result.Validation);
         Assert.Equal("The plan.", result.RawOutput);
+        // B5 #1004: nothing stripped, nothing composed here — one digest, twice.
+        Assert.Equal(result.OutputHash, result.AgentOutputHash);
+        Assert.Equal(ConsultGenerationProvenance.NodeHashVersionAt25, result.HashVersion);
     }
 
     private static (WorkflowPackage, ConsultPromptNodeActivityInput) Custom(string onInvalid = "fail") => At25(

@@ -166,6 +166,11 @@ public sealed class ConsultGenerationOrchestrator
         var nodesById = nodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
         var chainNodes = nodes.Where(node => node.ForEach != null).ToList();
         var aggregators = nodes.Where(node => node.Aggregate != null).ToList();
+        // v25 (B5 #1004): a 25 job — one whose nodes carry formats (the job
+        // starter's IsAt25, over the snapshot it took). Its aggregators stamp
+        // definition 6, and its deliverables fill no slot: every marker was
+        // filled or removed at the node that read it.
+        var at25 = nodes.Any(node => node.Format is not null);
         var outputs = new Dictionary<string, NodeRunResult>(StringComparer.Ordinal);
         var pendingTasks = new Dictionary<Task<NodeRunResult>, (string NodeId, string? ItemId)>();
         var started = new HashSet<string>(StringComparer.Ordinal);
@@ -295,7 +300,11 @@ public sealed class ConsultGenerationOrchestrator
                         Run: ConsultRenderPayload.RunFactsFor(context.CurrentUtcDateTime, context.InstanceId, input.WorkflowPackage, input.ApiHost),
                         Profile: ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature),
                         With: node.With,
-                        OnInvalid: node.OnInvalid),
+                        OnInvalid: node.OnInvalid,
+                        // v25 (B5 #1004): what an instance's when is judged against,
+                        // as the orchestrator holds it — the completion runs in the activity.
+                        Supplied: input.SuppliedInputs is null ? null : new Dictionary<string, string>(input.SuppliedInputs, StringComparer.Ordinal),
+                        Classifications: Classifications()),
                     AgentActivityRetryOptions)] = (node.Id, item?["id"]);
                 return;
             }
@@ -678,12 +687,17 @@ public sealed class ConsultGenerationOrchestrator
                     }
 
                     var rendered = ConsultAggregateRenderer.Render(parts);
+                    // v25 (B5 #1004, design § 6): a 25 aggregator stamps 6 like
+                    // every 25 node; its render is its reply, so the two digests
+                    // are one (an aggregator carries no instance).
+                    var aggregateHash = ConsultGenerationProvenance.Sha256Hex(rendered);
                     var aggregateResult = new NodeRunResult(
                         rendered,
                         null,
                         ConsultGenerationProvenance.ComputeAggregateInputHash(sourceHashes),
-                        ConsultGenerationProvenance.Sha256Hex(rendered),
-                        ConsultGenerationProvenance.NodeHashVersion);
+                        aggregateHash,
+                        at25 ? ConsultGenerationProvenance.NodeHashVersionAt25 : ConsultGenerationProvenance.NodeHashVersion,
+                        AgentOutputHash: at25 ? aggregateHash : null);
                     outputs[aggregator.Id] = aggregateResult;
                     completedNodeCount++;
                     progressed = true;
@@ -694,7 +708,8 @@ public sealed class ConsultGenerationOrchestrator
                         new ConsultGenerationNodeUpdate(
                             aggregator.Id, aggregator.Label, null,
                             aggregateResult.InputHash, aggregateResult.OutputHash,
-                            completedNodeCount, totalNodeCount, aggregateResult.HashVersion));
+                            completedNodeCount, totalNodeCount, aggregateResult.HashVersion,
+                            AgentOutputHash: aggregateResult.AgentOutputHash));
 
                     if (v7)
                     {
@@ -1275,7 +1290,10 @@ public sealed class ConsultGenerationOrchestrator
             Unattested: stamp.Unattested,
             CustomSchemaHash: stamp.CustomSchemaHash,
             CustomAgent: stamp.CustomAgent,
-            Validation: result.Validation);
+            Validation: result.Validation,
+            AgentOutputHash: result.AgentOutputHash,
+            Appended: result.Appended,
+            Excluded: result.Excluded);
     }
 
     internal static ConsultGenerationNodeItemUpdate ItemUpdateFrom(
@@ -1291,7 +1309,10 @@ public sealed class ConsultGenerationOrchestrator
             Unattested: stamp.Unattested,
             CustomSchemaHash: stamp.CustomSchemaHash,
             CustomAgent: stamp.CustomAgent,
-            Validation: result.Validation);
+            Validation: result.Validation,
+            AgentOutputHash: result.AgentOutputHash,
+            Appended: result.Appended,
+            Excluded: result.Excluded);
     }
 
     internal static ConsultGenerationDeliveryRecord DeliveryRecordFor(Email.EmailIntakeReplyOutcome? outcome) =>

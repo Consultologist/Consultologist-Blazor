@@ -548,7 +548,7 @@
                                                        the sections, in applied order — an appended macro, a slot the
                                                        model placed inline, or the signature block. Inside the document
                                                        hash, attributed outside the node hashes. *@
-                                                    @foreach (var appended in document.Appended ?? Array.Empty<ConsultAppendedEntryResponse>())
+                                                    @foreach (var appended in document.Appended ?? Array.Empty<ConsultAppendedEntry>())
                                                     {
                                                         <dt class="provenance-list__nested">@appended.Id</dt>
                                                         <dd class="document-appended">@AppendedEntryText(appended)</dd>
@@ -981,7 +981,7 @@
     // #869 (v11 #513 / #863): how one appended block reads in the provenance
     // list. The kinds mirror ConsultAppendedKinds; a signature carries its
     // as-of date, a macro/slot only its id (shown in the dt).
-    private static string AppendedEntryText(ConsultAppendedEntryResponse entry) => entry.Kind switch
+    private static string AppendedEntryText(ConsultAppendedEntry entry) => entry.Kind switch
     {
         "slot" => "placed inline by the model — a slot",
         "signature" => entry.AsOf is { Length: > 0 } asOf ? $"the signature block, as of {asOf}" : "the signature block",

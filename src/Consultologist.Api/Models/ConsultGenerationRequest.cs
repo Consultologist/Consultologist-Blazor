@@ -437,6 +437,9 @@ public static class ConsultAppendedKinds
     // #863 (v20): a macro's text substituted in place of a model-emitted
     // [[slot:<id>]] marker at document assembly. Attributed exactly like an
     // appended macro — outside the node hashes, inside the document hash.
+    // v25 (B5 #1004, design § 7): at 25 the fill happens at the node that
+    // read macro.<id>.prompt, so the entry sits on the node row, inside its
+    // outputHash (and agentOutputHash still says what the model replied).
     public const string Slot = "slot";
 }
 
@@ -575,6 +578,15 @@ public sealed record ConsultNodeDescriptor(
 /// format and on records from before.
 /// </summary>
 public sealed record ConsultValidationOutcome(bool Valid, IReadOnlyList<string> Errors);
+
+/// <summary>
+/// v25 (B5 #1004, design §§ 6–7): one thing a node's completion withheld or
+/// removed, by name — a before/after instance whose <c>when</c> refused
+/// (<c>macro</c>), a slot marker the model emitted that no read in the prompt
+/// that ran sanctions (<c>slot</c>) — with the sentence that says why (authored
+/// names and declared values only; never the reply's text).
+/// </summary>
+public sealed record ConsultNodeExclusion(string Kind, string Id, string Reason);
 
 /// <summary>
 /// v12 #624 (design § 13): a check node's snapshotted declaration — the
@@ -723,7 +735,14 @@ public sealed record ConsultGenerationNodeStatusResponse(
     string? CustomSchemaHash = null,
     string? CustomAgent = null,
     // v25 (B4 #1003): the reply's validation against its format. Appended last.
-    ConsultValidationOutcome? Validation = null);
+    ConsultValidationOutcome? Validation = null,
+    // v25 (B5 #1004, design § 6): the reply's own digest beside the output's —
+    // equal when nothing was composed and nothing stripped — and what the
+    // completion placed (appended, in output order) and withheld or removed
+    // (excluded, by name). Null below 25 and on records from before. Appended last.
+    string? AgentOutputHash = null,
+    IReadOnlyList<ConsultAppendedEntry>? Appended = null,
+    IReadOnlyList<ConsultNodeExclusion>? Excluded = null);
 
 /// <summary>#390: the body of a reschedule — a job id in the route, a time here.</summary>
 public sealed record RescheduleConsultRequest(DateTimeOffset? ScheduledAtUtc);

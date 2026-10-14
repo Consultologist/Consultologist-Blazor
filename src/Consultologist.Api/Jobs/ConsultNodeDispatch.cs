@@ -172,10 +172,17 @@ internal static class ConsultNodeDispatch
     /// <summary>The reply as the record holds it, with the node's policy applied.</summary>
     public static NodeRunResult Settle(DispatchPlan plan, string nodeId, string reply, string inputHash, ConsultTokenUsage? tokens)
     {
+        // v25 (B5 #1004, design § 6, step 1): the reply's own digest is taken
+        // first, over the bytes as returned — before fences are stripped,
+        // before anything composes. OutputHash below is step 6's on a node
+        // that composes nothing; the completion seam re-takes it otherwise.
+        var agentOutputHash = ConsultGenerationProvenance.Sha256Hex(reply);
+
         switch (plan.Kind)
         {
             case ReplyKind.Text:
-                return new NodeRunResult(reply, null, inputHash, ConsultGenerationProvenance.Sha256Hex(reply), ConsultGenerationProvenance.NodeHashVersion, null, tokens);
+                return new NodeRunResult(reply, null, inputHash, ConsultGenerationProvenance.Sha256Hex(reply), ConsultGenerationProvenance.NodeHashVersionAt25, null, tokens,
+                    AgentOutputHash: agentOutputHash);
 
             case ReplyKind.Enum:
             {
@@ -196,7 +203,8 @@ internal static class ConsultNodeDispatch
 
                 return new NodeRunResult(
                     reply, null, inputHash, ConsultGenerationProvenance.Sha256Hex(classification ?? reply),
-                    ConsultGenerationProvenance.NodeHashVersion, classification, tokens, Validation: validation);
+                    ConsultGenerationProvenance.NodeHashVersionAt25, classification, tokens, Validation: validation,
+                    AgentOutputHash: agentOutputHash);
             }
 
             default:
@@ -228,7 +236,8 @@ internal static class ConsultNodeDispatch
 
                 return new NodeRunResult(
                     stripped, concepts, inputHash, ConsultGenerationProvenance.Sha256Hex(stripped),
-                    ConsultGenerationProvenance.NodeHashVersion, null, tokens, Validation: validation);
+                    ConsultGenerationProvenance.NodeHashVersionAt25, null, tokens, Validation: validation,
+                    AgentOutputHash: agentOutputHash);
             }
         }
     }

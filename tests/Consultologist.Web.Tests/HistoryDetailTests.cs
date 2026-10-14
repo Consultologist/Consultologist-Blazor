@@ -392,9 +392,9 @@ public class HistoryDetailTests : ClientRenderTestContext
             new ConsultGenerationResultDocumentResponse("consult", "Consultation note", "Note.", "hash-note",
                 Appended: new[]
                 {
-                    new ConsultAppendedEntryResponse("slot", "side_effects"),
-                    new ConsultAppendedEntryResponse("macro", "closing"),
-                    new ConsultAppendedEntryResponse("signature", "clinic-block", "2026-09-27")
+                    new ConsultAppendedEntry("slot", "side_effects"),
+                    new ConsultAppendedEntry("macro", "closing"),
+                    new ConsultAppendedEntry("signature", "clinic-block", "2026-09-27")
                 })
         };
         WithJob(3, documents, packageSpecVersion: 20);
