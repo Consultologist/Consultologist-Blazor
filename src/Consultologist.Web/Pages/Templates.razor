@@ -509,6 +509,20 @@
                         </button>
                     }
                     }
+                    @if (EffectiveSpecVersion >= 25)
+                    {
+                        @* v25 (C1 #1007, design § 13): formats replace schemas — the package's
+                           own custom formats (edited here) and the catalogue's (read-only). *@
+                        <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.Braces())" /> Formats</span>
+                        <button type="button"
+                                class="editor-nav__item @(selectedKey == FormatsKey ? "editor-nav__item--selected" : "")"
+                                @onclick="() => Select(FormatsKey)">
+                            <span class="editor-nav__dot">@(FormatsCanDiscard ? "●" : "")</span>
+                            <span>Formats</span>
+                        </button>
+                    }
+                    else
+                    {
                     @* #746/#759: output-contract schemas — the pane views declared
                        ones, adds a catalog contract, and removes an unused one.
                        Always shown so the first contract can be added. *@
@@ -519,6 +533,7 @@
                         <span class="editor-nav__dot">@(removedSchemaIds.Count > 0 || addedSchemas.Count > 0 ? "●" : "")</span>
                         <span>Schemas</span>
                     </button>
+                    }
                     <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.NumberSymbol())" /> Data</span>
                     @* A value has no items, so it sits flat in the same Data
                        group rather than as a folder with nothing inside. *@
@@ -898,6 +913,127 @@
                             @* The server clears all three on a fork across names, so the
                                fields do not accept what it would strip. *@
                             <p class="muted-text">A fork starts with no title and no tags. Publish your version first, then name it here.</p>
+                        }
+                    }
+                    else if (selectedKey == FormatsKey)
+                    {
+                        @* v25 (C1 #1007, design § 3.6/§ 13): the package's own formats — custom
+                           object shapes the engine validates replies against, each a JSON file
+                           edited here — and the catalogue's formats, read-only with the line that
+                           says who produces them. The agent yaml is never shown. *@
+                        <div class="pane-header">
+                            <div>
+                                <h3 class="panel-title">Formats</h3>
+                                <p class="muted-text">
+                                    What a node produces and who produces it. The package's own formats are
+                                    custom shapes: a JSON schema the engine validates the agent's reply against,
+                                    authored here. The catalogue's formats are the engine's — attested by their
+                                    agents or computed by the engine — and read-only. A node picks a format on
+                                    its card.
+                                </p>
+                            </div>
+                            @PaneDiscardButton(FormatsKey, FormatsCanDiscard, RevertFormatsEdits)
+                        </div>
+                        @if (newFormatError != null)
+                        {
+                            <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false">@newFormatError</FluentMessageBar>
+                        }
+                        <div class="new-item-fields" data-format-add>
+                            <label class="input-field">
+                                <span>new format id (snake_case)</span>
+                                <FluentTextField @bind-Value="newFormatId" Placeholder="medication_list" aria-label="New format id" />
+                            </label>
+                            <div class="action-row">
+                                <FluentButton Appearance="Appearance.Accent" @onclick="AddFormatAsync">Create format</FluentButton>
+                            </div>
+                        </div>
+                        <span class="node-section__head">Package formats</span>
+                        @if (!LiveFormats.Any() && !RemovedFormatViews.Any())
+                        {
+                            <EmptyState Compact Icon="@(new Icons.Regular.Size20.DocumentText())"
+                                        Description="This package declares no formats of its own — every node uses a catalogue format." />
+                        }
+                        @foreach (var format in LiveFormats)
+                        {
+                            var declaredFormat = format;
+                            var readers = FormatReferencedBy(format.Id);
+                            var body = GetText(format.File);
+                            var bodyErrors = FormatBodyErrors(format.Id, body);
+                            <div class="package-field" data-format="@format.Id">
+                                <div class="pane-header">
+                                    <div>
+                                        <span class="panel-title">@format.Id</span>
+                                        <span class="muted-text">@format.File · producer custom</span>
+                                    </div>
+                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove format"
+                                                  aria-label="@($"Remove format {format.Id}")"
+                                                  Disabled="@(readers.Count > 0)"
+                                                  IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                  @onclick="() => RemoveFormatAsync(declaredFormat)">Remove</FluentButton>
+                                </div>
+                                @if (readers.Count > 0)
+                                {
+                                    <span class="muted-text">Used by @(string.Join(", ", readers.Select(reader => $"'{reader}'"))). Change their format before it can be removed.</span>
+                                }
+                                else
+                                {
+                                    <span class="muted-text">Not yet used by any node — a node picks it in its format field.</span>
+                                }
+                                <FluentTextArea Class="format-body"
+                                                Value="@body"
+                                                ValueChanged="@(value => OnTextChangedAsync(declaredFormat.File, value))"
+                                                aria-label="@($"Format body for {format.Id}")"
+                                                Rows="14" />
+                                @foreach (var bodyError in bodyErrors)
+                                {
+                                    <span class="format-error">@bodyError</span>
+                                }
+                            </div>
+                        }
+                        @foreach (var removed in RemovedFormatViews)
+                        {
+                            var restoreFormat = removed;
+                            <div class="package-field editor-nav__item--removed" data-format-removed="@removed.Id">
+                                <span class="editor-nav__strike">@removed.Id</span>
+                                <button type="button" class="editor-nav__restore"
+                                        aria-label="@($"Restore format {removed.Id}")"
+                                        @onclick="() => RestoreFormatAsync(restoreFormat)">(restore)</button>
+                            </div>
+                        }
+                        <span class="node-section__head">Catalogue formats</span>
+                        @if (formatsCatalogUnavailable)
+                        {
+                            <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">
+                                The format catalogue is unavailable; catalogue formats cannot be picked until it loads. A node keeps the format it names.
+                            </FluentMessageBar>
+                        }
+                        else if (formatsCatalog is { } catalogue)
+                        {
+                            <p class="muted-text">@catalogue.Ref</p>
+                            @foreach (var entry in catalogue.Formats ?? Array.Empty<WorkflowFormatEntryView>())
+                            {
+                                <div class="package-field format-catalogue" data-catalogue-format="@entry.Id">
+                                    <div class="pane-header">
+                                        <div>
+                                            <span class="panel-title">@entry.Id</span>
+                                            <span class="muted-text">@entry.Type · @entry.Producer</span>
+                                        </div>
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(entry.Description))
+                                    {
+                                        <span class="muted-text">@entry.Description</span>
+                                    }
+                                    <span class="muted-text format-catalogue__detail">@FormatDetailLine(entry, catalogue)</span>
+                                    @if (entry.Parameters is { Count: > 0 } entryParameters)
+                                    {
+                                        <span class="muted-text">parameters: @(string.Join(", ", entryParameters.Select(pair => $"{pair.Key} ({pair.Value.Kind}{(pair.Value.Format != null ? $" of {pair.Value.Format}" : "")})")))</span>
+                                    }
+                                    @if (entry.Schema is { } entrySchema)
+                                    {
+                                        <pre class="schema-body">@JsonSerializer.Serialize(entrySchema, new JsonSerializerOptions { WriteIndented = true })</pre>
+                                    }
+                                </div>
+                            }
                         }
                     }
                     else if (selectedKey == SchemasKey)
@@ -3519,6 +3655,11 @@
             // #759: catalog contracts added.
             new("addedSchemas", () => addedSchemas.Count, addedSchemas.Clear,
                 () => $"+{addedSchemas.Count} {Plural(addedSchemas.Count, "schema")}", () => addedSchemas.Count > 0),
+            // v25 (C1 #1007): the package's own formats, added and removed.
+            new("addedFormats", () => addedFormats.Count, addedFormats.Clear,
+                () => $"+{addedFormats.Count} {Plural(addedFormats.Count, "format")}", () => addedFormats.Count > 0),
+            new("removedFormatIds", () => removedFormatIds.Count, removedFormatIds.Clear,
+                () => $"−{removedFormatIds.Count} {Plural(removedFormatIds.Count, "format")}", () => removedFormatIds.Count > 0),
             // #747: shared preludes — pending additions, removals and a prompt's choice.
             new("removedPreludeIds", () => removedPreludeIds.Count, removedPreludeIds.Clear,
                 () => $"−{removedPreludeIds.Count} {Plural(removedPreludeIds.Count, "prelude")}", () => removedPreludeIds.Count > 0),
@@ -3591,6 +3732,8 @@
         || (key == PackageKey && EffectiveSpecVersion >= 9)
         // #746/#759: the schemas pane is always reachable now that a contract can be added.
         || key == SchemasKey
+        // v25 (C1 #1007): the Formats pane, at 25 alone.
+        || (key == FormatsKey && EffectiveSpecVersion >= 25)
         || (key.StartsWith(NewKeyPrefix, StringComparison.Ordinal)
             && EffectiveCollections.Any(c => NewKeyFor(c.Id) == key))
         || (key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)
@@ -4292,8 +4435,162 @@
             ? Array.Empty<WorkflowManifestReader.FormatView>()
             : WorkflowManifestReader.ReadFormats(content.Manifest);
 
-    /// <summary>The package's formats as the panes see them (declared; the Formats pane adds and removes).</summary>
-    private IEnumerable<WorkflowManifestReader.FormatView> LiveFormats => DeclaredFormats;
+    // ----- v25 (C1 #1007): the Formats pane's pending state -----
+
+    private const string FormatsKey = "formats";
+
+    // The package's own formats the author has added — id → authored JSON body —
+    // and the declared ones marked for removal (their map entry drops at compose,
+    // their file via removedFiles). Removal is refused while a node names it.
+    private readonly Dictionary<string, string> addedFormats = new(StringComparer.Ordinal);
+    private readonly HashSet<string> removedFormatIds = new(StringComparer.Ordinal);
+    private string? newFormatId;
+    private string? newFormatError;
+
+    private static string AddedFormatFile(string formatId) => $"formats/{formatId}.json";
+
+    /// <summary>The added format for a package file path, or null.</summary>
+    private string? AddedFormatForFile(string path) =>
+        addedFormats.Keys.FirstOrDefault(id => AddedFormatFile(id) == path);
+
+    /// <summary>The package's formats as the panes see them — declared less removed, plus pending additions.</summary>
+    private IEnumerable<WorkflowManifestReader.FormatView> LiveFormats =>
+        DeclaredFormats.Where(format => !removedFormatIds.Contains(format.Id))
+            .Concat(addedFormats.Keys.Select(id => new WorkflowManifestReader.FormatView(id, AddedFormatFile(id))));
+
+    private IEnumerable<WorkflowManifestReader.FormatView> RemovedFormatViews =>
+        DeclaredFormats.Where(format => removedFormatIds.Contains(format.Id));
+
+    /// <summary>The nodes naming a format — removal is refused while any exist.</summary>
+    private IReadOnlyList<string> FormatReferencedBy(string formatId) =>
+        EffectiveNodes.Where(node => node.Format == formatId).Select(node => node.Id).ToList();
+
+    // Explicit init: a new format is born as the smallest custom shape — type
+    // object, producer custom, an empty object schema and a blank description
+    // the desk refuses until written.
+    private const string NewFormatSkeleton = """
+        {
+          "type": "object",
+          "producer": "custom",
+          "description": "",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [],
+            "properties": {}
+          }
+        }
+        """;
+
+    private async Task AddFormatAsync()
+    {
+        var id = newFormatId?.Trim() ?? string.Empty;
+
+        if (!PF.WorkflowDeclaredIds.IsValid(id))
+        {
+            newFormatError = $"Format id '{id}' must be snake_case (a lowercase letter, then lowercase letters, digits or underscores).";
+            return;
+        }
+
+        if (formatsCatalog?.Formats?.Any(entry => entry.Id == id) == true)
+        {
+            newFormatError = $"Format '{id}' is a catalogue id and cannot be declared locally; catalogue ids are reserved.";
+            return;
+        }
+
+        if (LiveFormats.Any(format => format.Id == id) || content!.Files.ContainsKey(AddedFormatFile(id)))
+        {
+            newFormatError = $"A format named '{id}' already exists.";
+            return;
+        }
+
+        addedFormats[id] = NewFormatSkeleton;
+        newFormatId = null;
+        newFormatError = null;
+        await PendingChangedAsync();
+    }
+
+    private async Task RemoveFormatAsync(WorkflowManifestReader.FormatView format)
+    {
+        if (FormatReferencedBy(format.Id).Count > 0)
+        {
+            return;
+        }
+
+        if (addedFormats.Remove(format.Id))
+        {
+            await PendingChangedAsync();
+            return;
+        }
+
+        removedFormatIds.Add(format.Id);
+        if (format.File.Length > 0)
+        {
+            removedFiles.Add(format.File);
+        }
+
+        await PendingChangedAsync();
+    }
+
+    private async Task RestoreFormatAsync(WorkflowManifestReader.FormatView format)
+    {
+        removedFormatIds.Remove(format.Id);
+        if (format.File.Length > 0)
+        {
+            removedFiles.Remove(format.File);
+        }
+
+        await PendingChangedAsync();
+    }
+
+    private bool FormatsCanDiscard =>
+        addedFormats.Count > 0 || removedFormatIds.Count > 0
+        || LiveFormats.Any(format => edits.ContainsKey(format.File));
+
+    private void RevertFormatsEdits()
+    {
+        foreach (var removed in RemovedFormatViews.ToList())
+        {
+            removedFiles.Remove(removed.File);
+        }
+
+        foreach (var format in DeclaredFormats)
+        {
+            edits.Remove(format.File);
+        }
+
+        addedFormats.Clear();
+        removedFormatIds.Clear();
+    }
+
+    /// <summary>
+    /// A package format's body as the registry will read it — the spec reader's
+    /// sentences, then the package-local rules (producer custom, type object, a
+    /// schema in the engine's subset): the author sees each under the editor.
+    /// </summary>
+    private static IReadOnlyList<string> FormatBodyErrors(string formatId, string body)
+    {
+        var errors = new List<string>();
+        var subject = $"Format '{formatId}'";
+        if (!PF.WorkflowFormatSpecJson.TryRead(body, subject, errors, out var spec) || spec == null)
+        {
+            return errors;
+        }
+
+        PF.WorkflowFormatValidator.Validate(subject, spec, PF.WorkflowFormatOrigin.PackageLocal, errors);
+        return errors;
+    }
+
+    /// <summary>The catalogue entry's detail line (design § 3.8): who produces it, and whether that is attested.</summary>
+    private static string FormatDetailLine(WorkflowFormatEntryView entry, WorkflowFormatsView catalogue) =>
+        entry.Producer switch
+        {
+            PF.WorkflowFormatProducers.Attested => $"served by {entry.AgentName}@{entry.AgentVersion}, attested",
+            PF.WorkflowFormatProducers.Computed => $"computed by the engine ({entry.Op})",
+            PF.WorkflowFormatProducers.Rendered => "rendered by the engine — the prompt's render is the output",
+            PF.WorkflowFormatProducers.Custom => $"served by {catalogue.Custom?.AgentName}@{catalogue.Custom?.AgentVersion}, engine-validated against the package's schema",
+            _ => entry.Producer ?? string.Empty
+        };
 
     /// <summary>
     /// v25: what a node-kind parameter may name — node.&lt;id&gt; over the nodes with a
@@ -9285,6 +9582,7 @@
         : AddedPromptForFile(path) is { } addedPrompt ? addedPrompt.Text
         : AddedMacroForFile(path) is { } addedMacro ? addedMacro.Text
         : AddedSchemaForFile(path) is { } addedSchema ? WorkflowOutputContracts.Declarable[addedSchema]
+        : AddedFormatForFile(path) is { } addedFormat ? addedFormats[addedFormat]
         : AddedScalarIdForPath(path) is { } pendingScalar ? addedScalars[pendingScalar]
         : edits.TryGetValue(path, out var edited) ? edited : content!.Files.GetValueOrDefault(path, string.Empty);
 
@@ -9491,7 +9789,12 @@
         List<DraftStandardName>? StandardNames = null,
         // v23 (#955): pending node macro attachments. Trailing optional — a draft
         // written before restores with none.
-        List<DraftNodeMacros>? NodeMacroEdits = null);
+        List<DraftNodeMacros>? NodeMacroEdits = null,
+        // v25 (C1 #1007): the package's own formats. Trailing optional.
+        List<DraftAddedFormat>? AddedFormats = null,
+        List<string>? RemovedFormats = null);
+
+    private sealed record DraftAddedFormat(string Id, string Body);
 
     // #815: the undo/redo stacks persisted beside the draft. Each entry is a
     // serialized DraftPayload (or null for the clean state); Version tracks the
@@ -9605,6 +9908,8 @@
         var draftPromptRawEdits = payload.PromptRawEdits;
         var draftRemovedSchemas = payload.RemovedSchemas;
         var draftAddedSchemas = payload.AddedSchemas;
+        var draftAddedFormats = payload.AddedFormats;
+        var draftRemovedFormats = payload.RemovedFormats;
         var draftRemovedPreludes = payload.RemovedPreludes;
         var draftPromptPreludeEdits = payload.PromptPreludeEdits;
         var draftInputs = payload.Inputs;
@@ -9806,6 +10111,30 @@
                 && LiveSchemas.All(schema => schema.Id != draftAddedSchema))
             {
                 addedSchemas.Add(draftAddedSchema);
+            }
+        }
+
+        // v25 (C1 #1007): a drafted format removal is kept while the format is still
+        // declared; an addition while its id is still free (the stale-id idiom).
+        foreach (var draftRemovedFormat in draftRemovedFormats ?? new List<string>())
+        {
+            if (DeclaredFormats.FirstOrDefault(format => format.Id == draftRemovedFormat) is { } format)
+            {
+                removedFormatIds.Add(format.Id);
+                if (format.File.Length > 0)
+                {
+                    removedFiles.Add(format.File);
+                }
+            }
+        }
+
+        foreach (var draftAddedFormat in draftAddedFormats ?? new List<DraftAddedFormat>())
+        {
+            if (PF.WorkflowDeclaredIds.IsValid(draftAddedFormat.Id)
+                && LiveFormats.All(format => format.Id != draftAddedFormat.Id)
+                && !content!.Files.ContainsKey(AddedFormatFile(draftAddedFormat.Id)))
+            {
+                addedFormats[draftAddedFormat.Id] = draftAddedFormat.Body;
             }
         }
 
@@ -10118,7 +10447,9 @@
             standardNameEdits.Select(pair => new DraftStandardName(pair.Key, pair.Value)).ToList(),
             nodeMacroEdits.Select(pair => new DraftNodeMacros(
                 pair.Key,
-                pair.Value.Select(e => new DraftNodeMacro(e.Id, e.At, e.When, e.Optional, e.ForItem)).ToList())).ToList());
+                pair.Value.Select(e => new DraftNodeMacro(e.Id, e.At, e.When, e.Optional, e.ForItem)).ToList())).ToList(),
+            addedFormats.Select(pair => new DraftAddedFormat(pair.Key, pair.Value)).ToList(),
+            removedFormatIds.ToList());
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -10261,6 +10592,14 @@
         if (AddedMacroForFile(path) is { } addedMacroDraft)
         {
             addedMacroDraft.Text = value;
+            await PendingChangedAsync();
+            return;
+        }
+
+        // v25 (C1 #1007): a pending format's body lives on its draft entry.
+        if (AddedFormatForFile(path) is { } addedFormatId)
+        {
+            addedFormats[addedFormatId] = value;
             await PendingChangedAsync();
             return;
         }
@@ -10751,6 +11090,7 @@
         newNodeOutput = string.Empty;
         newNodeKind = "prompt";
         newNodeFormat = string.Empty;
+        newFormatId = newFormatError = null;
         newFieldIds.Clear();
     }
 
@@ -10891,6 +11231,12 @@
         foreach (var addedSchemaId in addedSchemas)
         {
             files[AddedSchemaFile(addedSchemaId)] = WorkflowOutputContracts.Declarable[addedSchemaId];
+        }
+
+        // v25 (C1 #1007): each added format's authored body (removed formats drop via removedFiles).
+        foreach (var (addedFormatId, addedFormatBody) in addedFormats)
+        {
+            files[AddedFormatFile(addedFormatId)] = addedFormatBody;
         }
 
         // #571: a removed declared macro takes its template file with it.
@@ -11229,6 +11575,42 @@
             foreach (var addedSchemaId in addedSchemas)
             {
                 schemasObject[addedSchemaId] = AddedSchemaFile(addedSchemaId);
+            }
+        }
+
+        // v25 (C1 #1007): formats[] — removed ones leave the list (their files drop
+        // via removedFiles); added ones are declared as { id, file }, the list
+        // created when absent and dropped when it empties.
+        if (addedFormats.Count > 0 || removedFormatIds.Count > 0)
+        {
+            var formatsKey = root["Formats"] is not null ? "Formats" : "formats";
+            if (root[formatsKey] is not System.Text.Json.Nodes.JsonArray formatsArray)
+            {
+                formatsArray = new System.Text.Json.Nodes.JsonArray();
+                root[formatsKey] = formatsArray;
+            }
+
+            for (var i = formatsArray.Count - 1; i >= 0; i--)
+            {
+                var entryId = (formatsArray[i]?["id"] ?? formatsArray[i]?["Id"])?.GetValue<string>();
+                if (entryId != null && removedFormatIds.Contains(entryId))
+                {
+                    formatsArray.RemoveAt(i);
+                }
+            }
+
+            foreach (var addedFormatId in addedFormats.Keys)
+            {
+                formatsArray.Add(new System.Text.Json.Nodes.JsonObject
+                {
+                    ["id"] = addedFormatId,
+                    ["file"] = AddedFormatFile(addedFormatId)
+                });
+            }
+
+            if (formatsArray.Count == 0)
+            {
+                root.AsObject().Remove(formatsKey);
             }
         }
 
