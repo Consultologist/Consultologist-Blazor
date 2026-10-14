@@ -143,6 +143,27 @@ public class TemplateRendererTests
     }
 
     [Fact]
+    public void Macro_PromptReads_AreCaptured_ExactlyWhenEvaluated()
+    {
+        // B5 #1004 (design § 7): the slots a render sanctions are the .prompt
+        // reads that fired — through a snippet too, and not one behind a branch
+        // the prompt did not take.
+        var scope = Scope(
+            snippets: new Dictionary<string, string> { ["standards"] = "Standards. {{ macro.b.prompt }}" },
+            macros: new Dictionary<string, TemplateMacroSource>
+            {
+                ["a"] = new("a", "A", "A.", "Add a."),
+                ["b"] = new("b", "B", "B.", "Add b."),
+                ["c"] = new("c", "C", "C.", "Add c."),
+            });
+        var reads = new HashSet<string>(StringComparer.Ordinal);
+
+        TemplateRenderer.Render("Prompt 'p'", "{{ if false }}{{ macro.a.prompt }}{{ end }}{{ snippet.standards.text }} {{ macro.c.text }}", scope, promptReads: reads);
+
+        Assert.Equal(new[] { "b" }, reads.Order());
+    }
+
+    [Fact]
     public void Run_AndProfile_AreTheFacts()
     {
         Assert.Equal(

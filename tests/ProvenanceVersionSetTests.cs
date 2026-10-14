@@ -78,6 +78,41 @@ public class ProvenanceVersionSetTests
     }
 
     [Fact]
+    public void ThePerNodeDefinitionAt25_IsTheRungAboveThePublishedLadder_UntilB7Publishes()
+    {
+        // B5 #1004 (design § 6): a specVersion 25 node stamps definition 6 —
+        // the first definition that moves the OUTPUT side (outputHash over the
+        // node's output after its instances compose and its slots fill;
+        // agentOutputHash beside it, over the reply as returned). The registry
+        // publishes on every merge and refuses an unbumped version, so row 6
+        // lands with B7's provenance bump (#1006), not here; until then the
+        // engine's number is exactly one above the published ladder, and
+        // nothing can stamp it (25 is not a supported spec version). When B7
+        // publishes, this pin folds into the ladder test above.
+        Assert.Equal(Ladder("nodeHashVersions").Max() + 1, ConsultGenerationProvenance.NodeHashVersionAt25);
+        Assert.Equal(6, ConsultGenerationProvenance.NodeHashVersionAt25);
+    }
+
+    [Fact]
+    public void Definition6_OutputHash_IsOverTheComposedOutput_AndAgentOutputHash_OverTheReply()
+    {
+        // The worked example B7's row 6 publishes: reply `Hello` with one
+        // after-instance `Bye` composes to `Hello\n\nBye`; outputHash is over
+        // the composition, agentOutputHash over the reply — definition 5's
+        // `Hello` digest, unmoved — and the two are one digest when nothing
+        // composed and nothing was stripped.
+        var composed = WorkflowNodeCompletion.Compose(
+            "Hello", new[] { new WorkflowNodeCompletion.Instance("closing", After: true, "Bye") }, new Dictionary<string, string>(), id => id);
+
+        Assert.Equal("Hello\n\nBye", composed.Text);
+        Assert.Equal("09f92f8f5ae8928340e5ea63c7a3d3a70c9d4ef94cf9ae858cc1dd95bfb243e4", ConsultGenerationProvenance.Sha256Hex(composed.Text));
+        Assert.Equal("185f8db32271fe25f561a6fc938b2e264306ec304eda518007d1764826381969", ConsultGenerationProvenance.Sha256Hex("Hello"));
+
+        var bare = WorkflowNodeCompletion.Compose("Hello", Array.Empty<WorkflowNodeCompletion.Instance>(), new Dictionary<string, string>(), id => id);
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex("Hello"), ConsultGenerationProvenance.Sha256Hex(bare.Text));
+    }
+
+    [Fact]
     public void EveryDocumentTheIndexNames_IsVendored()
     {
         foreach (var (_, file) in Index()["documents"]!.AsObject())

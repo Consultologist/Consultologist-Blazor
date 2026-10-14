@@ -287,7 +287,12 @@ named here so the word is reserved. A `text` format validates nothing and carrie
   rules) or an `input.<id>` reference to an enum input. A string that is exactly an object
   reference is read as one; anything else is a literal.
 - **`onInvalid`** — § 3.5.
-- `forEach`, `aggregate`, `when` (v18), `failIfEmpty`, `reproducible` — unchanged.
+- `forEach`, `aggregate`, `when` (v18), `failIfEmpty`, `reproducible` — unchanged. *(B5
+  #1004, 2026-10-14: `failIfEmpty` moves up to the node — `nodes[].failIfEmpty` — because
+  its ≤24 home, `output`, is refused at 25; refused by name below 25. Judged on the reply
+  before anything composes (§ 6 step 3): a blank reply on a text format, an empty top-level
+  array on an array format; a rendered or computed node takes none. The registry's
+  `package-format-v25.md` gains the key at A5.)*
 - **Refused by name at ≥ 25:** `kind`, `values`, `op`, `of`, `in`, `failWith`,
   `output`/`schema`, `bindings`.
 

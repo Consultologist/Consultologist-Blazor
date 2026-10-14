@@ -87,9 +87,11 @@ public sealed class RunComputedNodeActivity
                     null,
                     ConsultGenerationProvenance.Sha256Hex($"{of.Text}\n{inDocument.Text}"),
                     ConsultGenerationProvenance.Sha256Hex(rendered),
-                    ConsultGenerationProvenance.NodeHashVersion,
+                    ConsultGenerationProvenance.NodeHashVersionAt25,
                     Validation: new ConsultValidationOutcome(true, Array.Empty<string>()),
-                    Check: outcome);
+                    Check: outcome,
+                    // B5 #1004 (design § 6): the operation's result IS the reply.
+                    AgentOutputHash: ConsultGenerationProvenance.Sha256Hex(rendered));
 
             default:
                 throw new InvalidOperationException(

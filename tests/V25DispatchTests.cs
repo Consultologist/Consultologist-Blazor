@@ -105,6 +105,57 @@ public class V25DispatchTests
         Assert.Same(validation, item.Validation);
     }
 
+    [Fact]
+    public void TheCompletionRecord_RidesBothUpdates()
+    {
+        // B5 #1004: the reply's digest, the appended entries and the exclusions
+        // reach the node update and the item update alike.
+        var node = Describe("assessment");
+        var appended = new[] { new ConsultAppendedEntry("macro", "closing") };
+        var excluded = new[] { new ConsultNodeExclusion("slot", "stray", "no read in this node's prompt sanctions [[slot:stray]]") };
+        var result = new NodeRunResult("x", null, "i", "o", ConsultGenerationProvenance.NodeHashVersionAt25, AgentOutputHash: "a", Appended: appended, Excluded: excluded);
+
+        var update = ConsultGenerationOrchestrator.NodeUpdateFrom(node, result, 1, 2);
+        var item = ConsultGenerationOrchestrator.ItemUpdateFrom(node, "hpi", "HPI", result, 1, 2);
+
+        Assert.Equal("a", update.AgentOutputHash);
+        Assert.Same(appended, update.Appended);
+        Assert.Same(excluded, update.Excluded);
+        Assert.Equal("a", item.AgentOutputHash);
+        Assert.Same(appended, item.Appended);
+        Assert.Same(excluded, item.Excluded);
+    }
+
+    [Fact]
+    public async Task TheEntity_KeepsTheCompletionRecord_OnTheRow_AndTheResponse()
+    {
+        var entity = new ConsultGenerationJobEntity(
+            NSubstitute.Substitute.For<IConsultGenerationJobIndexStore>(), NSubstitute.Substitute.For<IJobOutputsBlobStore>(),
+            NSubstitute.Substitute.For<IJobInputsBlobStore>(), NSubstitute.Substitute.For<IAccountUsageStore>());
+        await entity.Initialize(new ConsultGenerationJobInitialize("job-1", "user-1", Array.Empty<IReadOnlyDictionary<string, string>>()));
+        var appended = new[] { new ConsultAppendedEntry("slot", "letrozole"), new ConsultAppendedEntry("macro", "closing") };
+        var excluded = new[] { new ConsultNodeExclusion("macro", "warning", "needs kind to be new; it is follow_up") };
+
+        entity.MarkNodeCompleted(new ConsultGenerationNodeUpdate("assessment", "Assessment", null, "i", "o", 1, 1, ConsultGenerationProvenance.NodeHashVersionAt25,
+            AgentOutputHash: "a", Appended: appended, Excluded: excluded));
+        entity.MarkNodeItemCompleted(new ConsultGenerationNodeItemUpdate("section_notes", "Section notes", "hpi", "HPI", null, "i", "o", 1, 1, ConsultGenerationProvenance.NodeHashVersionAt25,
+            AgentOutputHash: "b", Appended: appended));
+
+        var state = (ConsultGenerationJobState)typeof(ConsultGenerationJobEntity)
+            .GetProperty("State", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)!
+            .GetValue(entity)!;
+        var response = state.ToResponse();
+        var scalar = response.NodeOutputs!["assessment"];
+        var item = response.NodeOutputs["section_notes:hpi"];
+
+        Assert.Equal(("a", 6), (scalar.AgentOutputHash, scalar.HashVersion));
+        Assert.Equal(new[] { "slot:letrozole", "macro:closing" }, scalar.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
+        Assert.Equal("needs kind to be new; it is follow_up", Assert.Single(scalar.Excluded!).Reason);
+        Assert.Equal("b", item.AgentOutputHash);
+        Assert.Equal(2, item.Appended!.Count);
+        Assert.Null(item.Excluded);
+    }
+
     private const string Concepts = """{ "concepts": [ { "term": "Asthma", "type": "disorder", "id": "195967001", "isSnomedConcept": true, "isActive": true, "support": null }, { "term": "Cough", "type": "finding", "id": "49727002", "isSnomedConcept": true, "isActive": true, "support": null } ] }""";
     private const string Fewer = """{ "concepts": [ { "term": "Asthma", "type": "disorder", "id": "195967001", "isSnomedConcept": true, "isActive": true, "support": null } ] }""";
 
@@ -124,6 +175,9 @@ public class V25DispatchTests
         Assert.True(result.Validation!.Valid);
         Assert.Equal(ConsultGenerationProvenance.Sha256Hex($"{Fewer}\n{Concepts}"), result.InputHash);
         Assert.Equal(ConsultGenerationProvenance.Sha256Hex(result.RawOutput), result.OutputHash);
+        // B5 #1004 (design § 6): the operation's result is the reply; a 25 pair stamps 6.
+        Assert.Equal(result.OutputHash, result.AgentOutputHash);
+        Assert.Equal(ConsultGenerationProvenance.NodeHashVersionAt25, result.HashVersion);
     }
 
     [Fact]

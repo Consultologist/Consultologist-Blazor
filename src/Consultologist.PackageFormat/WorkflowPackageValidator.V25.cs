@@ -94,7 +94,7 @@ public static partial class WorkflowPackageValidator
         ValidateFanEdgesAt25(nodes, edges, errors);
 
         var classifiers = ClassifiersAt25(nodes, inputsById);
-        ValidateMacroUseAt25(manifest, nodes, walked, snippets, inputsById, classifiers, errors, warnings);
+        ValidateMacroUseAt25(manifest, nodes, walk, inputsById, classifiers, errors, warnings);
         ValidateReferenceGraphAt25(walked, snippets, errors);
         RenderProbeAt25(walked, inputsById, nodes, snippets, manifest, errors);
         ValidateDeliverablesAt25(manifest, nodes, walked, inputsById, classifiers, errors);
@@ -437,6 +437,17 @@ public static partial class WorkflowPackageValidator
                 errors.Add($"Node '{node.Id}' onInvalid '{node.OnInvalid}' is not one of {string.Join(", ", WorkflowOnInvalid.All)}.");
             }
 
+            // B5 #1004 (design § 3.6): failIfEmpty is judged on a reply, so a
+            // producer with no reply — a render, an operation — takes none.
+            if (node.FailIfEmpty != null && string.IsNullOrWhiteSpace(node.FailIfEmpty))
+            {
+                errors.Add($"Node '{node.Id}' failIfEmpty must not be blank.");
+            }
+            else if (node.FailIfEmpty != null && spec.Producer is WorkflowFormatProducers.Rendered or WorkflowFormatProducers.Computed)
+            {
+                errors.Add($"Node '{node.Id}' declares failIfEmpty, but format '{format.Id}' is {spec.Producer} and has no reply to judge.");
+            }
+
             nodes[node.Id] = new NodeAt25(node, format, fan, folder);
         }
 
@@ -680,8 +691,7 @@ public static partial class WorkflowPackageValidator
     private static void ValidateMacroUseAt25(
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, NodeAt25> nodes,
-        IReadOnlyList<WorkflowDerivedEdges.WalkedTemplate> walked,
-        WorkflowPackageData snippets,
+        WorkflowDerivedEdges.Walk walk,
         IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
         IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
         List<string> errors,
@@ -690,55 +700,16 @@ public static partial class WorkflowPackageValidator
         var declared = (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
         var used = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var template in walked)
+        foreach (var template in walk.Templates)
         {
             used.UnionWith(template.References.MacroTexts);
             used.UnionWith(template.References.MacroPrompts);
         }
 
-        var byKey = walked.ToDictionary(w => (w.Kind, w.Id), w => w.References);
-
-        // The .prompt reads a node's template reaches: its prompt, every snippet
-        // it reads (transitively), and — for a fan — each item of its folder.
-        IReadOnlySet<string> PromptReadsOf(TemplateReferences refs, HashSet<(TemplateKind, string)> visited)
-        {
-            var reads = new HashSet<string>(refs.MacroPrompts, StringComparer.Ordinal);
-
-            foreach (var snippet in refs.Snippets)
-            {
-                if (visited.Add((TemplateKind.Snippet, snippet)) && byKey.TryGetValue((TemplateKind.Snippet, snippet), out var inner))
-                {
-                    reads.UnionWith(PromptReadsOf(inner, visited));
-                }
-            }
-
-            foreach (var folder in refs.SnippetFolders)
-            {
-                if (snippets.Collections.TryGetValue(folder, out var collection))
-                {
-                    foreach (var item in collection.Items)
-                    {
-                        var key = (TemplateKind.Snippet, SnippetItemKey(folder, item.Id));
-
-                        if (visited.Add(key) && byKey.TryGetValue(key, out var inner))
-                        {
-                            reads.UnionWith(PromptReadsOf(inner, visited));
-                        }
-                    }
-                }
-            }
-
-            foreach (var macro in refs.MacroTexts)
-            {
-                if (visited.Add((TemplateKind.Macro, macro)) && byKey.TryGetValue((TemplateKind.Macro, macro), out var inner))
-                {
-                    reads.UnionWith(PromptReadsOf(inner, visited));
-                }
-            }
-
-            return reads;
-        }
-
+        // The .prompt reads a node's template reaches — its prompt, every
+        // snippet it reads (transitively), the fan item's own snippet — are the
+        // walk's (WorkflowDerivedEdges.Walk.PromptReadsOf): the one closure the
+        // engine's completion cross-checks the render against (B5 #1004).
         foreach (var node in nodes.Values.OrderBy(n => n.Node.Id, StringComparer.Ordinal))
         {
             var spec = node.Node;
@@ -806,12 +777,12 @@ public static partial class WorkflowPackageValidator
             }
 
             // Inline slots.
-            if (!byKey.TryGetValue((TemplateKind.Prompt, spec.Id), out var promptRefs))
+            if (!walk.HasPrompt(spec.Id))
             {
                 continue;
             }
 
-            var inlineSlots = PromptReadsOf(promptRefs, new HashSet<(TemplateKind, string)>());
+            var inlineSlots = walk.PromptReadsOf(spec.Id);
 
             if (inlineSlots.Count > 0 && !allowsOutputMacros)
             {
@@ -822,15 +793,12 @@ public static partial class WorkflowPackageValidator
             if (node.Folder is { } folder && node.FanSource is not null)
             {
                 var folderId = node.FanSource[(node.FanSource.IndexOf(':') + 1)..];
-                var perItem = folder.Items.ToDictionary(
-                    i => i.Id,
-                    i => byKey.TryGetValue((TemplateKind.Snippet, SnippetItemKey(folderId, i.Id)), out var r) ? PromptReadsOf(r, new HashSet<(TemplateKind, string)>()) : TemplateReferenceContext.NoIds,
-                    StringComparer.Ordinal);
+                var perItem = folder.Items.ToDictionary(i => i.Id, i => walk.PromptReadsOf(spec.Id, i.Id), StringComparer.Ordinal);
                 var slotsAnywhere = perItem.Values.SelectMany(s => s).ToHashSet(StringComparer.Ordinal);
 
                 foreach (var slot in slotsAnywhere.Order(StringComparer.Ordinal))
                 {
-                    var lacking = perItem.Where(p => !p.Value.Contains(slot) && !promptRefs.MacroPrompts.Contains(slot)).Select(p => p.Key).Order(StringComparer.Ordinal).ToList();
+                    var lacking = perItem.Where(p => !p.Value.Contains(slot)).Select(p => p.Key).Order(StringComparer.Ordinal).ToList();
 
                     if (lacking.Count > 0)
                     {

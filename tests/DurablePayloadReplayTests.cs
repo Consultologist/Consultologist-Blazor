@@ -73,8 +73,8 @@ public class DurablePayloadReplayTests
         // with exactly one more trailing null.
         // #923 phase 2 appended AgentName/AgentVersion last — two more trailing
         // nulls a pre-phase-2 payload binds and writes back.
-        // #1001 appended the format identity; #1002 the 25 render scope — six more trailing nulls.
-        Assert.Equal(stored[..^1] + ",\"Values\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null,\"Before\":null,\"After\":null,\"Format\":null,\"Producer\":null,\"FormatHash\":null,\"Op\":null,\"NodeTexts\":null,\"Folders\":null,\"Item\":null,\"ForEach\":null,\"Run\":null,\"Profile\":null,\"With\":null,\"OnInvalid\":null}", JsonSerializer.Serialize(input, Durable));
+        // #1001 appended the format identity; #1002 the 25 render scope — six more trailing nulls; #1004 the two facts an instance's when reads.
+        Assert.Equal(stored[..^1] + ",\"Values\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null,\"Before\":null,\"After\":null,\"Format\":null,\"Producer\":null,\"FormatHash\":null,\"Op\":null,\"NodeTexts\":null,\"Folders\":null,\"Item\":null,\"ForEach\":null,\"Run\":null,\"Profile\":null,\"With\":null,\"OnInvalid\":null,\"Supplied\":null,\"Classifications\":null,\"FailIfEmpty\":null,\"Instances\":null}", JsonSerializer.Serialize(input, Durable));
         Assert.Null(input.Values);
         Assert.Equal(
             "Seen 2026-08-10. Bill it.",
@@ -293,7 +293,7 @@ public class DurablePayloadReplayTests
         var result = JsonSerializer.Deserialize<NodeRunResult>(stored, Durable)!;
 
         Assert.Null(result.Tokens);
-        Assert.Equal(stored[..^1] + ",\"Tokens\":null,\"StartedAtUtc\":null,\"DurationMs\":null,\"Validation\":null,\"Check\":null}", JsonSerializer.Serialize(result, Durable));
+        Assert.Equal(stored[..^1] + ",\"Tokens\":null,\"StartedAtUtc\":null,\"DurationMs\":null,\"Validation\":null,\"Check\":null,\"AgentOutputHash\":null,\"Appended\":null,\"Excluded\":null}", JsonSerializer.Serialize(result, Durable));
     }
 
     [Fact]
@@ -311,7 +311,40 @@ public class DurablePayloadReplayTests
         Assert.Null(update.Unattested);
         Assert.Null(update.CustomSchemaHash);
         Assert.Null(update.CustomAgent);
-        Assert.Equal(stored[..^1] + ",\"Unattested\":null,\"CustomSchemaHash\":null,\"CustomAgent\":null,\"Validation\":null}", JsonSerializer.Serialize(update, Durable));
+        Assert.Equal(stored[..^1] + ",\"Unattested\":null,\"CustomSchemaHash\":null,\"CustomAgent\":null,\"Validation\":null,\"AgentOutputHash\":null,\"Appended\":null,\"Excluded\":null}", JsonSerializer.Serialize(update, Durable));
+    }
+
+    [Fact]
+    public void AStoredNodeUpdate_WithoutTheLadder_BindsNull()
+    {
+        // B5 #1004: the first pin of the scalar node's entity payload — the
+        // pre-#375 shape binds every later trailing field null and re-serialises
+        // with exactly those nulls, the completion's three last.
+        const string stored = """
+            {"NodeId":"draft","Label":"Draft","Concepts":null,"InputHash":"a","OutputHash":"b","CompletedNodeCount":1,"TotalNodeCount":2}
+            """;
+
+        var update = JsonSerializer.Deserialize<ConsultGenerationNodeUpdate>(stored, Durable)!;
+
+        Assert.Null(update.HashVersion);
+        Assert.Null(update.Appended);
+        Assert.Equal(stored[..^1] + ",\"HashVersion\":null,\"Classification\":null,\"Tokens\":null,\"Check\":null,\"NodeStartedAtUtc\":null,\"DurationMs\":null,\"Unattested\":null,\"CustomSchemaHash\":null,\"CustomAgent\":null,\"Validation\":null,\"AgentOutputHash\":null,\"Appended\":null,\"Excluded\":null}", JsonSerializer.Serialize(update, Durable));
+    }
+
+    [Fact]
+    public void AStoredNodeExclusion_RoundTrips_InItsOrder()
+    {
+        // B5 #1004: the exclusion rides the stored result and the entity row —
+        // three required fields, pinned in order so a later trailing optional
+        // lands after them.
+        const string stored = """
+            {"Kind":"slot","Id":"letrozole","Reason":"the prompt that ran did not read macro.letrozole.prompt"}
+            """;
+
+        var exclusion = JsonSerializer.Deserialize<ConsultNodeExclusion>(stored, Durable)!;
+
+        Assert.Equal(new ConsultNodeExclusion("slot", "letrozole", "the prompt that ran did not read macro.letrozole.prompt"), exclusion);
+        Assert.Equal(stored, JsonSerializer.Serialize(exclusion, Durable));
     }
 
     [Fact]

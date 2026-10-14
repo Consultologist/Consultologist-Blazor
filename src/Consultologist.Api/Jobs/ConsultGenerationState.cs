@@ -405,11 +405,33 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             output.Validation = input.Validation;
         }
 
+        // v25 (B5 #1004): the completion's record, per item as per node.
+        CopyCompletion(output, input.AgentOutputHash, input.Appended, input.Excluded);
+
         var progress = state.GetOrAddItemProgress(input.ItemId, input.ItemName);
         progress.Step = input.NodeId;
         progress.CompletedStepCount = input.CompletedChainCount;
         progress.TotalStepCount = input.TotalChainCount;
         State = state;
+    }
+
+    private static void CopyCompletion(
+        ConsultNodeOutputState row, string? agentOutputHash, IReadOnlyList<ConsultAppendedEntry>? appended, IReadOnlyList<ConsultNodeExclusion>? excluded)
+    {
+        if (agentOutputHash != null)
+        {
+            row.AgentOutputHash = agentOutputHash;
+        }
+
+        if (appended is { Count: > 0 })
+        {
+            row.Appended = appended.ToList();
+        }
+
+        if (excluded is { Count: > 0 })
+        {
+            row.Excluded = excluded.ToList();
+        }
     }
 
     public void MarkNodeCompleted(ConsultGenerationNodeUpdate input)
@@ -459,6 +481,10 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         {
             node.Validation = input.Validation;
         }
+
+        // v25 (B5 #1004, design § 6): the reply's digest, what was appended
+        // and what was excluded — only when the update carries them.
+        CopyCompletion(node, input.AgentOutputHash, input.Appended, input.Excluded);
 
         state.CompletedStageCount = input.CompletedNodeCount;
         state.TotalStageCount = input.TotalNodeCount;
@@ -1138,7 +1164,13 @@ public sealed record ConsultGenerationNodeUpdate(
     string? CustomAgent = null,
     // v25 (B4 #1003, design § 3.5): the reply's validation against its format.
     // Null on a text format and on payloads from before. Appended last, same rule.
-    ConsultValidationOutcome? Validation = null);
+    ConsultValidationOutcome? Validation = null,
+    // v25 (B5 #1004, design § 6): the reply's digest, what the completion
+    // appended and what it excluded (see NodeRunResult). Null below 25 and on
+    // payloads from before. Appended last, same rule.
+    string? AgentOutputHash = null,
+    IReadOnlyList<ConsultAppendedEntry>? Appended = null,
+    IReadOnlyList<ConsultNodeExclusion>? Excluded = null);
 
 /// <summary>v10 (#496): what the boundary decided — the one Decide signal.</summary>
 public sealed record ConsultGenerationDecision(
@@ -1317,7 +1349,12 @@ public sealed record ConsultGenerationNodeItemUpdate(
     string? CustomSchemaHash = null,
     string? CustomAgent = null,
     // v25 (B4 #1003): the item reply's validation against its format. Appended last.
-    ConsultValidationOutcome? Validation = null);
+    ConsultValidationOutcome? Validation = null,
+    // v25 (B5 #1004): the item's reply digest, appended entries and exclusions,
+    // as on the node update. Appended last.
+    string? AgentOutputHash = null,
+    IReadOnlyList<ConsultAppendedEntry>? Appended = null,
+    IReadOnlyList<ConsultNodeExclusion>? Excluded = null);
 
 public sealed class ConsultGenerationJobState
 {
@@ -1796,7 +1833,10 @@ public sealed class ConsultGenerationJobState
                     pair.Value.Unattested,
                     pair.Value.CustomSchemaHash,
                     pair.Value.CustomAgent,
-                    pair.Value.Validation)),
+                    pair.Value.Validation,
+                    pair.Value.AgentOutputHash,
+                    pair.Value.Appended,
+                    pair.Value.Excluded)),
             AgentVersions: AgentVersions,
             EffectiveInputHashVersion: EffectiveInputHashVersion,
             CatalogRef: CatalogRef,
@@ -1963,6 +2003,15 @@ public sealed class ConsultNodeOutputState
     // — valid with no errors, or every way it missed. Null on a text format
     // and on records from before.
     public ConsultValidationOutcome? Validation { get; set; }
+
+    // v25 (B5 #1004, design § 6): the reply's own digest beside OutputHash
+    // (definition 6: over the output after this node's instances composed
+    // and its slots filled), what the completion placed, in output order, and
+    // what it withheld or removed, by name. Null below 25 and on records from
+    // before; the hashes stay when the text is dropped.
+    public string? AgentOutputHash { get; set; }
+    public List<ConsultAppendedEntry>? Appended { get; set; }
+    public List<ConsultNodeExclusion>? Excluded { get; set; }
 }
 
 public static class ConsultGenerationNodeStatuses

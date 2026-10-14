@@ -69,7 +69,20 @@ public sealed record ConsultPromptNodeActivityInput(
     // onInvalid policy, threaded from the descriptor for the dispatch on the
     // producer. Null below 25. Appended last, same rule.
     IReadOnlyDictionary<string, string>? With = null,
-    string? OnInvalid = null);
+    string? OnInvalid = null,
+    // v25 (B5 #1004, design §§ 5–7): the two facts an instance's `when` is
+    // judged against that only the orchestrator holds — the supplied-inputs
+    // map as the job was started with (JSON per input, the Initialize shape)
+    // and the classifiers' answers so far. Null below 25. Appended last, same rule.
+    IReadOnlyDictionary<string, string>? Supplied = null,
+    IReadOnlyDictionary<string, string>? Classifications = null,
+    // v25 (B5 #1004, design §§ 3.6, 5–6): the node's failIfEmpty sentence,
+    // judged on the reply in the activity, and its before/after instances as
+    // the descriptor snapshotted them (the same list the scheduler took its
+    // dependencies from), composed around the output at completion. Null
+    // below 25 (there the instances ride Before/After, prompt-side). Appended last.
+    string? FailIfEmpty = null,
+    IReadOnlyList<ConsultNodeMacroDescriptor>? Instances = null);
 
 /// <summary>
 /// One node run. Deserialized concepts ride the recorded activity result so Durable
@@ -103,7 +116,15 @@ public sealed record NodeRunResult(
     // (null on a text format), and a computed node's check outcome (null
     // otherwise). Appended last, same positional-call rule.
     ConsultValidationOutcome? Validation = null,
-    ConsultCheckOutcome? Check = null);
+    ConsultCheckOutcome? Check = null,
+    // v25 (B5 #1004, design § 6): the digest of the reply as returned — the
+    // model's, the render, the operation's result — beside OutputHash, which
+    // at 25 is over RawOutput after the node's instances compose and its
+    // slots fill (definition 6); and what that completion placed and
+    // excluded. Null below 25. Appended last, same positional-call rule.
+    string? AgentOutputHash = null,
+    IReadOnlyList<ConsultAppendedEntry>? Appended = null,
+    IReadOnlyList<ConsultNodeExclusion>? Excluded = null);
 
 /// <summary>
 /// The generic DAG prompt node: renders the node's prompt with orchestrator-resolved
@@ -204,8 +225,11 @@ public sealed class RunPromptNodeActivity
             // v25 (B3 #1002): a node with a format renders over the seven
             // objects from the scope the orchestrator threaded and the package
             // in hand; below 25 the flat map, as ever.
+            // v25 (B5 #1004, design § 7): the macro.<id>.prompt reads the render
+            // evaluates are the slots the prompt that ran sanctions.
+            var promptReads = new HashSet<string>(StringComparer.Ordinal);
             var rendered = input.Format is not null
-                ? ConsultRenderPayload.RenderAt25(input, package, prompt.TemplateText)
+                ? ConsultRenderPayload.RenderAt25(input, package, prompt.TemplateText, promptReads)
                 : PromptTemplateRenderer.Render(
                     prompt,
                     input.Variables,
@@ -222,6 +246,13 @@ public sealed class RunPromptNodeActivity
             if (input.Template == true)
             {
                 var templateResult = TemplateResult(rendered, input.OutputContract, input.ConceptSource, input.NodeId);
+
+                // v25 (B5 #1004, design § 6): a rendered node's pair stamps 6 and
+                // its reply IS the render — agentOutputHash is the same digest.
+                if (input.Format is not null)
+                {
+                    templateResult = templateResult with { HashVersion = ConsultGenerationProvenance.NodeHashVersionAt25, AgentOutputHash = templateResult.OutputHash };
+                }
 
                 _logger.LogInformation(
                     "Template node completed. NodeId={NodeId}, ConceptCount={ConceptCount}, Hash={Hash}, ElapsedMs={ElapsedMs}",
@@ -244,6 +275,14 @@ public sealed class RunPromptNodeActivity
                 var planInputHash = ConsultGenerationProvenance.Sha256Hex(plan.Sent);
                 var reply = await _agent.SendPromptAsync(input.NodeId, plan.Sent, plan.AgentName, plan.AgentVersion, cancellationToken);
                 var settled = ConsultNodeDispatch.Settle(plan, input.NodeId, reply.Text, planInputHash, reply.Tokens);
+
+                // v25 (B5 #1004, design §§ 6–7): the completion order, stated
+                // once — failIfEmpty on the reply, the sanctioned slots filled,
+                // the instances composed, outputHash over what came out.
+                if (input.Format is not null)
+                {
+                    settled = ConsultNodeCompletion.Complete(settled, input, package, promptReads);
+                }
 
                 _logger.LogInformation(
                     "Prompt node completed. NodeId={NodeId}, Producer={Producer}, Valid={Valid}, ConceptCount={ConceptCount}, InputHash={InputHash}, OutputHash={OutputHash}, ElapsedMs={ElapsedMs}",

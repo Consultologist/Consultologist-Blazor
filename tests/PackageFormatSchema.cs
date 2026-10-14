@@ -350,6 +350,10 @@ internal static class PackageFormatSchema
             Remove(properties, "format");
             Remove(properties, "with");
             Remove(properties, "onInvalid");
+            // B5 #1004 (§ 3.6): failIfEmpty is a node member at 25 (output,
+            // its ≤24 home, is refused there); below 25 the model's member
+            // must not reach the published bytes.
+            Remove(properties, "failIfEmpty");
         }
 
         // v18 (#822): a node's own when arrives at 18; a string needs no

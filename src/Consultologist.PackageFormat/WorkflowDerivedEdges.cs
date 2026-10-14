@@ -12,7 +12,9 @@ namespace Consultologist.PackageFormat;
 /// the graph the validator saw. A node's edges close over the snippets and
 /// macro texts its prompt reads: a snippet that reads <c>node.y.text</c> is
 /// rendered when the prompt is, so the prompt waits on y (design § 7, "through
-/// a snippet it reads"). Aggregate sources join in
+/// a snippet it reads"), and over the texts composed at its completion — its
+/// instances and the fills of the slots its prompt sanctions (B5 #1004).
+/// Aggregate sources join in
 /// <see cref="WorkflowNodeClosure.Edges(IReadOnlyList{WorkflowNodeSpec}, IReadOnlyDictionary{string, IReadOnlySet{string}})"/>.
 /// </summary>
 public static class WorkflowDerivedEdges
@@ -61,25 +63,55 @@ public static class WorkflowDerivedEdges
         /// <summary>Each node's <c>with</c> walked against its format's parameters — only nodes whose format declares parameters.</summary>
         public IReadOnlyDictionary<string, TemplateReferences> Parameters { get; }
 
-        /// <summary>The node ids a node depends on: its prompt's and its parameters' node reads, closed over the snippets and macro texts the prompt reads and, on a snippet fan whose prompt reads <c>item.text</c>, the folder's items.</summary>
+        /// <summary>
+        /// The node ids a node depends on: its prompt's and its parameters' node
+        /// reads, closed over the snippets and macro texts the prompt reads and,
+        /// on a snippet fan whose prompt reads <c>item.text</c>, the folder's
+        /// items — and (B5 #1004, design §§ 5–7) over the texts composed at this
+        /// node when it completes: its before/after instances and the fills of
+        /// the slots its prompt sanctions (a <c>macro.&lt;id&gt;.prompt</c> read),
+        /// which render over the same outputs, so the node waits on what they read.
+        /// </summary>
         public IReadOnlySet<string> EdgesOf(string nodeId)
         {
             var edges = new HashSet<string>(StringComparer.Ordinal);
             var seen = new HashSet<(TemplateKind, string)>();
+            var slots = new HashSet<string>(StringComparer.Ordinal);
+
+            void Take(TemplateReferences refs)
+            {
+                edges.UnionWith(refs.Edges);
+                slots.UnionWith(refs.MacroPrompts);
+            }
 
             if (_byKey.TryGetValue((TemplateKind.Prompt, nodeId), out var prompt))
             {
-                Close(prompt, edges, seen);
+                Visit(prompt, seen, Take);
 
-                if (prompt.ItemMembers.Contains(TemplateMembers.Text)
-                    && _nodes.TryGetValue(nodeId, out var node)
-                    && node.Fan is SnippetFolderFan fan
-                    && _folders.TryGetValue(fan.Folder, out var items))
+                foreach (var item in FanItemsReadBy(nodeId, prompt, null))
                 {
-                    foreach (var item in items)
-                    {
-                        CloseKey((TemplateKind.Snippet, item), edges, seen);
-                    }
+                    VisitKey((TemplateKind.Snippet, item), seen, Take);
+                }
+            }
+
+            if (_nodes.TryGetValue(nodeId, out var node))
+            {
+                foreach (var instance in node.Node.Macros ?? new List<WorkflowNodeMacroSpec>())
+                {
+                    VisitKey((TemplateKind.Macro, instance.Id), seen, Take);
+                }
+            }
+
+            // A fill's text may itself read snippets and macro texts (never a
+            // .prompt — § 5.2 refuses it — so this settles); visit until no new slot.
+            var pending = new Queue<string>(slots);
+            while (pending.TryDequeue(out var slot))
+            {
+                var before = slots.Count;
+                VisitKey((TemplateKind.Macro, slot), seen, Take);
+                foreach (var added in slots.Skip(before))
+                {
+                    pending.Enqueue(added);
                 }
             }
 
@@ -95,13 +127,67 @@ public static class WorkflowDerivedEdges
         public IReadOnlyDictionary<string, IReadOnlySet<string>> Edges =>
             _nodes.Keys.ToDictionary(id => id, EdgesOf, StringComparer.Ordinal);
 
-        private void Close(TemplateReferences refs, HashSet<string> edges, HashSet<(TemplateKind, string)> seen)
+        /// <summary>Whether the walk holds a prompt for this node (a node without one — an aggregator, a computed node — reads nothing).</summary>
+        public bool HasPrompt(string nodeId) => _byKey.ContainsKey((TemplateKind.Prompt, nodeId));
+
+        /// <summary>
+        /// The slots a node's prompt sanctions (design § 7): every
+        /// <c>macro.&lt;id&gt;.prompt</c> read its template reaches — directly,
+        /// through a snippet or macro text it reads (transitively), through the
+        /// items of a folder it iterates, and — on a snippet fan whose prompt reads
+        /// <c>item.text</c> — through the fan item's own snippet: every item's when
+        /// <paramref name="itemId"/> is null (the publish rule's "at least one
+        /// item"), that item's alone when given (the instance that ran for it).
+        /// The validator's rule and the engine's completion read ONE closure.
+        /// </summary>
+        public IReadOnlySet<string> PromptReadsOf(string nodeId, string? itemId = null)
         {
-            edges.UnionWith(refs.Edges);
+            var reads = new HashSet<string>(StringComparer.Ordinal);
+            var seen = new HashSet<(TemplateKind, string)>();
+
+            if (!_byKey.TryGetValue((TemplateKind.Prompt, nodeId), out var prompt))
+            {
+                return reads;
+            }
+
+            void Take(TemplateReferences refs) => reads.UnionWith(refs.MacroPrompts);
+
+            Visit(prompt, seen, Take);
+
+            foreach (var item in FanItemsReadBy(nodeId, prompt, itemId))
+            {
+                VisitKey((TemplateKind.Snippet, item), seen, Take);
+            }
+
+            return reads;
+        }
+
+        /// <summary>The folder-item keys a fanned prompt renders through <c>item.text</c>: all of them, or the one named.</summary>
+        private IEnumerable<string> FanItemsReadBy(string nodeId, TemplateReferences prompt, string? itemId)
+        {
+            if (prompt.ItemMembers.Contains(TemplateMembers.Text)
+                && _nodes.TryGetValue(nodeId, out var node)
+                && node.Fan is SnippetFolderFan fan
+                && _folders.TryGetValue(fan.Folder, out var items))
+            {
+                foreach (var item in items)
+                {
+                    if (itemId is null || string.Equals(item, SnippetItemKey(fan.Folder, itemId), StringComparison.Ordinal))
+                    {
+                        yield return item;
+                    }
+                }
+            }
+        }
+
+        /// <summary>The closure a template renders: itself, the snippets and folder items it reads, the macro texts it reads — each once.</summary>
+        private void Visit(TemplateReferences refs, HashSet<(TemplateKind, string)> seen, Action<TemplateReferences> take)
+        {
+            take(refs);
 
             foreach (var snippet in refs.Snippets)
             {
-                CloseKey((TemplateKind.Snippet, snippet), edges, seen);
+                VisitKey((TemplateKind.Snippet, snippet), seen, take);
             }
 
             foreach (var folder in refs.SnippetFolders)
@@ -110,22 +196,22 @@ public static class WorkflowDerivedEdges
                 {
                     foreach (var item in items)
                     {
-                        CloseKey((TemplateKind.Snippet, item), edges, seen);
+                        VisitKey((TemplateKind.Snippet, item), seen, take);
                     }
                 }
             }
 
             foreach (var macro in refs.MacroTexts)
             {
-                CloseKey((TemplateKind.Macro, macro), edges, seen);
+                VisitKey((TemplateKind.Macro, macro), seen, take);
             }
         }
 
-        private void CloseKey((TemplateKind, string) key, HashSet<string> edges, HashSet<(TemplateKind, string)> seen)
+        private void VisitKey((TemplateKind, string) key, HashSet<(TemplateKind, string)> seen, Action<TemplateReferences> take)
         {
             if (seen.Add(key) && _byKey.TryGetValue(key, out var refs))
             {
-                Close(refs, edges, seen);
+                Visit(refs, seen, take);
             }
         }
     }

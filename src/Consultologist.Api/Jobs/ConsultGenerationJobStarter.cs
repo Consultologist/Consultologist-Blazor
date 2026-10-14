@@ -2952,7 +2952,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             node.Prompt,
             null,
             OutputContract: null,
-            FailIfEmpty: null,
+            // v25 (B5 #1004, design § 3.6): the sentence lives on the node at 25
+            // (output is refused); judged on the reply in the activity.
+            FailIfEmpty: node.FailIfEmpty,
             ForEach: node.ForEach,
             ConceptSource: WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(node.Id, node.Id),
             Aggregate: node.Aggregate,
