@@ -611,7 +611,7 @@
                                     <button type="button"
                                             class="editor-nav__item editor-nav__item--nested @(selectedKey == item.File ? "editor-nav__item--selected" : "")"
                                             @onclick="() => Select(item.File)">
-                                        <span class="editor-nav__dot">@(edits.ContainsKey(item.File) || standardNameEdits.ContainsKey(item.File) ? "●" : "")</span>
+                                        <span class="editor-nav__dot">@(edits.ContainsKey(item.File) || standardNameEdits.ContainsKey(item.File) || itemWhenEdits.ContainsKey(item.File) ? "●" : "")</span>
                                         <span>@StandardName(item)</span>
                                     </button>
                                 }
@@ -850,6 +850,7 @@
                                 @if (At25)
                                 {
                                     <p class="muted-text">Read as <code>item.text</code> by the node fanning '@addedItem.Collection'.</p>
+                                    @ConditionField(("Included when", AddedItemWhenTarget(addedItem), "Every run"))
                                 }
                                 else
                                 {
@@ -2243,7 +2244,7 @@
                                             Modified="@edits.ContainsKey(standard.File)"
                                             TextChanged="@(value => OnTextChangedAsync(standard.File, value))">
                             <HeaderActions>
-                                @PaneDiscardButton(standard.File, edits.ContainsKey(standard.File), () => RevertFileEdits(standard.File))
+                                @PaneDiscardButton(standard.File, edits.ContainsKey(standard.File) || itemWhenEdits.ContainsKey(standard.File), () => RevertItemEdits(standard.File))
                                 <FluentButton Appearance="Appearance.Outline" @onclick="() => RemoveItemAsync(standard.File)">
                                     Remove
                                 </FluentButton>
@@ -2260,6 +2261,8 @@
                                 @if (At25)
                                 {
                                     <p class="muted-text">Read as <code>item.text</code> by the node fanning this folder.</p>
+                                    @* v25 (#1008): the item's input-only when — a folder's size is settled at job start. *@
+                                    @ConditionField(("Included when", ItemWhenTarget(standard), "Every run"))
                                 }
                                 else
                                 {
@@ -2717,7 +2720,12 @@
   // v24 (#957): Extra — operands only THIS target may read (a node macro on a data
   // fan reads item:id), offered before the package-wide list. Trailing: every
   // other target constructs as it did.
-  private sealed record ConditionTarget(string Key, string Subject, string? When, Action<string?> Write, IReadOnlyList<ConditionOperand>? Extra = null);
+  /// <summary>
+  /// A condition the builder edits. <paramref name="InputsOnly"/> (v25 #1008): a snippet
+  /// folder item's when reads inputs only, so the builder offers no node: operand and no
+  /// Extra — the registry's rule ("so the folder's size is known at job start").
+  /// </summary>
+  private sealed record ConditionTarget(string Key, string Subject, string? When, Action<string?> Write, IReadOnlyList<ConditionOperand>? Extra = null, bool InputsOnly = false);
 
   private sealed record ConditionScope(ConditionTarget Target, ConditionGroup Root, IReadOnlyList<int> Path);
 
@@ -3287,6 +3295,9 @@
         public string Id { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;
+
+        /// <summary>v25 (#1008): the item's input-only when, written into index.json; null = always included.</summary>
+        public string? When { get; set; }
     }
 
     private readonly List<AddedItem> addedItems = new();
@@ -3706,6 +3717,9 @@
             // not the manifest — AffectsManifest is false, like file-body edits).
             new("standardNameEdits", () => standardNameEdits.Count, standardNameEdits.Clear,
                 () => $"{standardNameEdits.Count} standard {Plural(standardNameEdits.Count, "name")}", () => false),
+            // v25 (#1008): a folder item's when — lives in index.json, not the manifest.
+            new("itemWhenEdits", () => itemWhenEdits.Count, itemWhenEdits.Clear,
+                () => $"{itemWhenEdits.Count} snippet {Plural(itemWhenEdits.Count, "condition")}", () => false),
             // v15 (#731): pending raw toggles on declared prompts.
             new("promptRawEdits", () => promptRawEdits.Count, promptRawEdits.Clear,
                 () => $"{promptRawEdits.Count} raw {Plural(promptRawEdits.Count, "prompt")}", () => promptRawEdits.Count > 0),
@@ -4157,6 +4171,52 @@
     // #946: does a collection carry a pending item-name rename? (gates index.json recompose.)
     private bool CollectionHasNameEdits(WorkflowManifestReader.CollectionView collection) =>
         standardNameEdits.Keys.Any(file => file.StartsWith(collection.Directory, StringComparison.Ordinal));
+
+    // v25 (#1008): a published folder item's edited when (its index.json items[].when),
+    // keyed by the item's file path, self-removing when it equals the loaded value.
+    // A pending item carries its own (AddedItem.When). Null/blank = always included.
+    private readonly Dictionary<string, string?> itemWhenEdits = new(StringComparer.Ordinal);
+
+    private const string ItemWhenKeyPrefix = "item-when:";
+
+    private string? ItemWhenValue(WorkflowManifestReader.DataItemView item) =>
+        itemWhenEdits.TryGetValue(item.File, out var edited) ? edited : item.When;
+
+    private void SetItemWhen(WorkflowManifestReader.DataItemView item, string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text) ? string.IsNullOrWhiteSpace(item.When) : text == item.When)
+        {
+            itemWhenEdits.Remove(item.File);
+        }
+        else
+        {
+            itemWhenEdits[item.File] = text;
+        }
+    }
+
+    /// <summary>The folder a loaded item belongs to, by its directory.</summary>
+    private string FolderOfItem(string file) =>
+        collections.FirstOrDefault(c => file.StartsWith(c.Directory, StringComparison.Ordinal))?.Id ?? string.Empty;
+
+    /// <summary>A published folder item's "Included when": inputs only, written to itemWhenEdits.</summary>
+    private ConditionTarget ItemWhenTarget(WorkflowManifestReader.DataItemView item) =>
+        new($"{ItemWhenKeyPrefix}{item.File}", $"{FolderOfItem(item.File)} item {item.Id}", ItemWhenValue(item), text => SetItemWhen(item, text), InputsOnly: true);
+
+    /// <summary>A pending folder item's "Included when": inputs only, written on the item itself.</summary>
+    private ConditionTarget AddedItemWhenTarget(AddedItem added) =>
+        new($"{ItemWhenKeyPrefix}{added.Key}", $"{added.Collection} item {added.Id}", added.When,
+            text => added.When = string.IsNullOrWhiteSpace(text) ? null : text, InputsOnly: true);
+
+    private bool CollectionHasWhenEdits(WorkflowManifestReader.CollectionView collection) =>
+        itemWhenEdits.Keys.Any(file => file.StartsWith(collection.Directory, StringComparison.Ordinal));
+
+    /// <summary>The standard pane's discard: the text edit, the when edit and any in-progress condition draft.</summary>
+    private void RevertItemEdits(string file)
+    {
+        RevertFileEdits(file);
+        itemWhenEdits.Remove(file);
+        conditionDrafts.Remove($"{ItemWhenKeyPrefix}{file}");
+    }
 
     // Path -> edited text, only where it differs from the loaded package;
     // mirrored to localStorage so drafts survive refresh on this browser.
@@ -6146,6 +6206,117 @@
     /// as the registry reads it (the sentences shown under its editor), and a
     /// removed format still named by a node (the SchemaErrors idiom).
     /// </summary>
+    /// <summary>
+    /// v25 C2 (#1008): the desk's mirror of the registry's snippet rules
+    /// (WorkflowPackageValidator.V25 ResolveSnippetsAt25 and the forEach
+    /// resolution), word for word — a snippet or folder id snake_case; a folder
+    /// item's when parsed, refused when it reads anything but an input (node:,
+    /// item:, arithmetic), then each clause against the declared inputs; a
+    /// node's forEach a declared folder spelled snippet:&lt;folder&gt; (or an array
+    /// input), never data:. Nothing below 25.
+    /// </summary>
+    private IEnumerable<string> SnippetErrors()
+    {
+        if (!At25)
+        {
+            yield break;
+        }
+
+        var folders = EffectiveCollections.ToList();
+        var files = EffectiveScalars.Where(s => !ScalarIsRemoved(s)).ToList();
+
+        foreach (var id in folders.Select(f => f.Id).Concat(files.Select(f => f.Id)))
+        {
+            if (!PF.WorkflowDeclaredIds.IsValid(id))
+            {
+                yield return SnippetIdSentence(id);
+            }
+        }
+
+        foreach (var folder in folders)
+        {
+            var conditioned = folder.Items
+                .Where(item => !removedFiles.Contains(item.File))
+                .Select(item => (item.Id, When: ItemWhenValue(item)))
+                .Concat(addedItems.Where(a => a.Collection == folder.Id).Select(a => (a.Id, a.When)))
+                .Where(pair => !string.IsNullOrWhiteSpace(pair.When));
+
+            foreach (var (itemId, when) in conditioned)
+            {
+                var prefix = $"Snippet folder '{folder.Id}' item '{itemId}' condition";
+
+                if (!PF.WorkflowResultConditions.TryParseExpression(when!, out var expression, out var syntaxError) || expression is null)
+                {
+                    yield return $"{prefix} {syntaxError}";
+                    continue;
+                }
+
+                var offending = expression.Leaves.FirstOrDefault(leaf => leaf.IsNodeValue || leaf.IsItemValue || leaf.IsArithmetic);
+
+                if (offending is not null)
+                {
+                    yield return $"{prefix} reads '{offending.Operand}'; a folder item's when reads inputs only, so the folder's size is known at job start (the template's own if gates anything else).";
+                    continue;
+                }
+
+                foreach (var clause in expression.Leaves)
+                {
+                    if (clause.PathDepth >= 2)
+                    {
+                        continue;
+                    }
+
+                    var tested = EffectiveInputs.FirstOrDefault(input => input.Id == clause.InputId);
+
+                    if (tested == null)
+                    {
+                        yield return $"{prefix} reads undeclared input '{clause.InputId}'.";
+                        break;
+                    }
+
+                    if (V9ConditionComplaint(prefix, clause, tested) is { } complaint)
+                    {
+                        yield return complaint;
+                        break;
+                    }
+                }
+            }
+        }
+
+        var folderIds = folders.Select(f => f.Id).ToHashSet(StringComparer.Ordinal);
+        var fileIds = files.Select(f => f.Id).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var node in EffectiveNodes)
+        {
+            if (node.ForEach is not { } forEach)
+            {
+                continue;
+            }
+
+            if (forEach.StartsWith("data:", StringComparison.Ordinal))
+            {
+                yield return $"Node '{node.Id}' forEach '{forEach}' is retired at specVersion 25; fan a snippet folder (snippet:<folder>) or an array input (input:<id>).";
+            }
+            else if (PF.WorkflowFanSources.IsSnippetFan(forEach))
+            {
+                var folderId = PF.WorkflowFanSources.CollectionIdOf(forEach);
+
+                if (fileIds.Contains(folderId))
+                {
+                    yield return $"Node '{node.Id}' forEach fans snippet '{folderId}', which is a file, not a folder.";
+                }
+                else if (!folderIds.Contains(folderId))
+                {
+                    yield return $"Node '{node.Id}' forEach fans snippet folder '{folderId}', which the package does not declare.";
+                }
+            }
+            else if (!forEach.StartsWith(WorkflowInputFans.Prefix, StringComparison.Ordinal))
+            {
+                yield return $"Node '{node.Id}' forEach '{forEach}' must be snippet:<folder> or input:<id>.";
+            }
+        }
+    }
+
     private IEnumerable<string> FormatErrors()
     {
         if (EffectiveSpecVersion < 25)
@@ -7634,7 +7805,8 @@
 
     /// <summary>The operands a target's clauses may read: its own (v24 item:id on a fan node's macro) before the package-wide list.</summary>
     private IReadOnlyList<ConditionOperand> OperandsFor(ConditionTarget target) =>
-        target.Extra is { Count: > 0 } extra ? extra.Concat(ConditionOperands).ToList() : ConditionOperands;
+        target.InputsOnly ? ConditionOperands.Where(operand => !operand.Key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)).ToList()
+        : target.Extra is { Count: > 0 } extra ? extra.Concat(ConditionOperands).ToList() : ConditionOperands;
 
     /// <summary>v24 (#957): the one item operand a condition reads, and its pseudo-type (a closed set, like a classifier's values).</summary>
     private const string ItemIdKey = "item:id";
@@ -10002,7 +10174,10 @@
         schemaIds = WorkflowManifestReader.ReadSchemaIds(content.Manifest);
     }
 
-    private sealed record DraftAdded(string Collection, string Id, string Name, string Content);
+    private sealed record DraftAdded(string Collection, string Id, string Name, string Content, string? When = null);
+
+    /// <summary>v25 (#1008): a published folder item's pending when, by file.</summary>
+    private sealed record DraftItemWhen(string File, string? When);
 
     private sealed record DraftBinding(string NodeId, string Variable, string From, string? As);
 
@@ -10100,7 +10275,9 @@
         List<DraftNodeMacros>? NodeMacroEdits = null,
         // v25 (C1 #1007): the package's own formats. Trailing optional.
         List<DraftAddedFormat>? AddedFormats = null,
-        List<string>? RemovedFormats = null);
+        List<string>? RemovedFormats = null,
+        // v25 (C2 #1008): pending folder-item whens. Trailing optional.
+        List<DraftItemWhen>? ItemWhens = null);
 
     private sealed record DraftAddedFormat(string Id, string Body);
 
@@ -10276,7 +10453,7 @@
                 && validCollections.Contains(draftItem.Collection)
                 && !loadedIds.Contains((draftItem.Collection, draftItem.Id)))
             {
-                addedItems.Add(new AddedItem { Collection = draftItem.Collection, Id = draftItem.Id, Name = draftItem.Name, Content = draftItem.Content });
+                addedItems.Add(new AddedItem { Collection = draftItem.Collection, Id = draftItem.Id, Name = draftItem.Name, Content = draftItem.Content, When = draftItem.When });
             }
         }
 
@@ -10364,6 +10541,20 @@
             if (WorkflowManifestReader.ReadMacros(content!.Manifest).Any(m => m.Id == draftMacroLabel.Id))
             {
                 macroLabelEdits[draftMacroLabel.Id] = draftMacroLabel.Label;
+            }
+        }
+
+        // v25 (#1008): a drafted item when is kept only while that item file still exists.
+        if ((payload.ItemWhens?.Count ?? 0) > 0)
+        {
+            var whenItemFiles = WorkflowManifestReader.ReadCollections(content!.Manifest, content!.Files, DataTableKey)
+                .SelectMany(c => c.Items).Select(item => item.File).ToHashSet(StringComparer.Ordinal);
+            foreach (var draftItemWhen in payload.ItemWhens!)
+            {
+                if (whenItemFiles.Contains(draftItemWhen.File))
+                {
+                    itemWhenEdits[draftItemWhen.File] = draftItemWhen.When;
+                }
             }
         }
 
@@ -10707,7 +10898,7 @@
         new DraftPayload(
             15,
             edits,
-            addedItems.Select(a => new DraftAdded(a.Collection, a.Id, a.Name, a.Content)).ToList(),
+            addedItems.Select(a => new DraftAdded(a.Collection, a.Id, a.Name, a.Content, a.When)).ToList(),
             removedFiles.ToList(),
             bindingEdits.Select(pair =>
             {
@@ -10757,7 +10948,8 @@
                 pair.Key,
                 pair.Value.Select(e => new DraftNodeMacro(e.Id, e.At, e.When, e.Optional, e.ForItem)).ToList())).ToList(),
             addedFormats.Select(pair => new DraftAddedFormat(pair.Key, pair.Value)).ToList(),
-            removedFormatIds.ToList());
+            removedFormatIds.ToList(),
+            itemWhenEdits.Select(pair => new DraftItemWhen(pair.Key, pair.Value)).ToList());
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -10958,13 +11150,26 @@
             }
         }
 
+        // v25 (#1008): an item's when rides index.json beside id/name/file — written
+        // only when set (loaded ⊕ edit; a pending item's own), never as a blank key.
+        static System.Text.Json.Nodes.JsonObject Item(string id, string name, string file, string? when)
+        {
+            var item = new System.Text.Json.Nodes.JsonObject { ["id"] = id, ["name"] = name, ["file"] = file };
+            if (!string.IsNullOrWhiteSpace(when))
+            {
+                item["when"] = when;
+            }
+
+            return item;
+        }
+
         var items = collection.Items
             .Where(item => !removedFiles.Contains(item.File))
             // #946: apply any pending rename to the item's name.
-            .Select(item => new { id = item.Id, name = StandardName(item), file = item.File[collection.Directory.Length..] })
+            .Select(item => Item(item.Id, StandardName(item), item.File[collection.Directory.Length..], ItemWhenValue(item)))
             .Concat(addedItems
                 .Where(a => a.Collection == collection.Id)
-                .Select(a => new { id = a.Id, name = a.Name, file = $"{a.Id}.md" }))
+                .Select(a => Item(a.Id, a.Name, $"{a.Id}.md", a.When)))
             .ToList();
 
         return JsonSerializer.Serialize(new { fields, items }, new JsonSerializerOptions { WriteIndented = true });
@@ -11091,6 +11296,7 @@
             unbound.AddRange(PackageMetadataErrors());
             unbound.AddRange(SchemaErrors());
             unbound.AddRange(FormatErrors());
+            unbound.AddRange(SnippetErrors());
             unbound.AddRange(PreludeErrors());
 
             if (unbound.Count > 0)
@@ -11575,7 +11781,7 @@
         foreach (var collection in EffectiveCollections)
         {
             if (CollectionHasMembershipChanges(collection) || addedCollections.Contains(collection.Id)
-                || CollectionHasNameEdits(collection))
+                || CollectionHasNameEdits(collection) || CollectionHasWhenEdits(collection))
             {
                 files[collection.Directory + "index.json"] = ComposeIndexJson(collection);
             }

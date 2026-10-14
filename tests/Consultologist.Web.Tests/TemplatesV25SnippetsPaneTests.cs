@@ -93,6 +93,51 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
     private static JsonElement Manifest(WorkflowPackagePublishRequest request) =>
         JsonDocument.Parse(request.Manifest.GetRawText()).RootElement;
 
+    /// <summary>The fixture with the sections folder's index.json replaced.</summary>
+    private static WorkflowPackageContentResponse WithSectionsIndex(string indexJson)
+    {
+        var package = EditorFixtures.V25();
+        var files = new Dictionary<string, string>(package.Files, StringComparer.Ordinal) { ["snippets/sections/index.json"] = indexJson };
+        return package with { Files = files };
+    }
+
+    /// <summary>The fixture's manifest with one node replaced by the given JSON object.</summary>
+    private static WorkflowPackageContentResponse WithNode(string nodeId, string nodeJson)
+    {
+        var package = EditorFixtures.V25();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        var nodes = root["nodes"]!.AsArray();
+        for (var i = 0; i < nodes.Count; i++)
+        {
+            if (nodes[i]!["id"]!.GetValue<string>() == nodeId)
+            {
+                nodes[i] = System.Text.Json.Nodes.JsonNode.Parse(nodeJson);
+            }
+        }
+
+        return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
+
+    private static IReadOnlyList<string?> OptionValues(IRenderedComponent<Templates> page, string selector) =>
+        page.Find(selector).QuerySelectorAll("fluent-option").Select(o => o.GetAttribute("value")).ToList();
+
+    private static JsonElement SectionsIndex(WorkflowPackagePublishRequest request) =>
+        JsonDocument.Parse(request.Files["snippets/sections/index.json"]).RootElement;
+
+    private static JsonElement Item(JsonElement index, string id) =>
+        index.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("id").GetString() == id);
+
+    /// <summary>A pending change opens the publish button: the standards snippet's text.</summary>
+    private static void MakePending(IRenderedComponent<Templates> page)
+    {
+        Navigate(page, "standards");
+        page.Find(".editor-pane fluent-text-area").Change("Follow the local standards, edited.");
+    }
+
+    private const string HpiAddCondition = "fluent-button[aria-label='Add a condition for sections item hpi']";
+    private const string HpiOperand = "fluent-select[aria-label^='Condition operand for sections item hpi']";
+    private const string HpiValue = "fluent-select[aria-label^='Condition value for sections item hpi']";
+
     // ----- the group -----
 
     [Fact]
@@ -272,6 +317,184 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
 
         var validated = Validated();
         Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
+    }
+
+    // ----- a folder item's when (input-only, the existing builder) -----
+
+    [Fact]
+    public void TheItemWhenBuilder_OffersInputsOnly()
+    {
+        var page = RenderEditor();
+        Navigate(page, "HPI");
+
+        // Rests as "Every run" until opened — an item is born unconditional.
+        Assert.Contains("Every run", page.Find(".editor-pane").TextContent);
+        page.Find(HpiAddCondition).Click();
+
+        var operands = OptionValues(page, HpiOperand);
+        Assert.Contains("kind", operands);
+        // No node: operand (the fixture's classifier 'scope' would be offered to a
+        // node's own when) and no item:id — a folder's size is known at job start.
+        Assert.DoesNotContain("node:scope", operands);
+        Assert.DoesNotContain("item:id", operands);
+    }
+
+    [Fact]
+    public void AnItemWhen_WritesIntoIndexJson_AndTheRegistryAccepts()
+    {
+        var page = RenderEditor();
+        CapturePublish();
+        Navigate(page, "HPI");
+        page.Find(HpiAddCondition).Click();
+        page.Find(HpiOperand).Change("kind");
+        page.Find(HpiValue).Change("follow_up");
+
+        // The pending dot on the item, and the kind named by the pending summary.
+        Assert.Contains("●", page.Find("button.editor-nav__item--selected").TextContent);
+
+        Publish(page);
+
+        var index = SectionsIndex(sent!);
+        Assert.Equal("kind == follow_up", Item(index, "hpi").GetProperty("when").GetString());
+        // The loaded sibling keeps its when; the fields list is the loaded one.
+        Assert.Equal("kind == new", Item(index, "plan").GetProperty("when").GetString());
+        Assert.Equal(new[] { "id", "name", "content" }, index.GetProperty("fields").EnumerateArray().Select(f => f.GetString()).ToArray());
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
+    }
+
+    [Fact]
+    public void ALoadedItemWhen_ShowsInTheBuilder_AndItsEditRoundTrips()
+    {
+        var page = RenderEditor();
+        CapturePublish();
+        Navigate(page, "Plan");
+
+        // A loaded when shows the builder directly, the operand already chosen.
+        var operand = page.Find("fluent-select[aria-label^='Condition operand for sections item plan']");
+        Assert.Equal("kind", operand.GetAttribute("current-value"));
+
+        page.Find("fluent-select[aria-label^='Condition value for sections item plan']").Change("follow_up");
+        Publish(page);
+
+        Assert.Equal("kind == follow_up", Item(SectionsIndex(sent!), "plan").GetProperty("when").GetString());
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
+    }
+
+    [Fact]
+    public void APendingItem_TakesAWhen_IntoItsFoldersIndex()
+    {
+        var page = RenderEditor();
+        CapturePublish();
+        CreateFolder(page, "care_plans");
+        AddItem(page, "discharge", "Discharge", "Discharge plan.");
+
+        page.Find("fluent-button[aria-label='Add a condition for care_plans item discharge']").Click();
+        page.Find("fluent-select[aria-label^='Condition operand for care_plans item discharge']").Change("kind");
+        page.Find("fluent-select[aria-label^='Condition value for care_plans item discharge']").Change("new");
+        Publish(page);
+
+        var index = JsonDocument.Parse(sent!.Files["snippets/care_plans/index.json"]).RootElement;
+        Assert.Equal("kind == new", Item(index, "discharge").GetProperty("when").GetString());
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
+    }
+
+    [Fact]
+    public void AnItemWhen_SurvivesAReload_WithItsDraft()
+    {
+        var page = RenderEditor();
+        Navigate(page, "HPI");
+        page.Find(HpiAddCondition).Click();
+        page.Find(HpiOperand).Change("kind");
+        page.Find(HpiValue).Change("new");
+
+        var saved = JSInterop.Invocations["localStorage.setItem"]
+            .Where(i => i.Arguments[0] is string key && key.StartsWith("workflow-editor-draft:", StringComparison.Ordinal))
+            .Select(i => (Key: (string)i.Arguments[0]!, Json: (string)i.Arguments[1]!))
+            .Last();
+        JSInterop.Setup<string?>("localStorage.getItem", saved.Key).SetResult(saved.Json);
+
+        var again = Render<Templates>();
+
+        Assert.Equal("kind", again.Find(HpiOperand).GetAttribute("current-value"));
+        Assert.Contains("1 snippet condition", again.Markup);
+    }
+
+    [Fact]
+    public void DiscardingTheItemPane_DropsItsWhen()
+    {
+        var page = RenderEditor();
+        Navigate(page, "HPI");
+        page.Find(HpiAddCondition).Click();
+        page.Find(HpiOperand).Change("kind");
+        page.Find(HpiValue).Change("new");
+
+        page.Find(".pane-discard-button").Click();
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Confirm discard")).Click();
+
+        Assert.DoesNotContain("●", page.Find("button.editor-nav__item--selected").TextContent);
+        Assert.Contains("Every run", page.Find(".editor-pane").TextContent);
+    }
+
+    // ----- the desk: the registry's snippet sentences, word for word -----
+
+    [Theory]
+    [InlineData("node:scope == in_scope",
+        "Snippet folder 'sections' item 'plan' condition reads 'node:scope'; a folder item's when reads inputs only, so the folder's size is known at job start (the template's own if gates anything else).")]
+    [InlineData("severity == high",
+        "Snippet folder 'sections' item 'plan' condition reads undeclared input 'severity'.")]
+    // The clause rules are the desk's existing v9/v10 mirror (shared with a node's own
+    // when), so an enum literal is refused in the desk's established words.
+    [InlineData("kind == urgent",
+        "Snippet folder 'sections' item 'plan' condition compares 'kind' to 'urgent', which it does not declare.")]
+    public void TheDesk_RefusesAFolderItemsWhen_InTheRegistrysWords(string when, string sentence)
+    {
+        var page = RenderEditor(WithSectionsIndex($$"""
+            { "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md" }, { "id": "plan", "name": "Plan", "file": "plan.md", "when": "{{when}}" } ] }
+            """));
+        CapturePublish();
+        MakePending(page);
+
+        Publish(page);
+
+        Assert.Contains(sentence, Refusals(page));
+        Assert.Null(sent);
+    }
+
+    [Fact]
+    public void TheDesk_NamesAFolderItemsWhen_ThatDoesNotParse()
+    {
+        var page = RenderEditor(WithSectionsIndex("""
+            { "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md" }, { "id": "plan", "name": "Plan", "file": "plan.md", "when": "kind ==" } ] }
+            """));
+        CapturePublish();
+        MakePending(page);
+
+        Publish(page);
+
+        Assert.Contains(Refusals(page), r => r.StartsWith("Snippet folder 'sections' item 'plan' condition ", StringComparison.Ordinal));
+        Assert.Null(sent);
+    }
+
+    [Theory]
+    [InlineData("snippet:missing", "Node 'section_notes' forEach fans snippet folder 'missing', which the package does not declare.")]
+    [InlineData("snippet:standards", "Node 'section_notes' forEach fans snippet 'standards', which is a file, not a folder.")]
+    [InlineData("data:sections", "Node 'section_notes' forEach 'data:sections' is retired at specVersion 25; fan a snippet folder (snippet:<folder>) or an array input (input:<id>).")]
+    [InlineData("sections", "Node 'section_notes' forEach 'sections' must be snippet:<folder> or input:<id>.")]
+    public void TheDesk_RefusesAForEach_ThatIsNotADeclaredFolder(string forEach, string sentence)
+    {
+        var page = RenderEditor(WithNode("section_notes", $$"""
+            { "id": "section_notes", "label": "Section notes", "prompt": "section", "format": "prose", "forEach": "{{forEach}}" }
+            """));
+        CapturePublish();
+        MakePending(page);
+
+        Publish(page);
+
+        Assert.Contains(sentence, Refusals(page));
+        Assert.Null(sent);
     }
 
     [Fact]
