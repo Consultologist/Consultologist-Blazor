@@ -1299,14 +1299,15 @@ public sealed class ConsultGenerationOrchestrator
     /// marker, the schema hash and the content-addressed agent that ran, so the
     /// client can distinguish it from an attested catalog contract. One stamp for
     /// the node update, the item update (#980) and the fan's summary row.
+    /// v25 (B7 #1006, provenance@v2026.10.1): the stamp is a 22–24 custom-schema
+    /// node's (OutputContract custom). A 25 custom producer carries NONE of it —
+    /// the record's nodes[] says producer: custom, formatHash and the catalogue's
+    /// generic agent, and the row carries the engine's validation: a custom shape,
+    /// engine-validated, never unattested in the #760 sense.
     /// </summary>
     internal static (bool? Unattested, string? CustomSchemaHash, string? CustomAgent) CustomStamp(ConsultNodeDescriptor node)
     {
-        // v25 (B4 #1003, design § 3.4): a 25 custom producer carries the same
-        // stamp (hash = the format's formatHash, agent = the generic custom
-        // agent) until B7 rewords the marker to "custom shape, engine-validated".
-        var custom = string.Equals(node.OutputContract, OutputContracts.Custom, StringComparison.Ordinal)
-            || string.Equals(node.Producer, WorkflowFormatProducers.Custom, StringComparison.Ordinal);
+        var custom = string.Equals(node.OutputContract, OutputContracts.Custom, StringComparison.Ordinal);
         return (
             custom ? true : null,
             custom ? node.CustomSchemaHash : null,

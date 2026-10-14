@@ -74,13 +74,16 @@ public class ProvenanceMirrorTests
             "job-1", "user-1", "Completed", 1, 1, 0,
             new Dictionary<string, string>(), new Dictionary<string, string>(), true,
             PackageFormatRef: "package-format@v2026.08.6",
-            ProvenanceRef: "provenance@v2026.08.4");
+            ProvenanceRef: "provenance@v2026.08.4",
+            FormatsRef: "formats@v2026.10.1");
 
         var mirrored = JsonSerializer.Deserialize<WebAI.ConsultGenerationJobResponse>(
             JsonSerializer.Serialize(response, Web), Web)!;
 
         Assert.Equal("package-format@v2026.08.6", mirrored.PackageFormatRef);
         Assert.Equal("provenance@v2026.08.4", mirrored.ProvenanceRef);
+        // B7 #1006: the formats catalogue ref, the third registry ref.
+        Assert.Equal("formats@v2026.10.1", mirrored.FormatsRef);
     }
 
     [Fact]

@@ -98,6 +98,11 @@ public class CustomSchemaRunTests
 
         var unpinned = custom with { AgentName = null, AgentVersion = null };
         Assert.Equal(((bool?)true, (string?)"hash-abc", (string?)null), ConsultGenerationOrchestrator.CustomStamp(unpinned));
+
+        // B7 #1006: the stamp is the 22–24 tier's; a 25 custom producer
+        // (format, producer, formatHash on the descriptor) carries none.
+        var at25 = new ConsultNodeDescriptor("shape", "Shape", PromptId: "p", Format: "mine", Producer: "custom", FormatHash: "hash-25", AgentName: "custom-json", AgentVersion: "1", CustomSchemaHash: "hash-25");
+        Assert.Equal(((bool?)null, (string?)null, (string?)null), ConsultGenerationOrchestrator.CustomStamp(at25));
     }
 
     [Fact]

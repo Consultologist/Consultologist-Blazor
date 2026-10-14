@@ -667,7 +667,10 @@ public record ConsultGenerationJobResponse(
     // #639: the consult's terminal-failure frames, and each failed
     // section's — type and stack only, the message discipline unchanged.
     string? FailureStack = null,
-    IReadOnlyDictionary<string, string>? FailedBlockStacks = null);
+    IReadOnlyDictionary<string, string>? FailedBlockStacks = null,
+    // v25 (B7 #1006): the formats catalogue version the job ran under
+    // (formats@vYYYY.MM.N); null on records from before.
+    string? FormatsRef = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.TerminologySnapshot (#403).</summary>
 public record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);

@@ -167,6 +167,13 @@ public static class ConsultInputOriginKinds
     // edited value is typed text and carries no origin. #540 records it.
     public const string FormResponse = "form-response";
 
+    // v25 (B7 #1006, provenance@v2026.10.1): the kind has a file-sourced
+    // VARIANT, told by its fields — a questionnaire response loaded as a JSON
+    // file on the Create page (#991) carries FileSha256 over the file and
+    // TextSha256 over the object as it entered the effective map, and no
+    // SourceFormId/SourceResponseId: nothing was held, nothing resolves. The
+    // kind does not change; a reader tells the two apart by the source ids.
+
     // #613/#671 (provenance@v2026.09.6): an uploaded file the caller declared
     // to be a meeting transcript — a satellite (docs/ZOOM_SATELLITE_SPIKE.md)
     // fetches a speaker-labeled transcript as the signed-in clinician and
@@ -178,6 +185,11 @@ public static class ConsultInputOriginKinds
     // have equal effectiveInputHash and differ only here. Recorded beside the
     // hash, like every kind above.
     public const string Transcript = "transcript";
+
+    // v25 (B7 #1006, provenance@v2026.10.1): a transcript file (VTT, SRT, plain
+    // text) loaded on the Create page (#994) is the same kind with the same
+    // fields — TextSha256 over the text after speaker labels and timestamps
+    // were stripped, the assertion still the submitter's. No new kind.
 
     // #730 (provenance@v2026.09.10): an uploaded image (PNG/JPEG/TIFF) whose
     // text was produced by OCR. Its server-observed fields are a Document's
@@ -391,7 +403,12 @@ public record ConsultGenerationJobResponse(
     // short — the overrides that let this job start instead of being refused.
     // Recorded beside the input hash, never inside it (attribution). Null when no
     // slot was overridden and on records predating the field. Appended last.
-    IReadOnlyList<string>? AcknowledgedShortInputs = null);
+    IReadOnlyList<string>? AcknowledgedShortInputs = null,
+    // v25 (B7 #1006, provenance@v2026.10.1): the formats catalogue version the
+    // job ran under (formats@vYYYY.MM.N) — the registry artifact a 25 node's
+    // `format` resolves through, and the one whose generic agent a 22–24
+    // custom-schema node ran on (#1003). Null on records from before. Appended last.
+    string? FormatsRef = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
