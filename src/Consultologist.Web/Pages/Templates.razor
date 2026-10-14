@@ -1470,7 +1470,11 @@
                                     @if (EffectiveSpecVersion >= 11)
                                     {
                                         <section class="deliverable-section" data-v11-for="@deliverable.Id">
-                                            <span class="deliverable-section__head">Appended content</span>
+                                            <span class="deliverable-section__head">@(At25 ? "Macros" : "Appended content")</span>
+                                            @if (At25)
+                                            {
+                                                <p class="muted-text">Document scope: prepended before the sections or appended after them, each always or when its condition holds. A macro placed around a node's output lives on that node's pane.</p>
+                                            }
                                             @{ var resultMacros = deliverable.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>(); }
                                             @foreach (var (macroEntry, macroIndex) in resultMacros.Select((m, i) => (m, i)))
                                             {
@@ -1481,7 +1485,24 @@
                                                                   Title="@($"Edit macro {macroId}")"
                                                                   aria-label="@($"Edit macro {macroId}")"
                                                                   @onclick="() => SelectMacro(macroId)"><code>@macroId</code></FluentButton>
-                                                    @if (EffectiveSpecVersion >= 12)
+                                                    @if (At25)
+                                                    {
+                                                        @* v25 (C3 #1009): document scope only — prepend | append; a row
+                                                           born from the picker rests on "choose…" until the author picks
+                                                           (the registry refuses an at-less instance). *@
+                                                        <FluentSelect TOption="string" class="binding-row__select result-macro-placement"
+                                                                Value="@(macroEntry.At ?? "")"
+                                                                ValueChanged="@(v => SetDeliverableMacroAtAsync(deliverable, macroId, v))"
+                                                                aria-label="@($"Placement for macro {macroId} in deliverable {deliverable.Id}")">
+                                                            @if (macroEntry.At == null)
+                                                            {
+                                                                <FluentOption TOption="string" Value="">choose a placement…</FluentOption>
+                                                            }
+                                                            <FluentOption TOption="string" Value="prepend">prepend</FluentOption>
+                                                            <FluentOption TOption="string" Value="append">append</FluentOption>
+                                                        </FluentSelect>
+                                                    }
+                                                    else if (EffectiveSpecVersion >= 12)
                                                     {
                                                         @* v12 § 4: where the entry lands — this deliverable's
                                                            aggregator's sources; appended is the bare v11 form. *@
@@ -1565,6 +1586,19 @@
                                             @if (resultMacros.Count == 0 && EffectiveMacros.Count == 0)
                                             {
                                                 <span class="muted-text">No macros declared yet. Define one in the Macros pane, then append it here.</span>
+                                            }
+                                            @if (At25 && NodePlacedMacros(deliverable) is { Count: > 0 } nodePlaced)
+                                            {
+                                                @* #983: the node-placed instances this document composes, said here
+                                                   and edited there — each node name a link to its pane. *@
+                                                <p class="muted-text deliverable-node-macros">
+                                                    Also placed on nodes:
+                                                    @for (var placedIndex = 0; placedIndex < nodePlaced.Count; placedIndex++)
+                                                    {
+                                                        var placed = nodePlaced[placedIndex];
+                                                        <span>@placed.MacroId @(placed.IsAfter ? "after" : "before") <button type="button" class="snippet-readers__row" @onclick="() => Select(NodeKeyPrefix + placed.NodeId)">'@placed.NodeLabel'</button>@(placedIndex < nodePlaced.Count - 1 ? "," : "")</span>
+                                                    }
+                                                </p>
                                             }
                                         </section>
 
@@ -9204,6 +9238,28 @@
         return result is null ? Task.CompletedTask : AppendResultMacroAsync(result, macroId);
     }
 
+    /// <summary>One node instance a deliverable composes (#983): the macro, its side, the node and its label.</summary>
+    private sealed record NodePlacedMacro(string MacroId, bool IsAfter, string NodeId, string NodeLabel);
+
+    /// <summary>
+    /// v25 (C3 #1009 / #983): the node instances around the sections this deliverable
+    /// composes — on its own node and on its aggregator's direct sources — listed on
+    /// the Deliverables pane as a note, edited on the node pane.
+    /// </summary>
+    private IReadOnlyList<NodePlacedMacro> NodePlacedMacros(WorkflowManifestReader.ResultView result)
+    {
+        var ownNodeId = result.Node.StartsWith("node:", StringComparison.Ordinal) ? result.Node["node:".Length..] : result.Node;
+        var nodeIds = new List<string> { ownNodeId };
+        nodeIds.AddRange(DeliverableAggregateSources(result)
+            .Select(source => source.StartsWith("node:", StringComparison.Ordinal) ? source["node:".Length..] : source));
+
+        return nodeIds.Distinct(StringComparer.Ordinal)
+            .Select(id => EffectiveNodes.FirstOrDefault(n => n.Id == id))
+            .Where(n => n != null)
+            .SelectMany(n => EffectiveNodeMacros(n!).Select(e => new NodePlacedMacro(e.Id, e.IsAfter, n!.Id, n.Label)))
+            .ToList();
+    }
+
     /// <summary>This deliverable's aggregator's effective sources — the only legal placement anchors (§ 4).</summary>
     private IReadOnlyList<string> DeliverableAggregateSources(WorkflowManifestReader.ResultView result) =>
         EffectiveNodes.FirstOrDefault(n => $"node:{n.Id}" == result.Node)?.Aggregate ?? Array.Empty<string>();
@@ -10874,7 +10930,7 @@
         // client reading a new draft degrades the same way.
         List<DraftResultMacro>? MacroEntries = null, string? Check = null);
 
-    private sealed record DraftResultMacro(string Id, string? Before = null, string? After = null, string? When = null);
+    private sealed record DraftResultMacro(string Id, string? Before = null, string? After = null, string? When = null, string? ForItem = null, bool? Slot = null, string? At = null);
 
     private async Task RestoreDraftAsync()
     {
@@ -11338,7 +11394,7 @@
             resultsEdit = draftResults
                 .Select(result => new WorkflowManifestReader.ResultView(
                     result.Id, result.Node, result.Label, result.When,
-                    result.MacroEntries?.Select(e => new WorkflowManifestReader.ResultMacroView(e.Id, e.Before, e.After, e.When)).ToList()
+                    result.MacroEntries?.Select(e => new WorkflowManifestReader.ResultMacroView(e.Id, e.Before, e.After, e.When, e.ForItem, e.Slot, e.At)).ToList()
                         ?? (IReadOnlyList<WorkflowManifestReader.ResultMacroView>?)result.Macros?.Select(id => new WorkflowManifestReader.ResultMacroView(id)).ToList(),
                     result.Signature,
                     result.Check))
@@ -11482,7 +11538,7 @@
                 r.Id, r.Node, r.Label, r.When,
                 r.Macros?.Select(e => e.Id).ToList(),
                 r.Signature,
-                r.Macros?.Select(e => new DraftResultMacro(e.Id, e.Before, e.After, e.When)).ToList(),
+                r.Macros?.Select(e => new DraftResultMacro(e.Id, e.Before, e.After, e.When, e.ForItem, e.Slot, e.At)).ToList(),
                 r.Check)).ToList(),
             new Dictionary<string, string>(addedScalars, StringComparer.Ordinal),
             specVersionBump,
@@ -13210,7 +13266,21 @@
         {
             root.AsObject().Remove("result");
             root.AsObject().Remove("Result");
-            root[root["Results"] is not null ? "Results" : "results"] = new System.Text.Json.Nodes.JsonArray(
+            // v25 (A3 #998 / C3 #1009): the table is deliverables — results is
+            // retired there; the loaded key's casing is kept either way.
+            string deliverablesKey;
+            if (At25)
+            {
+                root.AsObject().Remove("results");
+                root.AsObject().Remove("Results");
+                deliverablesKey = root["Deliverables"] is not null ? "Deliverables" : "deliverables";
+            }
+            else
+            {
+                deliverablesKey = root["Results"] is not null ? "Results" : "results";
+            }
+
+            root[deliverablesKey] = new System.Text.Json.Nodes.JsonArray(
                 resultsToWrite
                     .Select(result =>
                     {
@@ -13253,6 +13323,7 @@
                                     }
 
                                     var adorned = new System.Text.Json.Nodes.JsonObject { ["id"] = entry.Id };
+                                    if (entry.At != null) { adorned["at"] = entry.At; } // v25 (C3 #1009) — first after id, per the converter's member order
                                     if (entry.Before != null) { adorned["before"] = entry.Before; }
                                     if (entry.After != null) { adorned["after"] = entry.After; }
                                     if (entry.When != null) { adorned["when"] = entry.When; }

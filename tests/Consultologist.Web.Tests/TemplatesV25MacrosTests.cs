@@ -399,6 +399,107 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
             page.Find(".node-inline-slots__warning").TextContent.Trim());
     }
 
+    // ----- the Deliverables pane: prepend / append, document scope -----
+
+    private const string DeliverablesPane = "Deliverables";
+
+    [Fact]
+    public void TheDeliverablesPane_OffersPrependAndAppendOnly_AndNotesTheNodePlacedInstances()
+    {
+        var page = RenderEditor();
+        Navigate(page, DeliverablesPane);
+
+        var section = page.Find("section.deliverable-section[data-v11-for='consult']");
+        Assert.Contains("Macros", section.QuerySelector(".deliverable-section__head")!.TextContent);
+        Assert.DoesNotContain("Appended content", section.TextContent);
+
+        var placement = section.QuerySelector("fluent-select[aria-label='Placement for macro closing in deliverable consult']")!;
+        Assert.Equal("prepend", placement.GetAttribute("current-value"));
+        Assert.Equal(new[] { "prepend", "append" }, placement.QuerySelectorAll("fluent-option").Select(o => o.GetAttribute("value")));
+        Assert.Empty(section.QuerySelectorAll(".result-macro-foritem"));
+        Assert.DoesNotContain("slot (the model places it)", section.TextContent);
+
+        // #983: the node-placed instances the document composes, each a link to its node.
+        var note = section.QuerySelector(".deliverable-node-macros")!;
+        Assert.Contains("closing after 'Assessment'", note.TextContent);
+        Assert.Contains("tool_note before 'Section notes'", note.TextContent);
+        note.QuerySelectorAll("button").First().Click();
+        Assert.Equal("Assessment", page.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim());
+    }
+
+    [Fact]
+    public void AppendingAMacro_BirthsItUnplaced_ThenAtRoundTrips_UnderDeliverables()
+    {
+        var page = RenderEditor();
+        CapturePublish();
+        Navigate(page, DeliverablesPane);
+
+        var picker = page.Find("fluent-select[aria-label='Append macro to deliverable consult']");
+        var offered = picker.QuerySelectorAll("fluent-option").Select(o => o.GetAttribute("value")).ToList();
+        Assert.DoesNotContain("closing", offered);
+        Assert.Contains("tool_note", offered);
+        picker.Change("tool_note");
+
+        var placement = page.Find("fluent-select[aria-label='Placement for macro tool_note in deliverable consult']");
+        Assert.Equal("", placement.GetAttribute("current-value") ?? "");
+        Assert.Contains("choose a placement…", placement.TextContent);
+        placement.Change("append");
+
+        page.Find("fluent-button[aria-label='Add a condition for consult macro tool_note']").Click();
+        page.Find("fluent-select[aria-label^='Condition operand for consult macro tool_note']").Change("kind");
+        page.Find("fluent-select[aria-label^='Condition value for consult macro tool_note']").Change("follow_up");
+        Publish(page);
+
+        var manifest = Manifest(sent!);
+        Assert.False(manifest.TryGetProperty("results", out _));
+        var macros = Deliverable(manifest).GetProperty("macros").EnumerateArray().ToList();
+        Assert.Equal(2, macros.Count);
+        Assert.Equal("prepend", macros[0].GetProperty("at").GetString());
+        Assert.Equal("kind == new", macros[0].GetProperty("when").GetString());
+        Assert.Equal("tool_note", macros[1].GetProperty("id").GetString());
+        Assert.Equal("append", macros[1].GetProperty("at").GetString());
+        Assert.Equal("kind == follow_up", macros[1].GetProperty("when").GetString());
+        Assert.False(macros[1].TryGetProperty("before", out _));
+        Assert.False(macros[1].TryGetProperty("slot", out _));
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
+    }
+
+    [Fact]
+    public void ADeliverableInstancesAt_SurvivesAReload_WithItsDraft()
+    {
+        var page = RenderEditor();
+        Navigate(page, DeliverablesPane);
+        page.Find("fluent-select[aria-label='Placement for macro closing in deliverable consult']").Change("append");
+
+        var saved = JSInterop.Invocations["localStorage.setItem"]
+            .Where(i => i.Arguments[0] is string key && key.StartsWith("workflow-editor-draft:", StringComparison.Ordinal))
+            .Select(i => (Key: (string)i.Arguments[0]!, Json: (string)i.Arguments[1]!))
+            .Last();
+        JSInterop.Setup<string?>("localStorage.getItem", saved.Key).SetResult(saved.Json);
+
+        var again = Render<Templates>();
+
+        Assert.Equal("append", again.Find("fluent-select[aria-label='Placement for macro closing in deliverable consult']").GetAttribute("current-value"));
+    }
+
+    [Fact]
+    public void RemovingALibraryMacro_StripsItsNodeAndDeliverableInstances_At25()
+    {
+        var page = RenderEditor();
+        CapturePublish();
+        Navigate(page, "closing");
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Remove macro")).Click();
+        Publish(page);
+
+        var manifest = Manifest(sent!);
+        Assert.DoesNotContain(manifest.GetProperty("macros").EnumerateArray(), m => m.GetProperty("id").GetString() == "closing");
+        Assert.False(Node(manifest, "assessment").TryGetProperty("macros", out _));
+        Assert.False(Deliverable(manifest).TryGetProperty("macros", out _));
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
+    }
+
     [Fact]
     public void TheFixtureItself_PublishesAccepted()
     {
