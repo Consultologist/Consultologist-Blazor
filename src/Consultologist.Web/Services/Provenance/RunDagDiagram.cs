@@ -81,6 +81,12 @@ public static class RunDagDiagram
                 label.Append("<br/>template");
             }
 
+            // B7 #1006: a 25 node's format and producer, where a contract would read.
+            if (node.Format is { Length: > 0 } format)
+            {
+                label.Append(($"<br/>{format} · {node.Producer ?? "—"}"));
+            }
+
             if (node.Aggregate != null)
             {
                 label.Append("<br/>aggregate");
@@ -102,6 +108,13 @@ public static class RunDagDiagram
                     var dashed = status == "skipped";
                     body.Append(($"src_{Sanitize(from)} {(dashed ? "-.->" : "-->")} {id}\n"));
                 }
+            }
+
+            // B7 #1006: at 25 the edges are the derived reads — what the
+            // template and parameters read — where bindings were below 25.
+            foreach (var read in node.Reads ?? Array.Empty<string>())
+            {
+                AppendEdge(body, statusById, read, node.Id);
             }
 
             foreach (var sourceRef in node.Aggregate ?? Array.Empty<string>())

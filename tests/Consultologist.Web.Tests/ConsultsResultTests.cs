@@ -82,6 +82,26 @@ public class ConsultsResultTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ARunWithA25CustomShape_SaysWhatItIs_AboveTheResult()
+    {
+        // B7 #1006: a 25 custom producer carries no unattested stamp; the
+        // descriptor says format, producer and the attested generic agent, and
+        // the bar says the engine validated the shape.
+        var shape = new ConsultGenerationNodeDescriptor(
+            "section-instructions", "Applying section instructions", "p", ForEach: "snippet:standards",
+            Format: "mine", Producer: "custom", FormatHash: "0123456789abcdef", AgentName: "custom-json", AgentVersion: "1");
+        WithCompletedJob(documents: OneNote, nodes: new[] { shape });
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var bar = page.Find(".result-unattested");
+        Assert.Contains("output from a package-defined shape (1 custom-shape block)", bar.TextContent);
+        Assert.Contains("checked by the engine against its declared schema", bar.TextContent);
+        Assert.Contains("Applying section instructions: format mine · hash 0123456789ab · served by custom-json@1, attested", bar.TextContent);
+        Assert.DoesNotContain("user-defined schema", bar.TextContent);
+    }
+
+    [Fact]
     public void ACatalogOnlyRun_ShowsNoUnattestedBar()
     {
         WithCompletedJob(documents: OneNote,

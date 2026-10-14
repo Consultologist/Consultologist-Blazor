@@ -21,6 +21,9 @@ public class HelpPageTests : ClientRenderTestContext
         Assert.Contains("Workflow package", page.Markup);
         Assert.NotNull(page.Find("#verify"));
         Assert.NotNull(page.Find("#glossary"));
+        // B7 #1006: the two custom-tier words, each defined.
+        Assert.Contains("Custom shape, engine-validated", page.Find("#glossary").TextContent);
+        Assert.Contains("Unattested", page.Find("#glossary").TextContent);
     }
 
     [Fact]

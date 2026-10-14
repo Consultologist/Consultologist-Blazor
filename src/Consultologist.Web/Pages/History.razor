@@ -257,7 +257,8 @@
                                                the top, beside the catalog it is NOT part of. *@
                                             @if (UnattestedNodes.Of(detail) is { Count: > 0 } unattestedChip)
                                             {
-                                                <span class="provenance-chip provenance-chip--unattested" title="@UnattestedNodes.Sentence">@UnattestedNodes.CountSentence(unattestedChip.Count)</span>
+                                                @* B7 #1006: two kinds — unattested (22–24) and custom shape, engine-validated (25) — each counted. *@
+                                                <span class="provenance-chip @(unattestedChip.Values.All(e => e.Kind == UnattestedNodes.CustomShapeKind) ? "provenance-chip--custom-shape" : "provenance-chip--unattested")" title="@UnattestedNodes.SentencesOf(unattestedChip)">@UnattestedNodes.Summary(unattestedChip)</span>
                                             }
                                             @* #373: the package's own format version, which is what an
                                                outside reader can act on. This chip used to show the job
@@ -342,7 +343,9 @@
                                                 <dt>SNOMED CT</dt>
                                                 <dd>The clinical terminology edition the concepts were answered against.</dd>
                                                 <dt>Unattested</dt>
-                                                <dd>A block produced from a user-defined output schema: not an attested clinical contract, no terminology grounding. The record names its schema hash and the agent that ran it.</dd>
+                                                <dd>A block produced from a user-defined output schema (packages at format 22–24): not an attested clinical contract, no terminology grounding. The record names its schema hash and the agent that ran it.</dd>
+                                                <dt>Custom shape</dt>
+                                                <dd>A block produced from a package-defined output shape (format 25), checked by the engine against its declared schema and served by the catalogue's attested generic agent. The shape is the author's, not a clinical contract; no terminology grounding. The record names the format, its file's hash and the agent.</dd>
                                             </dl>
                                             <a href="/help#glossary">Full glossary in Help</a>
                                         </details>
@@ -613,14 +616,29 @@
                                                    agent — the custom tier's provenance (#760), beside the attested agents. *@
                                                 @if (UnattestedNodes.Of(detail) is { Count: > 0 } unattestedRows)
                                                 {
-                                                    <dt>Unattested</dt>
-                                                    <dd class="provenance-unattested" title="@UnattestedNodes.Sentence">
-                                                        @foreach (var entry in unattestedRows.Values)
-                                                        {
-                                                            <div>@entry.Label · @UnattestedNodes.Detail(entry)</div>
-                                                        }
-                                                        <div class="muted-text">@UnattestedNodes.Sentence</div>
-                                                    </dd>
+                                                    @if (unattestedRows.Values.Where(e => e.Kind == UnattestedNodes.UnattestedKind).ToList() is { Count: > 0 } unattestedOnly)
+                                                    {
+                                                        <dt>Unattested</dt>
+                                                        <dd class="provenance-unattested" title="@UnattestedNodes.Sentence">
+                                                            @foreach (var entry in unattestedOnly)
+                                                            {
+                                                                <div>@entry.Label · @UnattestedNodes.Detail(entry)</div>
+                                                            }
+                                                            <div class="muted-text">@UnattestedNodes.Sentence</div>
+                                                        </dd>
+                                                    }
+                                                    @* B7 #1006: a 25 custom producer — the format, its hash and the attested generic agent. *@
+                                                    @if (unattestedRows.Values.Where(e => e.Kind == UnattestedNodes.CustomShapeKind).ToList() is { Count: > 0 } customShapes)
+                                                    {
+                                                        <dt>Custom shapes</dt>
+                                                        <dd class="provenance-custom-shape" title="@UnattestedNodes.CustomShapeSentence">
+                                                            @foreach (var entry in customShapes)
+                                                            {
+                                                                <div>@entry.Label · @UnattestedNodes.Detail(entry)</div>
+                                                            }
+                                                            <div class="muted-text">@UnattestedNodes.CustomShapeSentence</div>
+                                                        </dd>
+                                                    }
                                                 }
                                             </dl>
                                         </details>
@@ -790,6 +808,7 @@
                                                                     <span title="@group.NodeLevel?.InputHash">in @HashPrefix(group.NodeLevel?.InputHash)</span>
                                                                     <span title="@group.NodeLevel?.OutputHash">out @HashPrefix(group.NodeLevel?.OutputHash)</span>
                                                                     @NodeHashRef(detail, group.NodeLevel)
+                                                                    @CompletionSpan(group.NodeLevel)
                                                                 </span>
                                                             </div>
                                                             @* #639: the failure's frames, where the row failed. *@
@@ -828,6 +847,7 @@
                                                                             <span title="@entry.InputHash">in @HashPrefix(entry.InputHash)</span>
                                                                             <span title="@entry.OutputHash">out @HashPrefix(entry.OutputHash)</span>
                                                                             @NodeHashRef(detail, entry)
+                                                                            @CompletionSpan(entry)
                                                                             @if (entry.OutputHash != null && group.ConvergedOutputs.Contains(entry.OutputHash))
                                                                             {
                                                                                 <span class="muted-text" title="Another item in this node produced the byte-identical output">= same output</span>
@@ -960,6 +980,9 @@
         // #540: filled at start from a held form response, verified by the
         // server. No source link — a response is not a run; the digest chip
         // renders through the shared path.
+        // B7 #1006 (provenance@v2026.10.1): the file-sourced variant (#991) —
+        // no held response, the bytes were a questionnaire file.
+        "form-response" when origin.SourceFormId is null && origin.FileSha256 is not null => "from a questionnaire file",
         "form-response" => $"from form '{origin.SourceFormId}' response {origin.SourceResponseId}",
         // #613/#671: a meeting transcript the caller submitted as a file. Read
         // like a document — the same extractor and digests — but named for
@@ -973,6 +996,8 @@
             + (origin.PageCount is { } apages ? $" · {apages} page{(apages == 1 ? "" : "s")}" : ""),
         // #872: a typed element in a mixed array — entered by the user as text.
         "typed" => "entered as text",
+        // #730: a raw image whose text came from OCR — a server fact.
+        "image" => $"read from an image by OCR ({origin.Extractor ?? "—"})",
         _ => $"read from a document by {origin.Extractor ?? "—"}"
             + (origin.PageCount is { } pages ? $" · {pages} page{(pages == 1 ? "" : "s")}" : "")
             + (origin.TrackedChangesResolved ? " · tracked changes resolved to the accepted view" : "")
@@ -1597,7 +1622,7 @@
         {
             builder.OpenElement(0, "span");
             builder.AddAttribute(1, "class", "muted-text node-row__unversioned");
-            builder.AddAttribute(2, "title", "Recorded before the per-node hashes had a definition number; by date it is one of definitions 1–5 (hash-definitions.md § 4)");
+            builder.AddAttribute(2, "title", "Recorded before the per-node hashes had a definition number; by date it is one of definitions 1–6 (hash-definitions.md § 4)");
             builder.AddContent(3, "v—");
             builder.CloseElement();
         },
@@ -1660,7 +1685,8 @@
     {
         if (detail.Nodes is { Count: > 0 } nodes)
         {
-            return nodes.Select(node => node.OutputContract ?? "text").Distinct(StringComparer.Ordinal);
+            // B7 #1006: a 25 node's format stands where its contract would.
+            return nodes.Select(node => node.Format ?? node.OutputContract ?? "text").Distinct(StringComparer.Ordinal);
         }
 
         return (detail.AgentVersions?.Keys ?? Enumerable.Empty<string>()).OrderBy(c => c, StringComparer.Ordinal);
@@ -1683,12 +1709,25 @@
         return (null, null);
     }
 
-    private string AgentLine(string contract, ConsultGenerationJobResponse detail) => ResolveAgent(contract, detail) switch
+    private string AgentLine(string contract, ConsultGenerationJobResponse detail)
     {
-        (string name, string version) => $"{contract} → {name} v{version}",
-        (null, string version) => $"{contract} → v{version}",
-        _ => contract
-    };
+        // B7 #1006: a 25 format's agent is on its descriptor (copied from the
+        // formats catalogue the record's formatsRef names).
+        var at25 = detail.Nodes?.FirstOrDefault(node => string.Equals(node.Format, contract, StringComparison.Ordinal));
+        if (at25 is not null)
+        {
+            return at25.AgentName is { Length: > 0 } name
+                ? $"{contract} → {name}@{at25.AgentVersion}"
+                : at25.Op is { Length: > 0 } op ? $"{contract} → {op} (engine)" : $"{contract} → {at25.Producer ?? "—"}";
+        }
+
+        return ResolveAgent(contract, detail) switch
+        {
+            (string name, string version) => $"{contract} → {name} v{version}",
+            (null, string version) => $"{contract} → v{version}",
+            _ => contract
+        };
+    }
 
     private async Task LoadJobsAsync()
     {
@@ -1892,21 +1931,73 @@
     /// agent in its title.</summary>
     private RenderFragment UnattestedBadge(ConsultGenerationNodeDescriptor descriptor, ConsultGenerationNodeStatus? status) => builder =>
     {
-        if (!UnattestedNodes.IsUnattested(descriptor, status))
+        if (!UnattestedNodes.IsMarked(descriptor, status))
         {
             return;
         }
 
-        var entry = new UnattestedNodes.Entry(descriptor.Id, descriptor.Label, status?.CustomSchemaHash, status?.CustomAgent);
+        // B7 #1006: a 25 custom producer is a custom shape, engine-validated —
+        // its own pill, sentence and detail (from the descriptor, not a stamp).
+        var kind = UnattestedNodes.KindOf(descriptor, status);
+        var entry = kind == UnattestedNodes.CustomShapeKind
+            ? UnattestedNodes.CustomShapeEntry(descriptor)
+            : new UnattestedNodes.Entry(descriptor.Id, descriptor.Label, status?.CustomSchemaHash, status?.CustomAgent);
         builder.OpenElement(0, "span");
-        builder.AddAttribute(1, "class", "node-row__unattested");
-        builder.AddAttribute(2, "title", $"{UnattestedNodes.Sentence} {UnattestedNodes.Detail(entry)}");
-        builder.AddContent(3, "unattested");
+        builder.AddAttribute(1, "class", kind == UnattestedNodes.CustomShapeKind ? "node-row__custom-shape" : "node-row__unattested");
+        builder.AddAttribute(2, "title", $"{UnattestedNodes.SentenceFor(kind)} {UnattestedNodes.Detail(entry)}");
+        builder.AddContent(3, UnattestedNodes.Pill(kind));
         builder.CloseElement();
+    };
+
+    /// <summary>B7 #1006: what a 25 row's completion recorded — the reply's validation, what was placed and what was withheld — beside the hashes.</summary>
+    private static RenderFragment? CompletionSpan(ConsultGenerationNodeStatus? status) => status switch
+    {
+        null => null,
+        { Validation: null, Appended: null, Excluded: null } => null,
+        _ => builder =>
+        {
+            var seq = 0;
+            if (status.Validation is { } validation)
+            {
+                builder.OpenElement(seq++, "span");
+                builder.AddAttribute(seq++, "class", validation.Valid ? "node-row__validation muted-text" : "node-row__validation node-row__validation--invalid");
+                builder.AddAttribute(seq++, "title", validation.Valid ? "The reply conformed to the node's format" : string.Join(" ", validation.Errors));
+                builder.AddContent(seq++, validation.Valid ? "valid" : $"invalid: {validation.Errors.FirstOrDefault() ?? "the reply did not conform"}");
+                builder.CloseElement();
+            }
+
+            if (status.Appended is { Count: > 0 } appended)
+            {
+                builder.OpenElement(seq++, "span");
+                builder.AddAttribute(seq++, "class", "node-row__appended muted-text");
+                builder.AddAttribute(seq++, "title", "Placed into this node's output at completion, in order: " + string.Join(", ", appended.Select(e => $"{e.Kind} {e.Id}")));
+                builder.AddContent(seq++, $"+{appended.Count} placed");
+                builder.CloseElement();
+            }
+
+            if (status.Excluded is { Count: > 0 } excluded)
+            {
+                builder.OpenElement(seq++, "span");
+                builder.AddAttribute(seq++, "class", "node-row__excluded muted-text");
+                builder.AddAttribute(seq++, "title", "Withheld or removed at completion: " + string.Join("; ", excluded.Select(e => $"{e.Kind} {e.Id} — {e.Reason}")));
+                builder.AddContent(seq++, $"{excluded.Count} excluded");
+                builder.CloseElement();
+            }
+        }
     };
 
     private string ContractLabel(ConsultGenerationNodeDescriptor descriptor, ConsultGenerationJobResponse detail)
     {
+        // B7 #1006: a 25 node names its format and producer, and the agent or
+        // operation behind it, from the descriptor — nothing to resolve.
+        if (descriptor.Format is { Length: > 0 } format)
+        {
+            var behind = descriptor.AgentName is { Length: > 0 } agentName
+                ? $" · {agentName}@{descriptor.AgentVersion}"
+                : descriptor.Op is { Length: > 0 } op ? $" · {op}" : "";
+            return $"{format} · {descriptor.Producer ?? "—"}{behind}";
+        }
+
         var contract = descriptor.OutputContract ?? "text";
 
         // #933: a custom contract names no catalog agent — the row shows the

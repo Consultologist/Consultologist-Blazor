@@ -943,6 +943,75 @@ public class HistoryDetailTests : ClientRenderTestContext
         Assert.Contains("schema 0123456789ab · agent custom-0123@1", itemBadge.GetAttribute("title"));
     }
 
+    // ----- B7 #1006: a specVersion 25 record -----
+
+    private static readonly ConsultGenerationNodeDescriptor Shape25 = new(
+        "shape", "Assessment shape", "p", Format: "mine", Producer: "custom", FormatHash: "0123456789abcdefdeadbeef",
+        AgentName: "custom-json", AgentVersion: "1", OnInvalid: "flag", Reads: new[] { "extract" });
+
+    private static readonly ConsultGenerationNodeDescriptor Extract25 = new(
+        "extract", "Extract", "p", Format: "concept-list", Producer: "attested", FormatHash: "abc", AgentName: "concept-extraction", AgentVersion: "1");
+
+    [Fact]
+    public void A25CustomShape_IsSaidForWhatItIs_OnItsRow_TheChip_TheProvenanceList_AndTheLegend()
+    {
+        WithEngine();
+        WithJob(3,
+            nodes: new[] { Extract25, Shape25 },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["extract"] = new("extract", "Extract", "Completed", "in-1", "out-1", DateTimeOffset.UtcNow, null, HashVersion: 6),
+                ["shape"] = new("shape", "Assessment shape", "Completed", "in-s", "out-s", DateTimeOffset.UtcNow, null, HashVersion: 6,
+                    Validation: new ConsultValidationOutcome(false, new[] { "$.items: expected array" }),
+                    AgentOutputHash: "agent-s",
+                    Appended: new[] { new ConsultAppendedEntry("macro", "closing") },
+                    Excluded: new[] { new ConsultNodeExclusion("slot", "stray", "no read in this node's prompt sanctions [[slot:stray]]") })
+            });
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        // The row: the custom-shape pill, the 25 sentence and the descriptor's facts; no unattested pill anywhere.
+        var badge = Assert.Single(page.FindAll(".node-row__custom-shape"));
+        Assert.Equal("custom shape", badge.TextContent.Trim());
+        Assert.Contains("Custom shape, engine-validated", badge.GetAttribute("title"));
+        Assert.Contains("format mine · hash 0123456789ab · served by custom-json@1, attested", badge.GetAttribute("title"));
+        Assert.Empty(page.FindAll(".node-row__unattested"));
+        // The contract label reads format · producer · agent, from the descriptor.
+        var labels = page.FindAll(".node-row__contract").Select(c => c.TextContent.Trim()).ToList();
+        Assert.Contains("mine · custom · custom-json@1", labels);
+        Assert.Contains("concept-list · attested · concept-extraction@1", labels);
+        // The chip, in its own kind.
+        Assert.Contains("1 custom-shape block", Chips(page));
+        Assert.Empty(page.FindAll(".provenance-chip--unattested"));
+        // The provenance row and the legend.
+        var row = page.Find(".provenance-custom-shape");
+        Assert.Contains("Assessment shape · format mine · hash 0123456789ab · served by custom-json@1, attested", row.TextContent);
+        Assert.Empty(page.FindAll(".provenance-unattested"));
+        Assert.Contains("Custom shape", page.Find(".provenance-help__list").TextContent);
+        // The completion facts beside the hashes.
+        Assert.Contains("invalid: $.items: expected array", page.Find(".node-row__validation--invalid").TextContent);
+        Assert.Equal("+1 placed", page.Find(".node-row__appended").TextContent.Trim());
+        Assert.Equal("1 excluded", page.Find(".node-row__excluded").TextContent.Trim());
+        Assert.Contains("slot stray — no read in this node's prompt sanctions [[slot:stray]]", page.Find(".node-row__excluded").GetAttribute("title"));
+        // The agents row lists the 25 formats by their descriptor agents.
+        Assert.Contains("concept-list → concept-extraction@1", page.Find(".provenance-agents").TextContent);
+        Assert.Contains("mine → custom-json@1", page.Find(".provenance-agents").TextContent);
+    }
+
+    [Fact]
+    public void TheUnversionedHashTooltip_NamesSixDefinitions()
+    {
+        WithEngine();
+        WithJob(3,
+            nodes: new[] { new ConsultGenerationNodeDescriptor("digest", "Digest", OutputContract: "concept-list") },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["digest"] = new("digest", "Digest", "Completed", "in-1", "out-1", DateTimeOffset.UtcNow, null)
+            });
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Contains("one of definitions 1–6", page.Find(".node-row__unversioned").GetAttribute("title"));
+    }
+
     [Fact]
     public void ACatalogOnlyRun_CarriesNoUnattestedMarker()
     {

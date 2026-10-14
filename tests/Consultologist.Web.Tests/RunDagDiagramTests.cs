@@ -29,6 +29,27 @@ public class RunDagDiagramTests
         new(id, id, status, "i", "o", null, null);
 
     [Fact]
+    public void A25Node_DrawsItsReads_AndNamesItsFormat()
+    {
+        // B7 #1006: at 25 the edges are the derived reads (no bindings), and
+        // the label carries the format and producer.
+        var diagram = RunDagDiagram.Build(Job(
+            nodes: new ConsultGenerationNodeDescriptor[]
+            {
+                new("extract", "Extracting", "p", Format: "concept-list", Producer: "attested"),
+                new("assessment", "Assessing", "p", Format: "prose", Producer: "attested", Reads: new[] { "extract" }),
+            },
+            outputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["extract"] = Row("extract", "Completed"),
+                ["assessment"] = Row("assessment", "Running"),
+            }));
+
+        Assert.Contains("extract --> assessment", diagram);
+        Assert.Contains("prose · attested", diagram);
+    }
+
+    [Fact]
     public void TheFiveStates_WearTheRailsColours()
     {
         var diagram = RunDagDiagram.Build(Job(
