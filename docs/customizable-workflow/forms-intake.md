@@ -152,3 +152,28 @@ and reversal, are the fenced block in
 [the spike record § 2.5](forms-intake-spike.md); the operator paragraph
 in [CONFIGURATION.md](../CONFIGURATION.md) says what each step does and
 why. Done 2026-08-28 for `consultologist.ai`.
+
+> **Amendment, 2026-10-14 (#1005 — specVersion 25 B6: the object form slot;
+> inert until B7 runs 25).** Three changes to the held response, none visible
+> to a flow that posts strings:
+>
+> - **The held payload is version 2 and holds JSON values**, keyed by slot id.
+>   The intake's `inputs` take any JSON value — a string as ever, or a number,
+>   a boolean, an array, or an object — with a null refused by name and the
+>   256 KiB cap over the value's JSON text. A version-1 blob (strings only)
+>   reads as it was written; nothing rewrites it.
+> - **An object `form` slot is filled from a JSON object under the slot's id**
+>   (design § 9; decided 2026-10-14: the sender groups the fields, so the
+>   response's shape is the slot's shape and the same fill serves #991's
+>   questionnaire file). Each member is coerced to its declared field's type,
+>   any shape deep; an undeclared member, a null member and a **missing
+>   required field** refuse the start by name — the run-at-once door and the
+>   starter's verification through one union-aware call. The slot is stamped
+>   `form-response` once, over its carrier. A flow that answers questions one
+>   key at a time needs one grouping step (a Compose) to fill an object slot.
+> - **The picker's one-response read flattens** a version-2 value to the
+>   string it always served (a number's spelling, `true`/`false`, compact JSON
+>   text for an array or an object), so the Create page's table and the Web's
+>   mirrored coercion are untouched; filling an object slot from the picker is
+>   the C layer's.
+
