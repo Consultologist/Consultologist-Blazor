@@ -106,6 +106,49 @@ public class EndpointUrlTests
     }
 
     [Fact]
+    public async Task TheWorkflowService_ReadsTheFormatsCatalogue_AuthenticatedAtTheChosenLocation()
+    {
+        // v25 (C1 #1007): GET WorkflowFormats is authorised (CanUseApp), so the request
+        // carries the bearer; the view binds the server's PascalCase records.
+        var handler = new RecordingHandler("""
+            { "Version": "v2026.10.1", "Ref": "formats@v2026.10.1",
+              "Formats": [ { "Id": "classification", "Type": "enum", "Producer": "attested", "OutputMacros": false,
+                             "Parameters": { "values": { "Kind": "values" } }, "File": "formats/classification.json",
+                             "FormatHash": "abc", "AgentName": "classification", "AgentVersion": 1, "Attested": true } ],
+              "Custom": { "AgentName": "custom-json", "AgentVersion": 1 } }
+            """);
+        var service = new WorkflowEndpointService(new HttpClient(handler), Configuration, West, Tokens(), new TestNavigation(), Substitute.For<ILogger<WorkflowEndpointService>>());
+
+        var formats = await service.GetFormatsAsync();
+
+        Assert.Equal("https://west.ca.api.consultologist.ai/api/WorkflowFormats", handler.Requested?.ToString());
+        Assert.Equal("formats@v2026.10.1", formats?.Ref);
+        var entry = Assert.Single(formats!.Formats!);
+        Assert.Equal("values", entry.Parameters!["values"].Kind);
+        Assert.Equal(1, entry.AgentVersion);
+        Assert.Equal("custom-json", formats.Custom?.AgentName);
+
+        // Cached: a second read does not go to the network.
+        var again = await service.GetFormatsAsync();
+        Assert.Same(formats, again);
+    }
+
+    [Fact]
+    public async Task TheWorkflowService_FormatsCatalogue_IsNullWhenTheEndpointFails()
+    {
+        var handler = new FailingHandler();
+        var service = new WorkflowEndpointService(new HttpClient(handler), Configuration, West, Tokens(), new TestNavigation(), Substitute.For<ILogger<WorkflowEndpointService>>());
+
+        Assert.Null(await service.GetFormatsAsync());
+    }
+
+    private sealed class FailingHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+    }
+
+    [Fact]
     public async Task TheDocumentService_CallsTheChosenLocation()
     {
         var handler = new RecordingHandler();
