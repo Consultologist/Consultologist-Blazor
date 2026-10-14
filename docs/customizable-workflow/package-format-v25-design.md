@@ -618,6 +618,32 @@ iterating it and the nodes fanning it, each row opening that pane; Remove is ref
 read. C4's Reads list and "every reference resolves" desk reuse the same walk. Without the
 catalogue the list says what it cannot see (a prompt on a catalogue format is not walked).)*
 
+*(C3 #1009, 2026-10-14 — the macro pane, the node pane's Macros section and the Deliverables
+pane's prepend/append are built, gated on 25. **Macro pane:** the `instruction` (mandatory;
+a new macro is born with it blank and the desk refuses it until written — explicit init);
+**Instances** in Attached-to's place — a row per node instance (before/after this node's
+output, fan item, applies-when, remove) and per deliverable instance (prepend/append, gated
+when, detach) on the panes' own handlers, attach pickers for a node whose format takes output
+macros with a free identity and for a deliverable not yet listing it; **Read inline at** from
+the engine's walk (`macro.<id>.prompt` as a slot, `macro.<id>.text`), each row a link.
+**Node pane:** one Macros section — instances placed around the output, grouped before then
+after with reorder within each placement, attach only where the format takes output macros,
+and the **Inline slots** the walk derives from the prompt with the validator's warning for
+folder items lacking the read. **Deliverables pane:** document scope only — prepend/append
+with gated when; a row born from the picker rests **unplaced until chosen** (decision: the
+registry refuses an at-less instance, so the editor never defaults it; a node instance is born
+`before`, the format's own default); the one-line note naming the node-placed instances the
+document composes, each node a link (#983, absorbed); the table composed under `deliverables`
+at 25. **Desk:** the registry's macro sentences word for word, with a classification-format
+node counting as a classifier (its `with.values`) for every condition builder — the node-level
+grammar's `node:` operand. Decisions: the four ≤24 macro suites stay untouched as the parity
+proof and a 25 suite covers the new panes (the rework the sub-issue named waits for A5/C6);
+removing a library macro now strips its node instances at every version, as the deliverables'
+references already left (a dangling `nodes[].macros` id was a latent refusal). Found: the
+registry doc's `when` examples spell `input:<id>`, but the condition grammar takes a bare
+input id (`kind == new`) — the fixture and the builder use the bare form; the doc is to be
+corrected.)*
+
 ## 14. Migration 24 → 25 (the editor's upgrade; mechanical, byte-identical in what the model sees)
 
 | At 24 | At 25 |

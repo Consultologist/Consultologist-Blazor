@@ -770,7 +770,10 @@ public static class EditorFixtures
     /// values through with, a prose node with a top-level failIfEmpty, a node on a
     /// package-local custom format, a terms-subset check over the concept-list node,
     /// a node fanning a snippet folder (two items, one gated on the kind input — C2
-    /// #1008), a single snippet read by the assessment prompt, an aggregator, and one deliverable naming
+    /// #1008), a single snippet read by the assessment prompt, two macros (C3 #1009:
+    /// closing after the assessment and prepended to the deliverable when kind is new;
+    /// tool_note before the hpi section item and read as a slot by the assessment
+    /// prompt), an aggregator, and one deliverable naming
     /// the aggregator and the check. No kind, no output, no schemas; formats[]
     /// declares the local format. Every node feeds the deliverable: the prose
     /// node reads the concept-list and the medications; the classifier is exempt.
@@ -787,6 +790,10 @@ public static class EditorFixtures
             { "id": "kind", "label": "Kind", "required": true, "type": "enum", "values": ["new", "follow_up"] }
           ],
           "formats": [ { "id": "medication_list", "file": "formats/medication_list.json" } ],
+          "macros": [
+            { "id": "closing", "label": "Closing", "file": "macros/closing.md", "instruction": "Add a closing line if the plan changed." },
+            { "id": "tool_note", "label": "Tool note", "file": "macros/tool_note.md", "instruction": "Note the tools used when a procedure is described." }
+          ],
           "prompts": [
             { "id": "extract", "file": "prompts/extract.md", "variables": [] },
             { "id": "scope", "file": "prompts/scope.md", "variables": [] },
@@ -798,20 +805,22 @@ public static class EditorFixtures
           "nodes": [
             { "id": "extract", "label": "Extract concepts", "prompt": "extract", "format": "concept-list", "onInvalid": "fail" },
             { "id": "scope", "label": "Scope", "prompt": "scope", "format": "classification", "onInvalid": "fail", "with": { "values": ["in_scope", "out_of_scope"] } },
-            { "id": "assessment", "label": "Assessment", "prompt": "assessment", "format": "prose", "failIfEmpty": "Nothing to assess." },
+            { "id": "assessment", "label": "Assessment", "prompt": "assessment", "format": "prose", "failIfEmpty": "Nothing to assess.", "macros": [ { "id": "closing", "at": "after" } ] },
             { "id": "meds", "label": "Medications", "prompt": "meds", "format": "medication_list", "onInvalid": "flag" },
             { "id": "coverage", "label": "Coverage", "format": "terms-subset", "onInvalid": "fail", "with": { "of": "node.extract", "in": "node.extract", "failWith": "The note names problems the source does not." } },
-            { "id": "section_notes", "label": "Section notes", "prompt": "section", "format": "prose", "forEach": "snippet:sections" },
+            { "id": "section_notes", "label": "Section notes", "prompt": "section", "format": "prose", "forEach": "snippet:sections", "macros": [ { "id": "tool_note", "at": "before", "forItem": "hpi" } ] },
             { "id": "all", "label": "Everything", "aggregate": ["node:assessment", "node:section_notes"] }
           ],
-          "deliverables": [ { "id": "consult", "node": "node:all", "label": "Consultation note", "check": "node.coverage" } ]
+          "deliverables": [ { "id": "consult", "node": "node:all", "label": "Consultation note", "check": "node.coverage", "macros": [ { "id": "closing", "at": "prepend", "when": "kind == new" } ] } ]
         }
         """, 25,
         ("prompts/extract.md", "Extract the concepts from:\n{{ input.notes }}"),
         ("prompts/scope.md", "Is this in scope? {{ input.notes }}"),
-        ("prompts/assessment.md", "Assess.\n{{ snippet.standards.text }}\n{{ input.notes }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}\n{{ for m in node.meds.value.medications }}- {{ m.name }}\n{{ end }}"),
+        ("prompts/assessment.md", "Assess.\n{{ snippet.standards.text }}\n{{ macro.tool_note.prompt }}\n{{ input.notes }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}\n{{ for m in node.meds.value.medications }}- {{ m.name }}\n{{ end }}"),
         ("prompts/meds.md", "List the medications in:\n{{ input.notes }}"),
         ("prompts/section.md", "{{ item.name }}: {{ item.text }}"),
+        ("macros/closing.md", "Closing: {{ profile.name }}."),
+        ("macros/tool_note.md", "Tools used: see the procedure note."),
         ("snippets/standards.md", "Follow the local standards."),
         ("snippets/sections/index.json", """{ "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md" }, { "id": "plan", "name": "Plan", "file": "plan.md", "when": "kind == new" } ] }"""),
         ("snippets/sections/hpi.md", "History: {{ input.notes }}"),

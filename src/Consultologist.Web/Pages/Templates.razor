@@ -1470,7 +1470,11 @@
                                     @if (EffectiveSpecVersion >= 11)
                                     {
                                         <section class="deliverable-section" data-v11-for="@deliverable.Id">
-                                            <span class="deliverable-section__head">Appended content</span>
+                                            <span class="deliverable-section__head">@(At25 ? "Macros" : "Appended content")</span>
+                                            @if (At25)
+                                            {
+                                                <p class="muted-text">Document scope: prepended before the sections or appended after them, each always or when its condition holds. A macro placed around a node's output lives on that node's pane.</p>
+                                            }
                                             @{ var resultMacros = deliverable.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>(); }
                                             @foreach (var (macroEntry, macroIndex) in resultMacros.Select((m, i) => (m, i)))
                                             {
@@ -1481,7 +1485,24 @@
                                                                   Title="@($"Edit macro {macroId}")"
                                                                   aria-label="@($"Edit macro {macroId}")"
                                                                   @onclick="() => SelectMacro(macroId)"><code>@macroId</code></FluentButton>
-                                                    @if (EffectiveSpecVersion >= 12)
+                                                    @if (At25)
+                                                    {
+                                                        @* v25 (C3 #1009): document scope only — prepend | append; a row
+                                                           born from the picker rests on "choose…" until the author picks
+                                                           (the registry refuses an at-less instance). *@
+                                                        <FluentSelect TOption="string" class="binding-row__select result-macro-placement"
+                                                                Value="@(macroEntry.At ?? "")"
+                                                                ValueChanged="@(v => SetDeliverableMacroAtAsync(deliverable, macroId, v))"
+                                                                aria-label="@($"Placement for macro {macroId} in deliverable {deliverable.Id}")">
+                                                            @if (macroEntry.At == null)
+                                                            {
+                                                                <FluentOption TOption="string" Value="">choose a placement…</FluentOption>
+                                                            }
+                                                            <FluentOption TOption="string" Value="prepend">prepend</FluentOption>
+                                                            <FluentOption TOption="string" Value="append">append</FluentOption>
+                                                        </FluentSelect>
+                                                    }
+                                                    else if (EffectiveSpecVersion >= 12)
                                                     {
                                                         @* v12 § 4: where the entry lands — this deliverable's
                                                            aggregator's sources; appended is the bare v11 form. *@
@@ -1565,6 +1586,19 @@
                                             @if (resultMacros.Count == 0 && EffectiveMacros.Count == 0)
                                             {
                                                 <span class="muted-text">No macros declared yet. Define one in the Macros pane, then append it here.</span>
+                                            }
+                                            @if (At25 && NodePlacedMacros(deliverable) is { Count: > 0 } nodePlaced)
+                                            {
+                                                @* #983: the node-placed instances this document composes, said here
+                                                   and edited there — each node name a link to its pane. *@
+                                                <p class="muted-text deliverable-node-macros">
+                                                    Also placed on nodes:
+                                                    @for (var placedIndex = 0; placedIndex < nodePlaced.Count; placedIndex++)
+                                                    {
+                                                        var placed = nodePlaced[placedIndex];
+                                                        <span>@placed.MacroId @(placed.IsAfter ? "after" : "before") <button type="button" class="snippet-readers__row" @onclick="() => Select(NodeKeyPrefix + placed.NodeId)">'@placed.NodeLabel'</button>@(placedIndex < nodePlaced.Count - 1 ? "," : "")</span>
+                                                    }
+                                                </p>
                                             }
                                         </section>
 
@@ -1727,11 +1761,24 @@
                         <div class="pane-header">
                             <div>
                                 <h3 class="panel-title">New macro</h3>
-                                <p class="muted-text">
-                                    A named text the package owns, appended after a deliverable's aggregated
-                                    sections when that deliverable lists it (Deliverables pane). Publish stays
-                                    blocked until some deliverable uses it.
-                                </p>
+                                @if (At25)
+                                {
+                                    <p class="muted-text">
+                                        A named Scriban text the package owns, placed before or after a node's
+                                        output, prepended or appended to a deliverable, or read inline as
+                                        <code>{{ macro.&lt;id&gt;.text }}</code> / <code>{{ macro.&lt;id&gt;.prompt }}</code> (its slot).
+                                        It carries an instruction — what tells the model when to emit its marker.
+                                        Publish stays blocked until the instruction is written and something places or reads it.
+                                    </p>
+                                }
+                                else
+                                {
+                                    <p class="muted-text">
+                                        A named text the package owns, appended after a deliverable's aggregated
+                                        sections when that deliverable lists it (Deliverables pane). Publish stays
+                                        blocked until some deliverable uses it.
+                                    </p>
+                                }
                             </div>
                         </div>
                         @if (newMacroError != null)
@@ -2051,24 +2098,61 @@
                            "Appended content". A prelude is the trivial case (before, always). *@
                         @if (EffectiveSpecVersion >= 23 && selectedNode.Prompt is not null)
                         {
+                            @* v25 (C3 #1009): ONE Macros section — the node's instances placed around its
+                               OUTPUT (before-blocks in order, the reply, then after-blocks), grouped by
+                               placement with reorder within each; attach only where the format takes
+                               output macros; and the inline slots the walk derives from the prompt. The
+                               v23 prompt-side composition and the #966 Output-macros view are ≤24. *@
                             <div class="node-section">
                                 <span class="node-section__head">Macros</span>
-                                <p class="muted-text">Compose a library macro into this node's prompt. A before block precedes the prompt, an after block follows it; each applies always, or when its condition holds.</p>
-                                @{ var nodeMacros = EffectiveNodeMacros(selectedNode); }
-                                @for (var macroPosition = 0; macroPosition < nodeMacros.Count; macroPosition++)
+                                @if (At25)
+                                {
+                                    <p class="muted-text">Placed around this node's output: before-blocks in order, the reply, then after-blocks. Each applies always, or when its condition holds.</p>
+                                }
+                                else
+                                {
+                                    <p class="muted-text">Compose a library macro into this node's prompt. A before block precedes the prompt, an after block follows it; each applies always, or when its condition holds.</p>
+                                }
+                                @{
+                                    var nodeMacros = EffectiveNodeMacros(selectedNode);
+                                    // At 25 the rows are grouped: every before-block, then every after-block,
+                                    // each keeping its index into the node's list for the handlers.
+                                    var nodeMacroOrder = At25
+                                        ? Enumerable.Range(0, nodeMacros.Count).Where(i => !nodeMacros[i].IsAfter)
+                                            .Concat(Enumerable.Range(0, nodeMacros.Count).Where(i => nodeMacros[i].IsAfter)).ToList()
+                                        : Enumerable.Range(0, nodeMacros.Count).ToList();
+                                    var nodeTakesOutputMacros = !At25 || FormatTakesOutputMacros(selectedNode);
+                                }
+                                @foreach (var macroPosition in nodeMacroOrder)
                                 {
                                     var index = macroPosition;
                                     var entry = nodeMacros[index];
-                                    <div class="node-macro-row">
+                                    <div class="node-macro-row" data-at="@(entry.IsAfter ? "after" : "before")">
                                         <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source"
                                                       @onclick="() => SelectMacro(entry.Id)">@entry.Id</FluentButton>
                                         <FluentSelect TOption="string" class="binding-row__select"
                                                       Value="@(entry.IsAfter ? "after" : "before")"
                                                       ValueChanged="@(v => SetNodeMacroPlacementAsync(selectedNode.Id, index, v))"
                                                       aria-label="@($"Placement for macro {entry.Id} on {selectedNode.Id}")">
-                                            <FluentOption TOption="string" Value="before">before the prompt</FluentOption>
-                                            <FluentOption TOption="string" Value="after">after the prompt</FluentOption>
+                                            <FluentOption TOption="string" Value="before">@(At25 ? "before this node's output" : "before the prompt")</FluentOption>
+                                            <FluentOption TOption="string" Value="after">@(At25 ? "after this node's output" : "after the prompt")</FluentOption>
                                         </FluentSelect>
+                                        @if (At25)
+                                        {
+                                            @* Reorder within the placement: the neighbour of the same side. *@
+                                            var siblings = nodeMacroOrder.Where(i => nodeMacros[i].IsAfter == entry.IsAfter).ToList();
+                                            var sibling = siblings.IndexOf(index);
+                                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button node-macro-up"
+                                                          Disabled="@(sibling <= 0)" Title="Move up"
+                                                          aria-label="@($"Move macro {entry.Id} up on {selectedNode.Id}")"
+                                                          IconStart="@(new Icons.Regular.Size20.ArrowUp())"
+                                                          @onclick="() => MoveNodeMacroAsync(selectedNode.Id, index, siblings[Math.Max(sibling - 1, 0)])" />
+                                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button node-macro-down"
+                                                          Disabled="@(sibling < 0 || sibling >= siblings.Count - 1)" Title="Move down"
+                                                          aria-label="@($"Move macro {entry.Id} down on {selectedNode.Id}")"
+                                                          IconStart="@(new Icons.Regular.Size20.ArrowDown())"
+                                                          @onclick="() => MoveNodeMacroAsync(selectedNode.Id, index, siblings[Math.Min(sibling + 1, siblings.Count - 1)])" />
+                                        }
                                         @* v24 (#957): on a node that fans a data: collection, compose this
                                            macro for one of its items only (the Deliverables pane's forItem,
                                            on the prompt side). Label = the item's name, value = its id. *@
@@ -2094,23 +2178,75 @@
                                 }
                                 @if (nodeMacros.Count == 0)
                                 {
-                                    <p class="muted-text">No macros composed into this node's prompt.</p>
+                                    <p class="muted-text">@(At25 ? "No macro placed around this node's output." : "No macros composed into this node's prompt.")</p>
                                 }
-                                @if (EffectiveMacros.Count > 0)
+                                @{
+                                    // At 25 a macro whose both plain identities (before and after, no
+                                    // forItem) are already on the node is not offered again.
+                                    var attachableLibraryMacros = At25
+                                        ? EffectiveMacros.Where(m =>
+                                            !(nodeMacros.Any(e => e.Id == m.Id && e.ForItem == null && !e.IsAfter)
+                                              && nodeMacros.Any(e => e.Id == m.Id && e.ForItem == null && e.IsAfter))).ToList()
+                                        : EffectiveMacros.ToList();
+                                }
+                                @if (At25 && !nodeTakesOutputMacros)
+                                {
+                                    <p class="muted-text node-macros-refused">Format '@selectedNode.Format' takes no output macros; only a text format with outputMacros may.</p>
+                                }
+                                else if (attachableLibraryMacros.Count > 0)
                                 {
                                     <FluentSelect TOption="string" class="binding-row__select" Value=""
                                                   ValueChanged="@(v => AttachNodeMacroAsync(selectedNode.Id, v))"
                                                   aria-label="@($"Attach a macro to {selectedNode.Id}")">
                                         <FluentOption TOption="string" Value="">attach a macro…</FluentOption>
-                                        @foreach (var libraryMacro in EffectiveMacros)
+                                        @foreach (var libraryMacro in attachableLibraryMacros)
                                         {
                                             <FluentOption TOption="string" Value="@libraryMacro.Id">@libraryMacro.Id</FluentOption>
                                         }
                                     </FluentSelect>
                                 }
-                                else
+                                else if (EffectiveMacros.Count == 0)
                                 {
                                     <p class="muted-text">No macros declared yet — add one in the Macros section first.</p>
+                                }
+                                @if (At25)
+                                {
+                                    @* Derived, read-only: the slots this node's prompt reaches
+                                       (macro.<id>.prompt, directly or through what it reads), from the walk. *@
+                                    var inlineSlots = PackageWalk?.PromptReadsOf(selectedNode.Id) ?? new HashSet<string>(StringComparer.Ordinal);
+                                    <span class="node-section__head">Inline slots</span>
+                                    @if (inlineSlots.Count > 0)
+                                    {
+                                        <ul class="snippet-readers node-inline-slots" aria-label="@($"Inline slots of {selectedNode.Id}")">
+                                            @foreach (var slotMacroId in inlineSlots.Order(StringComparer.Ordinal))
+                                            {
+                                                var slotMacro = EffectiveMacros.FirstOrDefault(m => m.Id == slotMacroId);
+                                                <li>
+                                                    <button type="button" class="snippet-readers__row" @onclick="() => SelectMacro(slotMacroId)">macro.@(slotMacroId).prompt@(slotMacro is null ? "" : $" — {slotMacro.Label}")</button>
+                                                </li>
+                                            }
+                                        </ul>
+                                        @if (NodeFanItems(selectedNode) is { Count: > 0 } slotFanItems && FanFolderOf(selectedNode.ForEach) is { } slotFolder)
+                                        {
+                                            @* The validator's warning, word for word: items whose text carries no read emit no marker. *@
+                                            foreach (var slotMacroId in inlineSlots.Order(StringComparer.Ordinal))
+                                            {
+                                                var lacking = slotFanItems.Where(item => !(PackageWalk?.PromptReadsOf(selectedNode.Id, item.Id).Contains(slotMacroId) ?? false)).Select(item => item.Id).ToList();
+                                                if (lacking.Count > 0)
+                                                {
+                                                    <p class="muted-text node-inline-slots__warning">Node '@selectedNode.Id' fans snippet folder '@slotFolder'; items @string.Join(", ", lacking) carry no macro.@(slotMacroId).prompt read, so no marker is emitted for them.</p>
+                                                }
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <p class="muted-text">No inline slot — read <code>{{ macro.&lt;id&gt;.prompt }}</code> in the prompt where a slot goes.</p>
+                                    }
+                                    @if (formatsCatalog is null)
+                                    {
+                                        <p class="muted-text">The format catalogue is unavailable, so a prompt on a catalogue format is not walked.</p>
+                                    }
                                 }
                             </div>
                         }
@@ -2122,7 +2258,7 @@
                            THIS node; moving one elsewhere takes it out of this view. The section
                            renders whenever a deliverable aggregates this node (anchors arrive at 12).
                            Reordering stays in Deliverables, as the macro pane decided (#940). *@
-                        @if (EffectiveSpecVersion >= 12 && DeliverablesAggregating(selectedNode.Id) is { Count: > 0 } aggregatingDeliverables)
+                        @if (!At25 && EffectiveSpecVersion >= 12 && DeliverablesAggregating(selectedNode.Id) is { Count: > 0 } aggregatingDeliverables)
                         {
                             var anchoredOutputMacros = OutputMacrosAnchoredTo(selectedNode.Id);
                             <div class="node-section">
@@ -2497,6 +2633,19 @@
                                        @onchange="args => RelabelMacroAsync(macro.Id, args.Value?.ToString())"
                                        aria-label="@($"Label for macro {macro.Id}")" />
                             </label>
+                            @if (At25)
+                            {
+                                @* v25 (C3 #1009): the instruction — mandatory at 25; what the model is told
+                                   where {{ macro.<id>.prompt }} is read, ahead of the format's mechanics sentence. *@
+                                <label class="node-field macro-instruction-field">
+                                    <span>instruction</span>
+                                    <FluentTextArea class="macro-instruction" Rows="3"
+                                                    Value="@MacroInstruction(macro)"
+                                                    ValueChanged="@(v => SetMacroInstructionAsync(macro.Id, v))"
+                                                    aria-label="@($"Instruction for macro {macro.Id}")" />
+                                </label>
+                                <p class="muted-text">Tells the model when to emit this macro's marker where its slot is read (<code>{{ macro.@(macro.Id).prompt }}</code>). Required at specVersion 25.</p>
+                            }
                             @{
                                 @* #936: which deliverables this macro is attached to — used by the
                                    Remove-macro button's reach note (below) and, since #940, edited
@@ -2509,126 +2658,290 @@
                                    this macro's [[slot:id]] marker — computed once; a slot row warns when false. *@
                                 var slotInstructed = SlotHasInstruction(macro.Id);
                             }
-                            @* #940: the macro's attachment, edited from the macro's side — one row per
-                               deliverable it is attached to (placement + gated-when + detach), plus an
-                               attach-to-a-deliverable picker. Per-deliverable ORDERING (↑↓) stays in the
-                               Deliverables pane only, where the sibling macros are visible. *@
-                            <div class="macro-attachments">
-                                <span class="macro-attachments__head">Attached to</span>
-                                @foreach (var attachedResult in EffectiveResults.Where(r => (r.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).Any(m => m.Id == macro.Id)))
-                                {
-                                    var result = attachedResult;
-                                    var entry = result.Macros!.First(m => m.Id == macro.Id);
-                                    <div class="result-macro">
-                                        <span class="result-macro-row">
-                                            <FluentButton Appearance="Appearance.Stealth" Class="result-macro__id"
-                                                          Title="@($"Edit deliverable {result.Id} in the Deliverables pane")"
-                                                          aria-label="@($"Edit deliverable {result.Id} in the Deliverables pane")"
-                                                          @onclick="() => Select(ResultsKey)"><code>@result.Id</code></FluentButton>
+                            @if (!At25)
+                            {
+                                @* #940: the macro's attachment, edited from the macro's side — one row per
+                                   deliverable it is attached to (placement + gated-when + detach), plus an
+                                   attach-to-a-deliverable picker. Per-deliverable ORDERING (↑↓) stays in the
+                                   Deliverables pane only, where the sibling macros are visible. *@
+                                <div class="macro-attachments">
+                                    <span class="macro-attachments__head">Attached to</span>
+                                    @foreach (var attachedResult in EffectiveResults.Where(r => (r.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).Any(m => m.Id == macro.Id)))
+                                    {
+                                        var result = attachedResult;
+                                        var entry = result.Macros!.First(m => m.Id == macro.Id);
+                                        <div class="result-macro">
+                                            <span class="result-macro-row">
+                                                <FluentButton Appearance="Appearance.Stealth" Class="result-macro__id"
+                                                              Title="@($"Edit deliverable {result.Id} in the Deliverables pane")"
+                                                              aria-label="@($"Edit deliverable {result.Id} in the Deliverables pane")"
+                                                              @onclick="() => Select(ResultsKey)"><code>@result.Id</code></FluentButton>
+                                                @if (EffectiveSpecVersion >= 12)
+                                                {
+                                                    <FluentSelect TOption="string" class="binding-row__select result-macro-placement"
+                                                            Value="@(entry.IsSlot ? "slot" : entry.Before != null ? $"before|{entry.Before}" : entry.After != null ? $"after|{entry.After}" : "")"
+                                                            ValueChanged="@(v => SetMacroPlacementAsync(result, macro.Id, v))"
+                                                            aria-label="@($"Placement for macro {macro.Id} in deliverable {result.Id}")">
+                                                        <FluentOption TOption="string" Value="">appended</FluentOption>
+                                                        @foreach (var placementSource in DeliverableAggregateSources(result))
+                                                        {
+                                                            <FluentOption TOption="string" Value="@($"before|{placementSource}")">before @placementSource</FluentOption>
+                                                            <FluentOption TOption="string" Value="@($"after|{placementSource}")">after @placementSource</FluentOption>
+                                                        }
+                                                        @if (EffectiveSpecVersion >= 20)
+                                                        {
+                                                            <FluentOption TOption="string" Value="slot">slot (the model places it)</FluentOption>
+                                                        }
+                                                    </FluentSelect>
+                                                    @if (EffectiveSpecVersion >= 19 && !entry.IsSlot)
+                                                    {
+                                                        var fanItems = MacroAnchorFanItems(entry);
+                                                        if (fanItems.Count > 0)
+                                                        {
+                                                            <FluentSelect TOption="string" class="binding-row__select result-macro-foritem"
+                                                                    Value="@(entry.ForItem ?? "")"
+                                                                    ValueChanged="@(v => SetMacroForItemAsync(result, macro.Id, v))"
+                                                                    aria-label="@($"Fan item for macro {macro.Id} in deliverable {result.Id}")">
+                                                                <FluentOption TOption="string" Value="">— whole section —</FluentOption>
+                                                                @foreach (var fanItem in fanItems)
+                                                                {
+                                                                    <FluentOption TOption="string" Value="@fanItem.Id">@fanItem.Name</FluentOption>
+                                                                }
+                                                            </FluentSelect>
+                                                        }
+                                                    }
+                                                }
+                                                <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-detach" Title="@($"Detach from {result.Id}")"
+                                                              aria-label="@($"Detach macro {macro.Id} from deliverable {result.Id}")"
+                                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                              @onclick="() => RemoveResultMacroAsync(result, macro.Id)" />
+                                            </span>
                                             @if (EffectiveSpecVersion >= 12)
                                             {
-                                                <FluentSelect TOption="string" class="binding-row__select result-macro-placement"
-                                                        Value="@(entry.IsSlot ? "slot" : entry.Before != null ? $"before|{entry.Before}" : entry.After != null ? $"after|{entry.After}" : "")"
-                                                        ValueChanged="@(v => SetMacroPlacementAsync(result, macro.Id, v))"
-                                                        aria-label="@($"Placement for macro {macro.Id} in deliverable {result.Id}")">
-                                                    <FluentOption TOption="string" Value="">appended</FluentOption>
-                                                    @foreach (var placementSource in DeliverableAggregateSources(result))
+                                                <span class="result-macro-when">
+                                                    @ConditionField(("Gated when", MacroWhenTarget(result, entry), "Always produced"))
+                                                </span>
+                                            }
+                                            @if (EffectiveSpecVersion >= 20 && entry.IsSlot)
+                                            {
+                                                @* #941: a slot is placed by the model emitting a [[slot:id]]
+                                                   marker, which a section's prompt/standard must instruct. Scaffold
+                                                   that instruction — the marker + the guard + the gate rendered
+                                                   best-effort — editable, then copied to paste where it belongs. *@
+                                                var slotKey = $"{result.Id}\n{macro.Id}";
+                                                <div class="slot-instruction">
+                                                    @* #942: a slot no section instructs never fills — warn, with the
+                                                       fix (the scaffold below) right here. *@
+                                                    @if (!slotInstructed)
                                                     {
-                                                        <FluentOption TOption="string" Value="@($"before|{placementSource}")">before @placementSource</FluentOption>
-                                                        <FluentOption TOption="string" Value="@($"after|{placementSource}")">after @placementSource</FluentOption>
+                                                        <p class="slot-instruction__warning">No section instructs this slot yet — add <code>[[slot:@macro.Id]]</code> to a prompt, standard, or prelude (the snippet below), or it will never fill.</p>
                                                     }
-                                                    @if (EffectiveSpecVersion >= 20)
+                                                    <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit result-slot-instruction"
+                                                                  aria-label="@($"Slot instruction for macro {macro.Id} in deliverable {result.Id}")"
+                                                                  @onclick="() => ToggleSlotSnippet(slotKey, macro.Id, entry.When)">Slot instruction</FluentButton>
+                                                    @if (_slotSnippetShown.Contains(slotKey))
                                                     {
-                                                        <FluentOption TOption="string" Value="slot">slot (the model places it)</FluentOption>
+                                                        <FluentTextArea class="slot-instruction__text" Rows="4"
+                                                                Value="@SlotSnippetText(slotKey)"
+                                                                ValueChanged="@(v => _slotSnippetText[slotKey] = v ?? string.Empty)"
+                                                                aria-label="@($"Slot instruction text for macro {macro.Id} in deliverable {result.Id}")" />
+                                                        <span class="slot-instruction__actions">
+                                                            <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit result-slot-copy"
+                                                                          @onclick="() => CopySlotInstructionAsync(slotKey)">Copy</FluentButton>
+                                                            <FluentButton Appearance="Appearance.Stealth" Class="result-slot-reset"
+                                                                          aria-label="@($"Reset slot instruction for macro {macro.Id} in deliverable {result.Id}")"
+                                                                          @onclick="() => _slotSnippetText[slotKey] = BuildSlotInstruction(macro.Id, entry.When)">reset to generated</FluentButton>
+                                                        </span>
                                                     }
-                                                </FluentSelect>
-                                                @if (EffectiveSpecVersion >= 19 && !entry.IsSlot)
-                                                {
-                                                    var fanItems = MacroAnchorFanItems(entry);
-                                                    if (fanItems.Count > 0)
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                    @{
+                                        var attachableDocs = EffectiveResults
+                                            .Where(r => (r.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).All(m => m.Id != macro.Id))
+                                            .ToList();
+                                    }
+                                    @if (attachableDocs.Count > 0)
+                                    {
+                                        <FluentSelect TOption="string" class="binding-row__select result-macro-attach-doc"
+                                                Value=""
+                                                ValueChanged="@(v => AttachMacroToDeliverableAsync(macro.Id, v))"
+                                                aria-label="@($"Attach macro {macro.Id} to a deliverable")">
+                                            <FluentOption TOption="string" Value="">attach to a deliverable…</FluentOption>
+                                            @foreach (var candidateDeliverable in attachableDocs)
+                                            {
+                                                <FluentOption TOption="string" Value="@candidateDeliverable.Id">@candidateDeliverable.Label</FluentOption>
+                                            }
+                                        </FluentSelect>
+                                    }
+                                    @if (attachedTo.Count == 0)
+                                    {
+                                        <span class="muted-text">Not attached to any deliverable.</span>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                @* v25 (C3 #1009): the macro's instances — a row per node instance (placement
+                                   before/after this node's output, fan item, applies-when, remove) and per
+                                   deliverable instance (prepend/append, gated-when, detach), the node pane's
+                                   and the Deliverables pane's own handlers; attach pickers for both; then
+                                   where the macro is read inline, from the walk. *@
+                                <div class="macro-instances">
+                                    <span class="macro-attachments__head">Instances</span>
+                                    @foreach (var hostNode in EffectiveNodes)
+                                    {
+                                        var hostMacros = EffectiveNodeMacros(hostNode);
+                                        for (var hostIndex = 0; hostIndex < hostMacros.Count; hostIndex++)
+                                        {
+                                            if (hostMacros[hostIndex].Id != macro.Id)
+                                            {
+                                                continue;
+                                            }
+
+                                            var instanceIndex = hostIndex;
+                                            var instance = hostMacros[instanceIndex];
+                                            var instanceNode = hostNode;
+                                            <div class="result-macro macro-instance" data-instance-node="@instanceNode.Id">
+                                                <span class="result-macro-row">
+                                                    <FluentButton Appearance="Appearance.Stealth" Class="result-macro__id"
+                                                                  Title="@($"Edit node {instanceNode.Id}")"
+                                                                  aria-label="@($"Edit node {instanceNode.Id}")"
+                                                                  @onclick="() => Select(NodeKeyPrefix + instanceNode.Id)"><code>@instanceNode.Id</code></FluentButton>
+                                                    <FluentSelect TOption="string" class="binding-row__select macro-instance-at"
+                                                            Value="@(instance.IsAfter ? "after" : "before")"
+                                                            ValueChanged="@(v => SetNodeMacroPlacementAsync(instanceNode.Id, instanceIndex, v))"
+                                                            aria-label="@($"Placement for macro {macro.Id} on {instanceNode.Id}")">
+                                                        <FluentOption TOption="string" Value="before">before this node's output</FluentOption>
+                                                        <FluentOption TOption="string" Value="after">after this node's output</FluentOption>
+                                                    </FluentSelect>
+                                                    @if (NodeFanItems(instanceNode) is { Count: > 0 } instanceFanItems)
                                                     {
-                                                        <FluentSelect TOption="string" class="binding-row__select result-macro-foritem"
-                                                                Value="@(entry.ForItem ?? "")"
-                                                                ValueChanged="@(v => SetMacroForItemAsync(result, macro.Id, v))"
-                                                                aria-label="@($"Fan item for macro {macro.Id} in deliverable {result.Id}")">
-                                                            <FluentOption TOption="string" Value="">— whole section —</FluentOption>
-                                                            @foreach (var fanItem in fanItems)
+                                                        <FluentSelect TOption="string" class="binding-row__select node-macro-foritem"
+                                                                Value="@(instance.ForItem ?? "")"
+                                                                ValueChanged="@(v => SetNodeMacroForItemAsync(instanceNode.Id, instanceIndex, v))"
+                                                                aria-label="@($"Fan item for macro {macro.Id} on {instanceNode.Id}")">
+                                                            <FluentOption TOption="string" Value="">— every item —</FluentOption>
+                                                            @foreach (var fanItem in instanceFanItems)
                                                             {
-                                                                <FluentOption TOption="string" Value="@fanItem.Id">@fanItem.Name</FluentOption>
+                                                                <FluentOption TOption="string" Value="@fanItem.Id">@StandardName(fanItem)</FluentOption>
                                                             }
                                                         </FluentSelect>
                                                     }
-                                                }
-                                            }
-                                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-detach" Title="@($"Detach from {result.Id}")"
-                                                          aria-label="@($"Detach macro {macro.Id} from deliverable {result.Id}")"
-                                                          IconStart="@(new Icons.Regular.Size20.Dismiss())"
-                                                          @onclick="() => RemoveResultMacroAsync(result, macro.Id)" />
-                                        </span>
-                                        @if (EffectiveSpecVersion >= 12)
-                                        {
-                                            <span class="result-macro-when">
-                                                @ConditionField(("Gated when", MacroWhenTarget(result, entry), "Always produced"))
-                                            </span>
-                                        }
-                                        @if (EffectiveSpecVersion >= 20 && entry.IsSlot)
-                                        {
-                                            @* #941: a slot is placed by the model emitting a [[slot:id]]
-                                               marker, which a section's prompt/standard must instruct. Scaffold
-                                               that instruction — the marker + the guard + the gate rendered
-                                               best-effort — editable, then copied to paste where it belongs. *@
-                                            var slotKey = $"{result.Id}\n{macro.Id}";
-                                            <div class="slot-instruction">
-                                                @* #942: a slot no section instructs never fills — warn, with the
-                                                   fix (the scaffold below) right here. *@
-                                                @if (!slotInstructed)
-                                                {
-                                                    <p class="slot-instruction__warning">No section instructs this slot yet — add <code>[[slot:@macro.Id]]</code> to a prompt, standard, or prelude (the snippet below), or it will never fill.</p>
-                                                }
-                                                <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit result-slot-instruction"
-                                                              aria-label="@($"Slot instruction for macro {macro.Id} in deliverable {result.Id}")"
-                                                              @onclick="() => ToggleSlotSnippet(slotKey, macro.Id, entry.When)">Slot instruction</FluentButton>
-                                                @if (_slotSnippetShown.Contains(slotKey))
-                                                {
-                                                    <FluentTextArea class="slot-instruction__text" Rows="4"
-                                                            Value="@SlotSnippetText(slotKey)"
-                                                            ValueChanged="@(v => _slotSnippetText[slotKey] = v ?? string.Empty)"
-                                                            aria-label="@($"Slot instruction text for macro {macro.Id} in deliverable {result.Id}")" />
-                                                    <span class="slot-instruction__actions">
-                                                        <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit result-slot-copy"
-                                                                      @onclick="() => CopySlotInstructionAsync(slotKey)">Copy</FluentButton>
-                                                        <FluentButton Appearance="Appearance.Stealth" Class="result-slot-reset"
-                                                                      aria-label="@($"Reset slot instruction for macro {macro.Id} in deliverable {result.Id}")"
-                                                                      @onclick="() => _slotSnippetText[slotKey] = BuildSlotInstruction(macro.Id, entry.When)">reset to generated</FluentButton>
-                                                    </span>
-                                                }
+                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-detach"
+                                                                  Title="@($"Remove from {instanceNode.Id}")"
+                                                                  aria-label="@($"Remove macro {macro.Id} from {instanceNode.Id}")"
+                                                                  IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                                  @onclick="() => RemoveNodeMacroAsync(instanceNode.Id, instanceIndex)" />
+                                                </span>
+                                                <span class="result-macro-when">
+                                                    @ConditionField(("Applies when", NodeMacroWhenTarget(instanceNode, instanceIndex), "Always"))
+                                                </span>
                                             </div>
                                         }
-                                    </div>
-                                }
-                                @{
-                                    var attachableDocs = EffectiveResults
-                                        .Where(r => (r.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).All(m => m.Id != macro.Id))
-                                        .ToList();
-                                }
-                                @if (attachableDocs.Count > 0)
-                                {
-                                    <FluentSelect TOption="string" class="binding-row__select result-macro-attach-doc"
-                                            Value=""
-                                            ValueChanged="@(v => AttachMacroToDeliverableAsync(macro.Id, v))"
-                                            aria-label="@($"Attach macro {macro.Id} to a deliverable")">
-                                        <FluentOption TOption="string" Value="">attach to a deliverable…</FluentOption>
-                                        @foreach (var candidateDeliverable in attachableDocs)
-                                        {
-                                            <FluentOption TOption="string" Value="@candidateDeliverable.Id">@candidateDeliverable.Label</FluentOption>
-                                        }
-                                    </FluentSelect>
-                                }
-                                @if (attachedTo.Count == 0)
-                                {
-                                    <span class="muted-text">Not attached to any deliverable.</span>
-                                }
-                            </div>
+                                    }
+                                    @foreach (var hostResult in EffectiveResults.Where(r => (r.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).Any(m => m.Id == macro.Id)))
+                                    {
+                                        var instanceResult = hostResult;
+                                        var deliverableInstance = instanceResult.Macros!.First(m => m.Id == macro.Id);
+                                        <div class="result-macro macro-instance" data-instance-deliverable="@instanceResult.Id">
+                                            <span class="result-macro-row">
+                                                <FluentButton Appearance="Appearance.Stealth" Class="result-macro__id"
+                                                              Title="@($"Edit deliverable {instanceResult.Id} in the Deliverables pane")"
+                                                              aria-label="@($"Edit deliverable {instanceResult.Id} in the Deliverables pane")"
+                                                              @onclick="() => Select(ResultsKey)"><code>@instanceResult.Id</code></FluentButton>
+                                                <FluentSelect TOption="string" class="binding-row__select macro-instance-at"
+                                                        Value="@(deliverableInstance.At ?? "")"
+                                                        ValueChanged="@(v => SetDeliverableMacroAtAsync(instanceResult, macro.Id, v))"
+                                                        aria-label="@($"Placement for macro {macro.Id} in deliverable {instanceResult.Id}")">
+                                                    @if (deliverableInstance.At == null)
+                                                    {
+                                                        <FluentOption TOption="string" Value="">choose a placement…</FluentOption>
+                                                    }
+                                                    <FluentOption TOption="string" Value="prepend">prepend</FluentOption>
+                                                    <FluentOption TOption="string" Value="append">append</FluentOption>
+                                                </FluentSelect>
+                                                <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-detach" Title="@($"Detach from {instanceResult.Id}")"
+                                                              aria-label="@($"Detach macro {macro.Id} from deliverable {instanceResult.Id}")"
+                                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                              @onclick="() => RemoveResultMacroAsync(instanceResult, macro.Id)" />
+                                            </span>
+                                            <span class="result-macro-when">
+                                                @ConditionField(("Gated when", MacroWhenTarget(instanceResult, deliverableInstance), "Always produced"))
+                                            </span>
+                                        </div>
+                                    }
+                                    @{
+                                        var attachableNodes = MacroAttachableNodes(macro.Id);
+                                        var attachableDeliverables = EffectiveResults
+                                            .Where(r => (r.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).All(m => m.Id != macro.Id))
+                                            .ToList();
+                                        var placedOn = MacroPlacedOn(macro.Id);
+                                    }
+                                    @if (attachableNodes.Count > 0)
+                                    {
+                                        <FluentSelect TOption="string" class="binding-row__select macro-attach-node"
+                                                Value=""
+                                                ValueChanged="@(v => AttachNodeMacroAsync(v, macro.Id))"
+                                                aria-label="@($"Attach macro {macro.Id} to a node")">
+                                            <FluentOption TOption="string" Value="">attach to a node…</FluentOption>
+                                            @foreach (var candidateNode in attachableNodes)
+                                            {
+                                                <FluentOption TOption="string" Value="@candidateNode.Id">@candidateNode.Id</FluentOption>
+                                            }
+                                        </FluentSelect>
+                                    }
+                                    @if (attachableDeliverables.Count > 0)
+                                    {
+                                        <FluentSelect TOption="string" class="binding-row__select result-macro-attach-doc"
+                                                Value=""
+                                                ValueChanged="@(v => AttachMacroToDeliverableAsync(macro.Id, v))"
+                                                aria-label="@($"Attach macro {macro.Id} to a deliverable")">
+                                            <FluentOption TOption="string" Value="">attach to a deliverable…</FluentOption>
+                                            @foreach (var candidateDeliverable in attachableDeliverables)
+                                            {
+                                                <FluentOption TOption="string" Value="@candidateDeliverable.Id">@candidateDeliverable.Label</FluentOption>
+                                            }
+                                        </FluentSelect>
+                                    }
+                                    @if (placedOn.Count == 0)
+                                    {
+                                        <span class="muted-text">Not placed anywhere.</span>
+                                    }
+                                </div>
+                                <div class="macro-readers-section">
+                                    <span class="macro-attachments__head">Read inline at</span>
+                                    @{ var macroReaders = MacroReaders(macro.Id); }
+                                    @if (macroReaders.Count > 0)
+                                    {
+                                        <ul class="snippet-readers macro-readers" aria-label="@($"Readers of {macro.Id}")">
+                                            @foreach (var reader in macroReaders)
+                                            {
+                                                <li>
+                                                    @if (reader.Key is { } readerKey)
+                                                    {
+                                                        <button type="button" class="snippet-readers__row" @onclick="() => Select(readerKey)">@reader.Subject — @reader.Member</button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="snippet-readers__row">@reader.Subject — @reader.Member</span>
+                                                    }
+                                                </li>
+                                            }
+                                        </ul>
+                                    }
+                                    else
+                                    {
+                                        <p class="muted-text">Not read inline by any template — read it as <code>{{ macro.@(macro.Id).text }}</code>, or <code>{{ macro.@(macro.Id).prompt }}</code> where its slot goes.</p>
+                                    }
+                                    @if (formatsCatalog is null)
+                                    {
+                                        <p class="muted-text">The format catalogue is unavailable, so reads from prompts on catalogue formats are not listed.</p>
+                                    }
+                                </div>
+                            }
+
                             @* #571: a macro is removed from its own pane — consistent with
                                "Remove node" — so the "Attached to" reach is visible at the point
                                of removal. A pending (just-added) macro can always go; a declared
@@ -2638,10 +2951,10 @@
                                 <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit"
                                               IconStart="@(new Icons.Regular.Size20.Dismiss())"
                                               @onclick="() => RemoveMacroFromPaneAsync(macro)">
-                                    Remove macro@(attachedTo.Count > 0 ? $" (detaches from: {string.Join(", ", attachedTo)})" : "")
+                                    Remove macro@(At25 ? (MacroPlacedOn(macro.Id) is { Count: > 0 } placedOnList ? $" (removes its instances on {string.Join(", ", placedOnList)})" : "") : attachedTo.Count > 0 ? $" (detaches from: {string.Join(", ", attachedTo)})" : "")
                                 </FluentButton>
                             }
-                            @if (EffectiveSpecVersion >= 12)
+                            @if (EffectiveSpecVersion >= 12 && !At25)
                             {
                                 var effectiveMacro = EffectiveMacros.First(m => m.Id == macro.Id);
                                 <div class="macro-optional-row">
@@ -2667,6 +2980,12 @@
                                     }
                                 </div>
                             }
+                            @if (At25)
+                            {
+                                <p class="muted-text macro-objects">A Scriban template: it may read <code>input.&lt;id&gt;</code>, <code>node.&lt;id&gt;.text</code> / <code>.value</code>, <code>snippet.&lt;id&gt;.text</code>, <code>macro.&lt;id&gt;.text</code>, <code>run.&lt;fact&gt;</code> and <code>profile.&lt;fact&gt;</code>; never <code>macro.&lt;id&gt;.prompt</code> — placed text cannot carry a slot marker.</p>
+                            }
+                            else
+                            {
                             <div class="macro-placeholders">
                                 <span class="muted-text">
                                     Placeholders — substituted at assembly, verbatim; an unknown token blocks publish
@@ -2705,6 +3024,7 @@
                                     }
                                 </ul>
                             </div>
+                            }
                         </WorkflowEditorPane>
                     }
                     else
@@ -3723,6 +4043,9 @@
             // #946: pending display-label edits on declared macros (writes macros[].label).
             new("macroLabelEdits", () => macroLabelEdits.Count, macroLabelEdits.Clear,
                 () => $"{macroLabelEdits.Count} macro {Plural(macroLabelEdits.Count, "label")}", () => macroLabelEdits.Count > 0),
+            // v25 (C3 #1009): pending instruction edits on declared macros (writes macros[].instruction).
+            new("macroInstructionEdits", () => macroInstructionEdits.Count, macroInstructionEdits.Clear,
+                () => $"{macroInstructionEdits.Count} macro {Plural(macroInstructionEdits.Count, "instruction")}", () => macroInstructionEdits.Count > 0),
             // #946: pending data-item name edits (writes the collection's index.json,
             // not the manifest — AffectsManifest is false, like file-body edits).
             new("standardNameEdits", () => standardNameEdits.Count, standardNameEdits.Clear,
@@ -4702,7 +5025,8 @@
                     entry.Description,
                     (entry.Parameters ?? new Dictionary<string, WorkflowFormatParameterView>())
                         .Select(pair => new WorkflowNodeSummary.FormatParameter(pair.Key, pair.Value.Kind ?? string.Empty, pair.Value.Format))
-                        .ToList()))
+                        .ToList(),
+                    entry.OutputMacros))
                 .Concat(LocalFormatOptions)
                 .ToList();
 
@@ -4718,8 +5042,41 @@
                 spec?.Description,
                 (spec?.Parameters ?? new Dictionary<string, PF.WorkflowFormatParameterSpec>())
                     .Select(pair => new WorkflowNodeSummary.FormatParameter(pair.Key, pair.Value.Kind, pair.Value.Format))
-                    .ToList());
+                    .ToList(),
+                spec?.AllowsOutputMacros ?? false);
         });
+
+    /// <summary>
+    /// v25 (C3 #1009): whether a node may carry a macro instance or an inline slot — a
+    /// non-aggregator whose format declares outputMacros. A format the editor cannot
+    /// resolve (no catalogue loaded) is taken on trust, as the validator takes it.
+    /// </summary>
+    /// <summary>
+    /// v25 (C3 #1009): a node a condition may compare — a classifier by kind below 25;
+    /// at 25 a node whose format is an enum (the validator's "node: against an
+    /// enum-format node"), its values the with.values it declares.
+    /// </summary>
+    private bool ClassifierLike(WorkflowManifestReader.NodeView node) =>
+        At25
+            ? node.Aggregate == null && node.Format != null && FormatOptions.FirstOrDefault(f => f.Id == node.Format)?.Type == "enum"
+            : node.IsClassifier;
+
+    private IReadOnlyList<string>? ClassifierValues(WorkflowManifestReader.NodeView node) =>
+        At25
+            ? node.With is { } with && with.TryGetValue("values", out var values) && values.ValueKind == JsonValueKind.Array
+                ? values.EnumerateArray().Where(v => v.ValueKind == JsonValueKind.String).Select(v => v.GetString()!).ToList()
+                : FormatOptions.FirstOrDefault(f => f.Id == node.Format) is { } enumFormat ? EnumFormatValues(enumFormat.Id) : null
+            : node.Values;
+
+    /// <summary>A catalogue enum format's own values (a classification declares them per node; a fixed enum carries its own).</summary>
+    private IReadOnlyList<string>? EnumFormatValues(string formatId) =>
+        formatsCatalog?.Formats?.FirstOrDefault(f => f.Id == formatId)?.Values;
+
+    private bool FormatTakesOutputMacros(WorkflowManifestReader.NodeView node) =>
+        node.Aggregate == null
+        && (node.Format == null
+            || FormatOptions.FirstOrDefault(f => f.Id == node.Format) is not { } format
+            || format.OutputMacros);
 
     private IReadOnlyList<WorkflowManifestReader.FormatView> DeclaredFormats =>
         content == null
@@ -4967,6 +5324,111 @@
         // choice does — explicit init: optional never invents a default.
         public bool Optional { get; set; }
         public bool? Default { get; set; }
+
+        /// <summary>v25 (C3 #1009): the instruction — born blank (explicit init; the desk refuses it until written).</summary>
+        public string Instruction { get; set; } = string.Empty;
+    }
+
+    // v25 (C3 #1009): pending instruction edits on DECLARED macros (writes
+    // macros[].instruction), self-removing when equal to the loaded value.
+    private readonly Dictionary<string, string> macroInstructionEdits = new(StringComparer.Ordinal);
+
+    private string MacroInstruction(WorkflowManifestReader.MacroView macro) =>
+        addedMacros.FirstOrDefault(m => m.Id == macro.Id)?.Instruction
+        ?? (macroInstructionEdits.TryGetValue(macro.Id, out var edited) ? edited : macro.Instruction ?? string.Empty);
+
+    private async Task SetMacroInstructionAsync(string macroId, string? value)
+    {
+        var instruction = value ?? string.Empty;
+
+        if (addedMacros.FirstOrDefault(m => m.Id == macroId) is { } pending)
+        {
+            pending.Instruction = instruction;
+        }
+        else
+        {
+            var declared = content == null
+                ? null
+                : WorkflowManifestReader.ReadMacros(content.Manifest).FirstOrDefault(m => m.Id == macroId);
+            if ((declared?.Instruction ?? string.Empty) == instruction)
+            {
+                macroInstructionEdits.Remove(macroId);
+            }
+            else
+            {
+                macroInstructionEdits[macroId] = instruction;
+            }
+        }
+
+        await PendingChangedAsync();
+    }
+
+    /// <summary>v25 (C3 #1009): a deliverable instance's placement — prepend | append; Before/After/ForItem/Slot never ride a 25 entry.</summary>
+    private async Task SetDeliverableMacroAtAsync(WorkflowManifestReader.ResultView result, string macroId, string? at)
+    {
+        var results = MutableResults();
+        var index = results.FindIndex(existing => existing.Id == result.Id);
+
+        if (index >= 0 && results[index].Macros is { } entries)
+        {
+            var chosen = at is PF.WorkflowDeliverableMacroSpec.Prepend or PF.WorkflowDeliverableMacroSpec.Append ? at : null;
+            results[index] = results[index] with
+            {
+                Macros = entries.Select(e => e.Id == macroId
+                    ? e with { At = chosen, Before = null, After = null, ForItem = null, Slot = null }
+                    : e).ToList()
+            };
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    /// <summary>v25 (C3 #1009): where a macro is placed — the nodes and deliverables carrying an instance of it.</summary>
+    private IReadOnlyList<string> MacroPlacedOn(string macroId) =>
+        EffectiveNodes.Where(n => EffectiveNodeMacros(n).Any(e => e.Id == macroId)).Select(n => $"node '{n.Id}'")
+            .Concat(EffectiveResults.Where(r => (r.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).Any(e => e.Id == macroId)).Select(r => $"deliverable '{r.Id}'"))
+            .ToList();
+
+    /// <summary>
+    /// v25 (C3 #1009): the nodes that may take one more instance of this macro —
+    /// a format that takes output macros, and a free identity (before or after
+    /// without forItem; a node holding both is full).
+    /// </summary>
+    private IReadOnlyList<WorkflowManifestReader.NodeView> MacroAttachableNodes(string macroId) =>
+        EffectiveNodes
+            .Where(n => n.Prompt != null && FormatTakesOutputMacros(n))
+            .Where(n =>
+            {
+                var mine = EffectiveNodeMacros(n).Where(e => e.Id == macroId && e.ForItem == null).ToList();
+                return !(mine.Any(e => !e.IsAfter) && mine.Any(e => e.IsAfter));
+            })
+            .ToList();
+
+    /// <summary>One place a macro is read inline: the walk's subject, the member read, and the pane that holds it.</summary>
+    private sealed record MacroReader(string Subject, string Member, string? Key);
+
+    /// <summary>v25 (C3 #1009): where a macro is read inline — macro.&lt;id&gt;.prompt (a slot) or macro.&lt;id&gt;.text — from the walk.</summary>
+    private IReadOnlyList<MacroReader> MacroReaders(string macroId)
+    {
+        var readers = new List<MacroReader>();
+
+        if (PackageWalk is { } walk)
+        {
+            foreach (var template in walk.Templates)
+            {
+                if (template.References.MacroPrompts.Contains(macroId))
+                {
+                    readers.Add(new MacroReader(template.Subject, $"macro.{macroId}.prompt (slot)", PaneKeyOf(template)));
+                }
+
+                if (template.References.MacroTexts.Contains(macroId))
+                {
+                    readers.Add(new MacroReader(template.Subject, $"macro.{macroId}.text", PaneKeyOf(template)));
+                }
+            }
+        }
+
+        return readers;
     }
 
     // v12 § 3 (#621): pending optional/default edits on DECLARED macros,
@@ -5156,8 +5618,10 @@
             : m)
         // #946: a pending label edit is effective everywhere (title, field, nav).
         .Select(m => macroLabelEdits.TryGetValue(m.Id, out var label) ? m with { Label = label } : m)
+        // v25 (C3 #1009): a pending instruction edit is effective everywhere.
+        .Select(m => macroInstructionEdits.TryGetValue(m.Id, out var instruction) ? m with { Instruction = instruction } : m)
         .Concat(addedMacros.Select(m => new WorkflowManifestReader.MacroView(
-            m.Id, m.Label, AddedMacroFile(m.Id), m.Optional ? true : null, m.Default)))
+            m.Id, m.Label, AddedMacroFile(m.Id), m.Optional ? true : null, m.Default, m.Instruction.Length > 0 ? m.Instruction : null)))
         .ToList();
 
     private WorkflowManifestReader.MacroView? SelectedMacro() =>
@@ -5657,8 +6121,8 @@
         // incomplete-draft guard, the when in the node-level grammar (plus item:id
         // on a data fan at 24), forItem, and an item token composed where no fan
         // item fills it. The validator is the real gate; these refuse before the
-        // round-trip, in its words.
-        if (EffectiveSpecVersion >= 23)
+        // round-trip, in its words. At 25 the macro rules are MacroErrors25's (C3 #1009).
+        if (EffectiveSpecVersion >= 23 && !At25)
         {
             foreach (var node in EffectiveNodes)
             {
@@ -5842,7 +6306,7 @@
                 .Select(result => $"Result '{result.Id}' declares signature, which requires specVersion 11. "
                     + $"Use \"Upgrade to specVersion {NewestSpecVersion}\" and publish."));
         }
-        else
+        else if (!At25) // at 25 the macro rules are MacroErrors25's (C3 #1009)
         {
             // The orphan rule, the validator's sentence verbatim. v23 (#955): a
             // macro composed into a node's prompt references the library too, and
@@ -5941,7 +6405,7 @@
                 }
             }
         }
-        else
+        else if (!At25) // at 25 the macro rules are MacroErrors25's (C3 #1009)
         {
             // The optional/default pair — the validator's sentences verbatim,
             // and the explicit-init rule they enforce: no silent default.
@@ -6437,6 +6901,323 @@
         }
     }
 
+    /// <summary>
+    /// v25 C3 (#1009): the desk's mirror of the registry's macro rules at 25
+    /// (WorkflowPackageValidator.V25: the library, ValidateMacroUseAt25, the inline
+    /// slot gate, the unused macro, the deliverable instances), word for word.
+    /// Nothing below 25 — the ≤24 blocks keep their own sentences there.
+    /// </summary>
+    private IEnumerable<string> MacroErrors25()
+    {
+        if (!At25)
+        {
+            yield break;
+        }
+
+        var macros = EffectiveMacros;
+        var macroIds = macros.Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
+        var walk = PackageWalk;
+
+        // ----- the library -----
+        var seenMacroIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var macro in macros)
+        {
+            if (!PF.WorkflowDeclaredIds.IsValid(macro.Id))
+            {
+                yield return $"Macro id '{macro.Id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
+            }
+
+            if (!seenMacroIds.Add(macro.Id))
+            {
+                yield return $"Duplicate macro id '{macro.Id}'.";
+            }
+
+            if (string.IsNullOrWhiteSpace(macro.Label))
+            {
+                yield return $"Macro '{macro.Id}' must declare a label.";
+            }
+
+            if (string.IsNullOrWhiteSpace(MacroInstruction(macro)))
+            {
+                yield return $"Macro '{macro.Id}' must declare an instruction at specVersion 25; placed text tells the model when to emit its marker.";
+            }
+
+            if (AddedMacroForFile(macro.File) == null && !content!.Files.ContainsKey(macro.File))
+            {
+                yield return $"Macro '{macro.Id}' file '{macro.File}' is missing from the package.";
+            }
+            else if (string.IsNullOrWhiteSpace(GetText(macro.File)))
+            {
+                yield return $"Macro '{macro.Id}' file '{macro.File}' is empty.";
+            }
+        }
+
+        // ----- node instances -----
+        var placed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var node in EffectiveNodes)
+        {
+            var nodeMacros = EffectiveNodeMacros(node);
+            if (nodeMacros.Count == 0)
+            {
+                continue;
+            }
+
+            if (node.Aggregate != null)
+            {
+                yield return $"Node '{node.Id}' aggregates and must not place macros; place them on the nodes it aggregates or on the deliverable.";
+                continue;
+            }
+
+            var fanItems = NodeFanItems(node);
+            var format = FormatOptions.FirstOrDefault(f => f.Id == node.Format);
+            var identities = new HashSet<string>(StringComparer.Ordinal);
+
+            for (var index = 0; index < nodeMacros.Count; index++)
+            {
+                var entry = nodeMacros[index];
+                var where = $"Node '{node.Id}' macro '{entry.Id}'";
+
+                // #571: a removed macro's instances leave in the same publish.
+                if (removedMacroIds.Contains(entry.Id))
+                {
+                    continue;
+                }
+
+                placed.Add(entry.Id);
+
+                if (!macroIds.Contains(entry.Id))
+                {
+                    yield return $"{where} is not a declared macro.";
+                    continue;
+                }
+
+                if (entry.At != null && entry.At != PF.WorkflowNodeMacroSpec.Before && entry.At != PF.WorkflowNodeMacroSpec.After)
+                {
+                    yield return $"{where} declares at '{entry.At}'; a node instance is placed 'before' or 'after' the node's output.";
+                    continue;
+                }
+
+                var position = entry.IsAfter ? "after" : "before";
+                if (!identities.Add($"{entry.Id}\n{position}\n{entry.ForItem}"))
+                {
+                    yield return $"{where} is placed twice ({position}{(entry.ForItem is { } dup ? $", forItem '{dup}'" : "")}); one identity (id, at, forItem) once — two gates to one text is one instance with when: a or b.";
+                    continue;
+                }
+
+                if (format != null && !format.OutputMacros)
+                {
+                    yield return $"{where} is placed {position} the output, but format '{format.Id}' takes no output macros; only a text format with outputMacros may.";
+                }
+
+                if (entry.ForItem != null)
+                {
+                    if (fanItems.Count == 0)
+                    {
+                        yield return $"{where} anchors to fan item '{entry.ForItem}', but '{node.Id}' does not fan a snippet folder.";
+                    }
+                    else if (fanItems.All(item => item.Id != entry.ForItem))
+                    {
+                        yield return $"{where} anchors to fan item '{entry.ForItem}', which the folder fanned by '{node.Id}' does not contain (items: {string.Join(", ", fanItems.Select(item => item.Id))}).";
+                    }
+                }
+
+                var macroPrefix = $"{where} condition";
+
+                if (conditionDrafts.TryGetValue($"node-macro:{node.Id}\n{index}", out var macroDraft) && IsUnwritable(macroDraft))
+                {
+                    yield return ConditionBuilderModel.IsComplete(macroDraft)
+                        ? $"{macroPrefix} has a clause the format cannot read; finish it or remove it."
+                        : $"{macroPrefix} has a clause with no operand chosen.";
+                    continue;
+                }
+
+                foreach (var complaint in ClauseComplaints25(macroPrefix, entry.When, node.Id, fanItems))
+                {
+                    yield return complaint;
+                }
+            }
+        }
+
+        // ----- inline slots: the format gate -----
+        if (walk is not null)
+        {
+            foreach (var node in EffectiveNodes.Where(n => n.Aggregate == null && n.Prompt != null))
+            {
+                var slots = walk.PromptReadsOf(node.Id);
+                if (slots.Count == 0)
+                {
+                    continue;
+                }
+
+                var format = FormatOptions.FirstOrDefault(f => f.Id == node.Format);
+                if (format != null && !format.OutputMacros)
+                {
+                    yield return $"Node '{node.Id}' reads macro.{slots.Order(StringComparer.Ordinal).First()}.prompt (a slot), but format '{format.Id}' takes no output macros; only a text format with outputMacros may.";
+                }
+            }
+        }
+
+        // ----- deliverable instances -----
+        var fanningNodes = EffectiveNodes.Where(n => n.ForEach != null).Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var result in EffectiveResults)
+        {
+            var entries = result.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>();
+            var identities = new HashSet<string>(StringComparer.Ordinal);
+            var signatureReaders = 0;
+
+            foreach (var entry in entries)
+            {
+                var where = $"Deliverable '{result.Id}' macro '{entry.Id}'";
+
+                if (removedMacroIds.Contains(entry.Id))
+                {
+                    continue;
+                }
+
+                placed.Add(entry.Id);
+
+                if (!macroIds.Contains(entry.Id))
+                {
+                    yield return $"{where} is not a declared macro.";
+                    continue;
+                }
+
+                if (entry.At == null)
+                {
+                    yield return $"{where} must declare at (prepend | append).";
+                    continue;
+                }
+
+                if (!entry.IsPrepend && !entry.IsAppend)
+                {
+                    yield return $"{where} declares at '{entry.At}'; a deliverable instance is placed 'prepend' or 'append'.";
+                    continue;
+                }
+
+                if (!identities.Add($"{entry.Id}\n{entry.At}"))
+                {
+                    yield return $"{where} is placed twice ({entry.At}); one identity (id, at) once.";
+                    continue;
+                }
+
+                if (walk is not null)
+                {
+                    foreach (var readNode in walk.MacroEdges(entry.Id).Where(fanningNodes.Contains).Order(StringComparer.Ordinal))
+                    {
+                        yield return $"{where} reads node '{readNode}', which fans; a deliverable macro reads scalar nodes and aggregators — place the macro on the node to read its items.";
+                    }
+
+                    if (walk.MacroReadsSignature(entry.Id))
+                    {
+                        signatureReaders++;
+                    }
+                }
+
+                var macroPrefix = $"{where} condition";
+
+                if (conditionDrafts.TryGetValue($"{result.Id}\n{entry.Id}", out var macroDraft) && IsUnwritable(macroDraft))
+                {
+                    yield return ConditionBuilderModel.IsComplete(macroDraft)
+                        ? $"{macroPrefix} has a clause the format cannot read; finish it or remove it."
+                        : $"{macroPrefix} has a clause with no operand chosen.";
+                    continue;
+                }
+
+                foreach (var complaint in ClauseComplaints25(macroPrefix, entry.When, null, Array.Empty<WorkflowManifestReader.DataItemView>()))
+                {
+                    yield return complaint;
+                }
+            }
+
+            if (result.Signature == true && signatureReaders > 0)
+            {
+                yield return $"Deliverable '{result.Id}' declares signature and places a macro that reads profile.signature; a deliverable is signed once.";
+            }
+            else if (signatureReaders > 1)
+            {
+                yield return $"Deliverable '{result.Id}' places more than one macro that reads profile.signature; a deliverable is signed once.";
+            }
+        }
+
+        // ----- unused: placed nowhere and read by no template -----
+        foreach (var macro in macros)
+        {
+            var read = walk is not null && walk.Templates.Any(t => t.References.MacroTexts.Contains(macro.Id) || t.References.MacroPrompts.Contains(macro.Id));
+            if (!placed.Contains(macro.Id) && !read)
+            {
+                yield return $"Macro '{macro.Id}' is declared but never placed or read; place it on a node or a deliverable, or read macro.{macro.Id}.text / macro.{macro.Id}.prompt.";
+            }
+        }
+    }
+
+    /// <summary>
+    /// The node-level when grammar at 25 for a macro instance: a node: operand against
+    /// an enum-format node, item:id only on a node fanning a snippet folder (<paramref name="nodeId"/>
+    /// null = a deliverable, which never reads an item), inputs by the v9 rules.
+    /// </summary>
+    private IEnumerable<string> ClauseComplaints25(string prefix, string? when, string? nodeId, IReadOnlyList<WorkflowManifestReader.DataItemView> fanItems)
+    {
+        if (string.IsNullOrWhiteSpace(when))
+        {
+            yield break;
+        }
+
+        if (!PF.WorkflowResultConditions.TryParseExpression(when, out var expression, out var parseError) || expression is null)
+        {
+            yield return $"{prefix} {parseError}";
+            yield break;
+        }
+
+        foreach (var clause in expression.Leaves)
+        {
+            if (clause.IsItemValue)
+            {
+                if (nodeId is null)
+                {
+                    yield return $"{prefix} reads '{clause.Operand}', but only a node instance on a node that fans a snippet folder reads an item.";
+                }
+                else if (fanItems.Count == 0)
+                {
+                    yield return $"{prefix} reads '{clause.Operand}', but '{nodeId}' does not fan a snippet folder.";
+                }
+                else if (ItemClauseComplaint(prefix, clause, nodeId, fanItems) is { Length: > 0 } itemComplaint)
+                {
+                    yield return itemComplaint;
+                }
+
+                continue;
+            }
+
+            if (clause.IsNodeValue)
+            {
+                if (NodeClauseComplaint(prefix, clause) is { Length: > 0 } nodeComplaint)
+                {
+                    yield return nodeComplaint;
+                }
+
+                continue;
+            }
+
+            if (clause.IsArithmetic || clause.PathDepth >= 2)
+            {
+                continue;
+            }
+
+            var tested = EffectiveInputs.FirstOrDefault(input => input.Id == clause.InputId);
+
+            if (tested == null)
+            {
+                yield return $"{prefix} reads undeclared input '{clause.InputId}'.";
+                continue;
+            }
+
+            if (V9ConditionComplaint(prefix, clause, tested) is { } complaint)
+            {
+                yield return complaint;
+            }
+        }
+    }
+
     private IEnumerable<string> FormatErrors()
     {
         if (EffectiveSpecVersion < 25)
@@ -6680,7 +7461,7 @@
     private string? NodeClauseComplaint(string prefix, PF.WorkflowResultCondition clause)
     {
         var operand = clause.Operand;
-        var classifiers = EffectiveNodes.Where(node => node.IsClassifier).ToDictionary(node => node.Id, StringComparer.Ordinal);
+        var classifiers = EffectiveNodes.Where(ClassifierLike).ToDictionary(node => node.Id, StringComparer.Ordinal);
         if (clause.NodeId is null || !classifiers.TryGetValue(clause.NodeId, out var classifier))
         {
             return $"{prefix} reads '{operand}', which is not a classifier (classifiers: {string.Join(", ", classifiers.Keys.Order(StringComparer.Ordinal))}).";
@@ -6701,9 +7482,10 @@
             return $"{prefix} compares against nothing; write a value after the operator.";
         }
 
-        return classifier.Values?.Contains(clause.Literal, StringComparer.Ordinal) == true
+        var classifierValues = ClassifierValues(classifier);
+        return classifierValues?.Contains(clause.Literal, StringComparer.Ordinal) == true
             ? string.Empty
-            : $"{prefix} compares '{operand}' to '{clause.Literal}', which it does not declare (values: {string.Join(", ", classifier.Values ?? new List<string>())}).";
+            : $"{prefix} compares '{operand}' to '{clause.Literal}', which it does not declare (values: {string.Join(", ", classifierValues ?? new List<string>())}).";
     }
 
     /// <summary>v24 (#957): the desk's mirror of the validator's item:id arm — read only by a
@@ -7952,8 +8734,8 @@
             if (EffectiveSpecVersion >= 10)
             {
                 operands.AddRange(EffectiveNodes
-                    .Where(node => node.IsClassifier)
-                    .Select(node => new ConditionOperand($"{NodeKeyPrefix}{node.Id}", NodeValueType, node.Values)));
+                    .Where(ClassifierLike)
+                    .Select(node => new ConditionOperand($"{NodeKeyPrefix}{node.Id}", NodeValueType, ClassifierValues(node))));
             }
 
             foreach (var input in EffectiveInputs)
@@ -8301,6 +9083,17 @@
         {
             // null ≡ before (the bare form keeps its string shape); only "after" is stored.
             list[index] = list[index] with { At = at == "after" ? "after" : null };
+            await PendingChangedAsync();
+        }
+    }
+
+    /// <summary>v25 (C3 #1009): reorder within a placement — swap the entry at <paramref name="index"/> with the one at <paramref name="siblingIndex"/> (both the same side).</summary>
+    private async Task MoveNodeMacroAsync(string nodeId, int index, int siblingIndex)
+    {
+        var list = MutableNodeMacros(nodeId);
+        if (index != siblingIndex && index >= 0 && siblingIndex >= 0 && index < list.Count && siblingIndex < list.Count)
+        {
+            (list[index], list[siblingIndex]) = (list[siblingIndex], list[index]);
             await PendingChangedAsync();
         }
     }
@@ -8782,6 +9575,28 @@
 
         var result = EffectiveResults.FirstOrDefault(r => r.Id == resultId);
         return result is null ? Task.CompletedTask : AppendResultMacroAsync(result, macroId);
+    }
+
+    /// <summary>One node instance a deliverable composes (#983): the macro, its side, the node and its label.</summary>
+    private sealed record NodePlacedMacro(string MacroId, bool IsAfter, string NodeId, string NodeLabel);
+
+    /// <summary>
+    /// v25 (C3 #1009 / #983): the node instances around the sections this deliverable
+    /// composes — on its own node and on its aggregator's direct sources — listed on
+    /// the Deliverables pane as a note, edited on the node pane.
+    /// </summary>
+    private IReadOnlyList<NodePlacedMacro> NodePlacedMacros(WorkflowManifestReader.ResultView result)
+    {
+        var ownNodeId = result.Node.StartsWith("node:", StringComparison.Ordinal) ? result.Node["node:".Length..] : result.Node;
+        var nodeIds = new List<string> { ownNodeId };
+        nodeIds.AddRange(DeliverableAggregateSources(result)
+            .Select(source => source.StartsWith("node:", StringComparison.Ordinal) ? source["node:".Length..] : source));
+
+        return nodeIds.Distinct(StringComparer.Ordinal)
+            .Select(id => EffectiveNodes.FirstOrDefault(n => n.Id == id))
+            .Where(n => n != null)
+            .SelectMany(n => EffectiveNodeMacros(n!).Select(e => new NodePlacedMacro(e.Id, e.IsAfter, n!.Id, n.Label)))
+            .ToList();
     }
 
     /// <summary>This deliverable's aggregator's effective sources — the only legal placement anchors (§ 4).</summary>
@@ -10312,12 +11127,15 @@
 
     private sealed record DraftAddedPrompt(string Id, string Text, bool Raw = false);
 
-    private sealed record DraftAddedMacro(string Id, string Label, string Text, bool Optional = false, bool? Default = null);
+    private sealed record DraftAddedMacro(string Id, string Label, string Text, bool Optional = false, bool? Default = null, string? Instruction = null);
 
     private sealed record DraftMacroEdit(string Id, bool Optional, bool? Default = null);
 
     // #946: a declared macro's pending label, and a data-item's pending name.
     private sealed record DraftMacroLabel(string Id, string Label);
+
+    /// <summary>v25 (C3 #1009): a declared macro's pending instruction.</summary>
+    private sealed record DraftMacroInstruction(string Id, string Instruction);
     private sealed record DraftStandardName(string File, string Name);
 
     // v18 (#822): a pending node when — its own list, mirroring how the dict is
@@ -10398,7 +11216,9 @@
         List<DraftAddedFormat>? AddedFormats = null,
         List<string>? RemovedFormats = null,
         // v25 (C2 #1008): pending folder-item whens. Trailing optional.
-        List<DraftItemWhen>? ItemWhens = null);
+        List<DraftItemWhen>? ItemWhens = null,
+        // v25 (C3 #1009): pending macro instructions. Trailing optional.
+        List<DraftMacroInstruction>? MacroInstructions = null);
 
     private sealed record DraftAddedFormat(string Id, string Body);
 
@@ -10449,7 +11269,7 @@
         // client reading a new draft degrades the same way.
         List<DraftResultMacro>? MacroEntries = null, string? Check = null);
 
-    private sealed record DraftResultMacro(string Id, string? Before = null, string? After = null, string? When = null);
+    private sealed record DraftResultMacro(string Id, string? Before = null, string? After = null, string? When = null, string? ForItem = null, bool? Slot = null, string? At = null);
 
     private async Task RestoreDraftAsync()
     {
@@ -10639,7 +11459,8 @@
                 addedMacros.Add(new AddedMacro
                 {
                     Id = draftAddedMacro.Id, Label = draftAddedMacro.Label, Text = draftAddedMacro.Text,
-                    Optional = draftAddedMacro.Optional, Default = draftAddedMacro.Default
+                    Optional = draftAddedMacro.Optional, Default = draftAddedMacro.Default,
+                    Instruction = draftAddedMacro.Instruction ?? string.Empty
                 });
             }
         }
@@ -10662,6 +11483,15 @@
             if (WorkflowManifestReader.ReadMacros(content!.Manifest).Any(m => m.Id == draftMacroLabel.Id))
             {
                 macroLabelEdits[draftMacroLabel.Id] = draftMacroLabel.Label;
+            }
+        }
+
+        // v25 (C3 #1009): a drafted instruction is kept only while the macro is declared.
+        foreach (var draftMacroInstruction in payload.MacroInstructions ?? new List<DraftMacroInstruction>())
+        {
+            if (WorkflowManifestReader.ReadMacros(content!.Manifest).Any(m => m.Id == draftMacroInstruction.Id))
+            {
+                macroInstructionEdits[draftMacroInstruction.Id] = draftMacroInstruction.Instruction;
             }
         }
 
@@ -10903,7 +11733,7 @@
             resultsEdit = draftResults
                 .Select(result => new WorkflowManifestReader.ResultView(
                     result.Id, result.Node, result.Label, result.When,
-                    result.MacroEntries?.Select(e => new WorkflowManifestReader.ResultMacroView(e.Id, e.Before, e.After, e.When)).ToList()
+                    result.MacroEntries?.Select(e => new WorkflowManifestReader.ResultMacroView(e.Id, e.Before, e.After, e.When, e.ForItem, e.Slot, e.At)).ToList()
                         ?? (IReadOnlyList<WorkflowManifestReader.ResultMacroView>?)result.Macros?.Select(id => new WorkflowManifestReader.ResultMacroView(id)).ToList(),
                     result.Signature,
                     result.Check))
@@ -11047,14 +11877,14 @@
                 r.Id, r.Node, r.Label, r.When,
                 r.Macros?.Select(e => e.Id).ToList(),
                 r.Signature,
-                r.Macros?.Select(e => new DraftResultMacro(e.Id, e.Before, e.After, e.When)).ToList(),
+                r.Macros?.Select(e => new DraftResultMacro(e.Id, e.Before, e.After, e.When, e.ForItem, e.Slot, e.At)).ToList(),
                 r.Check)).ToList(),
             new Dictionary<string, string>(addedScalars, StringComparer.Ordinal),
             specVersionBump,
             titleEdit,
             descriptionEdit,
             tagsEdit,
-            addedMacros.Select(m => new DraftAddedMacro(m.Id, m.Label, m.Text, m.Optional, m.Default)).ToList(),
+            addedMacros.Select(m => new DraftAddedMacro(m.Id, m.Label, m.Text, m.Optional, m.Default, m.Instruction)).ToList(),
             removedMacroIds.ToList(),
             macroEdits.Select(pair => new DraftMacroEdit(pair.Key, pair.Value.Optional, pair.Value.Default)).ToList(),
             promptRawEdits.Select(pair => new DraftPromptRawEdit(pair.Key, pair.Value)).ToList(),
@@ -11071,7 +11901,8 @@
                 pair.Value.Select(e => new DraftNodeMacro(e.Id, e.At, e.When, e.Optional, e.ForItem)).ToList())).ToList(),
             addedFormats.Select(pair => new DraftAddedFormat(pair.Key, pair.Value)).ToList(),
             removedFormatIds.ToList(),
-            itemWhenEdits.Select(pair => new DraftItemWhen(pair.Key, pair.Value)).ToList());
+            itemWhenEdits.Select(pair => new DraftItemWhen(pair.Key, pair.Value)).ToList(),
+            macroInstructionEdits.Select(pair => new DraftMacroInstruction(pair.Key, pair.Value)).ToList());
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -11419,6 +12250,7 @@
             unbound.AddRange(SchemaErrors());
             unbound.AddRange(FormatErrors());
             unbound.AddRange(SnippetErrors());
+            unbound.AddRange(MacroErrors25());
             unbound.AddRange(PreludeErrors());
 
             if (unbound.Count > 0)
@@ -11628,6 +12460,7 @@
     {
         edits.Remove(file);
         macroEdits.Remove(macroId);
+        macroInstructionEdits.Remove(macroId);
     }
 
     private void RevertDeliverablesEdits()
@@ -11672,7 +12505,7 @@
 
     private bool MacroCanDiscard(WorkflowManifestReader.MacroView macro) =>
         AddedMacroForFile(macro.File) == null
-        && (edits.ContainsKey(macro.File) || macroEdits.ContainsKey(macro.Id));
+        && (edits.ContainsKey(macro.File) || macroEdits.ContainsKey(macro.Id) || macroInstructionEdits.ContainsKey(macro.Id));
 
     private bool PreludeCanDiscard(WorkflowManifestReader.PreludeView prelude) =>
         edits.ContainsKey(prelude.File);
@@ -12649,6 +13482,13 @@
                     }
                 }
 
+                // v25 (C3 #1009): the instruction, mandatory at 25 — written as
+                // typed (the desk refuses a blank one before this runs).
+                if (At25)
+                {
+                    declaration["instruction"] = pendingMacro.Instruction;
+                }
+
                 macrosArray.Add(declaration);
             }
 
@@ -12723,6 +13563,29 @@
             }
         }
 
+        // v25 (C3 #1009): a declared macro's edited instruction writes
+        // macros[].instruction (both casings cleared first).
+        if (macroInstructionEdits.Count > 0)
+        {
+            var macrosKey = root["Macros"] is not null ? "Macros" : "macros";
+            if (root[macrosKey] is System.Text.Json.Nodes.JsonArray declaredMacros)
+            {
+                foreach (var (editedMacroId, instruction) in macroInstructionEdits)
+                {
+                    if (declaredMacros
+                        .OfType<System.Text.Json.Nodes.JsonObject>()
+                        .FirstOrDefault(m => (m["id"] ?? m["Id"])?.GetValue<string>() == editedMacroId) is not { } declaration)
+                    {
+                        continue;
+                    }
+
+                    declaration.Remove("instruction");
+                    declaration.Remove("Instruction");
+                    declaration["instruction"] = instruction;
+                }
+            }
+        }
+
         // #571: stripping a removed macro's references rides the same compose
         // as its declaration's removal — the validator refuses an orphan and an
         // undeclared reference alike, so neither half may publish alone. A
@@ -12743,7 +13606,21 @@
         {
             root.AsObject().Remove("result");
             root.AsObject().Remove("Result");
-            root[root["Results"] is not null ? "Results" : "results"] = new System.Text.Json.Nodes.JsonArray(
+            // v25 (A3 #998 / C3 #1009): the table is deliverables — results is
+            // retired there; the loaded key's casing is kept either way.
+            string deliverablesKey;
+            if (At25)
+            {
+                root.AsObject().Remove("results");
+                root.AsObject().Remove("Results");
+                deliverablesKey = root["Deliverables"] is not null ? "Deliverables" : "deliverables";
+            }
+            else
+            {
+                deliverablesKey = root["Results"] is not null ? "Results" : "results";
+            }
+
+            root[deliverablesKey] = new System.Text.Json.Nodes.JsonArray(
                 resultsToWrite
                     .Select(result =>
                     {
@@ -12786,6 +13663,7 @@
                                     }
 
                                     var adorned = new System.Text.Json.Nodes.JsonObject { ["id"] = entry.Id };
+                                    if (entry.At != null) { adorned["at"] = entry.At; } // v25 (C3 #1009) — first after id, per the converter's member order
                                     if (entry.Before != null) { adorned["before"] = entry.Before; }
                                     if (entry.After != null) { adorned["after"] = entry.After; }
                                     if (entry.When != null) { adorned["when"] = entry.When; }
@@ -12987,7 +13865,35 @@
         // v23 (#955): a node's macro attachments — the whole list, each a bare id
         // (before/always) or a placement object { id, at, when, optional }. An
         // empty list removes the field.
+        //
+        // C3 (#1009): a removed library macro leaves every node's list in the
+        // same publish (the #571 rule the deliverables already follow) — a loaded
+        // list naming it is rewritten without it, a pending one filtered. A
+        // local map, not nodeMacroEdits: pending state is untouched and
+        // "(restore)" stays honest.
+        var nodeMacrosToWrite = new Dictionary<string, IReadOnlyList<WorkflowManifestReader.NodeMacroView>>(StringComparer.Ordinal);
         foreach (var pair in nodeMacroEdits)
+        {
+            nodeMacrosToWrite[pair.Key] = pair.Value;
+        }
+
+        if (removedMacroIds.Count > 0)
+        {
+            foreach (var loadedNode in nodes)
+            {
+                if (!nodeMacrosToWrite.ContainsKey(loadedNode.Id) && loadedNode.Macros is { } loadedMacros && loadedMacros.Any(e => removedMacroIds.Contains(e.Id)))
+                {
+                    nodeMacrosToWrite[loadedNode.Id] = loadedMacros;
+                }
+            }
+
+            foreach (var key in nodeMacrosToWrite.Keys.ToList())
+            {
+                nodeMacrosToWrite[key] = nodeMacrosToWrite[key].Where(e => !removedMacroIds.Contains(e.Id)).ToList();
+            }
+        }
+
+        foreach (var pair in nodeMacrosToWrite)
         {
             if (removedNodeIds.Contains(pair.Key) || NodeFor(pair.Key) is not { } nodeObject)
             {

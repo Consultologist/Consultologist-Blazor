@@ -303,6 +303,36 @@ public class ManifestReaderTests
             blank => Assert.Null(blank.When));
     }
 
+    // ----- v25 #1009: a macro's instruction and a deliverable instance's at -----
+
+    [Fact]
+    public void ReadMacros_CarriesTheInstruction_AsRead()
+    {
+        var macros = WorkflowManifestReader.ReadMacros(Parse("""
+            { "macros": [
+                { "id": "closing", "label": "Closing", "file": "macros/closing.md", "instruction": "Add a closing line if the plan changed." },
+                { "id": "note", "file": "macros/note.md" }
+            ] }
+            """));
+
+        Assert.Equal("Add a closing line if the plan changed.", macros[0].Instruction);
+        Assert.Null(macros[1].Instruction);
+    }
+
+    [Fact]
+    public void ReadResults_CarriesADeliverableInstancesAt_AndItIsNotBare()
+    {
+        var result = Assert.Single(WorkflowManifestReader.ReadResults(Parse("""
+            { "deliverables": [ { "id": "consult", "node": "node:all", "label": "Note",
+                "macros": [ { "id": "disclaimer", "at": "prepend", "when": "input:kind == new" }, { "id": "signature", "at": "append" }, "bare" ] } ] }
+            """)));
+
+        Assert.Collection(result.Macros!,
+            first => { Assert.Equal("prepend", first.At); Assert.True(first.IsPrepend); Assert.Equal("input:kind == new", first.When); Assert.False(first.IsBare); },
+            second => { Assert.True(second.IsAppend); Assert.False(second.IsBare); },
+            third => { Assert.Null(third.At); Assert.True(third.IsBare); });
+    }
+
     // ----- v11 #564: macros, the deliverable's list and signed flag, reproducible -----
 
     [Fact]

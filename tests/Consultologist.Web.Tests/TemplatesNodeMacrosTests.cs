@@ -85,6 +85,31 @@ public class TemplatesNodeMacrosTests : ClientRenderTestContext
 
     // ----- gating -----------------------------------------------------------
 
+    // C3 (#1009): removing a library macro strips its node instances in the same
+    // publish, as #571 made it strip the deliverable's references — the registry
+    // refuses an undeclared reference, so neither half may publish alone. Every
+    // version: a package that never removes a macro composes the bytes it always did.
+    [Fact]
+    public void RemovingADeclaredMacro_StripsItsNodeInstances_InTheSamePublish()
+    {
+        CapturePublish();
+        var page = RenderEditor(23, draftSectionMacros: "\"tool_guidance\"", scopeMacros: "{ \"id\": \"tool_guidance\", \"at\": \"after\" }");
+
+        page.FindAll("button.editor-nav__item").First(b => b.TextContent.Replace("●", string.Empty).Trim() == "tool_guidance").Click();
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Remove macro")).Click();
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish")).Click();
+
+        Assert.NotNull(sent);
+        var root = JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement;
+        Assert.False(root.TryGetProperty("macros", out _));
+        foreach (var node in root.GetProperty("nodes").EnumerateArray())
+        {
+            Assert.False(node.TryGetProperty("macros", out _), node.GetProperty("id").GetString());
+        }
+
+        Assert.False(sent.Files.ContainsKey("macros/tool_guidance.md"));
+    }
+
     [Fact]
     public void At23_APromptNode_OffersTheMacrosSection()
     {

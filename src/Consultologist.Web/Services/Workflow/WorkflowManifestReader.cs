@@ -139,13 +139,19 @@ public static class WorkflowManifestReader
     /// of WorkflowDeliverableMacroSpec, IsBare discipline included: a bare entry
     /// writes the v11 string, an adorned one the object, and When counts.
     /// </summary>
-    public sealed record ResultMacroView(string Id, string? Before = null, string? After = null, string? When = null, string? ForItem = null, bool? Slot = null)
+    public sealed record ResultMacroView(string Id, string? Before = null, string? After = null, string? When = null, string? ForItem = null, bool? Slot = null, string? At = null)
     {
-        public bool IsBare => Before is null && After is null && When is null && ForItem is null && Slot is null;
+        public bool IsBare => Before is null && After is null && When is null && ForItem is null && Slot is null && At is null;
 
         // v20 (#863): the model places this macro inline via a [[slot:<id>]]
         // marker; it names no anchor. Mirror of WorkflowDeliverableMacroSpec.IsSlot.
         public bool IsSlot => Slot == true;
+
+        // v25 (C3 #1009): a deliverable instance's placement — prepend | append;
+        // null on a 25 entry is "not yet chosen" (the registry refuses it).
+        public bool IsPrepend => At == Consultologist.PackageFormat.WorkflowDeliverableMacroSpec.Prepend;
+
+        public bool IsAppend => At == Consultologist.PackageFormat.WorkflowDeliverableMacroSpec.Append;
     }
 
     /// <summary>
@@ -162,8 +168,9 @@ public static class WorkflowManifestReader
     }
 
     /// <summary>One declared macro (v11 § 4): package-owned template text.
-    /// v12 § 3 (#621): optional and its default, carried as read.</summary>
-    public sealed record MacroView(string Id, string Label, string File, bool? Optional = null, bool? Default = null);
+    /// v12 § 3 (#621): optional and its default, carried as read.
+    /// v25 (C3 #1009): the instruction — mandatory at 25 — carried as read (null when absent).</summary>
+    public sealed record MacroView(string Id, string Label, string File, bool? Optional = null, bool? Default = null, string? Instruction = null);
 
     /// <summary>One declared output-contract schema: its id and the package file its JSON body lives in.</summary>
     public sealed record SchemaView(string Id, string File);
@@ -643,7 +650,8 @@ public static class WorkflowManifestReader
                 ReadString(macro, "label") ?? id,
                 ReadString(macro, "file") ?? string.Empty,
                 ReadBool(macro, "optional"),
-                ReadBool(macro, "default")));
+                ReadBool(macro, "default"),
+                ReadString(macro, "instruction")));
         }
 
         return macros;
@@ -749,7 +757,8 @@ public static class WorkflowManifestReader
                     ReadString(item, "after"),
                     ReadString(item, "when"),
                     ReadString(item, "forItem"),
-                    ReadBool(item, "slot")));
+                    ReadBool(item, "slot"),
+                    ReadString(item, "at")));
             }
         }
 
