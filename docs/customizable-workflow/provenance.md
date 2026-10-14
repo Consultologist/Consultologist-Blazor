@@ -341,3 +341,31 @@ system with no dependency on this application or its Azure tenant.
 >   contract's guarantees. `outputHash`/`inputHash` and reproducibility are unchanged — a
 >   custom node reproduces like any other (same schema + model ⇒ same agent ⇒ same
 >   contract), it simply is not *attested*.
+
+> **Amendment, 2026-10-14 (#1004 — specVersion 25 B5: the completion order and the two
+> per-node hashes; inert until B7 runs 25).** At specVersion 25 a node's output is
+> composed **at the node**, when it completes (design §§ 6–7): the reply is validated,
+> judged against `failIfEmpty`, its sanctioned `[[slot:<id>]]` markers are filled where the
+> model placed them, and its before/after macro instances compose around the result. Three
+> consequences for the record, each a new trailing field the engine already writes and B7
+> documents in the registry:
+>
+> - **Two hashes per node.** `outputHash` becomes the digest of the node's *output* — what
+>   `node.<id>.text`, the aggregator and the deliverable read — and **`agentOutputHash`**
+>   sits beside it, over the reply as returned (the render on a rendered node, the
+>   operation's result on a computed one). The two are one digest when nothing composed and
+>   nothing was stripped. This is **per-node definition 6**, the first rung that moves the
+>   output side; `ConsultGenerationProvenance.NodeHashVersionAt25` carries it, and a node of a
+>   package below 25 keeps stamping 5 — its output never composes at the node. The registry's
+>   ladder gains row 6 with B7's provenance bump (the registry refuses an unbumped version);
+>   until then the engine's number is pinned one above the published ladder by test.
+> - **`appended[]` and `excluded[]` per node row.** What the completion placed, in output
+>   order (`{ kind: macro | slot, id }`), and what it withheld or removed, by name
+>   (`{ kind, id, reason }`): an instance whose `when` refused (the condition explainer's
+>   sentence), a marker whose `macro.<id>.prompt` read sits behind a branch the render did not
+>   take, a marker no read sanctions. The document-level slot fill and its `slot` entries are
+>   retired for a 25 job; a deliverable's `appended[]` keeps its prepend/append macros and the
+>   signature.
+> - **The rerun verdict** compares `outputHash` as before, under the same `hashVersion`; two
+>   25 runs that composed the same output agree, and a 25 row never compares with a 5 row.
+
