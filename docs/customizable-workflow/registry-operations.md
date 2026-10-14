@@ -271,6 +271,19 @@ per hop) walks `derivedFrom` manifests to the root and returns the ordered
 chain — e.g. `["acct-…@v2026.07.1", "general@v2026.07.6"]`. Manifest-only
 reads: lineage displays even for versions the engine would not execute.
 
+## The formats catalogue read (#1005, 2026-10-14)
+
+`GET /api/WorkflowFormats` (authorized; CORS applied; never cached) serves the
+formats catalogue the editor reads at specVersion 25 (design § 3.8): every
+format's id, description, type, producer, `outputMacros`, values and
+parameters; the format file including its schema in the editor's write form,
+with the hash a stamp records; and the detail line's facts — the agent's name
+and version where one runs, the operation where the engine computes, and
+whether the output is attested — plus the custom producer's agent. The engine's
+pinned catalogue (`Formats__Pin`) by default; `?ref=formats@vYYYY.MM.N` reads
+the version a package's stamp names. The agent yaml and the custom trailer are
+never served: no authoring decision depends on them.
+
 ## Blob CORS (added 2026-07-17, #105)
 
 The public account allows cross-origin `GET` from any origin (blob service CORS

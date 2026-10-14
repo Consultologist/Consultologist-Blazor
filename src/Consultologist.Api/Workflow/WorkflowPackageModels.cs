@@ -206,3 +206,44 @@ public sealed record WorkflowPackagePublishResponse(
 public sealed record WorkflowPackageIngestResponse(
     WorkflowPackageContentResponse Content,
     IReadOnlyList<string> Findings);
+
+/// <summary>
+/// v25 (B6 #1005, design § 3.8): the formats catalogue as the editor reads it
+/// — its version and ref, every format with the facts the picker, the node
+/// pane and the detail line need, and the custom producer's agent. Never the
+/// agent yaml, never the trailer.
+/// </summary>
+public sealed record WorkflowFormatsResponse(
+    string Version,
+    string Ref,
+    IReadOnlyList<WorkflowFormatEntryResponse> Formats,
+    WorkflowFormatCustomResponse Custom);
+
+/// <summary>
+/// One catalogue format: the picker's facts (id, description, type, producer),
+/// what the node pane renders (outputMacros, values, parameters), the file
+/// including its schema in the editor's write form (<c>File</c>) with the hash
+/// a stamp records, and the detail line's facts — the agent's name and version
+/// where one runs, the operation where the engine computes, and whether the
+/// output is attested.
+/// </summary>
+public sealed record WorkflowFormatEntryResponse(
+    string Id,
+    string? Description,
+    string Type,
+    string Producer,
+    bool OutputMacros,
+    IReadOnlyList<string>? Values,
+    IReadOnlyDictionary<string, WorkflowFormatParameterResponse>? Parameters,
+    System.Text.Json.Nodes.JsonNode? Schema,
+    string File,
+    string FormatHash,
+    string? AgentName,
+    int? AgentVersion,
+    string? Op,
+    bool Attested);
+
+public sealed record WorkflowFormatParameterResponse(string Kind, string? Format);
+
+/// <summary>The generic agent every custom format runs on — its name and version; the trailer stays the engine's.</summary>
+public sealed record WorkflowFormatCustomResponse(string AgentName, int AgentVersion);

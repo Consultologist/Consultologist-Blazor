@@ -14,7 +14,7 @@ public class FormsIntakeTests
 
     private static FormsIntake.FormResponseSubmission Valid(Dictionary<string, string>? inputs = null) =>
         new("triage-intake", Json("17"), new DateTimeOffset(2026, 9, 1, 14, 2, 11, TimeSpan.Zero),
-            inputs ?? new Dictionary<string, string> { ["consult_draft"] = "The referral text.", ["urgent"] = "Yes" });
+            FormResponseJson.Strings(inputs ?? new Dictionary<string, string> { ["consult_draft"] = "The referral text.", ["urgent"] = "Yes" }));
 
     [Fact]
     public void TheWireResponseId_LandsAsNumberOrString_AndNothingElse()
@@ -59,7 +59,7 @@ public class FormsIntakeTests
         Assert.Equal("submittedAtUtc is required, as an ISO-8601 instant.",
             FormsIntake.ValidateSubmission(Valid() with { SubmittedAtUtc = null }, "17"));
         Assert.Equal("inputs is required and must carry at least one value.",
-            FormsIntake.ValidateSubmission(Valid() with { Inputs = new Dictionary<string, string>() }, "17"));
+            FormsIntake.ValidateSubmission(Valid() with { Inputs = new Dictionary<string, JsonElement>() }, "17"));
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public class FormsIntakeTests
             new[] { "consult_draft" }, "org-form-responses", "user-1/triage-intake-17.json", DeletedAtUtc: null);
         var payload = new FormResponsePayload(
             FormResponsePayload.CurrentVersion, "triage-intake", "17",
-            row.SubmittedAtUtc, new Dictionary<string, string> { ["consult_draft"] = "The referral text." });
+            row.SubmittedAtUtc, FormResponseJson.Strings(new Dictionary<string, string> { ["consult_draft"] = "The referral text." }));
 
         var serialized = JsonSerializer.Serialize(FormsIntake.ValuesOf(row, payload));
 
@@ -127,6 +127,65 @@ public class FormsIntakeTests
         Assert.Contains("\"triage-intake\"", serialized);
         Assert.DoesNotContain("org-form-responses", serialized);
         Assert.DoesNotContain("user-1", serialized);
+    }
+
+    // ----- v25 (B6 #1005): payload version 2 — JSON values -----
+
+    [Fact]
+    public void AJsonValue_OfAnyKind_IsAccepted_AndANull_IsNot()
+    {
+        var kinds = new Dictionary<string, JsonElement>
+        {
+            ["n"] = Json("7"), ["b"] = Json("true"), ["a"] = Json("[\"x\"]"), ["o"] = Json("{\"city\":\"Halifax\"}"), ["s"] = Json("\"text\""),
+        };
+        Assert.Null(FormsIntake.ValidateSubmission(Valid() with { Inputs = kinds }, "17"));
+
+        Assert.Equal("input 'n' carries no value — a JSON value is required.",
+            FormsIntake.ValidateSubmission(Valid() with { Inputs = new Dictionary<string, JsonElement> { ["n"] = Json("null") } }, "17"));
+    }
+
+    [Fact]
+    public void AnOversizedJsonValue_IsRefused_OverItsText()
+    {
+        var oversized = new Dictionary<string, JsonElement> { ["a"] = Json($"[\"{new string('x', FormsIntake.MaxValueLength)}\"]") };
+
+        Assert.Equal($"input 'a' is longer than {FormsIntake.MaxValueLength} characters.", FormsIntake.ValidateSubmission(Valid() with { Inputs = oversized }, "17"));
+    }
+
+    [Fact]
+    public void TheOneResponseRead_FlattensAVersion2Value_ToThePickersString()
+    {
+        var row = new FormResponseRow(
+            "user-1", "triage-intake", "17", new DateTimeOffset(2026, 9, 1, 14, 2, 11, TimeSpan.Zero),
+            new[] { "s", "n", "b", "a", "o" }, "org-form-responses", "user-1/triage-intake-17.json", DeletedAtUtc: null);
+        var payload = new FormResponsePayload(FormResponsePayload.CurrentVersion, "triage-intake", "17", row.SubmittedAtUtc, new Dictionary<string, JsonElement>
+        {
+            ["s"] = Json("\"text\""), ["n"] = Json("1.50"), ["b"] = Json("false"), ["a"] = Json("[\"A\", \"C\"]"), ["o"] = Json("{ \"city\": \"Halifax\" }"),
+        });
+
+        var inputs = JsonDocument.Parse(JsonSerializer.Serialize(FormsIntake.ValuesOf(row, payload))).RootElement.GetProperty("inputs");
+
+        Assert.Equal("text", inputs.GetProperty("s").GetString());
+        Assert.Equal("1.50", inputs.GetProperty("n").GetString());
+        Assert.Equal("false", inputs.GetProperty("b").GetString());
+        Assert.Equal("[\"A\", \"C\"]", inputs.GetProperty("a").GetString());
+        Assert.Equal("{ \"city\": \"Halifax\" }", inputs.GetProperty("o").GetString());
+        Assert.Equal(2, FormResponsePayload.CurrentVersion);
+    }
+
+    [Fact]
+    public void AVersion1Blob_Reads_AsStringElements()
+    {
+        // The bytes every response held before B6: strings only. They bind as
+        // string elements and coerce through the string table, unchanged.
+        const string stored = """{"Version":1,"FormId":"triage-intake","ResponseId":"17","SubmittedAtUtc":"2026-09-01T14:02:11+00:00","Inputs":{"consult_draft":"The referral text.","urgent":"Yes"}}""";
+
+        var payload = JsonSerializer.Deserialize<FormResponsePayload>(stored)!;
+
+        Assert.Equal(1, payload.Version);
+        Assert.Equal(JsonValueKind.String, payload.Inputs["consult_draft"].ValueKind);
+        Assert.Equal("The referral text.", FormResponseText.Of(payload.Inputs["consult_draft"]));
+        Assert.Equal("Yes", payload.Inputs["urgent"].GetString());
     }
 
     [Fact]

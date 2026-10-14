@@ -380,6 +380,19 @@ public class WorkflowV25BelowGateTests
     }
 
     [Fact]
+    public void AnObjectFormSlot_Below25_IsStillRefused()
+    {
+        // B6 #1005: the v13 sentence holds at 24; the lift is 25's.
+        var errors = ErrorsAt24(m => m with
+        {
+            Inputs = (m.Inputs ?? new List<WorkflowInputSpec>()).Append(new WorkflowInputSpec("intake", "Intake", Required: false, Type: new WorkflowTypeSet(new[] { WorkflowInputTypes.Object }),
+                Fields: new List<WorkflowFieldSpec> { new("age", "Age") }, ExpectedContent: WorkflowExpectedContent.Form)).ToList(),
+        });
+
+        Assert.Contains("Input 'intake' declares expectedContent 'form', which a slot of type 'object' cannot be filled from.", errors);
+    }
+
+    [Fact]
     public void ANodeLevelFailIfEmpty_Below25_IsRefusedByName()
     {
         // B5 #1004: below 25 the sentence lives in output.failIfEmpty; the node

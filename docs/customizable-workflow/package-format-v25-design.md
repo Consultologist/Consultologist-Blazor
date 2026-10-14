@@ -490,6 +490,11 @@ stamped `form-response` once; the held-response payload moves to a version that 
 values. Reading needs nothing new: `{{ input.intake.allergies }}`, a loop over an array
 field, a typed `when` on `input.intake.on_letrozole`.
 
+*(B6 #1005, 2026-10-14: the keys are **nested** — the response carries the object under the
+slot's id and its members are the fields; the sender groups, so the response's shape is the
+slot's shape and one fill serves the held response and #991's file. Any declared field
+shape fills from a JSON value; a string value still goes through the v13 table.)*
+
 Declared fields are chosen over a schemaless `type: json`: coercion, required-field refusal
 and typed conditions need the shape, and an editor helper derives `fields` from a sample
 response. The **file door** on the Create page (#991) and the **transcript door** (§ 15)

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Azure;
 using Azure.Core;
 using Azure.Data.Tables;
@@ -9,19 +10,42 @@ namespace Consultologist.Api.Forms;
 
 /// <summary>
 /// #539 (storage-separation.md § 2.1): one JSON blob per held form response —
-/// the values as the strings the flow sent, never validated against
-/// declarations (an "Other" answer is free text) and never logged. Inputs
-/// before any job: the same container family and the same account clock as
-/// the held job inputs.
+/// the values as the flow sent them, never validated against declarations
+/// (an "Other" answer is free text) and never logged. Inputs before any job:
+/// the same container family and the same account clock as the held job
+/// inputs. v25 (package-format-v25-design.md § 9, B6 #1005) — <b>version 2</b>:
+/// a value is any JSON value, keyed by slot id — a string as ever, or a
+/// number, a boolean, an array, or the JSON object that fills an object form
+/// slot member by member. A version-1 blob carries strings only, which bind
+/// as string elements: read as written, never rewritten.
 /// </summary>
 public sealed record FormResponsePayload(
     int Version,
     string FormId,
     string ResponseId,
     DateTimeOffset SubmittedAtUtc,
-    IReadOnlyDictionary<string, string> Inputs)
+    IReadOnlyDictionary<string, JsonElement> Inputs)
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
+}
+
+/// <summary>
+/// v25 (B6 #1005): a held JSON value as the picker's string — a string as
+/// itself, a number as its spelling, a boolean as <c>true</c>/<c>false</c>, an
+/// array or an object as compact JSON text (the array form the string
+/// coercion table already reads). The Create page's reader and the Web's
+/// mirrored table see exactly the strings they saw before.
+/// </summary>
+public static class FormResponseText
+{
+    public static string Of(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.String => value.GetString() ?? string.Empty,
+        JsonValueKind.Null or JsonValueKind.Undefined => string.Empty,
+        JsonValueKind.True => "true",
+        JsonValueKind.False => "false",
+        _ => value.GetRawText(),
+    };
 }
 
 /// <summary>Where a response's values rest — container + name, never a URL.</summary>

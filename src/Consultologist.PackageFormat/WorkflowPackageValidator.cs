@@ -1546,10 +1546,18 @@ public static partial class WorkflowPackageValidator
                 errors.Add($"Input '{input.Id}' declares expectedContent 'transcript', which is only for a text slot or an array of text.");
             }
             else if (content == WorkflowExpectedContent.Form
-                && (type == WorkflowInputTypes.Object
+                && ((type == WorkflowInputTypes.Object && manifest.SpecVersion < 25)
                     || (type == WorkflowInputTypes.Array && WorkflowInputTypes.ElementTypeOf(input) == WorkflowInputTypes.Object)))
             {
+                // v25 (package-format-v25-design.md § 9, B6 #1005) lifts the
+                // object refusal: a form slot may be an object with declared
+                // fields, filled from a held response's JSON object. An array
+                // of objects stays refused at every version.
                 errors.Add($"Input '{input.Id}' declares expectedContent 'form', which a slot of type '{type}' cannot be filled from.");
+            }
+            else if (content == WorkflowExpectedContent.Form && type == WorkflowInputTypes.Object && input.Fields is not { Count: > 0 })
+            {
+                errors.Add($"Input '{input.Id}' declares expectedContent 'form' on an object with no fields; declare the fields a response fills.");
             }
             else if (content == WorkflowExpectedContent.Image
                 && type != WorkflowInputTypes.Text

@@ -1854,7 +1854,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     $"The response does not carry input '{inputId}'.");
             }
 
-            var (coerced, misfit) = CoerceFormValue(declaration, held);
+            // v25 (B6 #1005): the same coercion the run-at-once door makes —
+            // union-aware; a held JSON object fills an object slot's declared
+            // fields, a missing required field refusing the start by name.
+            var (coerced, misfit) = FormResponseCoercion.CoerceDeclared(declaration, held);
             if (misfit != null)
             {
                 return new FormRefVerification(null, ConsultGenerationJobStartError.InputFormRefMismatch,
@@ -2536,36 +2539,6 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// serves the sub-declaring arm). Returns the matched arm, or a combined
     /// refusal completing "Input '&lt;id&gt;' …" that names every arm.
     /// </summary>
-    /// <summary>
-    /// #729: coerce a held form answer against a slot, union-aware. A single
-    /// type defers to FormResponseCoercion unchanged; a union tries each arm in
-    /// declared order and takes the first that coerces (the server accepts the
-    /// arm the held value fits, whatever the SPA rendered).
-    /// </summary>
-    private static (ConsultInputValue? Value, string? Misfit) CoerceFormValue(WorkflowInputSpec declaration, string held)
-    {
-        var node = WorkflowDeclarationNode.Of(declaration);
-
-        if (declaration.Type is not { IsUnion: true })
-        {
-            return FormResponseCoercion.Coerce(node, held);
-        }
-
-        string? lastMisfit = null;
-        foreach (var arm in WorkflowInputTypes.TypesOf(declaration))
-        {
-            var (value, misfit) = FormResponseCoercion.Coerce(node with { Type = arm }, held);
-            if (misfit == null)
-            {
-                return (value, null); // a match, or the blank (null, null) case
-            }
-
-            lastMisfit = misfit;
-        }
-
-        return (null, lastMisfit);
-    }
-
     internal static (string? Arm, string? Complaint) MatchUnionArm(WorkflowInputSpec input, ConsultInputValue value)
     {
         var baseNode = WorkflowDeclarationNode.Of(input);

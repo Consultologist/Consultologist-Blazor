@@ -62,12 +62,17 @@ public sealed class FormsIntake
         _logger = logger;
     }
 
-    /// <summary>The wire body. ResponseId rides as JSON so 17 and "17" both land (the flow sends a number).</summary>
+    /// <summary>
+    /// The wire body. ResponseId rides as JSON so 17 and "17" both land (the
+    /// flow sends a number). v25 (B6 #1005): an input's value is any JSON
+    /// value — a string as ever, or a number, a boolean, an array, or the
+    /// object that fills an object form slot (payload version 2).
+    /// </summary>
     public sealed record FormResponseSubmission(
         string? FormId,
         JsonElement? ResponseId,
         DateTimeOffset? SubmittedAtUtc,
-        Dictionary<string, string>? Inputs);
+        Dictionary<string, JsonElement>? Inputs);
 
     /// <summary>
     /// One function for both verbs: the Functions host does not route two
@@ -159,7 +164,7 @@ public sealed class FormsIntake
 
         _logger.LogInformation(
             "Form response held. FormId={FormId}, ResponseId={ResponseId}, InputCount={InputCount}, TotalLength={TotalLength}",
-            formId, responseId, submission.Inputs!.Count, submission.Inputs.Values.Sum(v => (long)v.Length));
+            formId, responseId, submission.Inputs!.Count, submission.Inputs.Values.Sum(v => (long)v.GetRawText().Length));
 
         // #543: the account's word decides — only runAtOnce starts anything,
         // strictly AFTER the row (the exactly-once claim: a retried push hit
@@ -209,7 +214,7 @@ public sealed class FormsIntake
         string appUserId,
         string formId,
         string responseId,
-        IReadOnlyDictionary<string, string> heldInputs,
+        IReadOnlyDictionary<string, JsonElement> heldInputs,
         CancellationToken cancellationToken)
     {
         IReadOnlyList<WorkflowInputSpec>? declarations;
@@ -277,7 +282,7 @@ public sealed class FormsIntake
     /// </summary>
     internal static (ConsultGenerationRequest? Request, string? Refusal) BuildRunRequest(
         IReadOnlyList<WorkflowInputSpec> declarations,
-        IReadOnlyDictionary<string, string> heldInputs,
+        IReadOnlyDictionary<string, JsonElement> heldInputs,
         string formId,
         string responseId)
     {
@@ -291,7 +296,10 @@ public sealed class FormsIntake
                 continue;
             }
 
-            var (value, misfit) = FormResponseCoercion.Coerce(WorkflowDeclarationNode.Of(declaration), held);
+            // v25 (B6 #1005): the one coercion the starter's verification
+            // makes too — union-aware, a JSON object filling an object slot's
+            // declared fields with a missing required field named.
+            var (value, misfit) = FormResponseCoercion.CoerceDeclared(declaration, held);
             if (misfit != null)
             {
                 return (null, $"The response's answer for input '{declaration.Id}' {misfit}.");
@@ -402,7 +410,9 @@ public sealed class FormsIntake
         formId = row.FormId,
         responseId = row.ResponseId,
         submittedAtUtc = row.SubmittedAtUtc,
-        inputs = payload.Inputs
+        // v25 (B6 #1005): a version-2 value flattened to the string the
+        // picker always read — the Create page's table is untouched.
+        inputs = payload.Inputs.ToDictionary(pair => pair.Key, pair => FormResponseText.Of(pair.Value), StringComparer.Ordinal)
     };
 
     /// <summary>The picker's wording, spike § 4.2: "values deleted Sep 8, 2026".</summary>
@@ -457,14 +467,15 @@ public sealed class FormsIntake
                 return inputIdError;
             }
 
-            if (value == null)
+            if (value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
             {
-                return $"input '{id}' carries no value — values are strings.";
+                return $"input '{id}' carries no value — a JSON value is required.";
             }
 
-            if (value.Length > MaxValueLength)
+            if (value.GetRawText().Length > MaxValueLength)
             {
-                // Refused, never truncated — the #428 rule.
+                // Refused, never truncated — the #428 rule; the cap is over
+                // the value's JSON text whatever its kind.
                 return $"input '{id}' is longer than {MaxValueLength} characters.";
             }
         }
