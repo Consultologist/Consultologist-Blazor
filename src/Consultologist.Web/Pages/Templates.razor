@@ -534,12 +534,22 @@
                         <span>Schemas</span>
                     </button>
                     }
-                    <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.NumberSymbol())" /> Data</span>
+                    @* C2 (#1008): at 25 this group is Snippets — the same machinery
+                       under the snippets table (a snippet is a Scriban template read
+                       as snippet.<id>.text; a folder is today's collection). *@
+                    @if (At25)
+                    {
+                        <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.DocumentText())" /> Snippets</span>
+                    }
+                    else
+                    {
+                        <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.NumberSymbol())" /> Data</span>
+                    }
                     @* A value has no items, so it sits flat in the same Data
                        group rather than as a folder with nothing inside. *@
                     @if (!EffectiveScalars.Any())
                     {
-                        <EmptyState Compact Class="editor-nav__empty" Description="No data values yet." />
+                        <EmptyState Compact Class="editor-nav__empty" Description="@(At25 ? "No snippets yet." : "No data values yet.")" />
                     }
                     @foreach (var scalar in EffectiveScalars)
                     {
@@ -563,7 +573,7 @@
                             {
                                 <div class="editor-nav__item editor-nav__item--nested">
                                     <span class="editor-nav__dot"></span>
-                                    <span class="muted-text">not bound by any workflow node yet</span>
+                                    <span class="muted-text">@(At25 ? "not read by any template yet" : "not bound by any workflow node yet")</span>
                                 </div>
                             }
                         }
@@ -572,11 +582,11 @@
                             class="editor-nav__item editor-nav__add @(selectedKey == AddScalarKey ? "editor-nav__item--selected" : "")"
                             @onclick="() => Select(AddScalarKey)">
                         <span class="editor-nav__dot"></span>
-                        <span>+ Data value</span>
+                        <span>@(At25 ? "+ Snippet" : "+ Data value")</span>
                     </button>
                     @if (!EffectiveCollections.Any())
                     {
-                        <EmptyState Compact Class="editor-nav__empty" Description="No data folders yet." />
+                        <EmptyState Compact Class="editor-nav__empty" Description="@(At25 ? "No snippet folders yet." : "No data folders yet.")" />
                     }
                     @foreach (var collection in EffectiveCollections)
                     {
@@ -632,7 +642,7 @@
                             {
                                 <div class="editor-nav__item editor-nav__item--nested">
                                     <span class="editor-nav__dot"></span>
-                                    <span class="muted-text">not used by any workflow node yet</span>
+                                    <span class="muted-text">@(At25 ? "not fanned by any node yet" : "not used by any workflow node yet")</span>
                                 </div>
                             }
                         </details>
@@ -641,7 +651,7 @@
                             class="editor-nav__item editor-nav__add @(selectedKey == AddCollectionKey ? "editor-nav__item--selected" : "")"
                             @onclick="() => Select(AddCollectionKey)">
                         <span class="editor-nav__dot"></span>
-                        <span>+ Data folder</span>
+                        <span>@(At25 ? "+ Snippet folder" : "+ Data folder")</span>
                     </button>
                 </nav>
 
@@ -652,7 +662,14 @@
                         <div class="pane-header">
                             <div>
                                 <h3 class="panel-title">New @newCollection item</h3>
-                                <p class="muted-text">Adds a generated section to every future consult.</p>
+                                @if (At25)
+                                {
+                                    <p class="muted-text">A snippet in the folder: a Scriban template a fanning node reads as <code>item.text</code>, included on every run unless its condition says otherwise.</p>
+                                }
+                                else
+                                {
+                                    <p class="muted-text">Adds a generated section to every future consult.</p>
+                                }
                             </div>
                         </div>
                         @if (newItemError != null)
@@ -671,7 +688,7 @@
                         </div>
                         <div class="pane-split">
                             <label class="input-field pane-editor">
-                                <span>Standard</span>
+                                <span>@ItemNoun</span>
                                 <FluentTextArea @bind-Value="newItemContent" Rows="14" />
                             </label>
                             <div class="pane-preview">
@@ -691,12 +708,23 @@
                     {
                         <div class="pane-header">
                             <div>
-                                <h3 class="panel-title">New data folder</h3>
-                                <p class="muted-text">
-                                    A new collection of items beside the existing folders. Add at least one
-                                    item before publishing; workflow nodes can be connected to it in a later
-                                    graph edit.
-                                </p>
+                                <h3 class="panel-title">@(At25 ? "New snippet folder" : "New data folder")</h3>
+                                @if (At25)
+                                {
+                                    <p class="muted-text">
+                                        A folder of snippets a node fans over (<code>forEach: snippet:&lt;folder&gt;</code>)
+                                        or a template iterates (<code>{{ for s in snippet.&lt;folder&gt; }}</code>). Add at
+                                        least one item before publishing.
+                                    </p>
+                                }
+                                else
+                                {
+                                    <p class="muted-text">
+                                        A new collection of items beside the existing folders. Add at least one
+                                        item before publishing; workflow nodes can be connected to it in a later
+                                        graph edit.
+                                    </p>
+                                }
                             </div>
                         </div>
                         @if (newCollectionError != null)
@@ -705,8 +733,8 @@
                         }
                         <div class="new-item-fields">
                             <label class="input-field">
-                                <span>folder id (lowercase, digits, hyphens)</span>
-                                <FluentTextField @bind-Value="newCollectionId" Placeholder="guidelines" />
+                                <span>@(At25 ? "folder id (snake_case)" : "folder id (lowercase, digits, hyphens)")</span>
+                                <FluentTextField @bind-Value="newCollectionId" Placeholder="@(At25 ? "sections" : "guidelines")" />
                             </label>
                         </div>
                         <div class="action-row">
@@ -719,12 +747,23 @@
                     {
                         <div class="pane-header">
                             <div>
-                                <h3 class="panel-title">New data value</h3>
-                                <p class="muted-text">
-                                    A single piece of text the package owns — a specialty, a note type — that
-                                    prompts read as <code>data:&lt;id&gt;</code>. Unlike a folder it has no items;
-                                    it is one value, the same for every consult this package runs.
-                                </p>
+                                <h3 class="panel-title">@(At25 ? "New snippet" : "New data value")</h3>
+                                @if (At25)
+                                {
+                                    <p class="muted-text">
+                                        A Scriban template the package owns — a standard, a house style — that a
+                                        prompt, a macro or another snippet reads as <code>{{ snippet.&lt;id&gt;.text }}</code>.
+                                        It is never attached to a node: the reading template decides where it goes.
+                                    </p>
+                                }
+                                else
+                                {
+                                    <p class="muted-text">
+                                        A single piece of text the package owns — a specialty, a note type — that
+                                        prompts read as <code>data:&lt;id&gt;</code>. Unlike a folder it has no items;
+                                        it is one value, the same for every consult this package runs.
+                                    </p>
+                                }
                             </div>
                         </div>
                         @if (newScalarError != null)
@@ -733,13 +772,13 @@
                         }
                         <div class="new-item-fields">
                             <label class="input-field">
-                                <span>value id (lowercase, digits, underscores, hyphens)</span>
-                                <FluentTextField @bind-Value="newScalarId" Placeholder="specialty" />
+                                <span>@(At25 ? "snippet id (snake_case)" : "value id (lowercase, digits, underscores, hyphens)")</span>
+                                <FluentTextField @bind-Value="newScalarId" Placeholder="@(At25 ? "standards" : "specialty")" />
                             </label>
                         </div>
                         <div class="action-row">
                             <FluentButton Appearance="Appearance.Accent" @onclick="AddScalarAsync">
-                                Create value
+                                @(At25 ? "Create snippet" : "Create value")
                             </FluentButton>
                         </div>
                     }
@@ -749,7 +788,7 @@
                                             Subtitle="@(addedScalars.ContainsKey(scalar.Id) ? "— new, unpublished" : string.Empty)"
                                             IdentityId="@scalar.Id"
                                             IdentityFile="@scalar.Path"
-                                            EditLabel="Value"
+                                            EditLabel="@(At25 ? "Snippet" : "Value")"
                                             Text="@GetText(scalar.Path)"
                                             Modified="@ScalarHasPending(scalar)"
                                             TextChanged="@(value => OnTextChangedAsync(scalar.Path, value))">
@@ -775,10 +814,20 @@
                                         first to delete this value.
                                     </p>
                                 }
-                                <p class="muted-text">
-                                    Bound as <code>data:@scalar.Id</code>. Inserted into prompts exactly as
-                                    typed — a trailing newline becomes a line break mid-sentence.
-                                </p>
+                                @if (At25)
+                                {
+                                    <p class="muted-text">
+                                        Read as <code>{{ snippet.@(scalar.Id).text }}</code> — rendered as a template
+                                        where it is read, exactly as typed.
+                                    </p>
+                                }
+                                else
+                                {
+                                    <p class="muted-text">
+                                        Bound as <code>data:@scalar.Id</code>. Inserted into prompts exactly as
+                                        typed — a trailing newline becomes a line break mid-sentence.
+                                    </p>
+                                }
                             </ChildContent>
                         </WorkflowEditorPane>
                     }
@@ -788,7 +837,7 @@
                                             Subtitle="— new, unpublished"
                                             IdentityId="@addedItem.Id"
                                             IdentityFile="@AddedPath(addedItem)"
-                                            EditLabel="Standard"
+                                            EditLabel="@ItemNoun"
                                             Text="@addedItem.Content"
                                             Modified="true"
                                             TextChanged="@(async value => { addedItem.Content = value; await PendingChangedAsync(); })">
@@ -798,7 +847,14 @@
                                 </FluentButton>
                             </HeaderActions>
                             <ChildContent>
-                                <p class="muted-text">Adds a generated section to every future consult.</p>
+                                @if (At25)
+                                {
+                                    <p class="muted-text">Read as <code>item.text</code> by the node fanning '@addedItem.Collection'.</p>
+                                }
+                                else
+                                {
+                                    <p class="muted-text">Adds a generated section to every future consult.</p>
+                                }
                             </ChildContent>
                         </WorkflowEditorPane>
                     }
@@ -1839,7 +1895,7 @@
                                     <span>for each</span>
                                     <FluentSelect TOption="string" class="binding-row__select" @bind-Value="newNodeForEach" aria-label="New node forEach">
                                         <FluentOption TOption="string" Value="">— runs once —</FluentOption>
-                                        @foreach (var option in WorkflowNodeSummary.ForEachOptions(CollectionIds, ArrayInputIds))
+                                        @foreach (var option in WorkflowNodeSummary.ForEachOptions(CollectionIds, ArrayInputIds, At25))
                                         {
                                             <FluentOption TOption="string" Value="@option">@option</FluentOption>
                                         }
@@ -2182,7 +2238,7 @@
                         <WorkflowEditorPane Title="@StandardName(standard)"
                                             IdentityId="@standard.Id"
                                             IdentityFile="@standard.File"
-                                            EditLabel="Standard"
+                                            EditLabel="@ItemNoun"
                                             Text="@GetText(standard.File)"
                                             Modified="@edits.ContainsKey(standard.File)"
                                             TextChanged="@(value => OnTextChangedAsync(standard.File, value))">
@@ -2199,11 +2255,18 @@
                                     <input class="node-field__input"
                                            value="@StandardName(standard)"
                                            @onchange="args => RenameStandardAsync(standard, args.Value?.ToString())"
-                                           aria-label="@($"Name for standard {standard.Id}")" />
+                                           aria-label="@($"Name for {ItemNoun.ToLowerInvariant()} {standard.Id}")" />
                                 </label>
-                                <p class="muted-text">
-                                    Standards guide organization and tone only. Patient facts still come from the draft consult.
-                                </p>
+                                @if (At25)
+                                {
+                                    <p class="muted-text">Read as <code>item.text</code> by the node fanning this folder.</p>
+                                }
+                                else
+                                {
+                                    <p class="muted-text">
+                                        Standards guide organization and tone only. Patient facts still come from the draft consult.
+                                    </p>
+                                }
                             </ChildContent>
                         </WorkflowEditorPane>
                     }
@@ -3752,7 +3815,35 @@
         || key == AddPreludeKey
         || addedItems.Any(added => added.Key == key);
 
-    private string AddedPath(AddedItem item) => $"data/{item.Collection}/{item.Id}.md";
+    private string AddedPath(AddedItem item) => $"{DataRoot}{item.Collection}/{item.Id}.md";
+
+    /// <summary>
+    /// C2 (#1008): at 25 the Data group is the Snippets group — the same
+    /// machinery under the snippets table. Every difference between the two
+    /// is keyed here: the manifest key, the directory root, a value's path, the
+    /// fan spelling, the nouns.
+    /// </summary>
+    private bool At25 => EffectiveSpecVersion >= 25;
+
+    private string DataTableKey => At25 ? WorkflowManifestReader.SnippetsKey : WorkflowManifestReader.DataKey;
+
+    private string DataRoot => At25 ? "snippets/" : "data/";
+
+    private string CollectionDirectory(string collectionId) => $"{DataRoot}{collectionId}/";
+
+    /// <summary>How a node fans this folder: snippet:&lt;folder&gt; at 25, data:&lt;collection&gt; below.</summary>
+    private string FanRef(string collectionId) => At25 ? $"{PF.WorkflowFanSources.SnippetPrefix}{collectionId}" : $"data:{collectionId}";
+
+    /// <summary>The folder a forEach names, under either spelling; null for an input fan or none.</summary>
+    private static string? FanFolderOf(string? forEach) =>
+        forEach is null ? null
+        : forEach.StartsWith("data:", StringComparison.Ordinal) ? forEach["data:".Length..]
+        : PF.WorkflowFanSources.IsSnippetFan(forEach) ? PF.WorkflowFanSources.CollectionIdOf(forEach)
+        : null;
+
+    private string ItemNoun => At25 ? "Snippet" : "Standard";
+
+    private string FanNoun => At25 ? "snippet folder" : "data: collection";
 
     private AddedItem? SelectedAdded() => addedItems.FirstOrDefault(a => a.Key == selectedKey);
 
@@ -3769,15 +3860,15 @@
     // the sidebar and index composition treat both alike.
     private IEnumerable<WorkflowManifestReader.CollectionView> EffectiveCollections =>
         collections.Concat(addedCollections.Select(id => new WorkflowManifestReader.CollectionView(
-            id, $"data/{id}/", Array.Empty<WorkflowManifestReader.DataItemView>())));
+            id, CollectionDirectory(id), Array.Empty<WorkflowManifestReader.DataItemView>())));
 
     private bool CollectionIsUnused(string collectionId) =>
-        !nodes.Any(n => n.ForEach == $"data:{collectionId}");
+        !nodes.Any(n => n.ForEach == FanRef(collectionId));
 
     // Single-value data entries (#309). A value's key IS its path, derived the
     // same way whether pending or published, so selection needs no second
     // scheme — the standards pane already selects by file.
-    private static string ScalarPath(string id) => $"data/{id}.txt";
+    private string ScalarPath(string id) => At25 ? $"snippets/{id}.md" : $"data/{id}.txt";
 
     // The loaded values plus one synthetic view per pending value, so the
     // sidebar and the composition treat both alike.
@@ -3836,7 +3927,15 @@
         // belongs to the directory segment, and a value is a file. note_type
         // is published and running, so forbidding '_' here would refuse an id
         // that already exists.
-        if (!ItemIdPattern.IsMatch(id))
+        // At 25 the registry's rule, in its words (WorkflowPackageValidator.V25
+        // ResolveSnippetsAt25): a snippet id is snake_case.
+        if (At25 && !PF.WorkflowDeclaredIds.IsValid(id))
+        {
+            newScalarError = SnippetIdSentence(id);
+            return;
+        }
+
+        if (!At25 && !ItemIdPattern.IsMatch(id))
         {
             newScalarError = "The value id must be lowercase letters, digits, '_' or '-', starting with a letter or digit.";
             return;
@@ -3844,7 +3943,7 @@
 
         if (DataEntryIds.Contains(id, StringComparer.Ordinal))
         {
-            newScalarError = $"A data entry named '{id}' already exists.";
+            newScalarError = At25 ? $"A snippet named '{id}' already exists." : $"A data entry named '{id}' already exists.";
             return;
         }
 
@@ -3896,7 +3995,15 @@
     {
         var id = newCollectionId?.Trim() ?? string.Empty;
 
-        if (!CollectionIdPattern.IsMatch(id))
+        // At 25 a folder id is snake_case like every declared id (the Api's
+        // snippets/<folder>/ directory rule takes the underscore, #1008).
+        if (At25 && !PF.WorkflowDeclaredIds.IsValid(id))
+        {
+            newCollectionError = SnippetIdSentence(id);
+            return;
+        }
+
+        if (!At25 && !CollectionIdPattern.IsMatch(id))
         {
             newCollectionError = "The folder id must be lowercase letters, digits or '-', starting with a letter or digit.";
             return;
@@ -3904,7 +4011,7 @@
 
         if (DataEntryIds.Contains(id, StringComparer.Ordinal))
         {
-            newCollectionError = $"A data entry named '{id}' already exists.";
+            newCollectionError = At25 ? $"A snippet named '{id}' already exists." : $"A data entry named '{id}' already exists.";
             return;
         }
 
@@ -3915,6 +4022,10 @@
         selectedKey = NewKeyFor(id);
         await PendingChangedAsync();
     }
+
+    /// <summary>The validator's snake_case sentence for a snippet or folder id, word for word.</summary>
+    private static string SnippetIdSentence(string id) =>
+        $"Snippet id '{id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
 
     private async Task RemoveCollectionAsync(string collectionId)
     {
@@ -5403,7 +5514,7 @@
                         }
                         else if (fanItems.Count == 0)
                         {
-                            errors.Add($"{where} anchors to fan item '{entry.ForItem}', but '{node.Id}' does not fan a data: collection.");
+                            errors.Add($"{where} anchors to fan item '{entry.ForItem}', but '{node.Id}' does not fan a {FanNoun}.");
                         }
                         else if (fanItems.All(item => item.Id != entry.ForItem))
                         {
@@ -7928,12 +8039,12 @@
     /// fan a data: collection (an input fan's items are the caller's).</summary>
     private IReadOnlyList<WorkflowManifestReader.DataItemView> NodeFanItems(WorkflowManifestReader.NodeView node)
     {
-        if (node.ForEach is not { } forEach || !forEach.StartsWith("data:", StringComparison.Ordinal))
+        // data:<collection> below 25, snippet:<folder> at 25 (#1008) — one folder, two spellings.
+        if (FanFolderOf(node.ForEach) is not { } collectionId)
         {
             return Array.Empty<WorkflowManifestReader.DataItemView>();
         }
 
-        var collectionId = forEach["data:".Length..];
         return EffectiveCollections.FirstOrDefault(c => c.Id == collectionId)?.Items
             ?? (IReadOnlyList<WorkflowManifestReader.DataItemView>)Array.Empty<WorkflowManifestReader.DataItemView>();
     }
@@ -7943,9 +8054,13 @@
     private static IReadOnlyList<string> FanItemFields(WorkflowManifestReader.NodeView node) =>
         node.ForEach is not { } forEach ? Array.Empty<string>()
         : forEach.StartsWith("data:", StringComparison.Ordinal) ? DataFanFields
+        : PF.WorkflowFanSources.IsSnippetFan(forEach) ? SnippetFanFields
         : PF.WorkflowInputFans.ItemFields;
 
     private static readonly IReadOnlyList<string> DataFanFields = new[] { "id", "name", "content" };
+
+    /// <summary>A snippet fan item at 25: id, name and the item's rendered text (content is retired).</summary>
+    private static readonly IReadOnlyList<string> SnippetFanFields = new[] { PF.TemplateMembers.Id, PF.TemplateMembers.Name, PF.TemplateMembers.Text };
 
     /// <summary>The fan nodes a library macro is composed into (v23+), with the item fields each exposes.</summary>
     private IEnumerable<WorkflowManifestReader.NodeView> FanNodesComposing(string macroId) =>
@@ -8425,13 +8540,11 @@
         }
 
         var anchorNodeId = anchor.StartsWith("node:", StringComparison.Ordinal) ? anchor["node:".Length..] : anchor;
-        if (EffectiveNodes.FirstOrDefault(n => n.Id == anchorNodeId)?.ForEach is not { } forEach
-            || !forEach.StartsWith("data:", StringComparison.Ordinal))
+        if (FanFolderOf(EffectiveNodes.FirstOrDefault(n => n.Id == anchorNodeId)?.ForEach) is not { } collectionId)
         {
             return Array.Empty<WorkflowManifestReader.DataItemView>();
         }
 
-        var collectionId = forEach["data:".Length..];
         return EffectiveCollections.FirstOrDefault(c => c.Id == collectionId)?.Items
             ?? (IReadOnlyList<WorkflowManifestReader.DataItemView>)Array.Empty<WorkflowManifestReader.DataItemView>();
     }
@@ -9883,8 +9996,8 @@
     {
         prompts = WorkflowManifestReader.ReadPrompts(content!.Manifest);
         nodes = WorkflowManifestReader.ReadNodes(content.Manifest);
-        collections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files);
-        scalarEntries = WorkflowManifestReader.ReadScalarEntries(content.Manifest);
+        collections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files, DataTableKey);
+        scalarEntries = WorkflowManifestReader.ReadScalarEntries(content.Manifest, DataTableKey);
         publishedScalarIds = scalarEntries.Select(entry => entry.Id).ToList();
         schemaIds = WorkflowManifestReader.ReadSchemaIds(content.Manifest);
     }
@@ -10257,7 +10370,7 @@
         // #946: a drafted standard name is kept only while that item file still exists.
         if ((payload.StandardNames?.Count ?? 0) > 0)
         {
-            var loadedItemFiles = WorkflowManifestReader.ReadCollections(content!.Manifest, content!.Files)
+            var loadedItemFiles = WorkflowManifestReader.ReadCollections(content!.Manifest, content!.Files, DataTableKey)
                 .SelectMany(c => c.Items).Select(item => item.File).ToHashSet(StringComparer.Ordinal);
             foreach (var draftStandardName in payload.StandardNames!)
             {
@@ -10883,7 +10996,9 @@
             {
                 if (!addedItems.Any(a => a.Collection == folderId))
                 {
-                    unbound.Add($"Data folder '{folderId}' has no items yet — add at least one before publishing.");
+                    unbound.Add(At25
+                        ? $"Snippet folder '{folderId}' has no items yet — add at least one before publishing."
+                        : $"Data folder '{folderId}' has no items yet — add at least one before publishing.");
                 }
             }
 
@@ -10908,7 +11023,9 @@
 
                 if (authored && string.IsNullOrWhiteSpace(GetText(scalar.Path)))
                 {
-                    unbound.Add($"Data value '{scalar.Id}' has no text yet — enter a value before publishing.");
+                    unbound.Add(At25
+                        ? $"Snippet '{scalar.Id}' has no text yet — write it before publishing."
+                        : $"Data value '{scalar.Id}' has no text yet — enter a value before publishing.");
                 }
             }
 
@@ -11721,7 +11838,11 @@
         // directory value's trailing slash is what marks it as a collection.
         if (addedCollections.Count > 0 || addedScalars.Count > 0 || RemovedScalarIds.Any())
         {
-            var dataKey = root["Data"] is not null ? "Data" : "data";
+            // At 25 the table is snippets (data is retired there, #1008); the
+            // loaded key's casing is kept either way.
+            var dataKey = At25
+                ? (root["Snippets"] is not null ? "Snippets" : "snippets")
+                : (root["Data"] is not null ? "Data" : "data");
             if (root[dataKey] is not System.Text.Json.Nodes.JsonObject dataObject)
             {
                 dataObject = new System.Text.Json.Nodes.JsonObject();
@@ -11730,7 +11851,7 @@
 
             foreach (var folderId in addedCollections)
             {
-                dataObject[folderId] = $"data/{folderId}/";
+                dataObject[folderId] = CollectionDirectory(folderId);
             }
 
             // No trailing slash — that one character is the whole difference,

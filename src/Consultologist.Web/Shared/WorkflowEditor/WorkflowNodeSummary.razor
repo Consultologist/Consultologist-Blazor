@@ -200,11 +200,11 @@
                                               ValueChanged="@(v => EmitNodeChangeAsync(node, forEach: v))"
                                               aria-label="Node forEach collection">
                                     <FluentOption TOption="string" Value="">— runs once —</FluentOption>
-                                    @if (node.ForEach != null && !ForEachOptions(Collections, ArrayInputs).Contains(node.ForEach))
+                                    @if (node.ForEach != null && !ForEachOptions(Collections, ArrayInputs, At25).Contains(node.ForEach))
                                     {
                                         <FluentOption TOption="string" Value="@node.ForEach">@node.ForEach</FluentOption>
                                     }
-                                    @foreach (var option in ForEachOptions(Collections, ArrayInputs))
+                                    @foreach (var option in ForEachOptions(Collections, ArrayInputs, At25))
                                     {
                                         <FluentOption TOption="string" Value="@option">@option</FluentOption>
                                     }
@@ -783,9 +783,10 @@
         await OnAggregateChanged.InvokeAsync(new AggregateChange(node.Id, sources));
     }
 
-    /// <summary>What a node may fan: every data collection, then every array input (v9 § 5).</summary>
-    internal static IReadOnlyList<string> ForEachOptions(IReadOnlyList<string> collections, IReadOnlyList<string> arrayInputs) =>
-        collections.Select(collectionId => $"data:{collectionId}")
+    /// <summary>What a node may fan: every data collection (a snippet folder at 25, spelled
+    /// snippet:&lt;folder&gt; — #1008), then every array input (v9 § 5).</summary>
+    internal static IReadOnlyList<string> ForEachOptions(IReadOnlyList<string> collections, IReadOnlyList<string> arrayInputs, bool at25 = false) =>
+        collections.Select(collectionId => at25 ? $"{PF.WorkflowFanSources.SnippetPrefix}{collectionId}" : $"data:{collectionId}")
             .Concat(arrayInputs.Select(inputId => $"{WorkflowInputFans.Prefix}{inputId}"))
             .ToList();
 

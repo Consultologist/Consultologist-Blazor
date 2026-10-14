@@ -89,7 +89,8 @@ public class TemplatesFormatsPaneTests : ClientRenderTestContext
         var groups = Groups(page);
         Assert.Contains("Formats", groups);
         Assert.DoesNotContain("Schemas", groups);
-        Assert.Equal(new[] { "Workflow", "Nodes", "Prompts", "Macros", "Formats", "Data" }, groups);
+        // C2 (#1008): the Data group is the Snippets group at 25.
+        Assert.Equal(new[] { "Workflow", "Nodes", "Prompts", "Macros", "Formats", "Snippets" }, groups);
     }
 
     [Fact]
