@@ -2046,6 +2046,7 @@
                                              OnVariableAdded="OnVariableAddedAsync"
                                              OnNodeChanged="OnNodeChangedAsync"
                                              OnAggregateChanged="OnAggregateChangedAsync"
+                                             ReadsSection="@NodeReadsSection(selectedNode)"
                                              OnNodeRemoved="RemoveNodeAsync" />
                         @* #949: the node's bound prompt, edited in place — the full prompt editor
                            (text + live preview + shared prelude + plain-text toggle) reusing the
@@ -2066,7 +2067,10 @@
                                                     Text="@GetText(promptView.File)"
                                                     Raw="@EffectivePromptRaw(nodePrompt)"
                                                     TextChanged="@(value => OnTextChangedAsync(promptView.File, value))">
-                                    @NodePlainTextToggle(selectedNode)
+                                    @if (!At25)
+                                    {
+                                        @NodePlainTextToggle(selectedNode)
+                                    }
                                     @* #747: the prompt's shared prelude — same control as the Prompts pane. *@
                                     @if (IsDeclaredPrompt(nodePrompt) && (EffectiveSpecVersion < 23 || EffectivePromptPrelude(nodePrompt) != null) && (LivePreludes.Any() || EffectivePromptPrelude(nodePrompt) != null))
                                     {
@@ -4254,7 +4258,10 @@
     /// <summary>The pane a walked template is edited on: a prompt's, a snippet's, a folder item's, a macro's file.</summary>
     private string? PaneKeyOf(PF.WorkflowDerivedEdges.WalkedTemplate template) => template.Kind switch
     {
-        PF.TemplateKind.Prompt => EffectivePrompts.FirstOrDefault(p => p.Id == template.Id)?.File,
+        // A prompt is walked per NODE: the template's Id is the node id, its subject the prompt id (C4 #1010).
+        PF.TemplateKind.Prompt => EffectiveNodes.FirstOrDefault(n => n.Id == template.Id)?.Prompt is { } promptId
+            ? EffectivePrompts.FirstOrDefault(p => p.Id == promptId)?.File
+            : null,
         PF.TemplateKind.Macro => EffectiveMacros.FirstOrDefault(m => m.Id == template.Id)?.File,
         PF.TemplateKind.Snippet when template.Id.IndexOf('/') is var slash && slash > 0 =>
             EffectiveCollections.FirstOrDefault(c => c.Id == template.Id[..slash])?.Items.FirstOrDefault(i => i.Id == template.Id[(slash + 1)..])?.File
@@ -4262,6 +4269,163 @@
         PF.TemplateKind.Snippet => ScalarPath(template.Id),
         _ => null
     };
+
+    // ----- v25 (C4 #1010): what a template reads, from the walk -----
+
+    /// <summary>The walk of this node's prompt (keyed by node id), or null when the node has no prompt, its format is unresolved, or there is no walk.</summary>
+    private PF.WorkflowDerivedEdges.WalkedTemplate? PromptWalkOf(string nodeId) =>
+        PackageWalk?.Templates.FirstOrDefault(t => t.Kind == PF.TemplateKind.Prompt && t.Id == nodeId);
+
+    /// <summary>The reads of a computed node's with parameters, or null.</summary>
+    private PF.TemplateReferences? ParameterReadsOf(string nodeId) =>
+        PackageWalk is { } walk && walk.Parameters.TryGetValue(nodeId, out var references) ? references : null;
+
+    /// <summary>The walked template whose text is this pane's file: a prompt through the first node using it, a snippet by its path, a folder item by its file, a macro by its file.</summary>
+    private PF.WorkflowDerivedEdges.WalkedTemplate? TemplateWalkOf(string file)
+    {
+        if (PackageWalk is not { } walk)
+        {
+            return null;
+        }
+
+        if (EffectivePrompts.FirstOrDefault(p => p.File == file) is { } prompt)
+        {
+            var reader = EffectiveNodes.FirstOrDefault(n => n.Prompt == prompt.Id);
+            return reader is null ? null : walk.Templates.FirstOrDefault(t => t.Kind == PF.TemplateKind.Prompt && t.Id == reader.Id);
+        }
+
+        if (EffectiveMacros.FirstOrDefault(m => m.File == file) is { } macro)
+        {
+            return walk.Templates.FirstOrDefault(t => t.Kind == PF.TemplateKind.Macro && t.Id == macro.Id);
+        }
+
+        return walk.Templates.FirstOrDefault(t => t.Kind == PF.TemplateKind.Snippet && PaneKeyOf(t) == file);
+    }
+
+    /// <summary>One read of a template: the reference as spelled, and the pane that holds the thing (null when it has none).</summary>
+    private sealed record TemplateRead(string Reference, string? Key);
+
+    /// <summary>
+    /// A template's reads in the objects' order — inputs, nodes (.text / .value), snippets,
+    /// folders, the fan item's members, macros (.text / .prompt), run and profile facts —
+    /// each linking to its pane where there is one.
+    /// </summary>
+    private IReadOnlyList<TemplateRead> ReadsOf(PF.TemplateReferences references)
+    {
+        var reads = new List<TemplateRead>();
+
+        foreach (var input in references.Inputs.Order(StringComparer.Ordinal))
+        {
+            reads.Add(new TemplateRead($"input.{input}", InputsKey));
+        }
+
+        foreach (var (nodeId, read) in references.Nodes)
+        {
+            var members = read.ReadsText && read.ReadsValue ? ".text, .value" : read.ReadsValue ? ".value" : ".text";
+            reads.Add(new TemplateRead($"node.{nodeId}{members}", NodeKeyPrefix + nodeId));
+        }
+
+        foreach (var snippet in references.Snippets.Order(StringComparer.Ordinal))
+        {
+            reads.Add(new TemplateRead($"snippet.{snippet}.text", ScalarPath(snippet)));
+        }
+
+        foreach (var folder in references.SnippetFolders.Order(StringComparer.Ordinal))
+        {
+            var firstItem = EffectiveCollections.FirstOrDefault(c => c.Id == folder)?.Items.FirstOrDefault(i => !removedFiles.Contains(i.File));
+            reads.Add(new TemplateRead($"for … in snippet.{folder}", firstItem?.File));
+        }
+
+        foreach (var member in references.ItemMembers.Order(StringComparer.Ordinal))
+        {
+            reads.Add(new TemplateRead($"item.{member} — the fan item", null));
+        }
+
+        foreach (var macro in references.MacroTexts.Order(StringComparer.Ordinal))
+        {
+            reads.Add(new TemplateRead($"macro.{macro}.text", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File));
+        }
+
+        foreach (var macro in references.MacroPrompts.Order(StringComparer.Ordinal))
+        {
+            reads.Add(new TemplateRead($"macro.{macro}.prompt (slot)", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File));
+        }
+
+        foreach (var fact in references.RunFacts.Order(StringComparer.Ordinal))
+        {
+            reads.Add(new TemplateRead($"run.{fact}", null));
+        }
+
+        foreach (var fact in references.ProfileFacts.Order(StringComparer.Ordinal))
+        {
+            reads.Add(new TemplateRead($"profile.{fact}", null));
+        }
+
+        return reads;
+    }
+
+    /// <summary>The rows of a reads list: a button where the read has a pane, a span where it has none.</summary>
+    private RenderFragment<(string Aria, IReadOnlyList<TemplateRead> Reads)> ReadsList => spec => @<text>
+        <ul class="snippet-readers node-reads" aria-label="@spec.Aria">
+            @foreach (var read in spec.Reads)
+            {
+                <li>
+                    @if (read.Key is { } key)
+                    {
+                        <button type="button" class="snippet-readers__row" @onclick="() => Select(key)">@read.Reference</button>
+                    }
+                    else
+                    {
+                        <span class="snippet-readers__row">@read.Reference</span>
+                    }
+                </li>
+            }
+        </ul>
+    </text>;
+
+    /// <summary>
+    /// v25 (C4 #1010): the node pane's Reads section — what the node's prompt reads
+    /// (derived, read-only), the computed node's parameter reads, the walker's warnings
+    /// word for word, and an early word when a reference does not resolve (the desk says which).
+    /// </summary>
+    private RenderFragment NodeReadsSection(WorkflowManifestReader.NodeView node) => @<text>
+        <div class="node-section node-reads-section">
+            <span class="node-section__head">Reads</span>
+            @{
+                var promptWalk = node.Prompt == null ? null : PromptWalkOf(node.Id);
+                var parameterReads = ParameterReadsOf(node.Id);
+                IReadOnlyList<TemplateRead> promptReads = promptWalk is null ? Array.Empty<TemplateRead>() : ReadsOf(promptWalk.References);
+                IReadOnlyList<TemplateRead> withReads = parameterReads is null ? Array.Empty<TemplateRead>() : ReadsOf(parameterReads).Select(r => r with { Reference = $"with: {r.Reference}" }).ToList();
+            }
+            @if (node.Prompt == null && parameterReads is null)
+            {
+                <p class="muted-text">@(node.Format == null ? "No format yet — pick one; a prompted format reads through its prompt, a computed one through its parameters." : "Nothing to read: this format takes neither a prompt nor parameters.")</p>
+            }
+            else if (node.Prompt != null && promptWalk is null)
+            {
+                <p class="muted-text">@(formatsCatalog is null ? "Not walked — the format catalogue is unavailable." : "Not walked — the prompt's file or the node's format does not resolve.")</p>
+            }
+            else if (promptReads.Count + withReads.Count == 0)
+            {
+                <p class="muted-text">Reads nothing yet — reference an object in the prompt: <code>{{ input.&lt;id&gt; }}</code>, <code>{{ node.&lt;id&gt;.text }}</code>, <code>{{ snippet.&lt;id&gt;.text }}</code>, <code>{{ macro.&lt;id&gt;.text }}</code>.</p>
+            }
+            else
+            {
+                @ReadsList(($"Reads of {node.Id}", promptReads.Concat(withReads).ToList()))
+            }
+            @if (promptWalk is { } walked)
+            {
+                @foreach (var warning in walked.References.Warnings)
+                {
+                    <p class="muted-text node-reads__warning">@warning</p>
+                }
+                @if (walked.References.Errors.Count > 0)
+                {
+                    <p class="muted-text node-reads__unresolved">@walked.References.Errors.Count @(walked.References.Errors.Count == 1 ? "reference does" : "references do") not resolve — Publish says which.</p>
+                }
+            }
+        </div>
+    </text>;
 
     /// <summary>The "Read by" rows: each a button opening the reader's pane, or the empty sentence.</summary>
     private RenderFragment<(string Id, bool Folder)> SnippetReadersList => spec => @<text>

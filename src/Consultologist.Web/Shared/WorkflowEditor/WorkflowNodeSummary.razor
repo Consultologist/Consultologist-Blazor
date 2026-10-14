@@ -552,14 +552,24 @@
                     }
                 </text>;
         }
+        @* v25 (C4 #1010): bindings are retired — a prompted node's reads are derived by
+           the walk and listed by the host's ReadsSection in the Inputs section's place; an
+           aggregator keeps its ordered sources (the same fragment, headed "Sources"). *@
         @if (Sectioned)
         {
-            <div class="node-section">
-                <span class="node-section__head">Inputs</span>
-                @inputsFragment
-            </div>
+            @if (At25 && node.Aggregate == null)
+            {
+                @ReadsSection
+            }
+            else
+            {
+                <div class="node-section">
+                    <span class="node-section__head">@(At25 ? "Sources" : "Inputs")</span>
+                    @inputsFragment
+                </div>
+            }
         }
-        else
+        else if (!At25 || node.Aggregate != null)
         {
             @inputsFragment
         }
@@ -748,6 +758,9 @@
     [Parameter] public bool ShowHeader { get; set; } = true;
     [Parameter] public bool Sectioned { get; set; }
     [Parameter] public RenderFragment? OptionsExtra { get; set; }
+
+    /// <summary>v25 (C4 #1010): the host's derived Reads section, rendered in the Inputs section's place for a prompted node at 25.</summary>
+    [Parameter] public RenderFragment? ReadsSection { get; set; }
     [Parameter] public Func<string, bool>? NodeModified { get; set; }
     [Parameter] public IReadOnlyList<WorkflowManifestReader.NodeView> RemovedNodes { get; set; } = Array.Empty<WorkflowManifestReader.NodeView>();
     [Parameter] public EventCallback<string> OnNodeRemoved { get; set; }

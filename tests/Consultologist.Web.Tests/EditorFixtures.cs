@@ -795,11 +795,11 @@ public static class EditorFixtures
             { "id": "tool_note", "label": "Tool note", "file": "macros/tool_note.md", "instruction": "Note the tools used when a procedure is described." }
           ],
           "prompts": [
-            { "id": "extract", "file": "prompts/extract.md", "variables": [] },
-            { "id": "scope", "file": "prompts/scope.md", "variables": [] },
-            { "id": "assessment", "file": "prompts/assessment.md", "variables": [] },
-            { "id": "meds", "file": "prompts/meds.md", "variables": [] },
-            { "id": "section", "file": "prompts/section.md", "variables": [] }
+            { "id": "extract", "file": "prompts/extract.md" },
+            { "id": "scope", "file": "prompts/scope.md" },
+            { "id": "assessment", "file": "prompts/assessment.md" },
+            { "id": "meds", "file": "prompts/meds.md" },
+            { "id": "section", "file": "prompts/section.md" }
           ],
           "snippets": { "standards": "snippets/standards.md", "sections": "snippets/sections/" },
           "nodes": [
