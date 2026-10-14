@@ -59,6 +59,18 @@ public class FunctionRegistrationTests
     }
 
     [Fact]
+    public void RenderDeliverableMacros_IsTheActivity_NotAHelper()
+    {
+        // B8 #1027: the deliverable macros' render — a new deployed function
+        // name, an activity trigger on the method named RunAsync.
+        var method = FunctionMethods().Single(m =>
+            m.GetCustomAttribute<FunctionAttribute>()!.Name == Api.Jobs.ConsultGenerationActivityNames.RenderDeliverableMacros);
+
+        Assert.Equal("RunAsync", method.Name);
+        Assert.Contains(method.GetParameters(), p => p.GetCustomAttribute<ActivityTriggerAttribute>() != null);
+    }
+
+    [Fact]
     public void RunPromptNode_IsTheActivity_NotAHelper()
     {
         var method = FunctionMethods().Single(m =>

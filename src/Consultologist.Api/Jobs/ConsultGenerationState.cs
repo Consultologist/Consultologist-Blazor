@@ -2053,6 +2053,9 @@ public static class ConsultGenerationActivityNames
     public const string RunComputedNode = "run-computed-node";
     // v10 (#496): the boundary — decide the fire set over the classifier values.
     public const string DecideDeliverables = "decide-deliverables";
+    // v25 (B8 #1027, design § 5.1): a deliverable's prepend/append macros
+    // rendered over the job's scope, in an activity like every 25 template.
+    public const string RenderDeliverableMacros = "render-deliverable-macros";
 }
 
 public static class ConsultGenerationItemSteps

@@ -211,7 +211,11 @@ public sealed class ConsultGenerationOrchestrator
         // check — the stash carries exactly what Compose's arity invariant
         // demands travel together. Keyed by resultId: two results may share
         // one check, each gating itself.
-        var pendingChecked = new Dictionary<string, (ConsultDeliverables.Deliverable Deliverable, IReadOnlyList<string> SourceRefs, List<ConsultAggregateRenderer.Part> Parts)>(StringComparer.Ordinal);
+        // v25 (B8 #1027): every deliverable whose aggregator composed, held
+        // until its reads and its check (if any) have settled — released by
+        // TryReleaseDeliverablesAsync on every pass, so a check that settled
+        // first still frees it (the ≤24 hang B8 closes).
+        var pendingDeliverables = new Dictionary<string, (ConsultDeliverables.Deliverable Deliverable, IReadOnlyList<string> SourceRefs, List<ConsultAggregateRenderer.Part> Parts)>(StringComparer.Ordinal);
         var settledChecks = new Dictionary<string, ConsultCheckOutcome>(StringComparer.Ordinal);
         var failedDocuments = new List<ConsultFailedDocument>();
         // v10 (#496): the skipped set the reply names — the starter's, or the boundary's.
@@ -225,8 +229,11 @@ public sealed class ConsultGenerationOrchestrator
         IReadOnlyList<ConsultNodeDescriptor> ClassifierClosure()
         {
             var closure = new HashSet<string>(StringComparer.Ordinal);
+            // v25 (B8 #1027): a 25 classifier is an enum format — Values
+            // stamped from the parameter or the format itself, no contract.
             var frontier = new Queue<string>(allNodes
-                .Where(node => string.Equals(node.OutputContract, OutputContracts.Classification, StringComparison.Ordinal))
+                .Where(node => string.Equals(node.OutputContract, OutputContracts.Classification, StringComparison.Ordinal)
+                    || (node.Format is not null && node.Values is not null))
                 .Select(node => node.Id));
 
             while (frontier.Count > 0)
@@ -479,6 +486,45 @@ public sealed class ConsultGenerationOrchestrator
             IReadOnlyList<string> sourceRefs,
             List<ConsultAggregateRenderer.Part> parts)
         {
+            // v25 (B8 #1027, design § 5.1): a 25 deliverable's placed macros are
+            // Scriban templates rendered over the job's scope — in an activity,
+            // as every 25 template is — and composed around the sections here:
+            // prepend, the aggregator's render, append; the signature read is the
+            // activity's fact. The ≤24 path below is untouched.
+            if (at25)
+            {
+                var placements = deliverable.MacroPlacements ?? Array.Empty<ConsultMacroPlacement>();
+                var renderedMacros = placements.Count == 0
+                    ? new ConsultDeliverableMacrosResult(Array.Empty<ConsultRenderedMacro>(), Array.Empty<ConsultRenderedMacro>(), false)
+                    : await context.CallActivityAsync<ConsultDeliverableMacrosResult>(
+                        ConsultGenerationActivityNames.RenderDeliverableMacros,
+                        new ConsultDeliverableMacrosActivityInput(
+                            deliverable.ResultId!,
+                            input.WorkflowPackage ?? string.Empty,
+                            placements,
+                            new Dictionary<string, string>(effectiveInputs, StringComparer.Ordinal),
+                            input.InputTypes is null ? null : new Dictionary<string, string>(input.InputTypes, StringComparer.Ordinal),
+                            (deliverable.Reads ?? Array.Empty<string>()).Append(deliverable.NodeId)
+                                .Where(outputs.ContainsKey)
+                                .Distinct(StringComparer.Ordinal)
+                                .ToDictionary(id => id, id => outputs[id].Classification ?? outputs[id].RawOutput, StringComparer.Ordinal),
+                            ConsultRenderPayload.FoldersFor(collections),
+                            ConsultRenderPayload.RunFactsFor(context.CurrentUtcDateTime, context.InstanceId, input.WorkflowPackage, input.ApiHost),
+                            ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature)),
+                        AgentActivityRetryOptions);
+
+                var (text25, appended25) = ConsultMacroExpander.ComposeAt25(renderedMacros.Prepend, parts, renderedMacros.Append);
+                var (final25, finalAppended25, unsigned25) = ConsultSignatureAppend.Finish(
+                    text25, appended25, deliverable.Signature == true, renderedMacros.SignatureRead, input.Signature);
+                recordedTexts[deliverable.ResultId!] = final25;
+
+                await context.Entities.CallEntityAsync(
+                    entityId,
+                    nameof(ConsultGenerationJobEntity.CompleteResultDocument),
+                    new ConsultGenerationResultDocument(deliverable.ResultId!, deliverable.Label ?? deliverable.ResultId!, final25, deliverable.Ordinal, finalAppended25, unsigned25));
+                return;
+            }
+
             var facts = new ConsultMacroExpander.RunFacts(
                 context.CurrentUtcDateTime,
                 context.InstanceId,
@@ -577,32 +623,58 @@ public sealed class ConsultGenerationOrchestrator
                         null, null,
                         completedNodeCount, totalNodeCount,
                         Check: outcome));
+            }
 
-                foreach (var (resultId, pending) in pendingChecked.Where(pair => pair.Value.Deliverable.CheckNodeId == checkNode.Id).ToList())
+            // v25 (B8 #1027): a 25 check is a computed node that ran as its own
+            // activity and recorded its outcome — settled from the record, not
+            // recomputed, and not counted or marked a second time.
+            foreach (var computed in nodes)
+            {
+                if (settledChecks.ContainsKey(computed.Id)
+                    || ConsultCheckSettlement.RecordedOutcomeOf(computed, outputs) is not { } recorded)
                 {
-                    pendingChecked.Remove(resultId);
-
-                    if (outcome.Passed)
-                    {
-                        await CompleteDeliverableAsync(pending.Deliverable, pending.SourceRefs, pending.Parts);
-                        continue;
-                    }
-
-                    var failed = new ConsultFailedDocument(
-                        resultId,
-                        pending.Deliverable.Label ?? resultId,
-                        check.FailWith,
-                        outcome.Uncovered,
-                        outcome.Untested);
-                    failedDocuments.Add(failed);
-                    await context.Entities.CallEntityAsync(
-                        entityId,
-                        nameof(ConsultGenerationJobEntity.RecordFailedDocument),
-                        failed);
+                    continue;
                 }
+
+                settledChecks[computed.Id] = recorded;
+                progressed = true;
             }
 
             return progressed;
+        }
+
+        // v25 (B8 #1027): the one release of a held deliverable — every node
+        // its macros read settled, its check (if any) settled — composing the
+        // document on a pass, recording the third state on a fail.
+        async Task TryReleaseDeliverablesAsync()
+        {
+            foreach (var (resultId, pending) in pendingDeliverables.ToList())
+            {
+                if (!ConsultCheckSettlement.IsReleaseReady(pending.Deliverable, outputs, settledChecks, out var outcome))
+                {
+                    continue;
+                }
+
+                pendingDeliverables.Remove(resultId);
+
+                if (outcome is null || outcome.Passed)
+                {
+                    await CompleteDeliverableAsync(pending.Deliverable, pending.SourceRefs, pending.Parts);
+                    continue;
+                }
+
+                var failed = new ConsultFailedDocument(
+                    resultId,
+                    pending.Deliverable.Label ?? resultId,
+                    ConsultCheckSettlement.FailWithOf(nodesById[pending.Deliverable.CheckNodeId!]),
+                    outcome.Uncovered,
+                    outcome.Untested);
+                failedDocuments.Add(failed);
+                await context.Entities.CallEntityAsync(
+                    entityId,
+                    nameof(ConsultGenerationJobEntity.RecordFailedDocument),
+                    failed);
+            }
         }
 
         // Aggregators compose inline once every source settles — deterministic,
@@ -617,6 +689,7 @@ public sealed class ConsultGenerationOrchestrator
             {
                 progressed = false;
                 progressed |= await TrySettleChecksAsync();
+                await TryReleaseDeliverablesAsync();
 
                 foreach (var aggregator in aggregators)
                 {
@@ -724,16 +797,14 @@ public sealed class ConsultGenerationOrchestrator
                         // Result nodes are distinct per the validator: at most one
                         // deliverable owns this aggregator.
                         var deliverable = deliverables.FirstOrDefault(d => string.Equals(d.NodeId, aggregator.Id, StringComparison.Ordinal));
-                        if (deliverable is { CheckNodeId: not null })
+                        if (deliverable != null)
                         {
                             // v12 #624 (§ 13): the settle/record split — the
                             // aggregator settled and hashed above exactly as
-                            // ever; the document itself waits for the check.
-                            pendingChecked[deliverable.ResultId!] = (deliverable, aggregator.Aggregate!, parts);
-                        }
-                        else if (deliverable != null)
-                        {
-                            await CompleteDeliverableAsync(deliverable, aggregator.Aggregate!, parts);
+                            // ever; the document itself waits for its check
+                            // and (B8 #1027) its reads, released below on this
+                            // same pass when nothing holds it.
+                            pendingDeliverables[deliverable.ResultId!] = (deliverable, aggregator.Aggregate!, parts);
                         }
                     }
                     else if (string.Equals(aggregator.Id, resultNodeId, StringComparison.Ordinal))
@@ -1499,8 +1570,14 @@ internal static class ConsultDeliverables
         bool? Signature = null,
         // v12 #619: the placed macros' anchors, from the descriptor.
         IReadOnlyList<ConsultMacroPlacement>? MacroPlacements = null,
-        // v12 #624: the check gating this deliverable — bare node id.
-        string? CheckNodeId = null);
+        // v12 #624: the check gating this deliverable — bare node id. v25 (B8
+        // #1027): read in either spelling, and null when the node is not in
+        // the run (a check gated out by its own when must not stash the
+        // deliverable forever — the ≤24 hang B8 closes).
+        string? CheckNodeId = null,
+        // v25 (B8 #1027): the nodes this deliverable's placed macros read —
+        // its document composes only once every one has settled.
+        IReadOnlyList<string>? Reads = null);
 
     public static IReadOnlyList<Deliverable> Resolve(
         IReadOnlyList<ConsultResultDescriptor>? results,
@@ -1528,9 +1605,10 @@ internal static class ConsultDeliverables
                     result.Macros,
                     result.Signature,
                     result.MacroPlacements,
-                    result.Check is { } check && check.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
-                        ? check[WorkflowNodeBindingSources.NodePrefix.Length..]
-                        : result.Check))
+                    result.Check is { } check && ConsultCheckRefs.NodeIdOf(check) is { } checkId && nodesById.ContainsKey(checkId)
+                        ? checkId
+                        : null,
+                    result.Reads))
                 .ToList();
         }
 

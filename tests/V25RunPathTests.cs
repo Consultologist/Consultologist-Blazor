@@ -202,6 +202,135 @@ public class V25RunPathTests
         Assert.Equal(new[] { "closing" }, decision.ExcludedMacros!.Select(e => e.MacroId));
     }
 
+    // ----- the orchestrator's seams -----
+
+    private static readonly Dictionary<string, ConsultNodeDescriptor> RunNodes = new(StringComparer.Ordinal)
+    {
+        ["extract"] = new("extract", "Extract", Format: "concept-list", Producer: "attested"),
+        ["scope"] = new("scope", "Scope", Format: "classification", Producer: "attested", Values: new[] { "in_scope", "out_of_scope" }),
+        ["coverage"] = new("coverage", "Coverage", Format: "terms-subset", Producer: "computed", With: new Dictionary<string, string> { ["of"] = "extract", ["in"] = "extract", ["failWith"] = "The note names problems the source does not." }),
+        ["all"] = new("all", "Everything", Aggregate: new List<string> { "node:assessment" }),
+    };
+
+    [Fact]
+    public void TheDeliverableTable_ReadsTheCheckInEitherSpelling_AndDropsOneNotInTheRun()
+    {
+        var at25 = Assert.Single(ConsultDeliverables.Resolve(
+            new[] { new ConsultResultDescriptor("consult", "all", "Consultation note", Check: "node.coverage", Reads: new[] { "scope" }) }, null, RunNodes));
+        Assert.Equal("coverage", at25.CheckNodeId);
+        Assert.Equal(new[] { "scope" }, at25.Reads);
+
+        var below = Assert.Single(ConsultDeliverables.Resolve(
+            new[] { new ConsultResultDescriptor("consult", "all", "Consultation note", Check: "node:coverage") }, null, RunNodes));
+        Assert.Equal("coverage", below.CheckNodeId);
+
+        // A check gated out of the run (its when refused) leaves the table's
+        // reference null: the deliverable composes unchecked instead of waiting forever.
+        var gatedOut = Assert.Single(ConsultDeliverables.Resolve(
+            new[] { new ConsultResultDescriptor("consult", "all", "Consultation note", Check: "node:coverage") }, null,
+            RunNodes.Where(p => p.Key != "coverage").ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal)));
+        Assert.Null(gatedOut.CheckNodeId);
+    }
+
+    [Fact]
+    public void ACheckSettles_FromTheComputedNodesRecord_At25_AndSpeaksItsFailWith()
+    {
+        var outcome = new ConsultCheckOutcome(false, new[] { "Cough" }, Array.Empty<string>());
+        var outputs = new Dictionary<string, NodeRunResult>(StringComparer.Ordinal)
+        {
+            ["coverage"] = new("""{"pass":false,"uncovered":["Cough"],"untested":[]}""", null, "i", "o", 6, Check: outcome),
+            ["extract"] = new("[]", Array.Empty<ClinicalConcept>(), "i", "o"),
+        };
+
+        Assert.Same(outcome, ConsultCheckSettlement.RecordedOutcomeOf(RunNodes["coverage"], outputs));
+        Assert.Null(ConsultCheckSettlement.RecordedOutcomeOf(RunNodes["extract"], outputs));
+        Assert.Equal("The note names problems the source does not.", ConsultCheckSettlement.FailWithOf(RunNodes["coverage"]));
+        Assert.Equal("Fails.", ConsultCheckSettlement.FailWithOf(new ConsultNodeDescriptor("c", "C", Check: new ConsultCheckDescriptor("terms-subset", "node:a", "node:b", "Fails."))));
+    }
+
+    [Fact]
+    public void ADeliverableReleases_OnlyOnceItsReadsAndItsCheckHaveSettled()
+    {
+        var checked_ = new ConsultDeliverables.Deliverable("consult", "Consultation note", "consult:", "all", new[] { "assessment" }, 0, CheckNodeId: "coverage", Reads: new[] { "scope" });
+        var outputs = new Dictionary<string, NodeRunResult>(StringComparer.Ordinal) { ["all"] = new("The note.", null, "i", "o") };
+        var settled = new Dictionary<string, ConsultCheckOutcome>(StringComparer.Ordinal);
+
+        // A read not yet settled holds it.
+        Assert.False(ConsultCheckSettlement.IsReleaseReady(checked_, outputs, settled, out _));
+        outputs["scope"] = new("in_scope", null, "i", "o", Classification: "in_scope");
+        // The check not yet settled holds it.
+        Assert.False(ConsultCheckSettlement.IsReleaseReady(checked_, outputs, settled, out _));
+        // A check settled BEFORE the deliverable was stashed releases it on the next pass (the ≤24 hang).
+        settled["coverage"] = new ConsultCheckOutcome(true, null, null);
+        Assert.True(ConsultCheckSettlement.IsReleaseReady(checked_, outputs, settled, out var outcome));
+        Assert.True(outcome!.Passed);
+
+        var unchecked_ = checked_ with { CheckNodeId = null, Reads = null };
+        Assert.True(ConsultCheckSettlement.IsReleaseReady(unchecked_, outputs, settled, out var none));
+        Assert.Null(none);
+    }
+
+    [Fact]
+    public void TheActivity_RendersEachPlacement_OverTheJobsScope_AndSortsItByItsAt()
+    {
+        var package = Package(WithDeliverableMacros());
+        var input = new ConsultDeliverableMacrosActivityInput(
+            "consult", package.Ref,
+            new[] { new ConsultMacroPlacement("closing", At: "append"), new ConsultMacroPlacement("scope_line", At: "prepend") },
+            new Dictionary<string, string> { ["notes"] = "Referral.", ["kind"] = "new" }, null,
+            new Dictionary<string, string> { ["scope"] = "in_scope", ["all"] = "The note." }, null,
+            new TemplateRunFacts("2026-10-14", "job", package.Ref, "api.example.test"),
+            new TemplateProfileFacts("Dr Example", "Dr Example, FRCPC"));
+
+        var result = RenderDeliverableMacrosActivity.Render(input, package);
+
+        Assert.Equal(new[] { ("scope_line", "Scope: in_scope.") }, result.Prepend.Select(m => (m.Id, m.Text)));
+        Assert.Equal(new[] { ("closing", "Closing: Dr Example.") }, result.Append.Select(m => (m.Id, m.Text)));
+        Assert.False(result.SignatureRead);
+
+        // A read the orchestrator did not thread is a loud render failure, never an empty block.
+        var missing = input with { NodeTexts = new Dictionary<string, string>() };
+        Assert.Throws<InvalidOperationException>(() => RenderDeliverableMacrosActivity.Render(missing, package));
+    }
+
+    [Fact]
+    public void TheActivity_ReportsAPlacedMacroReadingTheSignature()
+    {
+        var (manifest, files) = WithDeliverableMacros();
+        files["macros/closing.md"] = "{{ profile.signature }}";
+        var package = Package((manifest, files));
+        var input = new ConsultDeliverableMacrosActivityInput(
+            "consult", package.Ref, new[] { new ConsultMacroPlacement("closing", At: "append") },
+            new Dictionary<string, string> { ["notes"] = "Referral.", ["kind"] = "new" }, null,
+            new Dictionary<string, string>(), null,
+            new TemplateRunFacts("2026-10-14", "job", package.Ref, "api.example.test"),
+            new TemplateProfileFacts("Dr Example", "Dr Example, FRCPC"));
+
+        var result = RenderDeliverableMacrosActivity.Render(input, package);
+
+        Assert.True(result.SignatureRead);
+        Assert.Equal("Dr Example, FRCPC", Assert.Single(result.Append).Text);
+    }
+
+    [Fact]
+    public void ComposeAt25_PlacesPrependThenSectionsThenAppend_AndAttributesInDocumentOrder()
+    {
+        var parts = new ConsultAggregateRenderer.Part[] { new ConsultAggregateRenderer.ScalarPart("The plan.") };
+
+        var (text, appended) = ConsultMacroExpander.ComposeAt25(
+            new[] { new ConsultRenderedMacro("scope_line", "Scope: in_scope.\n") },
+            parts,
+            new[] { new ConsultRenderedMacro("closing", "Closing.") });
+
+        Assert.Equal("Scope: in_scope.\n\nThe plan.\n\nClosing.", text);
+        Assert.Equal(new[] { "scope_line", "closing" }, appended!.Select(e => e.Id));
+        Assert.All(appended, e => Assert.Equal("macro", e.Kind));
+
+        var (bare, none) = ConsultMacroExpander.ComposeAt25(Array.Empty<ConsultRenderedMacro>(), parts, Array.Empty<ConsultRenderedMacro>());
+        Assert.Equal(ConsultAggregateRenderer.Render(parts), bare);
+        Assert.Null(none);
+    }
+
     [Fact]
     public void ADeliverablesReads_AreItsPlacedMacrosNodeReads()
     {

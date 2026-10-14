@@ -84,11 +84,26 @@ internal static class ConsultRenderPayload
                 $"Prompt node '{input.NodeId}' declares format '{input.Format}', but its payload carries no 25 render scope (snapshotted before the render shipped).");
         }
 
+        return ScopeFor(input.Variables, input.VariableTypes, input.NodeTexts, input.Folders, input.Item, input.ForEach, input.Run, input.Profile, package);
+    }
+
+    /// <summary>The 25 scope from its parts — the node's (B3), the deliverable's (B8 #1027: no item) — completed from the package.</summary>
+    public static TemplateRenderScope ScopeFor(
+        IReadOnlyDictionary<string, string> variables,
+        IReadOnlyDictionary<string, string>? variableTypes,
+        IReadOnlyDictionary<string, string> nodeTexts,
+        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? folders,
+        IReadOnlyDictionary<string, string>? item,
+        string? forEach,
+        TemplateRunFacts run,
+        TemplateProfileFacts profile,
+        WorkflowPackage package)
+    {
         var manifest = package.Manifest;
         var nodesById = (package.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal).ToDictionary(n => n.Id, StringComparer.Ordinal);
         var inputsById = WorkflowVariableDeclarations.For(manifest);
 
-        var nodes = input.NodeTexts.ToDictionary(
+        var nodes = nodeTexts.ToDictionary(
             pair => pair.Key,
             pair => new TemplateNodeOutput(
                 pair.Value,
@@ -96,7 +111,7 @@ internal static class ConsultRenderPayload
                 WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(pair.Key, pair.Key)),
             StringComparer.Ordinal);
 
-        var folders = (input.Folders ?? new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>())
+        var folderItems = (folders ?? new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>())
             .ToDictionary(
                 entry => entry.Key,
                 entry => (IReadOnlyList<TemplateFolderItem>)entry.Value
@@ -109,7 +124,7 @@ internal static class ConsultRenderPayload
 
         TemplateFanItem? fanItem = null;
 
-        if (input.Item is { } item && input.ForEach is { } forEach)
+        if (item is not null && forEach is not null)
         {
             var id = item.GetValueOrDefault("id", string.Empty);
             var name = item.GetValueOrDefault("name", id);
@@ -130,16 +145,16 @@ internal static class ConsultRenderPayload
                 StringComparer.Ordinal);
 
         return new TemplateRenderScope(
-            input.Variables,
-            input.VariableTypes,
+            variables,
+            variableTypes,
             inputsById,
             nodes,
             package.Data?.Scalars ?? new Dictionary<string, string>(),
-            folders,
+            folderItems,
             fanItem,
             macros,
-            input.Run,
-            input.Profile);
+            run,
+            profile);
     }
 
     /// <summary>The type a node's format declares — the stamped catalogue's, or a package-local format file's — so <c>.value</c> parses accordingly; text when unknown.</summary>

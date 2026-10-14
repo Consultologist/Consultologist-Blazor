@@ -215,6 +215,47 @@ internal static class ConsultMacroExpander
         return (string.Join("\n\n", pieces), appended.Count > 0 ? appended : null, tokenCarried);
     }
 
+    /// <summary>
+    /// v25 (B8 #1027, design § 5.1): the 25 composition — the prepend texts
+    /// in placement order, the sections as the aggregator rendered them, the
+    /// append texts in theirs; one blank line between blocks, each macro block
+    /// trailing-trimmed (the node completion's convention); the appended
+    /// entries in DOCUMENT order. With nothing placed the bytes are
+    /// Render(parts)'s exactly. The texts arrived rendered (the activity's);
+    /// nothing here reads a template.
+    /// </summary>
+    public static (string Text, IReadOnlyList<ConsultAppendedEntry>? Appended) ComposeAt25(
+        IReadOnlyList<ConsultRenderedMacro> prepend,
+        IReadOnlyList<ConsultAggregateRenderer.Part> parts,
+        IReadOnlyList<ConsultRenderedMacro> append)
+    {
+        var sections = ConsultAggregateRenderer.Render(parts);
+
+        if (prepend.Count == 0 && append.Count == 0)
+        {
+            return (sections, null);
+        }
+
+        var pieces = new List<string>(prepend.Count + 1 + append.Count);
+        var appended = new List<ConsultAppendedEntry>(prepend.Count + append.Count);
+
+        foreach (var macro in prepend)
+        {
+            pieces.Add(macro.Text.TrimEnd());
+            appended.Add(new ConsultAppendedEntry(ConsultAppendedKinds.Macro, macro.Id));
+        }
+
+        pieces.Add(sections);
+
+        foreach (var macro in append)
+        {
+            pieces.Add(macro.Text.TrimEnd());
+            appended.Add(new ConsultAppendedEntry(ConsultAppendedKinds.Macro, macro.Id));
+        }
+
+        return (string.Join("\n\n", pieces), appended);
+    }
+
     /// <summary>One template, expanded — substitution over the closed namespaces.</summary>
     public static string Expand(
         string template,

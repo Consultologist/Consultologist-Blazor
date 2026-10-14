@@ -238,6 +238,26 @@ public class DurablePayloadReplayTests
     }
 
     [Fact]
+    public void TheDeliverableMacrosPayloads_RoundTrip_InTheirOrder()
+    {
+        // B8 #1027: the first pins of the render activity's input and result —
+        // every slot present, so a later trailing optional lands after them.
+        const string storedInput = """
+            {"ResultId":"consult","WorkflowPackage":"general@v2026.10.8","Placements":[{"Id":"closing","Before":null,"After":null,"ForItem":null,"Slot":null,"At":"append"}],"Variables":{"notes":"x"},"VariableTypes":null,"NodeTexts":{"all":"The note."},"Folders":null,"Run":{"Date":"2026-10-14","Job":"j","Package":"general@v2026.10.8","Host":"h"},"Profile":{"Name":"Dr","Signature":"Dr, MD"}}
+            """;
+        const string storedResult = """
+            {"Prepend":[],"Append":[{"Id":"closing","Text":"Bye."}],"SignatureRead":false}
+            """;
+
+        var input = JsonSerializer.Deserialize<ConsultDeliverableMacrosActivityInput>(storedInput, Durable)!;
+        var result = JsonSerializer.Deserialize<ConsultDeliverableMacrosResult>(storedResult, Durable)!;
+
+        Assert.Equal("append", Assert.Single(input.Placements).At);
+        Assert.Equal(storedInput, JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(storedResult, JsonSerializer.Serialize(result, Durable));
+    }
+
+    [Fact]
     public void AStoredDecisionResult_WithoutExcludedMacros_BindsNull()
     {
         // v12 #631: the activity's recorded result, same rule.
