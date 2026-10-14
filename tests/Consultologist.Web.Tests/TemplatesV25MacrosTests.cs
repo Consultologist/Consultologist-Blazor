@@ -289,6 +289,116 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         Assert.Equal(new[] { "Snippet 'standards' — macro.closing.text" }, readers.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
     }
 
+    // ----- the node pane: one Macros section -----
+
+    private static IReadOnlyList<string> SectionHeads(IRenderedComponent<Templates> page) =>
+        page.FindAll(".node-section__head").Select(h => h.TextContent.Trim()).ToList();
+
+    [Fact]
+    public void TheNodePane_HasOneMacrosSection_PlacedAroundTheOutput_AndNoOutputMacrosView()
+    {
+        var page = RenderEditor();
+        ShowNode(page, "assessment");
+
+        var heads = SectionHeads(page);
+        Assert.Single(heads, h => h == "Macros");
+        Assert.DoesNotContain("Output macros", heads);
+        Assert.Empty(page.FindAll(".node-output-macro"));
+
+        var row = page.Find(".node-macro-row[data-at='after']");
+        Assert.Contains("closing", row.TextContent);
+        var placement = row.QuerySelector("fluent-select[aria-label='Placement for macro closing on assessment']")!;
+        Assert.Equal("after", placement.GetAttribute("current-value"));
+        Assert.Contains("after this node's output", placement.TextContent);
+        Assert.DoesNotContain("after the prompt", placement.TextContent);
+        Assert.NotNull(row.QuerySelector(".node-macro-up"));
+        Assert.NotNull(row.QuerySelector(".node-macro-down"));
+    }
+
+    [Fact]
+    public void ReorderingWithinAPlacement_RoundTrips_AndTheRegistryAccepts()
+    {
+        var page = RenderEditor();
+        CapturePublish();
+        ShowNode(page, "assessment");
+
+        // A second after-block: attached before by default, then moved after, then above closing.
+        page.Find("fluent-select[aria-label='Attach a macro to assessment']").Change("tool_note");
+        page.Find("fluent-select[aria-label='Placement for macro tool_note on assessment']").Change("after");
+        Assert.Equal(new[] { "closing", "tool_note" },
+            page.FindAll(".node-macro-row[data-at='after'] .binding-row__source").Select(b => b.TextContent.Trim()));
+
+        page.Find("fluent-button[aria-label='Move macro tool_note up on assessment']").Click();
+        Assert.Equal(new[] { "tool_note", "closing" },
+            page.FindAll(".node-macro-row[data-at='after'] .binding-row__source").Select(b => b.TextContent.Trim()));
+        Publish(page);
+
+        var macros = Node(Manifest(sent!), "assessment").GetProperty("macros").EnumerateArray()
+            .Select(m => m.ValueKind == JsonValueKind.String ? m.GetString() : m.GetProperty("id").GetString()).ToList();
+        Assert.Equal(new[] { "tool_note", "closing" }, macros);
+        // No optional key rides a 25 instance.
+        Assert.All(Node(Manifest(sent!), "assessment").GetProperty("macros").EnumerateArray().Where(m => m.ValueKind == JsonValueKind.Object),
+            m => Assert.False(m.TryGetProperty("optional", out _)));
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
+    }
+
+    [Fact]
+    public void TheAttachPicker_SkipsAMacroHoldingBothPlacements()
+    {
+        var page = RenderEditor();
+        ShowNode(page, "assessment");
+
+        Assert.Contains("closing", OptionValues(page, "fluent-select[aria-label='Attach a macro to assessment']"));
+        page.Find("fluent-select[aria-label='Attach a macro to assessment']").Change("closing");
+
+        Assert.DoesNotContain("closing", OptionValues(page, "fluent-select[aria-label='Attach a macro to assessment']"));
+        Assert.Contains("tool_note", OptionValues(page, "fluent-select[aria-label='Attach a macro to assessment']"));
+    }
+
+    [Theory]
+    [InlineData("scope", "classification")]
+    [InlineData("extract", "concept-list")]
+    public void ANodeWhoseFormatTakesNoOutputMacros_CannotAttach_AndSaysWhy(string nodeId, string format)
+    {
+        var page = RenderEditor();
+        ShowNode(page, nodeId);
+
+        Assert.Empty(page.FindAll($"fluent-select[aria-label='Attach a macro to {nodeId}']"));
+        Assert.Contains($"Format '{format}' takes no output macros; only a text format with outputMacros may.", page.Find(".node-macros-refused").TextContent);
+    }
+
+    [Fact]
+    public void InlineSlots_AreDerivedFromTheWalk_AndOpenTheMacro()
+    {
+        var page = RenderEditor();
+        ShowNode(page, "assessment");
+
+        var slots = page.Find("ul.node-inline-slots[aria-label='Inline slots of assessment']");
+        Assert.Equal(new[] { "macro.tool_note.prompt — Tool note" }, slots.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
+
+        page.Find("ul.node-inline-slots button").Click();
+        Assert.Equal("tool_note", page.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim());
+    }
+
+    [Fact]
+    public void AFanNode_NamesTheItemsLackingTheSlotRead_InTheValidatorsWords()
+    {
+        var page = RenderEditor();
+        ShowNode(page, "section_notes");
+        Assert.Contains("No inline slot", page.Find(".editor-pane").TextContent);
+
+        // The hpi item's text reads the slot; plan's does not.
+        Navigate(page, "HPI");
+        page.Find(".editor-pane fluent-text-area").Change("History: {{ input.notes }} {{ macro.tool_note.prompt }}");
+        ShowNode(page, "section_notes");
+
+        Assert.Contains("macro.tool_note.prompt", page.Find("ul.node-inline-slots[aria-label='Inline slots of section_notes']").TextContent);
+        Assert.Equal(
+            "Node 'section_notes' fans snippet folder 'sections'; items plan carry no macro.tool_note.prompt read, so no marker is emitted for them.",
+            page.Find(".node-inline-slots__warning").TextContent.Trim());
+    }
+
     [Fact]
     public void TheFixtureItself_PublishesAccepted()
     {

@@ -2064,24 +2064,61 @@
                            "Appended content". A prelude is the trivial case (before, always). *@
                         @if (EffectiveSpecVersion >= 23 && selectedNode.Prompt is not null)
                         {
+                            @* v25 (C3 #1009): ONE Macros section — the node's instances placed around its
+                               OUTPUT (before-blocks in order, the reply, then after-blocks), grouped by
+                               placement with reorder within each; attach only where the format takes
+                               output macros; and the inline slots the walk derives from the prompt. The
+                               v23 prompt-side composition and the #966 Output-macros view are ≤24. *@
                             <div class="node-section">
                                 <span class="node-section__head">Macros</span>
-                                <p class="muted-text">Compose a library macro into this node's prompt. A before block precedes the prompt, an after block follows it; each applies always, or when its condition holds.</p>
-                                @{ var nodeMacros = EffectiveNodeMacros(selectedNode); }
-                                @for (var macroPosition = 0; macroPosition < nodeMacros.Count; macroPosition++)
+                                @if (At25)
+                                {
+                                    <p class="muted-text">Placed around this node's output: before-blocks in order, the reply, then after-blocks. Each applies always, or when its condition holds.</p>
+                                }
+                                else
+                                {
+                                    <p class="muted-text">Compose a library macro into this node's prompt. A before block precedes the prompt, an after block follows it; each applies always, or when its condition holds.</p>
+                                }
+                                @{
+                                    var nodeMacros = EffectiveNodeMacros(selectedNode);
+                                    // At 25 the rows are grouped: every before-block, then every after-block,
+                                    // each keeping its index into the node's list for the handlers.
+                                    var nodeMacroOrder = At25
+                                        ? Enumerable.Range(0, nodeMacros.Count).Where(i => !nodeMacros[i].IsAfter)
+                                            .Concat(Enumerable.Range(0, nodeMacros.Count).Where(i => nodeMacros[i].IsAfter)).ToList()
+                                        : Enumerable.Range(0, nodeMacros.Count).ToList();
+                                    var nodeTakesOutputMacros = !At25 || FormatTakesOutputMacros(selectedNode);
+                                }
+                                @foreach (var macroPosition in nodeMacroOrder)
                                 {
                                     var index = macroPosition;
                                     var entry = nodeMacros[index];
-                                    <div class="node-macro-row">
+                                    <div class="node-macro-row" data-at="@(entry.IsAfter ? "after" : "before")">
                                         <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source"
                                                       @onclick="() => SelectMacro(entry.Id)">@entry.Id</FluentButton>
                                         <FluentSelect TOption="string" class="binding-row__select"
                                                       Value="@(entry.IsAfter ? "after" : "before")"
                                                       ValueChanged="@(v => SetNodeMacroPlacementAsync(selectedNode.Id, index, v))"
                                                       aria-label="@($"Placement for macro {entry.Id} on {selectedNode.Id}")">
-                                            <FluentOption TOption="string" Value="before">before the prompt</FluentOption>
-                                            <FluentOption TOption="string" Value="after">after the prompt</FluentOption>
+                                            <FluentOption TOption="string" Value="before">@(At25 ? "before this node's output" : "before the prompt")</FluentOption>
+                                            <FluentOption TOption="string" Value="after">@(At25 ? "after this node's output" : "after the prompt")</FluentOption>
                                         </FluentSelect>
+                                        @if (At25)
+                                        {
+                                            @* Reorder within the placement: the neighbour of the same side. *@
+                                            var siblings = nodeMacroOrder.Where(i => nodeMacros[i].IsAfter == entry.IsAfter).ToList();
+                                            var sibling = siblings.IndexOf(index);
+                                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button node-macro-up"
+                                                          Disabled="@(sibling <= 0)" Title="Move up"
+                                                          aria-label="@($"Move macro {entry.Id} up on {selectedNode.Id}")"
+                                                          IconStart="@(new Icons.Regular.Size20.ArrowUp())"
+                                                          @onclick="() => MoveNodeMacroAsync(selectedNode.Id, index, siblings[Math.Max(sibling - 1, 0)])" />
+                                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button node-macro-down"
+                                                          Disabled="@(sibling < 0 || sibling >= siblings.Count - 1)" Title="Move down"
+                                                          aria-label="@($"Move macro {entry.Id} down on {selectedNode.Id}")"
+                                                          IconStart="@(new Icons.Regular.Size20.ArrowDown())"
+                                                          @onclick="() => MoveNodeMacroAsync(selectedNode.Id, index, siblings[Math.Min(sibling + 1, siblings.Count - 1)])" />
+                                        }
                                         @* v24 (#957): on a node that fans a data: collection, compose this
                                            macro for one of its items only (the Deliverables pane's forItem,
                                            on the prompt side). Label = the item's name, value = its id. *@
@@ -2107,23 +2144,75 @@
                                 }
                                 @if (nodeMacros.Count == 0)
                                 {
-                                    <p class="muted-text">No macros composed into this node's prompt.</p>
+                                    <p class="muted-text">@(At25 ? "No macro placed around this node's output." : "No macros composed into this node's prompt.")</p>
                                 }
-                                @if (EffectiveMacros.Count > 0)
+                                @{
+                                    // At 25 a macro whose both plain identities (before and after, no
+                                    // forItem) are already on the node is not offered again.
+                                    var attachableLibraryMacros = At25
+                                        ? EffectiveMacros.Where(m =>
+                                            !(nodeMacros.Any(e => e.Id == m.Id && e.ForItem == null && !e.IsAfter)
+                                              && nodeMacros.Any(e => e.Id == m.Id && e.ForItem == null && e.IsAfter))).ToList()
+                                        : EffectiveMacros.ToList();
+                                }
+                                @if (At25 && !nodeTakesOutputMacros)
+                                {
+                                    <p class="muted-text node-macros-refused">Format '@selectedNode.Format' takes no output macros; only a text format with outputMacros may.</p>
+                                }
+                                else if (attachableLibraryMacros.Count > 0)
                                 {
                                     <FluentSelect TOption="string" class="binding-row__select" Value=""
                                                   ValueChanged="@(v => AttachNodeMacroAsync(selectedNode.Id, v))"
                                                   aria-label="@($"Attach a macro to {selectedNode.Id}")">
                                         <FluentOption TOption="string" Value="">attach a macro…</FluentOption>
-                                        @foreach (var libraryMacro in EffectiveMacros)
+                                        @foreach (var libraryMacro in attachableLibraryMacros)
                                         {
                                             <FluentOption TOption="string" Value="@libraryMacro.Id">@libraryMacro.Id</FluentOption>
                                         }
                                     </FluentSelect>
                                 }
-                                else
+                                else if (EffectiveMacros.Count == 0)
                                 {
                                     <p class="muted-text">No macros declared yet — add one in the Macros section first.</p>
+                                }
+                                @if (At25)
+                                {
+                                    @* Derived, read-only: the slots this node's prompt reaches
+                                       (macro.<id>.prompt, directly or through what it reads), from the walk. *@
+                                    var inlineSlots = PackageWalk?.PromptReadsOf(selectedNode.Id) ?? new HashSet<string>(StringComparer.Ordinal);
+                                    <span class="node-section__head">Inline slots</span>
+                                    @if (inlineSlots.Count > 0)
+                                    {
+                                        <ul class="snippet-readers node-inline-slots" aria-label="@($"Inline slots of {selectedNode.Id}")">
+                                            @foreach (var slotMacroId in inlineSlots.Order(StringComparer.Ordinal))
+                                            {
+                                                var slotMacro = EffectiveMacros.FirstOrDefault(m => m.Id == slotMacroId);
+                                                <li>
+                                                    <button type="button" class="snippet-readers__row" @onclick="() => SelectMacro(slotMacroId)">macro.@(slotMacroId).prompt@(slotMacro is null ? "" : $" — {slotMacro.Label}")</button>
+                                                </li>
+                                            }
+                                        </ul>
+                                        @if (NodeFanItems(selectedNode) is { Count: > 0 } slotFanItems && FanFolderOf(selectedNode.ForEach) is { } slotFolder)
+                                        {
+                                            @* The validator's warning, word for word: items whose text carries no read emit no marker. *@
+                                            foreach (var slotMacroId in inlineSlots.Order(StringComparer.Ordinal))
+                                            {
+                                                var lacking = slotFanItems.Where(item => !(PackageWalk?.PromptReadsOf(selectedNode.Id, item.Id).Contains(slotMacroId) ?? false)).Select(item => item.Id).ToList();
+                                                if (lacking.Count > 0)
+                                                {
+                                                    <p class="muted-text node-inline-slots__warning">Node '@selectedNode.Id' fans snippet folder '@slotFolder'; items @string.Join(", ", lacking) carry no macro.@(slotMacroId).prompt read, so no marker is emitted for them.</p>
+                                                }
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <p class="muted-text">No inline slot — read <code>{{ macro.&lt;id&gt;.prompt }}</code> in the prompt where a slot goes.</p>
+                                    }
+                                    @if (formatsCatalog is null)
+                                    {
+                                        <p class="muted-text">The format catalogue is unavailable, so a prompt on a catalogue format is not walked.</p>
+                                    }
                                 }
                             </div>
                         }
@@ -2135,7 +2224,7 @@
                            THIS node; moving one elsewhere takes it out of this view. The section
                            renders whenever a deliverable aggregates this node (anchors arrive at 12).
                            Reordering stays in Deliverables, as the macro pane decided (#940). *@
-                        @if (EffectiveSpecVersion >= 12 && DeliverablesAggregating(selectedNode.Id) is { Count: > 0 } aggregatingDeliverables)
+                        @if (!At25 && EffectiveSpecVersion >= 12 && DeliverablesAggregating(selectedNode.Id) is { Count: > 0 } aggregatingDeliverables)
                         {
                             var anchoredOutputMacros = OutputMacrosAnchoredTo(selectedNode.Id);
                             <div class="node-section">
@@ -8621,6 +8710,17 @@
         {
             // null ≡ before (the bare form keeps its string shape); only "after" is stored.
             list[index] = list[index] with { At = at == "after" ? "after" : null };
+            await PendingChangedAsync();
+        }
+    }
+
+    /// <summary>v25 (C3 #1009): reorder within a placement — swap the entry at <paramref name="index"/> with the one at <paramref name="siblingIndex"/> (both the same side).</summary>
+    private async Task MoveNodeMacroAsync(string nodeId, int index, int siblingIndex)
+    {
+        var list = MutableNodeMacros(nodeId);
+        if (index != siblingIndex && index >= 0 && siblingIndex >= 0 && index < list.Count && siblingIndex < list.Count)
+        {
+            (list[index], list[siblingIndex]) = (list[siblingIndex], list[index]);
             await PendingChangedAsync();
         }
     }
