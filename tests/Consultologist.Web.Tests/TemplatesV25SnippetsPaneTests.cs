@@ -497,6 +497,84 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
         Assert.Null(sent);
     }
 
+    // ----- where each snippet is read (the engine's walk) -----
+
+    [Fact]
+    public void TheSnippetPane_ListsItsReaders_AndRefusesRemoveWhileRead()
+    {
+        var page = RenderEditor();
+        Navigate(page, "standards");
+
+        var readers = page.Find("ul.snippet-readers[aria-label='Readers of standards']");
+        Assert.Equal(new[] { "Prompt 'assessment'" }, readers.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
+        Assert.Contains("Change the readers below first to delete this snippet.", page.Find(".editor-pane").TextContent);
+        Assert.NotNull(page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "Remove").GetAttribute("disabled"));
+        // The nav says nothing about an unread snippet for one that is read.
+        Assert.DoesNotContain("not read by any template yet", page.Markup);
+    }
+
+    [Fact]
+    public void AReaderRow_OpensTheReadersPane()
+    {
+        var page = RenderEditor();
+        Navigate(page, "standards");
+
+        page.Find("ul.snippet-readers button.snippet-readers__row").Click();
+
+        Assert.Equal("assessment", page.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim());
+    }
+
+    [Fact]
+    public void AFoldersItems_ListTheFanningNode()
+    {
+        var page = RenderEditor();
+        Navigate(page, "HPI");
+
+        var readers = page.Find("ul.snippet-readers[aria-label='Readers of sections']");
+        Assert.Equal(new[] { "Node 'section_notes' fans it" }, readers.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
+        Assert.DoesNotContain("not fanned or iterated by anything yet", page.Markup);
+    }
+
+    [Fact]
+    public void ASnippetReadByAnotherSnippet_NamesIt_AsItIsTyped()
+    {
+        var page = RenderEditor();
+        CreateSnippet(page, "house_style");
+        Assert.Contains("Not read by any template yet", page.Find(".editor-pane").TextContent);
+
+        // The new snippet reads standards: standards now lists it; the new one is still unread.
+        page.Find(".editor-pane fluent-text-area").Change("{{ snippet.standards.text }} Write plainly.");
+        Navigate(page, "standards");
+
+        var readers = page.Find("ul.snippet-readers[aria-label='Readers of standards']").QuerySelectorAll("li").Select(li => li.TextContent.Trim()).ToList();
+        Assert.Contains("Prompt 'assessment'", readers);
+        Assert.Contains("Snippet 'house_style'", readers);
+        Assert.Contains("not read by any template yet", page.Markup);
+    }
+
+    [Fact]
+    public void AnUnreadSnippet_CanBeRemoved_AndTheNavSaysSo()
+    {
+        var page = RenderEditor();
+        CreateSnippet(page, "house_style");
+
+        Assert.Contains("not read by any template yet", page.Markup);
+        Assert.Null(page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "Remove").GetAttribute("disabled"));
+        page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "Remove").Click();
+
+        Assert.DoesNotContain("snippets/house_style.md", page.Markup);
+    }
+
+    [Fact]
+    public void WithoutTheCatalogue_TheReadersListSaysWhatItCannotSee()
+    {
+        var page = RenderEditor(withCatalogue: false);
+        Navigate(page, "standards");
+
+        // assessment is on a catalogue format, so its prompt does not walk without the catalogue.
+        Assert.Contains("reads from prompts on catalogue formats are not listed", page.Find(".editor-pane").TextContent);
+    }
+
     [Fact]
     public void TheFixtureItself_PublishesAccepted_WithItsGatedItem()
     {

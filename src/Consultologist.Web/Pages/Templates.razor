@@ -642,7 +642,7 @@
                             {
                                 <div class="editor-nav__item editor-nav__item--nested">
                                     <span class="editor-nav__dot"></span>
-                                    <span class="muted-text">@(At25 ? "not fanned by any node yet" : "not used by any workflow node yet")</span>
+                                    <span class="muted-text">@(At25 ? "not fanned or iterated by anything yet" : "not used by any workflow node yet")</span>
                                 </div>
                             }
                         </details>
@@ -793,10 +793,9 @@
                                             Modified="@ScalarHasPending(scalar)"
                                             TextChanged="@(value => OnTextChangedAsync(scalar.Path, value))">
                             <HeaderActions>
-                                @{ var holders = NodesBinding(scalar.Id); }
                                 @PaneDiscardButton(scalar.Path, ScalarCanDiscard(scalar), () => RevertFileEdits(scalar.Path))
                                 <FluentButton Appearance="Appearance.Outline"
-                                              Disabled="@(holders.Count > 0)"
+                                              Disabled="@(!ScalarIsUnused(scalar.Id))"
                                               @onclick="() => RemoveScalarAsync(scalar.Id)">
                                     Remove
                                 </FluentButton>
@@ -805,7 +804,15 @@
                                 @* Said before the button is reached for, not after
                                    it is pressed: deleting a bound value produces a
                                    package the server refuses to publish. *@
-                                @if (NodesBinding(scalar.Id) is { Count: > 0 } bindingNodes)
+                                @if (At25)
+                                {
+                                    @* v25 (#1008): a snippet is read, never bound — the walk names its readers. *@
+                                    @if (!ScalarIsUnused(scalar.Id))
+                                    {
+                                        <p class="muted-text">Change the readers below first to delete this snippet.</p>
+                                    }
+                                }
+                                else if (NodesBinding(scalar.Id) is { Count: > 0 } bindingNodes)
                                 {
                                     <p class="muted-text">
                                         Bound by @(bindingNodes.Count == 1 ? "node" : "nodes")
@@ -820,6 +827,7 @@
                                         Read as <code>{{ snippet.@(scalar.Id).text }}</code> — rendered as a template
                                         where it is read, exactly as typed.
                                     </p>
+                                    @SnippetReadersList((scalar.Id, false))
                                 }
                                 else
                                 {
@@ -851,6 +859,7 @@
                                 {
                                     <p class="muted-text">Read as <code>item.text</code> by the node fanning '@addedItem.Collection'.</p>
                                     @ConditionField(("Included when", AddedItemWhenTarget(addedItem), "Every run"))
+                                    @SnippetReadersList((addedItem.Collection, true))
                                 }
                                 else
                                 {
@@ -2263,6 +2272,7 @@
                                     <p class="muted-text">Read as <code>item.text</code> by the node fanning this folder.</p>
                                     @* v25 (#1008): the item's input-only when — a folder's size is settled at job start. *@
                                     @ConditionField(("Included when", ItemWhenTarget(standard), "Every run"))
+                                    @SnippetReadersList((FolderOfItem(standard.File), true))
                                 }
                                 else
                                 {
@@ -3857,6 +3867,115 @@
 
     private string ItemNoun => At25 ? "Snippet" : "Standard";
 
+    // v25 (#1008): the engine's walk over the effective package, memoised on the
+    // pending tick (bumped by every committed change) and the catalogue
+    // instance. Null below 25 or when the composed manifest does not read.
+    private int walkTick;
+    private (int Tick, WorkflowFormatsView? Catalogue, PF.WorkflowDerivedEdges.Walk? Walk) walkCache = (-1, null, null);
+
+    private PF.WorkflowDerivedEdges.Walk? PackageWalk
+    {
+        get
+        {
+            if (!At25 || content == null)
+            {
+                return null;
+            }
+
+            if (walkCache.Tick != walkTick || !ReferenceEquals(walkCache.Catalogue, formatsCatalog))
+            {
+                walkCache = (walkTick, formatsCatalog, EditorPackageWalk.Walk(
+                    ComposeManifest().GetRawText(), AssembleFiles(), EditorPackageWalk.CatalogFrom(formatsCatalog)));
+            }
+
+            return walkCache.Walk;
+        }
+    }
+
+    /// <summary>One place a snippet is read: the walk's subject and the pane that holds it (null when it has none).</summary>
+    private sealed record SnippetReader(string Subject, string? Key);
+
+    /// <summary>
+    /// Where a snippet (or a folder) is read, from the walk: every template whose
+    /// references name it — a prompt, another snippet, a folder item, a macro —
+    /// and, for a folder, every node fanning it. The Snippets pane's "Read by"
+    /// list, the delete guard and the nav's "not read" line all read this.
+    /// </summary>
+    private IReadOnlyList<SnippetReader> SnippetReaders(string id, bool folder)
+    {
+        var readers = new List<SnippetReader>();
+
+        if (PackageWalk is { } walk)
+        {
+            foreach (var template in walk.Templates)
+            {
+                var reads = folder ? template.References.SnippetFolders.Contains(id) : template.References.Snippets.Contains(id);
+
+                if (reads)
+                {
+                    readers.Add(new SnippetReader(template.Subject, PaneKeyOf(template)));
+                }
+            }
+        }
+
+        if (folder)
+        {
+            readers.AddRange(EffectiveNodes
+                .Where(node => node.ForEach == FanRef(id))
+                .Select(node => new SnippetReader($"Node '{node.Id}' fans it", $"{NodeKeyPrefix}{node.Id}")));
+        }
+
+        return readers;
+    }
+
+    /// <summary>The pane a walked template is edited on: a prompt's, a snippet's, a folder item's, a macro's file.</summary>
+    private string? PaneKeyOf(PF.WorkflowDerivedEdges.WalkedTemplate template) => template.Kind switch
+    {
+        PF.TemplateKind.Prompt => EffectivePrompts.FirstOrDefault(p => p.Id == template.Id)?.File,
+        PF.TemplateKind.Macro => EffectiveMacros.FirstOrDefault(m => m.Id == template.Id)?.File,
+        PF.TemplateKind.Snippet when template.Id.IndexOf('/') is var slash && slash > 0 =>
+            EffectiveCollections.FirstOrDefault(c => c.Id == template.Id[..slash])?.Items.FirstOrDefault(i => i.Id == template.Id[(slash + 1)..])?.File
+            ?? addedItems.FirstOrDefault(a => a.Collection == template.Id[..slash] && a.Id == template.Id[(slash + 1)..])?.Key,
+        PF.TemplateKind.Snippet => ScalarPath(template.Id),
+        _ => null
+    };
+
+    /// <summary>The "Read by" rows: each a button opening the reader's pane, or the empty sentence.</summary>
+    private RenderFragment<(string Id, bool Folder)> SnippetReadersList => spec => @<text>
+        @{ var readers = SnippetReaders(spec.Id, spec.Folder); }
+        @if (readers.Count > 0)
+        {
+            <p class="muted-text">Read by</p>
+            <ul class="snippet-readers" aria-label="@($"Readers of {spec.Id}")">
+                @foreach (var reader in readers)
+                {
+                    <li>
+                        @if (reader.Key is { } key)
+                        {
+                            <button type="button" class="snippet-readers__row" @onclick="() => Select(key)">@reader.Subject</button>
+                        }
+                        else
+                        {
+                            <span class="snippet-readers__row">@reader.Subject</span>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+        else if (spec.Folder)
+        {
+            <p class="muted-text">Not fanned or iterated by anything yet — a node fans it as <code>snippet:@spec.Id</code>; a template iterates it as <code>{{ for s in snippet.@spec.Id }}</code>.</p>
+        }
+        else
+        {
+            <p class="muted-text">Not read by any template yet — read it as <code>{{ snippet.@(spec.Id).text }}</code>.</p>
+        }
+        @if (formatsCatalog is null)
+        {
+            <p class="muted-text">The format catalogue is unavailable, so reads from prompts on catalogue formats are not listed.</p>
+        }
+    </text>;
+
     private string FanNoun => At25 ? "snippet folder" : "data: collection";
 
     private AddedItem? SelectedAdded() => addedItems.FirstOrDefault(a => a.Key == selectedKey);
@@ -3877,7 +3996,7 @@
             id, CollectionDirectory(id), Array.Empty<WorkflowManifestReader.DataItemView>())));
 
     private bool CollectionIsUnused(string collectionId) =>
-        !nodes.Any(n => n.ForEach == FanRef(collectionId));
+        At25 ? SnippetReaders(collectionId, folder: true).Count == 0 : !nodes.Any(n => n.ForEach == FanRef(collectionId));
 
     // Single-value data entries (#309). A value's key IS its path, derived the
     // same way whether pending or published, so selection needs no second
@@ -3910,7 +4029,8 @@
 
     // A collection is unused when nothing forEaches it; a value when nothing
     // binds it. Different edge kinds, same question.
-    private bool ScalarIsUnused(string scalarId) => NodesBinding(scalarId).Count == 0;
+    private bool ScalarIsUnused(string scalarId) =>
+        At25 ? SnippetReaders(scalarId, folder: false).Count == 0 : NodesBinding(scalarId).Count == 0;
 
     // Published values marked for deletion. Derived from removedFiles rather
     // than tracked separately, so PendingCount, Discard, Load and the draft
@@ -10166,6 +10286,7 @@
     // by LoadAsync (registry load) and ImportPackageAsync (#847, an uploaded zip).
     private void ProjectLoadedContent()
     {
+        walkTick++;
         prompts = WorkflowManifestReader.ReadPrompts(content!.Manifest);
         nodes = WorkflowManifestReader.ReadNodes(content.Manifest);
         collections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files, DataTableKey);
@@ -10867,6 +10988,7 @@
     /// </summary>
     private async Task PendingChangedAsync()
     {
+        walkTick++;
         publishSuccess = null;
         publishWarnings.Clear();
         // #812: any change (an edit, or a scoped discard) disarms a pending
