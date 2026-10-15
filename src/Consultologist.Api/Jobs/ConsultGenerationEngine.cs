@@ -705,9 +705,7 @@ public sealed class ConsultGenerationOrchestrator
 
                     foreach (var sourceRef in aggregator.Aggregate!)
                     {
-                        var sourceId = sourceRef.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
-                            ? sourceRef[WorkflowNodeBindingSources.NodePrefix.Length..]
-                            : sourceRef;
+                        var sourceId = TemplateObjectReference.NodeIdOf(sourceRef) ?? sourceRef;
                         var source = nodesById[sourceId];
 
                         if (source.ForEach != null)
@@ -1586,9 +1584,7 @@ internal static class ConsultDeliverables
     {
         static IReadOnlyList<string> SourcesOf(ConsultNodeDescriptor? node) =>
             node?.Aggregate?
-                .Select(sourceRef => sourceRef.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
-                    ? sourceRef[WorkflowNodeBindingSources.NodePrefix.Length..]
-                    : sourceRef)
+                .Select(sourceRef => TemplateObjectReference.NodeIdOf(sourceRef) ?? sourceRef)
                 .ToList()
             ?? (IReadOnlyList<string>)new List<string>();
 

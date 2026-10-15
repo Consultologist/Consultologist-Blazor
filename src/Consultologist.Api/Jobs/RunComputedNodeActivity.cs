@@ -72,7 +72,9 @@ public sealed class RunComputedNodeActivity
     {
         switch (input.Op)
         {
+            // #1037: the 25 catalogue spells the op snake_case; ≤24 keeps the hyphen.
             case TermsSubset:
+            case WorkflowCheckOps.TermsSubsetAt25:
                 var of = Operand(input, "of");
                 var inDocument = Operand(input, "in");
                 var outcome = ConsultCheckExecutor.TermsSubset(

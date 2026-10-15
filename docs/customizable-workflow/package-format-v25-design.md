@@ -101,7 +101,8 @@ The rules bindings had move to derived edges unchanged: refuse a cycle; refuse a
 reading another fan over a different collection; two fans over one collection stay
 item-aligned; a node whose value is read is a dependency of the reader. What stays declared
 is structure, not prose: a node's `forEach`, an aggregator's `aggregate`, a deliverable's
-`node` and `check`.
+`node` and `check` — each spelled as an object reference at 25 (`snippet.<folder>`,
+`input.<id>`, `node.<id>`; § 16, #1037).
 
 **Consequence, stated:** a template that writes `{{ node.identify-problem.text }}` names
 that node, so a prompt that reads a node is in effect that node's prompt. One prompt used by
@@ -168,9 +169,9 @@ versioned together. The index has two sections:
   "formats": {
     "prose":          { "file": "formats/prose.json",          "agentName": "consult-prose",      "agentVersion": 3 },
     "classification": { "file": "formats/classification.json", "agentName": "classification",     "agentVersion": 1 },
-    "concept-list":   { "file": "formats/concept-list.json",   "agentName": "concept-extraction", "agentVersion": 1 },
+    "concept_list":   { "file": "formats/concept_list.json",   "agentName": "concept-extraction", "agentVersion": 1 },
     "rendered":       { "file": "formats/rendered.json" },
-    "terms-subset":   { "file": "formats/terms-subset.json",   "op": "terms-subset" }
+    "terms_subset":   { "file": "formats/terms_subset.json",   "op": "terms_subset" }
   },
   "producers": {
     "custom": { "agentName": "custom-json", "agentVersion": 1,
@@ -184,8 +185,13 @@ versioned together. The index has two sections:
 | `prose` | text | attested | allowed | a node with no contract |
 | `rendered` | text | rendered | no | `kind: template` |
 | `classification` | enum | attested | no | `kind: classifier` — parameter `values` (kind `values`) carries the answer set |
-| `concept-list` | object | attested | no | the `schemaRefs` entry |
-| `terms-subset` | object `{ pass, uncovered[], untested[] }` | computed | no | `kind: check` — parameters `of`, `in` (nodes of format `concept-list`), `failWith` (text) |
+| `concept_list` | object | attested | no | the `schemaRefs` entry |
+| `terms_subset` | object `{ pass, uncovered[], untested[] }` | computed | no | `kind: check` — parameters `of`, `in` (nodes of format `concept_list`), `failWith` (text) |
+
+*(#1037, 2026-10-15: the catalogue ids and the computed op are snake_case like every declared
+id — `concept_list`, `terms_subset`, op `terms_subset`; formats@v2026.10.1 published the
+hyphenated spelling, which the engine reads until the renamed catalogue is pinned. The agent
+name `custom-json` is not a format id and stays. § 16.)*
 
 `custom` is a **producer binding, never a format entry**: a custom format is a package's
 own, so its agent is bound once and every custom format in every package goes through it.
@@ -262,7 +268,7 @@ named here so the word is reserved. A `text` format validates nothing and carrie
 { "id": "scope", "prompt": "scope", "format": "classification",
   "with": { "values": [ "in_scope", "out_of_scope" ] } }
 
-{ "id": "coverage", "format": "terms-subset",
+{ "id": "coverage", "format": "terms_subset",
   "with": { "of": "node.extract", "in": "node.source",
             "failWith": "The note names problems the source does not." } }
 
@@ -282,12 +288,14 @@ named here so the word is reserved. A `text` format validates nothing and carrie
   are object references or literals typed by the declaration (A2, #997, 2026-10-13): a
   `node` parameter is a bare `node.<id>` (it names the node, so it is an edge; `.text`/`.value`
   refused there) whose format must match the declaration's when one is named — `of` must name
-  a node of format `concept-list`; a `text` parameter is a string literal or an `input.<id>`
+  a node of format `concept_list`; a `text` parameter is a string literal or an `input.<id>`
   reference to a text input; a `values` parameter is a list of snake_case values (the enum
   rules) or an `input.<id>` reference to an enum input. A string that is exactly an object
   reference is read as one; anything else is a literal.
 - **`onInvalid`** — § 3.5.
-- `forEach`, `aggregate`, `when` (v18), `failIfEmpty`, `reproducible` — unchanged. *(B5
+- `forEach`, `aggregate`, `when` (v18), `failIfEmpty`, `reproducible` — unchanged in meaning;
+  *(#1037, 2026-10-15: spelled as object references at 25 — `forEach: snippet.<folder>` |
+  `input.<id>`, `aggregate: ["node.<id>"]` — and `when` is a Scriban boolean expression; § 16.)* *(B5
   #1004, 2026-10-14: `failIfEmpty` moves up to the node — `nodes[].failIfEmpty` — because
   its ≤24 home, `output`, is refused at 25; refused by name below 25. Judged on the reply
   before anything composes (§ 6 step 3): a blank reply on a text format, an empty top-level
@@ -355,8 +363,9 @@ collection (an `index.json` listing id, name and file per item). The names: `+ S
   is refused by a sentence saying the template's own `if` does that. Conditions on anything
   but inputs are the **v26** scheduler redesign, by name.
 - A node fans over a folder as it fans over a collection today — spelled `forEach:
-  snippet:<folder>`, one grammar beside `input:<id>` (A4, #999; the bare folder name is not
-  accepted); `item.text` is the item's rendered text (`item.content` is retired, § 14).
+  snippet.<folder>`, one grammar beside `input.<id>` (A4, #999 spelled it `snippet:<folder>`;
+  #1037 moved it to the object spelling, § 16; the bare folder name is not accepted);
+  `item.text` is the item's rendered text (`item.content` is retired, § 14).
 
 Snippets may read snippets, inputs, nodes, `macro.<id>.text` and `macro.<id>.prompt` (the
 section-instructions pattern: a standard that carries the slot marker's text). A snippet is
@@ -379,10 +388,10 @@ A macro is used in three ways, all on the **output side**:
 ```jsonc
 // on a node — nodes[].macros[]
 { "id": "closing", "at": "after" }
-{ "id": "tool_note", "at": "before", "when": "node:scope == in_scope", "forItem": "hpi" }
+{ "id": "tool_note", "at": "before", "when": "node.scope.value == \"in_scope\"", "forItem": "hpi" }
 
 // on a deliverable — deliverables[].macros[]: document scope only
-{ "id": "disclaimer", "at": "prepend", "when": "input:jurisdiction == on" }
+{ "id": "disclaimer", "at": "prepend", "when": "input.jurisdiction == \"on\"" }
 { "id": "signature", "at": "append" }
 ```
 
@@ -393,7 +402,8 @@ instruction is a different macro). The node pane lists inline slots as a derived
 section beside the declared before/after rows.
 
 - **`at`** — `before` | `after` on a node; `prepend` | `append` on a deliverable.
-- **`when`** — the node-level grammar, unchanged (`input:`, `node:`, `item:id` at a fan).
+- **`when`** — a Scriban boolean expression over the objects a template reads (§ 16, #1037;
+  until then the v10 grammar).
 - **`forItem`** — a fan item, unchanged (v24).
 - Only a node whose format has **`outputMacros: true`** may carry an instance or an inline
   read; anything else is refused by name — prose appended to JSON breaks the parse, an enum
@@ -480,7 +490,7 @@ emit the marker — intended in `section-instructions`, worth telling the author
 
 ## 8. Enum values — unchanged at 25
 
-Enum values stay snake_case (`^[a-z][a-z0-9_]*$`): bare literals in `when`, a
+Enum values stay snake_case (`^[a-z][a-z0-9_]*$`): quoted literals in a 25 `when` (§ 16), a
 classification's answer set, printable where patient text is not. Revision 1 and the first
 cut of revision 2 added an optional free-text **label** per value (`{ value, label }`, with
 `input.<id>.label` on the object and the Create page showing the label). That is **moved to
@@ -526,6 +536,10 @@ and a schema-catchable conformance vector where the key leaves the schema.
 | `results`, `result` | `deliverables` (§ 11) |
 | `deliverables[].macros[].before/after: node:x`, `forItem` | a node instance (§ 5.1) |
 | `nodes[].id` with a hyphen | the snake_case id (§ 3.6) |
+| `prompts[].id` with a hyphen | the snake_case id (§ 16) |
+| `forEach: snippet:<folder>` / `input:<id>` / `data:<id>` | `snippet.<folder>` / `input.<id>` (§ 16) |
+| `aggregate: ["node:<id>"]`, `deliverables[].node: node:<id>` | `node.<id>` (§ 16) |
+| a `when` in the v10 grammar (`node:x == yes`, `kind == new`) | a Scriban boolean expression (§ 16) |
 
 ## 11. `results` becomes `deliverables`
 
@@ -699,6 +713,10 @@ cannot yet fill an object slot in the browser — a follow-up under #991.)*
 | `raw: true` prompt | the text with `{{` escaped |
 | `results` / `result` | `deliverables` |
 | a node id with a hyphen (`identify-problem`) | `identify_problem`, in the id and in every reference (`aggregate`, `check`, `when`, `with`, templates) |
+| a prompt id with a hyphen (`draft-section`) | `draft_section`, in the id and every node's `prompt` (#1037) |
+| `when: node:scope == in_scope and kind == new` (every site: a node's own, an instance's, a deliverable's, a deliverable instance's) | `node.scope.value == "in_scope" && input.kind == "new"` — the Scriban expression, literals typed by the input (a text or enum input compares as a string); a `when` the v10 grammar refuses is a refusal naming the site (#1037) |
+| `forEach: data:x` / `input:x`; `aggregate: ["node:x"]`; `results[].node: node:x` | `snippet.x` / `input.x`; `["node.x"]`; `node.x` (#1037) |
+| `schemaRefs: { s: concept-list }`, `kind: check` | `format: concept_list`, `format: terms_subset` — the snake_case catalogue ids (#1037; the contract ids a ≤24 package names stay hyphenated) |
 
 A library macro placed on an output somewhere *and* used prompt-side elsewhere stays one
 macro: the prompt-side use is a `.text` read. Nothing is split.
@@ -753,7 +771,62 @@ unchanged accepted set; A5 (#1018) flips `AcceptedSpecVersions`, `SupportedSpecV
 editor's two mirrors together, lists v25 in the registry and exports its schema and vectors —
 after B7 (the engine runs 25) and C6 (the editor migrates 24 → 25), because the editor's upgrade
 button only rewrites the number, the format catalogue does not exist before B1/B2, and the
-registry's `supported` list mirrors the engine's run set.
+registry's `supported` list mirrors the engine's run set. *(2026-10-15: and after the `ns:id`
+retirement — #1037 format, #1038 engine, #1039 editor (§ 16) — a format change that must land
+before the bump freezes 25.)*
+
+## 16. No `ns:id` at 25 — `when` on the object syntax, every id snake_case (#1037, 2026-10-15)
+
+After C6 four manifest values still spelled a reference in the ≤24 binding grammar — `when`
+(the v10 grammar), `forEach` (`snippet:x`, `input:x`), `aggregate[]` (`node:x`) and a
+deliverable's `node` (`node:x`) — while `check`, `with` and every template already read
+objects; prompt ids had no rule, and the catalogue's format ids were hyphenated by design.
+**Decision:** at 25 no value spells `ns:id` and no declared id carries a hyphen. A format
+change, so it lands ahead of A5.
+
+**The reference keys.** `forEach: snippet.<folder>` | `input.<id>`; `aggregate: ["node.<id>"]`
+(each source declared, never the aggregator itself — the first aggregate rule at 25);
+`deliverables[].node: node.<id>`. One parser (`TemplateObjectReference`) reads them as it
+reads `with` and `check`; the colon spellings are refused by name at 25 with the spelling in
+the sentence, and the readers that serve both versions (fans, closure, diagram, the engine's
+aggregator and deliverable readers) strip either.
+
+**`when` is a Scriban boolean expression** over the objects a template reads —
+`node.scope.value == "in_scope"`, `input.kind == "new"`, `item.id == "hpi"`,
+`(input.docs | array.size) > 0`, joined by `&&`, `||`, `!`, with the comparisons, the arithmetic
+operators and `date.parse "YYYY-MM-DD"`. It is parsed as one bare expression (a template, two
+statements or a blank are refused) and **walked by the template walker in condition mode**:
+every chain is recorded as a prompt's would be, so **a condition's reads are edges** — the
+node's own `when` and its instances' whens are the node's edges (a `when` that reads the node
+it gates is a cycle), a deliverable's and its instances' are the deliverable's — and the
+comparisons are **typed** in the ≤24 clause rules re-spelled: an enum's value (`node.x.value`
+of an enum format, an enum input) against its answer set, `item.id` against the folder's
+items, `==`/`!=` only on those closed sets, ordering only on numbers and dates, truth only on
+booleans (a bare text, enum, array or object is refused with what to write instead),
+arithmetic on numbers. A `when` may read anything a template reads (a node's text, a snippet,
+a fact); a folder item's reads inputs only, as before. The strict probe evaluates each
+condition and refuses one that yields no boolean. A node's own `when` is validated at last
+(it was not at 25 before). The v10 grammar is refused by name with the 25 spelling in the
+sentence — `ConditionScriban.Spell`, C6's migration helper, writes it — and its inverse
+(`TryUnspell`) reads the subset the editor's builder authors back into the ≤24 tree, so
+`WorkflowResultConditions.TryParseExpression` serves both spellings: the ≤24 evaluator, the
+diagram and the builder read either, and layer B (#1038) decides whether the engine evaluates
+the wider grammar through the renderer's scope.
+
+**Every declared id is snake_case**, the prompt's too (refused by name with the rename, as
+the node's), and the catalogue's format ids and computed op join the rule — `concept_list`,
+`terms_subset`, op `terms_subset` — so one regex and one rename rule cover the format; the
+agent name `custom-json` and the ≤24 output-contract ids are not ids a template reads and stay.
+The hyphenated catalogue ids formats@v2026.10.1 published are read until the renamed catalogue
+(formats@v2026.10.2) is pinned; the fixture flip rides that re-pin, in its own PR.
+
+**The editor** (its half of #1039, folded in so every suite stays green): the compose writes
+the object spellings at 25, every comparison against a loaded value strips either, the
+aggregate picker spells per version, and the condition builder keeps its tree and writes the
+object spelling at 25 (the literals typed by the input). Decisions (2026-10-15): the two
+format ids and the op renamed, the agent kept; `input:x` fans move too; typed validation with
+the ≤24 sentences; a `when` reads anything a template reads; strict in A with the editor's
+compose half folded in rather than a transitional warning.
 
 ## Deferred, by name
 
@@ -772,6 +845,3 @@ registry's `supported` list mirrors the engine's run set.
 - `extends`: a package-local custom format that copies a catalogue schema (§ 3.1).
 - A `boolean` catalogue format giving `node.x.value` as a Scriban bool; `classification`
   with two values covers it.
-- Unifying the condition grammar (`when`: `node:x == yes`) on the object syntax; `when`
-  keeps its v10 grammar at 25 and `with`/`check` use object references, stated so the
-  seam is visible.

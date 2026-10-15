@@ -236,7 +236,26 @@ public static class WorkflowResultConditions
     }
 
     /// <summary>The whole grammar. A one-clause text parses to the record v9 produced, byte for byte.</summary>
+    /// <summary>
+    /// Parses a condition in either spelling: the ≤24 grammar, or (#1037, design
+    /// § 16) the 25 object spelling read back through <see cref="ConditionScriban.TryUnspell"/>
+    /// into the same tree — so the evaluator, the diagram and the editor's builder
+    /// serve both. A 25 condition past the builder's subset (a node's text, a
+    /// snippet, a fact) is the walker's to accept and the engine's to evaluate; here
+    /// it is refused with the sentence's tail.
+    /// </summary>
     public static bool TryParseExpression(string? when, out WorkflowConditionExpression? expression, out string? error)
+    {
+        if (ConditionScriban.LooksLikeObjectSpelling(when))
+        {
+            return ConditionScriban.TryUnspell(when, out expression, out error);
+        }
+
+        return TryParseLegacy(when, out expression, out error);
+    }
+
+    /// <summary>The ≤24 grammar alone.</summary>
+    public static bool TryParseLegacy(string? when, out WorkflowConditionExpression? expression, out string? error)
     {
         expression = null;
         error = null;

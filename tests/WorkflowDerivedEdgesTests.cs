@@ -46,8 +46,8 @@ public class WorkflowDerivedEdgesTests
         {
             Prompts = manifest.Prompts!.Append(new WorkflowPromptSpec("per_section", "prompts/per_section.md", new List<string>())).ToList(),
             Nodes = manifest.Nodes!
-                .Select(n => n.Id == "all" ? n with { Aggregate = new List<string> { "node:assessment", "node:per_section" } } : n)
-                .Append(new WorkflowNodeSpec("per_section", "Per section", Prompt: "per_section", Format: "prose", ForEach: "snippet:sections"))
+                .Select(n => n.Id == "all" ? n with { Aggregate = new List<string> { "node.assessment", "node.per_section" } } : n)
+                .Append(new WorkflowNodeSpec("per_section", "Per section", Prompt: "per_section", Format: "prose", ForEach: "snippet.sections"))
                 .ToList(),
         };
         files = new Dictionary<string, string>(files, StringComparer.Ordinal)

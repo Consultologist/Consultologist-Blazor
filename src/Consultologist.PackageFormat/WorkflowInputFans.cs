@@ -22,10 +22,15 @@ namespace Consultologist.PackageFormat;
 /// </summary>
 public static class WorkflowInputFans
 {
+    /// <summary>True for an array-input fan: <c>input:&lt;id&gt;</c> (below 25) or <c>input.&lt;id&gt;</c> (25, #1037).</summary>
     public static bool IsInputFan(string? forEach) =>
-        forEach?.StartsWith(WorkflowNodeBindingSources.InputPrefix, StringComparison.Ordinal) == true;
+        forEach?.StartsWith(WorkflowNodeBindingSources.InputPrefix, StringComparison.Ordinal) == true
+        || TemplateObjectReference.IsBare(forEach, TemplateObjects.Input, out _);
 
-    public static string InputIdOf(string forEach) => forEach[WorkflowNodeBindingSources.InputPrefix.Length..];
+    public static string InputIdOf(string forEach) =>
+        forEach.StartsWith(WorkflowNodeBindingSources.InputPrefix, StringComparison.Ordinal)
+            ? forEach[WorkflowNodeBindingSources.InputPrefix.Length..]
+            : forEach[TemplateObjectReference.InputPrefix.Length..];
 
     /// <summary>The snapshot key: the literal forEach string, which cannot collide with a data collection id.</summary>
     public static string Key(string inputId) => WorkflowNodeBindingSources.InputPrefix + inputId;

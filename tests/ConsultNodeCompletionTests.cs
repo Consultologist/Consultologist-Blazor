@@ -158,7 +158,7 @@ public class ConsultNodeCompletionTests
     {
         var (package, input, reads, _) = Prepare(
             "assessment",
-            m => V25Package.WithNode(m, "assessment", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "after", When: "kind == follow_up") } }));
+            m => V25Package.WithNode(m, "assessment", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "after", When: "input.kind == \"follow_up\"") } }));
 
         var result = ConsultNodeCompletion.Complete(Settled("The plan."), input, package, reads);
 
@@ -173,7 +173,7 @@ public class ConsultNodeCompletionTests
     {
         var (package, input, reads, _) = Prepare(
             "assessment",
-            m => V25Package.WithNode(m, "assessment", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "before", When: "node:scope == in_scope") } }));
+            m => V25Package.WithNode(m, "assessment", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "before", When: "node.scope.value == \"in_scope\"") } }));
 
         var result = ConsultNodeCompletion.Complete(Settled("The plan."), input, package, reads);
 

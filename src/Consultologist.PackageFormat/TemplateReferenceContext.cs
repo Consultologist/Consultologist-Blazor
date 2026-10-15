@@ -24,7 +24,10 @@ public sealed record TemplateReferenceContext(
     // an item read is recorded (members id, name, text, value; value untyped)
     // instead of refused; the validator refuses it at the reading site when that
     // node does not fan.
-    bool ItemDeferred = false)
+    bool ItemDeferred = false,
+    // #1037: the ids of the folder's items when the fan is a snippet folder — what a
+    // condition's `item.id == "x"` is typed against.
+    IReadOnlyList<string>? FanItemIds = null)
 {
     public static readonly IReadOnlySet<string> NoIds = new HashSet<string>(StringComparer.Ordinal);
 
@@ -43,7 +46,10 @@ public sealed record TemplateReferenceContext(
 public sealed record TemplateNodeShape(
     string Format,
     string Type,
-    JsonNode? Schema = null)
+    JsonNode? Schema = null,
+    // #1037: an enum format's answer set (the format's own values, or the node's
+    // with.values) — what a condition's `node.x.value == "v"` is typed against.
+    IReadOnlyList<string>? Values = null)
 {
     /// <summary>Whether <c>node.&lt;id&gt;.value</c> exists: every type but text parses.</summary>
     public bool HasValue => Type != WorkflowInputTypes.Text;

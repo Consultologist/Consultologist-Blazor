@@ -129,7 +129,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
             return manifest.Deliverables
                 .Select(deliverable => new WorkflowResolvedResult(
                     deliverable.Id,
-                    deliverable.Node[WorkflowNodeBindingSources.NodePrefix.Length..],
+                    TemplateObjectReference.NodeIdOf(deliverable.Node) ?? deliverable.Node,
                     deliverable.Label,
                     WorkflowResultConditions.TryParseExpression(deliverable.When, out var condition, out _)
                         ? condition

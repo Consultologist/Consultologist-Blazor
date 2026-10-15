@@ -119,9 +119,10 @@ public static class RunDagDiagram
 
             foreach (var sourceRef in node.Aggregate ?? Array.Empty<string>())
             {
-                if (sourceRef.StartsWith("node:", StringComparison.Ordinal))
+                // node:x below 25, node.x at 25 (#1037).
+                if (Consultologist.PackageFormat.TemplateObjectReference.NodeIdOf(sourceRef) is { } sourceId)
                 {
-                    AppendEdge(body, statusById, sourceRef["node:".Length..], node.Id, "aggregate");
+                    AppendEdge(body, statusById, sourceId, node.Id, "aggregate");
                 }
             }
 
@@ -129,9 +130,9 @@ public static class RunDagDiagram
             {
                 foreach (var (member, operand) in new[] { ("of", checkEdges.Of), ("in", checkEdges.In) })
                 {
-                    if (operand.StartsWith("node:", StringComparison.Ordinal))
+                    if (Consultologist.PackageFormat.TemplateObjectReference.NodeIdOf(operand) is { } operandId)
                     {
-                        body.Append(($"{Sanitize(operand["node:".Length..])} -.->|\"{member}\"| {id}\n"));
+                        body.Append(($"{Sanitize(operandId)} -.->|\"{member}\"| {id}\n"));
                     }
                 }
             }

@@ -854,12 +854,28 @@ public static class WorkflowNodeKinds
         string.Equals(node.Kind, Template, StringComparison.Ordinal);
 }
 
-/// <summary>The check operations a manifest may spell (v12 § 13) — a closed set, like every vocabulary here.</summary>
+/// <summary>
+/// The check operations a manifest may spell (v12 § 13) — a closed set, like
+/// every vocabulary here. Below 25 a check node's <c>op</c> is <see cref="TermsSubset"/>;
+/// at 25 the operation is the format catalogue's (<c>op</c> on a computed entry),
+/// spelled snake_case like every 25 id (#1037): <see cref="TermsSubsetAt25"/>. The
+/// engine computes either spelling.
+/// </summary>
 public static class WorkflowCheckOps
 {
     public const string TermsSubset = "terms-subset";
 
+    /// <summary>The 25 catalogue's spelling of the same operation.</summary>
+    public const string TermsSubsetAt25 = "terms_subset";
+
+    /// <summary>The ≤24 manifest vocabulary.</summary>
     public static readonly IReadOnlyList<string> All = new[] { TermsSubset };
+
+    /// <summary>The operations the engine publishes to the 25 catalogue.</summary>
+    public static readonly IReadOnlyList<string> AllAt25 = new[] { TermsSubsetAt25 };
+
+    /// <summary>True for the terms-subset operation in either spelling.</summary>
+    public static bool IsTermsSubset(string? op) => op is TermsSubset or TermsSubsetAt25;
 }
 
 public sealed record WorkflowNodeOutputSpec(

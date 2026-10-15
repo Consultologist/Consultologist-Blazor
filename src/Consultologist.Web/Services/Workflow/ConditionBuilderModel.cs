@@ -177,14 +177,20 @@ public static class ConditionBuilderModel
     /// literal with a space). A root holding one empty clause is the null
     /// condition.
     /// </summary>
-    public static string? ToText(ConditionGroup root)
+    /// <summary>
+    /// The tree written back: the ≤24 grammar, or (#1037, design § 16) the 25
+    /// object spelling when <paramref name="objectSpelling"/> is given — it types
+    /// the literals by input id (a text or enum input compares as a string).
+    /// </summary>
+    public static string? ToText(ConditionGroup root, Func<string, string?>? objectSpelling = null)
     {
         if (root.Items.Count == 1 && root.Items[0] is ConditionClause { IsEmpty: true, Not: false } && !root.Not)
         {
             return null;
         }
 
-        return ToExpression(root)?.Text;
+        var expression = ToExpression(root);
+        return expression is null ? null : objectSpelling is null ? expression.Text : ConditionScriban.Spell(expression, objectSpelling);
     }
 
     public static WorkflowConditionExpression? ToExpression(ConditionNode node)

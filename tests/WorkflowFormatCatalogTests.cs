@@ -137,7 +137,21 @@ public class WorkflowFormatCatalogTests
         Assert.NotEqual(WorkflowFormatCatalogIndexTests.Example, index);
 
         Assert.Contains(Errors(index, Files()),
-            e => e == "Format catalogue v2026.11.1 format 'terms-subset' is computed and its index entry must name the op (one of terms-subset).");
+            e => e == "Format catalogue v2026.11.1 format 'terms-subset' is computed and its index entry must name the op (one of terms_subset).");
+    }
+
+    [Fact]
+    public void AComputedFormat_MayNameTheOp_InEitherSpelling()
+    {
+        // #1037: terms_subset is the 25 spelling; terms-subset (formats@v2026.10.1) is read until the re-pin.
+        var index = WorkflowFormatCatalogIndexTests.Read(WorkflowFormatCatalogIndexTests.Example.Replace("\"op\": \"terms-subset\"", "\"op\": \"terms_subset\""));
+        var errors = new List<string>();
+        var files = Files();
+
+        var catalog = WorkflowFormatCatalog.Build(index, path => files.GetValueOrDefault(path), errors);
+
+        Assert.Empty(errors);
+        Assert.Equal("terms_subset", catalog!.Formats["terms-subset"].Entry.Op);
     }
 
     [Fact]
@@ -146,7 +160,7 @@ public class WorkflowFormatCatalogTests
         var index = WorkflowFormatCatalogIndexTests.Example.Replace("\"op\": \"terms-subset\"", "\"op\": \"terms-superset\"");
 
         Assert.Contains(Errors(index, Files()),
-            e => e == "Format catalogue v2026.11.1 format 'terms-subset' names op 'terms-superset', which the engine does not publish (one of terms-subset).");
+            e => e == "Format catalogue v2026.11.1 format 'terms-subset' names op 'terms-superset', which the engine does not publish (one of terms_subset).");
     }
 
     [Fact]

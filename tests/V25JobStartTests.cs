@@ -37,7 +37,7 @@ public class V25JobStartTests
         };
         files = new Dictionary<string, string>(files, StringComparer.Ordinal)
         {
-            ["snippets/extras/index.json"] = """{ "fields": ["id", "name", "content"], "items": [ { "id": "billing", "name": "Billing", "file": "billing.md", "when": "kind == follow_up" } ] }""",
+            ["snippets/extras/index.json"] = """{ "fields": ["id", "name", "content"], "items": [ { "id": "billing", "name": "Billing", "file": "billing.md", "when": "input.kind == \"follow_up\"" } ] }""",
             ["snippets/extras/billing.md"] = "Bill as a follow-up.",
         };
         manifest = change?.Invoke(manifest) ?? manifest;
@@ -97,7 +97,7 @@ public class V25JobStartTests
         // node.extract.value in its PROMPT — no binding, no aggregate names
         // extract. Gate extract: the deliverable is skipped through the
         // derived edge, naming the node.
-        var package = Package(m => V25Package.WithNode(m, "extract", n => n with { When = "kind == follow_up" }));
+        var package = Package(m => V25Package.WithNode(m, "extract", n => n with { When = "input.kind == \"follow_up\"" }));
 
         var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, null);
 
@@ -116,15 +116,15 @@ public class V25JobStartTests
         // find no output for node.extract.
         var package = Package(m => m with
         {
-            Nodes = m.Nodes!.Append(new WorkflowNodeSpec("letter_all", "Letter", Aggregate: new List<string> { "node:assessment", "node:section_notes" })).ToList(),
-            Deliverables = m.Deliverables!.Append(new WorkflowDeliverableSpec("letter", "node:letter_all", "Letter", When: "kind == follow_up")).ToList(),
+            Nodes = m.Nodes!.Append(new WorkflowNodeSpec("letter_all", "Letter", Aggregate: new List<string> { "node.assessment", "node.section_notes" })).ToList(),
+            Deliverables = m.Deliverables!.Append(new WorkflowDeliverableSpec("letter", "node.letter_all", "Letter", When: "input.kind == \"follow_up\"")).ToList(),
         });
         package = package with
         {
             Results = new List<WorkflowResolvedResult>
             {
                 new("consult", "all", "Consultation note"),
-                new("letter", "letter_all", "Letter", WorkflowResultConditions.TryParseExpression("kind == follow_up", out var when, out _) ? when : null),
+                new("letter", "letter_all", "Letter", WorkflowResultConditions.TryParseExpression("input.kind == \"follow_up\"", out var when, out _) ? when : null),
             },
         };
 
@@ -160,13 +160,13 @@ public class V25JobStartTests
     [Fact]
     public void ASnippetFan_RunsOverTheSettledFolder()
     {
-        // section_notes fans snippet:sections; the orchestrator keys the
+        // section_notes fans snippet.sections; the orchestrator keys the
         // snapshot by the folder id, as a data: fan did.
         var skeleton = ConsultGenerationJobStarter.ResolveSkeleton(Package(), FollowUp);
         var descriptor = ConsultGenerationJobStarter.DescribeNode(
             Package().Nodes!.First(n => n.Id == "section_notes"), null, formats: V25Package.Catalog());
 
-        Assert.Equal("snippet:sections", descriptor.ForEach);
+        Assert.Equal("snippet.sections", descriptor.ForEach);
         Assert.Equal(new[] { "hpi" }, skeleton.CollectionSets["sections"].Select(i => i["id"]));
     }
 }

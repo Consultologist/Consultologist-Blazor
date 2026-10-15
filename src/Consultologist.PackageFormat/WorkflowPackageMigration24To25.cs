@@ -125,6 +125,13 @@ public static class WorkflowPackageMigration24To25
         // ----- row: data → snippets (files moved, a literal '{{' escaped) -----
         RewriteData(root, manifest, outFiles, notices);
 
+        // ----- row (#1037): every when spelled as a Scriban expression -----
+        RewriteConditions(root, manifest, notices, refusals);
+        if (refusals.Count > 0)
+        {
+            return Refused(manifestJson, files, refusals);
+        }
+
         // ----- row: macro and snippet texts (placeholders → objects); slot markers → macro.<id>.prompt -----
         RewriteTexts(root, manifest, snippetised, slotMacroIds, outFiles, notices);
 
@@ -660,8 +667,25 @@ public static class WorkflowPackageMigration24To25
         foreach (var node in Array(root, "nodes").OfType<JsonObject>())
         {
             var id = Str(node, "id");
-            if (id is null || !typedNodes.TryGetValue(id, out var typed) || typed.Aggregate is not null)
+            if (id is null || !typedNodes.TryGetValue(id, out var typed))
             {
+                continue;
+            }
+
+            if (typed.Aggregate is not null)
+            {
+                // #1037: an aggregator's sources read node.<id>.
+                if (Get(node, "aggregate") is JsonArray aggregate)
+                {
+                    for (var i = 0; i < aggregate.Count; i++)
+                    {
+                        if (aggregate[i]?.GetValue<string>() is { } source)
+                        {
+                            aggregate[i] = NodeRef(source);
+                        }
+                    }
+                }
+
                 continue;
             }
 
@@ -694,9 +718,17 @@ public static class WorkflowPackageMigration24To25
             if (onInvalid is not null) { Set(node, "onInvalid", onInvalid); }
             if (!string.IsNullOrWhiteSpace(failIfEmpty) && format is not "rendered" && format != WorkflowCheckOps.TermsSubset) { Set(node, "failIfEmpty", failIfEmpty); }
 
-            if (Str(node, "forEach") is { } forEach && forEach.StartsWith(DataPrefix, StringComparison.Ordinal))
+            // #1037: the object spelling — data:x → snippet.x, input:x → input.x.
+            if (Str(node, "forEach") is { } forEach)
             {
-                Set(node, "forEach", WorkflowFanSources.SnippetPrefix + forEach[DataPrefix.Length..]);
+                if (forEach.StartsWith(DataPrefix, StringComparison.Ordinal))
+                {
+                    Set(node, "forEach", TemplateObjectReference.Snippet(forEach[DataPrefix.Length..]));
+                }
+                else if (forEach.StartsWith(InputPrefix, StringComparison.Ordinal))
+                {
+                    Set(node, "forEach", TemplateObjectReference.Input(forEach[InputPrefix.Length..]));
+                }
             }
 
             counts[format] = counts.GetValueOrDefault(format) + 1;
@@ -743,6 +775,74 @@ public static class WorkflowPackageMigration24To25
         }
     }
 
+    // ============================================================ conditions (#1037)
+
+    /// <summary>
+    /// Every <c>when</c> — a node's own, a node instance's, a deliverable's, a
+    /// deliverable instance's — spelled through <see cref="ConditionScriban.Spell"/>;
+    /// one that the ≤24 grammar refuses is a refusal naming the site (nothing
+    /// applied). A 24 folder item carries no when (it is a 25 key), so none is moved.
+    /// </summary>
+    private static void RewriteConditions(JsonObject root, WorkflowPackageManifest manifest, List<string> notices, List<string> refusals)
+    {
+        var inputTypes = (manifest.Inputs ?? new List<WorkflowInputSpec>())
+            .GroupBy(i => i.Id, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => WorkflowInputTypes.Of(g.First()), StringComparer.Ordinal);
+        var count = 0;
+
+        string? Spelled(string site, string? when)
+        {
+            if (when is null)
+            {
+                return null;
+            }
+
+            if (!WorkflowResultConditions.TryParseLegacy(when, out var expression, out var error) || expression is null)
+            {
+                refusals.Add($"{site} condition '{when}' {error} Fix it, then upgrade.");
+                return when;
+            }
+
+            count++;
+            return ConditionScriban.Spell(expression, id => inputTypes.GetValueOrDefault(id));
+        }
+
+        void SpellOn(JsonObject owner, string site)
+        {
+            if (Str(owner, "when") is { } when)
+            {
+                Set(owner, "when", Spelled(site, when));
+            }
+        }
+
+        foreach (var node in Array(root, "nodes").OfType<JsonObject>())
+        {
+            var nodeId = Str(node, "id") ?? "?";
+            SpellOn(node, $"Node '{nodeId}'");
+
+            foreach (var instance in (Get(node, "macros") as JsonArray)?.OfType<JsonObject>() ?? Enumerable.Empty<JsonObject>())
+            {
+                SpellOn(instance, $"Node '{nodeId}' macro '{Str(instance, "id") ?? "?"}'");
+            }
+        }
+
+        foreach (var deliverable in Array(root, "deliverables").OfType<JsonObject>())
+        {
+            var deliverableId = Str(deliverable, "id") ?? "?";
+            SpellOn(deliverable, $"Deliverable '{deliverableId}'");
+
+            foreach (var instance in (Get(deliverable, "macros") as JsonArray)?.OfType<JsonObject>() ?? Enumerable.Empty<JsonObject>())
+            {
+                SpellOn(instance, $"Deliverable '{deliverableId}' macro '{Str(instance, "id") ?? "?"}'");
+            }
+        }
+
+        if (count > 0)
+        {
+            notices.Add($"{count} condition{(count == 1 ? string.Empty : "s")} spelled as Scriban expression{(count == 1 ? string.Empty : "s")} (node.<id>.value, input.<id>, item.id).");
+        }
+    }
+
     private static string? NodeRef(string? reference) =>
         reference is null ? null : reference.StartsWith(NodePrefix, StringComparison.Ordinal) ? $"{TemplateObjects.Node}.{reference[NodePrefix.Length..]}" : reference;
 
@@ -767,6 +867,12 @@ public static class WorkflowPackageMigration24To25
             if (Str(result, "check") is { } check)
             {
                 Set(result, "check", NodeRef(check));
+            }
+
+            // #1037: the deliverable names node.<id>.
+            if (Str(result, "node") is { } resultNode)
+            {
+                Set(result, "node", NodeRef(resultNode));
             }
 
             if (Get(result, "macros") is not JsonArray macros)
@@ -834,7 +940,7 @@ public static class WorkflowPackageMigration24To25
         Remove(root, "results");
         Remove(root, "result");
         Set(root, "deliverables", deliverables);
-        notices.Add("results is now deliverables; a deliverable's check reads node.<id>; appended macros say at: append.");
+        notices.Add("results is now deliverables; a deliverable's node and check read node.<id>; appended macros say at: append.");
         return slots;
     }
 
