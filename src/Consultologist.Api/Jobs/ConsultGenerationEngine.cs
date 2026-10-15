@@ -226,32 +226,21 @@ public sealed class ConsultGenerationOrchestrator
         // A classifier binds inputs and classifiers only (the validator's
         // rule), so bindings are the whole closure.
         var allNodes = nodes;
-        IReadOnlyList<ConsultNodeDescriptor> ClassifierClosure()
-        {
-            var closure = new HashSet<string>(StringComparer.Ordinal);
-            // v25 (B8 #1027): a 25 classifier is an enum format — Values
-            // stamped from the parameter or the format itself, no contract.
-            var frontier = new Queue<string>(allNodes
-                .Where(node => string.Equals(node.OutputContract, OutputContracts.Classification, StringComparison.Ordinal)
-                    || (node.Format is not null && node.Values is not null))
-                .Select(node => node.Id));
+        // v25 (#1038, design § 16): at 25 the deciding stage's frontier is what the
+        // gating whens read — snapshotted at start — not the classifiers.
+        IReadOnlyList<ConsultNodeDescriptor> ClassifierClosure() =>
+            input.DecidingNodes is { Count: > 0 } decidingNodes
+                ? ConsultNodeScheduler.StageOneClosure(decidingNodes, allNodes, nodesById)
+                : ConsultNodeScheduler.StageOneClosure(
+                    allNodes
+                        // v25 (B8 #1027): a 25 classifier is an enum format — Values
+                        // stamped from the parameter or the format itself, no contract.
+                        .Where(node => string.Equals(node.OutputContract, OutputContracts.Classification, StringComparison.Ordinal)
+                            || (node.Format is not null && node.Values is not null))
+                        .Select(node => node.Id)
+                        .ToList(),
+                    allNodes, nodesById);
 
-            while (frontier.Count > 0)
-            {
-                var id = frontier.Dequeue();
-                if (!closure.Add(id))
-                {
-                    continue;
-                }
-
-                foreach (var dependency in ConsultNodeScheduler.NodeDependencies(nodesById[id]))
-                {
-                    frontier.Enqueue(dependency);
-                }
-            }
-
-            return allNodes.Where(node => closure.Contains(node.Id)).ToList();
-        }
 
         void StartInstance(ConsultNodeDescriptor node, IReadOnlyDictionary<string, string>? item)
         {
@@ -1046,7 +1035,12 @@ public sealed class ConsultGenerationOrchestrator
                 ConsultGenerationActivityNames.DecideDeliverables,
                 new ConsultDecideActivityInput(input.WorkflowPackage!, input.SuppliedInputs, answers,
                     // v25 (B8 #1027): the effective map, for the boundary's re-describe.
-                    EffectiveInputs: at25 ? new Dictionary<string, string>(effectiveInputs, StringComparer.Ordinal) : null),
+                    EffectiveInputs: at25 ? new Dictionary<string, string>(effectiveInputs, StringComparer.Ordinal) : null,
+                    // v25 (#1038): the render scope's other halves — every scalar
+                    // stage-one output (a fanned node has none) and the facts.
+                    NodeTexts: at25 ? ScalarNodeTexts() : null,
+                    Run: at25 ? ConsultRenderPayload.RunFactsFor(context.CurrentUtcDateTime, context.InstanceId, input.WorkflowPackage, input.ApiHost) : null,
+                    Profile: at25 ? ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature) : null),
                 AgentActivityRetryOptions);
 
             if (decision.Results.Count == 0)
@@ -1110,6 +1104,12 @@ public sealed class ConsultGenerationOrchestrator
         IReadOnlyDictionary<string, string> Classifications() => outputs
             .Where(pair => pair.Value.Classification != null)
             .ToDictionary(pair => pair.Key, pair => pair.Value.Classification!, StringComparer.Ordinal);
+
+        // v25 (#1038): the completed scalar outputs by node id — an item-keyed
+        // instance (a fanned node's) has no one text a deliverable's when could read.
+        IReadOnlyDictionary<string, string> ScalarNodeTexts() => outputs
+            .Where(pair => !pair.Key.Contains(':') && nodesById.ContainsKey(pair.Key))
+            .ToDictionary(pair => pair.Key, pair => pair.Value.Classification ?? pair.Value.RawOutput, StringComparer.Ordinal);
 
         // v23 #955: the node's macro blocks, resolved when its activity is
         // dispatched — each macro's `when` judged (input: against the supplied
@@ -1512,6 +1512,36 @@ internal static class ConsultNodeScheduler
                 nodesById[dependencyId].ForEach is null ? null : itemId)));
     }
 
+    /// <summary>
+    /// v10 (#496) / v25 (#1038): the deciding stage's nodes — the frontier (the
+    /// classifiers below 25; what the gating whens read at 25) closed over their
+    /// dependencies, in package order.
+    /// </summary>
+    public static IReadOnlyList<ConsultNodeDescriptor> StageOneClosure(
+        IReadOnlyList<string> frontier,
+        IReadOnlyList<ConsultNodeDescriptor> allNodes,
+        IReadOnlyDictionary<string, ConsultNodeDescriptor> nodesById)
+    {
+        var closure = new HashSet<string>(StringComparer.Ordinal);
+        var pending = new Queue<string>(frontier);
+
+        while (pending.Count > 0)
+        {
+            var id = pending.Dequeue();
+            if (!closure.Add(id) || !nodesById.TryGetValue(id, out var node))
+            {
+                continue;
+            }
+
+            foreach (var dependency in NodeDependencies(node))
+            {
+                pending.Enqueue(dependency);
+            }
+        }
+
+        return allNodes.Where(node => closure.Contains(node.Id)).ToList();
+    }
+
     public static IEnumerable<string> NodeDependencies(ConsultNodeDescriptor node)
     {
         var bindingDeps = (node.Bindings ?? new Dictionary<string, ConsultNodeBindingDescriptor>())
@@ -1524,7 +1554,9 @@ internal static class ConsultNodeScheduler
         // the when is judged against a populated classifications map, not an empty
         // one. node: in a when names a classifier (the validator guarantees it),
         // and a classifier always runs, so this never deadlocks.
-        var macroWhenDeps = (node.Macros ?? new List<ConsultNodeMacroDescriptor>())
+        // v25 (#1038): a 25 node's Reads already carry what its instances' whens
+        // read (the walk's edges), and a 25 when is no ≤24 tree to read leaves from.
+        var macroWhenDeps = (node.Reads is not null ? Array.Empty<ConsultNodeMacroDescriptor>() : node.Macros ?? new List<ConsultNodeMacroDescriptor>())
             .Where(macro => macro.When != null)
             .SelectMany(macro =>
                 WorkflowResultConditions.TryParseExpression(macro.When, out var when, out _) && when != null

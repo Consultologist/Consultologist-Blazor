@@ -189,6 +189,20 @@ public static class WorkflowDerivedEdges
         public IReadOnlySet<string> GatingReads() =>
             ConditionReads(Conditions.Where(c => c.Site is ConditionSite.Node or ConditionSite.Deliverable or ConditionSite.DeliverableInstance));
 
+        /// <summary>#1038: whether any gating when reads a profile fact (directly or through a text) — a read only the boundary can serve, since the starter judges before the profile is fetched.</summary>
+        public bool GatingReadsProfile()
+        {
+            var found = false;
+            var seen = new HashSet<(TemplateKind, string)>();
+
+            foreach (var condition in Conditions.Where(c => c.Site is ConditionSite.Node or ConditionSite.Deliverable or ConditionSite.DeliverableInstance))
+            {
+                Visit(condition.Walk.References, seen, refs => found |= refs.ProfileFacts.Count > 0);
+            }
+
+            return found;
+        }
+
         private IReadOnlySet<string> ConditionReads(IEnumerable<WalkedCondition> conditions)
         {
             var edges = new HashSet<string>(StringComparer.Ordinal);
@@ -526,6 +540,10 @@ public static class WorkflowDerivedEdges
                 set.UnionWith(walk.MacroEdges(entry.Id));
             }
 
+            // #1038: what the deliverable's own when and its instances' whens read
+            // is read by the deliverable too — a root of its closure, kept by the prune.
+            set.UnionWith(walk.DeliverableConditionReads(deliverable.Id));
+
             reads[deliverable.Id] = set;
         }
 
@@ -540,6 +558,16 @@ public static class WorkflowDerivedEdges
     {
         var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor);
         return WalkAll(manifest, files, nodes, snippets, contextFor).GatingReads();
+    }
+
+    /// <summary>#1038: whether any gating when reads a profile fact (see <see cref="Walk.GatingReadsProfile"/>).</summary>
+    public static bool GatingReadsProfile(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> files,
+        WorkflowFormatCatalog? formats)
+    {
+        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor);
+        return WalkAll(manifest, files, nodes, snippets, contextFor).GatingReadsProfile();
     }
 
     /// <summary>B8 #1027: the macro ids whose text reads <c>profile.signature</c> — the 25 signature carrier the starter's snapshot gate reads.</summary>

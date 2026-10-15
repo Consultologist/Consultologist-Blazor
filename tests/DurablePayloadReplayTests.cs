@@ -106,7 +106,7 @@ public class DurablePayloadReplayTests
         var withRefs = stored
             .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null,\"MacroChoices\":null,\"TranscriptInputs\":null,\"AmbientNoteInputs\":null,\"AcknowledgedShortInputs\":null}", StringComparison.Ordinal)
             .Replace("\"Label\":\"Consultation note\"}", "\"Label\":\"Consultation note\",\"Macros\":null,\"Signature\":null,\"MacroPlacements\":null,\"Check\":null,\"Reads\":null}", StringComparison.Ordinal);
-        Assert.Equal(withRefs[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"FormatsRef\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(withRefs[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"FormatsRef\":null,\"DecidingNodes\":null}", JsonSerializer.Serialize(input, Durable));
         // v11 #513/#516: the macro and signature slots and the descriptor's
         // trailing fields bind null.
         Assert.Null(input.MacroTexts);
@@ -157,7 +157,7 @@ public class DurablePayloadReplayTests
             .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null,\"MacroChoices\":null,\"TranscriptInputs\":null,\"AmbientNoteInputs\":null,\"AcknowledgedShortInputs\":null}", StringComparison.Ordinal)
             .Replace("\"TrackedChangesResolved\":false}", "\"TrackedChangesResolved\":false,\"FileSha256\":null,\"TextSha256\":null,\"SourceJobId\":null,\"SourceResultId\":null,\"SourceFormId\":null,\"SourceResponseId\":null}", StringComparison.Ordinal)
             .Replace("\"TrackedChangesResolved\":true}", "\"TrackedChangesResolved\":true,\"FileSha256\":null,\"TextSha256\":null,\"SourceJobId\":null,\"SourceResultId\":null,\"SourceFormId\":null,\"SourceResponseId\":null}", StringComparison.Ordinal);
-        Assert.Equal(expected[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"FormatsRef\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(expected[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"FormatsRef\":null,\"DecidingNodes\":null}", JsonSerializer.Serialize(input, Durable));
         var origins = Assert.Contains("prior_notes", input.InputDocumentOrigins!);
         Assert.Equal(2, origins.Count);
         Assert.Equal("pdfpig/0.1.15", origins[1].Extractor);
@@ -311,7 +311,7 @@ public class DurablePayloadReplayTests
         var input = JsonSerializer.Deserialize<ConsultDecideActivityInput>(stored, Durable)!;
 
         Assert.Null(input.EffectiveInputs);
-        Assert.Equal(stored[..^1] + ",\"EffectiveInputs\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(stored[..^1] + ",\"EffectiveInputs\":null,\"NodeTexts\":null,\"Run\":null,\"Profile\":null}", JsonSerializer.Serialize(input, Durable));
     }
 
     [Fact]

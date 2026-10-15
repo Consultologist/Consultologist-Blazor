@@ -144,13 +144,13 @@ public class V25RunPathTests
         {
             Prompts = manifest.Prompts!.Append(new WorkflowPromptSpec("extra", "prompts/extra.md", new List<string>())).ToList(),
             Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("extra", "Extra", Prompt: "extra", Format: "prose", When: "input.kind == \"follow_up\"")).ToList(),
-            Deliverables = manifest.Deliverables!.Append(new WorkflowDeliverableSpec("extra_doc", "node:extra_all", "Extra", When: "input.kind == \"follow_up\"")).ToList(),
+            Deliverables = manifest.Deliverables!.Append(new WorkflowDeliverableSpec("extra_doc", "node.extra_all", "Extra", When: "input.kind == \"follow_up\"")).ToList(),
         };
-        manifest = manifest with { Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("extra_all", "Extra all", Aggregate: new List<string> { "node:extra" })).ToList() };
+        manifest = manifest with { Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("extra_all", "Extra all", Aggregate: new List<string> { "node.extra" })).ToList() };
         files = new Dictionary<string, string>(files, StringComparer.Ordinal) { ["prompts/extra.md"] = "{{ input.notes }}" };
         var package = Package((manifest, files));
 
-        var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, new Dictionary<string, string> { ["scope"] = "in_scope" });
+        var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, new Dictionary<string, string> { ["scope"] = "in_scope" }, V25JobStartTests.Scope(package, NewPatient));
 
         Assert.Equal(new[] { "consult" }, decision.Firing.Select(r => r.Id));
         var live = decision.Package.Nodes!.Select(n => n.Id).ToList();
@@ -164,7 +164,7 @@ public class V25RunPathTests
     {
         var package = Package((V25Package.WithNode(V25Package.Minimal().Manifest, "coverage", n => n with { When = "input.kind == \"follow_up\"" }), V25Package.Minimal().Files));
 
-        var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, new Dictionary<string, string> { ["scope"] = "in_scope" });
+        var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, new Dictionary<string, string> { ["scope"] = "in_scope" }, V25JobStartTests.Scope(package, NewPatient));
 
         Assert.Equal(new[] { "consult" }, decision.Firing.Select(r => r.Id));
         Assert.DoesNotContain("coverage", decision.Package.Nodes!.Select(n => n.Id));
@@ -181,7 +181,7 @@ public class V25RunPathTests
         files["macros/scope_line.md"] = "Scope: {{ node.assessment.text }}.";
         var package = Package((manifest, files));
 
-        var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, new Dictionary<string, string> { ["scope"] = "in_scope" });
+        var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, new Dictionary<string, string> { ["scope"] = "in_scope" }, V25JobStartTests.Scope(package, NewPatient));
 
         var skipped = Assert.Single(decision.Skipped);
         Assert.Contains("needs node 'assessment'", skipped.Reason);
@@ -191,15 +191,17 @@ public class V25RunPathTests
     public void PlacementWhens_AreJudgedByIdentity_OneRefusalPerInstance()
     {
         var (manifest, files) = WithDeliverableMacros();
-        var result = Assert.Single(WorkflowPackageStore.ResolveResultSet(manifest)!);
+        var package = Package((manifest, files));
+        var result = Assert.Single(package.Results!);
 
-        var (macros, excluded, placements) = ConsultGenerationJobStarter.DecidePlacementWhens(result, NewPatient, new Dictionary<string, string> { ["scope"] = "in_scope" });
+        var (macros, excluded, placements) = ConsultGenerationJobStarter.DecidePlacementWhens(result, NewPatient, new Dictionary<string, string> { ["scope"] = "in_scope" }, V25JobStartTests.Scope(package, NewPatient));
 
         // The prepend of closing is gated on follow_up and refused; its append and scope_line stay.
         Assert.Equal(new[] { ("closing", "append"), ("scope_line", "prepend") }, placements!.Select(p => (p.Id, p.At!)));
         Assert.Equal(new[] { "closing", "scope_line" }, macros);
         var refusal = Assert.Single(excluded);
-        Assert.Equal(("consult", "closing", "needs kind to be 'follow_up'; it is 'new'"), (refusal.ResultId, refusal.MacroId, refusal.Reason));
+        // #1038: the fixed 25 reason form — the condition's own text, never a value.
+        Assert.Equal(("consult", "closing", "needs `input.kind == \"follow_up\"`; it does not hold"), (refusal.ResultId, refusal.MacroId, refusal.Reason));
 
         var described = ConsultGenerationJobStarter.DescribeResult(result, macros, placements, null, new HashSet<string> { "scope" });
         Assert.Equal(new[] { "scope" }, described.Reads);
@@ -227,6 +229,118 @@ public class V25RunPathTests
         var scope = decision.Nodes.First(n => n.Id == "scope");
         Assert.Equal(new[] { "in_scope", "out_of_scope" }, scope.Values);
         Assert.Equal(new[] { "closing" }, decision.ExcludedMacros!.Select(e => e.MacroId));
+    }
+
+    // ----- #1038: a when judged over the render scope at the boundary and at start -----
+
+    [Fact]
+    public void TheBoundary_JudgesADeliverableWhen_ThatReadsANodesText_OverTheStageOneOutputs()
+    {
+        // The deliverable's when reads assessment's TEXT — no classifier; the
+        // boundary gets the stage-one output as a node text and judges it.
+        var (manifest, files) = WithDeliverableMacros();
+        manifest = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node.assessment.text != \"\"" }).ToList() };
+        var package = Package((manifest, files));
+        var effective = new Dictionary<string, string> { ["notes"] = "Referral.", ["kind"] = "new" };
+        var facts = (Run: ConsultRenderPayload.RunFactsFor(new DateTime(2026, 1, 2), "job", package.Ref, "host"), Profile: ConsultRenderPayload.ProfileFactsFor("Dr Example", null));
+
+        var produced = DecideActivity.Decide(package, NewPatient, new Dictionary<string, string>(), effectiveInputs: effective,
+            nodeTexts: new Dictionary<string, string> { ["assessment"] = "Assessed." }, run: facts.Run, profile: facts.Profile);
+        Assert.Equal(new[] { "consult" }, produced.Results.Select(r => r.Id));
+
+        var empty = DecideActivity.Decide(package, NewPatient, new Dictionary<string, string>(), effectiveInputs: effective,
+            nodeTexts: new Dictionary<string, string> { ["assessment"] = "" }, run: facts.Run, profile: facts.Profile);
+        Assert.Empty(empty.Results);
+        var skipped = Assert.Single(empty.Skipped);
+        Assert.Equal(("consult", "needs `node.assessment.text != \"\"`; it does not hold"), (skipped.ResultId, skipped.Reason));
+    }
+
+    [Fact]
+    public void TheBoundary_IsLoud_WhenAWhenReadsANodeTheStageDidNotRun()
+    {
+        var (manifest, files) = WithDeliverableMacros();
+        manifest = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node.assessment.text != \"\"" }).ToList() };
+        var package = Package((manifest, files));
+        var effective = new Dictionary<string, string> { ["notes"] = "Referral.", ["kind"] = "new" };
+
+        var ex = Assert.Throws<InvalidOperationException>(() => DecideActivity.Decide(package, NewPatient, new Dictionary<string, string>(), effectiveInputs: effective,
+            nodeTexts: new Dictionary<string, string>(), run: new TemplateRunFacts("2026-01-02", "job", package.Ref, "host"), profile: new TemplateProfileFacts("", "")));
+
+        Assert.Contains("Deliverable 'consult' condition", ex.Message);
+        Assert.Contains("node.assessment", ex.Message);
+    }
+
+    [Fact]
+    public void AStartTimeWhen_ReadsTheRunFacts_AndTheDecidersNeverJudgeA25PackageBare()
+    {
+        var (manifest, files) = WithDeliverableMacros();
+        manifest = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "run.package == \"" + "general@v2026.08.1" + "\" && input.kind == \"new\"" }).ToList() };
+        var package = Package((manifest, files));
+
+        var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, null, V25JobStartTests.Scope(package, NewPatient));
+        Assert.Equal(new[] { "consult" }, decision.Firing.Select(r => r.Id));
+
+        var bare = Assert.Throws<InvalidOperationException>(() => ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, null));
+        Assert.Contains("judged over a render scope", bare.Message);
+    }
+
+    [Fact]
+    public void ANodeReadOnlyByADeliverablesWhen_SurvivesThePrune()
+    {
+        // extra feeds no deliverable; only consult's when reads it. The prune
+        // keeps it (the when's reads are the deliverable's roots), and the
+        // gating set names it for stage one.
+        var (manifest, files) = V25Package.Minimal();
+        manifest = manifest with
+        {
+            Prompts = manifest.Prompts!.Append(new WorkflowPromptSpec("extra", "prompts/extra.md", new List<string>())).ToList(),
+            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("extra", "Extra", Prompt: "extra", Format: "prose")).ToList(),
+            Deliverables = manifest.Deliverables!.Select(d => d with { When = "node.extra.text != \"\"" }).ToList(),
+        };
+        files = new Dictionary<string, string>(files, StringComparer.Ordinal) { ["prompts/extra.md"] = "{{ input.notes }}" };
+        var package = Package((manifest, files));
+
+        Assert.Equal(new[] { "extra" }, ConsultGenerationJobStarter.GatingReads(package));
+        var gated = V25Package.WithNode(package.Manifest, "scope", n => n with { When = "input.kind == \"follow_up\"" });
+        var pruned = ConsultGenerationJobStarter.DecideFireSet(
+            Package((gated, files)), NewPatient, new Dictionary<string, string>(),
+            new ConsultConditionScope(
+                new Dictionary<string, string> { ["notes"] = "Referral.", ["kind"] = "new" }, ConsultConditionScope.TypesOf(package),
+                new Dictionary<string, string> { ["extra"] = "Extra text." }, null,
+                new TemplateRunFacts("2026-01-02", "job", package.Ref, "host"), new TemplateProfileFacts("", ""), package));
+
+        Assert.Equal(new[] { "consult" }, pruned.Firing.Select(r => r.Id));
+        Assert.Contains("extra", pruned.Package.Nodes!.Select(n => n.Id));
+    }
+
+    [Fact]
+    public void TheCascade_NamesTheGatedNodes_FixedReason()
+    {
+        var (manifest, files) = WithDeliverableMacros();
+        manifest = V25Package.WithNode(manifest, "assessment", n => n with { When = "input.kind == \"follow_up\"" });
+        var package = Package((manifest, files));
+
+        var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, null, V25JobStartTests.Scope(package, NewPatient));
+
+        var skipped = Assert.Single(decision.Skipped);
+        Assert.Equal("needs node 'assessment', which needs `input.kind == \"follow_up\"`; it does not hold", skipped.Reason);
+    }
+
+    [Fact]
+    public void StageOne_IsTheClosureOfTheFrontier()
+    {
+        var nodes = new List<ConsultNodeDescriptor>
+        {
+            new("extract", "Extract", "p", Format: "concept_list", Reads: null),
+            new("assessment", "Assessment", "p", Format: "prose", Reads: new[] { "extract" }),
+            new("scope", "Scope", "p", Format: "classification", Values: new[] { "a", "b" }),
+            new("all", "All", null, Aggregate: new[] { "node.assessment" }),
+        };
+        var byId = nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
+
+        var closure = ConsultNodeScheduler.StageOneClosure(new[] { "assessment" }, nodes, byId);
+
+        Assert.Equal(new[] { "extract", "assessment" }, closure.Select(n => n.Id));
     }
 
     // ----- the orchestrator's seams -----

@@ -19,6 +19,10 @@ public class V25JobStartTests
         ["kind"] = "new",
     };
 
+    /// <summary>#1038: the start-time scope a 25 when is judged over — the effective map from the supplied one, no node texts.</summary>
+    internal static ConsultConditionScope Scope(WorkflowPackage package, IReadOnlyDictionary<string, ConsultInputValue> supplied) =>
+        ConsultGenerationJobStarter.StartScope(package, supplied.ToDictionary(p => p.Key, p => p.Value.Canonical, StringComparer.Ordinal), supplied, "job00000000");
+
     private static readonly Dictionary<string, ConsultInputValue> FollowUp = new(StringComparer.Ordinal)
     {
         ["notes"] = "Referral.",
@@ -99,7 +103,7 @@ public class V25JobStartTests
         // derived edge, naming the node.
         var package = Package(m => V25Package.WithNode(m, "extract", n => n with { When = "input.kind == \"follow_up\"" }));
 
-        var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, null);
+        var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, null, Scope(package, NewPatient));
 
         Assert.Empty(decision.Firing);
         var skipped = Assert.Single(decision.Skipped);
@@ -124,11 +128,12 @@ public class V25JobStartTests
             Results = new List<WorkflowResolvedResult>
             {
                 new("consult", "all", "Consultation note"),
-                new("letter", "letter_all", "Letter", WorkflowResultConditions.TryParseExpression("input.kind == \"follow_up\"", out var when, out _) ? when : null),
+                // #1038: a 25 when rides as text.
+                new("letter", "letter_all", "Letter", When: "input.kind == \"follow_up\""),
             },
         };
 
-        var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, null);
+        var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, null, Scope(package, NewPatient));
 
         Assert.Equal("consult", Assert.Single(decision.Firing).Id);
         Assert.Contains(decision.Package.Nodes!, n => n.Id == "extract");
