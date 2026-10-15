@@ -277,7 +277,7 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
 
         var options = page.FindAll("fluent-select[aria-label='Node forEach collection'] fluent-option")
             .Select(o => o.GetAttribute("value")).ToList();
-        Assert.Contains("snippet:sections", options);
+        Assert.Contains("snippet.sections", options);
         Assert.DoesNotContain("data:sections", options);
     }
 
@@ -355,9 +355,10 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
         Publish(page);
 
         var index = SectionsIndex(sent!);
-        Assert.Equal("kind == follow_up", Item(index, "hpi").GetProperty("when").GetString());
+        // #1037: the builder writes the object spelling at 25; kind is an enum, so the literal is a string.
+        Assert.Equal("input.kind == \"follow_up\"", Item(index, "hpi").GetProperty("when").GetString());
         // The loaded sibling keeps its when; the fields list is the loaded one.
-        Assert.Equal("kind == new", Item(index, "plan").GetProperty("when").GetString());
+        Assert.Equal("input.kind == \"new\"", Item(index, "plan").GetProperty("when").GetString());
         Assert.Equal(new[] { "id", "name", "content" }, index.GetProperty("fields").EnumerateArray().Select(f => f.GetString()).ToArray());
         var validated = Validated();
         Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
@@ -377,7 +378,7 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
         page.Find("fluent-select[aria-label^='Condition value for sections item plan']").Change("follow_up");
         Publish(page);
 
-        Assert.Equal("kind == follow_up", Item(SectionsIndex(sent!), "plan").GetProperty("when").GetString());
+        Assert.Equal("input.kind == \"follow_up\"", Item(SectionsIndex(sent!), "plan").GetProperty("when").GetString());
         var validated = Validated();
         Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
     }
@@ -396,7 +397,7 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
         Publish(page);
 
         var index = JsonDocument.Parse(sent!.Files["snippets/care_plans/index.json"]).RootElement;
-        Assert.Equal("kind == new", Item(index, "discharge").GetProperty("when").GetString());
+        Assert.Equal("input.kind == \"new\"", Item(index, "discharge").GetProperty("when").GetString());
         var validated = Validated();
         Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
     }
@@ -590,6 +591,6 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
         var validated = Validated();
         Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
         // The loaded index.json travels untouched: its when stays as written.
-        Assert.Contains("\"when\": \"kind == new\"", sent!.Files["snippets/sections/index.json"]);
+        Assert.Contains("\"when\": \"input.kind == \\\"new\\\"\"", sent!.Files["snippets/sections/index.json"]);
     }
 }

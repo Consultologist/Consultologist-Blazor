@@ -465,9 +465,9 @@
                                               ValueChanged="@(v => AppendAggregateSourceAsync(node, v))"
                                               aria-label="Add aggregate source">
                                     <FluentOption TOption="string" Value="">+ add source…</FluentOption>
-                                    @foreach (var candidate in Nodes.Where(other => other.Id != node.Id && !node.Aggregate.Contains($"node:{other.Id}")))
+                                    @foreach (var candidate in Nodes.Where(other => other.Id != node.Id && !node.Aggregate.Any(s => Consultologist.PackageFormat.TemplateObjectReference.NodeIdOf(s) == other.Id)))
                                     {
-                                        <FluentOption TOption="string" Value="@($"node:{candidate.Id}")">node:@candidate.Id</FluentOption>
+                                        <FluentOption TOption="string" Value="@AggregateRef(candidate.Id)">@AggregateRef(candidate.Id)</FluentOption>
                                     }
                                 </FluentSelect>
                             </div>
@@ -635,6 +635,11 @@
     public sealed record AggregateChange(string NodeId, List<string> Sources);
 
     [Parameter] public IReadOnlyList<WorkflowManifestReader.NodeView> Nodes { get; set; } = Array.Empty<WorkflowManifestReader.NodeView>();
+
+    /// <summary>#1037: at 25 an aggregate source is spelled node.&lt;id&gt; (the object spelling); below, node:&lt;id&gt;.</summary>
+    [Parameter] public bool ObjectSpelling { get; set; }
+
+    private string AggregateRef(string id) => ObjectSpelling ? Consultologist.PackageFormat.TemplateObjectReference.Node(id) : $"node:{id}";
     [Parameter] public bool Editable { get; set; }
     [Parameter] public IReadOnlyList<string> Scalars { get; set; } = Array.Empty<string>();
 

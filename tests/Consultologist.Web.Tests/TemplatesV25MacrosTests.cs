@@ -455,10 +455,10 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         var macros = Deliverable(manifest).GetProperty("macros").EnumerateArray().ToList();
         Assert.Equal(2, macros.Count);
         Assert.Equal("prepend", macros[0].GetProperty("at").GetString());
-        Assert.Equal("kind == new", macros[0].GetProperty("when").GetString());
+        Assert.Equal("input.kind == \"new\"", macros[0].GetProperty("when").GetString());
         Assert.Equal("tool_note", macros[1].GetProperty("id").GetString());
         Assert.Equal("append", macros[1].GetProperty("at").GetString());
-        Assert.Equal("kind == follow_up", macros[1].GetProperty("when").GetString());
+        Assert.Equal("input.kind == \"follow_up\"", macros[1].GetProperty("when").GetString());
         Assert.False(macros[1].TryGetProperty("before", out _));
         Assert.False(macros[1].TryGetProperty("slot", out _));
         var validated = Validated();

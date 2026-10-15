@@ -37,10 +37,10 @@ public static class ConditionText
             && leaf.Segments.SequenceEqual(segments, StringComparer.Ordinal) && leaf.Literal == value) ?? false;
 
     /// <summary>The condition with the field at a path renamed wherever it, or anything beneath it, is read.</summary>
-    public static string RenamePath(string when, string inputId, IReadOnlyList<string> segments, string newLast) =>
+    public static string RenamePath(string when, string inputId, IReadOnlyList<string> segments, string newLast, Func<string, string?>? objectSpelling = null) =>
         Map(when, clause => clause.InputId == inputId && !clause.IsNodeValue && !clause.IsItemValue && StartsWith(clause.Segments, segments)
             ? Renamed(clause, segments.Count - 1, newLast)
-            : clause);
+            : clause, objectSpelling);
 
     private static WorkflowResultCondition Renamed(WorkflowResultCondition clause, int index, string newSegment)
     {
@@ -62,23 +62,30 @@ public static class ConditionText
             && leaf.Literal == value) ?? false;
 
     /// <summary>The condition with an input renamed wherever it is read, re-spelled by the format's writer.</summary>
-    public static string RenameInput(string when, string oldId, string newId) =>
-        Map(when, clause => clause.InputId == oldId && !clause.IsNodeValue && !clause.IsItemValue ? clause with { InputId = newId } : clause);
+    public static string RenameInput(string when, string oldId, string newId, Func<string, string?>? objectSpelling = null) =>
+        Map(when, clause => clause.InputId == oldId && !clause.IsNodeValue && !clause.IsItemValue ? clause with { InputId = newId } : clause, objectSpelling);
 
     /// <summary>The condition with an input's top-level field renamed wherever it is read.</summary>
-    public static string RenameField(string when, string inputId, string oldField, string newField) =>
+    public static string RenameField(string when, string inputId, string oldField, string newField, Func<string, string?>? objectSpelling = null) =>
         Map(when, clause => clause.InputId == inputId && !clause.IsNodeValue && !clause.IsItemValue && clause.Segments.Count > 0 && clause.Segments[0] == oldField
             ? clause with
             {
                 Field = newField,
                 Path = clause.Path is null ? null : new[] { newField }.Concat(clause.Path.Skip(1)).ToList()
             }
-            : clause);
+            : clause, objectSpelling);
 
-    private static string Map(string when, Func<WorkflowResultCondition, WorkflowResultCondition> rename)
+    /// <summary>The renamed tree written back — in the ≤24 grammar, or (#1037) the 25 object spelling when <paramref name="objectSpelling"/> is given.</summary>
+    private static string Map(string when, Func<WorkflowResultCondition, WorkflowResultCondition> rename, Func<string, string?>? objectSpelling)
     {
         var expression = Parse(when);
-        return expression is null ? when : MapExpression(expression, rename).Text;
+        if (expression is null)
+        {
+            return when;
+        }
+
+        var mapped = MapExpression(expression, rename);
+        return objectSpelling is null ? mapped.Text : ConditionScriban.Spell(mapped, objectSpelling);
     }
 
     private static WorkflowConditionExpression MapExpression(WorkflowConditionExpression expression, Func<WorkflowResultCondition, WorkflowResultCondition> rename) =>

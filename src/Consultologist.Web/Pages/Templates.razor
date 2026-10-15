@@ -1432,7 +1432,7 @@
                                                 aria-label="@($"Node for deliverable {deliverable.Id}")">
                                             @foreach (var candidate in DeliverableCandidates)
                                             {
-                                                <FluentOption TOption="string" Value="@($"node:{candidate.Id}")">@candidate.Label</FluentOption>
+                                                <FluentOption TOption="string" Value="@NodeRef(candidate.Id)">@candidate.Label</FluentOption>
                                             }
                                         </FluentSelect>
                                         <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove deliverable"
@@ -1697,7 +1697,7 @@
                                             aria-label="Deliverable node">
                                         @foreach (var candidate in DeliverableCandidates)
                                         {
-                                            <FluentOption TOption="string" Value="@($"node:{candidate.Id}")">@candidate.Label</FluentOption>
+                                            <FluentOption TOption="string" Value="@NodeRef(candidate.Id)">@candidate.Label</FluentOption>
                                         }
                                     </FluentSelect>
                                     @if (resultEdit != null)
@@ -1729,6 +1729,7 @@
                                              OnVariableAdded="OnVariableAddedAsync"
                                              OnNodeChanged="OnNodeChangedAsync"
                                              OnAggregateChanged="OnAggregateChangedAsync"
+                                             ObjectSpelling="At25"
                                              OnNodeRemoved="RemoveNodeAsync"
                                              OnNodeRestored="RestoreNodeAsync" />
                     }
@@ -2050,6 +2051,7 @@
                                              OnVariableAdded="OnVariableAddedAsync"
                                              OnNodeChanged="OnNodeChangedAsync"
                                              OnAggregateChanged="OnAggregateChangedAsync"
+                                             ObjectSpelling="At25"
                                              ReadsSection="@NodeReadsSection(selectedNode)"
                                              OnNodeRemoved="RemoveNodeAsync" />
                         @* #949: the node's bound prompt, edited in place — the full prompt editor
@@ -4345,6 +4347,19 @@
     /// </summary>
     private bool At25 => EffectiveSpecVersion >= 25;
 
+    // #1037 (design § 16): at 25 a manifest value names a node in the object
+    // spelling (node.<id>); below 25 in the binding grammar (node:<id>). The
+    // compose writes one; a comparison against a loaded value strips either.
+    private string NodeRef(string id) => At25 ? PF.TemplateObjectReference.Node(id) : $"node:{id}";
+
+    private static string? NodeIdOf(string? reference) => PF.TemplateObjectReference.NodeIdOf(reference);
+
+    // The literals of a condition written at 25 are typed by the input they compare
+    // (a text or enum input compares as a string); null below 25 = the ≤24 grammar.
+    private Func<string, string?>? ConditionSpelling => At25 ? InputTypeOf : null;
+
+    private string? InputTypeOf(string inputId) => EffectiveInputs.FirstOrDefault(i => i.Id == inputId)?.Type;
+
     private string DataTableKey => At25 ? WorkflowManifestReader.SnippetsKey : WorkflowManifestReader.DataKey;
 
     private string DataRoot => At25 ? "snippets/" : "data/";
@@ -4352,7 +4367,7 @@
     private string CollectionDirectory(string collectionId) => $"{DataRoot}{collectionId}/";
 
     /// <summary>How a node fans this folder: snippet:&lt;folder&gt; at 25, data:&lt;collection&gt; below.</summary>
-    private string FanRef(string collectionId) => At25 ? $"{PF.WorkflowFanSources.SnippetPrefix}{collectionId}" : $"data:{collectionId}";
+    private string FanRef(string collectionId) => At25 ? PF.TemplateObjectReference.Snippet(collectionId) : $"data:{collectionId}";
 
     /// <summary>The folder a forEach names, under either spelling; null for an input fan or none.</summary>
     private static string? FanFolderOf(string? forEach) =>
@@ -6806,7 +6821,7 @@
 
         var aggregatorIds = EffectiveNodes
             .Where(node => node.Aggregate != null)
-            .Select(node => $"node:{node.Id}")
+            .Select(node => NodeRef(node.Id))
             .ToHashSet(StringComparer.Ordinal);
 
         errors.AddRange(results
@@ -6972,7 +6987,7 @@
 
             foreach (var result in results)
             {
-                var aggregator = EffectiveNodes.FirstOrDefault(n => $"node:{n.Id}" == result.Node);
+                var aggregator = EffectiveNodes.FirstOrDefault(n => n.Id == NodeIdOf(result.Node));
                 var entries = result.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>();
 
                 foreach (var entry in entries)
@@ -8588,7 +8603,7 @@
             // follows the id through the rename.
             results[index] = results[index] with
             {
-                When = ConditionText.RenameInput(results[index].When!, oldId, newId)
+                When = ConditionText.RenameInput(results[index].When!, oldId, newId, ConditionSpelling)
             };
         }
     }
@@ -9146,7 +9161,7 @@
             {
                 results[index] = results[index] with
                 {
-                    When = ConditionText.RenamePath(when, inputId, segments, newField)
+                    When = ConditionText.RenamePath(when, inputId, segments, newField, ConditionSpelling)
                 };
             }
         }
@@ -9908,7 +9923,7 @@
     {
         var root = edit(ConditionState(target).Root);
         var isNull = root.Items.Count == 1 && root.Items[0] is ConditionClause { IsEmpty: true } && !root.Not;
-        var text = ConditionBuilderModel.ToText(root);
+        var text = ConditionBuilderModel.ToText(root, ConditionSpelling);
 
         if (!isNull && (!ConditionBuilderModel.IsComplete(root) || text is null))
         {
@@ -10104,7 +10119,7 @@
     // id, so delivery filenames do not move when a package converts.
     private async Task ConvertToResultsListAsync()
     {
-        var node = EffectiveResultRef ?? DeliverableCandidates.Select(c => $"node:{c.Id}").FirstOrDefault();
+        var node = EffectiveResultRef ?? DeliverableCandidates.Select(c => NodeRef(c.Id)).FirstOrDefault();
 
         if (node == null)
         {
@@ -10112,7 +10127,7 @@
             return;
         }
 
-        var label = DeliverableCandidates.FirstOrDefault(c => $"node:{c.Id}" == node)?.Label ?? "Consultation note";
+        var label = DeliverableCandidates.FirstOrDefault(c => c.Id == NodeIdOf(node))?.Label ?? "Consultation note";
         resultsEdit = new List<WorkflowManifestReader.ResultView>
         {
             new("consult", node, label)
@@ -10137,7 +10152,7 @@
         }
 
         var free = DeliverableCandidates.FirstOrDefault(candidate =>
-            EffectiveResults.All(result => result.Node != $"node:{candidate.Id}"));
+            EffectiveResults.All(result => NodeIdOf(result.Node) != candidate.Id));
 
         if (free == null)
         {
@@ -10145,7 +10160,7 @@
             return;
         }
 
-        MutableResults().Add(new WorkflowManifestReader.ResultView(id, $"node:{free.Id}", id));
+        MutableResults().Add(new WorkflowManifestReader.ResultView(id, NodeRef(free.Id), id));
         newResultId = string.Empty;
         await CommitDeclarationAsync();
     }
@@ -10271,10 +10286,10 @@
     /// </summary>
     private IReadOnlyList<NodePlacedMacro> NodePlacedMacros(WorkflowManifestReader.ResultView result)
     {
-        var ownNodeId = result.Node.StartsWith("node:", StringComparison.Ordinal) ? result.Node["node:".Length..] : result.Node;
+        var ownNodeId = NodeIdOf(result.Node) ?? result.Node;
         var nodeIds = new List<string> { ownNodeId };
         nodeIds.AddRange(DeliverableAggregateSources(result)
-            .Select(source => source.StartsWith("node:", StringComparison.Ordinal) ? source["node:".Length..] : source));
+            .Select(source => NodeIdOf(source) ?? source));
 
         return nodeIds.Distinct(StringComparer.Ordinal)
             .Select(id => EffectiveNodes.FirstOrDefault(n => n.Id == id))
@@ -10285,7 +10300,7 @@
 
     /// <summary>This deliverable's aggregator's effective sources — the only legal placement anchors (§ 4).</summary>
     private IReadOnlyList<string> DeliverableAggregateSources(WorkflowManifestReader.ResultView result) =>
-        EffectiveNodes.FirstOrDefault(n => $"node:{n.Id}" == result.Node)?.Aggregate ?? Array.Empty<string>();
+        EffectiveNodes.FirstOrDefault(n => n.Id == NodeIdOf(result.Node))?.Aggregate ?? Array.Empty<string>();
 
     // v12 § 4 (#621): the placement rides the entry; choosing 'appended'
     // with no when returns the entry to the bare v11 form.
@@ -10521,11 +10536,11 @@
     private IReadOnlyList<string> DeliverableRootIds =>
         EffectiveResults.Count > 0
             ? EffectiveResults
-                .Where(result => result.Node.StartsWith("node:", StringComparison.Ordinal))
-                .Select(result => result.Node["node:".Length..])
+                .Select(result => NodeIdOf(result.Node))
+                .OfType<string>()
                 .ToList()
-            : EffectiveResultRef is { } singleRef && singleRef.StartsWith("node:", StringComparison.Ordinal)
-                ? new List<string> { singleRef["node:".Length..] }
+            : EffectiveResultRef is { } singleRef && NodeIdOf(singleRef) is { } singleId
+                ? new List<string> { singleId }
                 : Array.Empty<string>();
 
     private async Task OnAggregateChangedAsync(WorkflowNodeSummary.AggregateChange change)
@@ -10593,9 +10608,9 @@
 
             foreach (var sourceRef in node.Aggregate ?? Array.Empty<string>())
             {
-                if (sourceRef.StartsWith("node:", StringComparison.Ordinal))
+                if (NodeIdOf(sourceRef) is { } sourceId)
                 {
-                    sources.Add(sourceRef["node:".Length..]);
+                    sources.Add(sourceId);
                 }
             }
 
@@ -11519,9 +11534,9 @@
             .Concat(aggregateEdits.Keys)
             .Concat(addedNodes.Select(a => a.Id));
 
-        if (resultEdit != null && resultEdit.StartsWith("node:", StringComparison.Ordinal))
+        if (NodeIdOf(resultEdit) is { } resultNodeId)
         {
-            blueIds = blueIds.Append(resultEdit["node:".Length..]);
+            blueIds = blueIds.Append(resultNodeId);
         }
 
         foreach (var nodeId in blueIds.Where(id => !pendingNodes.Contains(id)))
@@ -12384,8 +12399,8 @@
 
         if (draftResultEdit != null
             && draftResultEdit != WorkflowManifestReader.ReadResultRef(content!.Manifest)
-            && draftResultEdit.StartsWith("node:", StringComparison.Ordinal)
-            && EffectiveNodes.Any(n => n.Id == draftResultEdit["node:".Length..]))
+            && NodeIdOf(draftResultEdit) is { } draftNodeId
+            && EffectiveNodes.Any(n => n.Id == draftNodeId))
         {
             resultEdit = draftResultEdit;
         }
@@ -12434,7 +12449,7 @@
         }
 
         if (IsV7 && draftResults is { Count: > 0 }
-            && draftResults.All(result => EffectiveNodes.Any(node => $"node:{node.Id}" == result.Node)))
+            && draftResults.All(result => EffectiveNodes.Any(node => node.Id == NodeIdOf(result.Node))))
         {
             resultsEdit = draftResults
                 .Select(result => new WorkflowManifestReader.ResultView(

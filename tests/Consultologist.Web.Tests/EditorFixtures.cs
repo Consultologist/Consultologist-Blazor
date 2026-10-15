@@ -895,10 +895,10 @@ public static class EditorFixtures
             { "id": "assessment", "label": "Assessment", "prompt": "assessment", "format": "prose", "failIfEmpty": "Nothing to assess.", "macros": [ { "id": "closing", "at": "after" } ] },
             { "id": "meds", "label": "Medications", "prompt": "meds", "format": "medication_list", "onInvalid": "flag" },
             { "id": "coverage", "label": "Coverage", "format": "terms-subset", "onInvalid": "fail", "with": { "of": "node.extract", "in": "node.extract", "failWith": "The note names problems the source does not." } },
-            { "id": "section_notes", "label": "Section notes", "prompt": "section", "format": "prose", "forEach": "snippet:sections", "macros": [ { "id": "tool_note", "at": "before", "forItem": "hpi" } ] },
-            { "id": "all", "label": "Everything", "aggregate": ["node:assessment", "node:section_notes"] }
+            { "id": "section_notes", "label": "Section notes", "prompt": "section", "format": "prose", "forEach": "snippet.sections", "macros": [ { "id": "tool_note", "at": "before", "forItem": "hpi" } ] },
+            { "id": "all", "label": "Everything", "aggregate": ["node.assessment", "node.section_notes"] }
           ],
-          "deliverables": [ { "id": "consult", "node": "node:all", "label": "Consultation note", "check": "node.coverage", "macros": [ { "id": "closing", "at": "prepend", "when": "kind == new" } ] } ]
+          "deliverables": [ { "id": "consult", "node": "node.all", "label": "Consultation note", "check": "node.coverage", "macros": [ { "id": "closing", "at": "prepend", "when": "input.kind == \"new\"" } ] } ]
         }
         """, 25,
         ("prompts/extract.md", "Extract the concepts from:\n{{ input.notes }}"),
@@ -909,7 +909,7 @@ public static class EditorFixtures
         ("macros/closing.md", "Closing: {{ profile.name }}."),
         ("macros/tool_note.md", "Tools used: see the procedure note."),
         ("snippets/standards.md", "Follow the local standards."),
-        ("snippets/sections/index.json", """{ "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md" }, { "id": "plan", "name": "Plan", "file": "plan.md", "when": "kind == new" } ] }"""),
+        ("snippets/sections/index.json", """{ "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md" }, { "id": "plan", "name": "Plan", "file": "plan.md", "when": "input.kind == \"new\"" } ] }"""),
         ("snippets/sections/hpi.md", "History: {{ input.notes }}"),
         ("snippets/sections/plan.md", "Plan."),
         (MedicationListFormatFile, MedicationListFormat));

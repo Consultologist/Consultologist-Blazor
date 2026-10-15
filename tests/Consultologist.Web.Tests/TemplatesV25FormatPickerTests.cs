@@ -320,7 +320,7 @@ public class TemplatesV25FormatPickerTests : ClientRenderTestContext
         // The new node feeds the deliverable through its aggregator (the author's next step).
         Services.GetRequiredService<WorkflowEditorSession>().SelectedKey = "node:all";
         page.Render();
-        page.Find("fluent-select[aria-label='Add aggregate source']").Change("node:plan");
+        page.Find("fluent-select[aria-label='Add aggregate source']").Change("node.plan");
 
         Publish(page);
 

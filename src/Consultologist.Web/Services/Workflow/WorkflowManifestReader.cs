@@ -1,3 +1,4 @@
+using Consultologist.PackageFormat;
 using System.Text.Json;
 
 namespace Consultologist.Web.Services.Workflow;
@@ -689,10 +690,9 @@ public static class WorkflowManifestReader
         return ids;
     }
 
+    // node:x below 25, node.x at 25 (#1037).
     private static string? StripNodePrefix(string? reference) =>
-        reference != null && reference.StartsWith("node:", StringComparison.Ordinal)
-            ? reference["node:".Length..]
-            : reference;
+        TemplateObjectReference.NodeIdOf(reference) ?? reference;
 
     private static BindingView ReadBinding(string variable, JsonElement value) => value.ValueKind switch
     {
