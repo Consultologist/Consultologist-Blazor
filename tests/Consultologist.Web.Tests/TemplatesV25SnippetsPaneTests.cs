@@ -442,14 +442,15 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
     // ----- the desk: the registry's snippet sentences, word for word -----
 
     [Theory]
-    [InlineData("node:scope == in_scope",
-        "Snippet folder 'sections' item 'plan' condition reads 'node:scope'; a folder item's when reads inputs only, so the folder's size is known at job start (the template's own if gates anything else).")]
-    [InlineData("severity == high",
-        "Snippet folder 'sections' item 'plan' condition reads undeclared input 'severity'.")]
-    // The clause rules are the desk's existing v9/v10 mirror (shared with a node's own
-    // when), so an enum literal is refused in the desk's established words.
+    // #1039: at 25 the desk is the registry's validator — its words by construction.
+    [InlineData("node.scope.value == \\\"in_scope\\\"",
+        "Snippet folder 'sections' item 'plan' condition reads node.scope; a folder item's when reads inputs only, so the folder's size is known at job start (the template's own if gates anything else).")]
+    [InlineData("input.severity == \\\"high\\\"",
+        "Snippet folder 'sections' item 'plan' condition reads input 'severity', which the package does not declare.")]
+    [InlineData("input.kind == \\\"urgent\\\"",
+        "Snippet folder 'sections' item 'plan' condition compares input.kind to 'urgent', which it does not declare (values: new, follow_up).")]
     [InlineData("kind == urgent",
-        "Snippet folder 'sections' item 'plan' condition compares 'kind' to 'urgent', which it does not declare.")]
+        "Snippet folder 'sections' item 'plan' condition 'kind == urgent' is the ≤24 condition grammar; at specVersion 25 a when is a Scriban expression over the objects a template reads — write input.kind == \"urgent\".")]
     public void TheDesk_RefusesAFolderItemsWhen_InTheRegistrysWords(string when, string sentence)
     {
         var page = RenderEditor(WithSectionsIndex($$"""
@@ -480,10 +481,12 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
     }
 
     [Theory]
-    [InlineData("snippet:missing", "Node 'section_notes' forEach fans snippet folder 'missing', which the package does not declare.")]
-    [InlineData("snippet:standards", "Node 'section_notes' forEach fans snippet 'standards', which is a file, not a folder.")]
-    [InlineData("data:sections", "Node 'section_notes' forEach 'data:sections' is retired at specVersion 25; fan a snippet folder (snippet:<folder>) or an array input (input:<id>).")]
-    [InlineData("sections", "Node 'section_notes' forEach 'sections' must be snippet:<folder> or input:<id>.")]
+    [InlineData("snippet.missing", "Node 'section_notes' forEach fans snippet folder 'missing', which the package does not declare.")]
+    [InlineData("snippet.standards", "Node 'section_notes' forEach fans snippet 'standards', which is a file, not a folder.")]
+    [InlineData("snippet:sections", "Node 'section_notes' forEach 'snippet:sections' is the ≤24 spelling; at specVersion 25 forEach fans snippet.<folder> or input.<id>.")]
+    [InlineData("data:sections", "Node 'section_notes' forEach 'data:sections' is the ≤24 spelling; at specVersion 25 forEach fans snippet.<folder> or input.<id>.")]
+    [InlineData("input:history", "Node 'section_notes' forEach 'input:history' is the ≤24 spelling; at specVersion 25 forEach fans snippet.<folder> or input.<id>.")]
+    [InlineData("sections", "Node 'section_notes' forEach 'sections' must be snippet.<folder> or input.<id>.")]
     public void TheDesk_RefusesAForEach_ThatIsNotADeclaredFolder(string forEach, string sentence)
     {
         var page = RenderEditor(WithNode("section_notes", $$"""

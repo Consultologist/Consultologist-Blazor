@@ -556,8 +556,11 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
             "Node 'assessment' macro 'closing' anchors to fan item 'hpi', but 'assessment' does not fan a snippet folder." };
         yield return new object[] { "forItem not in the folder", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "section_notes")["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ { "id": "tool_note", "at": "before", "forItem": "ros" } ]""")),
             "Node 'section_notes' macro 'tool_note' anchors to fan item 'ros', which the folder fanned by 'section_notes' does not contain (items: hpi, plan)." };
-        yield return new object[] { "node when against an enum node", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "assessment")["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ { "id": "closing", "at": "after", "when": "node:scope == maybe" } ]""")),
-            "Node 'assessment' macro 'closing' condition compares 'node:scope' to 'maybe', which it does not declare (values: in_scope, out_of_scope)." };
+        yield return new object[] { "node when against an enum node", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "assessment")["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ { "id": "closing", "at": "after", "when": "node.scope.value == \"maybe\"" } ]""")),
+            "Node 'assessment' macro 'closing' condition compares node.scope.value to 'maybe', which it does not declare (values: in_scope, out_of_scope)." };
+        yield return new object[] { "node when in the ≤24 grammar", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "assessment")["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ { "id": "closing", "at": "after", "when": "node:scope == in_scope" } ]""")),
+            "Node 'assessment' macro 'closing' condition 'node:scope == in_scope' is the ≤24 condition grammar; at specVersion 25 a when is a Scriban expression over the objects a template reads — write node.scope.value == \"in_scope\"." };
+        
         yield return new object[] { "deliverable at missing", new Action<System.Text.Json.Nodes.JsonObject>(root => DeliverableObject(root)["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ "closing" ]""")),
             "Deliverable 'consult' macro 'closing' must declare at (prepend | append)." };
         yield return new object[] { "deliverable at vocabulary", new Action<System.Text.Json.Nodes.JsonObject>(root => DeliverableObject(root)["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ { "id": "closing", "at": "slot" } ]""")),

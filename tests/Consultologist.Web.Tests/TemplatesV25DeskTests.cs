@@ -8,10 +8,10 @@ using NSubstitute;
 namespace Consultologist.Web.Tests;
 
 /// <summary>
-/// v25 C1 (#1007): the desk's mirror of the A4 node rules and the with rules —
-/// each the validator's own sentence, said before publish. The editor never runs
-/// the validator (a hand-written mirror, as every version's); these hold the
-/// words to the registry's.
+/// v25 C1 (#1007) → #1039: at 25 the desk IS the registry's validator, run
+/// client-side over the composed package (Templates.RegistryDesk25); the words
+/// are the registry's by construction. These hold the desk to a sample of each
+/// family — the node and with rules (C1), the spellings and whens (#1039).
 /// </summary>
 public class TemplatesV25DeskTests : ClientRenderTestContext
 {
@@ -144,7 +144,7 @@ public class TemplatesV25DeskTests : ClientRenderTestContext
     }
 
     [Theory]
-    [InlineData("all", """{ "id": "all", "label": "Everything", "aggregate": ["node:assessment", "node:section_notes"], "format": "prose" }""",
+    [InlineData("all", """{ "id": "all", "label": "Everything", "aggregate": ["node.assessment", "node.section_notes"], "format": "prose" }""",
         "Node 'all' aggregates and must not declare format; an aggregator is structural.")]
     [InlineData("assessment", """{ "id": "assessment", "label": "Assessment", "prompt": "assessment" }""",
         "Node 'assessment' must declare a format at specVersion 25.")]
@@ -177,18 +177,74 @@ public class TemplatesV25DeskTests : ClientRenderTestContext
     [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "format": "terms_subset", "onInvalid": "fail", "with": { "of": "node.assessment", "in": "node.extract", "failWith": "x" } }""",
         "Node 'coverage' with 'of' names node 'assessment' of format 'prose', but the parameter requires format 'concept_list'.")]
     [InlineData("scope", """{ "id": "scope", "label": "Scope", "prompt": "scope", "format": "classification", "onInvalid": "fail", "with": { "values": ["in_scope"] } }""",
-        "Node 'scope' declares 1 value; a classifier must declare at least two values it may answer.")]
+        "Node 'scope' with 'values' declares one enum value; an enum with one value is a constant, not a choice.")]
     [InlineData("scope", """{ "id": "scope", "label": "Scope", "prompt": "scope", "format": "classification", "onInvalid": "fail", "with": { "values": "yes" } }""",
         "Node 'scope' with 'values' must be a list of snake_case values or an input.<id> reference to an enum input; got \"yes\".")]
     [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "format": "terms_subset", "onInvalid": "fail", "with": { "of": "node.extract", "in": "node.extract", "failWith": 3 } }""",
         "Node 'coverage' with 'failWith' must be a text literal or an input.<id> reference to a text input; got 3.")]
     [InlineData("assessment", """{ "id": "assessment", "label": "Assessment", "prompt": "assessment", "format": "prose", "with": { "values": ["a", "b"] } }""",
-        "Node 'assessment' declares with, but format 'prose' takes no parameters.")]
+        "Node 'assessment' declares with, but format 'prose' declares no parameters.")]
     public void TheDesk_SaysTheRegistrysNodeSentence(string nodeId, string nodeJson, string sentence)
     {
         var refusals = PublishRefusals(WithNode(nodeId, nodeJson));
 
         Assert.Contains(sentence, refusals);
+    }
+
+    private static System.Text.Json.Nodes.JsonObject DeliverableObject(System.Text.Json.Nodes.JsonObject root) =>
+        root["deliverables"]!.AsArray().First()!.AsObject();
+
+    /// <summary>
+    /// #1039: the registry's spelling and when sentences at the desk — said by the
+    /// registry's own validator, run client-side at 25, so the words are its by
+    /// construction (the ≤24 mirrors never said these).
+    /// </summary>
+    public static IEnumerable<object[]> SpellingCases()
+    {
+        yield return new object[] { "aggregate source in the ≤24 spelling", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "all")["aggregate"] = System.Text.Json.Nodes.JsonNode.Parse("""[ "node:assessment", "node.section_notes" ]""")),
+            "Aggregator node 'all' source 'node:assessment' is the ≤24 spelling; at specVersion 25 a source is node.<id>." };
+        yield return new object[] { "aggregate source bare", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "all")["aggregate"] = System.Text.Json.Nodes.JsonNode.Parse("""[ "assessment", "node.section_notes" ]""")),
+            "Aggregator node 'all' source 'assessment' must be node.<id>." };
+        yield return new object[] { "aggregate source unknown", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "all")["aggregate"] = System.Text.Json.Nodes.JsonNode.Parse("""[ "node.nope", "node.section_notes" ]""")),
+            "Aggregator node 'all' references unknown node 'nope'." };
+        yield return new object[] { "aggregate source itself", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "all")["aggregate"] = System.Text.Json.Nodes.JsonNode.Parse("""[ "node.all", "node.section_notes" ]""")),
+            "Aggregator node 'all' aggregates itself." };
+        yield return new object[] { "deliverable node in the ≤24 spelling", new Action<System.Text.Json.Nodes.JsonObject>(root => DeliverableObject(root)["node"] = "node:all"),
+            "Deliverable 'consult' node 'node:all' is the ≤24 spelling; at specVersion 25 a deliverable names node.<id>." };
+        yield return new object[] { "deliverable node bare", new Action<System.Text.Json.Nodes.JsonObject>(root => DeliverableObject(root)["node"] = "all"),
+            "Deliverable 'consult' node 'all' must be node.<id>." };
+        yield return new object[] { "node when in the ≤24 grammar", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "assessment")["when"] = "node:scope == in_scope"),
+            "Node 'assessment' condition 'node:scope == in_scope' is the ≤24 condition grammar; at specVersion 25 a when is a Scriban expression over the objects a template reads — write node.scope.value == \"in_scope\"." };
+        yield return new object[] { "node when against an undeclared value", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "assessment")["when"] = "node.scope.value == \"maybe\""),
+            "Node 'assessment' condition compares node.scope.value to 'maybe', which it does not declare (values: in_scope, out_of_scope)." };
+        yield return new object[] { "node when testing a text for truth", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "assessment")["when"] = "input.notes"),
+            "Node 'assessment' condition tests input.notes for truth; a text cannot be tested — compare it to a value." };
+        yield return new object[] { "deliverable when yielding a text", new Action<System.Text.Json.Nodes.JsonObject>(root => DeliverableObject(root)["when"] = "snippet.standards.text | string.upcase"),
+            "Deliverable 'consult' condition must be a boolean expression; it yields a text." };
+    }
+
+    [Theory]
+    [MemberData(nameof(SpellingCases))]
+    public void TheDesk_SaysTheRegistrysSpellingSentence(string _, Action<System.Text.Json.Nodes.JsonObject> reshape, string sentence)
+    {
+        Assert.Contains(sentence, PublishRefusals(Reshaped(reshape)));
+    }
+
+    [Fact]
+    public void TheDesk_RefusesAHyphenatedPromptId_InTheRegistrysWords()
+    {
+        var refusals = PublishRefusals(Reshaped(
+            root => root["prompts"]!.AsArray().Add(System.Text.Json.Nodes.JsonNode.Parse("""{ "id": "draft-section", "file": "prompts/draft-section.md" }""")),
+            ("prompts/draft-section.md", "Draft {{ input.notes }}")));
+
+        Assert.Contains("Prompt id 'draft-section' must be snake_case at specVersion 25 (draft_section); every declared id is.", refusals);
+    }
+
+    [Fact]
+    public void TheDesk_AcceptsADeliverableWhen_ThatReadsANodesText()
+    {
+        // #1038 widened the boundary: a gating when may read a node's text.
+        Assert.Empty(PublishRefusals(Reshaped(root => DeliverableObject(root)["when"] = "node.assessment.text != \"\"")));
     }
 
     [Fact]
