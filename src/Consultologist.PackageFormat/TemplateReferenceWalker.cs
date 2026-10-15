@@ -58,7 +58,7 @@ public static partial class TemplateReferenceWalker
     }
 
     /// <summary>A code block that opens and never closes, by the lexer's own tokens; the line is one-based.</summary>
-    private static bool TryFindUnclosedCode(string templateText, out int line)
+    internal static bool TryFindUnclosedCode(string templateText, out int line)
     {
         line = 0;
         var open = -1;
@@ -429,7 +429,7 @@ public static partial class TemplateReferenceWalker
                     return ResolveObjectId(root, first.Name);
 
                 case TemplateObjects.Item:
-                    if (_context.Fan is null)
+                    if (_context.Fan is null && !_context.ItemDeferred)
                     {
                         var member = segments.Count > 0 && segments[0] is MemberSegment m ? $".{m.Name}" : string.Empty;
                         Errors.Add($"{_subject} reads item{member}, but the node does not fan.");
@@ -679,6 +679,22 @@ public static partial class TemplateReferenceWalker
                         : TemplateValueShape.Text);
 
                 default:
+                    // C6 (#1012): a snippet or macro text, walked with no fan of its own —
+                    // any fan item member, typed loosely; the reading node's fan decides.
+                    if (_context.ItemDeferred)
+                    {
+                        if (!TemplateMembers.AnyFanItem.Contains(name, StringComparer.Ordinal))
+                        {
+                            Errors.Add($"{_subject} reads {walked}, which a fan item does not carry (it carries: id, name, text or value).");
+                            return Refused;
+                        }
+
+                        _refs.ReadItem(name);
+                        return new ShapeTarget(name == TemplateMembers.Value
+                            ? new TemplateValueShape(TemplateValueShape.Unknown, null, null, null)
+                            : TemplateValueShape.Text);
+                    }
+
                     return Refused;
             }
         }
