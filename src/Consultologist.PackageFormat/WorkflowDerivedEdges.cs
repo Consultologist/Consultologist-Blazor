@@ -29,6 +29,16 @@ public static class WorkflowDerivedEdges
     /// <summary>A template walked: who it is, what it read, and its text and context for the render probe.</summary>
     public sealed record WalkedTemplate(TemplateKind Kind, string Id, string Subject, string Text, TemplateReferences References, TemplateReferenceContext Context);
 
+    /// <summary>#1037: where a <c>when</c> sits.</summary>
+    public enum ConditionSite { Node, NodeInstance, Deliverable, DeliverableInstance, FolderItem }
+
+    /// <summary>
+    /// #1037 (design § 16): a <c>when</c> walked — its site, the id of what it gates
+    /// (a node, a deliverable, a folder/item), the macro when it gates an instance,
+    /// its text, what it read and the sentences, and its context for the probe.
+    /// </summary>
+    public sealed record WalkedCondition(ConditionSite Site, string OwnerId, string? MacroId, string Subject, string Text, WorkflowConditionAt25.ConditionWalk Walk, TemplateReferenceContext Context);
+
     /// <summary>The key a folder item walks under: <c>&lt;folder&gt;/&lt;item&gt;</c>.</summary>
     public static string SnippetItemKey(string folder, string item) => $"{folder}/{item}";
 
@@ -43,11 +53,13 @@ public static class WorkflowDerivedEdges
             IReadOnlyList<WalkNode> nodes,
             IReadOnlyList<WalkedTemplate> templates,
             IReadOnlyDictionary<string, TemplateReferences> parameters,
-            IReadOnlyDictionary<string, IReadOnlyList<string>> folders)
+            IReadOnlyDictionary<string, IReadOnlyList<string>> folders,
+            IReadOnlyList<WalkedCondition>? conditions = null)
         {
             _nodes = nodes.ToDictionary(n => n.Node.Id, StringComparer.Ordinal);
             Templates = templates;
             Parameters = parameters;
+            Conditions = conditions ?? Array.Empty<WalkedCondition>();
             _byKey = new Dictionary<(TemplateKind, string), TemplateReferences>();
             foreach (var template in templates)
             {
@@ -62,6 +74,13 @@ public static class WorkflowDerivedEdges
 
         /// <summary>Each node's <c>with</c> walked against its format's parameters — only nodes whose format declares parameters.</summary>
         public IReadOnlyDictionary<string, TemplateReferences> Parameters { get; }
+
+        /// <summary>#1037: every <c>when</c> walked — the node's own, each instance's, each deliverable's and its instances', each folder item's.</summary>
+        public IReadOnlyList<WalkedCondition> Conditions { get; }
+
+        /// <summary>The conditions gating one thing: the node's own and its instances', or the deliverable's and its instances'.</summary>
+        public IEnumerable<WalkedCondition> ConditionsOf(string ownerId, params ConditionSite[] sites) =>
+            Conditions.Where(c => c.OwnerId == ownerId && sites.Contains(c.Site));
 
         /// <summary>
         /// The node ids a node depends on: its prompt's and its parameters' node
@@ -100,6 +119,13 @@ public static class WorkflowDerivedEdges
                 {
                     VisitKey((TemplateKind.Macro, instance.Id), seen, Take);
                 }
+            }
+
+            // #1037: what the node's own when and its instances' whens read — the
+            // node waits on them as it waits on what its texts read.
+            foreach (var condition in ConditionsOf(nodeId, ConditionSite.Node, ConditionSite.NodeInstance))
+            {
+                Visit(condition.Walk.References, seen, Take);
             }
 
             // A fill's text may itself read snippets and macro texts (never a
@@ -141,6 +167,20 @@ public static class WorkflowDerivedEdges
         {
             var edges = new HashSet<string>(StringComparer.Ordinal);
             VisitKey((TemplateKind.Macro, macroId), new HashSet<(TemplateKind, string)>(), refs => edges.UnionWith(refs.Edges));
+            return edges;
+        }
+
+        /// <summary>#1037: the node ids a deliverable's own when and its instances' whens read, closed over the texts they read.</summary>
+        public IReadOnlySet<string> DeliverableConditionReads(string deliverableId)
+        {
+            var edges = new HashSet<string>(StringComparer.Ordinal);
+            var seen = new HashSet<(TemplateKind, string)>();
+
+            foreach (var condition in ConditionsOf(deliverableId, ConditionSite.Deliverable, ConditionSite.DeliverableInstance))
+            {
+                Visit(condition.Walk.References, seen, refs => edges.UnionWith(refs.Edges));
+            }
+
             return edges;
         }
 
@@ -317,11 +357,43 @@ public static class WorkflowDerivedEdges
         var promptsById = (manifest.Prompts ?? new List<WorkflowPromptSpec>()).ToDictionary(p => p.Id, StringComparer.Ordinal);
         var templates = new List<WalkedTemplate>();
         var parameters = new Dictionary<string, TemplateReferences>(StringComparer.Ordinal);
+        var conditions = new List<WalkedCondition>();
+        var inputTypes = (manifest.Inputs ?? new List<WorkflowInputSpec>())
+            .GroupBy(i => i.Id, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => WorkflowInputTypes.Of(g.First()), StringComparer.Ordinal);
+        string? InputTypeOf(string id) => inputTypes.GetValueOrDefault(id);
+
+        // #1037: a condition under a snippet-folder fan is typed against the folder's item ids.
+        TemplateReferenceContext ConditionContext(TemplateFan? fan)
+        {
+            var context = contextFor(fan);
+            return fan is SnippetFolderFan folderFan && snippets.Collections.TryGetValue(folderFan.Folder, out var collection)
+                ? context with { FanItemIds = collection.Items.Select(i => i.Id).ToList() }
+                : context;
+        }
+
+        void WalkCondition(ConditionSite site, string ownerId, string? macroId, string subject, string? when, TemplateFan? fan)
+        {
+            if (when is null)
+            {
+                return;
+            }
+
+            var context = ConditionContext(fan);
+            conditions.Add(new WalkedCondition(site, ownerId, macroId, subject, when, WorkflowConditionAt25.Walk(subject, when, context, InputTypeOf), context));
+        }
 
         foreach (var walkNode in nodes)
         {
             var node = walkNode.Node;
             var context = contextFor(walkNode.Fan);
+
+            WalkCondition(ConditionSite.Node, node.Id, null, $"Node '{node.Id}' condition", node.When, walkNode.Fan);
+
+            foreach (var instance in node.Macros ?? new List<WorkflowNodeMacroSpec>())
+            {
+                WalkCondition(ConditionSite.NodeInstance, node.Id, instance.Id, $"Node '{node.Id}' macro '{instance.Id}' condition", instance.When, walkNode.Fan);
+            }
 
             if (node.Prompt is not null
                 && walkNode.Shape is not null
@@ -365,6 +437,7 @@ public static class WorkflowDerivedEdges
                 var key = SnippetItemKey(folder, item.Id);
                 keys.Add(key);
                 templates.Add(new WalkedTemplate(TemplateKind.Snippet, key, subject, text, TemplateReferenceWalker.Walk(subject, text, snippetContext), snippetContext));
+                WalkCondition(ConditionSite.FolderItem, key, null, $"Snippet folder '{folder}' item '{item.Id}' condition", item.When, null);
             }
 
             folders[folder] = keys;
@@ -381,7 +454,17 @@ public static class WorkflowDerivedEdges
             templates.Add(new WalkedTemplate(TemplateKind.Macro, macro.Id, subject, text, TemplateReferenceWalker.Walk(subject, text, snippetContext), snippetContext));
         }
 
-        return new Walk(nodes, templates, parameters, folders);
+        foreach (var deliverable in manifest.Deliverables ?? new List<WorkflowDeliverableSpec>())
+        {
+            WalkCondition(ConditionSite.Deliverable, deliverable.Id, null, $"Deliverable '{deliverable.Id}' condition", deliverable.When, null);
+
+            foreach (var instance in deliverable.Macros ?? new List<WorkflowDeliverableMacroSpec>())
+            {
+                WalkCondition(ConditionSite.DeliverableInstance, deliverable.Id, instance.Id, $"Deliverable '{deliverable.Id}' macro '{instance.Id}' condition", instance.When, null);
+            }
+        }
+
+        return new Walk(nodes, templates, parameters, folders, conditions);
     }
 
     /// <summary>

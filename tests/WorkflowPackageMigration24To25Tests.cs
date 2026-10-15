@@ -67,7 +67,7 @@ public static class V24Package
             { "id": "section-notes", "label": "Section notes", "prompt": "section", "forEach": "data:sections",
               "bindings": { "section_name": "item:name", "section_text": "item:content" },
               "macros": [ { "id": "disclaimer", "forItem": "hpi" } ] },
-            { "id": "summary", "label": "Summary", "prompt": "summary", "kind": "template", "bindings": { "notes": "input:notes" } },
+            { "id": "summary", "label": "Summary", "prompt": "summary", "kind": "template", "bindings": { "notes": "input:notes" }, "when": "kind == follow_up" },
             { "id": "raw_node", "label": "Raw", "prompt": "raw_note" },
             { "id": "coverage", "label": "Coverage", "kind": "check", "op": "terms-subset", "of": "node:identify-problem", "in": "node:extract-patient-concepts", "failWith": "Problems the notes do not name." },
             { "id": "assemble", "label": "Assemble", "aggregate": ["node:assessment", "node:section-notes", "node:summary", "node:raw_node"] }
@@ -258,7 +258,8 @@ public class WorkflowPackageMigration24To25Tests
         var deliverable = Assert.Single(root["deliverables"]!.AsArray().OfType<JsonObject>());
         Assert.Equal("node.assemble", deliverable["node"]!.GetValue<string>());
         Assert.Equal("node.coverage", deliverable["check"]!.GetValue<string>());
-        Assert.Equal("kind == new", deliverable["when"]!.GetValue<string>());
+        // #1037: every when spelled as a Scriban expression; kind is an enum input, so the literal is a string.
+        Assert.Equal("input.kind == \"new\"", deliverable["when"]!.GetValue<string>());
         var appended = Assert.Single(deliverable["macros"]!.AsArray().OfType<JsonObject>());
         Assert.Equal("closing", appended["id"]!.GetValue<string>());
         Assert.Equal("append", appended["at"]!.GetValue<string>());
@@ -268,8 +269,30 @@ public class WorkflowPackageMigration24To25Tests
         var instance = Assert.Single(sectionMacros);
         Assert.Equal("footer", instance["id"]!.GetValue<string>());
         Assert.Equal("after", instance["at"]!.GetValue<string>());
-        Assert.Equal("kind == new", instance["when"]!.GetValue<string>());
+        Assert.Equal("input.kind == \"new\"", instance["when"]!.GetValue<string>());
         Assert.False(Node(root, "assessment").ContainsKey("macros"));
+    }
+
+    [Fact]
+    public void EveryWhen_IsSpelledAsAScribanExpression()
+    {
+        // #1037: a node's own when, a node instance's, a deliverable's, a deliverable
+        // instance's — one row, one spelling (a 24 folder item carries no when).
+        var result = Migrated();
+        var root = Root(result);
+
+        Assert.Equal("input.kind == \"follow_up\"", Node(root, "summary")["when"]!.GetValue<string>());
+        Assert.Contains(result.Notices, n => n.StartsWith("3 conditions spelled as Scriban expressions", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AWhenTheGrammarRefuses_IsARefusal_NamingTheSite()
+    {
+        var result = MigrateReshaped(root =>
+            root["nodes"]!.AsArray().OfType<JsonObject>().Single(n => n["id"]!.GetValue<string>() == "summary")["when"] = "kind ==");
+
+        Assert.Contains("Node 'summary' condition 'kind ==' compares against nothing; write a value after the operator. Fix it, then upgrade.", result.Refusals);
+        Assert.Equal(24, V24Package.Manifest(result.ManifestJson).SpecVersion);
     }
 
     [Fact]

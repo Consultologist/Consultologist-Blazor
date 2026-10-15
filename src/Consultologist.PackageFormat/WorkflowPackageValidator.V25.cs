@@ -72,7 +72,7 @@ public static partial class WorkflowPackageValidator
 
         var nodeShapes = nodes.Values
             .Where(n => n.Format is not null)
-            .ToDictionary(n => n.Node.Id, n => new TemplateNodeShape(n.Format!.Id, n.Format.Spec.Type, n.Format.Spec.Schema), StringComparer.Ordinal);
+            .ToDictionary(n => n.Node.Id, n => new TemplateNodeShape(n.Format!.Id, n.Format.Spec.Type, n.Format.Spec.Schema, EnumValuesAt25(n, inputsById)), StringComparer.Ordinal);
         var macroIds = (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
 
         TemplateReferenceContext ContextFor(TemplateFan? fan) => new(
@@ -93,11 +93,11 @@ public static partial class WorkflowPackageValidator
         var edges = DeriveEdgesAt25(manifest, nodes, walk, errors);
         ValidateFanEdgesAt25(nodes, edges, errors);
 
-        var classifiers = ClassifiersAt25(nodes, inputsById);
-        ValidateMacroUseAt25(manifest, nodes, walk, inputsById, classifiers, errors, warnings);
+        ValidateConditionsAt25(walk, errors);
+        ValidateMacroUseAt25(manifest, nodes, walk, errors, warnings);
         ValidateReferenceGraphAt25(walked, snippets, errors);
-        RenderProbeAt25(walked, inputsById, nodes, snippets, manifest, errors);
-        ValidateDeliverablesAt25(manifest, nodes, walk, inputsById, classifiers, errors);
+        RenderProbeAt25(walk, inputsById, nodes, snippets, manifest, errors);
+        ValidateDeliverablesAt25(manifest, nodes, walk, errors);
 
         var specs = (manifest.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal).ToList();
         ValidateReachabilityAt25(manifest, specs, nodes, edges, errors);
@@ -299,38 +299,8 @@ public static partial class WorkflowPackageValidator
             }
         }
 
-        foreach (var (folder, collection) in snippets.Collections)
-        {
-            foreach (var item in collection.Items.Where(i => i.When != null))
-            {
-                var prefix = $"Snippet folder '{folder}' item '{item.Id}' condition";
-
-                if (!WorkflowResultConditions.TryParseExpression(item.When!, out var expression, out var syntaxError))
-                {
-                    errors.Add($"{prefix} {syntaxError}");
-                    continue;
-                }
-
-                var offending = expression!.Leaves.FirstOrDefault(leaf => leaf.IsNodeValue || leaf.IsItemValue || leaf.IsArithmetic);
-
-                if (offending is not null)
-                {
-                    errors.Add($"{prefix} reads '{offending.Operand}'; a folder item's when reads inputs only, so the folder's size is known at job start (the template's own if gates anything else).");
-                    continue;
-                }
-
-                foreach (var condition in expression.Leaves)
-                {
-                    var before = errors.Count;
-                    ValidateV10Clause(prefix, condition, inputsById, new Dictionary<string, WorkflowNodeSpec>(StringComparer.Ordinal), errors);
-
-                    if (errors.Count > before)
-                    {
-                        break;
-                    }
-                }
-            }
-        }
+        // A folder item's when is walked with every other condition (#1037); the
+        // inputs-only rule is ValidateConditionsAt25's.
 
         return snippets;
     }
@@ -600,6 +570,13 @@ public static partial class WorkflowPackageValidator
             errors.AddRange(template.References.Errors.Where(seenErrors.Add));
             warnings.AddRange(template.References.Warnings.Where(seenWarnings.Add));
         }
+
+        // #1037: a condition's sentences ride with the templates'.
+        foreach (var condition in walk.Conditions)
+        {
+            errors.AddRange(condition.Walk.References.Errors.Where(seenErrors.Add));
+            warnings.AddRange(condition.Walk.References.Warnings.Where(seenWarnings.Add));
+        }
     }
 
     /// <summary>
@@ -677,35 +654,58 @@ public static partial class WorkflowPackageValidator
     /// own <c>values</c>. Shaped as the v10 classifier record so the shared
     /// clause validator reads it unchanged.
     /// </summary>
-    private static IReadOnlyDictionary<string, WorkflowNodeSpec> ClassifiersAt25(
-        IReadOnlyDictionary<string, NodeAt25> nodes,
-        IReadOnlyDictionary<string, WorkflowInputSpec> inputsById)
+    private static IReadOnlyList<string>? EnumValuesAt25(NodeAt25 node, IReadOnlyDictionary<string, WorkflowInputSpec> inputsById)
     {
-        var classifiers = new Dictionary<string, WorkflowNodeSpec>(StringComparer.Ordinal);
-
-        foreach (var node in nodes.Values.Where(n => n.Format?.Spec.Type == WorkflowInputTypes.Enum))
+        if (node.Format?.Spec.Type != WorkflowInputTypes.Enum)
         {
-            List<string>? values = node.Format!.Spec.Values?.ToList();
-            var parameter = node.Format.Spec.ValuesParameter;
-
-            if (parameter is not null && node.Node.With is { } with && with.TryGetValue(parameter, out var supplied))
-            {
-                if (supplied is JsonArray array)
-                {
-                    values = array.Select(v => v?.GetValue<string>() ?? string.Empty).ToList();
-                }
-                else if (supplied is JsonValue value && value.TryGetValue(out string? reference)
-                    && reference.StartsWith(TemplateObjects.Input + ".", StringComparison.Ordinal)
-                    && inputsById.TryGetValue(reference[(TemplateObjects.Input.Length + 1)..], out var input))
-                {
-                    values = input.Values;
-                }
-            }
-
-            classifiers[node.Node.Id] = node.Node with { Values = values };
+            return null;
         }
 
-        return classifiers;
+        List<string>? values = node.Format.Spec.Values?.ToList();
+        var parameter = node.Format.Spec.ValuesParameter;
+
+        if (parameter is not null && node.Node.With is { } with && with.TryGetValue(parameter, out var supplied))
+        {
+            if (supplied is JsonArray array)
+            {
+                values = array.Select(v => v?.GetValue<string>() ?? string.Empty).ToList();
+            }
+            else if (supplied is JsonValue value && value.TryGetValue(out string? reference)
+                && TemplateObjectReference.IsBare(reference, TemplateObjects.Input, out var inputId)
+                && inputsById.TryGetValue(inputId, out var input))
+            {
+                values = input.Values;
+            }
+        }
+
+        return values;
+    }
+
+    /// <summary>
+    /// #1037 (design § 16): the site rules over the walked conditions — the walk
+    /// itself refused what does not parse, reads what is not declared, or compares
+    /// against the wrong value. A folder item's when reads inputs only, so the
+    /// folder's size is known at job start.
+    /// </summary>
+    private static void ValidateConditionsAt25(WorkflowDerivedEdges.Walk walk, List<string> errors)
+    {
+        foreach (var condition in walk.Conditions.Where(c => c.Site == WorkflowDerivedEdges.ConditionSite.FolderItem && c.Walk.IsValid))
+        {
+            var refs = condition.Walk.References;
+            var offending = refs.Nodes.Keys.Select(id => $"{TemplateObjects.Node}.{id}")
+                .Concat(refs.Snippets.Select(id => $"{TemplateObjects.Snippet}.{id}"))
+                .Concat(refs.SnippetFolders.Select(id => $"{TemplateObjects.Snippet}.{id}"))
+                .Concat(refs.MacroTexts.Concat(refs.MacroPrompts).Select(id => $"{TemplateObjects.Macro}.{id}"))
+                .Concat(refs.ItemMembers.Select(m => $"{TemplateObjects.Item}.{m}"))
+                .Concat(refs.RunFacts.Select(m => $"{TemplateObjects.Run}.{m}"))
+                .Concat(refs.ProfileFacts.Select(m => $"{TemplateObjects.Profile}.{m}"))
+                .FirstOrDefault();
+
+            if (offending is not null)
+            {
+                errors.Add($"{condition.Subject} reads {offending}; a folder item's when reads inputs only, so the folder's size is known at job start (the template's own if gates anything else).");
+            }
+        }
     }
 
     // ----- § 5: macros placed and read ----------------------------------------------
@@ -719,8 +719,6 @@ public static partial class WorkflowPackageValidator
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, NodeAt25> nodes,
         WorkflowDerivedEdges.Walk walk,
-        IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
-        IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
         List<string> errors,
         List<string> warnings)
     {
@@ -795,12 +793,6 @@ public static partial class WorkflowPackageValidator
                         }
                     }
 
-                    if (entry.When != null)
-                    {
-                        ValidateClauseAt25($"{where} condition", entry.When, inputsById, classifiers, fanItemIds,
-                            fanItemIds is null ? $"but '{spec.Id}' does not fan a snippet folder" : string.Empty, errors);
-                    }
-
                     // C6 (#1012): a macro text runs under the node's fan — none here means no item.
                     if (node.Fan is null && walk.TextItemReadOf(TemplateKind.Macro, entry.Id) is { } itemRead)
                     {
@@ -872,33 +864,6 @@ public static partial class WorkflowPackageValidator
         }
     }
 
-    private static void ValidateClauseAt25(
-        string prefix,
-        string when,
-        IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
-        IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
-        IReadOnlyList<string>? fanItemIds,
-        string itemRefusal,
-        List<string> errors)
-    {
-        if (!WorkflowResultConditions.TryParseExpression(when, out var expression, out var syntaxError))
-        {
-            errors.Add($"{prefix} {syntaxError}");
-            return;
-        }
-
-        foreach (var condition in expression!.Leaves)
-        {
-            var before = errors.Count;
-            ValidateV10Clause(prefix, condition, inputsById, classifiers, errors, fanItemIds, itemRefusal);
-
-            if (errors.Count > before)
-            {
-                return;
-            }
-        }
-    }
-
     // ----- § 5.2: the reference graph ----------------------------------------------
 
     private static void ValidateReferenceGraphAt25(IReadOnlyList<WorkflowDerivedEdges.WalkedTemplate> walked, WorkflowPackageData snippets, List<string> errors)
@@ -941,13 +906,14 @@ public static partial class WorkflowPackageValidator
     // ----- the strict render probe over the seven objects ----------------------------
 
     private static void RenderProbeAt25(
-        IReadOnlyList<WorkflowDerivedEdges.WalkedTemplate> walked,
+        WorkflowDerivedEdges.Walk walk,
         IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
         IReadOnlyDictionary<string, NodeAt25> nodes,
         WorkflowPackageData snippets,
         WorkflowPackageManifest manifest,
         List<string> errors)
     {
+        var walked = walk.Templates;
         var input = new ScriptObject();
         foreach (var (id, spec) in inputsById)
         {
@@ -998,47 +964,70 @@ public static partial class WorkflowPackageValidator
             profile.Add(fact, "placeholder");
         }
 
+        PromptTemplateRenderer.RenderingContext ContextFor(TemplateReferenceContext templateContext)
+        {
+            var globals = new ScriptObject
+            {
+                [TemplateObjects.Input] = input,
+                [TemplateObjects.Node] = node,
+                [TemplateObjects.Snippet] = snippet,
+                [TemplateObjects.Macro] = macro,
+                [TemplateObjects.Run] = run,
+                [TemplateObjects.Profile] = profile
+            };
+
+            foreach (var pipe in TemplatePipes.All)
+            {
+                globals.Import(pipe, (Func<object?, string>)(_ => "placeholder"));
+            }
+
+            if (templateContext.Fan is SnippetFolderFan)
+            {
+                globals[TemplateObjects.Item] = SnippetProbe("item");
+            }
+            else if (templateContext.Fan is InputArrayFan inputFan)
+            {
+                globals[TemplateObjects.Item] = new ScriptObject { ["id"] = "0", ["name"] = "placeholder", ["value"] = Probe(inputFan.Element) };
+            }
+            else if (templateContext.ItemDeferred)
+            {
+                // C6 (#1012): a snippet or macro text runs under its reader's fan; the probe lends every member.
+                globals[TemplateObjects.Item] = new ScriptObject { ["id"] = "item", ["name"] = "placeholder", ["text"] = "placeholder", ["value"] = "placeholder" };
+            }
+
+            var context = new PromptTemplateRenderer.RenderingContext();
+            context.PushGlobal(globals);
+            return context;
+        }
+
         foreach (var template in walked.Where(t => t.References.IsValid))
         {
             try
             {
-                var parsed = Template.Parse(template.Text);
-                var globals = new ScriptObject
-                {
-                    [TemplateObjects.Input] = input,
-                    [TemplateObjects.Node] = node,
-                    [TemplateObjects.Snippet] = snippet,
-                    [TemplateObjects.Macro] = macro,
-                    [TemplateObjects.Run] = run,
-                    [TemplateObjects.Profile] = profile
-                };
-
-                foreach (var pipe in TemplatePipes.All)
-                {
-                    globals.Import(pipe, (Func<object?, string>)(_ => "placeholder"));
-                }
-
-                if (template.Context.Fan is SnippetFolderFan)
-                {
-                    globals[TemplateObjects.Item] = SnippetProbe("item");
-                }
-                else if (template.Context.Fan is InputArrayFan inputFan)
-                {
-                    globals[TemplateObjects.Item] = new ScriptObject { ["id"] = "0", ["name"] = "placeholder", ["value"] = Probe(inputFan.Element) };
-                }
-                else if (template.Context.ItemDeferred)
-                {
-                    // C6 (#1012): a snippet or macro text runs under its reader's fan; the probe lends every member.
-                    globals[TemplateObjects.Item] = new ScriptObject { ["id"] = "item", ["name"] = "placeholder", ["text"] = "placeholder", ["value"] = "placeholder" };
-                }
-
-                var context = new PromptTemplateRenderer.RenderingContext();
-                context.PushGlobal(globals);
-                parsed.Render(context);
+                Template.Parse(template.Text).Render(ContextFor(template.Context));
             }
             catch (Exception ex)
             {
                 errors.Add($"{template.Subject} failed strict rendering: {ex.Message}");
+            }
+        }
+
+        // #1037: a condition evaluates over the same probe, and must yield a boolean.
+        foreach (var condition in walk.Conditions.Where(c => c.Walk.IsValid))
+        {
+            try
+            {
+                var context = ContextFor(condition.Context);
+                var value = context.Evaluate(condition.Walk.Expression!);
+
+                if (value is not bool)
+                {
+                    errors.Add($"{condition.Subject} must be a boolean expression; it yields {WorkflowConditionAt25.DescribeValue(value)}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"{condition.Subject} failed strict evaluation: {ex.Message}");
             }
         }
 
@@ -1080,8 +1069,6 @@ public static partial class WorkflowPackageValidator
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, NodeAt25> nodes,
         WorkflowDerivedEdges.Walk walk,
-        IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
-        IReadOnlyDictionary<string, WorkflowNodeSpec> classifiers,
         List<string> errors)
     {
         var walked = walk.Templates;
@@ -1145,11 +1132,6 @@ public static partial class WorkflowPackageValidator
                         errors.Add($"Deliverables '{owners[nodeId]}' and '{deliverable.Id}' share node '{nodeId}': each deliverable needs its own aggregator.");
                     }
                 }
-            }
-
-            if (deliverable.When != null)
-            {
-                ValidateClauseAt25($"{subject} condition", deliverable.When, inputsById, classifiers, null, "but only a node instance on a node that fans a snippet folder reads an item", errors);
             }
 
             if (deliverable.Check != null)
@@ -1217,11 +1199,6 @@ public static partial class WorkflowPackageValidator
                 if (walk.TextItemReadOf(TemplateKind.Macro, entry.Id) is { } itemRead)
                 {
                     errors.Add($"{where} reads item.{itemRead.Member}; a deliverable composes no fan item — place the macro on the node to read its items.");
-                }
-
-                if (entry.When != null)
-                {
-                    ValidateClauseAt25($"{where} condition", entry.When, inputsById, classifiers, null, "but only a node instance on a node that fans a snippet folder reads an item", errors);
                 }
 
                 if (signatureReaders.Contains(entry.Id))

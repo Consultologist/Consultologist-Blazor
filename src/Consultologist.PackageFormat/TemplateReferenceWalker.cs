@@ -57,6 +57,22 @@ public static partial class TemplateReferenceWalker
         return collector.ToReferences();
     }
 
+    /// <summary>
+    /// #1037 (design § 16): walks one bare expression — a <c>when</c> at 25 — in
+    /// condition mode: every chain is resolved and recorded exactly as a prompt's
+    /// would be, and the comparisons are typed (an enum's value against its answer
+    /// set, <c>item.id</c> against the folder's items, ordering on numbers and dates,
+    /// truth on booleans), the ≤24 clause rules re-spelled; the whole expression must
+    /// be one a condition can test for truth.
+    /// </summary>
+    internal static TemplateReferences WalkExpression(string subject, ScriptExpression expression, TemplateReferenceContext context)
+    {
+        var collector = new TemplateReferenceCollector();
+        var visitor = new Visitor(subject, context, collector, condition: true);
+        visitor.RequireTruth(visitor.Typed(expression));
+        return collector.ToReferences();
+    }
+
     /// <summary>A code block that opens and never closes, by the lexer's own tokens; the line is one-based.</summary>
     internal static bool TryFindUnclosedCode(string templateText, out int line)
     {
@@ -137,13 +153,307 @@ public static partial class TemplateReferenceWalker
         private readonly TemplateReferenceCollector _refs;
         private readonly List<Dictionary<string, Target>> _scopes = new() { new Dictionary<string, Target>(StringComparer.Ordinal) };
         private readonly List<(Target Target, string Text)> _withTargets = new();
+        private readonly bool _condition;
 
-        public Visitor(string subject, TemplateReferenceContext context, TemplateReferenceCollector refs)
+        public Visitor(string subject, TemplateReferenceContext context, TemplateReferenceCollector refs, bool condition = false)
         {
             _subject = subject;
             _context = context;
             _refs = refs;
+            _condition = condition;
         }
+
+        // ----- #1037: condition mode — comparisons typed -----------------------
+
+        public override void Visit(ScriptBinaryExpression node)
+        {
+            if (_condition) { Typed(node); } else { base.Visit(node); }
+        }
+
+        public override void Visit(ScriptUnaryExpression node)
+        {
+            if (_condition) { Typed(node); } else { base.Visit(node); }
+        }
+
+        /// <summary>What a condition operand is, for the typing sentences.</summary>
+        internal sealed record Operand(string Kind, string Text, IReadOnlyList<string>? Values = null, string? Literal = null, bool IsLiteral = false)
+        {
+            public const string Truth = "truth";
+            public const string ItemId = "item_id";
+            public const string Any = TemplateValueShape.Unknown;
+
+            public bool IsEnum => Kind == WorkflowInputTypes.Enum;
+            public bool IsNumber => Kind == WorkflowInputTypes.Number;
+            public bool IsDate => Kind == WorkflowInputTypes.Date;
+            public bool IsAny => Kind == Any;
+
+            public string Describe() => Kind switch
+            {
+                Truth => "a boolean",
+                ItemId => "an item id",
+                WorkflowInputTypes.Enum => "an enum",
+                WorkflowInputTypes.Array => "an array",
+                WorkflowInputTypes.Object => "an object",
+                _ => $"a {Kind}"
+            };
+        }
+
+        private static readonly Operand Unknown = new(Operand.Any, "the expression");
+        private static readonly Operand Boolean = new(Operand.Truth, "the comparison");
+
+        /// <summary>Resolves and types one operand of a condition; chains are recorded as reads on the way.</summary>
+        internal Operand Typed(ScriptExpression? expression)
+        {
+            switch (expression)
+            {
+                case null:
+                    return Unknown;
+
+                case ScriptNestedExpression nested:
+                    return Typed(nested.Expression) with { };
+
+                case ScriptLiteral literal:
+                    return literal.Value switch
+                    {
+                        string s => new Operand(WorkflowInputTypes.Text, $"'{s}'", Literal: s, IsLiteral: true),
+                        bool b => new Operand(WorkflowInputTypes.Boolean, b ? "true" : "false", Literal: b ? "true" : "false", IsLiteral: true),
+                        null => Unknown,
+                        _ => new Operand(WorkflowInputTypes.Number, Convert.ToString(literal.Value, System.Globalization.CultureInfo.InvariantCulture) ?? "", Literal: Convert.ToString(literal.Value, System.Globalization.CultureInfo.InvariantCulture), IsLiteral: true)
+                    };
+
+                case ScriptFunctionCall call when IsDateParse(call.Target):
+                    foreach (var argument in call.Arguments)
+                    {
+                        ResolveExpression(argument, ChainUse.Value);
+                    }
+
+                    return new Operand(WorkflowInputTypes.Date, Describe(call.Target) + " …", IsLiteral: true);
+
+                case ScriptPipeCall pipe:
+                    Visit(pipe);
+                    return TryFlatten(pipe.To is ScriptFunctionCall pipeCall ? pipeCall.Target : pipe.To, out var pipeRoot, out var pipeSegments, out _)
+                        && pipeRoot == "array" && pipeSegments is [MemberSegment { Name: "size" }]
+                        ? new Operand(WorkflowInputTypes.Number, $"({Describe(pipe.From)} | array.size)")
+                        : Unknown;
+
+                case ScriptBinaryExpression binary:
+                    return TypedBinary(binary);
+
+                case ScriptUnaryExpression unary:
+                    return TypedUnary(unary);
+            }
+
+            if (TryFlatten(expression, out var root, out var segments, out _))
+            {
+                var text = Describe(expression);
+
+                if (root == TemplateObjects.Item && segments is [MemberSegment { Name: TemplateMembers.Id }])
+                {
+                    ResolveExpression(expression, ChainUse.Value);
+                    return new Operand(Operand.ItemId, text, _context.FanItemIds);
+                }
+
+                return ResolveExpression(expression, ChainUse.Value) switch
+                {
+                    ShapeTarget { Shape: { } shape } => new Operand(shape.Kind, text, shape.Values),
+                    _ => Unknown with { Text = text }
+                };
+            }
+
+            VisitNode(expression);
+            return Unknown;
+        }
+
+        private static bool IsDateParse(ScriptExpression? target) =>
+            TryFlatten(target, out var root, out var segments, out _) && root == "date" && segments is [MemberSegment { Name: "parse" }];
+
+        private Operand TypedBinary(ScriptBinaryExpression binary)
+        {
+            switch (binary.Operator)
+            {
+                case ScriptBinaryOperator.And:
+                case ScriptBinaryOperator.Or:
+                    RequireTruth(Typed(binary.Left));
+                    RequireTruth(Typed(binary.Right));
+                    return Boolean;
+
+                case ScriptBinaryOperator.CompareEqual:
+                case ScriptBinaryOperator.CompareNotEqual:
+                    TypeEquality(Typed(binary.Left), Typed(binary.Right));
+                    return Boolean;
+
+                case ScriptBinaryOperator.CompareLess:
+                case ScriptBinaryOperator.CompareGreater:
+                case ScriptBinaryOperator.CompareLessOrEqual:
+                case ScriptBinaryOperator.CompareGreaterOrEqual:
+                    TypeOrdering(Typed(binary.Left), Typed(binary.Right), OperatorText(binary.Operator));
+                    return Boolean;
+
+                case ScriptBinaryOperator.Add:
+                case ScriptBinaryOperator.Subtract:
+                case ScriptBinaryOperator.Multiply:
+                case ScriptBinaryOperator.Divide:
+                case ScriptBinaryOperator.DivideRound:
+                case ScriptBinaryOperator.Modulus:
+                    var left = Typed(binary.Left);
+                    var right = Typed(binary.Right);
+                    var dateArithmetic = binary.Operator is ScriptBinaryOperator.Add or ScriptBinaryOperator.Subtract && (left.IsDate || right.IsDate);
+                    RequireNumber(left, dateArithmetic);
+                    RequireNumber(right, dateArithmetic);
+                    return dateArithmetic ? new Operand(WorkflowInputTypes.Date, Describe(binary)) : new Operand(WorkflowInputTypes.Number, Describe(binary));
+
+                default:
+                    Typed(binary.Left);
+                    Typed(binary.Right);
+                    Errors.Add($"{_subject} uses '{OperatorText(binary.Operator)}', which is not a condition operator (&&, ||, !, ==, !=, <, >, <=, >=, + - * /).");
+                    return Unknown;
+            }
+        }
+
+        private Operand TypedUnary(ScriptUnaryExpression unary)
+        {
+            switch (unary.Operator)
+            {
+                case ScriptUnaryOperator.Not:
+                    RequireTruth(Typed(unary.Right));
+                    return Boolean;
+
+                case ScriptUnaryOperator.Negate:
+                case ScriptUnaryOperator.Plus:
+                    var inner = Typed(unary.Right);
+                    RequireNumber(inner, false);
+                    return new Operand(WorkflowInputTypes.Number, Describe(unary));
+
+                default:
+                    Typed(unary.Right);
+                    Errors.Add($"{_subject} uses a unary operator that is not a condition operator (! or -).");
+                    return Unknown;
+            }
+        }
+
+        /// <summary>A condition, a side of && / ||, the operand of ! — something a condition tests for truth.</summary>
+        internal void RequireTruth(Operand operand)
+        {
+            switch (operand.Kind)
+            {
+                case Operand.Truth:
+                case Operand.Any:
+                case WorkflowInputTypes.Boolean:
+                    return;
+                case Operand.ItemId:
+                    Errors.Add($"{_subject} tests item.id for truth; compare it to one of the folder's item ids instead.");
+                    return;
+                case WorkflowInputTypes.Enum:
+                    Errors.Add($"{_subject} tests {operand.Text} for truth; compare it to one of its values instead.");
+                    return;
+                case WorkflowInputTypes.Text:
+                    Errors.Add($"{_subject} tests {operand.Text} for truth; a text cannot be tested — compare it to a value.");
+                    return;
+                case WorkflowInputTypes.Array:
+                    Errors.Add($"{_subject} tests {operand.Text} for truth; test its size: ({operand.Text} | array.size) > 0.");
+                    return;
+                case WorkflowInputTypes.Object:
+                    Errors.Add($"{_subject} tests {operand.Text} for truth; compare one of its fields.");
+                    return;
+                default:
+                    Errors.Add($"{_subject} tests {operand.Text} for truth; compare it to {operand.Describe()}.");
+                    return;
+            }
+        }
+
+        private void TypeEquality(Operand left, Operand right)
+        {
+            // The ≤24 rule, both ways round: a closed set is compared to one of its members.
+            foreach (var (side, other) in new[] { (left, right), (right, left) })
+            {
+                if (!other.IsLiteral)
+                {
+                    continue;
+                }
+
+                switch (side.Kind)
+                {
+                    case Operand.ItemId when side.Values is { } items && !items.Contains(other.Literal ?? string.Empty, StringComparer.Ordinal):
+                        Errors.Add($"{_subject} compares item.id to '{other.Literal}', which the folder does not contain (items: {string.Join(", ", items)}).");
+                        return;
+                    case WorkflowInputTypes.Enum when side.Values is { } values && !values.Contains(other.Literal ?? string.Empty, StringComparer.Ordinal):
+                        Errors.Add($"{_subject} compares {side.Text} to '{other.Literal}', which it does not declare (values: {string.Join(", ", values)}).");
+                        return;
+                    case WorkflowInputTypes.Number when !other.IsNumber && !other.IsAny:
+                        Errors.Add($"{_subject} compares {side.Text} to {other.Text}, which is not a number.");
+                        return;
+                    case WorkflowInputTypes.Date when !other.IsDate && !other.IsAny:
+                        Errors.Add($"{_subject} compares {side.Text} to {other.Text}, which is not a date; write date.parse \"YYYY-MM-DD\".");
+                        return;
+                    case WorkflowInputTypes.Boolean when other.Kind != WorkflowInputTypes.Boolean && !other.IsAny:
+                        Errors.Add($"{_subject} compares {side.Text} to {other.Text}; use true or false.");
+                        return;
+                }
+            }
+
+            foreach (var side in new[] { left, right })
+            {
+                if (side.Kind is WorkflowInputTypes.Array or WorkflowInputTypes.Object)
+                {
+                    Errors.Add($"{_subject} compares {side.Text}, which is {side.Describe()}; compare one of its fields, or its size.");
+                    return;
+                }
+            }
+        }
+
+        private void TypeOrdering(Operand left, Operand right, string op)
+        {
+            foreach (var side in new[] { left, right })
+            {
+                switch (side.Kind)
+                {
+                    case Operand.ItemId:
+                        Errors.Add($"{_subject} compares item.id with {op}; an item id is compared with == or != only.");
+                        return;
+                    case WorkflowInputTypes.Enum:
+                        Errors.Add($"{_subject} compares {side.Text} with {op}; an enum's value is compared with == or != only.");
+                        return;
+                    case WorkflowInputTypes.Text when !side.IsLiteral:
+                    case WorkflowInputTypes.Boolean:
+                    case WorkflowInputTypes.Array:
+                    case WorkflowInputTypes.Object:
+                    case Operand.Truth:
+                        Errors.Add($"{_subject} orders {side.Text}, which is {side.Describe()}; ordering operators apply to a number or a date.");
+                        return;
+                    case WorkflowInputTypes.Text:
+                        Errors.Add($"{_subject} orders {side.Text}, a text literal; ordering operators apply to a number or a date.");
+                        return;
+                }
+            }
+
+            if ((left.IsNumber && right.IsDate) || (left.IsDate && right.IsNumber))
+            {
+                Errors.Add($"{_subject} compares {left.Text} ({left.Describe()}) with {right.Text} ({right.Describe()}); both sides must be numbers or both dates.");
+            }
+        }
+
+        private void RequireNumber(Operand operand, bool dateAllowed)
+        {
+            if (operand.IsNumber || operand.IsAny || (dateAllowed && operand.IsDate))
+            {
+                return;
+            }
+
+            Errors.Add($"{_subject} computes with {operand.Text}, which is {operand.Describe()}; arithmetic takes numbers.");
+        }
+
+        private static string OperatorText(ScriptBinaryOperator op) => op switch
+        {
+            ScriptBinaryOperator.CompareEqual => "==",
+            ScriptBinaryOperator.CompareNotEqual => "!=",
+            ScriptBinaryOperator.CompareLess => "<",
+            ScriptBinaryOperator.CompareGreater => ">",
+            ScriptBinaryOperator.CompareLessOrEqual => "<=",
+            ScriptBinaryOperator.CompareGreaterOrEqual => ">=",
+            ScriptBinaryOperator.And => "&&",
+            ScriptBinaryOperator.Or => "||",
+            _ => op.ToString()
+        };
 
         private List<string> Errors => _refs.Errors;
 
@@ -644,7 +954,7 @@ public static partial class TemplateReferenceWalker
 
                 _refs.ReadNode(node.Id, text: false, value: true);
                 return new ShapeTarget(node.Shape.Type == WorkflowInputTypes.Enum && node.Shape.Schema is null
-                    ? new TemplateValueShape(WorkflowInputTypes.Enum, null, null, null)
+                    ? new TemplateValueShape(WorkflowInputTypes.Enum, null, null, node.Shape.Values)
                     : TemplateValueShape.FromSchema(node.Shape.Schema));
             }
 
@@ -859,6 +1169,11 @@ public static partial class TemplateReferenceWalker
         private static string Describe(ScriptExpression? expression) =>
             TryFlatten(expression, out var root, out var segments, out _)
                 ? root + string.Concat(segments.Select(s => s is MemberSegment m ? "." + m.Name : "[…]"))
+                : expression is ScriptNestedExpression nested ? $"({Describe(nested.Expression)})"
+                : expression is ScriptBinaryExpression binary ? $"{Describe(binary.Left)} {OperatorText(binary.Operator)} {Describe(binary.Right)}"
+                : expression is ScriptUnaryExpression unary ? $"{(unary.Operator == ScriptUnaryOperator.Not ? "!" : "-")}{Describe(unary.Right)}"
+                : expression is ScriptLiteral { Value: string s } ? $"'{s}'"
+                : expression is ScriptLiteral literal ? Convert.ToString(literal.Value, System.Globalization.CultureInfo.InvariantCulture) ?? "the expression"
                 : "the expression";
     }
 }

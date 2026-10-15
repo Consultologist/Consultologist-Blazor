@@ -125,6 +125,13 @@ public static class WorkflowPackageMigration24To25
         // ----- row: data → snippets (files moved, a literal '{{' escaped) -----
         RewriteData(root, manifest, outFiles, notices);
 
+        // ----- row (#1037): every when spelled as a Scriban expression -----
+        RewriteConditions(root, manifest, notices, refusals);
+        if (refusals.Count > 0)
+        {
+            return Refused(manifestJson, files, refusals);
+        }
+
         // ----- row: macro and snippet texts (placeholders → objects); slot markers → macro.<id>.prompt -----
         RewriteTexts(root, manifest, snippetised, slotMacroIds, outFiles, notices);
 
@@ -765,6 +772,74 @@ public static class WorkflowPackageMigration24To25
         if (counts.Count > 0)
         {
             notices.Add($"Nodes now name their format: {string.Join(", ", counts.OrderBy(c => c.Key, StringComparer.Ordinal).Select(c => $"{c.Value} {c.Key}"))} (kind, output and schemas dropped).");
+        }
+    }
+
+    // ============================================================ conditions (#1037)
+
+    /// <summary>
+    /// Every <c>when</c> — a node's own, a node instance's, a deliverable's, a
+    /// deliverable instance's — spelled through <see cref="ConditionScriban.Spell"/>;
+    /// one that the ≤24 grammar refuses is a refusal naming the site (nothing
+    /// applied). A 24 folder item carries no when (it is a 25 key), so none is moved.
+    /// </summary>
+    private static void RewriteConditions(JsonObject root, WorkflowPackageManifest manifest, List<string> notices, List<string> refusals)
+    {
+        var inputTypes = (manifest.Inputs ?? new List<WorkflowInputSpec>())
+            .GroupBy(i => i.Id, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => WorkflowInputTypes.Of(g.First()), StringComparer.Ordinal);
+        var count = 0;
+
+        string? Spelled(string site, string? when)
+        {
+            if (when is null)
+            {
+                return null;
+            }
+
+            if (!WorkflowResultConditions.TryParseLegacy(when, out var expression, out var error) || expression is null)
+            {
+                refusals.Add($"{site} condition '{when}' {error} Fix it, then upgrade.");
+                return when;
+            }
+
+            count++;
+            return ConditionScriban.Spell(expression, id => inputTypes.GetValueOrDefault(id));
+        }
+
+        void SpellOn(JsonObject owner, string site)
+        {
+            if (Str(owner, "when") is { } when)
+            {
+                Set(owner, "when", Spelled(site, when));
+            }
+        }
+
+        foreach (var node in Array(root, "nodes").OfType<JsonObject>())
+        {
+            var nodeId = Str(node, "id") ?? "?";
+            SpellOn(node, $"Node '{nodeId}'");
+
+            foreach (var instance in (Get(node, "macros") as JsonArray)?.OfType<JsonObject>() ?? Enumerable.Empty<JsonObject>())
+            {
+                SpellOn(instance, $"Node '{nodeId}' macro '{Str(instance, "id") ?? "?"}'");
+            }
+        }
+
+        foreach (var deliverable in Array(root, "deliverables").OfType<JsonObject>())
+        {
+            var deliverableId = Str(deliverable, "id") ?? "?";
+            SpellOn(deliverable, $"Deliverable '{deliverableId}'");
+
+            foreach (var instance in (Get(deliverable, "macros") as JsonArray)?.OfType<JsonObject>() ?? Enumerable.Empty<JsonObject>())
+            {
+                SpellOn(instance, $"Deliverable '{deliverableId}' macro '{Str(instance, "id") ?? "?"}'");
+            }
+        }
+
+        if (count > 0)
+        {
+            notices.Add($"{count} condition{(count == 1 ? string.Empty : "s")} spelled as Scriban expression{(count == 1 ? string.Empty : "s")} (node.<id>.value, input.<id>, item.id).");
         }
     }
 

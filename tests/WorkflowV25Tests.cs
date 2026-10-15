@@ -87,7 +87,7 @@ public static class V25Package
             ["prompts/scope.md"] = "Is this in scope? {{ input.notes }}",
             ["prompts/section.md"] = "{{ item.name }}: {{ item.text }}",
             ["snippets/standards.md"] = "Follow the local standards.",
-            ["snippets/sections/index.json"] = """{ "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md" }, { "id": "plan", "name": "Plan", "file": "plan.md", "when": "kind == new" } ] }""",
+            ["snippets/sections/index.json"] = """{ "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md" }, { "id": "plan", "name": "Plan", "file": "plan.md", "when": "input.kind == \"new\"" } ] }""",
             ["snippets/sections/hpi.md"] = "History: {{ input.notes }}",
             ["snippets/sections/plan.md"] = "Plan.",
             ["macros/closing.md"] = "Closing: {{ profile.name }}.",
@@ -521,9 +521,9 @@ public class WorkflowV25TemplateTests
     public void AFolderItemWhen_ReadsInputsOnly()
     {
         var (manifest, files) = Minimal();
-        files["snippets/sections/index.json"] = """{ "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md", "when": "node:scope == in_scope" } ] }""";
+        files["snippets/sections/index.json"] = """{ "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md", "when": "node.scope.value == \"in_scope\"" } ] }""";
 
-        Assert.Contains("Snippet folder 'sections' item 'hpi' condition reads 'node:scope'; a folder item's when reads inputs only, so the folder's size is known at job start (the template's own if gates anything else).", V25Package.Errors((manifest, files)));
+        Assert.Contains("Snippet folder 'sections' item 'hpi' condition reads node.scope; a folder item's when reads inputs only, so the folder's size is known at job start (the template's own if gates anything else).", V25Package.Errors((manifest, files)));
     }
 
     [Fact]
@@ -562,7 +562,7 @@ public class WorkflowV25TemplateTests
     public void AnInstance_HasOneIdentity()
     {
         var (manifest, files) = Minimal();
-        manifest = V25Package.WithNode(manifest, "assessment", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "after"), new("closing", At: "after", When: "kind == new") } });
+        manifest = V25Package.WithNode(manifest, "assessment", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "after"), new("closing", At: "after", When: "input.kind == \"new\"") } });
 
         Assert.Contains("Node 'assessment' macro 'closing' is placed twice (after); one identity (id, at, forItem) once — two gates to one text is one instance with when: a or b.", V25Package.Errors((manifest, files)));
     }
@@ -738,14 +738,18 @@ public class WorkflowV25TemplateTests
     {
         var (manifest, files) = Minimal();
 
-        var ok = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node:scope == in_scope and kind == new" }).ToList() };
+        var ok = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node.scope.value == \"in_scope\" && input.kind == \"new\"" }).ToList() };
         Assert.True(V25Package.Validate((ok, files), V25Package.Catalog()).IsValid, string.Join(" | ", V25Package.Errors((ok, files))));
 
-        var badValue = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node:scope == maybe" }).ToList() };
-        Assert.Contains("Deliverable 'consult' condition compares 'node:scope' to 'maybe', which it does not declare (values: in_scope, out_of_scope).", V25Package.Errors((badValue, files)));
+        var badValue = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node.scope.value == \"maybe\"" }).ToList() };
+        Assert.Contains("Deliverable 'consult' condition compares node.scope.value to 'maybe', which it does not declare (values: in_scope, out_of_scope).", V25Package.Errors((badValue, files)));
 
-        var notEnum = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node:assessment == x" }).ToList() };
-        Assert.Contains("Deliverable 'consult' condition reads 'node:assessment', which is not a classifier (classifiers: scope).", V25Package.Errors((notEnum, files)));
+        var notEnum = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node.assessment.value == \"x\"" }).ToList() };
+        Assert.Contains("Deliverable 'consult' condition reads node.assessment.value, but format 'prose' is text and has no value; read node.assessment.text.", V25Package.Errors((notEnum, files)));
+
+        // #1037: the ≤24 grammar is refused by name, with the spelling.
+        var legacy = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node:scope == in_scope and kind == new" }).ToList() };
+        Assert.Contains("Deliverable 'consult' condition 'node:scope == in_scope and kind == new' is the ≤24 condition grammar; at specVersion 25 a when is a Scriban expression over the objects a template reads — write (node.scope.value == \"in_scope\" && input.kind == \"new\").", V25Package.Errors((legacy, files)));
     }
 
     [Fact]

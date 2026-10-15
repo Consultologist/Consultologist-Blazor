@@ -25,7 +25,7 @@ public class V25RunPathTests
             {
                 new("consult", "node.all", "Consultation note", Check: "node.coverage", Macros: new List<WorkflowDeliverableMacroSpec>
                 {
-                    new("closing", At: WorkflowDeliverableMacroSpec.Prepend, When: "kind == follow_up"),
+                    new("closing", At: WorkflowDeliverableMacroSpec.Prepend, When: "input.kind == \"follow_up\""),
                     new("closing", At: WorkflowDeliverableMacroSpec.Append),
                     new("scope_line", At: WorkflowDeliverableMacroSpec.Prepend),
                 }),
@@ -116,8 +116,8 @@ public class V25RunPathTests
         manifest = manifest with
         {
             Prompts = manifest.Prompts!.Append(new WorkflowPromptSpec("extra", "prompts/extra.md", new List<string>())).ToList(),
-            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("extra", "Extra", Prompt: "extra", Format: "prose", When: "kind == follow_up")).ToList(),
-            Deliverables = manifest.Deliverables!.Append(new WorkflowDeliverableSpec("extra_doc", "node:extra_all", "Extra", When: "kind == follow_up")).ToList(),
+            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("extra", "Extra", Prompt: "extra", Format: "prose", When: "input.kind == \"follow_up\"")).ToList(),
+            Deliverables = manifest.Deliverables!.Append(new WorkflowDeliverableSpec("extra_doc", "node:extra_all", "Extra", When: "input.kind == \"follow_up\"")).ToList(),
         };
         manifest = manifest with { Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("extra_all", "Extra all", Aggregate: new List<string> { "node:extra" })).ToList() };
         files = new Dictionary<string, string>(files, StringComparer.Ordinal) { ["prompts/extra.md"] = "{{ input.notes }}" };
@@ -135,7 +135,7 @@ public class V25RunPathTests
     [Fact]
     public void AGatedComputedCheck_IsNotContent_AndItsDeliverableStillFires()
     {
-        var package = Package((V25Package.WithNode(V25Package.Minimal().Manifest, "coverage", n => n with { When = "kind == follow_up" }), V25Package.Minimal().Files));
+        var package = Package((V25Package.WithNode(V25Package.Minimal().Manifest, "coverage", n => n with { When = "input.kind == \"follow_up\"" }), V25Package.Minimal().Files));
 
         var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, new Dictionary<string, string> { ["scope"] = "in_scope" });
 
@@ -150,7 +150,7 @@ public class V25RunPathTests
         // scope... a classifier may not carry a when, so gate a prose node the
         // macro reads instead.
         var (manifest, files) = WithDeliverableMacros();
-        manifest = V25Package.WithNode(manifest, "assessment", n => n with { When = "kind == follow_up" });
+        manifest = V25Package.WithNode(manifest, "assessment", n => n with { When = "input.kind == \"follow_up\"" });
         files["macros/scope_line.md"] = "Scope: {{ node.assessment.text }}.";
         var package = Package((manifest, files));
 

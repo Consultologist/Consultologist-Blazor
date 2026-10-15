@@ -61,7 +61,7 @@ public class WorkflowPackageClosureV25Tests
         Assert.Empty(errors);
         Assert.Equal("Follow the local standards.", content.Scalars["standards"]);
         Assert.Equal(new[] { "hpi", "plan" }, content.Collections["sections"].Items.Select(i => i.Id));
-        Assert.Equal("kind == new", content.Collections["sections"].Items[1].When);
+        Assert.Equal("input.kind == \"new\"", content.Collections["sections"].Items[1].When);
     }
 
     [Fact]
