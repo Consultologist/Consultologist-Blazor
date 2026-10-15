@@ -25,9 +25,9 @@ public static partial class WorkflowPackageValidator
         public const string Raw = "escape a literal '{{' as {{ \"{{\" }} or wrap it in {%{ … }%}";
         public const string Data = "declare snippets (read as {{ snippet.<id>.text }})";
         public const string Schemas = "declare formats and name one on each node (nodes[].format)";
-        public const string Kind = "the format says what the node is (classification, rendered, terms-subset)";
+        public const string Kind = "the format says what the node is (classification, rendered, terms_subset)";
         public const string Values = "a classification takes its answer set through with: { values: [...] }";
-        public const string Check = "a check is a node of format terms-subset with with: { of, in, failWith }";
+        public const string Check = "a check is a node of format terms_subset with with: { of, in, failWith }";
         public const string Results = "declare deliverables";
         public const string Placement = "place it on the node as a node instance ({ id, at: before|after })";
         public const string Slot = "read {{ macro.<id>.prompt }} in the template where the slot goes";
@@ -1148,7 +1148,7 @@ public static partial class WorkflowPackageValidator
                     }
                     else if (!checks.Contains(checkId))
                     {
-                        errors.Add($"{subject} check names node '{checkId}', whose format is not computed; a check is a node of a computed format (terms-subset).");
+                        errors.Add($"{subject} check names node '{checkId}', whose format is not computed; a check is a node of a computed format (terms_subset).");
                     }
                     else
                     {

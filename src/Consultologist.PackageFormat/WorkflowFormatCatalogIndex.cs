@@ -68,18 +68,14 @@ public static class WorkflowFormatRegistry
 
 /// <summary>
 /// A catalogue id's spelling: snake_case, as every declared id (#1037, design
-/// § 16 — <c>concept_list</c>, <c>terms_subset</c>). The hyphenated contract-id
-/// form the catalogue published up to formats@v2026.10.1 (<c>concept-list</c>,
-/// <c>terms-subset</c>) is still READ until the renamed catalogue is pinned; it
-/// leaves with that re-pin. A package-local format id is snake_case too, so the
-/// two namespaces are kept apart by the reservation alone (§ 3.6: a catalogue id
-/// cannot be declared locally).
+/// § 16 — <c>concept_list</c>, <c>terms_subset</c>, since formats@v2026.10.2). A
+/// package-local format id is snake_case too, so the two namespaces are kept
+/// apart by the reservation alone (§ 3.6: a catalogue id cannot be declared
+/// locally).
 /// </summary>
 public static class WorkflowFormatCatalogIds
 {
-    private static readonly Regex HyphenatedPattern = new("^[a-z][a-z0-9-]*$", RegexOptions.Compiled);
-
-    public static bool IsValid(string? id) => id != null && (WorkflowDeclaredIds.IsValid(id) || HyphenatedPattern.IsMatch(id));
+    public static bool IsValid(string? id) => WorkflowDeclaredIds.IsValid(id);
 }
 
 /// <summary>

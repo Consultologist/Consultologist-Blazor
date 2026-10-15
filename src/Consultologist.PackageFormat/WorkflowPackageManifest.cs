@@ -858,8 +858,8 @@ public static class WorkflowNodeKinds
 /// The check operations a manifest may spell (v12 § 13) — a closed set, like
 /// every vocabulary here. Below 25 a check node's <c>op</c> is <see cref="TermsSubset"/>;
 /// at 25 the operation is the format catalogue's (<c>op</c> on a computed entry),
-/// spelled snake_case like every 25 id (#1037): <see cref="TermsSubsetAt25"/>. The
-/// engine computes either spelling.
+/// spelled snake_case like every 25 id (#1037): <see cref="TermsSubsetAt25"/> — the
+/// engine computes the ≤24 op in a ≤24 check node and the catalogue's at 25.
 /// </summary>
 public static class WorkflowCheckOps
 {

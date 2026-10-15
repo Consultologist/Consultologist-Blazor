@@ -22,13 +22,8 @@ namespace Consultologist.Api.Jobs;
 /// </summary>
 internal static class ConsultNodeDispatch
 {
-    /// <summary>The catalogue's concept-list format, in the spelling formats@v2026.10.1 published; #1037 renames it snake_case.</summary>
-    public const string ConceptListFormat = "concept-list";
-
-    /// <summary>The 25 spelling (#1037); the engine recognises either until the renamed catalogue is pinned.</summary>
-    public const string ConceptListFormatAt25 = "concept_list";
-
-    public static bool IsConceptList(string? format) => format is ConceptListFormat or ConceptListFormatAt25;
+    /// <summary>The catalogue's concept-list format (<see cref="WorkflowFormatIds.ConceptList"/>; #1037): its reply fills the concept pipes.</summary>
+    public static bool IsConceptList(string? format) => string.Equals(format, WorkflowFormatIds.ConceptList, StringComparison.Ordinal);
 
     public enum ReplyKind
     {

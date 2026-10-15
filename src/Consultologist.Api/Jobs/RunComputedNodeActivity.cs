@@ -26,7 +26,7 @@ public sealed record ConsultComputedNodeActivityInput(
 /// <summary>
 /// v25 (B4 #1003, design § 3.7): a computed node — no prompt, no model. The
 /// operation runs over the outputs its with names and the result is the
-/// node's output: <c>terms-subset</c> yields <c>{ pass, uncovered, untested }</c>
+/// node's output: <c>terms_subset</c> yields <c>{ pass, uncovered, untested }</c>
 /// as canonical JSON (what <c>node.&lt;id&gt;.value</c> reads) and the same
 /// check outcome the v12 inline check recorded, so a deliverable's
 /// <c>check:</c> keeps its meaning. The input hash covers the operand texts,
@@ -59,8 +59,6 @@ public sealed class RunComputedNodeActivity
         return Task.FromResult(result with { StartedAtUtc = startedAtUtc, DurationMs = stopwatch.ElapsedMilliseconds });
     }
 
-    public const string TermsSubset = "terms-subset";
-
     private static readonly JsonSerializerOptions ResultJson = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -72,8 +70,6 @@ public sealed class RunComputedNodeActivity
     {
         switch (input.Op)
         {
-            // #1037: the 25 catalogue spells the op snake_case; ≤24 keeps the hyphen.
-            case TermsSubset:
             case WorkflowCheckOps.TermsSubsetAt25:
                 var of = Operand(input, "of");
                 var inDocument = Operand(input, "in");

@@ -156,7 +156,7 @@ public sealed record WorkflowPackageStamp(
         var local = (manifest.Formats ?? new List<WorkflowFormatReference>()).ToDictionary(f => f.Id, f => f.File, StringComparer.Ordinal);
 
         // The catalogue ids the package names: on its nodes, and through the
-        // parameters of those formats (a terms-subset names concept-list).
+        // parameters of those formats (a terms_subset names concept_list).
         var named = new SortedSet<string>(StringComparer.Ordinal);
 
         foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
