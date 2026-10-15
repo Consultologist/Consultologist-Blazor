@@ -829,6 +829,28 @@ format ids and the op renamed, the agent kept; `input:x` fans move too; typed va
 the ≤24 sentences; a `when` reads anything a template reads; strict in A with the editor's
 compose half folded in rather than a transitional warning.
 
+*(#1038, 2026-10-15 — layer B, the engine judges a 25 `when` through the renderer's scope.
+**Where.** A node's own `when`, a deliverable's and a placement's are judged at the start when
+every gating `when` reads inputs and run facts only, else at the boundary; a node instance's at
+the node's completion over the activity's scope (the item in it); a folder item's at the start,
+inputs only. **The boundary widened** (decision): at 25 a job *decides* when a gating `when`
+reads a node — its value or its text — or a profile fact; stage one runs the closure of every
+node the gating whens read (`WorkflowDerivedEdges.GatingReads`, carried as the orchestration
+input's `DecidingNodes`), and the boundary's `DecideActivity` takes every scalar stage-one output
+and the facts as the render scope's other halves. A classifier nobody's `when` reads is just a
+node. **The judge** is `WorkflowConditionAt25.Holds` over `TemplateRenderer`'s own context, so a
+`when` sees exactly what a template sees — **absence is the template's** (decision): an
+unsupplied optional text or enum is `""`, a boolean, number or date null, an array empty and
+falsy; `input.kind != "new"` holds when kind is absent, where the ≤24 evaluator's three-valued
+rule said not held. The two evaluators agree on every supplied `when`. **The reason** (decision;
+provenance@v2026.10.2) is one fixed form at 25 — *needs `<the when as written>`; it does not
+hold*, a cascade *needs node '<id>', which needs `<when>`; it does not hold* — package text,
+never a value, since a 25 `when` may read a node's text or a snippet. A 25 `when` rides as text
+on the resolved result (`WorkflowResolvedResult.When`); the ≤24 tree is no longer built for it
+(a `when` beyond the builder's subset used to be dropped at load, so the deliverable always
+fired). A deliverable's `when` reads join its roots, so the prune keeps what only a condition
+reads. ≤24 keeps `WorkflowResultCondition` byte for byte.)*
+
 ## Deferred, by name
 
 - **Enum value labels** — `{ value, label }` entries, `input.<id>.label`, the Create page

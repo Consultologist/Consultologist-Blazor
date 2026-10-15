@@ -965,7 +965,12 @@ public class HistoryDetailTests : ClientRenderTestContext
                     Validation: new ConsultValidationOutcome(false, new[] { "$.items: expected array" }),
                     AgentOutputHash: "agent-s",
                     Appended: new[] { new ConsultAppendedEntry("macro", "closing") },
-                    Excluded: new[] { new ConsultNodeExclusion("slot", "stray", "no read in this node's prompt sanctions [[slot:stray]]") })
+                    Excluded: new[]
+                    {
+                        new ConsultNodeExclusion("slot", "stray", "no read in this node's prompt sanctions [[slot:stray]]"),
+                        // #1038: a 25 instance's reason is the fixed form over the condition's own text.
+                        new ConsultNodeExclusion("macro", "footer", "needs `node.scope.value == \"in_scope\"`; it does not hold"),
+                    })
             });
         var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
 
@@ -990,8 +995,9 @@ public class HistoryDetailTests : ClientRenderTestContext
         // The completion facts beside the hashes.
         Assert.Contains("invalid: $.items: expected array", page.Find(".node-row__validation--invalid").TextContent);
         Assert.Equal("+1 placed", page.Find(".node-row__appended").TextContent.Trim());
-        Assert.Equal("1 excluded", page.Find(".node-row__excluded").TextContent.Trim());
+        Assert.Equal("2 excluded", page.Find(".node-row__excluded").TextContent.Trim());
         Assert.Contains("slot stray — no read in this node's prompt sanctions [[slot:stray]]", page.Find(".node-row__excluded").GetAttribute("title"));
+        Assert.Contains("macro footer — needs `node.scope.value == \"in_scope\"`; it does not hold", page.Find(".node-row__excluded").GetAttribute("title"));
         // The agents row lists the 25 formats by their descriptor agents.
         Assert.Contains("concept_list → concept-extraction@1", page.Find(".provenance-agents").TextContent);
         Assert.Contains("mine → custom-json@1", page.Find(".provenance-agents").TextContent);
