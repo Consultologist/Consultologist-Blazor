@@ -199,7 +199,7 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         Navigate(page, "tool_note");
 
         var nodes = OptionValues(page, "fluent-select[aria-label='Attach macro tool_note to a node']");
-        // prose nodes take output macros; the classifier (enum), the concept-list and the
+        // prose nodes take output macros; the classifier (enum), the concept_list and the
         // computed check do not; the aggregator never; section_notes already carries it (forItem) but has a free identity.
         Assert.Contains("assessment", nodes);
         Assert.Contains("section_notes", nodes);
@@ -358,7 +358,7 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
 
     [Theory]
     [InlineData("scope", "classification")]
-    [InlineData("extract", "concept-list")]
+    [InlineData("extract", "concept_list")]
     public void ANodeWhoseFormatTakesNoOutputMacros_CannotAttach_AndSaysWhy(string nodeId, string format)
     {
         var page = RenderEditor();

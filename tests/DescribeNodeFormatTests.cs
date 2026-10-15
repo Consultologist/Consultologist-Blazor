@@ -45,12 +45,12 @@ public class DescribeNodeFormatTests
     [Fact]
     public void AComputedNode_CarriesTheOp_AndNoAgent()
     {
-        var node = new WorkflowNodeSpec("coverage", "Coverage", Format: "terms-subset");
+        var node = new WorkflowNodeSpec("coverage", "Coverage", Format: "terms_subset");
 
         var descriptor = ConsultGenerationJobStarter.DescribeNode(node, null, formats: Formats, stampedFormats: Stamped());
 
         Assert.Equal("computed", descriptor.Producer);
-        Assert.Equal("terms-subset", descriptor.Op);
+        Assert.Equal("terms_subset", descriptor.Op);
         Assert.Null(descriptor.AgentName);
         Assert.Null(descriptor.PromptId);
     }

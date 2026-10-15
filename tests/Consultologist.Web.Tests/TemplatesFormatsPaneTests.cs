@@ -114,9 +114,9 @@ public class TemplatesFormatsPaneTests : ClientRenderTestContext
         Assert.Contains("enum · attested", classification.TextContent);
         Assert.Contains("parameters: values (values)", classification.TextContent);
 
-        var termsSubset = page.Find("[data-catalogue-format='terms-subset']");
-        Assert.Contains("computed by the engine (terms-subset)", termsSubset.TextContent);
-        Assert.Contains("of (node of concept-list)", termsSubset.TextContent);
+        var termsSubset = page.Find("[data-catalogue-format='terms_subset']");
+        Assert.Contains("computed by the engine (terms_subset)", termsSubset.TextContent);
+        Assert.Contains("of (node of concept_list)", termsSubset.TextContent);
         Assert.NotNull(termsSubset.QuerySelector("pre.schema-body"));
 
         Assert.Contains("rendered by the engine", page.Find("[data-catalogue-format='rendered']").TextContent);
@@ -126,7 +126,7 @@ public class TemplatesFormatsPaneTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".format-catalogue fluent-text-area"));
         Assert.Empty(page.FindAll(".format-catalogue fluent-button"));
         Assert.DoesNotContain("instructions:", page.Find(".editor-pane").TextContent);
-        Assert.Contains("formats@v2026.10.1", page.Find(".editor-pane").TextContent);
+        Assert.Contains("formats@v2026.10.2", page.Find(".editor-pane").TextContent);
     }
 
     [Fact]

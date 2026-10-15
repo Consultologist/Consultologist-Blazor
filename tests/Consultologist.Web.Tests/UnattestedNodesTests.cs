@@ -95,7 +95,7 @@ public class UnattestedNodesTests
         // The record carries no unattested marker for a 25 custom producer: the
         // descriptor's format, hash and agent are the whole reading.
         var job = Job(
-            nodes: new[] { Shape25(), new ConsultGenerationNodeDescriptor("extract", "Extract", "p", Format: "concept-list", Producer: "attested", AgentName: "concept-extraction", AgentVersion: "1") },
+            nodes: new[] { Shape25(), new ConsultGenerationNodeDescriptor("extract", "Extract", "p", Format: "concept_list", Producer: "attested", AgentName: "concept-extraction", AgentVersion: "1") },
             outputs: new Dictionary<string, ConsultGenerationNodeStatus>
             {
                 ["shape"] = new("shape", "Shape", "Completed", "in", "out", null, null, Validation: new ConsultValidationOutcome(true, Array.Empty<string>())),

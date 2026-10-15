@@ -188,7 +188,7 @@ public class ConsultNodeSchedulerTests
     {
         // v25 (B3 #1002): a 25 descriptor carries no bindings; its Reads ARE
         // its dependencies, item-aligned when the read node fans.
-        var extract = new ConsultNodeDescriptor("extract", "Extract", Format: "concept-list");
+        var extract = new ConsultNodeDescriptor("extract", "Extract", Format: "concept_list");
         var perSection = new ConsultNodeDescriptor("section_notes", "Sections", ForEach: "snippet:sections", Format: "prose", Reads: new[] { "extract" });
         var review = new ConsultNodeDescriptor("review", "Review", ForEach: "snippet:sections", Format: "prose", Reads: new[] { "extract", "section_notes" });
         var nodesById = new[] { extract, perSection, review }.ToDictionary(n => n.Id, StringComparer.Ordinal);

@@ -19,9 +19,9 @@ public static class V25Package
         {
             ["formats/prose.json"] = FormatFixtures.Prose,
             ["formats/classification.json"] = FormatFixtures.Classification,
-            ["formats/concept-list.json"] = FormatFixtures.ConceptList,
+            ["formats/concept_list.json"] = FormatFixtures.ConceptList,
             ["formats/rendered.json"] = FormatFixtures.Rendered,
-            ["formats/terms-subset.json"] = FormatFixtures.TermsSubset,
+            ["formats/terms_subset.json"] = FormatFixtures.TermsSubset,
         };
         var index = WorkflowFormatCatalogIndexTests.Read(WorkflowFormatCatalogIndexTests.Example);
         var errors = new List<string>();
@@ -31,8 +31,8 @@ public static class V25Package
     }
 
     /// <summary>
-    /// A prose node reading an input and a snippet, a concept-list node, a
-    /// classification taking its values through with, a terms-subset check,
+    /// A prose node reading an input and a snippet, a concept_list node, a
+    /// classification taking its values through with, a terms_subset check,
     /// a node fanning a snippet folder, an aggregator, a macro with an
     /// instruction placed after the prose node, one deliverable naming the
     /// aggregator and the check.
@@ -65,13 +65,13 @@ public static class V25Package
             },
             Nodes = new List<WorkflowNodeSpec>
             {
-                new("extract", "Extract concepts", Prompt: "extract", Format: "concept-list", OnInvalid: WorkflowOnInvalid.Fail),
+                new("extract", "Extract concepts", Prompt: "extract", Format: "concept_list", OnInvalid: WorkflowOnInvalid.Fail),
                 new("scope", "Scope", Prompt: "scope", Format: "classification", OnInvalid: WorkflowOnInvalid.Fail,
                     With: new Dictionary<string, JsonNode?> { ["values"] = new JsonArray("in_scope", "out_of_scope") }),
                 new("assessment", "Assessment", Prompt: "assessment", Format: "prose",
                     Macros: new List<WorkflowNodeMacroSpec> { new("closing", At: WorkflowNodeMacroSpec.After) }),
                 new("section_notes", "Section notes", Prompt: "section", Format: "prose", ForEach: "snippet.sections"),
-                new("coverage", "Coverage", Format: "terms-subset", OnInvalid: WorkflowOnInvalid.Fail,
+                new("coverage", "Coverage", Format: "terms_subset", OnInvalid: WorkflowOnInvalid.Fail,
                     With: new Dictionary<string, JsonNode?> { ["of"] = "node.extract", ["in"] = "node.extract", ["failWith"] = "The note names problems the source does not." }),
                 new("all", "Everything", Aggregate: new List<string> { "node.assessment", "node.section_notes" }),
             },
@@ -143,7 +143,7 @@ public class WorkflowV25Tests
     {
         var result = V25Package.Validate(V25Package.Minimal(), null);
 
-        Assert.Contains("The format catalogue is not available on this engine; catalogue formats (classification, concept-list, prose, terms-subset) cannot be resolved.", result.Errors);
+        Assert.Contains("The format catalogue is not available on this engine; catalogue formats (classification, concept_list, prose, terms_subset) cannot be resolved.", result.Errors);
     }
 
     // ----- § 10: retired by name, with the replacement ------------------------------
@@ -196,9 +196,9 @@ public class WorkflowV25Tests
     [Theory]
     [InlineData("bindings", "Node 'assessment' declares bindings, which are retired at specVersion 25; a template reads objects")]
     [InlineData("output", "Node 'assessment' declares output, which is retired at specVersion 25; name the node's format (nodes[].format).")]
-    [InlineData("kind", "Node 'assessment' declares kind, which is retired at specVersion 25; the format says what the node is (classification, rendered, terms-subset).")]
+    [InlineData("kind", "Node 'assessment' declares kind, which is retired at specVersion 25; the format says what the node is (classification, rendered, terms_subset).")]
     [InlineData("values", "Node 'assessment' declares values, which is retired at specVersion 25; a classification takes its answer set through with: { values: [...] }.")]
-    [InlineData("op", "Node 'assessment' declares op, which is retired at specVersion 25; a check is a node of format terms-subset with with: { of, in, failWith }.")]
+    [InlineData("op", "Node 'assessment' declares op, which is retired at specVersion 25; a check is a node of format terms_subset with with: { of, in, failWith }.")]
     [InlineData("of", "Node 'assessment' declares of, which is retired at specVersion 25;")]
     [InlineData("in", "Node 'assessment' declares in, which is retired at specVersion 25;")]
     [InlineData("failWith", "Node 'assessment' declares failWith, which is retired at specVersion 25;")]
@@ -280,7 +280,7 @@ public class WorkflowV25Tests
     {
         var (manifest, files) = V25Package.Minimal();
         var withPrompt = V25Package.WithNode(manifest, "coverage", n => n with { Prompt = "assessment" });
-        Assert.Contains("Node 'coverage' declares prompt, but format 'terms-subset' is computed and takes none.", V25Package.Errors((withPrompt, files)));
+        Assert.Contains("Node 'coverage' declares prompt, but format 'terms_subset' is computed and takes none.", V25Package.Errors((withPrompt, files)));
 
         var without = V25Package.WithNode(manifest, "assessment", n => n with { Prompt = null });
         Assert.Contains("Node 'assessment' must declare a prompt; format 'prose' is attested.", V25Package.Errors((without, files)));
@@ -298,7 +298,7 @@ public class WorkflowV25Tests
         Assert.Contains("Node 'assessment' declares onInvalid, but format 'prose' is text and validates nothing.", V25Package.Errors((onText, files)));
 
         var missing = V25Package.WithNode(manifest, "extract", n => n with { OnInvalid = null });
-        Assert.Contains("Node 'extract' must declare onInvalid (fail | retry | flag); format 'concept-list' is validated.", V25Package.Errors((missing, files)));
+        Assert.Contains("Node 'extract' must declare onInvalid (fail | retry | flag); format 'concept_list' is validated.", V25Package.Errors((missing, files)));
 
         var unknown = V25Package.WithNode(manifest, "extract", n => n with { OnInvalid = "ignore" });
         Assert.Contains("Node 'extract' onInvalid 'ignore' is not one of fail, retry, flag.", V25Package.Errors((unknown, files)));
@@ -438,7 +438,7 @@ public class WorkflowV25TemplateTests
     {
         var bundle = V25Package.WithPrompt(Minimal(), "assessment", "{{ snippet.standards.text }} {{ node.extract.text }}");
 
-        Assert.Contains(V25Package.Warnings(bundle), w => w.Contains("Prompt 'assessment' reads node.extract.text of format 'concept-list' (object)"));
+        Assert.Contains(V25Package.Warnings(bundle), w => w.Contains("Prompt 'assessment' reads node.extract.text of format 'concept_list' (object)"));
     }
 
     [Fact]
@@ -453,7 +453,7 @@ public class WorkflowV25TemplateTests
         Assert.Contains("Node 'coverage' with must supply parameter 'failWith'.", V25Package.Errors((missing, files)));
 
         var wrongFormat = V25Package.WithNode(manifest, "coverage", n => n with { With = new Dictionary<string, JsonNode?> { ["of"] = "node.assessment", ["in"] = "node.extract", ["failWith"] = "x" } });
-        Assert.Contains("Node 'coverage' with 'of' names node 'assessment' of format 'prose', but the parameter requires format 'concept-list'.", V25Package.Errors((wrongFormat, files)));
+        Assert.Contains("Node 'coverage' with 'of' names node 'assessment' of format 'prose', but the parameter requires format 'concept_list'.", V25Package.Errors((wrongFormat, files)));
 
         var none = V25Package.WithNode(manifest, "coverage", n => n with { With = null });
         Assert.Contains("Node 'coverage' with must supply parameter 'of'.", V25Package.Errors((none, files)));
@@ -531,10 +531,10 @@ public class WorkflowV25TemplateTests
     {
         var (manifest, files) = Minimal();
         var placed = V25Package.WithNode(manifest, "extract", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "after") } });
-        Assert.Contains("Node 'extract' macro 'closing' is placed after the output, but format 'concept-list' takes no output macros; only a text format with outputMacros may.", V25Package.Errors((placed, files)));
+        Assert.Contains("Node 'extract' macro 'closing' is placed after the output, but format 'concept_list' takes no output macros; only a text format with outputMacros may.", V25Package.Errors((placed, files)));
 
         var inline = V25Package.WithPrompt((manifest, files), "extract", "{{ input.notes }} {{ macro.closing.prompt }}");
-        Assert.Contains("Node 'extract' reads macro.closing.prompt (a slot), but format 'concept-list' takes no output macros; only a text format with outputMacros may.", V25Package.Errors(inline));
+        Assert.Contains("Node 'extract' reads macro.closing.prompt (a slot), but format 'concept_list' takes no output macros; only a text format with outputMacros may.", V25Package.Errors(inline));
     }
 
     [Fact]
@@ -674,7 +674,7 @@ public class WorkflowV25TemplateTests
         Assert.Contains("Node 'assessment' failIfEmpty must not be blank.", V25Package.Errors((blank, files)));
 
         var onComputed = V25Package.WithNode(manifest, "coverage", n => n with { FailIfEmpty = "Empty." });
-        Assert.Contains("Node 'coverage' declares failIfEmpty, but format 'terms-subset' is computed and has no reply to judge.", V25Package.Errors((onComputed, files)));
+        Assert.Contains("Node 'coverage' declares failIfEmpty, but format 'terms_subset' is computed and has no reply to judge.", V25Package.Errors((onComputed, files)));
     }
 
     [Fact]
@@ -714,7 +714,7 @@ public class WorkflowV25TemplateTests
 
     [Theory]
     [InlineData("node:coverage", "Deliverable 'consult' check 'node:coverage' must be node.<id>, naming a node of a computed format.")]
-    [InlineData("node.assessment", "Deliverable 'consult' check names node 'assessment', whose format is not computed; a check is a node of a computed format (terms-subset).")]
+    [InlineData("node.assessment", "Deliverable 'consult' check names node 'assessment', whose format is not computed; a check is a node of a computed format (terms_subset).")]
     [InlineData("node.nope", "Deliverable 'consult' check names node 'nope', which the package does not declare.")]
     public void ACheck_NamesAComputedNode(string check, string sentence)
     {

@@ -38,9 +38,9 @@ public sealed class FormatCatalogLoaderTests : IDisposable
         File.WriteAllText(Path.Combine(_dir, "formats.json"), WorkflowFormatCatalogIndexTests.Example);
         File.WriteAllText(Path.Combine(_dir, "formats", "prose.json"), FormatFixtures.Prose);
         File.WriteAllText(Path.Combine(_dir, "formats", "classification.json"), FormatFixtures.Classification);
-        File.WriteAllText(Path.Combine(_dir, "formats", "concept-list.json"), FormatFixtures.ConceptList);
+        File.WriteAllText(Path.Combine(_dir, "formats", "concept_list.json"), FormatFixtures.ConceptList);
         File.WriteAllText(Path.Combine(_dir, "formats", "rendered.json"), FormatFixtures.Rendered);
-        File.WriteAllText(Path.Combine(_dir, "formats", "terms-subset.json"), FormatFixtures.TermsSubset);
+        File.WriteAllText(Path.Combine(_dir, "formats", "terms_subset.json"), FormatFixtures.TermsSubset);
     }
 
     [Fact]
@@ -48,10 +48,10 @@ public sealed class FormatCatalogLoaderTests : IDisposable
     {
         var catalog = TestFormats.Catalog;
 
-        Assert.Equal("formats@v2026.10.1", catalog.ResolvedRef);
-        Assert.Equal(new[] { "classification", "concept-list", "prose", "rendered", "terms-subset" }, catalog.Formats.Keys.Order());
+        Assert.Equal("formats@v2026.10.2", catalog.ResolvedRef);
+        Assert.Equal(new[] { "classification", "concept_list", "prose", "rendered", "terms_subset" }, catalog.Formats.Keys.Order());
         Assert.Equal("test-json@48", catalog.Formats["prose"].Entry.AgentDisplay);
-        Assert.Equal("terms-subset", catalog.Formats["terms-subset"].Entry.Op);
+        Assert.Equal("terms_subset", catalog.Formats["terms_subset"].Entry.Op);
         Assert.Equal("custom-json@1", catalog.CustomProducer.AgentDisplay);
         Assert.True(catalog.Formats["prose"].Spec.AllowsOutputMacros);
     }
@@ -61,9 +61,9 @@ public sealed class FormatCatalogLoaderTests : IDisposable
     {
         // The published file and the bundled file are the same bytes, so the
         // engine's formatHash of a bundled file equals the registry's.
-        var bundled = File.ReadAllText(Path.Combine(TestFormats.AgentsDirectory(), "formats", "concept-list.json"));
+        var bundled = File.ReadAllText(Path.Combine(TestFormats.AgentsDirectory(), "formats", "concept_list.json"));
 
-        Assert.Equal(WorkflowFormatSpecJson.CanonicalJson(bundled), TestFormats.Catalog.Formats["concept-list"].CanonicalJson);
+        Assert.Equal(WorkflowFormatSpecJson.CanonicalJson(bundled), TestFormats.Catalog.Formats["concept_list"].CanonicalJson);
     }
 
     [Fact]
@@ -130,9 +130,9 @@ public class FormatCatalogResolverTests
         {
             ["formats/prose.json"] = FormatFixtures.Prose,
             ["formats/classification.json"] = FormatFixtures.Classification,
-            ["formats/concept-list.json"] = FormatFixtures.ConceptList,
+            ["formats/concept_list.json"] = FormatFixtures.ConceptList,
             ["formats/rendered.json"] = FormatFixtures.Rendered,
-            ["formats/terms-subset.json"] = FormatFixtures.TermsSubset,
+            ["formats/terms_subset.json"] = FormatFixtures.TermsSubset,
         };
         var errors = new List<string>();
         return WorkflowFormatCatalog.Build(index, path => files.GetValueOrDefault(path), errors)!;

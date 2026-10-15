@@ -874,8 +874,21 @@ public static class WorkflowCheckOps
     /// <summary>The operations the engine publishes to the 25 catalogue.</summary>
     public static readonly IReadOnlyList<string> AllAt25 = new[] { TermsSubsetAt25 };
 
-    /// <summary>True for the terms-subset operation in either spelling.</summary>
-    public static bool IsTermsSubset(string? op) => op is TermsSubset or TermsSubsetAt25;
+}
+
+/// <summary>
+/// The format catalogue's ids as the engine names them (#1037, design § 16):
+/// snake_case like every declared id since formats@v2026.10.2. The ≤24 output
+/// CONTRACT ids (<see cref="WorkflowNodeDefaults.ConceptListSchemaId"/>) are a
+/// different catalogue and keep their spelling.
+/// </summary>
+public static class WorkflowFormatIds
+{
+    public const string Prose = "prose";
+    public const string Classification = "classification";
+    public const string ConceptList = "concept_list";
+    public const string Rendered = "rendered";
+    public const string TermsSubset = "terms_subset";
 }
 
 public sealed record WorkflowNodeOutputSpec(

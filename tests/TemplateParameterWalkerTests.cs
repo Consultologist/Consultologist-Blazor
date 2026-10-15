@@ -11,8 +11,8 @@ public class TemplateParameterWalkerTests
 {
     private static readonly IReadOnlyDictionary<string, WorkflowFormatParameterSpec> TermsSubset = new Dictionary<string, WorkflowFormatParameterSpec>(StringComparer.Ordinal)
     {
-        ["of"] = new("node", "concept-list"),
-        ["in"] = new("node", "concept-list"),
+        ["of"] = new("node", "concept_list"),
+        ["in"] = new("node", "concept_list"),
         ["failWith"] = new("text"),
     };
 
@@ -37,7 +37,7 @@ public class TemplateParameterWalkerTests
     public void TheCheckOperands_AreEdges_AndTheSentenceIsALiteral()
     {
         var refs = Walk("""{ "of": "node.extract", "in": "node.meds", "failWith": "The note names problems the source does not." }""",
-            new Dictionary<string, WorkflowFormatParameterSpec>(StringComparer.Ordinal) { ["of"] = new("node", "concept-list"), ["in"] = new("node"), ["failWith"] = new("text") });
+            new Dictionary<string, WorkflowFormatParameterSpec>(StringComparer.Ordinal) { ["of"] = new("node", "concept_list"), ["in"] = new("node"), ["failWith"] = new("text") });
 
         Assert.True(refs.IsValid, string.Join(" | ", refs.Errors));
         Assert.Equal(new[] { "extract", "meds" }, refs.Edges.Order());
@@ -72,7 +72,7 @@ public class TemplateParameterWalkerTests
     [InlineData("""{ "of": "input.notes", "in": "node.extract", "failWith": "x" }""", "with 'of' must be a bare node reference (node.<id>); got \"input.notes\"")]
     [InlineData("""{ "of": "node.extract.value", "in": "node.extract", "failWith": "x" }""", "with 'of' must name the node bare (node.extract), not node.extract.value; the parameter reads the node's value")]
     [InlineData("""{ "of": "node.nope", "in": "node.extract", "failWith": "x" }""", "with 'of' names node 'nope', which the package does not declare")]
-    [InlineData("""{ "of": "node.assessment", "in": "node.extract", "failWith": "x" }""", "with 'of' names node 'assessment' of format 'prose', but the parameter requires format 'concept-list'")]
+    [InlineData("""{ "of": "node.assessment", "in": "node.extract", "failWith": "x" }""", "with 'of' names node 'assessment' of format 'prose', but the parameter requires format 'concept_list'")]
     [InlineData("""{ "of": "node.extract", "in": "node.extract", "failWith": 7 }""", "with 'failWith' must be a text literal or an input.<id> reference to a text input; got 7")]
     [InlineData("""{ "of": "node.extract", "in": "node.extract", "failWith": "input.kind" }""", "with 'failWith' names input 'kind', which is an enum, not a text")]
     [InlineData("""{ "of": "node.extract", "in": "node.extract", "failWith": "input.nope" }""", "with 'failWith' names input 'nope', which the package does not declare")]
@@ -101,7 +101,7 @@ public class TemplateParameterWalkerTests
     public void AHyphenatedNodeId_IsFineInWith()
     {
         var context = TemplateFixtures.Context();
-        var nodes = new Dictionary<string, TemplateNodeShape>(context.Nodes, StringComparer.Ordinal) { ["identify-problem"] = new("concept-list", "object", TemplateFixtures.ConceptListSchema) };
+        var nodes = new Dictionary<string, TemplateNodeShape>(context.Nodes, StringComparer.Ordinal) { ["identify-problem"] = new("concept_list", "object", TemplateFixtures.ConceptListSchema) };
         var refs = TemplateReferenceWalker.WalkParameters("Node 'c'", With("""{ "of": "node.identify-problem", "in": "node.extract", "failWith": "x" }"""), TermsSubset, context with { Nodes = nodes });
 
         Assert.True(refs.IsValid, string.Join(" | ", refs.Errors));

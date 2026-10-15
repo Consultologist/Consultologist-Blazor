@@ -206,9 +206,9 @@ public class V25RunPathTests
 
     private static readonly Dictionary<string, ConsultNodeDescriptor> RunNodes = new(StringComparer.Ordinal)
     {
-        ["extract"] = new("extract", "Extract", Format: "concept-list", Producer: "attested"),
+        ["extract"] = new("extract", "Extract", Format: "concept_list", Producer: "attested"),
         ["scope"] = new("scope", "Scope", Format: "classification", Producer: "attested", Values: new[] { "in_scope", "out_of_scope" }),
-        ["coverage"] = new("coverage", "Coverage", Format: "terms-subset", Producer: "computed", With: new Dictionary<string, string> { ["of"] = "extract", ["in"] = "extract", ["failWith"] = "The note names problems the source does not." }),
+        ["coverage"] = new("coverage", "Coverage", Format: "terms_subset", Producer: "computed", With: new Dictionary<string, string> { ["of"] = "extract", ["in"] = "extract", ["failWith"] = "The note names problems the source does not." }),
         ["all"] = new("all", "Everything", Aggregate: new List<string> { "node:assessment" }),
     };
 

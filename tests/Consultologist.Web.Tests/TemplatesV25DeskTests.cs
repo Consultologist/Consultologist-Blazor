@@ -150,37 +150,37 @@ public class TemplatesV25DeskTests : ClientRenderTestContext
         "Node 'assessment' must declare a format at specVersion 25.")]
     [InlineData("assessment", """{ "id": "assessment", "label": "Assessment", "prompt": "assessment", "format": "poem" }""",
         "Node 'assessment' declares format 'poem', which is neither a package format nor a catalogue format.")]
-    [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "prompt": "scope", "format": "terms-subset", "onInvalid": "fail", "with": { "of": "node.extract", "in": "node.extract", "failWith": "x" } }""",
-        "Node 'coverage' declares prompt, but format 'terms-subset' is computed and takes none.")]
+    [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "prompt": "scope", "format": "terms_subset", "onInvalid": "fail", "with": { "of": "node.extract", "in": "node.extract", "failWith": "x" } }""",
+        "Node 'coverage' declares prompt, but format 'terms_subset' is computed and takes none.")]
     [InlineData("assessment", """{ "id": "assessment", "label": "Assessment", "format": "prose" }""",
         "Node 'assessment' must declare a prompt; format 'prose' is attested.")]
     [InlineData("assessment", """{ "id": "assessment", "label": "Assessment", "prompt": "missing", "format": "prose" }""",
         "Node 'assessment' names prompt 'missing', which the package does not declare.")]
     [InlineData("assessment", """{ "id": "assessment", "label": "Assessment", "prompt": "assessment", "format": "prose", "onInvalid": "fail" }""",
         "Node 'assessment' declares onInvalid, but format 'prose' is text and validates nothing.")]
-    [InlineData("extract", """{ "id": "extract", "label": "Extract", "prompt": "extract", "format": "concept-list" }""",
-        "Node 'extract' must declare onInvalid (fail | retry | flag); format 'concept-list' is validated.")]
-    [InlineData("extract", """{ "id": "extract", "label": "Extract", "prompt": "extract", "format": "concept-list", "onInvalid": "ignore" }""",
+    [InlineData("extract", """{ "id": "extract", "label": "Extract", "prompt": "extract", "format": "concept_list" }""",
+        "Node 'extract' must declare onInvalid (fail | retry | flag); format 'concept_list' is validated.")]
+    [InlineData("extract", """{ "id": "extract", "label": "Extract", "prompt": "extract", "format": "concept_list", "onInvalid": "ignore" }""",
         "Node 'extract' onInvalid 'ignore' is not one of fail, retry, flag.")]
     [InlineData("assessment", """{ "id": "assessment", "label": "Assessment", "prompt": "assessment", "format": "prose", "failIfEmpty": "  " }""",
         "Node 'assessment' failIfEmpty must not be blank.")]
-    [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "format": "terms-subset", "onInvalid": "fail", "failIfEmpty": "x", "with": { "of": "node.extract", "in": "node.extract", "failWith": "x" } }""",
-        "Node 'coverage' declares failIfEmpty, but format 'terms-subset' is computed and has no reply to judge.")]
-    [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "format": "terms-subset", "onInvalid": "fail", "with": { "of": "node.extract", "in": "node.extract", "failWith": "x", "extra": "y" } }""",
+    [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "format": "terms_subset", "onInvalid": "fail", "failIfEmpty": "x", "with": { "of": "node.extract", "in": "node.extract", "failWith": "x" } }""",
+        "Node 'coverage' declares failIfEmpty, but format 'terms_subset' is computed and has no reply to judge.")]
+    [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "format": "terms_subset", "onInvalid": "fail", "with": { "of": "node.extract", "in": "node.extract", "failWith": "x", "extra": "y" } }""",
         "Node 'coverage' with 'extra' names no parameter of the format (parameters: of, in, failWith).")]
-    [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "format": "terms-subset", "onInvalid": "fail", "with": { "of": "node.extract", "in": "node.extract" } }""",
+    [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "format": "terms_subset", "onInvalid": "fail", "with": { "of": "node.extract", "in": "node.extract" } }""",
         "Node 'coverage' with must supply parameter 'failWith'.")]
-    [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "format": "terms-subset", "onInvalid": "fail", "with": { "of": "extract", "in": "node.extract", "failWith": "x" } }""",
+    [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "format": "terms_subset", "onInvalid": "fail", "with": { "of": "extract", "in": "node.extract", "failWith": "x" } }""",
         "Node 'coverage' with 'of' must be a bare node reference (node.<id>); got \"extract\".")]
-    [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "format": "terms-subset", "onInvalid": "fail", "with": { "of": "node.nope", "in": "node.extract", "failWith": "x" } }""",
+    [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "format": "terms_subset", "onInvalid": "fail", "with": { "of": "node.nope", "in": "node.extract", "failWith": "x" } }""",
         "Node 'coverage' with 'of' names node 'nope', which the package does not declare.")]
-    [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "format": "terms-subset", "onInvalid": "fail", "with": { "of": "node.assessment", "in": "node.extract", "failWith": "x" } }""",
-        "Node 'coverage' with 'of' names node 'assessment' of format 'prose', but the parameter requires format 'concept-list'.")]
+    [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "format": "terms_subset", "onInvalid": "fail", "with": { "of": "node.assessment", "in": "node.extract", "failWith": "x" } }""",
+        "Node 'coverage' with 'of' names node 'assessment' of format 'prose', but the parameter requires format 'concept_list'.")]
     [InlineData("scope", """{ "id": "scope", "label": "Scope", "prompt": "scope", "format": "classification", "onInvalid": "fail", "with": { "values": ["in_scope"] } }""",
         "Node 'scope' declares 1 value; a classifier must declare at least two values it may answer.")]
     [InlineData("scope", """{ "id": "scope", "label": "Scope", "prompt": "scope", "format": "classification", "onInvalid": "fail", "with": { "values": "yes" } }""",
         "Node 'scope' with 'values' must be a list of snake_case values or an input.<id> reference to an enum input; got \"yes\".")]
-    [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "format": "terms-subset", "onInvalid": "fail", "with": { "of": "node.extract", "in": "node.extract", "failWith": 3 } }""",
+    [InlineData("coverage", """{ "id": "coverage", "label": "Coverage", "format": "terms_subset", "onInvalid": "fail", "with": { "of": "node.extract", "in": "node.extract", "failWith": 3 } }""",
         "Node 'coverage' with 'failWith' must be a text literal or an input.<id> reference to a text input; got 3.")]
     [InlineData("assessment", """{ "id": "assessment", "label": "Assessment", "prompt": "assessment", "format": "prose", "with": { "values": ["a", "b"] } }""",
         "Node 'assessment' declares with, but format 'prose' takes no parameters.")]

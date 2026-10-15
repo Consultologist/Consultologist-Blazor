@@ -16,9 +16,9 @@ public class WorkflowFormatCatalogIndexTests
           "formats": {
             "prose":          { "file": "formats/prose.json",          "agentName": "consult-prose",      "agentVersion": 3 },
             "classification": { "file": "formats/classification.json", "agentName": "classification",     "agentVersion": 1 },
-            "concept-list":   { "file": "formats/concept-list.json",   "agentName": "concept-extraction", "agentVersion": 1 },
+            "concept_list":   { "file": "formats/concept_list.json",   "agentName": "concept-extraction", "agentVersion": 1 },
             "rendered":       { "file": "formats/rendered.json" },
-            "terms-subset":   { "file": "formats/terms-subset.json",   "op": "terms-subset" }
+            "terms_subset":   { "file": "formats/terms_subset.json",   "op": "terms_subset" }
           },
           "producers": {
             "custom": { "agentName": "custom-json", "agentVersion": 1,
@@ -63,8 +63,8 @@ public class WorkflowFormatCatalogIndexTests
         Assert.False(rendered.NamesOp);
         Assert.Null(rendered.AgentDisplay);
 
-        var check = index.Formats["terms-subset"];
-        Assert.Equal("terms-subset", check.Op);
+        var check = index.Formats["terms_subset"];
+        Assert.Equal("terms_subset", check.Op);
         Assert.True(check.NamesOp);
 
         Assert.Equal("custom-json", index.Producers.Custom!.AgentName);
@@ -131,8 +131,8 @@ public class WorkflowFormatCatalogIndexTests
     [InlineData(",      \"agentVersion\": 3", "", "format 'prose' must declare agentName and agentVersion together")]
     [InlineData("\"agentVersion\": 3", "\"agentVersion\": 0", "format 'prose' agentVersion must be a positive integer")]
     [InlineData("\"agentName\": \"consult-prose\"", "\"agentName\": \" \"", "format 'prose' agentName must not be blank")]
-    [InlineData("\"op\": \"terms-subset\"", "\"op\": \"\"", "format 'terms-subset' op must not be blank")]
-    [InlineData("\"agentVersion\": 3 }", "\"agentVersion\": 3, \"op\": \"terms-subset\" }", "format 'prose' names both an agent and an op")]
+    [InlineData("\"op\": \"terms_subset\"", "\"op\": \"\"", "format 'terms_subset' op must not be blank")]
+    [InlineData("\"agentVersion\": 3 }", "\"agentVersion\": 3, \"op\": \"terms_subset\" }", "format 'prose' names both an agent and an op")]
     [InlineData("\"rendered\":       { \"file\": \"formats/rendered.json\" }", "\"rendered\": null", "format 'rendered' must be an object with a file")]
     public void EntryDefects_AreRefusedByName(string find, string replace, string sentence)
     {
@@ -188,7 +188,8 @@ public class WorkflowFormatCatalogIndexTests
 
     [Theory]
     [InlineData("prose", true)]
-    [InlineData("concept-list", true)]
+    [InlineData("concept-list", false)]
+    [InlineData("terms-subset", false)]
     [InlineData("a1", true)]
     [InlineData("Prose", false)]
     [InlineData("concept_list", true)]
@@ -197,21 +198,10 @@ public class WorkflowFormatCatalogIndexTests
     [InlineData("_x", false)]
     [InlineData("", false)]
     [InlineData(null, false)]
-    public void CatalogueIds_AreSnakeCase_TheHyphenatedFormStillRead(string? id, bool valid)
+    public void CatalogueIds_AreSnakeCase(string? id, bool valid)
     {
-        // #1037: snake_case like every declared id; the hyphenated ids formats@v2026.10.1
-        // published are read until the renamed catalogue is pinned.
+        // #1037: snake_case like every declared id (formats@v2026.10.2); the hyphenated
+        // spelling formats@v2026.10.1 published is read no longer.
         Assert.Equal(valid, WorkflowFormatCatalogIds.IsValid(id));
-    }
-
-    [Fact]
-    public void TheRenamedCatalogue_Reads_WithItsSnakeCaseIdsAndOp()
-    {
-        var index = Read(Example
-            .Replace("\"concept-list\":   { \"file\": \"formats/concept-list.json\"", "\"concept_list\":   { \"file\": \"formats/concept_list.json\"")
-            .Replace("\"terms-subset\":   { \"file\": \"formats/terms-subset.json\",   \"op\": \"terms-subset\" }", "\"terms_subset\":   { \"file\": \"formats/terms_subset.json\",   \"op\": \"terms_subset\" }"));
-
-        Assert.Equal("formats/concept_list.json", index.Formats["concept_list"].File);
-        Assert.Equal("terms_subset", index.Formats["terms_subset"].Op);
     }
 }

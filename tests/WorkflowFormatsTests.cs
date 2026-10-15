@@ -18,7 +18,7 @@ public class WorkflowFormatsTests
     {
         Assert.Equal(TestFormats.Catalog.Version, Response.Version);
         Assert.Equal($"formats@{TestFormats.Catalog.Version}", Response.Ref);
-        Assert.Equal(new[] { "classification", "concept-list", "prose", "rendered", "terms-subset" }, Response.Formats.Select(f => f.Id));
+        Assert.Equal(new[] { "classification", "concept_list", "prose", "rendered", "terms_subset" }, Response.Formats.Select(f => f.Id));
         Assert.All(Response.Formats, f => Assert.False(string.IsNullOrWhiteSpace(f.Description)));
     }
 
@@ -27,9 +27,9 @@ public class WorkflowFormatsTests
     {
         var byId = Response.Formats.ToDictionary(f => f.Id);
 
-        Assert.Equal(("attested", "concept-extraction", 1, null, true), (byId["concept-list"].Producer, byId["concept-list"].AgentName, byId["concept-list"].AgentVersion, byId["concept-list"].Op, byId["concept-list"].Attested));
+        Assert.Equal(("attested", "concept-extraction", 1, null, true), (byId["concept_list"].Producer, byId["concept_list"].AgentName, byId["concept_list"].AgentVersion, byId["concept_list"].Op, byId["concept_list"].Attested));
         Assert.Equal(("attested", "classification", 1, true), (byId["classification"].Producer, byId["classification"].AgentName, byId["classification"].AgentVersion, byId["classification"].Attested));
-        Assert.Equal(("computed", null, null, "terms-subset", false), (byId["terms-subset"].Producer, byId["terms-subset"].AgentName, byId["terms-subset"].AgentVersion, byId["terms-subset"].Op, byId["terms-subset"].Attested));
+        Assert.Equal(("computed", null, null, "terms_subset", false), (byId["terms_subset"].Producer, byId["terms_subset"].AgentName, byId["terms_subset"].AgentVersion, byId["terms_subset"].Op, byId["terms_subset"].Attested));
         Assert.Equal(("rendered", null, null, false), (byId["rendered"].Producer, byId["rendered"].AgentName, byId["rendered"].Op, byId["rendered"].Attested));
     }
 
@@ -39,12 +39,12 @@ public class WorkflowFormatsTests
         var byId = Response.Formats.ToDictionary(f => f.Id);
 
         Assert.True(byId["prose"].OutputMacros);
-        Assert.False(byId["concept-list"].OutputMacros);
+        Assert.False(byId["concept_list"].OutputMacros);
         Assert.Equal("enum", byId["classification"].Type);
         Assert.Equal("values", Assert.Single(byId["classification"].Parameters!).Value.Kind);
-        Assert.Equal(new[] { "failWith", "in", "of" }, byId["terms-subset"].Parameters!.Keys.Order());
-        Assert.Equal("concept-list", byId["terms-subset"].Parameters!["of"].Format);
-        Assert.NotNull(byId["concept-list"].Schema);
+        Assert.Equal(new[] { "failWith", "in", "of" }, byId["terms_subset"].Parameters!.Keys.Order());
+        Assert.Equal("concept_list", byId["terms_subset"].Parameters!["of"].Format);
+        Assert.NotNull(byId["concept_list"].Schema);
         Assert.Null(byId["prose"].Schema);
     }
 
