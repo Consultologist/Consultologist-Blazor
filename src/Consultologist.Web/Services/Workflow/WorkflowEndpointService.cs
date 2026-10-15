@@ -239,6 +239,48 @@ public static class WorkflowExpectedContent
     /// <summary>The channels one specVersion admits — none before 13, image at 16, ambient-note at 17. Mirrors the server's; pinned.</summary>
     public static IReadOnlyList<string> ForSpecVersion(int specVersion) =>
         specVersion >= 17 ? All : specVersion >= 16 ? V16Channels : specVersion >= 13 ? V13Channels : Array.Empty<string>();
+
+    /// <summary>
+    /// v25 C5 (#1011): the channels one slot may declare — the validator's
+    /// channel/type rule (WorkflowPackageValidator.ValidateInput) as the list the
+    /// editor offers. A union slot takes none; text and an array of text take
+    /// every channel of the version; a scalar (enum, boolean, number, date)
+    /// takes form; an object takes form from 25 (§ 9: a form slot may be an
+    /// object with declared fields); an array of anything else takes none.
+    /// </summary>
+    public static IReadOnlyList<string> ChannelsFor(WorkflowManifestReader.InputView input, int specVersion)
+    {
+        var channels = ForSpecVersion(specVersion);
+
+        if (channels.Count == 0 || input.Types is { Count: > 1 })
+        {
+            return Array.Empty<string>();
+        }
+
+        var type = WorkflowInputTypes.Of(input);
+        var elementType = type == WorkflowInputTypes.Array ? input.Items?.Type ?? WorkflowInputTypes.Text : null;
+
+        if (type == WorkflowInputTypes.Text || elementType == WorkflowInputTypes.Text)
+        {
+            return channels;
+        }
+
+        if (type == WorkflowInputTypes.Array)
+        {
+            return Array.Empty<string>();
+        }
+
+        if (type == WorkflowInputTypes.Object)
+        {
+            return specVersion >= 25 ? new[] { Form } : Array.Empty<string>();
+        }
+
+        return new[] { Form };
+    }
+
+    /// <summary>Whether this slot, at this version, may declare the channel.</summary>
+    public static bool TakesChannel(WorkflowManifestReader.InputView input, string? channel, int specVersion) =>
+        string.IsNullOrEmpty(channel) || ChannelsFor(input, specVersion).Contains(channel, StringComparer.Ordinal);
 }
 
 /// <summary>

@@ -665,6 +665,21 @@ concept_context }}`) as an unknown root — the closed pipe set is now accepted 
 judged when it renders; and the editor's reader-pane lookup went by prompt id where the walk
 keys a prompt by the node reading it.)*
 
+*(C5 #1011, 2026-10-15 — the object form slot on the Inputs pane. Found: the editor had never
+refused `expectedContent: form` on an object — its content-channel select offered every channel
+of the version to every type and the desk mirrored none of the validator's channel sentences
+("the server validates channel/type fit"). So the lift at 25 was already true by omission;
+C5 adds the **rule**, at every version (decision): the select offers only the channels the
+slot's type and version take — a union none, text and an array of text every channel of the
+version, a scalar `form`, an object `form` from 25, an array of anything else none — a loaded
+value the list no longer offers still shown as itself; a retype drops a channel the new type
+cannot be filled from; and the desk says the validator's channel sentences word for word (the
+version gate, a union, an unknown channel, transcript / image / ambient-note on a non-text slot,
+form on an object below 25 or on an array of objects, form on an object with no fields at 25).
+The object's fields are today's object fields. Deferred (decision): the run page's client-side
+form-response coercion lacks the nested-object case B6 gave the server, so a held response
+cannot yet fill an object slot in the browser — a follow-up under #991.)*
+
 ## 14. Migration 24 → 25 (the editor's upgrade; mechanical, byte-identical in what the model sees)
 
 | At 24 | At 25 |

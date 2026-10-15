@@ -787,7 +787,9 @@ public static class EditorFixtures
           "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
           "inputs": [
             { "id": "notes", "label": "Referral notes", "required": true },
-            { "id": "kind", "label": "Kind", "required": true, "type": "enum", "values": ["new", "follow_up"] }
+            { "id": "kind", "label": "Kind", "required": true, "type": "enum", "values": ["new", "follow_up"] },
+            { "id": "intake", "label": "Intake form", "required": false, "type": "object", "expectedContent": "form",
+              "fields": [ { "id": "allergies", "label": "Allergies", "required": false }, { "id": "on_letrozole", "label": "On letrozole", "required": false, "type": "boolean" } ] }
           ],
           "formats": [ { "id": "medication_list", "file": "formats/medication_list.json" } ],
           "macros": [
@@ -816,7 +818,7 @@ public static class EditorFixtures
         """, 25,
         ("prompts/extract.md", "Extract the concepts from:\n{{ input.notes }}"),
         ("prompts/scope.md", "Is this in scope? {{ input.notes }}"),
-        ("prompts/assessment.md", "Assess.\n{{ snippet.standards.text }}\n{{ macro.tool_note.prompt }}\n{{ input.notes }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}\n{{ for m in node.meds.value.medications }}- {{ m.name }}\n{{ end }}"),
+        ("prompts/assessment.md", "Assess.\n{{ snippet.standards.text }}\n{{ macro.tool_note.prompt }}\n{{ input.notes }}\nAllergies: {{ input.intake.allergies }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}\n{{ for m in node.meds.value.medications }}- {{ m.name }}\n{{ end }}"),
         ("prompts/meds.md", "List the medications in:\n{{ input.notes }}"),
         ("prompts/section.md", "{{ item.name }}: {{ item.text }}"),
         ("macros/closing.md", "Closing: {{ profile.name }}."),
