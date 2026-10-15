@@ -237,6 +237,29 @@ public class ConsultsRunRailTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void A25FansItemRows_ComeFromTheJobsRoster()
+    {
+        // #1039: a 25 fan spells snippet.<folder>; the rail resolved only data:<collection>
+        // before, so a 25 fan's items fell back to the package blocks.
+        WithTwoNodePackage();
+        WithJobDeclaring(
+            new[] { new ConsultGenerationNodeDescriptor("fan", "Drafting", ForEach: "snippet.standards") },
+            collections: new[]
+            {
+                new ConsultCollectionRoster("standards", new[]
+                {
+                    new ConsultCollectionItem("intro", "Introduction"),
+                    new ConsultCollectionItem("plan", "Plan")
+                })
+            });
+
+        var page = RenderRail();
+        var items = page.FindAll(".node-row--item .node-row__label").Select(row => row.TextContent.Trim()).ToList();
+
+        Assert.Equal(new[] { "Introduction", "Plan" }, items);
+    }
+
+    [Fact]
     public void WithNoRosterOnTheJob_ThePinnedCollectionIsStillUsed()
     {
         // The pre-#361 record. Falling back is what keeps an older job legible

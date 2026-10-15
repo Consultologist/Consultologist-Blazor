@@ -182,7 +182,7 @@ public class TemplatesV25ReadsTests : ClientRenderTestContext
         page.FindAll("fluent-button").First(button => button.TextContent.Contains("Create")).Click();
         page.Find("fluent-text-area").Change("Plan from {{ input.notes }}.");
         ShowNode(page, "all");
-        page.Find("fluent-select[aria-label='Add aggregate source']").Change("node:plan");
+        page.Find("fluent-select[aria-label='Add aggregate source']").Change("node.plan");
 
         // Re-point meds at the scope prompt (the section prompt reads the fan item, which meds has not).
         ShowNode(page, "meds");

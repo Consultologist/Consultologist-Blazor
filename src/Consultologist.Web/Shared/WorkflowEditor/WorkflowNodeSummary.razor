@@ -804,10 +804,11 @@
     }
 
     /// <summary>What a node may fan: every data collection (a snippet folder at 25, spelled
-    /// snippet:&lt;folder&gt; — #1008), then every array input (v9 § 5).</summary>
+    /// snippet.&lt;folder&gt; — #1008), then every array input (v9 § 5; input.&lt;id&gt; at 25 — #1039,
+    /// the ≤24 input: spelling is refused there).</summary>
     internal static IReadOnlyList<string> ForEachOptions(IReadOnlyList<string> collections, IReadOnlyList<string> arrayInputs, bool at25 = false) =>
         collections.Select(collectionId => at25 ? $"{PF.WorkflowFanSources.SnippetPrefix}{collectionId}" : $"data:{collectionId}")
-            .Concat(arrayInputs.Select(inputId => $"{WorkflowInputFans.Prefix}{inputId}"))
+            .Concat(arrayInputs.Select(inputId => at25 ? PF.TemplateObjectReference.Input(inputId) : $"{WorkflowInputFans.Prefix}{inputId}"))
             .ToList();
 
     /// <summary>

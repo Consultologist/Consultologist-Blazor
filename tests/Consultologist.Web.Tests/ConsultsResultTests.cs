@@ -88,7 +88,7 @@ public class ConsultsResultTests : ClientRenderTestContext
         // descriptor says format, producer and the attested generic agent, and
         // the bar says the engine validated the shape.
         var shape = new ConsultGenerationNodeDescriptor(
-            "section-instructions", "Applying section instructions", "p", ForEach: "snippet:standards",
+            "section-instructions", "Applying section instructions", "p", ForEach: "snippet.standards",
             Format: "mine", Producer: "custom", FormatHash: "0123456789abcdef", AgentName: "custom-json", AgentVersion: "1");
         WithCompletedJob(documents: OneNote, nodes: new[] { shape });
 

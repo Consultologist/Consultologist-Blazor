@@ -694,6 +694,17 @@ The object's fields are today's object fields. Deferred (decision): the run page
 form-response coercion lacks the nested-object case B6 gave the server, so a held response
 cannot yet fill an object slot in the browser — a follow-up under #991.)*
 
+**#1039 (C, 2026-10-15) — the desk at 25 is the registry's validator.** Every earlier version's
+desk is a hand-written mirror of the validator's sentences; at 25 the editor runs
+`WorkflowPackageValidator.Validate` itself, client-side, over the composed manifest, the
+assembled files and the catalogue the API served (`Templates.RegistryDesk25`), so the desk says
+exactly what the publish would say, by construction, and the 25 mirrors (node/format, snippet,
+macro, template, clause) retired. The editor adds only what composes nothing — the builder's
+unfinished drafts, a blank `failIfEmpty` the compose drops, a removed format a node still names.
+With no catalogue in hand the desk cannot resolve a catalogue format, so it defers to the
+publish and says so as a warning rather than trusting the ids silently. ≤24 keeps its mirrors
+untouched. See § 16's C note for the builder and the last colon spellings.
+
 ## 14. Migration 24 → 25 (the editor's upgrade; mechanical, byte-identical in what the model sees)
 
 | At 24 | At 25 |
@@ -850,6 +861,23 @@ on the resolved result (`WorkflowResolvedResult.When`); the ≤24 tree is no lon
 (a `when` beyond the builder's subset used to be dropped at load, so the deliverable always
 fired). A deliverable's `when` reads join its roots, so the prune keeps what only a condition
 reads. ≤24 keeps `WorkflowResultCondition` byte for byte.)*
+
+*(#1039, 2026-10-15 — layer C, what the author sees and what the desk says. **The desk** at 25
+is the registry's validator run client-side (§ 13, the #1039 note): the ≤24 condition grammar,
+a `node:` aggregate source or deliverable node, an `input:`/`snippet:` fan and a hyphenated
+node or prompt id are refused at the desk in the registry's own words, and a `when` that reads
+a node's text (#1038's widened boundary) is accepted there. The add-time id guards refuse a
+hyphen at 25 with the registry's rename. **The builder** (decision): its operand options read
+in the 25 spelling — `input.kind`, `node.scope.value`, `item.id`, `(input.docs | array.size)` —
+while their values stay the tree's ≤24 keys, the model underneath; the compose spells on write
+as #1037 left it. **The edit-as-text door**: a hand-written 25 `when` the tree cannot hold is
+shown verbatim beside a text input that writes what the author types, verbatim, for the
+registry to judge at the desk — never rewritten, still clearable; below 25 the verbatim branch
+is unchanged. **Two bugs found and fixed**: the forEach picker wrote `input:<id>` for an array
+fan at 25, which the registry refuses (now `input.<id>`); the Consults rail stripped `data:`
+alone, so a 25 fan's items fell back to the package blocks (now
+`WorkflowFanSources.CollectionIdOf`). The ≤24 input-fan helper, the ≤24 bindings editor and the
+`SnippetColonPrefix` read stay as the ≤24 grammar's.)*
 
 ## Deferred, by name
 

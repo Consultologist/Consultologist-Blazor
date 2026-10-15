@@ -712,7 +712,7 @@
                                 @if (At25)
                                 {
                                     <p class="muted-text">
-                                        A folder of snippets a node fans over (<code>forEach: snippet:&lt;folder&gt;</code>)
+                                        A folder of snippets a node fans over (<code>forEach: snippet.&lt;folder&gt;</code>)
                                         or a template iterates (<code>{{ for s in snippet.&lt;folder&gt; }}</code>). Add at
                                         least one item before publishing.
                                     </p>
@@ -1626,7 +1626,7 @@
                                                     <FluentOption TOption="string" Value="">— no check —</FluentOption>
                                                     @foreach (var checkNode in EffectiveNodes.Where(n => n.IsCheck))
                                                     {
-                                                        <FluentOption TOption="string" Value="@($"node:{checkNode.Id}")">@checkNode.Id</FluentOption>
+                                                        <FluentOption TOption="string" Value="@NodeRef(checkNode.Id)">@checkNode.Id</FluentOption>
                                                     }
                                                     @if (deliverable.Check is { } authoredCheck
                                                         && (!authoredCheck.StartsWith("node:", StringComparison.Ordinal)
@@ -3090,6 +3090,15 @@
       @if (state.Verbatim is { } verbatim)
       {
         <code class="declared-row__verbatim" aria-label="@($"Condition for {target.Subject}")">@verbatim</code>
+        @if (At25)
+        {
+          @* #1039: a hand-written 25 when the tree cannot hold is editable as text —
+             written verbatim, judged by the registry at the desk; never rewritten. *@
+          <input type="text" class="node-field__input declared-row__condition-text"
+                 value="@verbatim"
+                 aria-label="@($"Condition text for {target.Subject}")"
+                 @onchange="@(e => SetConditionTextAsync(target, e.Value?.ToString()))" />
+        }
         <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" aria-label="@($"Clear condition for {target.Subject}")"
                       IconStart="@(new Icons.Regular.Size20.Dismiss())"
                       @onclick="() => ClearConditionAsync(target)">clear</FluentButton>
@@ -3305,11 +3314,11 @@
           {
             @* A loaded condition naming something not offered
                here — shown as itself, never rewritten. *@
-            <FluentOption TOption="string" Value="@clause.Operand">when @clause.Operand</FluentOption>
+            <FluentOption TOption="string" Value="@clause.Operand">when @OperandDisplay(clause.Operand)</FluentOption>
           }
           @foreach (var candidate in operands)
           {
-            <FluentOption TOption="string" Value="@candidate.Key">when @candidate.Key</FluentOption>
+            <FluentOption TOption="string" Value="@candidate.Key">when @OperandDisplay(candidate.Key)</FluentOption>
           }
         </FluentSelect>
 
@@ -3336,7 +3345,7 @@
                 <FluentOption TOption="string" Value="">a number…</FluentOption>
                 @foreach (var candidate in arithmeticOperands)
                 {
-                  <FluentOption TOption="string" Value="@candidate.Key">@candidate.Key</FluentOption>
+                  <FluentOption TOption="string" Value="@candidate.Key">@OperandDisplay(candidate.Key)</FluentOption>
                 }
               </FluentSelect>
               @if (arithmetic.RightIsLiteral)
@@ -4366,7 +4375,7 @@
 
     private string CollectionDirectory(string collectionId) => $"{DataRoot}{collectionId}/";
 
-    /// <summary>How a node fans this folder: snippet:&lt;folder&gt; at 25, data:&lt;collection&gt; below.</summary>
+    /// <summary>How a node fans this folder: snippet.&lt;folder&gt; at 25, data:&lt;collection&gt; below.</summary>
     private string FanRef(string collectionId) => At25 ? PF.TemplateObjectReference.Snippet(collectionId) : $"data:{collectionId}";
 
     /// <summary>The folder a forEach names, under either spelling; null for an input fan or none.</summary>
@@ -4842,7 +4851,7 @@
         }
         else if (spec.Folder)
         {
-            <p class="muted-text">Not fanned or iterated by anything yet — a node fans it as <code>snippet:@spec.Id</code>; a template iterates it as <code>{{ for s in snippet.@spec.Id }}</code>.</p>
+            <p class="muted-text">Not fanned or iterated by anything yet — a node fans it as <code>snippet.@spec.Id</code>; a template iterates it as <code>{{ for s in snippet.@spec.Id }}</code>.</p>
         }
         else
         {
@@ -5068,7 +5077,7 @@
         var id = newItemId?.Trim() ?? string.Empty;
         var name = newItemName?.Trim() ?? string.Empty;
 
-        if (!ItemIdPattern.IsMatch(id))
+        if (At25 ? !PF.WorkflowDeclaredIds.IsValid(id) : !ItemIdPattern.IsMatch(id))
         {
             newItemError = "The id must be lowercase letters, digits, '-' or '_', starting with a letter or digit.";
             return;
@@ -6456,7 +6465,10 @@
 
             // C5 (#1011): the validator's content-channel rules (ValidateInput), word
             // for word, at every version — said here before the registry says them.
-            errors.AddRange(inputs.SelectMany(ChannelErrors));
+            if (!At25)
+            {
+                errors.AddRange(inputs.SelectMany(ChannelErrors));
+            }
 
             errors.AddRange(inputs.SelectMany(input => ElementChainErrors($"Input '{input.Id}'", input.Items)));
 
@@ -6542,7 +6554,8 @@
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(conditioned.When))
+            // v25 (#1039): the registry judges a 25 when at the desk (RegistryDesk25).
+            if (At25 || string.IsNullOrWhiteSpace(conditioned.When))
             {
                 continue;
             }
@@ -6621,7 +6634,8 @@
 
             var nodeWhen = NodeWhenValue(node);
 
-            if (string.IsNullOrWhiteSpace(nodeWhen))
+            // v25 (#1039): the registry judges a 25 when at the desk (RegistryDesk25).
+            if (At25 || string.IsNullOrWhiteSpace(nodeWhen))
             {
                 continue;
             }
@@ -6805,28 +6819,32 @@
         {
             foreach (var removed in removedNodeIds.Where(id => ConditionText.ReadsNode(result.When, id)).Order(StringComparer.Ordinal))
             {
-                errors.Add($"Deliverable '{result.Id}' tests 'node:{removed}', which is removed; change that deliverable's condition or restore the node.");
+                errors.Add($"Deliverable '{result.Id}' tests '{NodeRef(removed)}', which is removed; change that deliverable's condition or restore the node.");
             }
         }
 
-        errors.AddRange(results
-            .Where(result => string.IsNullOrWhiteSpace(result.Label))
-            .Select(result => $"Result '{result.Id}' has no label."));
-
-        foreach (var shared in results.GroupBy(result => result.Node).Where(group => group.Count() > 1))
+        // v25 (#1039): at 25 the registry says these (RegistryDesk25); the mirror is ≤24's.
+        if (!At25)
         {
-            var owners = shared.Select(result => $"'{result.Id}'").ToList();
-            errors.Add($"Results {string.Join(" and ", owners)} share node '{shared.Key}': each deliverable needs its own aggregator.");
+            errors.AddRange(results
+                .Where(result => string.IsNullOrWhiteSpace(result.Label))
+                .Select(result => $"Result '{result.Id}' has no label."));
+
+            foreach (var shared in results.GroupBy(result => result.Node).Where(group => group.Count() > 1))
+            {
+                var owners = shared.Select(result => $"'{result.Id}'").ToList();
+                errors.Add($"Results {string.Join(" and ", owners)} share node '{shared.Key}': each deliverable needs its own aggregator.");
+            }
+
+            var aggregatorIds = EffectiveNodes
+                .Where(node => node.Aggregate != null)
+                .Select(node => NodeRef(node.Id))
+                .ToHashSet(StringComparer.Ordinal);
+
+            errors.AddRange(results
+                .Where(result => !aggregatorIds.Contains(result.Node))
+                .Select(result => $"Result '{result.Id}' must reference an aggregator node ('{result.Node}' is not one)."));
         }
-
-        var aggregatorIds = EffectiveNodes
-            .Where(node => node.Aggregate != null)
-            .Select(node => NodeRef(node.Id))
-            .ToHashSet(StringComparer.Ordinal);
-
-        errors.AddRange(results
-            .Where(result => !aggregatorIds.Contains(result.Node))
-            .Select(result => $"Result '{result.Id}' must reference an aggregator node ('{result.Node}' is not one)."));
 
         // v15 (#731): the desk's mirror — a raw prompt (from a fork or draft)
         // below 15 is refused by name, the validator's sentence plus the pointer.
@@ -7079,23 +7097,9 @@
                     errors.Add($"Result '{result.Id}' references {{{{profile:signature}}}} more than once across its macros; a deliverable is signed once.");
                 }
 
-                // The result's check shape. v25 (C1 #1007): the check is node.<id>
-                // naming a node whose format is computed; the ≤24 kind rule stays below 25.
-                if (result.Check is { } check && EffectiveSpecVersion >= 25)
-                {
-                    var checkNodeId = check.StartsWith("node.", StringComparison.Ordinal) ? check["node.".Length..]
-                        : check.StartsWith("node:", StringComparison.Ordinal) ? check["node:".Length..] : null;
-                    if (checkNodeId == null)
-                    {
-                        errors.Add($"Deliverable '{result.Id}' check '{check}' must be a node.<id> reference.");
-                    }
-                    else if (EffectiveNodes.FirstOrDefault(n => n.Id == checkNodeId) is not { } checkNode
-                        || (FormatOptions.FirstOrDefault(f => f.Id == checkNode.Format)?.Computed != true && !FormatIsTrustedUnseen(checkNode.Format)))
-                    {
-                        errors.Add($"Deliverable '{result.Id}' check names '{checkNodeId}', whose format is not computed.");
-                    }
-                }
-                else if (result.Check is { } check24)
+                // The result's check shape — the ≤24 kind rule; at 25 the registry's
+                // own sentence is the desk's (RegistryDesk25, #1039).
+                if (!At25 && result.Check is { } check24)
                 {
                     if (!check24.StartsWith("node:", StringComparison.Ordinal))
                     {
@@ -7171,292 +7175,81 @@
                 .Select(n => $"Template '{n.Id}' declares reproducible; a template is deterministic by construction, and the claim is not its to make."));
         }
 
-        // ----- v25 (C1 #1007): the desk's mirror of the A4 node rules and the with rules -----
-        if (EffectiveSpecVersion >= 25)
-        {
-            errors.AddRange(NodeFormatErrors());
-        }
-
         return errors;
     }
 
     /// <summary>
-    /// v25 (C1 #1007): the validator's node rules at 25 (WorkflowPackageValidator.V25
-    /// ValidateNodesAt25) and the with rules (TemplateReferenceWalker.WalkParameters),
-    /// word for word, said at the desk before the registry says them. The format
-    /// facts come from the picker's options (the catalogue + the package's own);
-    /// with no catalogue, a catalogue id is taken on trust, as the validator does
-    /// without one.
+    /// v25 (#1039, design § 16): at 25 the desk IS the registry's validator, run here
+    /// over the composed package and the catalogue the API served (bound back by
+    /// EditorPackageWalk.CatalogFrom) — the same sentences the publish would say,
+    /// by construction, where every earlier version mirrors them by hand. With no
+    /// catalogue in hand a catalogue id is taken on trust, as the validator takes
+    /// it: its one sentence saying the catalogue is unavailable is the only one
+    /// dropped. A manifest that does not read is its one sentence.
     /// </summary>
-    private IEnumerable<string> NodeFormatErrors()
+    private (List<string> Errors, List<string> Warnings) RegistryDesk25()
     {
-        var errors = new List<string>();
-        var options = FormatOptions;
-        var promptIds = EffectivePrompts.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
-
-        foreach (var node in EffectiveNodes)
+        var accepted = PF.WorkflowPackageValidator.AcceptedSpecVersions.Append(MigratableSpecVersion).Distinct().ToList();
+        PF.WorkflowPackageManifest manifest;
+        try
         {
-            if (node.Aggregate != null)
-            {
-                foreach (var (name, present) in new[] { ("format", node.Format != null), ("prompt", node.Prompt != null), ("with", node.With != null), ("onInvalid", node.OnInvalid != null) })
-                {
-                    if (present)
-                    {
-                        errors.Add($"Node '{node.Id}' aggregates and must not declare {name}; an aggregator is structural.");
-                    }
-                }
-
-                continue;
-            }
-
-            if (string.IsNullOrWhiteSpace(node.Format))
-            {
-                errors.Add($"Node '{node.Id}' must declare a format at specVersion 25.");
-                continue;
-            }
-
-            var format = options.FirstOrDefault(f => f.Id == node.Format);
-            if (format == null)
-            {
-                // With no catalogue a non-local id is taken on trust (the validator's
-                // own stance without one); its facts cannot be judged here.
-                if (!FormatIsTrustedUnseen(node.Format))
-                {
-                    errors.Add($"Node '{node.Id}' declares format '{node.Format}', which is neither a package format nor a catalogue format.");
-                }
-
-                continue;
-            }
-
-            if (format.Computed && node.Prompt != null)
-            {
-                errors.Add($"Node '{node.Id}' declares prompt, but format '{format.Id}' is computed and takes none.");
-            }
-            else if (!format.Computed && string.IsNullOrWhiteSpace(node.Prompt))
-            {
-                errors.Add($"Node '{node.Id}' must declare a prompt; format '{format.Id}' is {format.Producer}.");
-            }
-            else if (node.Prompt != null && !promptIds.Contains(node.Prompt))
-            {
-                errors.Add($"Node '{node.Id}' names prompt '{node.Prompt}', which the package does not declare.");
-            }
-
-            if (!format.Validatable && node.OnInvalid != null)
-            {
-                errors.Add($"Node '{node.Id}' declares onInvalid, but format '{format.Id}' is text and validates nothing.");
-            }
-            else if (format.Validatable && string.IsNullOrWhiteSpace(node.OnInvalid))
-            {
-                errors.Add($"Node '{node.Id}' must declare onInvalid ({string.Join(" | ", PF.WorkflowOnInvalid.All)}); format '{format.Id}' is validated.");
-            }
-            else if (node.OnInvalid != null && !PF.WorkflowOnInvalid.IsKnown(node.OnInvalid))
-            {
-                errors.Add($"Node '{node.Id}' onInvalid '{node.OnInvalid}' is not one of {string.Join(", ", PF.WorkflowOnInvalid.All)}.");
-            }
-
-            if (node.FailIfEmpty != null && string.IsNullOrWhiteSpace(node.FailIfEmpty))
-            {
-                errors.Add($"Node '{node.Id}' failIfEmpty must not be blank.");
-            }
-            else if (node.FailIfEmpty != null && format.Producer is PF.WorkflowFormatProducers.Rendered or PF.WorkflowFormatProducers.Computed)
-            {
-                errors.Add($"Node '{node.Id}' declares failIfEmpty, but format '{format.Id}' is {format.Producer} and has no reply to judge.");
-            }
-
-            // The with rules: every supplied name declared, every declared name
-            // supplied, and a node operand naming a node of the required format.
-            var subject = $"Node '{node.Id}'";
-            var declared = string.Join(", ", format.Parameters.Select(p => p.Name));
-            var with = node.With ?? new Dictionary<string, JsonElement>(StringComparer.Ordinal);
-
-            if (format.Parameters.Count == 0 && with.Count > 0)
-            {
-                errors.Add($"{subject} declares with, but format '{format.Id}' takes no parameters.");
-            }
-
-            foreach (var name in with.Keys.Where(n => format.Parameters.All(p => p.Name != n)))
-            {
-                if (format.Parameters.Count > 0)
-                {
-                    errors.Add($"{subject} with '{name}' names no parameter of the format (parameters: {declared}).");
-                }
-            }
-
-            foreach (var parameter in format.Parameters)
-            {
-                if (!with.TryGetValue(parameter.Name, out var value))
-                {
-                    errors.Add($"{subject} with must supply parameter '{parameter.Name}'.");
-                    continue;
-                }
-
-                // The walker's sentences (TemplateReferenceWalker.Parameters), word for word
-                // where the desk can judge; an input.<id> reference is left to the registry.
-                var prefix = $"{subject} with '{parameter.Name}'";
-                var text = value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-                if (parameter.Kind == PF.WorkflowFormatParameterKinds.Node)
-                {
-                    if (text == null || !text.StartsWith("node.", StringComparison.Ordinal))
-                    {
-                        errors.Add($"{prefix} must be a bare node reference (node.<id>); got {value.GetRawText()}.");
-                    }
-                    else
-                    {
-                        var operandId = text["node.".Length..];
-                        var target = EffectiveNodes.FirstOrDefault(n => n.Id == operandId);
-                        if (target == null)
-                        {
-                            errors.Add($"{prefix} names node '{operandId}', which the package does not declare.");
-                        }
-                        else if (parameter.Format != null && target.Format != parameter.Format)
-                        {
-                            errors.Add($"{prefix} names node '{operandId}' of format '{target.Format}', but the parameter requires format '{parameter.Format}'.");
-                        }
-                    }
-                }
-                else if (parameter.Kind == PF.WorkflowFormatParameterKinds.Values)
-                {
-                    if (value.ValueKind == JsonValueKind.Array)
-                    {
-                        // The v10 classifier's desk rule, kept at 25 (explicit init: born with none).
-                        var count = value.GetArrayLength();
-                        if (count < 2)
-                        {
-                            errors.Add($"Node '{node.Id}' declares {count} value{(count == 1 ? string.Empty : "s")}; a classifier must declare at least two values it may answer.");
-                        }
-                    }
-                    else if (text == null || !text.StartsWith("input.", StringComparison.Ordinal))
-                    {
-                        errors.Add($"{prefix} must be a list of snake_case values or an input.<id> reference to an enum input; got {value.GetRawText()}.");
-                    }
-                }
-                else if (text == null)
-                {
-                    errors.Add($"{prefix} must be a text literal or an input.<id> reference to a text input; got {value.GetRawText()}.");
-                }
-            }
+            manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", accepted);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return (new List<string> { ex.Message }, new List<string>());
         }
 
-        return errors;
+        var result = PF.WorkflowPackageValidator.Validate(
+            manifest,
+            AssembleFiles(),
+            new Dictionary<string, string>(StringComparer.Ordinal),
+            null,
+            EditorPackageWalk.CatalogFrom(formatsCatalog),
+            accepted);
+
+        var errors = formatsCatalog is null
+            ? result.Errors.Where(e => !e.StartsWith("The format catalogue is not available", StringComparison.Ordinal)).ToList()
+            : result.Errors;
+
+        return (errors.Distinct(StringComparer.Ordinal).ToList(), result.Warnings.Distinct(StringComparer.Ordinal).ToList());
     }
 
-    /// <summary>With no catalogue loaded, a format id that is not the package's own is a catalogue id taken on trust.</summary>
-    private bool FormatIsTrustedUnseen(string? formatId) =>
-        formatsCatalog == null && formatId != null && LiveFormats.All(f => f.Id != formatId);
+    /// <summary>v25 (#1039): a whitespace failIfEmpty the compose drops — the registry's own sentence, said over the editor's state.</summary>
+    private IEnumerable<string> BlankFailIfEmptyErrors() =>
+        EffectiveNodes
+            .Where(node => node.FailIfEmpty is { } text && text.Length > 0 && string.IsNullOrWhiteSpace(text))
+            .Select(node => $"Node '{node.Id}' failIfEmpty must not be blank.");
+
+    /// <summary>v25 (C1 #1007 → #1039): a removed format a node still names — pending state the registry never sees.</summary>
+    private IEnumerable<string> RemovedFormatErrors() =>
+        removedFormatIds
+            .SelectMany(id => FormatReferencedBy(id).Select(nodeId => (id, nodeId)))
+            .Select(pair => $"Format '{pair.id}' is removed but node '{pair.nodeId}' still names it as its format; change that node's format first.");
 
     /// <summary>
-    /// v25 (C1 #1007): the Formats pane's desk rules — each package format's body
-    /// as the registry reads it (the sentences shown under its editor), and a
-    /// removed format still named by a node (the SchemaErrors idiom).
+    /// v25 (#1039): the builder's unfinished drafts, which compose nothing and so
+    /// are the registry's to miss — said at the desk in the editor's own words,
+    /// for every condition target (a deliverable's, a node's, an instance's).
     /// </summary>
-    /// <summary>
-    /// v25 C2 (#1008): the desk's mirror of the registry's snippet rules
-    /// (WorkflowPackageValidator.V25 ResolveSnippetsAt25 and the forEach
-    /// resolution), word for word — a snippet or folder id snake_case; a folder
-    /// item's when parsed, refused when it reads anything but an input (node:,
-    /// item:, arithmetic), then each clause against the declared inputs; a
-    /// node's forEach a declared folder spelled snippet:&lt;folder&gt; (or an array
-    /// input), never data:. Nothing below 25.
-    /// </summary>
-    private IEnumerable<string> SnippetErrors()
+    private IEnumerable<string> DraftConditionErrors()
     {
-        if (!At25)
+        foreach (var (key, draft) in conditionDrafts.OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
-            yield break;
-        }
-
-        var folders = EffectiveCollections.ToList();
-        var files = EffectiveScalars.Where(s => !ScalarIsRemoved(s)).ToList();
-
-        foreach (var id in folders.Select(f => f.Id).Concat(files.Select(f => f.Id)))
-        {
-            if (!PF.WorkflowDeclaredIds.IsValid(id))
-            {
-                yield return SnippetIdSentence(id);
-            }
-        }
-
-        foreach (var folder in folders)
-        {
-            var conditioned = folder.Items
-                .Where(item => !removedFiles.Contains(item.File))
-                .Select(item => (item.Id, When: ItemWhenValue(item)))
-                .Concat(addedItems.Where(a => a.Collection == folder.Id).Select(a => (a.Id, a.When)))
-                .Where(pair => !string.IsNullOrWhiteSpace(pair.When));
-
-            foreach (var (itemId, when) in conditioned)
-            {
-                var prefix = $"Snippet folder '{folder.Id}' item '{itemId}' condition";
-
-                if (!PF.WorkflowResultConditions.TryParseExpression(when!, out var expression, out var syntaxError) || expression is null)
-                {
-                    yield return $"{prefix} {syntaxError}";
-                    continue;
-                }
-
-                var offending = expression.Leaves.FirstOrDefault(leaf => leaf.IsNodeValue || leaf.IsItemValue || leaf.IsArithmetic);
-
-                if (offending is not null)
-                {
-                    yield return $"{prefix} reads '{offending.Operand}'; a folder item's when reads inputs only, so the folder's size is known at job start (the template's own if gates anything else).";
-                    continue;
-                }
-
-                foreach (var clause in expression.Leaves)
-                {
-                    if (clause.PathDepth >= 2)
-                    {
-                        continue;
-                    }
-
-                    var tested = EffectiveInputs.FirstOrDefault(input => input.Id == clause.InputId);
-
-                    if (tested == null)
-                    {
-                        yield return $"{prefix} reads undeclared input '{clause.InputId}'.";
-                        break;
-                    }
-
-                    if (V9ConditionComplaint(prefix, clause, tested) is { } complaint)
-                    {
-                        yield return complaint;
-                        break;
-                    }
-                }
-            }
-        }
-
-        var folderIds = folders.Select(f => f.Id).ToHashSet(StringComparer.Ordinal);
-        var fileIds = files.Select(f => f.Id).ToHashSet(StringComparer.Ordinal);
-
-        foreach (var node in EffectiveNodes)
-        {
-            if (node.ForEach is not { } forEach)
+            if (!IsUnwritable(draft))
             {
                 continue;
             }
 
-            if (forEach.StartsWith("data:", StringComparison.Ordinal))
-            {
-                yield return $"Node '{node.Id}' forEach '{forEach}' is retired at specVersion 25; fan a snippet folder (snippet:<folder>) or an array input (input:<id>).";
-            }
-            else if (PF.WorkflowFanSources.IsSnippetFan(forEach))
-            {
-                var folderId = PF.WorkflowFanSources.CollectionIdOf(forEach);
+            var subject = key.StartsWith("node-when:", StringComparison.Ordinal) ? $"Node '{key["node-when:".Length..]}' condition"
+                : key.StartsWith("node-macro:", StringComparison.Ordinal) && key.Split('\n') is [var macroNode, var macroIndex]
+                    ? $"Node '{macroNode["node-macro:".Length..]}' macro {macroIndex} condition"
+                : key.Split('\n') is [var resultId, var macroId] ? $"Deliverable '{resultId}' macro '{macroId}' condition"
+                : $"Deliverable '{key}' condition";
 
-                if (fileIds.Contains(folderId))
-                {
-                    yield return $"Node '{node.Id}' forEach fans snippet '{folderId}', which is a file, not a folder.";
-                }
-                else if (!folderIds.Contains(folderId))
-                {
-                    yield return $"Node '{node.Id}' forEach fans snippet folder '{folderId}', which the package does not declare.";
-                }
-            }
-            else if (!forEach.StartsWith(WorkflowInputFans.Prefix, StringComparison.Ordinal))
-            {
-                yield return $"Node '{node.Id}' forEach '{forEach}' must be snippet:<folder> or input:<id>.";
-            }
+            yield return ConditionBuilderModel.IsComplete(draft)
+                ? $"{subject} has a clause the format cannot read; finish it or remove it."
+                : $"{subject} has a clause with no operand chosen.";
         }
     }
 
@@ -7518,415 +7311,6 @@
         {
             yield return $"Input '{input.Id}' declares expectedContent 'ambient-note', which is only for a text slot or an array of text.";
         }
-    }
-
-    /// <summary>
-    /// v25 C4 (#1010): "every reference resolves" — the desk's mirror of the registry's
-    /// template rules at 25: the retired keys (a prompt's variables, a prompt's raw, a
-    /// node's bindings) in the validator's sentences, then every walked template's
-    /// own sentences from the walker (an undeclared object, a member outside the
-    /// closed set, a bare read, a line that does not parse), de-duplicated as the
-    /// validator de-duplicates them. Warnings are not refusals; the Reads list shows them.
-    /// </summary>
-    private IEnumerable<string> TemplateErrors25()
-    {
-        if (!At25 || content == null)
-        {
-            yield break;
-        }
-
-        const string objects = "a template reads objects (input.<id>, node.<id>.text, snippet.<id>.text, item.<member>, macro.<id>.text) and its reads are derived";
-
-        foreach (var prompt in EffectivePrompts)
-        {
-            if (EffectiveVariables(prompt).Any())
-            {
-                yield return $"Prompt '{prompt.Id}' declares variables, which are retired at specVersion 25; {objects}.";
-            }
-
-            if (LoadedPromptDeclaresRaw(prompt.Id))
-            {
-                yield return $"Prompt '{prompt.Id}' declares raw, which is retired at specVersion 25; escape a literal '{{{{' as {{{{ \"{{{{\" }}}} or wrap it in {{%{{ … }}%}}.";
-            }
-        }
-
-        foreach (var node in EffectiveNodes.Where(n => LoadedNodeDeclaresBindings(n.Id)))
-        {
-            yield return $"Node '{node.Id}' declares bindings, which are retired at specVersion 25; {objects}.";
-        }
-
-        if (PackageWalk is { } walk)
-        {
-            var said = new HashSet<string>(StringComparer.Ordinal);
-
-            foreach (var template in walk.Templates)
-            {
-                foreach (var error in template.References.Errors)
-                {
-                    if (said.Add(error))
-                    {
-                        yield return error;
-                    }
-                }
-            }
-        }
-    }
-
-    /// <summary>Whether the loaded manifest's prompt carries a raw key at all (the validator refuses either value).</summary>
-    private bool LoadedPromptDeclaresRaw(string promptId) =>
-        content != null
-        && content.Manifest.TryGetProperty("prompts", out var promptsArray)
-        && promptsArray.ValueKind == JsonValueKind.Array
-        && promptsArray.EnumerateArray().Any(p =>
-            p.ValueKind == JsonValueKind.Object
-            && p.TryGetProperty("id", out var id) && id.GetString() == promptId
-            && (p.TryGetProperty("raw", out _) || p.TryGetProperty("Raw", out _)));
-
-    /// <summary>Whether the loaded manifest's node carries a bindings key at all.</summary>
-    private bool LoadedNodeDeclaresBindings(string nodeId) =>
-        content != null
-        && content.Manifest.TryGetProperty("nodes", out var nodesArray)
-        && nodesArray.ValueKind == JsonValueKind.Array
-        && nodesArray.EnumerateArray().Any(n =>
-            n.ValueKind == JsonValueKind.Object
-            && n.TryGetProperty("id", out var id) && id.GetString() == nodeId
-            && (n.TryGetProperty("bindings", out _) || n.TryGetProperty("Bindings", out _)));
-
-    /// <summary>
-    /// v25 C3 (#1009): the desk's mirror of the registry's macro rules at 25
-    /// (WorkflowPackageValidator.V25: the library, ValidateMacroUseAt25, the inline
-    /// slot gate, the unused macro, the deliverable instances), word for word.
-    /// Nothing below 25 — the ≤24 blocks keep their own sentences there.
-    /// </summary>
-    private IEnumerable<string> MacroErrors25()
-    {
-        if (!At25)
-        {
-            yield break;
-        }
-
-        var macros = EffectiveMacros;
-        var macroIds = macros.Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
-        var walk = PackageWalk;
-
-        // ----- the library -----
-        var seenMacroIds = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var macro in macros)
-        {
-            if (!PF.WorkflowDeclaredIds.IsValid(macro.Id))
-            {
-                yield return $"Macro id '{macro.Id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
-            }
-
-            if (!seenMacroIds.Add(macro.Id))
-            {
-                yield return $"Duplicate macro id '{macro.Id}'.";
-            }
-
-            if (string.IsNullOrWhiteSpace(macro.Label))
-            {
-                yield return $"Macro '{macro.Id}' must declare a label.";
-            }
-
-            if (string.IsNullOrWhiteSpace(MacroInstruction(macro)))
-            {
-                yield return $"Macro '{macro.Id}' must declare an instruction at specVersion 25; placed text tells the model when to emit its marker.";
-            }
-
-            if (AddedMacroForFile(macro.File) == null && !content!.Files.ContainsKey(macro.File))
-            {
-                yield return $"Macro '{macro.Id}' file '{macro.File}' is missing from the package.";
-            }
-            else if (string.IsNullOrWhiteSpace(GetText(macro.File)))
-            {
-                yield return $"Macro '{macro.Id}' file '{macro.File}' is empty.";
-            }
-        }
-
-        // ----- node instances -----
-        var placed = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var node in EffectiveNodes)
-        {
-            var nodeMacros = EffectiveNodeMacros(node);
-            if (nodeMacros.Count == 0)
-            {
-                continue;
-            }
-
-            if (node.Aggregate != null)
-            {
-                yield return $"Node '{node.Id}' aggregates and must not place macros; place them on the nodes it aggregates or on the deliverable.";
-                continue;
-            }
-
-            var fanItems = NodeFanItems(node);
-            var format = FormatOptions.FirstOrDefault(f => f.Id == node.Format);
-            var identities = new HashSet<string>(StringComparer.Ordinal);
-
-            for (var index = 0; index < nodeMacros.Count; index++)
-            {
-                var entry = nodeMacros[index];
-                var where = $"Node '{node.Id}' macro '{entry.Id}'";
-
-                // #571: a removed macro's instances leave in the same publish.
-                if (removedMacroIds.Contains(entry.Id))
-                {
-                    continue;
-                }
-
-                placed.Add(entry.Id);
-
-                if (!macroIds.Contains(entry.Id))
-                {
-                    yield return $"{where} is not a declared macro.";
-                    continue;
-                }
-
-                if (entry.At != null && entry.At != PF.WorkflowNodeMacroSpec.Before && entry.At != PF.WorkflowNodeMacroSpec.After)
-                {
-                    yield return $"{where} declares at '{entry.At}'; a node instance is placed 'before' or 'after' the node's output.";
-                    continue;
-                }
-
-                var position = entry.IsAfter ? "after" : "before";
-                if (!identities.Add($"{entry.Id}\n{position}\n{entry.ForItem}"))
-                {
-                    yield return $"{where} is placed twice ({position}{(entry.ForItem is { } dup ? $", forItem '{dup}'" : "")}); one identity (id, at, forItem) once — two gates to one text is one instance with when: a or b.";
-                    continue;
-                }
-
-                if (format != null && !format.OutputMacros)
-                {
-                    yield return $"{where} is placed {position} the output, but format '{format.Id}' takes no output macros; only a text format with outputMacros may.";
-                }
-
-                if (entry.ForItem != null)
-                {
-                    if (fanItems.Count == 0)
-                    {
-                        yield return $"{where} anchors to fan item '{entry.ForItem}', but '{node.Id}' does not fan a snippet folder.";
-                    }
-                    else if (fanItems.All(item => item.Id != entry.ForItem))
-                    {
-                        yield return $"{where} anchors to fan item '{entry.ForItem}', which the folder fanned by '{node.Id}' does not contain (items: {string.Join(", ", fanItems.Select(item => item.Id))}).";
-                    }
-                }
-
-                var macroPrefix = $"{where} condition";
-
-                if (conditionDrafts.TryGetValue($"node-macro:{node.Id}\n{index}", out var macroDraft) && IsUnwritable(macroDraft))
-                {
-                    yield return ConditionBuilderModel.IsComplete(macroDraft)
-                        ? $"{macroPrefix} has a clause the format cannot read; finish it or remove it."
-                        : $"{macroPrefix} has a clause with no operand chosen.";
-                    continue;
-                }
-
-                foreach (var complaint in ClauseComplaints25(macroPrefix, entry.When, node.Id, fanItems))
-                {
-                    yield return complaint;
-                }
-            }
-        }
-
-        // ----- inline slots: the format gate -----
-        if (walk is not null)
-        {
-            foreach (var node in EffectiveNodes.Where(n => n.Aggregate == null && n.Prompt != null))
-            {
-                var slots = walk.PromptReadsOf(node.Id);
-                if (slots.Count == 0)
-                {
-                    continue;
-                }
-
-                var format = FormatOptions.FirstOrDefault(f => f.Id == node.Format);
-                if (format != null && !format.OutputMacros)
-                {
-                    yield return $"Node '{node.Id}' reads macro.{slots.Order(StringComparer.Ordinal).First()}.prompt (a slot), but format '{format.Id}' takes no output macros; only a text format with outputMacros may.";
-                }
-            }
-        }
-
-        // ----- deliverable instances -----
-        var fanningNodes = EffectiveNodes.Where(n => n.ForEach != null).Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
-        foreach (var result in EffectiveResults)
-        {
-            var entries = result.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>();
-            var identities = new HashSet<string>(StringComparer.Ordinal);
-            var signatureReaders = 0;
-
-            foreach (var entry in entries)
-            {
-                var where = $"Deliverable '{result.Id}' macro '{entry.Id}'";
-
-                if (removedMacroIds.Contains(entry.Id))
-                {
-                    continue;
-                }
-
-                placed.Add(entry.Id);
-
-                if (!macroIds.Contains(entry.Id))
-                {
-                    yield return $"{where} is not a declared macro.";
-                    continue;
-                }
-
-                if (entry.At == null)
-                {
-                    yield return $"{where} must declare at (prepend | append).";
-                    continue;
-                }
-
-                if (!entry.IsPrepend && !entry.IsAppend)
-                {
-                    yield return $"{where} declares at '{entry.At}'; a deliverable instance is placed 'prepend' or 'append'.";
-                    continue;
-                }
-
-                if (!identities.Add($"{entry.Id}\n{entry.At}"))
-                {
-                    yield return $"{where} is placed twice ({entry.At}); one identity (id, at) once.";
-                    continue;
-                }
-
-                if (walk is not null)
-                {
-                    foreach (var readNode in walk.MacroEdges(entry.Id).Where(fanningNodes.Contains).Order(StringComparer.Ordinal))
-                    {
-                        yield return $"{where} reads node '{readNode}', which fans; a deliverable macro reads scalar nodes and aggregators — place the macro on the node to read its items.";
-                    }
-
-                    if (walk.MacroReadsSignature(entry.Id))
-                    {
-                        signatureReaders++;
-                    }
-                }
-
-                var macroPrefix = $"{where} condition";
-
-                if (conditionDrafts.TryGetValue($"{result.Id}\n{entry.Id}", out var macroDraft) && IsUnwritable(macroDraft))
-                {
-                    yield return ConditionBuilderModel.IsComplete(macroDraft)
-                        ? $"{macroPrefix} has a clause the format cannot read; finish it or remove it."
-                        : $"{macroPrefix} has a clause with no operand chosen.";
-                    continue;
-                }
-
-                foreach (var complaint in ClauseComplaints25(macroPrefix, entry.When, null, Array.Empty<WorkflowManifestReader.DataItemView>()))
-                {
-                    yield return complaint;
-                }
-            }
-
-            if (result.Signature == true && signatureReaders > 0)
-            {
-                yield return $"Deliverable '{result.Id}' declares signature and places a macro that reads profile.signature; a deliverable is signed once.";
-            }
-            else if (signatureReaders > 1)
-            {
-                yield return $"Deliverable '{result.Id}' places more than one macro that reads profile.signature; a deliverable is signed once.";
-            }
-        }
-
-        // ----- unused: placed nowhere and read by no template -----
-        foreach (var macro in macros)
-        {
-            var read = walk is not null && walk.Templates.Any(t => t.References.MacroTexts.Contains(macro.Id) || t.References.MacroPrompts.Contains(macro.Id));
-            if (!placed.Contains(macro.Id) && !read)
-            {
-                yield return $"Macro '{macro.Id}' is declared but never placed or read; place it on a node or a deliverable, or read macro.{macro.Id}.text / macro.{macro.Id}.prompt.";
-            }
-        }
-    }
-
-    /// <summary>
-    /// The node-level when grammar at 25 for a macro instance: a node: operand against
-    /// an enum-format node, item:id only on a node fanning a snippet folder (<paramref name="nodeId"/>
-    /// null = a deliverable, which never reads an item), inputs by the v9 rules.
-    /// </summary>
-    private IEnumerable<string> ClauseComplaints25(string prefix, string? when, string? nodeId, IReadOnlyList<WorkflowManifestReader.DataItemView> fanItems)
-    {
-        if (string.IsNullOrWhiteSpace(when))
-        {
-            yield break;
-        }
-
-        if (!PF.WorkflowResultConditions.TryParseExpression(when, out var expression, out var parseError) || expression is null)
-        {
-            yield return $"{prefix} {parseError}";
-            yield break;
-        }
-
-        foreach (var clause in expression.Leaves)
-        {
-            if (clause.IsItemValue)
-            {
-                if (nodeId is null)
-                {
-                    yield return $"{prefix} reads '{clause.Operand}', but only a node instance on a node that fans a snippet folder reads an item.";
-                }
-                else if (fanItems.Count == 0)
-                {
-                    yield return $"{prefix} reads '{clause.Operand}', but '{nodeId}' does not fan a snippet folder.";
-                }
-                else if (ItemClauseComplaint(prefix, clause, nodeId, fanItems) is { Length: > 0 } itemComplaint)
-                {
-                    yield return itemComplaint;
-                }
-
-                continue;
-            }
-
-            if (clause.IsNodeValue)
-            {
-                if (NodeClauseComplaint(prefix, clause) is { Length: > 0 } nodeComplaint)
-                {
-                    yield return nodeComplaint;
-                }
-
-                continue;
-            }
-
-            if (clause.IsArithmetic || clause.PathDepth >= 2)
-            {
-                continue;
-            }
-
-            var tested = EffectiveInputs.FirstOrDefault(input => input.Id == clause.InputId);
-
-            if (tested == null)
-            {
-                yield return $"{prefix} reads undeclared input '{clause.InputId}'.";
-                continue;
-            }
-
-            if (V9ConditionComplaint(prefix, clause, tested) is { } complaint)
-            {
-                yield return complaint;
-            }
-        }
-    }
-
-    private IEnumerable<string> FormatErrors()
-    {
-        if (EffectiveSpecVersion < 25)
-        {
-            return Array.Empty<string>();
-        }
-
-        var errors = new List<string>();
-        foreach (var format in LiveFormats)
-        {
-            errors.AddRange(FormatBodyErrors(format.Id, GetText(format.File)));
-        }
-
-        errors.AddRange(removedFormatIds
-            .SelectMany(id => FormatReferencedBy(id).Select(nodeId => (id, nodeId)))
-            .Select(pair => $"Format '{pair.id}' is removed but node '{pair.nodeId}' still names it as its format; change that node's format first."));
-
-        return errors;
     }
 
     /// <summary>
@@ -9823,7 +9207,7 @@
     /// fan a data: collection (an input fan's items are the caller's).</summary>
     private IReadOnlyList<WorkflowManifestReader.DataItemView> NodeFanItems(WorkflowManifestReader.NodeView node)
     {
-        // data:<collection> below 25, snippet:<folder> at 25 (#1008) — one folder, two spellings.
+        // data:<collection> below 25, snippet.<folder> at 25 (#1008) — one folder, two spellings.
         if (FanFolderOf(node.ForEach) is not { } collectionId)
         {
             return Array.Empty<WorkflowManifestReader.DataItemView>();
@@ -9956,6 +9340,42 @@
 
     private Task ClearConditionAsync(ConditionTarget target) =>
         EditConditionAsync(target, _ => ConditionGroup.Fresh);
+
+    /// <summary>
+    /// #1039: the edit-as-text door at 25 — a verbatim condition's text written as
+    /// the author typed it (blank clears). The registry judges it at the desk; the
+    /// builder never rewrites it.
+    /// </summary>
+    private async Task SetConditionTextAsync(ConditionTarget target, string? text)
+    {
+        var trimmed = text?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            await ClearConditionAsync(target);
+            return;
+        }
+
+        conditionDrafts.Remove(target.Key);
+        target.Write(trimmed);
+        await CommitDeclarationAsync();
+    }
+
+    /// <summary>
+    /// #1039: how the builder names an operand — at 25 the spelling the package
+    /// writes (<c>input.kind</c>, <c>node.scope.value</c>, <c>item.id</c>,
+    /// <c>(input.docs | array.size)</c>); the tree's key stays the model underneath.
+    /// </summary>
+    private string OperandDisplay(string key)
+    {
+        if (!At25)
+        {
+            return key;
+        }
+
+        return PF.WorkflowResultConditions.TryParseLegacy(key, out var expression, out _) && expression?.Leaves.FirstOrDefault() is { } leaf
+            ? PF.ConditionScriban.SpellOperand(leaf)
+            : key;
+    }
 
     private Task EditClauseAsync(ConditionTarget target, IReadOnlyList<int> path, Func<ConditionClause, ConditionClause> edit) =>
         EditConditionAsync(target, root => ConditionBuilderModel.At(root, path) is ConditionClause clause
@@ -10730,9 +10150,11 @@
             label = char.ToUpperInvariant(id[0]) + id[1..].Replace('-', ' ').Replace('_', ' ');
         }
 
-        if (!ItemIdPattern.IsMatch(id))
+        if (At25 ? !PF.WorkflowDeclaredIds.IsValid(id) : !ItemIdPattern.IsMatch(id))
         {
-            newNodeError = "Node ids are lowercase letters, digits, '-' or '_', starting with a letter or digit.";
+            newNodeError = At25
+                ? $"Node id '{id}' must be snake_case at specVersion 25 ({id.Replace('-', '_')}): a template reads it as a Scriban member."
+                : "Node ids are lowercase letters, digits, '-' or '_', starting with a letter or digit.";
             return;
         }
 
@@ -10926,9 +10348,11 @@
     {
         var id = newPromptId?.Trim() ?? string.Empty;
 
-        if (!ItemIdPattern.IsMatch(id))
+        if (At25 ? !PF.WorkflowDeclaredIds.IsValid(id) : !ItemIdPattern.IsMatch(id))
         {
-            newPromptError = "Prompt ids are lowercase letters, digits, '-' or '_', starting with a letter or digit.";
+            newPromptError = At25
+                ? $"Prompt id '{id}' must be snake_case at specVersion 25 ({id.Replace('-', '_')}); every declared id is."
+                : "Prompt ids are lowercase letters, digits, '-' or '_', starting with a letter or digit.";
             return;
         }
 
@@ -12967,19 +12391,49 @@
                 }
             }
 
-            unbound.AddRange(DeclaredSectionErrors());
-            unbound.AddRange(PackageMetadataErrors());
-            unbound.AddRange(SchemaErrors());
-            unbound.AddRange(FormatErrors());
-            unbound.AddRange(SnippetErrors());
-            unbound.AddRange(MacroErrors25());
-            unbound.AddRange(TemplateErrors25());
-            unbound.AddRange(PreludeErrors());
-
-            if (unbound.Count > 0)
+            if (At25)
             {
-                publishErrors = unbound;
-                return;
+                // v25 (#1039): the registry's validator IS the desk at 25; the editor
+                // adds only what composes nothing — the builder's unfinished drafts, a
+                // blank failIfEmpty the compose drops, a removed format still named.
+                // With no catalogue in hand (the API did not serve one) the registry
+                // cannot resolve a catalogue format, so the desk defers to the publish
+                // and says so, as a warning — the publish needs the same API.
+                unbound.AddRange(DraftConditionErrors());
+                unbound.AddRange(BlankFailIfEmptyErrors());
+                unbound.AddRange(RemovedFormatErrors());
+                var deskWarnings = new List<string>();
+
+                if (formatsCatalog is null)
+                {
+                    deskWarnings.Add("The format catalogue could not be loaded, so the package was not checked here; the registry checks it when it is published.");
+                }
+                else
+                {
+                    var desk = RegistryDesk25();
+                    unbound.AddRange(desk.Errors);
+                    deskWarnings.AddRange(desk.Warnings);
+                }
+
+                if (unbound.Count > 0)
+                {
+                    publishErrors = unbound.Distinct(StringComparer.Ordinal).ToList();
+                    publishWarnings = deskWarnings;
+                    return;
+                }
+            }
+            else
+            {
+                unbound.AddRange(DeclaredSectionErrors());
+                unbound.AddRange(PackageMetadataErrors());
+                unbound.AddRange(SchemaErrors());
+                unbound.AddRange(PreludeErrors());
+
+                if (unbound.Count > 0)
+                {
+                    publishErrors = unbound;
+                    return;
+                }
             }
 
             var files = AssembleFiles();

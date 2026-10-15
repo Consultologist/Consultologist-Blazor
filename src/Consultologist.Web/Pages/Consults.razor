@@ -1626,10 +1626,10 @@
   // afterwards it describes whatever has been published since.
   private IReadOnlyList<(string Id, string Name)> ItemsFor(RailNode node)
   {
-    const string dataPrefix = "data:";
-    var collectionId = node.ForEach != null && node.ForEach.StartsWith(dataPrefix, StringComparison.Ordinal)
-      ? node.ForEach[dataPrefix.Length..]
-      : node.ForEach;
+    // #1039: data:<collection> below 25, snippet.<folder> at 25 — the library strips either.
+    var collectionId = node.ForEach != null
+      ? Consultologist.PackageFormat.WorkflowFanSources.CollectionIdOf(node.ForEach)
+      : null;
 
     var recorded = jobCollections?.FirstOrDefault(roster => roster.CollectionId == collectionId);
 

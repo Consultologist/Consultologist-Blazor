@@ -30,6 +30,32 @@ public class ConditionBuilderModelTests
         Assert.Equal(when, ConditionBuilderModel.ToText(root));
     }
 
+    /// <summary>
+    /// #1039 (#1037's compose half): at 25 the tree reads the object spelling and
+    /// writes it back byte for byte — a group spells parenthesised, as the compose spells it.
+    /// </summary>
+    [Theory]
+    [InlineData("input.kind == \"new\"")]
+    [InlineData("node.scope.value == \"in_scope\"")]
+    [InlineData("(input.prior_notes | array.size) > 1")]
+    [InlineData("(input.patient.age >= 65 && input.billable)")]
+    [InlineData("((input.kind == \"new\" || input.billable) && input.patient.age >= 65)")]
+    public void At25_WhatTheTreeHolds_RoundTripsTheObjectSpelling(string when)
+    {
+        static string? Types(string inputId) => inputId switch
+        {
+            "kind" => WorkflowInputTypes.Enum,
+            "prior_notes" => WorkflowInputTypes.Array,
+            "billable" => WorkflowInputTypes.Boolean,
+            "patient" => WorkflowInputTypes.Object,
+            _ => null,
+        };
+
+        Assert.True(ConditionBuilderModel.TryFromText(when, out var root, out var verbatim), verbatim);
+        Assert.True(ConditionBuilderModel.IsComplete(root));
+        Assert.Equal(when, ConditionBuilderModel.ToText(root, Types));
+    }
+
     [Fact]
     public void AChainOfOneJoin_IsOneGroup_AndAMixedChain_Nests()
     {

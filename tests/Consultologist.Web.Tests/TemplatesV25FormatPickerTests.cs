@@ -358,6 +358,20 @@ public class TemplatesV25FormatPickerTests : ClientRenderTestContext
         page.Find("fluent-select.node-on-invalid").Change("fail");
         Publish(page);
 
+        // #1039: the desk is the registry's at 25 — its one word is that no deliverable
+        // names the check yet; name it on the Deliverables pane and publish.
+        Assert.Equal(
+            new[] { "Check 'coverage_two' is not named by any deliverable; a check gates a deliverable, or it is dead weight." },
+            Refusals(page));
+        Assert.Null(sent);
+        Navigate(page, "Deliverables");
+        page.Find("fluent-select[aria-label='Check for deliverable consult']").Change("node.coverage_two");
+        // The old check is now the orphan; remove it (nothing else reads it).
+        Services.GetRequiredService<WorkflowEditorSession>().SelectedKey = "node:coverage";
+        page.Render();
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Remove node")).Click();
+        Publish(page);
+
         Assert.Empty(Refusals(page));
         var node = Node(sent!, "coverage_two");
         Assert.Equal("terms_subset", node.GetProperty("format").GetString());
@@ -368,12 +382,8 @@ public class TemplatesV25FormatPickerTests : ClientRenderTestContext
             JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement.GetProperty("prompts").EnumerateArray(),
             p => p.GetProperty("id").GetString() == "coverage_two");
         Assert.False(sent.Files.ContainsKey("prompts/coverage_two.md"));
-        // The node itself is whole: the registry's only word is that no deliverable
-        // names it yet — the Deliverables pane's check picker at 25 is C3's (#1009).
         var validated = Validated();
-        Assert.Equal(
-            new[] { "Check 'coverage_two' is not named by any deliverable; a check gates a deliverable, or it is dead weight." },
-            validated.Errors);
+        Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
     }
 
     [Fact]
