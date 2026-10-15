@@ -703,6 +703,27 @@ cannot yet fill an object slot in the browser — a follow-up under #991.)*
 A library macro placed on an output somewhere *and* used prompt-side elsewhere stays one
 macro: the prompt-side use is a `.text` read. Nothing is split.
 
+*(C6 #1012, 2026-10-15 — the migration is built, as a pure library rewriter
+(`WorkflowPackageMigration24To25`: manifest and files in, manifest and files at 25 out, one
+notice per rewrite, refusals that apply nothing) the editor applies the import door's way:
+the migrated package replaces the session's content, is held in this browser with its notice,
+publishes as a new version of the same package and is discarded by reloading the registry's
+version. The toolbar still offers only the ceilings (A5 moves them); the seam takes 25 and the
+tests drive it. Decisions: library rewriter + replaced package; internal seam; the four
+canonical concept-source stamps ride their snake_case twins so a renamed canonical node renders
+the same concept-context bytes. Byte identity, handled: a concept node bound with no renderer
+rendered as bullets at 24 and reads `node.x.text | concept_bullets` at 25 (a bare `.text` would
+be the JSON); a moved data file has its literal `{{` escaped (a snippet renders as a template);
+a prompt-side macro's `when` becomes a Scriban `if` (`ConditionScriban`). Explicit init the
+notice names: every remaining library macro needs an instruction (a macro read prompt-side only
+becomes a snippet and needs none); a custom shape's format takes its schema's own
+`description`/`title`, blank otherwise. Refused, nothing applied: a prompt bound differently by
+two nodes (the deferred alias map), a rename that collides, a prelude still present, a template
+that does not parse. Found and fixed on the way: a snippet or macro text was walked with no
+fan, so any `item.*` read in it was refused — it is now recorded and refused at the reading site
+(a node instance, what a prompt reaches, a slot's fill, a deliverable instance) when that node
+does not fan, restoring v24's `{{item:field}}` in a macro composed into a fan node.)*
+
 ## 15. Phasing
 
 The v23/v24 shape, one layer per PR, each green on its own; layer A will likely split into
