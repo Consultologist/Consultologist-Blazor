@@ -252,11 +252,30 @@ public static class TemplateRenderer
                 $"{subject} does not parse: {string.Join(" ", template.Messages.Select(m => m.Message))}");
         }
 
+        return Unwrap(subject, "render", () => template.Render(ContextWith(globals)));
+    }
+
+    /// <summary>The strict context a render — or (#1038) a condition's evaluation — runs in, with this scope's globals pushed.</summary>
+    internal static TemplateContext ContextFor(string subject, TemplateRenderScope scope, IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes) =>
+        ContextWith(Globals(subject, scope, pipes));
+
+    private static TemplateContext ContextWith(ScriptObject globals)
+    {
+        var context = new PromptTemplateRenderer.RenderingContext();
+        context.PushGlobal(globals);
+        return context;
+    }
+
+    /// <summary>
+    /// Runs a Scriban evaluation and surfaces the sentence underneath: Scriban
+    /// wraps what a member producer or a pipe throws, and that sentence already
+    /// names its subject; anything else becomes "{subject} failed to {verb}: …".
+    /// </summary>
+    internal static T Unwrap<T>(string subject, string verb, Func<T> run)
+    {
         try
         {
-            var context = new PromptTemplateRenderer.RenderingContext();
-            context.PushGlobal(globals);
-            return template.Render(context);
+            return run();
         }
         catch (InvalidOperationException)
         {
@@ -264,8 +283,6 @@ public static class TemplateRenderer
         }
         catch (Exception ex)
         {
-            // Scriban wraps what a member producer or a pipe throws; the
-            // sentence underneath already names its subject.
             for (var inner = ex.InnerException; inner is not null; inner = inner.InnerException)
             {
                 if (inner is InvalidOperationException ours)
@@ -274,7 +291,7 @@ public static class TemplateRenderer
                 }
             }
 
-            throw new InvalidOperationException($"{subject} failed to render: {ex.Message}", ex);
+            throw new InvalidOperationException($"{subject} failed to {verb}: {ex.Message}", ex);
         }
     }
 

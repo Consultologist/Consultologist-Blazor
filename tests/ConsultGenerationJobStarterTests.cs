@@ -4050,10 +4050,14 @@ public class ConsultGenerationJobStarterTests
     public async Task A25Package_Decides_AndItsDeliverablesReachTheOrchestrationInput_Resolved()
     {
         // B8 #1027: the design's package through the store's own resolution —
-        // the enum-format classifier makes the job decide, the deliverable
-        // carries its check as written, its placements with their at, and its
-        // reads; the stage-one descriptors carry the classifier's values.
-        var package = V25RunPathTests.Package(V25RunPathTests.WithDeliverableMacros());
+        // the deliverable carries its check as written, its placements with
+        // their at, and its reads; the stage-one descriptors carry the
+        // classifier's values. #1038: at 25 a job decides when a gating when
+        // READS a node — here the deliverable's when reads the classifier's
+        // value — not merely because the package has one.
+        var (manifest, files) = V25RunPathTests.WithDeliverableMacros();
+        manifest = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node.scope.value == \"in_scope\"" }).ToList() };
+        var package = V25RunPathTests.Package((manifest, files));
         var request = new ConsultGenerationRequest(
             null,
             Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
@@ -4067,6 +4071,7 @@ public class ConsultGenerationJobStarterTests
         Assert.True(captured.Outcome.Error is null, captured.Outcome.ErrorDetail);
         var input = captured.OrchestrationInput!;
         Assert.True(input.Deciding);
+        Assert.Equal(new[] { "scope" }, input.DecidingNodes);
         Assert.Equal(package.FormatsRef, input.FormatsRef);
         var scope = input.Nodes!.First(n => n.Id == "scope");
         Assert.Equal(new[] { "in_scope", "out_of_scope" }, scope.Values);
@@ -4076,6 +4081,32 @@ public class ConsultGenerationJobStarterTests
         Assert.Equal(new[] { "scope" }, consult.Reads);
         // A deciding job's whens wait for the boundary: every placement rides, with its at.
         Assert.Equal(new[] { ("closing", "prepend"), ("closing", "append"), ("scope_line", "prepend") }, consult.MacroPlacements!.Select(p => (p.Id, p.At!)));
+    }
+
+    [Fact]
+    public async Task A25Package_WhoseWhensReadInputsOnly_IsJudgedAtStart_OverTheRenderScope()
+    {
+        // #1038: no gating when reads a node, so nothing waits for a boundary —
+        // the classifier is just a node — and the placement gated on
+        // input.kind is judged at start through the render scope: the prepended
+        // closing (kind == follow_up) is out for a new patient, by name.
+        var package = V25RunPathTests.Package(V25RunPathTests.WithDeliverableMacros());
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+            {
+                ["notes"] = ConsultInputValue.OfText(Referral),
+                ["kind"] = ConsultInputValue.OfText("new"),
+            });
+
+        var captured = await StartAndCaptureAsync(package, request);
+
+        Assert.True(captured.Outcome.Error is null, captured.Outcome.ErrorDetail);
+        var input = captured.OrchestrationInput!;
+        Assert.Null(input.Deciding);
+        Assert.Null(input.DecidingNodes);
+        var consult = Assert.Single(input.Results!);
+        Assert.Equal(new[] { ("closing", "append"), ("scope_line", "prepend") }, consult.MacroPlacements!.Select(p => (p.Id, p.At!)));
     }
 
     [Fact]

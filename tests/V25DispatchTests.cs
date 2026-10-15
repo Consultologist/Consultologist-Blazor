@@ -138,7 +138,7 @@ public class V25DispatchTests
             NSubstitute.Substitute.For<IJobInputsBlobStore>(), NSubstitute.Substitute.For<IAccountUsageStore>());
         await entity.Initialize(new ConsultGenerationJobInitialize("job-1", "user-1", Array.Empty<IReadOnlyDictionary<string, string>>()));
         var appended = new[] { new ConsultAppendedEntry("slot", "letrozole"), new ConsultAppendedEntry("macro", "closing") };
-        var excluded = new[] { new ConsultNodeExclusion("macro", "warning", "needs kind to be new; it is follow_up") };
+        var excluded = new[] { new ConsultNodeExclusion("macro", "warning", "needs `input.kind == \"new\"`; it does not hold") };
 
         entity.MarkNodeCompleted(new ConsultGenerationNodeUpdate("assessment", "Assessment", null, "i", "o", 1, 1, ConsultGenerationProvenance.NodeHashVersionAt25,
             AgentOutputHash: "a", Appended: appended, Excluded: excluded));
@@ -154,7 +154,7 @@ public class V25DispatchTests
 
         Assert.Equal(("a", 6), (scalar.AgentOutputHash, scalar.HashVersion));
         Assert.Equal(new[] { "slot:letrozole", "macro:closing" }, scalar.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
-        Assert.Equal("needs kind to be new; it is follow_up", Assert.Single(scalar.Excluded!).Reason);
+        Assert.Equal("needs `input.kind == \"new\"`; it does not hold", Assert.Single(scalar.Excluded!).Reason);
         Assert.Equal("b", item.AgentOutputHash);
         Assert.Equal(2, item.Appended!.Count);
         Assert.Null(item.Excluded);

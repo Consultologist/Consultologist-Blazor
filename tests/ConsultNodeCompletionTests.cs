@@ -164,8 +164,42 @@ public class ConsultNodeCompletionTests
 
         Assert.Equal("The plan.", result.RawOutput);
         Assert.Null(result.Appended);
-        Assert.Equal(new ConsultNodeExclusion("macro", "closing", "needs kind to be 'follow_up'; it is 'new'"), Assert.Single(result.Excluded!));
+        // #1038: the fixed 25 reason form — the condition's own text, never a value.
+        Assert.Equal(new ConsultNodeExclusion("macro", "closing", "needs `input.kind == \"follow_up\"`; it does not hold"), Assert.Single(result.Excluded!));
         Assert.Equal(result.AgentOutputHash, result.OutputHash);
+    }
+
+    [Fact]
+    public void AnInstanceGatedOnANodesText_IsJudgedOverTheActivitysScope()
+    {
+        // #1038: the when reads extract's TEXT — threaded as a node text, as the
+        // prompt's own reads are — and is judged over the same scope the instance
+        // renders over; the ≤24 tree could not hold it.
+        var (package, input, reads, _) = Prepare(
+            "assessment",
+            m => V25Package.WithNode(m, "assessment", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "after", When: "node.extract.text != \"\"") } }));
+
+        var result = ConsultNodeCompletion.Complete(Settled("The plan."), input, package, reads);
+
+        Assert.Equal("The plan.\n\nClosing: Dr Example.", result.RawOutput);
+        Assert.Equal(new[] { "macro:closing" }, result.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
+    }
+
+    [Fact]
+    public void AnInstanceGatedOnTheFanItem_IsJudgedPerItem()
+    {
+        var hpi = new Dictionary<string, string> { ["id"] = "hpi", ["name"] = "HPI", ["content"] = "History." };
+        var plan = new Dictionary<string, string> { ["id"] = "plan", ["name"] = "Plan", ["content"] = "Plan." };
+        Func<WorkflowPackageManifest, WorkflowPackageManifest> gated = m =>
+            V25Package.WithNode(m, "section_notes", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "after", When: "item.id == \"plan\"") } });
+
+        var (package, forHpi, hpiReads, _) = Prepare("section_notes", gated, item: hpi, forEach: "snippet.sections");
+        var (_, forPlan, planReads, _) = Prepare("section_notes", gated, item: plan, forEach: "snippet.sections");
+
+        var forHpiResult = ConsultNodeCompletion.Complete(Settled("History."), forHpi, package, hpiReads);
+        Assert.Equal("History.", forHpiResult.RawOutput);
+        Assert.Equal("needs `item.id == \"plan\"`; it does not hold", Assert.Single(forHpiResult.Excluded!).Reason);
+        Assert.Equal("The plan.\n\nClosing: Dr Example.", ConsultNodeCompletion.Complete(Settled("The plan."), forPlan, package, planReads).RawOutput);
     }
 
     [Fact]
@@ -189,8 +223,8 @@ public class ConsultNodeCompletionTests
         Func<WorkflowPackageManifest, WorkflowPackageManifest> anchored = m =>
             V25Package.WithNode(m, "section_notes", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "after", ForItem: "plan") } });
 
-        var (package, forHpi, hpiReads, _) = Prepare("section_notes", anchored, item: hpi, forEach: "snippet:sections");
-        var (_, forPlan, planReads, _) = Prepare("section_notes", anchored, item: plan, forEach: "snippet:sections");
+        var (package, forHpi, hpiReads, _) = Prepare("section_notes", anchored, item: hpi, forEach: "snippet.sections");
+        var (_, forPlan, planReads, _) = Prepare("section_notes", anchored, item: plan, forEach: "snippet.sections");
 
         Assert.Equal("History.", ConsultNodeCompletion.Complete(Settled("History."), forHpi, package, hpiReads).RawOutput);
         Assert.Equal("The plan.\n\nClosing: Dr Example.", ConsultNodeCompletion.Complete(Settled("The plan."), forPlan, package, planReads).RawOutput);
@@ -206,8 +240,8 @@ public class ConsultNodeCompletionTests
             ["snippets/sections/hpi.md"] = "History. {{ macro.closing.prompt }}",
         };
 
-        var (package, forHpi, hpiReads, _) = Prepare("section_notes", changeFiles: files, item: hpi, forEach: "snippet:sections");
-        var (_, forPlan, planReads, _) = Prepare("section_notes", changeFiles: files, item: plan, forEach: "snippet:sections");
+        var (package, forHpi, hpiReads, _) = Prepare("section_notes", changeFiles: files, item: hpi, forEach: "snippet.sections");
+        var (_, forPlan, planReads, _) = Prepare("section_notes", changeFiles: files, item: plan, forEach: "snippet.sections");
 
         Assert.Equal(new[] { "closing" }, hpiReads);
         Assert.Empty(planReads);

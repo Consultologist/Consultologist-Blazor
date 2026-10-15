@@ -1040,7 +1040,11 @@ public sealed record ConsultGenerationOrchestrationInput(
     // v25 (B2 #1001): the formats catalogue ref the package resolved against —
     // its stamp's at 25, else the global pin — carried for B7 to record. Null
     // below 25 on a job started before this field. Appended last, same rule.
-    string? FormatsRef = null);
+    string? FormatsRef = null,
+    // v25 (#1038, design § 16): the node ids the gating whens read — the
+    // deciding stage's frontier at 25 (where ≤24 ran the classifier closure).
+    // Null below 25 and when the job does not decide. Appended last, same rule.
+    IReadOnlyList<string>? DecidingNodes = null);
 
 /// <summary>
 /// v11 #516: the chosen signature as it was at job start — the block's id,

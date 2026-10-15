@@ -635,7 +635,19 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // resolution and the outcome rule all walk the result list and need no
         // change at all.
         // v25 (B8 #1027): a 25 classifier is an enum format, not a kind.
-        var deciding = package.Nodes.Any(node => WorkflowNodeRoles.IsClassifierOf(node, package));
+        // v25 (#1038, design § 16): at 25 a job decides at the boundary when a
+        // gating when — a node's own, a deliverable's, a placement's — reads a
+        // node (its value or its text) or a profile fact: stage one runs the
+        // closure of those nodes and the boundary judges every when over their
+        // outputs through the render scope. A package whose whens read inputs
+        // and run facts only is judged here, at start, over the same scope.
+        var gatingReads = GatingReads(package);
+        var deciding = gatingReads is not null
+            ? gatingReads.Count > 0 || GatingReadsProfile(package)
+            : package.Nodes.Any(node => WorkflowNodeRoles.IsClassifierOf(node, package));
+        var startScope = gatingReads is not null && inputs.Effective is not null
+            ? StartScope(package, inputs.Effective, inputs.Supplied, jobId, _engine.ApiHost)
+            : null;
         var skipped = new List<ConsultSkippedDocument>();
         // #434: the deliverables as declared, before the fire set narrows
         // package.Results — the born-Failed record lists every one of them.
@@ -643,7 +655,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         if (!deciding && package.Results is { Count: > 0 })
         {
-            var fireSet = DecideFireSet(package, inputs.Supplied, classifications: null);
+            var fireSet = DecideFireSet(package, inputs.Supplied, classifications: null, startScope);
             skipped = fireSet.Skipped;
 
             if (fireSet.Firing.Count == 0)
@@ -695,13 +707,13 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // snapshot and the data-collection rosters ride so a fan it will
             // later run is already drawable.
             items = Array.Empty<IReadOnlyDictionary<string, string>>();
-            var skeleton = ResolveSkeleton(package, inputs.Supplied);
+            var skeleton = ResolveSkeleton(package, inputs.Supplied, startScope);
             collectionSets = skeleton.CollectionSets;
             collectionRosters = skeleton.CollectionRosters;
         }
         else if (package.Manifest.SpecVersion >= 6)
         {
-            var skeleton = ResolveSkeleton(package, inputs.Supplied);
+            var skeleton = ResolveSkeleton(package, inputs.Supplied, startScope);
 
             // An empty fan produces no items, no blocks, no document — v8's
             // empty-fire-set case wearing different clothes, and recorded the
@@ -802,7 +814,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
                 if (!deciding)
                 {
-                    var judged = DecidePlacementWhens(result, inputs.Supplied, classifications: null);
+                    var judged = DecidePlacementWhens(result, inputs.Supplied, classifications: null, startScope);
                     whenKept = judged.Macros;
                     whenPlacements = judged.Placements;
                     excludedMacros.AddRange(judged.Excluded);
@@ -967,6 +979,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 Collections: collectionSets,
                 // v25 (B2 #1001): the formats catalogue the package resolved against (its stamp's, else the global pin).
                 FormatsRef: package.FormatsRef ?? _formats.ResolvedRef,
+                // v25 (#1038): the deciding stage's frontier — what the gating whens read.
+                DecidingNodes: deciding && gatingReads is { Count: > 0 } ? gatingReads.Order(StringComparer.Ordinal).ToList() : null,
                 Source: origin.Source,
                 ReplyToAddress: origin.ReplyToAddress,
                 Results: resultDescriptors,
@@ -1061,8 +1075,16 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     internal static FireSetDecision DecideFireSet(
         WorkflowPackage package,
         IReadOnlyDictionary<string, ConsultInputValue>? supplied,
-        IReadOnlyDictionary<string, string>? classifications)
+        IReadOnlyDictionary<string, string>? classifications,
+        // v25 (#1038): the render scope a 25 when is judged over — required at
+        // 25 (the engine never judges a 25 package bare), null below.
+        ConsultConditionScope? scope = null)
     {
+        if (scope is null && IsAt25(package))
+        {
+            throw new InvalidOperationException($"Package {package.Ref} is at specVersion 25; its conditions are judged over a render scope, and none was given.");
+        }
+
         var firing = new List<WorkflowResolvedResult>();
         var skipped = new List<ConsultSkippedDocument>();
 
@@ -1073,13 +1095,33 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // when (the validator refuses it), so `gated` never holds one.
         var nodes = package.Nodes ?? new List<WorkflowNodeSpec>();
         var gated = new HashSet<string>(StringComparer.Ordinal);
-        var gatedWhen = new Dictionary<string, WorkflowConditionExpression>(StringComparer.Ordinal);
+        // The reason a gated node's when gives — the ≤24 explainer's sentence, or
+        // (#1038) the 25 fixed form — for the cascade below.
+        var gatedReason = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var node in nodes)
         {
+            if (node.When is null)
+            {
+                continue;
+            }
+
+            if (scope is not null)
+            {
+                // v25 (#1038): judged over the render scope; a when the validator
+                // did not promise is loud, never a silent "no gate".
+                if (scope.Holds($"Node '{node.Id}' condition", node.When))
+                {
+                    continue;
+                }
+
+                gated.Add(node.Id);
+                gatedReason[node.Id] = ConsultConditionScope.Reason(node.When);
+                continue;
+            }
+
             // The stored package was validated at publish, so its when parses;
             // an unparseable one is treated as no gate rather than throwing.
-            if (node.When is null
-                || !WorkflowResultConditions.TryParseExpression(node.When, out var when, out _)
+            if (!WorkflowResultConditions.TryParseExpression(node.When, out var when, out _)
                 || when is null
                 || WorkflowResultConditions.Holds(when, supplied, classifications))
             {
@@ -1087,7 +1129,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             }
 
             gated.Add(node.Id);
-            gatedWhen[node.Id] = when;
+            gatedReason[node.Id] = WorkflowResultConditions.Explain(when, supplied, classifications);
         }
 
         var gatedContent = new HashSet<string>(
@@ -1106,7 +1148,16 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         foreach (var result in package.Results ?? new List<WorkflowResolvedResult>())
         {
-            if (!WorkflowResultConditions.Holds(result.Condition, supplied, classifications))
+            // v25 (#1038): a 25 deliverable's when rides as text and is judged over the scope.
+            if (scope is not null && result.When is { } resultWhen)
+            {
+                if (!scope.Holds($"Deliverable '{result.Id}' condition", resultWhen))
+                {
+                    skipped.Add(new ConsultSkippedDocument(result.Id, result.Label, ConsultConditionScope.Reason(resultWhen)));
+                    continue;
+                }
+            }
+            else if (!WorkflowResultConditions.Holds(result.Condition, supplied, classifications))
             {
                 skipped.Add(new ConsultSkippedDocument(
                     result.Id,
@@ -1126,7 +1177,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 skipped.Add(new ConsultSkippedDocument(
                     result.Id,
                     result.Label,
-                    $"needs node '{holed}', which {WorkflowResultConditions.Explain(gatedWhen[holed], supplied, classifications)}"));
+                    $"needs node '{holed}', which {gatedReason[holed]}"));
                 continue;
             }
 
@@ -1184,15 +1235,19 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// </summary>
     internal static Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>> SettledFolders(
         WorkflowPackage package,
-        IReadOnlyDictionary<string, ConsultInputValue>? supplied) =>
+        IReadOnlyDictionary<string, ConsultInputValue>? supplied,
+        // v25 (#1038): the folder-less scope a 25 item's when (inputs only) is judged over.
+        ConsultConditionScope? scope = null) =>
         (package.Data?.Collections ?? new Dictionary<string, WorkflowDataCollection>())
             .ToDictionary(
                 entry => entry.Key,
                 entry => (IReadOnlyList<IReadOnlyDictionary<string, string>>)entry.Value.Items
                     .Where(item => item.When is null
-                        || !WorkflowResultConditions.TryParseExpression(item.When, out var when, out _)
-                        || when is null
-                        || WorkflowResultConditions.Holds(when, supplied))
+                        || (scope is not null
+                            ? scope.Holds($"Snippet folder '{entry.Key}' item '{item.Id}' condition", item.When)
+                            : !WorkflowResultConditions.TryParseExpression(item.When, out var when, out _)
+                                || when is null
+                                || WorkflowResultConditions.Holds(when, supplied)))
                     .Select(item => (IReadOnlyDictionary<string, string>)item.Fields)
                     .ToList(),
                 StringComparer.Ordinal);
@@ -1204,7 +1259,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IReadOnlyList<ConsultCollectionRoster> CollectionRosters,
         IReadOnlyList<string> EmptyFanLabels);
 
-    internal static SkeletonResolution ResolveSkeleton(WorkflowPackage package, IReadOnlyDictionary<string, ConsultInputValue>? supplied)
+    internal static SkeletonResolution ResolveSkeleton(WorkflowPackage package, IReadOnlyDictionary<string, ConsultInputValue>? supplied, ConsultConditionScope? scope = null)
     {
         // v9 (#426): a fan over a caller-supplied array. Its items come from
         // the request — one per element, ids the engine mints — keyed by the
@@ -1235,7 +1290,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // beside the input fans.
         var at25 = IsAt25(package);
         var settledFans = at25
-            ? inputFans.Concat(SettledFolders(package, supplied)
+            ? inputFans.Concat(SettledFolders(package, supplied, scope)
                     .Select(folder => new KeyValuePair<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>(
                         WorkflowFanSources.SnippetPrefix + folder.Key, folder.Value)))
                 .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal)
@@ -1258,7 +1313,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // the same set the fan ran. Below 25 only the fanned data collections
         // travel, whole.
         var dataSets = at25
-            ? SettledFolders(package, supplied)
+            ? SettledFolders(package, supplied, scope)
             : package.Nodes
                 .Where(node => node.ForEach != null && !WorkflowInputFans.IsInputFan(node.ForEach))
                 .Select(node => node.ForEach![WorkflowNodeBindingSources.DataPrefix.Length..])
@@ -1703,6 +1758,44 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             ? WorkflowDerivedEdges.DeliverableReads(package.Manifest, package.SourceFiles, package.Formats)
             : null;
 
+    /// <summary>v25 (#1038, design § 16): the node ids every gating when reads — the deciding stage's frontier; null below 25.</summary>
+    internal static IReadOnlySet<string>? GatingReads(WorkflowPackage package) =>
+        IsAt25(package) && package.SourceFiles is not null
+            ? WorkflowDerivedEdges.GatingReads(package.Manifest, package.SourceFiles, package.Formats)
+            : null;
+
+    /// <summary>v25 (#1038): whether a gating when reads a profile fact — judged at the boundary, where the profile is in hand.</summary>
+    internal static bool GatingReadsProfile(WorkflowPackage package) =>
+        IsAt25(package) && package.SourceFiles is not null
+            && WorkflowDerivedEdges.GatingReadsProfile(package.Manifest, package.SourceFiles, package.Formats);
+
+    /// <summary>
+    /// v25 (#1038): the scope a start-time 25 when is judged over — the effective
+    /// inputs typed as declared, no node outputs, the folders settled over a
+    /// folder-less scope first, the run facts as the start sees them (the date is
+    /// the start's, as the boundary's is the orchestrator's), the profile unread
+    /// by construction (a profile read decides at the boundary).
+    /// </summary>
+    internal static ConsultConditionScope StartScope(
+        WorkflowPackage package,
+        IReadOnlyDictionary<string, string> effective,
+        IReadOnlyDictionary<string, ConsultInputValue>? supplied,
+        string jobId,
+        string? apiHost = null,
+        DateTime? utcNow = null)
+    {
+        var bare = new ConsultConditionScope(
+            effective,
+            ConsultConditionScope.TypesOf(package),
+            new Dictionary<string, string>(StringComparer.Ordinal),
+            null,
+            ConsultRenderPayload.RunFactsFor(utcNow ?? DateTime.UtcNow, jobId, package.Ref, apiHost),
+            ConsultRenderPayload.ProfileFactsFor(null, null),
+            package);
+
+        return bare.WithFolders(ConsultRenderPayload.FoldersFor(SettledFolders(package, supplied, bare)));
+    }
+
     /// <summary>
     /// The deliverable's descriptor from its resolved result and what the
     /// gates kept: the choice filter last (v12 #618), placements in lockstep
@@ -1738,7 +1831,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     internal static (IReadOnlyList<string>? Macros, List<ConsultExcludedMacro> Excluded, IReadOnlyList<ConsultMacroPlacement>? Placements) DecidePlacementWhens(
         Workflow.WorkflowResolvedResult result,
         IReadOnlyDictionary<string, ConsultInputValue>? supplied,
-        IReadOnlyDictionary<string, string>? classifications)
+        IReadOnlyDictionary<string, string>? classifications,
+        // v25 (#1038): the render scope a 25 placement's when is judged over.
+        ConsultConditionScope? scope = null)
     {
         if (result.MacroConditions is not { Count: > 0 } conditions || conditions.All(c => c.At is null) || result.MacroPlacements is null)
         {
@@ -1753,10 +1848,24 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         {
             var gate = conditions.FirstOrDefault(c => string.Equals(c.MacroId, placement.Id, StringComparison.Ordinal) && string.Equals(c.At, placement.At, StringComparison.Ordinal));
 
-            if (gate is not null && !PackageFormat.WorkflowResultConditions.Holds(gate.Condition, supplied, classifications))
+            if (gate is { When: { } gateWhen })
+            {
+                // v25 (#1038): judged over the scope; the fixed reason form.
+                if (scope is null)
+                {
+                    throw new InvalidOperationException($"Deliverable '{result.Id}' macro '{placement.Id}' carries a specVersion 25 condition, and no render scope was given to judge it.");
+                }
+
+                if (!scope.Holds($"Deliverable '{result.Id}' macro '{placement.Id}' condition", gateWhen))
+                {
+                    refused.Add(new ConsultExcludedMacro(result.Id, placement.Id, ConsultConditionScope.Reason(gateWhen)));
+                    continue;
+                }
+            }
+            else if (gate is not null && !PackageFormat.WorkflowResultConditions.Holds(gate.Condition, supplied, classifications))
             {
                 refused.Add(new ConsultExcludedMacro(
-                    result.Id, placement.Id, PackageFormat.WorkflowResultConditions.Explain(gate.Condition, supplied, classifications)));
+                    result.Id, placement.Id, PackageFormat.WorkflowResultConditions.Explain(gate.Condition!, supplied, classifications)));
                 continue;
             }
 
@@ -1820,7 +1929,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 && !PackageFormat.WorkflowResultConditions.Holds(condition, supplied, classifications))
             {
                 excluded.Add(new ConsultExcludedMacro(
-                    result.Id, id, PackageFormat.WorkflowResultConditions.Explain(condition, supplied, classifications)));
+                    result.Id, id, PackageFormat.WorkflowResultConditions.Explain(condition!, supplied, classifications)));
                 continue;
             }
 

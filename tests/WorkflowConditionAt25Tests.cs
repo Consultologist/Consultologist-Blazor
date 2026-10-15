@@ -214,6 +214,167 @@ public class WorkflowConditionAt25Tests
         public TemplateContextForTests() => StrictVariables = true;
     }
 
+    // ----- #1038: the judge over a render scope ------------------------------------
+
+    private static TemplateRenderScope Scope(
+        IReadOnlyDictionary<string, string>? inputs = null,
+        IReadOnlyDictionary<string, string>? types = null,
+        IReadOnlyDictionary<string, TemplateNodeOutput>? nodes = null,
+        IReadOnlyDictionary<string, string>? snippets = null,
+        TemplateFanItem? item = null) =>
+        new(
+            inputs ?? new Dictionary<string, string> { ["kind"] = "new", ["notes"] = "The notes." },
+            types ?? new Dictionary<string, string> { ["kind"] = "enum", ["notes"] = "text" },
+            null,
+            nodes ?? new Dictionary<string, TemplateNodeOutput> { ["scope"] = new("in_scope", "enum"), ["assessment"] = new("Assessed.", "text") },
+            snippets ?? new Dictionary<string, string> { ["standards"] = "Follow the standards." },
+            new Dictionary<string, IReadOnlyList<TemplateFolderItem>>(),
+            item,
+            new Dictionary<string, TemplateMacroSource>(),
+            new TemplateRunFacts("2026-01-02", "job", "pkg", "host"),
+            new TemplateProfileFacts("Dr Example", ""));
+
+    [Theory]
+    [InlineData("input.kind == \"new\"", true)]
+    [InlineData("input.kind != \"new\"", false)]
+    [InlineData("node.scope.value == \"in_scope\"", true)]
+    [InlineData("node.scope.text == \"in_scope\"", true)]
+    [InlineData("node.assessment.text != \"\"", true)]
+    [InlineData("snippet.standards.text == \"Follow the standards.\"", true)]
+    [InlineData("run.date == \"2026-01-02\"", true)]
+    [InlineData("profile.name == \"Dr Example\" && input.kind == \"new\"", true)]
+    [InlineData("!(input.kind == \"new\") || node.scope.value == \"out_of_scope\"", false)]
+    public void Holds_JudgesTheExpression_OverTheScope(string when, bool expected)
+    {
+        Assert.Equal(expected, WorkflowConditionAt25.Holds("Deliverable 'consult' condition", when, Scope()));
+    }
+
+    [Fact]
+    public void Holds_ReadsTheFanItem_AndCountsAnArray()
+    {
+        var scope = Scope(
+            inputs: new Dictionary<string, string> { ["docs"] = "[\"a\",\"b\"]", ["none"] = "" },
+            types: new Dictionary<string, string> { ["docs"] = "array", ["none"] = "array" },
+            item: new TemplateFanItem("hpi", "HPI", Text: "History."));
+
+        Assert.True(WorkflowConditionAt25.Holds("c", "item.id == \"hpi\"", scope));
+        Assert.True(WorkflowConditionAt25.Holds("c", "(input.docs | array.size) > 1", scope));
+        Assert.False(WorkflowConditionAt25.Holds("c", "(input.none | array.size) > 0", scope));
+    }
+
+    [Fact]
+    public void Absence_IsWhatATemplateSees()
+    {
+        // Decision (2026-10-15, design § 16): a when is a Scriban expression over the
+        // same scope a template reads, so an unsupplied optional input is what the
+        // effective map carries — "" for a text or enum, null for a boolean, number
+        // or date, an empty (falsy) list for an array — and `!=` HOLDS over it, where
+        // the ≤24 evaluator's three-valued rule said "not held". One rule for a when
+        // and an {{ if }}.
+        var scope = Scope(
+            inputs: new Dictionary<string, string> { ["kind"] = "", ["flag"] = "", ["docs"] = "" },
+            types: new Dictionary<string, string> { ["kind"] = "enum", ["flag"] = "boolean", ["docs"] = "array" });
+
+        Assert.False(WorkflowConditionAt25.Holds("c", "input.kind == \"new\"", scope));
+        Assert.True(WorkflowConditionAt25.Holds("c", "input.kind != \"new\"", scope));
+        Assert.True(WorkflowConditionAt25.Holds("c", "!input.flag", scope));
+        Assert.False(WorkflowConditionAt25.Holds("c", "(input.docs | array.size) > 0", scope));
+    }
+
+    [Fact]
+    public void Holds_IsLoud_WhenTheExpressionYieldsNoBoolean_OrReadsBeyondTheScope()
+    {
+        var text = Assert.Throws<InvalidOperationException>(() => WorkflowConditionAt25.Holds("Deliverable 'consult' condition", "input.notes", Scope()));
+        Assert.Equal("Deliverable 'consult' condition must be a boolean expression; it yields a text.", text.Message);
+
+        var beyond = Assert.Throws<InvalidOperationException>(() => WorkflowConditionAt25.Holds("Deliverable 'consult' condition", "node.nope.text == \"\"", Scope()));
+        Assert.Contains("node.nope", beyond.Message);
+
+        var parse = Assert.Throws<InvalidOperationException>(() => WorkflowConditionAt25.Holds("Deliverable 'consult' condition", "input.kind == ", Scope()));
+        Assert.StartsWith("Deliverable 'consult' condition does not parse", parse.Message);
+    }
+
+    [Fact]
+    public void Reason_IsTheConditionsOwnText_NeverAValue()
+    {
+        Assert.Equal("needs `input.kind == \"follow_up\"`; it does not hold", WorkflowConditionAt25.Reason(" input.kind == \"follow_up\" "));
+    }
+
+    [Theory]
+    [InlineData("kind == new", "new", true)]
+    [InlineData("kind == new", "follow_up", false)]
+    [InlineData("kind != new", "follow_up", true)]
+    [InlineData("not kind == new", "new", false)]
+    [InlineData("kind == new or kind == follow_up", "follow_up", true)]
+    [InlineData("node:scope == in_scope and kind == new", "new", true)]
+    [InlineData("node:scope == out_of_scope and kind == new", "new", false)]
+    [InlineData("billable", "new", true)]
+    [InlineData("not billable", "new", false)]
+    [InlineData("count(prior_notes) > 1", "new", true)]
+    [InlineData("count(prior_notes) - 1 > 1", "new", false)]
+    [InlineData("patient.age >= 65", "new", true)]
+    [InlineData("patient.age + 5 >= 80", "new", false)]
+    [InlineData("seen_on < 2026-06-01", "new", true)]
+    public void TheTwoEvaluators_Agree_OnEverySuppliedWhen(string legacy, string kind, bool expected)
+    {
+        // The C6 idiom for conditions: the ≤24 evaluator over the ≤24 text and the 25
+        // judge over its spelling agree whenever every input is supplied (absence is
+        // where the rules part, by decision).
+        Assert.True(WorkflowResultConditions.TryParseLegacy(legacy, out var tree, out var error), error);
+        var supplied = new Dictionary<string, ConsultInputValue>
+        {
+            ["kind"] = ConsultInputValue.FromJson($"\"{kind}\""),
+            ["billable"] = ConsultInputValue.FromJson("true"),
+            ["prior_notes"] = ConsultInputValue.FromJson("[\"a\",\"b\"]"),
+            ["patient"] = ConsultInputValue.FromJson("{\"age\":70}"),
+            ["seen_on"] = ConsultInputValue.FromJson("\"2026-01-15\""),
+        };
+        var classifications = new Dictionary<string, string> { ["scope"] = "in_scope" };
+        var at24 = WorkflowResultConditions.Holds(tree, supplied, classifications);
+        Assert.Equal(expected, at24);
+
+        string? TypeOf(string id) => id switch { "kind" => "enum", "billable" => "boolean", "prior_notes" => "array", "patient" => "object", "seen_on" => "date", _ => "text" };
+        var spelled = ConditionScriban.Spell(tree!, TypeOf);
+        var scope = Scope(
+            inputs: new Dictionary<string, string> { ["kind"] = kind, ["billable"] = "true", ["prior_notes"] = "[\"a\",\"b\"]", ["patient"] = "{\"age\":70}", ["seen_on"] = "2026-01-15" },
+            types: new Dictionary<string, string> { ["kind"] = "enum", ["billable"] = "boolean", ["prior_notes"] = "array", ["patient"] = "object", ["seen_on"] = "date" });
+
+        Assert.Equal(at24, WorkflowConditionAt25.Holds("c", spelled, scope));
+    }
+
+    // ----- #1038: the gating reads ------------------------------------------------------
+
+    [Fact]
+    public void GatingReads_AreWhatTheNodeAndDeliverableWhensRead_NotInstancesOrFolderItems()
+    {
+        var (manifest, files) = V25Package.Minimal();
+        Assert.Empty(WorkflowDerivedEdges.GatingReads(manifest, files, V25Package.Catalog()));
+
+        var deliverableGate = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node.scope.value == \"in_scope\"" }).ToList() };
+        Assert.Equal(new[] { "scope" }, WorkflowDerivedEdges.GatingReads(deliverableGate, files, V25Package.Catalog()));
+
+        var nodeGate = V25Package.WithNode(manifest, "section_notes", n => n with { When = "node.assessment.text != \"\"" });
+        Assert.Equal(new[] { "assessment" }, WorkflowDerivedEdges.GatingReads(nodeGate, files, V25Package.Catalog()));
+
+        // A placement's when gates the boundary too; a node instance's is judged at
+        // the node's completion with its own scope, so it does not.
+        var placementGate = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { Macros = new List<WorkflowDeliverableMacroSpec> { new("closing", At: "append", When: "node.scope.value == \"in_scope\"") } }).ToList() };
+        Assert.Equal(new[] { "scope" }, WorkflowDerivedEdges.GatingReads(placementGate, files, V25Package.Catalog()));
+
+        var instanceGate = V25Package.WithNode(manifest, "assessment", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "after", When: "node.scope.value == \"in_scope\"") } });
+        Assert.Empty(WorkflowDerivedEdges.GatingReads(instanceGate, files, V25Package.Catalog()));
+    }
+
+    [Fact]
+    public void GatingReads_CloseOverTheTextsAWhenReads()
+    {
+        var (manifest, files) = V25Package.Minimal();
+        files["snippets/standards.md"] = "Standards for {{ node.scope.text }}.";
+        var gated = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "snippet.standards.text != \"\"" }).ToList() };
+
+        Assert.Equal(new[] { "scope" }, WorkflowDerivedEdges.GatingReads(gated, files, V25Package.Catalog()));
+    }
+
     // ----- both spellings through one parser ------------------------------------
 
     [Theory]

@@ -20,7 +20,14 @@ public sealed record ConsultDecideActivityInput(
     // node's text parameters resolve from when the boundary re-describes the
     // nodes (the starter's own call). Null below 25 and on payloads from
     // before. Appended last, the positional-call rule.
-    IReadOnlyDictionary<string, string>? EffectiveInputs = null);
+    IReadOnlyDictionary<string, string>? EffectiveInputs = null,
+    // v25 (#1038, design § 16): the render scope's other halves — every scalar
+    // stage-one output (Classification ?? RawOutput, by node id) and the run
+    // and profile facts — over which the boundary judges every 25 when. Null
+    // below 25 and on payloads from before. Appended last, same rule.
+    IReadOnlyDictionary<string, string>? NodeTexts = null,
+    TemplateRunFacts? Run = null,
+    TemplateProfileFacts? Profile = null);
 
 /// <summary>
 /// What the boundary decided. Results empty = nothing applies (the
@@ -79,7 +86,7 @@ public sealed class DecideActivity
             pair => ConsultInputValue.FromJson(pair.Value),
             StringComparer.Ordinal);
 
-        var result = Decide(package, supplied, input.Classifications, _formats, input.EffectiveInputs);
+        var result = Decide(package, supplied, input.Classifications, _formats, input.EffectiveInputs, input.NodeTexts, input.Run, input.Profile);
 
         _logger.LogInformation(
             "Boundary decided. Package={Package}, Firing={Firing}, Skipped={Skipped}, Nodes={Nodes}, Blocks={Blocks}, EmptyFans={EmptyFans}",
@@ -99,9 +106,28 @@ public sealed class DecideActivity
         IReadOnlyDictionary<string, ConsultInputValue>? supplied,
         IReadOnlyDictionary<string, string> classifications,
         WorkflowFormatCatalog? engineFormats = null,
-        IReadOnlyDictionary<string, string>? effectiveInputs = null)
+        IReadOnlyDictionary<string, string>? effectiveInputs = null,
+        IReadOnlyDictionary<string, string>? nodeTexts = null,
+        TemplateRunFacts? run = null,
+        TemplateProfileFacts? profile = null)
     {
-        var fireSet = ConsultGenerationJobStarter.DecideFireSet(package, supplied, classifications);
+        // v25 (#1038): the boundary's scope — the effective inputs, the stage-one
+        // outputs, the facts; the folders settled over the folder-less scope first.
+        ConsultConditionScope? scope = null;
+        if (ConsultGenerationJobStarter.IsAt25(package))
+        {
+            var bare = new ConsultConditionScope(
+                effectiveInputs ?? new Dictionary<string, string>(StringComparer.Ordinal),
+                ConsultConditionScope.TypesOf(package),
+                nodeTexts ?? new Dictionary<string, string>(StringComparer.Ordinal),
+                null,
+                run ?? new TemplateRunFacts(string.Empty, string.Empty, package.Ref, string.Empty),
+                profile ?? new TemplateProfileFacts(string.Empty, string.Empty),
+                package);
+            scope = bare.WithFolders(ConsultRenderPayload.FoldersFor(ConsultGenerationJobStarter.SettledFolders(package, supplied, bare)));
+        }
+
+        var fireSet = ConsultGenerationJobStarter.DecideFireSet(package, supplied, classifications, scope);
 
         if (fireSet.Firing.Count == 0)
         {
@@ -117,7 +143,7 @@ public sealed class DecideActivity
         }
 
         var narrowed = fireSet.Package;
-        var skeleton = ConsultGenerationJobStarter.ResolveSkeleton(narrowed, supplied);
+        var skeleton = ConsultGenerationJobStarter.ResolveSkeleton(narrowed, supplied, scope);
 
         if (skeleton.EmptyFanLabels.Count > 0)
         {
@@ -143,7 +169,7 @@ public sealed class DecideActivity
         var firingDescriptors = fireSet.Firing
             .Select(result =>
             {
-                var judged = ConsultGenerationJobStarter.DecidePlacementWhens(result, supplied, classifications);
+                var judged = ConsultGenerationJobStarter.DecidePlacementWhens(result, supplied, classifications, scope);
                 excludedMacros.AddRange(judged.Excluded);
                 // The boundary never sees the request: the choice filter is
                 // the engine's (FilterDescriptorMacros), so no choices here.
