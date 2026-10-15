@@ -520,14 +520,14 @@ public static class WorkflowDerivedEdges
             return null;
         }
 
-        if (node.ForEach.StartsWith(TemplateObjects.Snippet + ":", StringComparison.Ordinal))
+        if (WorkflowFanSources.IsSnippetFan(node.ForEach))
         {
-            var folder = node.ForEach[(TemplateObjects.Snippet.Length + 1)..];
+            var folder = WorkflowFanSources.CollectionIdOf(node.ForEach);
             return content.Collections.ContainsKey(folder) ? new SnippetFolderFan(folder) : null;
         }
 
-        if (node.ForEach.StartsWith(WorkflowNodeBindingSources.InputPrefix, StringComparison.Ordinal)
-            && inputsById.TryGetValue(node.ForEach[WorkflowNodeBindingSources.InputPrefix.Length..], out var input)
+        if (WorkflowInputFans.IsInputFan(node.ForEach)
+            && inputsById.TryGetValue(WorkflowInputFans.InputIdOf(node.ForEach), out var input)
             && WorkflowInputTypes.Of(input) == WorkflowInputTypes.Array)
         {
             var element = WorkflowDeclarationNode.Of(input).Items

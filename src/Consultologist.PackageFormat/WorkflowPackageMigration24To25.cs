@@ -660,8 +660,25 @@ public static class WorkflowPackageMigration24To25
         foreach (var node in Array(root, "nodes").OfType<JsonObject>())
         {
             var id = Str(node, "id");
-            if (id is null || !typedNodes.TryGetValue(id, out var typed) || typed.Aggregate is not null)
+            if (id is null || !typedNodes.TryGetValue(id, out var typed))
             {
+                continue;
+            }
+
+            if (typed.Aggregate is not null)
+            {
+                // #1037: an aggregator's sources read node.<id>.
+                if (Get(node, "aggregate") is JsonArray aggregate)
+                {
+                    for (var i = 0; i < aggregate.Count; i++)
+                    {
+                        if (aggregate[i]?.GetValue<string>() is { } source)
+                        {
+                            aggregate[i] = NodeRef(source);
+                        }
+                    }
+                }
+
                 continue;
             }
 
@@ -694,9 +711,17 @@ public static class WorkflowPackageMigration24To25
             if (onInvalid is not null) { Set(node, "onInvalid", onInvalid); }
             if (!string.IsNullOrWhiteSpace(failIfEmpty) && format is not "rendered" && format != WorkflowCheckOps.TermsSubset) { Set(node, "failIfEmpty", failIfEmpty); }
 
-            if (Str(node, "forEach") is { } forEach && forEach.StartsWith(DataPrefix, StringComparison.Ordinal))
+            // #1037: the object spelling — data:x → snippet.x, input:x → input.x.
+            if (Str(node, "forEach") is { } forEach)
             {
-                Set(node, "forEach", WorkflowFanSources.SnippetPrefix + forEach[DataPrefix.Length..]);
+                if (forEach.StartsWith(DataPrefix, StringComparison.Ordinal))
+                {
+                    Set(node, "forEach", TemplateObjectReference.Snippet(forEach[DataPrefix.Length..]));
+                }
+                else if (forEach.StartsWith(InputPrefix, StringComparison.Ordinal))
+                {
+                    Set(node, "forEach", TemplateObjectReference.Input(forEach[InputPrefix.Length..]));
+                }
             }
 
             counts[format] = counts.GetValueOrDefault(format) + 1;
@@ -769,6 +794,12 @@ public static class WorkflowPackageMigration24To25
                 Set(result, "check", NodeRef(check));
             }
 
+            // #1037: the deliverable names node.<id>.
+            if (Str(result, "node") is { } resultNode)
+            {
+                Set(result, "node", NodeRef(resultNode));
+            }
+
             if (Get(result, "macros") is not JsonArray macros)
             {
                 continue;
@@ -834,7 +865,7 @@ public static class WorkflowPackageMigration24To25
         Remove(root, "results");
         Remove(root, "result");
         Set(root, "deliverables", deliverables);
-        notices.Add("results is now deliverables; a deliverable's check reads node.<id>; appended macros say at: append.");
+        notices.Add("results is now deliverables; a deliverable's node and check read node.<id>; appended macros say at: append.");
         return slots;
     }
 

@@ -23,7 +23,7 @@ public class V25RunPathTests
             Macros = manifest.Macros!.Append(new WorkflowMacroSpec("scope_line", "Scope line", "macros/scope_line.md", Instruction: "x")).ToList(),
             Deliverables = new List<WorkflowDeliverableSpec>
             {
-                new("consult", "node:all", "Consultation note", Check: "node.coverage", Macros: new List<WorkflowDeliverableMacroSpec>
+                new("consult", "node.all", "Consultation note", Check: "node.coverage", Macros: new List<WorkflowDeliverableMacroSpec>
                 {
                     new("closing", At: WorkflowDeliverableMacroSpec.Prepend, When: "kind == follow_up"),
                     new("closing", At: WorkflowDeliverableMacroSpec.Append),

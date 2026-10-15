@@ -42,9 +42,7 @@ public static class WorkflowDagDiagram
 
                 foreach (var sourceRef in node.Aggregate)
                 {
-                    var sourceId = sourceRef.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
-                        ? sourceRef[WorkflowNodeBindingSources.NodePrefix.Length..]
-                        : sourceRef;
+                    var sourceId = TemplateObjectReference.NodeIdOf(sourceRef) ?? sourceRef;
                     sb.Append($"    {Sanitize(sourceId)} -->|\"aggregate\"| {Sanitize(node.Id)}\n");
                 }
 
@@ -162,9 +160,7 @@ public static class WorkflowDagDiagram
             // so a deliverable never reads as one more aggregator.
             sb.Append($"    {boxId}{{{{\"{caption}\"}}}}\n");
 
-            var nodeId = nodeRef.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
-                ? nodeRef[WorkflowNodeBindingSources.NodePrefix.Length..]
-                : nodeRef;
+            var nodeId = TemplateObjectReference.NodeIdOf(nodeRef) ?? nodeRef;
             sb.Append($"    {Sanitize(nodeId)} --> {boxId}\n");
 
             if (when is null)
@@ -263,7 +259,8 @@ public static class WorkflowDagDiagram
         void Add(string? from)
         {
             if (from != null
-                && (from.StartsWith("input:", StringComparison.Ordinal) || from.StartsWith(WorkflowNodeBindingSources.DataPrefix, StringComparison.Ordinal))
+                && (from.StartsWith("input:", StringComparison.Ordinal) || from.StartsWith(WorkflowNodeBindingSources.DataPrefix, StringComparison.Ordinal)
+                    || from.StartsWith(TemplateObjectReference.InputPrefix, StringComparison.Ordinal) || from.StartsWith(TemplateObjectReference.SnippetPrefix, StringComparison.Ordinal))
                 && !sources.Contains(from))
             {
                 sources.Add(from);

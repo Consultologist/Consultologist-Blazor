@@ -106,9 +106,8 @@ public static class WorkflowPackageBlocks
     {
         foreach (var sourceRef in resultNode.Aggregate!)
         {
-            var sourceId = sourceRef.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
-                ? sourceRef[WorkflowNodeBindingSources.NodePrefix.Length..]
-                : sourceRef;
+            // node:x below 25, node.x at 25 (#1037).
+            var sourceId = TemplateObjectReference.NodeIdOf(sourceRef) ?? sourceRef;
             var source = nodesById.GetValueOrDefault(sourceId)
                 ?? throw new InvalidOperationException($"Package {package.Ref} result aggregator references unknown node '{sourceId}'.");
 

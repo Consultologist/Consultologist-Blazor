@@ -74,7 +74,7 @@ public class WorkflowV25ItemReadsTests
             Nodes = manifest.Nodes!.Select(n => n.Id == "assessment" ? n with { Macros = null } : n).ToList(),
             Deliverables = new List<WorkflowDeliverableSpec>
             {
-                new("consult", "node:all", "Consultation note", Check: "node.coverage",
+                new("consult", "node.all", "Consultation note", Check: "node.coverage",
                     Macros: new List<WorkflowDeliverableMacroSpec> { new("closing", At: WorkflowDeliverableMacroSpec.Append) })
             }
         };

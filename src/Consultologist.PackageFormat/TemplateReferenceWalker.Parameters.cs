@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 
 namespace Consultologist.PackageFormat;
 
@@ -18,10 +17,6 @@ namespace Consultologist.PackageFormat;
 /// </summary>
 public static partial class TemplateReferenceWalker
 {
-    // object.id — the id in the manifest's own spelling (a node id may carry a
-    // hyphen; `with` is JSON, not Scriban, so nothing needs escaping here).
-    private static readonly Regex ObjectReference = new("^(?<object>[a-z]+)\\.(?<id>[a-z0-9][a-z0-9_-]*)(?<rest>(\\.[a-zA-Z0-9_]+)*)$", RegexOptions.Compiled);
-
     public static TemplateReferences WalkParameters(
         string subject,
         IReadOnlyDictionary<string, JsonNode?> with,
@@ -74,17 +69,14 @@ public static partial class TemplateReferenceWalker
     private static void WalkNodeParameter(string prefix, JsonNode? value, WorkflowFormatParameterSpec parameter, TemplateReferenceContext context, TemplateReferenceCollector refs)
     {
         var text = AsString(value);
-        var reference = text is null ? null : ObjectReference.Match(text);
 
-        if (reference is not { Success: true } || reference.Groups["object"].Value != TemplateObjects.Node)
+        if (!TemplateObjectReference.TryParse(text, out var obj, out var id, out var rest) || obj != TemplateObjects.Node)
         {
             refs.Errors.Add($"{prefix} must be a bare node reference (node.<id>); got {Show(value)}.");
             return;
         }
 
-        var id = reference.Groups["id"].Value;
-
-        if (reference.Groups["rest"].Value.Length > 0)
+        if (rest.Length > 0)
         {
             refs.Errors.Add($"{prefix} must name the node bare (node.{id}), not {text}; the parameter reads the node's value.");
             return;
@@ -161,7 +153,7 @@ public static partial class TemplateReferenceWalker
 
         if (text is null || !TryReadInputReference(prefix, text, context, refs, out var declaration))
         {
-            if (text is not null && !ObjectReference.IsMatch(text))
+            if (text is not null && !TemplateObjectReference.TryParse(text, out _, out _, out _))
             {
                 refs.Errors.Add($"{prefix} must be a list of snake_case values or an input.<id> reference to an enum input; got {Show(value)}.");
             }
@@ -196,15 +188,11 @@ public static partial class TemplateReferenceWalker
     private static bool TryReadInputReference(string prefix, string text, TemplateReferenceContext context, TemplateReferenceCollector refs, out WorkflowDeclarationNode? declaration)
     {
         declaration = null;
-        var reference = ObjectReference.Match(text);
 
-        if (!reference.Success || !TemplateObjects.IsReserved(reference.Groups["object"].Value))
+        if (!TemplateObjectReference.TryParse(text, out var obj, out var id, out var rest) || !TemplateObjects.IsReserved(obj))
         {
             return true;
         }
-
-        var obj = reference.Groups["object"].Value;
-        var id = reference.Groups["id"].Value;
 
         if (obj != TemplateObjects.Input)
         {
@@ -212,7 +200,7 @@ public static partial class TemplateReferenceWalker
             return false;
         }
 
-        if (reference.Groups["rest"].Value.Length > 0)
+        if (rest.Length > 0)
         {
             refs.Errors.Add($"{prefix} must name the input bare (input.{id}), not {text}.");
             return false;

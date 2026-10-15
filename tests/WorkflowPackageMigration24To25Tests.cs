@@ -163,7 +163,7 @@ public class WorkflowPackageMigration24To25Tests
         Assert.NotNull(Node(root, "extract_patient_concepts"));
         Assert.NotNull(Node(root, "identify_problem"));
         Assert.NotNull(Node(root, "section_notes"));
-        Assert.Equal(new[] { "node:assessment", "node:section_notes", "node:summary", "node:raw_node" }, Node(root, "assemble")["aggregate"]!.AsArray().Select(a => a!.GetValue<string>()));
+        Assert.Equal(new[] { "node.assessment", "node.section_notes", "node.summary", "node.raw_node" }, Node(root, "assemble")["aggregate"]!.AsArray().Select(a => a!.GetValue<string>()));
         Assert.Equal("node.identify_problem", Node(root, "coverage")["with"]!["of"]!.GetValue<string>());
         Assert.Equal("node.extract_patient_concepts", Node(root, "coverage")["with"]!["in"]!.GetValue<string>());
     }
@@ -226,7 +226,7 @@ public class WorkflowPackageMigration24To25Tests
         Assert.Equal("fail", coverage["onInvalid"]!.GetValue<string>());
         Assert.False(coverage.ContainsKey("prompt"));
 
-        Assert.Equal("snippet:sections", Node(root, "section_notes")["forEach"]!.GetValue<string>());
+        Assert.Equal("snippet.sections", Node(root, "section_notes")["forEach"]!.GetValue<string>());
     }
 
     [Fact]
@@ -256,7 +256,7 @@ public class WorkflowPackageMigration24To25Tests
         var root = Root(Migrated());
 
         var deliverable = Assert.Single(root["deliverables"]!.AsArray().OfType<JsonObject>());
-        Assert.Equal("node:assemble", deliverable["node"]!.GetValue<string>());
+        Assert.Equal("node.assemble", deliverable["node"]!.GetValue<string>());
         Assert.Equal("node.coverage", deliverable["check"]!.GetValue<string>());
         Assert.Equal("kind == new", deliverable["when"]!.GetValue<string>());
         var appended = Assert.Single(deliverable["macros"]!.AsArray().OfType<JsonObject>());

@@ -79,10 +79,9 @@ public static class WorkflowNodeClosure
                 // Prefix-tolerant, matching WorkflowPackageBlocks.ExpandAggregator
                 // and the engine's aggregator loop: a bare id those two would
                 // resolve has to be an edge here, or a prune built from this map
-                // drops exactly the node they then look up.
-                Add(node.Id, sourceRef.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
-                    ? sourceRef[WorkflowNodeBindingSources.NodePrefix.Length..]
-                    : sourceRef);
+                // drops exactly the node they then look up. node:x below 25,
+                // node.x at 25 (#1037).
+                Add(node.Id, TemplateObjectReference.NodeIdOf(sourceRef) ?? sourceRef);
             }
 
             // v12 (§ 13): a check node's operands are its dependencies — the

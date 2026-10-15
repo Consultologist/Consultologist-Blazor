@@ -116,8 +116,8 @@ public class V25JobStartTests
         // find no output for node.extract.
         var package = Package(m => m with
         {
-            Nodes = m.Nodes!.Append(new WorkflowNodeSpec("letter_all", "Letter", Aggregate: new List<string> { "node:assessment", "node:section_notes" })).ToList(),
-            Deliverables = m.Deliverables!.Append(new WorkflowDeliverableSpec("letter", "node:letter_all", "Letter", When: "kind == follow_up")).ToList(),
+            Nodes = m.Nodes!.Append(new WorkflowNodeSpec("letter_all", "Letter", Aggregate: new List<string> { "node.assessment", "node.section_notes" })).ToList(),
+            Deliverables = m.Deliverables!.Append(new WorkflowDeliverableSpec("letter", "node.letter_all", "Letter", When: "kind == follow_up")).ToList(),
         });
         package = package with
         {
@@ -160,13 +160,13 @@ public class V25JobStartTests
     [Fact]
     public void ASnippetFan_RunsOverTheSettledFolder()
     {
-        // section_notes fans snippet:sections; the orchestrator keys the
+        // section_notes fans snippet.sections; the orchestrator keys the
         // snapshot by the folder id, as a data: fan did.
         var skeleton = ConsultGenerationJobStarter.ResolveSkeleton(Package(), FollowUp);
         var descriptor = ConsultGenerationJobStarter.DescribeNode(
             Package().Nodes!.First(n => n.Id == "section_notes"), null, formats: V25Package.Catalog());
 
-        Assert.Equal("snippet:sections", descriptor.ForEach);
+        Assert.Equal("snippet.sections", descriptor.ForEach);
         Assert.Equal(new[] { "hpi" }, skeleton.CollectionSets["sections"].Select(i => i["id"]));
     }
 }

@@ -31,7 +31,7 @@ public static partial class WorkflowPackageValidator
         public const string Results = "declare deliverables";
         public const string Placement = "place it on the node as a node instance ({ id, at: before|after })";
         public const string Slot = "read {{ macro.<id>.prompt }} in the template where the slot goes";
-        public const string ForEach = "fan a snippet folder (snippet:<folder>) or an array input (input:<id>)";
+        public const string ForEach = "fan a snippet folder (snippet.<folder>) or an array input (input.<id>)";
     }
 
     private const string SnippetNoun = "Snippet";
@@ -337,6 +337,7 @@ public static partial class WorkflowPackageValidator
     {
         var nodes = new Dictionary<string, NodeAt25>(StringComparer.Ordinal);
         var prompts = (manifest.Prompts ?? new List<WorkflowPromptSpec>()).Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
+        var declaredIds = (manifest.Nodes ?? new List<WorkflowNodeSpec>()).Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
         var unresolvedCatalogueIds = new SortedSet<string>(StringComparer.Ordinal);
 
         foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
@@ -369,6 +370,27 @@ public static partial class WorkflowPackageValidator
                     if (present)
                     {
                         errors.Add($"Node '{node.Id}' aggregates and must not declare {name}; an aggregator is structural.");
+                    }
+                }
+
+                // #1037 (design § 16): a source is node.<id> — declared, and not the aggregator itself.
+                foreach (var sourceRef in node.Aggregate)
+                {
+                    if (TemplateObjectReference.IsColonSpelling(sourceRef))
+                    {
+                        errors.Add($"Aggregator node '{node.Id}' source '{sourceRef}' is the ≤24 spelling; at specVersion 25 a source is node.<id>.");
+                    }
+                    else if (!TemplateObjectReference.IsBare(sourceRef, TemplateObjects.Node, out var sourceId))
+                    {
+                        errors.Add($"Aggregator node '{node.Id}' source '{sourceRef}' must be node.<id>.");
+                    }
+                    else if (sourceId == node.Id)
+                    {
+                        errors.Add($"Aggregator node '{node.Id}' aggregates itself.");
+                    }
+                    else if (!declaredIds.Contains(sourceId))
+                    {
+                        errors.Add($"Aggregator node '{node.Id}' references unknown node '{sourceId}'.");
                     }
                 }
 
@@ -471,11 +493,24 @@ public static partial class WorkflowPackageValidator
             return (null, null);
         }
 
-        // snippet:<folder> — the one source the v5 binding grammar does not spell.
-        if (node.ForEach.StartsWith(TemplateObjects.Snippet + ":", StringComparison.Ordinal))
+        // #1037 (design § 16): the object spelling — snippet.<folder> or input.<id>;
+        // the ≤24 binding grammar (data:, input:, and 25's own snippet: before it) is
+        // refused by name with the spelling in the sentence.
+        if (TemplateObjectReference.IsColonSpelling(node.ForEach))
         {
-            var id = node.ForEach[(TemplateObjects.Snippet.Length + 1)..];
+            errors.Add($"Node '{node.Id}' forEach '{node.ForEach}' is the ≤24 spelling; at specVersion 25 forEach fans snippet.<folder> or input.<id>.");
+            return (null, null);
+        }
 
+        if (!TemplateObjectReference.TryParse(node.ForEach, out var obj, out var id, out var rest) || rest.Length > 0
+            || (obj != TemplateObjects.Snippet && obj != TemplateObjects.Input))
+        {
+            errors.Add($"Node '{node.Id}' forEach '{node.ForEach}' must be snippet.<folder> or input.<id>.");
+            return (null, null);
+        }
+
+        if (obj == TemplateObjects.Snippet)
+        {
             if (snippets.Collections.TryGetValue(id, out var folder))
             {
                 return (new SnippetFolderFan(id), folder);
@@ -487,38 +522,20 @@ public static partial class WorkflowPackageValidator
             return (null, null);
         }
 
-        if (!WorkflowNodeBindingSources.TryParse(node.ForEach, out var source, out _))
+        if (!inputsById.TryGetValue(id, out var declaration))
         {
-            errors.Add($"Node '{node.Id}' forEach '{node.ForEach}' must be snippet:<folder> or input:<id>.");
+            errors.Add($"Node '{node.Id}' forEach '{node.ForEach}' fans undeclared input '{id}'.");
             return (null, null);
         }
 
-        switch (source)
+        if (WorkflowInputTypes.Of(declaration) != WorkflowInputTypes.Array)
         {
-            case WorkflowNodeBindingSource.Data:
-                errors.Add($"Node '{node.Id}' forEach '{node.ForEach}' is retired at specVersion 25; {RetiredAt25.ForEach}.");
-                return (null, null);
-
-            case WorkflowNodeBindingSource.Input input:
-                if (!inputsById.TryGetValue(input.Name, out var declaration))
-                {
-                    errors.Add($"Node '{node.Id}' forEach '{node.ForEach}' fans undeclared input '{input.Name}'.");
-                    return (null, null);
-                }
-
-                if (WorkflowInputTypes.Of(declaration) != WorkflowInputTypes.Array)
-                {
-                    errors.Add($"Node '{node.Id}' forEach '{node.ForEach}' fans input '{input.Name}', which is a {WorkflowInputTypes.Of(declaration)}; only an array can be fanned.");
-                    return (null, null);
-                }
-
-                var element = WorkflowDeclarationNode.Of(declaration).Items ?? new WorkflowDeclarationNode(WorkflowInputTypes.Text, declaration.Label, false, null, null, null);
-                return (new InputArrayFan(element), null);
-
-            default:
-                errors.Add($"Node '{node.Id}' forEach '{node.ForEach}' must be snippet:<folder> or input:<id>.");
-                return (null, null);
+            errors.Add($"Node '{node.Id}' forEach '{node.ForEach}' fans input '{id}', which is a {WorkflowInputTypes.Of(declaration)}; only an array can be fanned.");
+            return (null, null);
         }
+
+        var element = WorkflowDeclarationNode.Of(declaration).Items ?? new WorkflowDeclarationNode(WorkflowInputTypes.Text, declaration.Label, false, null, null, null);
+        return (new InputArrayFan(element), null);
     }
 
     // ----- § 5: the macro library -----------------------------------------------
@@ -815,7 +832,7 @@ public static partial class WorkflowPackageValidator
             // § 7: items of a fanned folder that lack the read.
             if (node.Folder is { } folder && node.FanSource is not null)
             {
-                var folderId = node.FanSource[(node.FanSource.IndexOf(':') + 1)..];
+                var folderId = WorkflowFanSources.CollectionIdOf(node.FanSource);
                 var perItem = folder.Items.ToDictionary(i => i.Id, i => walk.PromptReadsOf(spec.Id, i.Id), StringComparer.Ordinal);
                 var slotsAnywhere = perItem.Values.SelectMany(s => s).ToHashSet(StringComparer.Ordinal);
 
@@ -1091,16 +1108,17 @@ public static partial class WorkflowPackageValidator
                 errors.Add($"{subject} has no label.");
             }
 
-            if (deliverable.Node is not { } nodeRef
-                || !nodeRef.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
-                || nodeRef.Length == WorkflowNodeBindingSources.NodePrefix.Length)
+            // #1037 (design § 16): node.<id>, the object spelling.
+            if (TemplateObjectReference.IsColonSpelling(deliverable.Node))
             {
-                errors.Add($"{subject} node '{deliverable.Node}' must be 'node:<id>'.");
+                errors.Add($"{subject} node '{deliverable.Node}' is the ≤24 spelling; at specVersion 25 a deliverable names node.<id>.");
+            }
+            else if (!TemplateObjectReference.IsBare(deliverable.Node, TemplateObjects.Node, out var nodeId))
+            {
+                errors.Add($"{subject} node '{deliverable.Node}' must be node.<id>.");
             }
             else
             {
-                var nodeId = nodeRef[WorkflowNodeBindingSources.NodePrefix.Length..];
-
                 if (!nodes.TryGetValue(nodeId, out var node))
                 {
                     errors.Add($"{subject} references unknown node '{nodeId}'.");
@@ -1126,16 +1144,12 @@ public static partial class WorkflowPackageValidator
 
             if (deliverable.Check != null)
             {
-                var prefix = TemplateObjects.Node + ".";
-
-                if (!deliverable.Check.StartsWith(prefix, StringComparison.Ordinal) || deliverable.Check.Length == prefix.Length)
+                if (!TemplateObjectReference.IsBare(deliverable.Check, TemplateObjects.Node, out var checkId))
                 {
                     errors.Add($"{subject} check '{deliverable.Check}' must be node.<id>, naming a node of a computed format.");
                 }
                 else
                 {
-                    var checkId = deliverable.Check[prefix.Length..];
-
                     if (!nodes.ContainsKey(checkId))
                     {
                         errors.Add($"{subject} check names node '{checkId}', which the package does not declare.");
@@ -1235,11 +1249,9 @@ public static partial class WorkflowPackageValidator
 
         foreach (var deliverable in manifest.Deliverables ?? new List<WorkflowDeliverableSpec>())
         {
-            if (deliverable.Node is { } nodeRef
-                && nodeRef.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
-                && nodes.ContainsKey(nodeRef[WorkflowNodeBindingSources.NodePrefix.Length..]))
+            if (TemplateObjectReference.IsBare(deliverable.Node, TemplateObjects.Node, out var rootId) && nodes.ContainsKey(rootId))
             {
-                roots.Add((deliverable.Id, nodeRef[WorkflowNodeBindingSources.NodePrefix.Length..]));
+                roots.Add((deliverable.Id, rootId));
             }
         }
 

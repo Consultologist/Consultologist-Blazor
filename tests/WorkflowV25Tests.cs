@@ -70,14 +70,14 @@ public static class V25Package
                     With: new Dictionary<string, JsonNode?> { ["values"] = new JsonArray("in_scope", "out_of_scope") }),
                 new("assessment", "Assessment", Prompt: "assessment", Format: "prose",
                     Macros: new List<WorkflowNodeMacroSpec> { new("closing", At: WorkflowNodeMacroSpec.After) }),
-                new("section_notes", "Section notes", Prompt: "section", Format: "prose", ForEach: "snippet:sections"),
+                new("section_notes", "Section notes", Prompt: "section", Format: "prose", ForEach: "snippet.sections"),
                 new("coverage", "Coverage", Format: "terms-subset", OnInvalid: WorkflowOnInvalid.Fail,
                     With: new Dictionary<string, JsonNode?> { ["of"] = "node.extract", ["in"] = "node.extract", ["failWith"] = "The note names problems the source does not." }),
-                new("all", "Everything", Aggregate: new List<string> { "node:assessment", "node:section_notes" }),
+                new("all", "Everything", Aggregate: new List<string> { "node.assessment", "node.section_notes" }),
             },
             Snippets = new Dictionary<string, string> { ["standards"] = "snippets/standards.md", ["sections"] = "snippets/sections/" },
             Macros = new List<WorkflowMacroSpec> { new("closing", "Closing", "macros/closing.md", Instruction: "Add a closing line if the plan changed.") },
-            Deliverables = new List<WorkflowDeliverableSpec> { new("consult", "node:all", "Consultation note", Check: "node.coverage") },
+            Deliverables = new List<WorkflowDeliverableSpec> { new("consult", "node.all", "Consultation note", Check: "node.coverage") },
         };
 
         var files = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -266,7 +266,7 @@ public class WorkflowV25Tests
         var (manifest, files) = V25Package.Minimal();
         manifest = manifest with
         {
-            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("everything", "Everything", Aggregate: new List<string> { "node:assessment" }, Format: "prose", Prompt: "assessment")).ToList()
+            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("everything", "Everything", Aggregate: new List<string> { "node.assessment" }, Format: "prose", Prompt: "assessment")).ToList()
         };
 
         var errors = V25Package.Errors((manifest, files));
@@ -326,7 +326,7 @@ public class WorkflowV25Tests
             Formats = new List<WorkflowFormatReference> { new(id, file) },
             Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("meds", "Medications", Prompt: "extract", Format: id, OnInvalid: "fail")).ToList(),
         };
-        manifest = V25Package.WithNode(manifest, "all", n => n with { Aggregate = n.Aggregate!.Append("node:meds").ToList() });
+        manifest = V25Package.WithNode(manifest, "all", n => n with { Aggregate = n.Aggregate!.Append("node.meds").ToList() });
 
         if (json is not null)
         {
@@ -459,12 +459,12 @@ public class WorkflowV25TemplateTests
         {
             Inputs = manifest.Inputs!.Append(new WorkflowInputSpec("history", "History", true, "array", Items: new WorkflowElementSpec("text"))).ToList(),
             Prompts = manifest.Prompts!.Append(new WorkflowPromptSpec("per_event", "prompts/per_event.md", new List<string>())).ToList(),
-            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("per_event", "Per event", Prompt: "per_event", Format: "prose", ForEach: "input:history")).ToList(),
+            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("per_event", "Per event", Prompt: "per_event", Format: "prose", ForEach: "input.history")).ToList(),
         };
-        manifest = V25Package.WithNode(manifest, "all", n => n with { Aggregate = n.Aggregate!.Append("node:per_event").ToList() });
+        manifest = V25Package.WithNode(manifest, "all", n => n with { Aggregate = n.Aggregate!.Append("node.per_event").ToList() });
         files["prompts/per_event.md"] = "{{ item.value }} {{ node.section_notes.text }}";
 
-        Assert.Contains("Node 'per_event' reads node 'section_notes' across fans ('input:history' vs 'snippet:sections'); two fans align only over one source.", V25Package.Errors((manifest, files)));
+        Assert.Contains("Node 'per_event' reads node 'section_notes' across fans ('input.history' vs 'snippet.sections'); two fans align only over one source.", V25Package.Errors((manifest, files)));
     }
 
     [Fact]
@@ -475,20 +475,24 @@ public class WorkflowV25TemplateTests
         {
             Inputs = manifest.Inputs!.Append(new WorkflowInputSpec("history", "History", true, "array", Items: new WorkflowElementSpec("object"), Fields: new List<WorkflowFieldSpec> { new("event", "Event", true, "text") })).ToList(),
             Prompts = manifest.Prompts!.Append(new WorkflowPromptSpec("per_event", "prompts/per_event.md", new List<string>())).ToList(),
-            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("per_event", "Per event", Prompt: "per_event", Format: "prose", ForEach: "input:history")).ToList(),
+            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("per_event", "Per event", Prompt: "per_event", Format: "prose", ForEach: "input.history")).ToList(),
         };
-        manifest = V25Package.WithNode(manifest, "all", n => n with { Aggregate = n.Aggregate!.Append("node:per_event").ToList() });
+        manifest = V25Package.WithNode(manifest, "all", n => n with { Aggregate = n.Aggregate!.Append("node.per_event").ToList() });
         files["prompts/per_event.md"] = "{{ item.value.event }} {{ item.value.date }}";
 
         Assert.Contains("Prompt 'per_event' reads field 'date' of 'item.value', which it does not declare (fields: event).", V25Package.Errors((manifest, files)));
     }
 
     [Theory]
-    [InlineData("data:sections", "Node 'section_notes' forEach 'data:sections' is retired at specVersion 25; fan a snippet folder (snippet:<folder>) or an array input (input:<id>).")]
-    [InlineData("snippet:nope", "Node 'section_notes' forEach fans snippet folder 'nope', which the package does not declare.")]
-    [InlineData("snippet:standards", "Node 'section_notes' forEach fans snippet 'standards', which is a file, not a folder.")]
-    [InlineData("input:notes", "Node 'section_notes' forEach 'input:notes' fans input 'notes', which is a text; only an array can be fanned.")]
-    [InlineData("sections", "Node 'section_notes' forEach 'sections' must be snippet:<folder> or input:<id>.")]
+    [InlineData("data:sections", "Node 'section_notes' forEach 'data:sections' is the ≤24 spelling; at specVersion 25 forEach fans snippet.<folder> or input.<id>.")]
+    [InlineData("snippet:sections", "Node 'section_notes' forEach 'snippet:sections' is the ≤24 spelling; at specVersion 25 forEach fans snippet.<folder> or input.<id>.")]
+    [InlineData("input:history", "Node 'section_notes' forEach 'input:history' is the ≤24 spelling; at specVersion 25 forEach fans snippet.<folder> or input.<id>.")]
+    [InlineData("snippet.nope", "Node 'section_notes' forEach fans snippet folder 'nope', which the package does not declare.")]
+    [InlineData("snippet.standards", "Node 'section_notes' forEach fans snippet 'standards', which is a file, not a folder.")]
+    [InlineData("input.notes", "Node 'section_notes' forEach 'input.notes' fans input 'notes', which is a text; only an array can be fanned.")]
+    [InlineData("input.nope", "Node 'section_notes' forEach 'input.nope' fans undeclared input 'nope'.")]
+    [InlineData("sections", "Node 'section_notes' forEach 'sections' must be snippet.<folder> or input.<id>.")]
+    [InlineData("snippet.sections.text", "Node 'section_notes' forEach 'snippet.sections.text' must be snippet.<folder> or input.<id>.")]
     public void ForEach_NamesASnippetFolderOrAnArrayInput(string forEach, string sentence)
     {
         var (manifest, files) = Minimal();
@@ -624,7 +628,7 @@ public class WorkflowV25TemplateTests
         {
             Deliverables = new List<WorkflowDeliverableSpec>
             {
-                new("consult", "node:all", "Consultation note", Check: "node.coverage",
+                new("consult", "node.all", "Consultation note", Check: "node.coverage",
                     Macros: new List<WorkflowDeliverableMacroSpec> { new("closing", At: WorkflowDeliverableMacroSpec.Append) }),
             },
         };
@@ -671,8 +675,25 @@ public class WorkflowV25TemplateTests
         var (manifest, files) = Minimal();
 
         Assert.Contains("deliverables must declare at least one deliverable.", V25Package.Errors((manifest with { Deliverables = new List<WorkflowDeliverableSpec>() }, files)));
-        Assert.Contains("Deliverable 'consult' must reference an aggregator node ('assessment' is not one).", V25Package.Errors((manifest with { Deliverables = new List<WorkflowDeliverableSpec> { new("consult", "node:assessment", "C", Check: "node.coverage") } }, files)));
-        Assert.Contains("Deliverable 'consult' references unknown node 'nope'.", V25Package.Errors((manifest with { Deliverables = new List<WorkflowDeliverableSpec> { new("consult", "node:nope", "C", Check: "node.coverage") } }, files)));
+        Assert.Contains("Deliverable 'consult' must reference an aggregator node ('assessment' is not one).", V25Package.Errors((manifest with { Deliverables = new List<WorkflowDeliverableSpec> { new("consult", "node.assessment", "C", Check: "node.coverage") } }, files)));
+        Assert.Contains("Deliverable 'consult' references unknown node 'nope'.", V25Package.Errors((manifest with { Deliverables = new List<WorkflowDeliverableSpec> { new("consult", "node.nope", "C", Check: "node.coverage") } }, files)));
+        // #1037: the object spelling; the ≤24 one is refused by name.
+        Assert.Contains("Deliverable 'consult' node 'node:all' is the ≤24 spelling; at specVersion 25 a deliverable names node.<id>.", V25Package.Errors((manifest with { Deliverables = new List<WorkflowDeliverableSpec> { new("consult", "node:all", "C", Check: "node.coverage") } }, files)));
+        Assert.Contains("Deliverable 'consult' node 'all' must be node.<id>.", V25Package.Errors((manifest with { Deliverables = new List<WorkflowDeliverableSpec> { new("consult", "all", "C", Check: "node.coverage") } }, files)));
+    }
+
+    [Theory]
+    [InlineData("node:assessment", "Aggregator node 'all' source 'node:assessment' is the ≤24 spelling; at specVersion 25 a source is node.<id>.")]
+    [InlineData("assessment", "Aggregator node 'all' source 'assessment' must be node.<id>.")]
+    [InlineData("node.assessment.text", "Aggregator node 'all' source 'node.assessment.text' must be node.<id>.")]
+    [InlineData("node.nope", "Aggregator node 'all' references unknown node 'nope'.")]
+    [InlineData("node.all", "Aggregator node 'all' aggregates itself.")]
+    public void AnAggregateSource_IsANodeReference_InTheObjectSpelling(string source, string expected)
+    {
+        var (manifest, files) = Minimal();
+        manifest = V25Package.WithNode(manifest, "all", n => n with { Aggregate = new List<string> { "node.section_notes", source } });
+
+        Assert.Contains(expected, V25Package.Errors((manifest, files)));
     }
 
     [Theory]
@@ -737,7 +758,7 @@ public class WorkflowV25TemplateTests
     public void EveryNode_FeedsADeliverable_AndADeliverableHasAFan()
     {
         var (manifest, files) = Minimal();
-        manifest = V25Package.WithNode(manifest, "all", n => n with { Aggregate = new List<string> { "node:assessment" } });
+        manifest = V25Package.WithNode(manifest, "all", n => n with { Aggregate = new List<string> { "node.assessment" } });
 
         var errors = V25Package.Errors((manifest, files));
 
