@@ -124,6 +124,8 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         // as results[] with the 25 placement (at: prepend | append) on every
         // entry, an identity of (id, at) for its when, and the check spelled
         // node.<id> passed through as written (the engine reads either spelling).
+        // #1038: a 25 when rides as TEXT (judged over the render scope), never
+        // as the ≤24 tree — a when beyond that tree used to be dropped here.
         if (manifest.Deliverables is { Count: > 0 })
         {
             return manifest.Deliverables
@@ -131,14 +133,13 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
                     deliverable.Id,
                     TemplateObjectReference.NodeIdOf(deliverable.Node) ?? deliverable.Node,
                     deliverable.Label,
-                    WorkflowResultConditions.TryParseExpression(deliverable.When, out var condition, out _)
-                        ? condition
-                        : null,
+                    null,
                     deliverable.Macros?.Select(entry => entry.Id).Distinct(StringComparer.Ordinal).ToList(),
                     deliverable.Signature,
                     PlacementsAt25(deliverable.Macros),
                     deliverable.Check,
-                    MacroConditionsAt25(deliverable.Macros)))
+                    MacroConditionsAt25(deliverable.Macros),
+                    When: string.IsNullOrWhiteSpace(deliverable.When) ? null : deliverable.When))
                 .ToList();
         }
 
@@ -195,11 +196,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     {
         var conditions = (macros ?? Array.Empty<WorkflowDeliverableMacroSpec>())
             .Where(entry => entry.When != null)
-            .Select(entry => WorkflowResultConditions.TryParseExpression(entry.When, out var condition, out _)
-                ? new WorkflowResolvedMacroCondition(entry.Id, condition!, entry.At ?? WorkflowDeliverableMacroSpec.Append)
-                : null)
-            .Where(entry => entry != null)
-            .Select(entry => entry!)
+            .Select(entry => new WorkflowResolvedMacroCondition(entry.Id, null, entry.At ?? WorkflowDeliverableMacroSpec.Append, When: entry.When))
             .ToList();
         return conditions.Count == 0 ? null : conditions;
     }

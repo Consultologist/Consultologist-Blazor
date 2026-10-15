@@ -53,6 +53,33 @@ public class V25RunPathTests
         Assert.All(result.MacroPlacements!, p => Assert.Null(p.Before));
         var gate = Assert.Single(result.MacroConditions!);
         Assert.Equal(("closing", "prepend"), (gate.MacroId, gate.At!));
+        // #1038: at 25 a when rides as text for the judge; the ≤24 tree is not built.
+        Assert.Equal("input.kind == \"follow_up\"", gate.When);
+        Assert.Null(gate.Condition);
+        Assert.Null(result.When);
+    }
+
+    [Fact]
+    public void TheStore_CarriesA25When_AsText_EvenBeyondTheBuildersSubset()
+    {
+        // Before #1038 a when the ≤24 tree could not hold was dropped at load, so
+        // the deliverable always fired and the placement was never gated.
+        var (manifest, _) = WithDeliverableMacros();
+        manifest = manifest with
+        {
+            Deliverables = manifest.Deliverables!.Select(d => d with
+            {
+                When = "node.assessment.text != \"\"",
+                Macros = new List<WorkflowDeliverableMacroSpec> { new("closing", At: WorkflowDeliverableMacroSpec.Append, When: "snippet.standards.text != \"\"") },
+            }).ToList(),
+        };
+
+        var result = Assert.Single(WorkflowPackageStore.ResolveResultSet(manifest)!);
+
+        Assert.Equal("node.assessment.text != \"\"", result.When);
+        Assert.Null(result.Condition);
+        var gate = Assert.Single(result.MacroConditions!);
+        Assert.Equal(("closing", "append", "snippet.standards.text != \"\""), (gate.MacroId, gate.At!, gate.When!));
     }
 
     [Fact]

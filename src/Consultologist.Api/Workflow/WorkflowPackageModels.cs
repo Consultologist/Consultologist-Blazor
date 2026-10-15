@@ -33,10 +33,19 @@ public sealed record WorkflowResolvedResult(
     // v12 #631 (§ 14): the when-gated entries' parsed clauses, by macro id —
     // null when no entry carries when (the control). Parsed at load, like
     // Condition, so the deciders evaluate a structure.
-    IReadOnlyList<WorkflowResolvedMacroCondition>? MacroConditions = null);
+    IReadOnlyList<WorkflowResolvedMacroCondition>? MacroConditions = null,
+    // v25 (#1038, design § 16): the deliverable's when as the package wrote it —
+    // a Scriban expression the engine judges over the render scope at the
+    // boundary; Condition stays null at 25. Null below 25 and when unset.
+    string? When = null);
 
-/// <summary>One when-gated macro entry of a resolved result (v12 § 14). v25 (B8 #1027): <c>At</c> completes the identity — (id, at) — of a deliverable instance; null below 25.</summary>
-public sealed record WorkflowResolvedMacroCondition(string MacroId, WorkflowConditionExpression Condition, string? At = null);
+/// <summary>
+/// One when-gated macro entry of a resolved result (v12 § 14). v25 (B8 #1027):
+/// <c>At</c> completes the identity — (id, at) — of a deliverable instance; null
+/// below 25. v25 (#1038): <c>When</c> is the text the engine judges over the render
+/// scope, and <c>Condition</c> is null; below 25 the reverse.
+/// </summary>
+public sealed record WorkflowResolvedMacroCondition(string MacroId, WorkflowConditionExpression? Condition, string? At = null, string? When = null);
 
 public sealed record WorkflowPackage(
     WorkflowPackageManifest Manifest,
