@@ -76,7 +76,6 @@ internal static class ConsultNodeCompletion
         // 5. The instances: anchored by forItem, gated by when.
         var instances = new List<WorkflowNodeCompletion.Instance>();
         var excluded = new List<ConsultNodeExclusion>();
-        var supplied = input.Supplied?.ToDictionary(pair => pair.Key, pair => ConsultInputValue.FromJson(pair.Value), StringComparer.Ordinal);
 
         foreach (var instance in input.Instances ?? Array.Empty<ConsultNodeMacroDescriptor>())
         {
@@ -85,19 +84,14 @@ internal static class ConsultNodeCompletion
                 continue;
             }
 
-            if (instance.When != null)
+            // v25 (#1038, design § 16): judged over the same scope the instance
+            // renders over — the item, the node texts, the facts — never the ≤24
+            // tree; the fixed reason form (provenance@v2026.10.2).
+            if (instance.When != null
+                && !WorkflowConditionAt25.Holds($"Node '{nodeId}' macro '{instance.Id}' condition", instance.When, scope, ConceptPipes.All))
             {
-                if (!WorkflowResultConditions.TryParseExpression(instance.When, out var when, out var error) || when is null)
-                {
-                    throw new InvalidOperationException($"Node '{nodeId}' macro '{instance.Id}' condition does not parse: {error}");
-                }
-
-                if (!WorkflowResultConditions.Holds(when, supplied, input.Classifications, input.Item))
-                {
-                    excluded.Add(new ConsultNodeExclusion(
-                        WorkflowNodeCompletion.MacroKind, instance.Id, WorkflowResultConditions.Explain(when, supplied, input.Classifications)));
-                    continue;
-                }
+                excluded.Add(new ConsultNodeExclusion(WorkflowNodeCompletion.MacroKind, instance.Id, WorkflowConditionAt25.Reason(instance.When)));
+                continue;
             }
 
             instances.Add(new WorkflowNodeCompletion.Instance(instance.Id, instance.After, RenderMacro(scope, instance.Id, nodeId)));
