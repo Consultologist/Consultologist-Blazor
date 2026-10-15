@@ -316,6 +316,22 @@ public class WorkflowV25Tests
         Assert.Contains("Node id 'identify-problem' must be snake_case at specVersion 25 (identify_problem): a template reads it as a Scriban member.", V25Package.Errors((manifest, files)));
     }
 
+    [Theory]
+    [InlineData("draft-section", "Prompt id 'draft-section' must be snake_case at specVersion 25 (draft_section); every declared id is.")]
+    [InlineData("Draft", "Prompt id 'Draft' must be snake_case at specVersion 25 (a lowercase letter, then lowercase letters, digits, or underscores); every declared id is.")]
+    public void AHyphenatedPromptId_IsRefused_WithTheRename(string id, string expected)
+    {
+        // #1037: every declared id is snake_case at 25 — the prompt's too.
+        var (manifest, files) = V25Package.Minimal();
+        manifest = manifest with
+        {
+            Prompts = manifest.Prompts!.Select(p => p.Id == "extract" ? p with { Id = id } : p).ToList(),
+            Nodes = manifest.Nodes!.Select(n => n.Prompt == "extract" ? n with { Prompt = id } : n).ToList(),
+        };
+
+        Assert.Contains(expected, V25Package.Errors((manifest, files)));
+    }
+
     // ----- § 3.6: package-local formats ---------------------------------------------
 
     private static (WorkflowPackageManifest, Dictionary<string, string>) WithLocalFormat(string id, string file, string? json)

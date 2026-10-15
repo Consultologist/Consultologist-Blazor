@@ -122,7 +122,7 @@ public class WorkflowFormatCatalogIndexTests
     }
 
     [Theory]
-    [InlineData("\"prose\":          {", "\"Prose\":          {", "format 'Prose' id must be lowercase letters, digits and hyphens, letter first")]
+    [InlineData("\"prose\":          {", "\"Prose\":          {", "format 'Prose' id must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores)")]
     [InlineData("\"prose\":", "\"custom\":", "format 'custom' is a producer binding, never a format entry")]
     [InlineData("\"file\": \"formats/prose.json\",", "", "format 'prose' must declare a file")]
     [InlineData("\"file\": \"formats/prose.json\",", "\"file\": \"../prose.json\",", "format 'prose' file '../prose.json' must be a relative path within the catalogue")]
@@ -191,12 +191,27 @@ public class WorkflowFormatCatalogIndexTests
     [InlineData("concept-list", true)]
     [InlineData("a1", true)]
     [InlineData("Prose", false)]
-    [InlineData("concept_list", false)]
+    [InlineData("concept_list", true)]
+    [InlineData("terms_subset", true)]
     [InlineData("-x", false)]
+    [InlineData("_x", false)]
     [InlineData("", false)]
     [InlineData(null, false)]
-    public void CatalogueIds_AreHyphenated(string? id, bool valid)
+    public void CatalogueIds_AreSnakeCase_TheHyphenatedFormStillRead(string? id, bool valid)
     {
+        // #1037: snake_case like every declared id; the hyphenated ids formats@v2026.10.1
+        // published are read until the renamed catalogue is pinned.
         Assert.Equal(valid, WorkflowFormatCatalogIds.IsValid(id));
+    }
+
+    [Fact]
+    public void TheRenamedCatalogue_Reads_WithItsSnakeCaseIdsAndOp()
+    {
+        var index = Read(Example
+            .Replace("\"concept-list\":   { \"file\": \"formats/concept-list.json\"", "\"concept_list\":   { \"file\": \"formats/concept_list.json\"")
+            .Replace("\"terms-subset\":   { \"file\": \"formats/terms-subset.json\",   \"op\": \"terms-subset\" }", "\"terms_subset\":   { \"file\": \"formats/terms_subset.json\",   \"op\": \"terms_subset\" }"));
+
+        Assert.Equal("formats/concept_list.json", index.Formats["concept_list"].File);
+        Assert.Equal("terms_subset", index.Formats["terms_subset"].Op);
     }
 }

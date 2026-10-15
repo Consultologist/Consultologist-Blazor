@@ -67,17 +67,19 @@ public static class WorkflowFormatRegistry
 }
 
 /// <summary>
-/// A catalogue id's spelling — today's contract-id form (<c>concept-list</c>,
-/// <c>terms-subset</c>): lowercase letters, digits and hyphens, letter first.
-/// Distinct from a package-local format id, which is a declared id (snake_case),
-/// so the two namespaces cannot collide by spelling alone; the catalogue ids are
-/// reserved regardless (§ 3.6).
+/// A catalogue id's spelling: snake_case, as every declared id (#1037, design
+/// § 16 — <c>concept_list</c>, <c>terms_subset</c>). The hyphenated contract-id
+/// form the catalogue published up to formats@v2026.10.1 (<c>concept-list</c>,
+/// <c>terms-subset</c>) is still READ until the renamed catalogue is pinned; it
+/// leaves with that re-pin. A package-local format id is snake_case too, so the
+/// two namespaces are kept apart by the reservation alone (§ 3.6: a catalogue id
+/// cannot be declared locally).
 /// </summary>
 public static class WorkflowFormatCatalogIds
 {
-    private static readonly Regex Pattern = new("^[a-z][a-z0-9-]*$", RegexOptions.Compiled);
+    private static readonly Regex HyphenatedPattern = new("^[a-z][a-z0-9-]*$", RegexOptions.Compiled);
 
-    public static bool IsValid(string? id) => id != null && Pattern.IsMatch(id);
+    public static bool IsValid(string? id) => id != null && (WorkflowDeclaredIds.IsValid(id) || HyphenatedPattern.IsMatch(id));
 }
 
 /// <summary>
@@ -172,7 +174,7 @@ public static class WorkflowFormatCatalogIndexJson
 
         if (!WorkflowFormatCatalogIds.IsValid(id))
         {
-            errors.Add($"{prefix} id must be lowercase letters, digits and hyphens, letter first.");
+            errors.Add($"{prefix} id must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).");
             ok = false;
         }
 

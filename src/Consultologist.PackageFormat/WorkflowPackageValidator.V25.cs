@@ -138,6 +138,16 @@ public static partial class WorkflowPackageValidator
 
         foreach (var prompt in manifest.Prompts ?? new List<WorkflowPromptSpec>())
         {
+            // #1037 (design § 16): every declared id is snake_case at 25 — a prompt's
+            // too, so one id rule reads the same for every object of the package.
+            if (!WorkflowDeclaredIds.IsValid(prompt.Id))
+            {
+                var renamed = prompt.Id.Replace('-', '_');
+                errors.Add(WorkflowDeclaredIds.IsValid(renamed)
+                    ? $"Prompt id '{prompt.Id}' must be snake_case at specVersion 25 ({renamed}); every declared id is."
+                    : $"Prompt id '{prompt.Id}' must be snake_case at specVersion 25 (a lowercase letter, then lowercase letters, digits, or underscores); every declared id is.");
+            }
+
             if (prompt.Prelude != null)
             {
                 errors.Add($"Prompt '{prompt.Id}' declares prelude, which is retired at specVersion 25; {RetiredAt25.Preludes}.");

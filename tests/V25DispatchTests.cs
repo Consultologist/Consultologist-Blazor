@@ -197,6 +197,10 @@ public class V25DispatchTests
     [Fact]
     public void AnUnknownOperation_OrAMissingOperand_FailsWithoutRetry()
     {
+        // #1037: the 25 catalogue's spelling computes the same operation.
+        Assert.Equal(
+            RunComputedNodeActivity.Compute(Computed(Fewer, Concepts)).OutputHash,
+            RunComputedNodeActivity.Compute(Computed(Fewer, Concepts) with { Op = WorkflowCheckOps.TermsSubsetAt25 }).OutputHash);
         var unknown = Assert.Throws<InvalidOperationException>(() => RunComputedNodeActivity.Compute(Computed(Fewer, Concepts) with { Op = "nope" }));
         Assert.Equal("Computed node 'coverage' declares operation 'nope', which this engine does not implement.", unknown.Message);
 
