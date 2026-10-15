@@ -222,7 +222,7 @@ public class TemplatesPreludesTests : ClientRenderTestContext
         UpgradeTo(page, 24);
 
         // Said once, up front: where guidance went, and that unused was dropped.
-        var notice = page.Find(".prelude-migration-notice").TextContent;
+        var notice = page.Find(".migration-notice").TextContent;
         Assert.Contains("'guidance' → macro 'guidance' before 'draft-section'", notice);
         Assert.Contains("Prelude 'unused' is used by no prompt and was dropped.", notice);
         // The Preludes group retires with its last prelude; the macro is in the library.

@@ -108,7 +108,14 @@ public static class WorkflowNodeDefaults
         ["extract-patient-concepts"] = "patient",
         ["identify-problem"] = "problem",
         ["create-typical-trajectory"] = "typical-trajectory",
-        ["create-patient-trajectory"] = "patient-trajectory"
+        ["create-patient-trajectory"] = "patient-trajectory",
+        // C6 (#1012): a 25 node id is snake_case, so the 24→25 migration renames
+        // these four — the same source stamps ride the renamed ids, and the
+        // concept-context text a renamed canonical node renders stays byte-identical.
+        ["extract_patient_concepts"] = "patient",
+        ["identify_problem"] = "problem",
+        ["create_typical_trajectory"] = "typical-trajectory",
+        ["create_patient_trajectory"] = "patient-trajectory"
     };
 
     public const string ConceptListSchemaId = "concept-list";

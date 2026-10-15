@@ -773,6 +773,12 @@ public static partial class WorkflowPackageValidator
                         ValidateClauseAt25($"{where} condition", entry.When, inputsById, classifiers, fanItemIds,
                             fanItemIds is null ? $"but '{spec.Id}' does not fan a snippet folder" : string.Empty, errors);
                     }
+
+                    // C6 (#1012): a macro text runs under the node's fan — none here means no item.
+                    if (node.Fan is null && walk.TextItemReadOf(TemplateKind.Macro, entry.Id) is { } itemRead)
+                    {
+                        errors.Add($"{where} reads item.{itemRead.Member}{(itemRead.Subject == $"Macro '{entry.Id}'" ? string.Empty : $" (through {itemRead.Subject})")}, but '{spec.Id}' does not fan.");
+                    }
                 }
             }
 
@@ -787,6 +793,23 @@ public static partial class WorkflowPackageValidator
             if (inlineSlots.Count > 0 && !allowsOutputMacros)
             {
                 errors.Add($"Node '{spec.Id}' reads macro.{inlineSlots.Order(StringComparer.Ordinal).First()}.prompt (a slot), but format '{formatName}' takes no output macros; only a text format with outputMacros may.");
+            }
+
+            // C6 (#1012): what the prompt reads — a snippet, a macro text, a slot's fill — may read the fan item only where the node fans.
+            if (node.Fan is null)
+            {
+                if (walk.PromptItemReadThroughOf(spec.Id) is { } through)
+                {
+                    errors.Add($"Node '{spec.Id}' reaches item.{through.Member} through {through.Subject}, but '{spec.Id}' does not fan.");
+                }
+
+                foreach (var slot in inlineSlots.Order(StringComparer.Ordinal))
+                {
+                    if (walk.TextItemReadOf(TemplateKind.Macro, slot) is { } fillRead)
+                    {
+                        errors.Add($"Node '{spec.Id}' reads macro.{slot}.prompt (a slot), but its fill reads item.{fillRead.Member} and '{spec.Id}' does not fan.");
+                    }
+                }
             }
 
             // § 7: items of a fanned folder that lack the read.
@@ -976,6 +999,11 @@ public static partial class WorkflowPackageValidator
                 {
                     globals[TemplateObjects.Item] = new ScriptObject { ["id"] = "0", ["name"] = "placeholder", ["value"] = Probe(inputFan.Element) };
                 }
+                else if (template.Context.ItemDeferred)
+                {
+                    // C6 (#1012): a snippet or macro text runs under its reader's fan; the probe lends every member.
+                    globals[TemplateObjects.Item] = new ScriptObject { ["id"] = "item", ["name"] = "placeholder", ["text"] = "placeholder", ["value"] = "placeholder" };
+                }
 
                 var context = new PromptTemplateRenderer.RenderingContext();
                 context.PushGlobal(globals);
@@ -1159,6 +1187,12 @@ public static partial class WorkflowPackageValidator
                     {
                         errors.Add($"{where} reads node '{read}', which fans; a deliverable macro reads scalar nodes and aggregators — place the macro on the node to read its items.");
                     }
+                }
+
+                // C6 (#1012): a deliverable composes no fan item.
+                if (walk.TextItemReadOf(TemplateKind.Macro, entry.Id) is { } itemRead)
+                {
+                    errors.Add($"{where} reads item.{itemRead.Member}; a deliverable composes no fan item — place the macro on the node to read its items.");
                 }
 
                 if (entry.When != null)

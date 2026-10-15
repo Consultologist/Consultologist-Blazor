@@ -18,7 +18,13 @@ public sealed record TemplateReferenceContext(
     IReadOnlySet<string> SnippetFolders,
     IReadOnlySet<string> Macros,
     IReadOnlySet<string> MacroFolders,
-    TemplateFan? Fan)
+    TemplateFan? Fan,
+    // C6 (#1012): a snippet or macro text is walked once, with no fan of its own —
+    // whether it runs for a fan item is the reading node's business. With this set
+    // an item read is recorded (members id, name, text, value; value untyped)
+    // instead of refused; the validator refuses it at the reading site when that
+    // node does not fan.
+    bool ItemDeferred = false)
 {
     public static readonly IReadOnlySet<string> NoIds = new HashSet<string>(StringComparer.Ordinal);
 
@@ -101,6 +107,9 @@ public static class TemplateMembers
 
     public static readonly IReadOnlyList<string> Node = new[] { Text, Value };
     public static readonly IReadOnlyList<string> Snippet = new[] { Id, Name, Text };
+
+    /// <summary>C6 (#1012): the members a fan item may carry under either fan kind — what a text walked with no fan of its own may read.</summary>
+    public static readonly IReadOnlyList<string> AnyFanItem = new[] { Id, Name, Text, Value };
     public static readonly IReadOnlyList<string> Macro = new[] { Id, Name, Text, Prompt };
     public static readonly IReadOnlyList<string> SnippetFanItem = new[] { Id, Name, Text };
     public static readonly IReadOnlyList<string> InputFanItem = new[] { Id, Name, Value };

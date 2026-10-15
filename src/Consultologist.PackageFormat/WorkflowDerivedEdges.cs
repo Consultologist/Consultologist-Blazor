@@ -180,6 +180,72 @@ public static class WorkflowDerivedEdges
             return reads;
         }
 
+        /// <summary>
+        /// C6 (#1012): the first fan-item member a text reaches — the macro or snippet
+        /// itself and everything it reads — with the subject that reads it, or null.
+        /// A text is walked with no fan of its own; the reading node's fan decides.
+        /// </summary>
+        public (string Member, string Subject)? TextItemReadOf(TemplateKind kind, string id)
+        {
+            var seen = new HashSet<(TemplateKind, string)>();
+            (string, string)? found = null;
+            var key = (kind, id);
+
+            if (!_byKey.TryGetValue(key, out var refs))
+            {
+                return null;
+            }
+
+            void Take(TemplateReferences r)
+            {
+                if (found is null && r.ItemMembers.Count > 0)
+                {
+                    var subject = Templates.FirstOrDefault(t => ReferenceEquals(t.References, r))?.Subject ?? $"{kind} '{id}'";
+                    found = (r.ItemMembers.Order(StringComparer.Ordinal).First(), subject);
+                }
+            }
+
+            seen.Add(key);
+            Visit(refs, seen, Take);
+            return found;
+        }
+
+        /// <summary>
+        /// C6 (#1012): the first fan-item member a node's prompt reaches THROUGH what it
+        /// reads (a snippet, a macro text — the prompt's own reads are the walker's to
+        /// refuse), with the subject, or null.
+        /// </summary>
+        public (string Member, string Subject)? PromptItemReadThroughOf(string nodeId)
+        {
+            if (!_byKey.TryGetValue((TemplateKind.Prompt, nodeId), out var prompt))
+            {
+                return null;
+            }
+
+            foreach (var snippet in prompt.Snippets)
+            {
+                if (TextItemReadOf(TemplateKind.Snippet, snippet) is { } read) { return read; }
+            }
+
+            foreach (var folder in prompt.SnippetFolders)
+            {
+                if (_folders.TryGetValue(folder, out var items))
+                {
+                    foreach (var item in items)
+                    {
+                        if (TextItemReadOf(TemplateKind.Snippet, item) is { } read) { return read; }
+                    }
+                }
+            }
+
+            foreach (var macro in prompt.MacroTexts)
+            {
+                if (TextItemReadOf(TemplateKind.Macro, macro) is { } read) { return read; }
+            }
+
+            return null;
+        }
+
         /// <summary>The folder-item keys a fanned prompt renders through <c>item.text</c>: all of them, or the one named.</summary>
         private IEnumerable<string> FanItemsReadBy(string nodeId, TemplateReferences prompt, string? itemId)
         {
@@ -276,7 +342,9 @@ public static class WorkflowDerivedEdges
             }
         }
 
-        var snippetContext = contextFor(null);
+        // A snippet or macro text runs under whatever fans the reader — item reads
+        // are recorded here and judged at the reading node (C6 #1012).
+        var snippetContext = contextFor(null) with { ItemDeferred = true };
 
         foreach (var (id, text) in snippets.Scalars)
         {
