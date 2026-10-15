@@ -10,9 +10,9 @@ public class FormatsAttestationTests
     {
         ["formats/prose.json"] = FormatFixtures.Prose,
         ["formats/classification.json"] = FormatFixtures.Classification,
-        ["formats/concept-list.json"] = FormatFixtures.ConceptList,
+        ["formats/concept_list.json"] = FormatFixtures.ConceptList,
         ["formats/rendered.json"] = FormatFixtures.Rendered,
-        ["formats/terms-subset.json"] = FormatFixtures.TermsSubset,
+        ["formats/terms_subset.json"] = FormatFixtures.TermsSubset,
     };
 
     private static WorkflowFormatCatalog Build(string index, Dictionary<string, string>? files = null)

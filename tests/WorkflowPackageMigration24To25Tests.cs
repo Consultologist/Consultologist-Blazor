@@ -202,9 +202,9 @@ public class WorkflowPackageMigration24To25Tests
     {
         var root = Root(Migrated());
 
-        Assert.Equal("concept-list", Node(root, "extract_patient_concepts")["format"]!.GetValue<string>());
+        Assert.Equal("concept_list", Node(root, "extract_patient_concepts")["format"]!.GetValue<string>());
         Assert.Equal("fail", Node(root, "extract_patient_concepts")["onInvalid"]!.GetValue<string>());
-        Assert.Equal("concept-list", Node(root, "identify_problem")["format"]!.GetValue<string>());
+        Assert.Equal("concept_list", Node(root, "identify_problem")["format"]!.GetValue<string>());
 
         var scope = Node(root, "scope");
         Assert.Equal("classification", scope["format"]!.GetValue<string>());
@@ -221,7 +221,7 @@ public class WorkflowPackageMigration24To25Tests
         Assert.Equal("rendered", Node(root, "summary")["format"]!.GetValue<string>());
 
         var coverage = Node(root, "coverage");
-        Assert.Equal("terms-subset", coverage["format"]!.GetValue<string>());
+        Assert.Equal("terms_subset", coverage["format"]!.GetValue<string>());
         Assert.Equal("Problems the notes do not name.", coverage["with"]!["failWith"]!.GetValue<string>());
         Assert.Equal("fail", coverage["onInvalid"]!.GetValue<string>());
         Assert.False(coverage.ContainsKey("prompt"));

@@ -36,7 +36,7 @@ public class RunDagDiagramTests
         var diagram = RunDagDiagram.Build(Job(
             nodes: new ConsultGenerationNodeDescriptor[]
             {
-                new("extract", "Extracting", "p", Format: "concept-list", Producer: "attested"),
+                new("extract", "Extracting", "p", Format: "concept_list", Producer: "attested"),
                 new("assessment", "Assessing", "p", Format: "prose", Producer: "attested", Reads: new[] { "extract" }),
             },
             outputs: new Dictionary<string, ConsultGenerationNodeStatus>

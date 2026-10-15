@@ -18,9 +18,9 @@ public sealed class FormatsCatalogCheckTests : IDisposable
             .Replace("\"agentName\": \"consult-prose\",      \"agentVersion\": 3", "\"agentName\": \"test-json\",      \"agentVersion\": 48"));
         File.WriteAllText(Path.Combine(_dir, "formats", "prose.json"), FormatFixtures.Prose);
         File.WriteAllText(Path.Combine(_dir, "formats", "classification.json"), FormatFixtures.Classification);
-        File.WriteAllText(Path.Combine(_dir, "formats", "concept-list.json"), FormatFixtures.ConceptList);
+        File.WriteAllText(Path.Combine(_dir, "formats", "concept_list.json"), FormatFixtures.ConceptList);
         File.WriteAllText(Path.Combine(_dir, "formats", "rendered.json"), FormatFixtures.Rendered);
-        File.WriteAllText(Path.Combine(_dir, "formats", "terms-subset.json"), FormatFixtures.TermsSubset);
+        File.WriteAllText(Path.Combine(_dir, "formats", "terms_subset.json"), FormatFixtures.TermsSubset);
         Agent("test-json", "48", "type: text");
         Agent("classification", "1", JsonSchema("classification", FormatsCatalogCheck.EnumAnswerSchema));
         Agent("concept-extraction", "1", JsonSchema("concept_list", """{ "type": "object", "additionalProperties": false, "required": ["concepts"], "properties": { "concepts": { "type": "array", "items": { "type": "string" } } } }"""));
@@ -60,7 +60,7 @@ public sealed class FormatsCatalogCheckTests : IDisposable
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
         var lines = FormatsCatalogCheck.Describe(result.Catalog!).ToList();
         Assert.Contains("  prose (text, attested) -> test-json@48", lines);
-        Assert.Contains("  terms-subset (object, computed) -> op terms-subset", lines);
+        Assert.Contains("  terms_subset (object, computed) -> op terms_subset", lines);
         Assert.Contains("  rendered (text, rendered) -> no agent (rendered)", lines);
         Assert.Contains("  custom -> custom-json@1", lines);
     }
@@ -105,7 +105,7 @@ public sealed class FormatsCatalogCheckTests : IDisposable
     {
         File.Delete(Path.Combine(_dir, "concept-extraction.yaml"));
 
-        Assert.Contains("Format 'concept-list' names agent 'concept-extraction', but concept-extraction.yaml is not in the registry.", Errors());
+        Assert.Contains("Format 'concept_list' names agent 'concept-extraction', but concept-extraction.yaml is not in the registry.", Errors());
     }
 
     [Fact]
@@ -120,13 +120,13 @@ public sealed class FormatsCatalogCheckTests : IDisposable
     public void AnObjectFormat_NeedsItsSchema_Strictly()
     {
         Agent("concept-extraction", "1", "type: text");
-        Assert.Contains(Errors(), e => e.StartsWith("Format 'concept-list' agent 'concept-extraction' declares text.format.type 'text', but the format is an object", StringComparison.Ordinal));
+        Assert.Contains(Errors(), e => e.StartsWith("Format 'concept_list' agent 'concept-extraction' declares text.format.type 'text', but the format is an object", StringComparison.Ordinal));
 
         Agent("concept-extraction", "1", JsonSchema("concept_list", """{ "type": "object", "properties": { "terms": { "type": "array" } } }"""));
-        Assert.Contains("Format 'concept-list' agent 'concept-extraction' text.format.schema differs from the format's schema; the agent must declare exactly the shape the catalogue publishes.", Errors());
+        Assert.Contains("Format 'concept_list' agent 'concept-extraction' text.format.schema differs from the format's schema; the agent must declare exactly the shape the catalogue publishes.", Errors());
 
         Agent("concept-extraction", "1", "type: json_schema\nname: concept_list\nstrict: false\nschema: |\n  " + """{ "type": "object", "additionalProperties": false, "required": ["concepts"], "properties": { "concepts": { "type": "array", "items": { "type": "string" } } } }""");
-        Assert.Contains("Format 'concept-list' agent 'concept-extraction' json_schema response format is not strict.", Errors());
+        Assert.Contains("Format 'concept_list' agent 'concept-extraction' json_schema response format is not strict.", Errors());
     }
 
     [Fact]
@@ -153,7 +153,7 @@ public sealed class FormatsCatalogCheckTests : IDisposable
     [Fact]
     public void AnOpTheEngineDoesNotPublish_IsRefused()
     {
-        var index = File.ReadAllText(Path.Combine(_dir, "formats.json")).Replace("\"op\": \"terms-subset\"", "\"op\": \"terms-superset\"");
+        var index = File.ReadAllText(Path.Combine(_dir, "formats.json")).Replace("\"op\": \"terms_subset\"", "\"op\": \"terms-superset\"");
         File.WriteAllText(Path.Combine(_dir, "formats.json"), index);
 
         Assert.Contains(Errors(), e => e.Contains("names op 'terms-superset', which the engine does not publish"));

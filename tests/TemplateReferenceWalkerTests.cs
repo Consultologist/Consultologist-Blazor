@@ -41,9 +41,9 @@ public static class TemplateFixtures
     {
         ["assessment"] = new("prose", "text"),
         ["letter"] = new("rendered", "text"),
-        ["extract"] = new("concept-list", "object", ConceptListSchema),
+        ["extract"] = new("concept_list", "object", ConceptListSchema),
         ["scope"] = new("classification", "enum"),
-        ["coverage"] = new("terms-subset", "object", TermsSubsetSchema),
+        ["coverage"] = new("terms_subset", "object", TermsSubsetSchema),
         ["meds"] = new("medication_list", "object", JsonNode.Parse("""{ "type": "object", "properties": { "medications": { "type": "array", "items": { "type": "string" } } } }""")),
     };
 
@@ -115,7 +115,7 @@ public class TemplateReferenceWalkerTests
         Assert.Equal(new TemplateNodeRead(true, false), refs.Nodes["assessment"]);
         Assert.Equal(new TemplateNodeRead(true, true), refs.Nodes["extract"]);
         Assert.Equal(new TemplateNodeRead(false, true), refs.Nodes["scope"]);
-        Assert.Contains(refs.Warnings, w => w.Contains("reads node.extract.text of format 'concept-list' (object); the JSON renders as text — read node.extract.value for the fields"));
+        Assert.Contains(refs.Warnings, w => w.Contains("reads node.extract.text of format 'concept_list' (object); the JSON renders as text — read node.extract.value for the fields"));
     }
 
     [Fact]

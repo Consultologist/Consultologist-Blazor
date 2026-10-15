@@ -111,9 +111,7 @@ public sealed record WorkflowFormatCatalog(
                 {
                     errors.Add($"{subject} is computed and its index entry must name the op (one of {string.Join(", ", WorkflowCheckOps.AllAt25)}).");
                 }
-                // #1037: the 25 spelling; the hyphenated one the catalogue published up to
-                // formats@v2026.10.1 is read until the renamed catalogue is pinned.
-                else if (!WorkflowCheckOps.AllAt25.Contains(entry.Op!, StringComparer.Ordinal) && !WorkflowCheckOps.All.Contains(entry.Op!, StringComparer.Ordinal))
+                else if (!WorkflowCheckOps.AllAt25.Contains(entry.Op!, StringComparer.Ordinal))
                 {
                     errors.Add($"{subject} names op '{entry.Op}', which the engine does not publish (one of {string.Join(", ", WorkflowCheckOps.AllAt25)}).");
                 }

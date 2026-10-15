@@ -43,8 +43,8 @@ public sealed record WorkflowFormatSpec(
 
 /// <summary>
 /// One declared parameter: its kind, and for a <c>node</c> parameter the
-/// catalogue format the named node must have (e.g. terms-subset's <c>of</c>
-/// and <c>in</c> name nodes of format concept-list).
+/// catalogue format the named node must have (e.g. terms_subset's <c>of</c>
+/// and <c>in</c> name nodes of format concept_list).
 /// </summary>
 public sealed record WorkflowFormatParameterSpec(
     string Kind,

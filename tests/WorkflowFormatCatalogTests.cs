@@ -13,9 +13,9 @@ public class WorkflowFormatCatalogTests
     {
         ["formats/prose.json"] = FormatFixtures.Prose,
         ["formats/classification.json"] = FormatFixtures.Classification,
-        ["formats/concept-list.json"] = FormatFixtures.ConceptList,
+        ["formats/concept_list.json"] = FormatFixtures.ConceptList,
         ["formats/rendered.json"] = FormatFixtures.Rendered,
-        ["formats/terms-subset.json"] = FormatFixtures.TermsSubset,
+        ["formats/terms_subset.json"] = FormatFixtures.TermsSubset,
     };
 
     private static WorkflowFormatCatalog Build(string indexJson, Dictionary<string, string> files)
@@ -47,15 +47,15 @@ public class WorkflowFormatCatalogTests
         Assert.Equal(5, catalog.Formats.Count);
         Assert.Equal("custom-json@1", catalog.CustomProducer.AgentDisplay);
 
-        Assert.True(catalog.TryGet("concept-list", out var conceptList));
+        Assert.True(catalog.TryGet("concept_list", out var conceptList));
         Assert.Equal("object", conceptList!.Spec.Type);
         Assert.Equal("attested", conceptList.Spec.Producer);
         Assert.Equal("concept-extraction@1", conceptList.Entry.AgentDisplay);
         Assert.Equal(WorkflowFormatSpecJson.CanonicalJson(FormatFixtures.ConceptList), conceptList.CanonicalJson);
 
-        Assert.True(catalog.TryGet("terms-subset", out var check));
-        Assert.Equal("terms-subset", check!.Entry.Op);
-        Assert.Equal("concept-list", check.Spec.Parameters!["of"].Format);
+        Assert.True(catalog.TryGet("terms_subset", out var check));
+        Assert.Equal("terms_subset", check!.Entry.Op);
+        Assert.Equal("concept_list", check.Spec.Parameters!["of"].Format);
 
         Assert.False(catalog.TryGet("custom", out _));
         Assert.False(catalog.TryGet("medication_list", out _));
@@ -98,11 +98,11 @@ public class WorkflowFormatCatalogTests
     public void AFileTheValidatorRefuses_IsRefused_AndNotBound()
     {
         var files = Files();
-        files["formats/concept-list.json"] = """{ "type": "object", "producer": "attested" }""";
+        files["formats/concept_list.json"] = """{ "type": "object", "producer": "attested" }""";
 
         var errors = Errors(WorkflowFormatCatalogIndexTests.Example, files);
 
-        Assert.Contains(errors, e => e.StartsWith("Format catalogue v2026.11.1 format 'concept-list' is type 'object' and must declare a schema", StringComparison.Ordinal));
+        Assert.Contains(errors, e => e.StartsWith("Format catalogue v2026.11.1 format 'concept_list' is type 'object' and must declare a schema", StringComparison.Ordinal));
         Assert.DoesNotContain(errors, e => e.Contains("must name the agent"));
     }
 
@@ -122,7 +122,7 @@ public class WorkflowFormatCatalogTests
     {
         var index = WorkflowFormatCatalogIndexTests.Example.Replace(
             "\"file\": \"formats/prose.json\",          \"agentName\": \"consult-prose\",      \"agentVersion\": 3",
-            "\"file\": \"formats/prose.json\", \"op\": \"terms-subset\"");
+            "\"file\": \"formats/prose.json\", \"op\": \"terms_subset\"");
 
         var errors = Errors(index, Files());
 
@@ -133,50 +133,46 @@ public class WorkflowFormatCatalogTests
     [Fact]
     public void AComputedFormat_MustNameAnOp()
     {
-        var index = WorkflowFormatCatalogIndexTests.Example.Replace(",   \"op\": \"terms-subset\"", "");
+        var index = WorkflowFormatCatalogIndexTests.Example.Replace(",   \"op\": \"terms_subset\"", "");
         Assert.NotEqual(WorkflowFormatCatalogIndexTests.Example, index);
 
         Assert.Contains(Errors(index, Files()),
-            e => e == "Format catalogue v2026.11.1 format 'terms-subset' is computed and its index entry must name the op (one of terms_subset).");
+            e => e == "Format catalogue v2026.11.1 format 'terms_subset' is computed and its index entry must name the op (one of terms_subset).");
     }
 
     [Fact]
-    public void AComputedFormat_MayNameTheOp_InEitherSpelling()
+    public void AHyphenatedOp_IsRefused()
     {
-        // #1037: terms_subset is the 25 spelling; terms-subset (formats@v2026.10.1) is read until the re-pin.
-        var index = WorkflowFormatCatalogIndexTests.Read(WorkflowFormatCatalogIndexTests.Example.Replace("\"op\": \"terms-subset\"", "\"op\": \"terms_subset\""));
-        var errors = new List<string>();
-        var files = Files();
+        // #1037: terms_subset is the catalogue's spelling since formats@v2026.10.2; the hyphenated one is read no longer.
+        var index = WorkflowFormatCatalogIndexTests.Example.Replace("\"op\": \"terms_subset\"", "\"op\": \"terms-subset\"");
 
-        var catalog = WorkflowFormatCatalog.Build(index, path => files.GetValueOrDefault(path), errors);
-
-        Assert.Empty(errors);
-        Assert.Equal("terms_subset", catalog!.Formats["terms-subset"].Entry.Op);
+        Assert.Contains(Errors(index, Files()),
+            e => e == "Format catalogue v2026.11.1 format 'terms_subset' names op 'terms-subset', which the engine does not publish (one of terms_subset).");
     }
 
     [Fact]
     public void AComputedFormat_MustNameAnOpTheEnginePublishes()
     {
-        var index = WorkflowFormatCatalogIndexTests.Example.Replace("\"op\": \"terms-subset\"", "\"op\": \"terms-superset\"");
+        var index = WorkflowFormatCatalogIndexTests.Example.Replace("\"op\": \"terms_subset\"", "\"op\": \"terms-superset\"");
 
         Assert.Contains(Errors(index, Files()),
-            e => e == "Format catalogue v2026.11.1 format 'terms-subset' names op 'terms-superset', which the engine does not publish (one of terms_subset).");
+            e => e == "Format catalogue v2026.11.1 format 'terms_subset' names op 'terms-superset', which the engine does not publish (one of terms_subset).");
     }
 
     [Fact]
     public void AComputedFormat_MustNotNameAnAgent()
     {
         var index = WorkflowFormatCatalogIndexTests.Example.Replace(
-            ",   \"op\": \"terms-subset\"",
+            ",   \"op\": \"terms_subset\"",
             ", \"agentName\": \"checker\", \"agentVersion\": 1");
 
         Assert.Contains(Errors(index, Files()),
-            e => e == "Format catalogue v2026.11.1 format 'terms-subset' is computed and its index entry must not name an agent.");
+            e => e == "Format catalogue v2026.11.1 format 'terms_subset' is computed and its index entry must not name an agent.");
     }
 
     [Theory]
     [InlineData("\"file\": \"formats/rendered.json\", \"agentName\": \"renderer\", \"agentVersion\": 1")]
-    [InlineData("\"file\": \"formats/rendered.json\", \"op\": \"terms-subset\"")]
+    [InlineData("\"file\": \"formats/rendered.json\", \"op\": \"terms_subset\"")]
     public void ARenderedFormat_NamesNeither(string entry)
     {
         var index = WorkflowFormatCatalogIndexTests.Example.Replace("\"file\": \"formats/rendered.json\"", entry);
@@ -199,11 +195,11 @@ public class WorkflowFormatCatalogTests
     public void AParameterFormatReference_MustResolveInTheIndex()
     {
         var files = Files();
-        files["formats/terms-subset.json"] = FormatFixtures.TermsSubset.Replace("\"format\": \"concept-list\"", "\"format\": \"concept-set\"");
+        files["formats/terms_subset.json"] = FormatFixtures.TermsSubset.Replace("\"format\": \"concept_list\"", "\"format\": \"concept-set\"");
 
         var errors = Errors(WorkflowFormatCatalogIndexTests.Example, files);
 
-        Assert.Contains(errors, e => e == "Format catalogue v2026.11.1 format 'terms-subset' parameter 'of' names format 'concept-set', which the catalogue does not publish.");
+        Assert.Contains(errors, e => e == "Format catalogue v2026.11.1 format 'terms_subset' parameter 'of' names format 'concept-set', which the catalogue does not publish.");
         Assert.Contains(errors, e => e.Contains("parameter 'in' names format 'concept-set'"));
     }
 
@@ -213,7 +209,7 @@ public class WorkflowFormatCatalogTests
         var files = Files();
         files.Remove("formats/prose.json");
         files["formats/rendered.json"] = FormatFixtures.LocalCustom;
-        var index = WorkflowFormatCatalogIndexTests.Example.Replace("\"op\": \"terms-subset\"", "\"op\": \"nope\"");
+        var index = WorkflowFormatCatalogIndexTests.Example.Replace("\"op\": \"terms_subset\"", "\"op\": \"nope\"");
 
         var errors = Errors(index, files);
 

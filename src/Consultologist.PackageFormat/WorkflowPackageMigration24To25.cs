@@ -397,7 +397,7 @@ public static class WorkflowPackageMigration24To25
 
                 if (node.Kind == WorkflowNodeKinds.Check)
                 {
-                    _formatOf[node.Id] = WorkflowCheckOps.TermsSubset;
+                    _formatOf[node.Id] = WorkflowFormatIds.TermsSubset;
                     _readOf[node.Id] = "value";
                     continue;
                 }
@@ -407,7 +407,7 @@ public static class WorkflowPackageMigration24To25
                     var contract = ContractOf(manifest, files, schemaId, resolveContract);
                     if (contract == WorkflowNodeDefaults.ConceptListSchemaId)
                     {
-                        _formatOf[node.Id] = "concept-list";
+                        _formatOf[node.Id] = WorkflowFormatIds.ConceptList;
                         _readOf[node.Id] = "concepts";
                     }
                     else if (contract == WorkflowNodeDefaults.ClassificationSchemaId)
@@ -705,7 +705,7 @@ public static class WorkflowPackageMigration24To25
                 if (typed.FailWith is not null) { with["failWith"] = typed.FailWith; }
                 onInvalid = WorkflowOnInvalid.Fail;
             }
-            else if (format is "concept-list" || formats.CustomFormats.ContainsKey(format) || format == "classification")
+            else if (format == WorkflowFormatIds.ConceptList || formats.CustomFormats.ContainsKey(format) || format == WorkflowFormatIds.Classification)
             {
                 onInvalid = WorkflowOnInvalid.Fail;
             }
@@ -716,7 +716,7 @@ public static class WorkflowPackageMigration24To25
             Set(node, "format", format);
             if (with.Count > 0) { Set(node, "with", with); }
             if (onInvalid is not null) { Set(node, "onInvalid", onInvalid); }
-            if (!string.IsNullOrWhiteSpace(failIfEmpty) && format is not "rendered" && format != WorkflowCheckOps.TermsSubset) { Set(node, "failIfEmpty", failIfEmpty); }
+            if (!string.IsNullOrWhiteSpace(failIfEmpty) && format != WorkflowFormatIds.Rendered && format != WorkflowFormatIds.TermsSubset) { Set(node, "failIfEmpty", failIfEmpty); }
 
             // #1037: the object spelling — data:x → snippet.x, input:x → input.x.
             if (Str(node, "forEach") is { } forEach)

@@ -41,8 +41,8 @@ public static class FormatFixtures
                       "properties": { "pass": { "type": "boolean" },
                                       "uncovered": { "type": "array", "items": { "type": "string" } },
                                       "untested": { "type": "array", "items": { "type": "string" } } } },
-          "parameters": { "of": { "kind": "node", "format": "concept-list" },
-                          "in": { "kind": "node", "format": "concept-list" },
+          "parameters": { "of": { "kind": "node", "format": "concept_list" },
+                          "in": { "kind": "node", "format": "concept_list" },
                           "failWith": { "kind": "text" } } }
         """;
 
@@ -81,7 +81,7 @@ public class WorkflowFormatSpecJsonTests
         Assert.Equal("Every concept of 'of' appears in 'in'.", spec.Description);
         Assert.NotNull(spec.Schema);
         Assert.Equal(3, spec.Parameters!.Count);
-        Assert.Equal("concept-list", spec.Parameters["of"].Format);
+        Assert.Equal("concept_list", spec.Parameters["of"].Format);
         Assert.Equal("text", spec.Parameters["failWith"].Kind);
         Assert.Null(spec.Parameters["failWith"].Format);
 
@@ -361,7 +361,7 @@ public class WorkflowFormatValidatorTests
     [InlineData("""{ "Fail-With": { "kind": "text" } }""", "parameter 'Fail-With' must be an identifier")]
     [InlineData("""{ "of": { } }""", "parameter 'of' must declare a kind (one of node, text, values)")]
     [InlineData("""{ "of": { "kind": "input" } }""", "parameter 'of' kind 'input' is not one of node, text, values")]
-    [InlineData("""{ "of": { "kind": "text", "format": "concept-list" } }""", "parameter 'of' declares a format, which only a node parameter may")]
+    [InlineData("""{ "of": { "kind": "text", "format": "concept_list" } }""", "parameter 'of' declares a format, which only a node parameter may")]
     [InlineData("""{ "of": { "kind": "node", "format": " " } }""", "parameter 'of' format must not be blank")]
     public void ParameterDeclarations_AreChecked(string parameters, string sentence)
     {

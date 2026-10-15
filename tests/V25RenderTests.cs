@@ -97,7 +97,7 @@ public class V25RenderTests
     [Fact]
     public void NodeTexts_AreTheReads_ItemAligned()
     {
-        var extract = new ConsultNodeDescriptor("extract", "Extract", Format: "concept-list");
+        var extract = new ConsultNodeDescriptor("extract", "Extract", Format: "concept_list");
         var sections = new ConsultNodeDescriptor("section_notes", "Sections", ForEach: "snippet:sections", Format: "prose", Reads: new[] { "extract" });
         var review = new ConsultNodeDescriptor("review", "Review", ForEach: "snippet:sections", Format: "prose", Reads: new[] { "extract", "section_notes" });
         var nodesById = new[] { extract, sections, review }.ToDictionary(n => n.Id, StringComparer.Ordinal);

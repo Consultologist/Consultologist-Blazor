@@ -766,9 +766,9 @@ public static class EditorFixtures
         """;
 
     /// <summary>
-    /// The 25 shape (design § 3): a concept-list node, a classification taking its
+    /// The 25 shape (design § 3): a concept_list node, a classification taking its
     /// values through with, a prose node with a top-level failIfEmpty, a node on a
-    /// package-local custom format, a terms-subset check over the concept-list node,
+    /// package-local custom format, a terms_subset check over the concept_list node,
     /// a node fanning a snippet folder (two items, one gated on the kind input — C2
     /// #1008), a single snippet read by the assessment prompt, two macros (C3 #1009:
     /// closing after the assessment and prepended to the deliverable when kind is new;
@@ -776,7 +776,7 @@ public static class EditorFixtures
     /// prompt), an aggregator, and one deliverable naming
     /// the aggregator and the check. No kind, no output, no schemas; formats[]
     /// declares the local format. Every node feeds the deliverable: the prose
-    /// node reads the concept-list and the medications; the classifier is exempt.
+    /// node reads the concept_list and the medications; the classifier is exempt.
     /// </summary>
     /// <summary>
     /// C6 (#1012): a 24 package carrying every row of the § 14 migration table — the
@@ -890,11 +890,11 @@ public static class EditorFixtures
           ],
           "snippets": { "standards": "snippets/standards.md", "sections": "snippets/sections/" },
           "nodes": [
-            { "id": "extract", "label": "Extract concepts", "prompt": "extract", "format": "concept-list", "onInvalid": "fail" },
+            { "id": "extract", "label": "Extract concepts", "prompt": "extract", "format": "concept_list", "onInvalid": "fail" },
             { "id": "scope", "label": "Scope", "prompt": "scope", "format": "classification", "onInvalid": "fail", "with": { "values": ["in_scope", "out_of_scope"] } },
             { "id": "assessment", "label": "Assessment", "prompt": "assessment", "format": "prose", "failIfEmpty": "Nothing to assess.", "macros": [ { "id": "closing", "at": "after" } ] },
             { "id": "meds", "label": "Medications", "prompt": "meds", "format": "medication_list", "onInvalid": "flag" },
-            { "id": "coverage", "label": "Coverage", "format": "terms-subset", "onInvalid": "fail", "with": { "of": "node.extract", "in": "node.extract", "failWith": "The note names problems the source does not." } },
+            { "id": "coverage", "label": "Coverage", "format": "terms_subset", "onInvalid": "fail", "with": { "of": "node.extract", "in": "node.extract", "failWith": "The note names problems the source does not." } },
             { "id": "section_notes", "label": "Section notes", "prompt": "section", "format": "prose", "forEach": "snippet.sections", "macros": [ { "id": "tool_note", "at": "before", "forItem": "hpi" } ] },
             { "id": "all", "label": "Everything", "aggregate": ["node.assessment", "node.section_notes"] }
           ],

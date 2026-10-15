@@ -134,7 +134,7 @@ public class TemplatesV25ReadsTests : ClientRenderTestContext
         ShowNode(page, "assessment");
 
         var warning = page.Find(".node-reads__warning").TextContent.Trim();
-        Assert.StartsWith("Prompt 'assessment' reads node.extract.text of format 'concept-list'", warning);
+        Assert.StartsWith("Prompt 'assessment' reads node.extract.text of format 'concept_list'", warning);
         Assert.EndsWith("the JSON renders as text — read node.extract.value for the fields.", warning);
         Assert.Contains("node.extract.text", Reads(page, "assessment"));
 

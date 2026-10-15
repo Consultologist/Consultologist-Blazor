@@ -420,7 +420,7 @@ public class ManifestReaderTests
             { "nodes": [
                 { "id": "scope", "label": "Scope", "prompt": "scope", "format": "classification", "onInvalid": "fail",
                   "with": { "values": ["in_scope", "out_of_scope"] } },
-                { "id": "coverage", "label": "Coverage", "format": "terms-subset", "onInvalid": "flag",
+                { "id": "coverage", "label": "Coverage", "format": "terms_subset", "onInvalid": "flag",
                   "with": { "of": "node.extract", "in": "node.extract", "failWith": "Uncovered." } },
                 { "id": "assessment", "label": "Assessment", "prompt": "assessment", "format": "prose", "failIfEmpty": "Nothing to assess." }
             ] }
@@ -432,7 +432,7 @@ public class ManifestReaderTests
         Assert.Null(nodes[0].Kind);
         Assert.Null(nodes[0].OutputSchema);
 
-        Assert.Equal("terms-subset", nodes[1].Format);
+        Assert.Equal("terms_subset", nodes[1].Format);
         Assert.Equal("node.extract", nodes[1].With!["of"].GetString());
         Assert.Equal("Uncovered.", nodes[1].With!["failWith"].GetString());
         Assert.Null(nodes[1].Prompt);

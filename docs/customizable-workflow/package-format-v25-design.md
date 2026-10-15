@@ -189,9 +189,9 @@ versioned together. The index has two sections:
 | `terms_subset` | object `{ pass, uncovered[], untested[] }` | computed | no | `kind: check` — parameters `of`, `in` (nodes of format `concept_list`), `failWith` (text) |
 
 *(#1037, 2026-10-15: the catalogue ids and the computed op are snake_case like every declared
-id — `concept_list`, `terms_subset`, op `terms_subset`; formats@v2026.10.1 published the
-hyphenated spelling, which the engine reads until the renamed catalogue is pinned. The agent
-name `custom-json` is not a format id and stays. § 16.)*
+id — `concept_list`, `terms_subset`, op `terms_subset`, since formats@v2026.10.2 (v2026.10.1
+published the hyphenated spelling; the engine read both until it re-pinned, and reads only the
+snake_case form since). The agent name `custom-json` is not a format id and stays. § 16.)*
 
 `custom` is a **producer binding, never a format entry**: a custom format is a package's
 own, so its agent is bound once and every custom format in every package goes through it.
@@ -817,8 +817,9 @@ the wider grammar through the renderer's scope.
 the node's), and the catalogue's format ids and computed op join the rule — `concept_list`,
 `terms_subset`, op `terms_subset` — so one regex and one rename rule cover the format; the
 agent name `custom-json` and the ≤24 output-contract ids are not ids a template reads and stay.
-The hyphenated catalogue ids formats@v2026.10.1 published are read until the renamed catalogue
-(formats@v2026.10.2) is pinned; the fixture flip rides that re-pin, in its own PR.
+The hyphenated catalogue ids formats@v2026.10.1 published were read until the renamed catalogue
+(formats@v2026.10.2) was pinned; the fixture flip rode that re-pin, in its own PR, which also
+dropped the hyphen read.
 
 **The editor** (its half of #1039, folded in so every suite stays green): the compose writes
 the object spellings at 25, every comparison against a loaded value strips either, the

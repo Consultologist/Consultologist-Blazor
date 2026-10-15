@@ -950,7 +950,7 @@ public class HistoryDetailTests : ClientRenderTestContext
         AgentName: "custom-json", AgentVersion: "1", OnInvalid: "flag", Reads: new[] { "extract" });
 
     private static readonly ConsultGenerationNodeDescriptor Extract25 = new(
-        "extract", "Extract", "p", Format: "concept-list", Producer: "attested", FormatHash: "abc", AgentName: "concept-extraction", AgentVersion: "1");
+        "extract", "Extract", "p", Format: "concept_list", Producer: "attested", FormatHash: "abc", AgentName: "concept-extraction", AgentVersion: "1");
 
     [Fact]
     public void A25CustomShape_IsSaidForWhatItIs_OnItsRow_TheChip_TheProvenanceList_AndTheLegend()
@@ -978,7 +978,7 @@ public class HistoryDetailTests : ClientRenderTestContext
         // The contract label reads format · producer · agent, from the descriptor.
         var labels = page.FindAll(".node-row__contract").Select(c => c.TextContent.Trim()).ToList();
         Assert.Contains("mine · custom · custom-json@1", labels);
-        Assert.Contains("concept-list · attested · concept-extraction@1", labels);
+        Assert.Contains("concept_list · attested · concept-extraction@1", labels);
         // The chip, in its own kind.
         Assert.Contains("1 custom-shape block", Chips(page));
         Assert.Empty(page.FindAll(".provenance-chip--unattested"));
@@ -993,7 +993,7 @@ public class HistoryDetailTests : ClientRenderTestContext
         Assert.Equal("1 excluded", page.Find(".node-row__excluded").TextContent.Trim());
         Assert.Contains("slot stray — no read in this node's prompt sanctions [[slot:stray]]", page.Find(".node-row__excluded").GetAttribute("title"));
         // The agents row lists the 25 formats by their descriptor agents.
-        Assert.Contains("concept-list → concept-extraction@1", page.Find(".provenance-agents").TextContent);
+        Assert.Contains("concept_list → concept-extraction@1", page.Find(".provenance-agents").TextContent);
         Assert.Contains("mine → custom-json@1", page.Find(".provenance-agents").TextContent);
     }
 

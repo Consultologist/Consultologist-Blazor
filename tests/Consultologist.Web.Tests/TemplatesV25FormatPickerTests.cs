@@ -101,7 +101,7 @@ public class TemplatesV25FormatPickerTests : ClientRenderTestContext
         var offered = picker.QuerySelectorAll("fluent-option").Select(o => o.GetAttribute("value")).ToList();
         // The catalogue's five, then the package's own.
         Assert.Contains("classification", offered);
-        Assert.Contains("terms-subset", offered);
+        Assert.Contains("terms_subset", offered);
         Assert.Contains("medication_list", offered);
         Assert.Empty(page.FindAll("[aria-label='Node output contract']"));
 
@@ -138,16 +138,16 @@ public class TemplatesV25FormatPickerTests : ClientRenderTestContext
 
         var of = page.Find("fluent-select.node-with[data-with='of']");
         Assert.Equal("node.extract", of.GetAttribute("current-value"));
-        // Operands narrowed to the parameter's format: the concept-list node only.
+        // Operands narrowed to the parameter's format: the concept_list node only.
         var operands = of.QuerySelectorAll("fluent-option").Select(o => o.GetAttribute("value")).Where(v => v!.Length > 0).ToList();
         Assert.Equal(new[] { "node.extract" }, operands);
-        Assert.Contains("a concept-list node", page.Find("fluent-select.node-with[data-with='of']").ParentElement!.TextContent);
+        Assert.Contains("a concept_list node", page.Find("fluent-select.node-with[data-with='of']").ParentElement!.TextContent);
 
         Assert.Equal("The note names problems the source does not.", page.Find("input.node-with[data-with='failWith']").GetAttribute("value"));
         Assert.Empty(page.FindAll("[aria-label='Node prompt']"));
         Assert.Empty(page.FindAll("[aria-label='Node forEach collection']"));
         Assert.Empty(page.FindAll("[aria-label='Node fail-if-empty message']"));
-        Assert.Contains("terms-subset · computed", page.Find(".pane-identity").TextContent);
+        Assert.Contains("terms_subset · computed", page.Find(".pane-identity").TextContent);
     }
 
     [Fact]
@@ -345,7 +345,7 @@ public class TemplatesV25FormatPickerTests : ClientRenderTestContext
         CapturePublish();
         Navigate(page, "+ Node");
 
-        page.Find("fluent-select.new-node-format").Change("terms-subset");
+        page.Find("fluent-select.new-node-format").Change("terms_subset");
         Assert.Empty(page.FindAll(".new-item-fields fluent-select[aria-label='New node forEach']"));
         page.Find("fluent-text-field[placeholder='summarize-guidelines']").Change("coverage_two");
         page.Find("fluent-text-field[placeholder='Summarizing guidelines']").Change("Second coverage");
@@ -360,7 +360,7 @@ public class TemplatesV25FormatPickerTests : ClientRenderTestContext
 
         Assert.Empty(Refusals(page));
         var node = Node(sent!, "coverage_two");
-        Assert.Equal("terms-subset", node.GetProperty("format").GetString());
+        Assert.Equal("terms_subset", node.GetProperty("format").GetString());
         Assert.False(node.TryGetProperty("prompt", out _));
         Assert.False(node.TryGetProperty("bindings", out _));
         Assert.Equal("node.extract", node.GetProperty("with").GetProperty("in").GetString());
@@ -434,7 +434,7 @@ public class TemplatesV25FormatPickerTests : ClientRenderTestContext
         var page = ShowNode("coverage");
         page.Find("input.node-with[data-with='failWith']").Change("Uncovered terms remain.");
         page.Find("fluent-select.node-on-invalid").Change("flag");
-        page.Find("fluent-select.node-format").Change("terms-subset");
+        page.Find("fluent-select.node-format").Change("terms_subset");
 
         var saved = JSInterop.Invocations["localStorage.setItem"]
             .Where(i => i.Arguments[0] is string key && key.StartsWith("workflow-editor-draft:", StringComparison.Ordinal))
@@ -448,6 +448,6 @@ public class TemplatesV25FormatPickerTests : ClientRenderTestContext
 
         Assert.Equal("Uncovered terms remain.", again.Find("input.node-with[data-with='failWith']").GetAttribute("value"));
         Assert.Equal("flag", again.Find("fluent-select.node-on-invalid").GetAttribute("current-value"));
-        Assert.Equal("terms-subset", again.Find("fluent-select.node-format").GetAttribute("current-value"));
+        Assert.Equal("terms_subset", again.Find("fluent-select.node-format").GetAttribute("current-value"));
     }
 }

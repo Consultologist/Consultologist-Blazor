@@ -210,7 +210,7 @@ public class WorkflowV25NodeModelTests
         var (manifest, _) = V25Fixtures.Base();
         var node = FirstNode(manifest) with
         {
-            Format = "terms-subset",
+            Format = "terms_subset",
             With = new Dictionary<string, JsonNode?>
             {
                 ["of"] = "node.extract",
@@ -224,14 +224,14 @@ public class WorkflowV25NodeModelTests
         var read = V25Fixtures.RoundTrip(at25, out var json);
         var readNode = FirstNode(read);
 
-        Assert.Equal("terms-subset", readNode.Format);
+        Assert.Equal("terms_subset", readNode.Format);
         Assert.Equal("fail", readNode.OnInvalid);
         Assert.Equal("node.extract", readNode.With!["of"]!.GetValue<string>());
         Assert.Equal(2, readNode.With["values"]!.AsArray().Count);
         Assert.Equal(1, readNode.With["nested"]!["a"]!.GetValue<int>());
 
         var wire = V25Fixtures.Keys(json)["nodes"]![0]!;
-        Assert.Equal("terms-subset", wire["format"]!.GetValue<string>());
+        Assert.Equal("terms_subset", wire["format"]!.GetValue<string>());
         Assert.NotNull(wire["with"]);
         Assert.Equal("fail", wire["onInvalid"]!.GetValue<string>());
     }

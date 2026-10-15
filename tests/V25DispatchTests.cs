@@ -43,7 +43,7 @@ public class V25DispatchTests
         var coverage = Describe("coverage");
 
         Assert.Equal("computed", coverage.Producer);
-        Assert.Equal("terms-subset", coverage.Op);
+        Assert.Equal("terms_subset", coverage.Op);
         Assert.Null(coverage.PromptId);
         Assert.Equal(new Dictionary<string, string> { ["of"] = "extract", ["in"] = "extract", ["failWith"] = "The note names problems the source does not." }, coverage.With);
         Assert.Null(coverage.Values);
@@ -164,10 +164,10 @@ public class V25DispatchTests
     private const string Fewer = """{ "concepts": [ { "term": "Asthma", "type": "disorder", "id": "195967001", "isSnomedConcept": true, "isActive": true, "support": null } ] }""";
 
     private static ConsultComputedNodeActivityInput Computed(string of, string inDocument) =>
-        new("coverage", "terms-subset",
+        new("coverage", "terms_subset",
             new Dictionary<string, string> { ["of"] = "extract", ["in"] = "source", ["failWith"] = "x" },
             new Dictionary<string, string> { ["extract"] = of, ["source"] = inDocument },
-            "terms-subset", "hash");
+            "terms_subset", "hash");
 
     [Fact]
     public void TermsSubset_Passes_WhenEveryCodableTermIsCovered()
@@ -197,10 +197,9 @@ public class V25DispatchTests
     [Fact]
     public void AnUnknownOperation_OrAMissingOperand_FailsWithoutRetry()
     {
-        // #1037: the 25 catalogue's spelling computes the same operation.
-        Assert.Equal(
-            RunComputedNodeActivity.Compute(Computed(Fewer, Concepts)).OutputHash,
-            RunComputedNodeActivity.Compute(Computed(Fewer, Concepts) with { Op = WorkflowCheckOps.TermsSubsetAt25 }).OutputHash);
+        // #1037: the catalogue spells the op terms_subset; the ≤24 hyphenated op is not an operation at 25.
+        var hyphenated = Assert.Throws<InvalidOperationException>(() => RunComputedNodeActivity.Compute(Computed(Fewer, Concepts) with { Op = WorkflowCheckOps.TermsSubset }));
+        Assert.Contains("terms-subset", hyphenated.Message);
         var unknown = Assert.Throws<InvalidOperationException>(() => RunComputedNodeActivity.Compute(Computed(Fewer, Concepts) with { Op = "nope" }));
         Assert.Equal("Computed node 'coverage' declares operation 'nope', which this engine does not implement.", unknown.Message);
 

@@ -239,7 +239,7 @@ public class WorkflowPackageStampTests
         Assert.Equal(Catalog.ResolvedRef, stamp.CatalogRef);
         Assert.Empty(stamp.Contracts);
         Assert.Equal("formats@v2026.11.1", stamp.FormatsRef);
-        Assert.Equal(new[] { "classification", "concept-list", "prose", "terms-subset" }, stamp.Formats!.Keys.Order());
+        Assert.Equal(new[] { "classification", "concept_list", "prose", "terms_subset" }, stamp.Formats!.Keys.Order());
 
         var prose = stamp.Formats["prose"];
         Assert.Equal("attested", prose.Producer);
@@ -249,14 +249,14 @@ public class WorkflowPackageStampTests
         Assert.Equal(WorkflowFormatSpecJson.Sha256Hex(formats.Formats["prose"].CanonicalJson), prose.FormatHash);
         Assert.Equal(64, prose.FormatHash.Length);
 
-        var check = stamp.Formats["terms-subset"];
+        var check = stamp.Formats["terms_subset"];
         Assert.Equal("computed", check.Producer);
-        Assert.Equal("terms-subset", check.Op);
+        Assert.Equal("terms_subset", check.Op);
         Assert.Null(check.AgentName);
 
-        // concept-list rides in through terms-subset's parameters, not a node.
-        Assert.DoesNotContain(manifest.Nodes!, n => n.Format == "concept-list" && n.Id == "coverage");
-        Assert.Equal("concept-extraction", stamp.Formats["concept-list"].AgentName);
+        // concept_list rides in through terms_subset's parameters, not a node.
+        Assert.DoesNotContain(manifest.Nodes!, n => n.Format == "concept_list" && n.Id == "coverage");
+        Assert.Equal("concept-extraction", stamp.Formats["concept_list"].AgentName);
     }
 
     [Fact]
@@ -315,14 +315,14 @@ public class WorkflowPackageStampTests
             "formats@v2026.10.1",
             new Dictionary<string, WorkflowStampedFormat>
             {
-                ["terms-subset"] = new(new string('b', 64), "computed", Op: "terms-subset"),
+                ["terms_subset"] = new(new string('b', 64), "computed", Op: "terms_subset"),
                 ["prose"] = new(new string('a', 64), "attested", "test-json", 48),
             });
 
         var json = stamp.ToJson();
 
         Assert.Equal(
-            "{\n  \"catalogRef\": \"output-contracts@v2026.07.2\",\n  \"contracts\": {},\n  \"formatsRef\": \"formats@v2026.10.1\",\n  \"formats\": {\n    \"prose\": {\n      \"formatHash\": \"" + new string('a', 64) + "\",\n      \"producer\": \"attested\",\n      \"agentName\": \"test-json\",\n      \"agentVersion\": 48\n    },\n    \"terms-subset\": {\n      \"formatHash\": \"" + new string('b', 64) + "\",\n      \"producer\": \"computed\",\n      \"op\": \"terms-subset\"\n    }\n  }\n}\n",
+            "{\n  \"catalogRef\": \"output-contracts@v2026.07.2\",\n  \"contracts\": {},\n  \"formatsRef\": \"formats@v2026.10.1\",\n  \"formats\": {\n    \"prose\": {\n      \"formatHash\": \"" + new string('a', 64) + "\",\n      \"producer\": \"attested\",\n      \"agentName\": \"test-json\",\n      \"agentVersion\": 48\n    },\n    \"terms_subset\": {\n      \"formatHash\": \"" + new string('b', 64) + "\",\n      \"producer\": \"computed\",\n      \"op\": \"terms_subset\"\n    }\n  }\n}\n",
             json);
 
         var read = WorkflowPackageStamp.Read(json, "general@v2026.11.1");
