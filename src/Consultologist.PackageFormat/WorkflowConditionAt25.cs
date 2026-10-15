@@ -93,6 +93,39 @@ public static class WorkflowConditionAt25
     public static bool? Evaluate(ScriptExpression expression, TemplateContext context) =>
         context.Evaluate(expression) is bool value ? value : null;
 
+    /// <summary>
+    /// #1038: whether a condition holds over a render scope — the engine's judge
+    /// at every site (a node's own when and a deliverable's at the boundary, a
+    /// placement's there too, a node instance's at completion, a folder item's at
+    /// start). The scope is exactly what a template reads, so absence is what
+    /// <c>{{ if }}</c> sees: an unsupplied optional text or enum input is "", a
+    /// number, date or boolean null, an array empty (and falsy), an object empty
+    /// (design § 16, 2026-10-15). The validator proved the text parses and yields a
+    /// boolean over the probe; here either failure is loud, with the subject.
+    /// </summary>
+    public static bool Holds(string subject, string when, TemplateRenderScope scope, IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes = null)
+    {
+        if (!TryParse(when.Trim(), out var expression, out var error) || expression is null)
+        {
+            throw new InvalidOperationException($"{subject} {error}");
+        }
+
+        var context = TemplateRenderer.ContextFor(subject, scope, pipes);
+        var value = TemplateRenderer.Unwrap(subject, "evaluate", () => context.Evaluate(expression));
+
+        return value is bool holds
+            ? holds
+            : throw new InvalidOperationException($"{subject} must be a boolean expression; it yields {DescribeValue(value)}.");
+    }
+
+    /// <summary>
+    /// #1038 (provenance@v2026.10.2): the reason a 25 condition gives when it does
+    /// not hold — one fixed form over the condition's own text, package-authored,
+    /// never a value: a 25 when may read a node's text or a snippet, so nothing
+    /// it compared is printable.
+    /// </summary>
+    public static string Reason(string when) => $"needs `{when.Trim()}`; it does not hold";
+
     /// <summary>"a text", "a number", "a list", "nothing" — what a non-boolean condition yielded.</summary>
     public static string DescribeValue(object? value) => value switch
     {

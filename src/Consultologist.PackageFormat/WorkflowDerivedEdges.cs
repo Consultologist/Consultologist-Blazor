@@ -171,12 +171,30 @@ public static class WorkflowDerivedEdges
         }
 
         /// <summary>#1037: the node ids a deliverable's own when and its instances' whens read, closed over the texts they read.</summary>
-        public IReadOnlySet<string> DeliverableConditionReads(string deliverableId)
+        public IReadOnlySet<string> DeliverableConditionReads(string deliverableId) =>
+            ConditionReads(ConditionsOf(deliverableId, ConditionSite.Deliverable, ConditionSite.DeliverableInstance));
+
+        /// <summary>#1038: the node ids a node's own when and its instances' whens read, closed over the texts they read.</summary>
+        public IReadOnlySet<string> NodeConditionReads(string nodeId) =>
+            ConditionReads(ConditionsOf(nodeId, ConditionSite.Node, ConditionSite.NodeInstance));
+
+        /// <summary>
+        /// #1038 (design § 16): the node ids every GATING when reads — a node's
+        /// own, a deliverable's, a deliverable instance's — closed over the texts
+        /// they read. The engine's stage one runs their closure before the boundary
+        /// judges those whens over their outputs; a node instance's when is judged
+        /// at the node's own completion and a folder item's reads inputs only, so
+        /// neither gates the boundary.
+        /// </summary>
+        public IReadOnlySet<string> GatingReads() =>
+            ConditionReads(Conditions.Where(c => c.Site is ConditionSite.Node or ConditionSite.Deliverable or ConditionSite.DeliverableInstance));
+
+        private IReadOnlySet<string> ConditionReads(IEnumerable<WalkedCondition> conditions)
         {
             var edges = new HashSet<string>(StringComparer.Ordinal);
             var seen = new HashSet<(TemplateKind, string)>();
 
-            foreach (var condition in ConditionsOf(deliverableId, ConditionSite.Deliverable, ConditionSite.DeliverableInstance))
+            foreach (var condition in conditions)
             {
                 Visit(condition.Walk.References, seen, refs => edges.UnionWith(refs.Edges));
             }
@@ -512,6 +530,16 @@ public static class WorkflowDerivedEdges
         }
 
         return reads;
+    }
+
+    /// <summary>#1038: the node ids every gating when of the package reads (see <see cref="Walk.GatingReads"/>) — the job starter's call, from the manifest and files alone.</summary>
+    public static IReadOnlySet<string> GatingReads(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> files,
+        WorkflowFormatCatalog? formats)
+    {
+        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor);
+        return WalkAll(manifest, files, nodes, snippets, contextFor).GatingReads();
     }
 
     /// <summary>B8 #1027: the macro ids whose text reads <c>profile.signature</c> — the 25 signature carrier the starter's snapshot gate reads.</summary>
