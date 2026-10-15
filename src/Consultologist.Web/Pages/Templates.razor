@@ -6283,6 +6283,10 @@
                 .Where(input => WorkflowInputTypes.DeclaresObject(input) && input.Fields is not { Count: > 0 })
                 .Select(input => $"Input '{input.Id}' is an object and must declare at least one field."));
 
+            // C5 (#1011): the validator's content-channel rules (ValidateInput), word
+            // for word, at every version — said here before the registry says them.
+            errors.AddRange(inputs.SelectMany(ChannelErrors));
+
             errors.AddRange(inputs.SelectMany(input => ElementChainErrors($"Input '{input.Id}'", input.Items)));
 
             errors.AddRange(FieldTreeErrors(inputs));
@@ -7282,6 +7286,66 @@
             {
                 yield return $"Node '{node.Id}' forEach '{forEach}' must be snippet:<folder> or input:<id>.";
             }
+        }
+    }
+
+    /// <summary>
+    /// C5 (#1011): the validator's content-channel sentences for one input — the
+    /// version gate, a union, an unknown channel, transcript / image / ambient-note
+    /// on a slot that is not text or an array of text, form on an object below 25 or
+    /// on an array of objects, and form on an object with no fields at 25.
+    /// </summary>
+    private IEnumerable<string> ChannelErrors(WorkflowManifestReader.InputView input)
+    {
+        if (string.IsNullOrEmpty(input.ExpectedContent))
+        {
+            yield break;
+        }
+
+        var content = input.ExpectedContent;
+
+        if (input.Types is { Count: > 1 })
+        {
+            yield return $"Input '{input.Id}' declares expectedContent on a union type; a content channel is only for a single-type slot.";
+            yield break;
+        }
+
+        if (EffectiveSpecVersion < 13)
+        {
+            yield return $"Input '{input.Id}' declares expectedContent, which requires specVersion 13.";
+            yield break;
+        }
+
+        var channels = WorkflowExpectedContent.ForSpecVersion(EffectiveSpecVersion);
+        var type = WorkflowInputTypes.Of(input);
+        var elementType = type == WorkflowInputTypes.Array ? input.Items?.Type ?? WorkflowInputTypes.Text : null;
+        var textual = type == WorkflowInputTypes.Text || elementType == WorkflowInputTypes.Text;
+
+        if (!channels.Contains(content, StringComparer.Ordinal))
+        {
+            yield return $"Input '{input.Id}' declares unknown expectedContent '{content}' (accepted: {string.Join(", ", channels)}).";
+        }
+        else if (content == WorkflowExpectedContent.Transcript && !textual)
+        {
+            yield return $"Input '{input.Id}' declares expectedContent 'transcript', which is only for a text slot or an array of text.";
+        }
+        else if (content == WorkflowExpectedContent.Form
+            && ((type == WorkflowInputTypes.Object && EffectiveSpecVersion < 25)
+                || (type == WorkflowInputTypes.Array && elementType == WorkflowInputTypes.Object)))
+        {
+            yield return $"Input '{input.Id}' declares expectedContent 'form', which a slot of type '{type}' cannot be filled from.";
+        }
+        else if (content == WorkflowExpectedContent.Form && type == WorkflowInputTypes.Object && input.Fields is not { Count: > 0 })
+        {
+            yield return $"Input '{input.Id}' declares expectedContent 'form' on an object with no fields; declare the fields a response fills.";
+        }
+        else if (content == WorkflowExpectedContent.Image && !textual)
+        {
+            yield return $"Input '{input.Id}' declares expectedContent 'image', which is only for a text slot or an array of text.";
+        }
+        else if (content == WorkflowExpectedContent.AmbientNote && !textual)
+        {
+            yield return $"Input '{input.Id}' declares expectedContent 'ambient-note', which is only for a text slot or an array of text.";
         }
     }
 
