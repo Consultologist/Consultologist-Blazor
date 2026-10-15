@@ -630,6 +630,9 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         page.Find("fluent-button[aria-label='Add a condition for assessment macro closing']").Click();
         var operands = OptionValues(page, "fluent-select[aria-label^='Condition operand for assessment macro closing']");
         Assert.Contains("node:scope", operands);
+        // #1039: the option's text is the 25 spelling; its value stays the tree's key.
+        Assert.Equal("when node.scope.value", page.Find("fluent-select[aria-label^='Condition operand for assessment macro closing']")
+            .QuerySelectorAll("fluent-option").First(o => o.GetAttribute("value") == "node:scope").TextContent.Trim());
         page.Find("fluent-select[aria-label^='Condition operand for assessment macro closing']").Change("node:scope");
         Assert.Equal(new[] { "in_scope", "out_of_scope" }, OptionValues(page, "fluent-select[aria-label^='Condition value for assessment macro closing']").Where(v => !string.IsNullOrEmpty(v)));
     }

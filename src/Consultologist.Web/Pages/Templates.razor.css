@@ -570,6 +570,13 @@ fluent-button.node-field__button::part(control) {
 	border-radius: var(--consultologist-radius-sm, 4px);
 }
 
+/* #1039: the edit-as-text door beside a verbatim 25 condition. */
+.declared-row__condition-text {
+	font-family: var(--font-mono, monospace);
+	font-size: 0.85rem;
+	min-width: 18rem;
+}
+
 /* v10 (#498): a fields editor beneath a field — the tree's next level. */
 .declared-row__fields .declared-row__fields {
 	margin-left: 1rem;

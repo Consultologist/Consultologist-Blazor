@@ -3090,6 +3090,15 @@
       @if (state.Verbatim is { } verbatim)
       {
         <code class="declared-row__verbatim" aria-label="@($"Condition for {target.Subject}")">@verbatim</code>
+        @if (At25)
+        {
+          @* #1039: a hand-written 25 when the tree cannot hold is editable as text —
+             written verbatim, judged by the registry at the desk; never rewritten. *@
+          <input type="text" class="node-field__input declared-row__condition-text"
+                 value="@verbatim"
+                 aria-label="@($"Condition text for {target.Subject}")"
+                 @onchange="@(e => SetConditionTextAsync(target, e.Value?.ToString()))" />
+        }
         <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" aria-label="@($"Clear condition for {target.Subject}")"
                       IconStart="@(new Icons.Regular.Size20.Dismiss())"
                       @onclick="() => ClearConditionAsync(target)">clear</FluentButton>
@@ -3305,11 +3314,11 @@
           {
             @* A loaded condition naming something not offered
                here — shown as itself, never rewritten. *@
-            <FluentOption TOption="string" Value="@clause.Operand">when @clause.Operand</FluentOption>
+            <FluentOption TOption="string" Value="@clause.Operand">when @OperandDisplay(clause.Operand)</FluentOption>
           }
           @foreach (var candidate in operands)
           {
-            <FluentOption TOption="string" Value="@candidate.Key">when @candidate.Key</FluentOption>
+            <FluentOption TOption="string" Value="@candidate.Key">when @OperandDisplay(candidate.Key)</FluentOption>
           }
         </FluentSelect>
 
@@ -3336,7 +3345,7 @@
                 <FluentOption TOption="string" Value="">a number…</FluentOption>
                 @foreach (var candidate in arithmeticOperands)
                 {
-                  <FluentOption TOption="string" Value="@candidate.Key">@candidate.Key</FluentOption>
+                  <FluentOption TOption="string" Value="@candidate.Key">@OperandDisplay(candidate.Key)</FluentOption>
                 }
               </FluentSelect>
               @if (arithmetic.RightIsLiteral)
@@ -9331,6 +9340,42 @@
 
     private Task ClearConditionAsync(ConditionTarget target) =>
         EditConditionAsync(target, _ => ConditionGroup.Fresh);
+
+    /// <summary>
+    /// #1039: the edit-as-text door at 25 — a verbatim condition's text written as
+    /// the author typed it (blank clears). The registry judges it at the desk; the
+    /// builder never rewrites it.
+    /// </summary>
+    private async Task SetConditionTextAsync(ConditionTarget target, string? text)
+    {
+        var trimmed = text?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            await ClearConditionAsync(target);
+            return;
+        }
+
+        conditionDrafts.Remove(target.Key);
+        target.Write(trimmed);
+        await CommitDeclarationAsync();
+    }
+
+    /// <summary>
+    /// #1039: how the builder names an operand — at 25 the spelling the package
+    /// writes (<c>input.kind</c>, <c>node.scope.value</c>, <c>item.id</c>,
+    /// <c>(input.docs | array.size)</c>); the tree's key stays the model underneath.
+    /// </summary>
+    private string OperandDisplay(string key)
+    {
+        if (!At25)
+        {
+            return key;
+        }
+
+        return PF.WorkflowResultConditions.TryParseLegacy(key, out var expression, out _) && expression?.Leaves.FirstOrDefault() is { } leaf
+            ? PF.ConditionScriban.SpellOperand(leaf)
+            : key;
+    }
 
     private Task EditClauseAsync(ConditionTarget target, IReadOnlyList<int> path, Func<ConditionClause, ConditionClause> edit) =>
         EditConditionAsync(target, root => ConditionBuilderModel.At(root, path) is ConditionClause clause
