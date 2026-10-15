@@ -33,7 +33,7 @@ public class V25RenderTests
     {
         var package = V25JobStartTests.Package();
         var item = new Dictionary<string, string> { ["id"] = "hpi", ["name"] = "HPI", ["content"] = "History: {{ input.notes }}" };
-        var input = Input("section_notes:hpi", "section", item: item, forEach: "snippet:sections");
+        var input = Input("section_notes:hpi", "section", item: item, forEach: "snippet.sections");
 
         Assert.Equal("HPI: History: Referral.", ConsultRenderPayload.RenderAt25(input, package, package.SourceFiles!["prompts/section.md"]));
     }
@@ -98,8 +98,8 @@ public class V25RenderTests
     public void NodeTexts_AreTheReads_ItemAligned()
     {
         var extract = new ConsultNodeDescriptor("extract", "Extract", Format: "concept_list");
-        var sections = new ConsultNodeDescriptor("section_notes", "Sections", ForEach: "snippet:sections", Format: "prose", Reads: new[] { "extract" });
-        var review = new ConsultNodeDescriptor("review", "Review", ForEach: "snippet:sections", Format: "prose", Reads: new[] { "extract", "section_notes" });
+        var sections = new ConsultNodeDescriptor("section_notes", "Sections", ForEach: "snippet.sections", Format: "prose", Reads: new[] { "extract" });
+        var review = new ConsultNodeDescriptor("review", "Review", ForEach: "snippet.sections", Format: "prose", Reads: new[] { "extract", "section_notes" });
         var nodesById = new[] { extract, sections, review }.ToDictionary(n => n.Id, StringComparer.Ordinal);
         var outputs = new Dictionary<string, NodeRunResult>(StringComparer.Ordinal)
         {
