@@ -12,7 +12,7 @@ namespace Consultologist.Web.Tests;
 /// v25 C2 (#1008, design §§ 4, 13): the Snippets group — the Data machinery under the
 /// snippets table at 25. "+ Snippet" and "+ Snippet folder" in the two forms' place,
 /// files under snippets/, snake_case ids in the registry's words, a node fanning a
-/// folder as snippet:&lt;folder&gt;, a folder item's input-only when, and where each
+/// folder as snippet.&lt;folder&gt;, a folder item's input-only when, and where each
 /// snippet is read. Rendered at 25 alone; below 25 the Data group is byte-identical.
 /// Inert on the live editor until A5.
 /// </summary>
@@ -270,7 +270,7 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void TheForEachPicker_SpellsAFolder_AsSnippetColon()
+    public void TheForEachPicker_SpellsAFolder_AsSnippetDot()
     {
         var page = RenderEditor();
         Navigate(page, "Section notes");
@@ -279,6 +279,23 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
             .Select(o => o.GetAttribute("value")).ToList();
         Assert.Contains("snippet.sections", options);
         Assert.DoesNotContain("data:sections", options);
+    }
+
+    [Fact]
+    public void TheForEachPicker_SpellsAnArrayInput_AsInputDot()
+    {
+        // #1039: the picker wrote input:<id> at 25, which the registry refuses.
+        var package = EditorFixtures.V25();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["inputs"]!.AsArray().Add(System.Text.Json.Nodes.JsonNode.Parse("""{ "id": "history", "label": "History", "required": false, "type": "array" }"""));
+        package = package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+        var page = RenderEditor(package);
+        Navigate(page, "Section notes");
+
+        var options = page.FindAll("fluent-select[aria-label='Node forEach collection'] fluent-option")
+            .Select(o => o.GetAttribute("value")).ToList();
+        Assert.Contains("input.history", options);
+        Assert.DoesNotContain("input:history", options);
     }
 
     // ----- the publish -----

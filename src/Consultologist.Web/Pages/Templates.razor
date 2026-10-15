@@ -712,7 +712,7 @@
                                 @if (At25)
                                 {
                                     <p class="muted-text">
-                                        A folder of snippets a node fans over (<code>forEach: snippet:&lt;folder&gt;</code>)
+                                        A folder of snippets a node fans over (<code>forEach: snippet.&lt;folder&gt;</code>)
                                         or a template iterates (<code>{{ for s in snippet.&lt;folder&gt; }}</code>). Add at
                                         least one item before publishing.
                                     </p>
@@ -4375,7 +4375,7 @@
 
     private string CollectionDirectory(string collectionId) => $"{DataRoot}{collectionId}/";
 
-    /// <summary>How a node fans this folder: snippet:&lt;folder&gt; at 25, data:&lt;collection&gt; below.</summary>
+    /// <summary>How a node fans this folder: snippet.&lt;folder&gt; at 25, data:&lt;collection&gt; below.</summary>
     private string FanRef(string collectionId) => At25 ? PF.TemplateObjectReference.Snippet(collectionId) : $"data:{collectionId}";
 
     /// <summary>The folder a forEach names, under either spelling; null for an input fan or none.</summary>
@@ -4851,7 +4851,7 @@
         }
         else if (spec.Folder)
         {
-            <p class="muted-text">Not fanned or iterated by anything yet — a node fans it as <code>snippet:@spec.Id</code>; a template iterates it as <code>{{ for s in snippet.@spec.Id }}</code>.</p>
+            <p class="muted-text">Not fanned or iterated by anything yet — a node fans it as <code>snippet.@spec.Id</code>; a template iterates it as <code>{{ for s in snippet.@spec.Id }}</code>.</p>
         }
         else
         {
@@ -9207,7 +9207,7 @@
     /// fan a data: collection (an input fan's items are the caller's).</summary>
     private IReadOnlyList<WorkflowManifestReader.DataItemView> NodeFanItems(WorkflowManifestReader.NodeView node)
     {
-        // data:<collection> below 25, snippet:<folder> at 25 (#1008) — one folder, two spellings.
+        // data:<collection> below 25, snippet.<folder> at 25 (#1008) — one folder, two spellings.
         if (FanFolderOf(node.ForEach) is not { } collectionId)
         {
             return Array.Empty<WorkflowManifestReader.DataItemView>();
