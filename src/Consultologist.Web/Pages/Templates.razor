@@ -210,7 +210,7 @@
                                    MainAppearance="Appearance.Outline"
                                    BackOutAppearance="Appearance.Outline"
                                    BackOutClass="cancel-armed-button"
-                                   Disabled="@((!imported && PendingCount == 0) || isPublishing)"
+                                   Disabled="@((!imported && upgradedFrom == null && PendingCount == 0) || isPublishing)"
                                    OnClick="DiscardAsync"
                                    OnBackOut="CancelToolbarArm" />
                     <ConfirmButton Armed="revertArmed"
@@ -298,7 +298,7 @@
                 @* #963: what the prelude migration did — said once, up front, never a
                    silent hold: each prelude's new home, and any dropped because no
                    prompt used it or it was empty. Cleared by the next publish/discard. *@
-                <FluentMessageBar Intent="MessageIntent.Info" AllowDismiss="false" Class="prelude-migration-notice">@migrationNotice</FluentMessageBar>
+                <FluentMessageBar Intent="MessageIntent.Info" AllowDismiss="false" Class="migration-notice">@migrationNotice</FluentMessageBar>
             }
             @if (!string.IsNullOrWhiteSpace(publishSuccess))
             {
@@ -3734,6 +3734,14 @@
     internal const int NewestSpecVersion = 24;
 
     /// <summary>
+    /// C6 (#1012): the version the editor can MIGRATE a package to — 25, the § 14
+    /// rewrite — ahead of the ceilings above. The toolbar offers only the
+    /// ceilings; the seam (UpgradeSpecVersionTo) takes this too, so the migration
+    /// is built and tested while A5 (#1018) still holds the ceilings at 24.
+    /// </summary>
+    internal const int MigratableSpecVersion = 25;
+
+    /// <summary>
     /// Mirrors WorkflowPackageStore.SupportedSpecVersions' maximum — the
     /// newest format the engine will RUN. Below NewestSpecVersion while a
     /// format is publishable but not yet executable (v10 § 10, #492), which
@@ -3807,7 +3815,7 @@
     // when the name is typed) and survives reload. Null when not an import.
     private string? importZipBase64;
 
-    private bool CanPublish => content != null && !isPublishing && (imported || PendingCount > 0);
+    private bool CanPublish => content != null && !isPublishing && (imported || upgradedFrom != null || PendingCount > 0);
 
     /// <summary>
     /// The ref this editor is holding. Since #411 it is NOT the consult pin:
@@ -3846,10 +3854,18 @@
     /// existing publish guard opens on it — a version bump with nothing else
     /// changed is a legitimate publish, and the one that proves a migration.
     /// </summary>
-    private async Task UpgradeSpecVersionTo(int target)
+    internal async Task UpgradeSpecVersionTo(int target)
     {
         if (!CanUpgradeTo(target))
         {
+            return;
+        }
+
+        // C6 (#1012): past 24 the upgrade is the § 14 rewrite — the whole package
+        // replaced, not a staged bump (nothing below could express it as pending state).
+        if (target >= MigratableSpecVersion && LoadedSpecVersion < MigratableSpecVersion)
+        {
+            await MigrateTo25Async();
             return;
         }
 
@@ -3876,11 +3892,145 @@
         migrationNotice = notice;
     }
 
+    /// <summary>
+    /// C6 (#1012): migrate the EFFECTIVE package (pending edits ride along) to 25
+    /// through the library's rewriter and make the result the session's content —
+    /// the import door's shape (#847): replaced, persisted, publishable as a new
+    /// version of the same package, discarded by reloading the registry's. A
+    /// refusal applies nothing and is said in the toolbar.
+    /// </summary>
+    private async Task MigrateTo25Async()
+    {
+        if (content == null)
+        {
+            return;
+        }
+
+        var manifestJson = ComposeManifest().GetRawText();
+        var files = AssembleFiles();
+        var catalogSchemas = await WorkflowService.GetCatalogSchemasAsync();
+        Func<System.Text.Json.Nodes.JsonNode, string?>? resolveContract = catalogSchemas is null
+            ? null
+            : schema =>
+            {
+                var canonical = PF.WorkflowPackageValidator.CanonicalizeSchema(schema);
+                return catalogSchemas
+                    .Where(pair => PF.WorkflowPackageValidator.CanonicalizeSchema(System.Text.Json.Nodes.JsonNode.Parse(pair.Value)) == canonical)
+                    .Select(pair => pair.Key)
+                    .FirstOrDefault();
+            };
+
+        var result = PF.WorkflowPackageMigration24To25.Migrate(manifestJson, files, resolveContract);
+
+        if (!result.Succeeded)
+        {
+            upgradeRefusal = string.Join(" ", result.Refusals);
+            return;
+        }
+
+        var from = LoadedSpecVersion;
+        var migrated = new WorkflowPackageContentResponse(
+            content.Name,
+            content.Version,
+            MigratableSpecVersion,
+            JsonDocument.Parse(result.ManifestJson).RootElement.Clone(),
+            result.Files);
+
+        ClearHistoryState();
+        ClearPending();
+        ResetFormScratch();
+        ResetPublishFeedback();
+        diagramText = null;
+        diagramIncludesPending = false;
+        content = migrated;
+        upgradedFrom = from;
+        ProjectLoadedContent();
+        await LoadFormatsCatalogAsync();
+        migrationNotice = $"Migrated to specVersion {MigratableSpecVersion}. {string.Join(" ", result.Notices)}";
+        upgradeRefusal = null;
+        selectedKey = GraphKey;
+        await PersistUpgradeAsync();
+        // Nothing is pending now: the draft of what was composed in leaves with it.
+        await PendingChangedAsync();
+        _ = LoadDiagramAsync();
+    }
+
+    private async Task PersistUpgradeAsync()
+    {
+        if (content == null || upgradedFrom is not { } from)
+        {
+            return;
+        }
+
+        try
+        {
+            var json = JsonSerializer.Serialize(new UpgradeDraft(UpgradeDraftVersion, from, content.Name, content.Version, content.Manifest.GetRawText(), content.Files, migrationNotice));
+            await JS.InvokeVoidAsync("localStorage.setItem", UpgradeKey, json);
+        }
+        catch
+        {
+            // Persisting is a convenience; the upgrade still holds this session.
+        }
+    }
+
+    private async Task<UpgradeDraft?> ReadStoredUpgradeAsync()
+    {
+        try
+        {
+            var stored = await JS.InvokeAsync<string?>("localStorage.getItem", UpgradeKey);
+            if (string.IsNullOrWhiteSpace(stored))
+            {
+                return null;
+            }
+
+            var draft = JsonSerializer.Deserialize<UpgradeDraft>(stored);
+            return draft is { Version: UpgradeDraftVersion } ? draft : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task ForgetUpgradeAsync()
+    {
+        var key = UpgradeKey;
+        upgradedFrom = null;
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.removeItem", key);
+        }
+        catch
+        {
+        }
+    }
+
+    /// <summary>A stored upgrade of the package just loaded takes its place — the stored-import idiom (#857).</summary>
+    private void ApplyStoredUpgrade(UpgradeDraft draft)
+    {
+        content = new WorkflowPackageContentResponse(draft.Name, draft.PackageVersion, MigratableSpecVersion, JsonDocument.Parse(draft.ManifestJson).RootElement.Clone(), draft.Files);
+        upgradedFrom = draft.FromSpecVersion;
+        migrationNotice = draft.Notice;
+    }
+
     // #963: the prelude migration's two message surfaces — session-only, not
     // pending state: the refusal beside the upgrade buttons, the one-time notice
     // of what moved and what was dropped.
     private string? upgradeRefusal;
     private string? migrationNotice;
+
+    // C6 (#1012): the loaded specVersion a replaced, migrated package came from —
+    // null when the session's content is the registry's. Not pending state (the
+    // migrated package IS the content); CanPublish, the summary line, Discard and
+    // the diagram read it, and it is persisted with the package it replaces.
+    private int? upgradedFrom;
+
+    private const int UpgradeDraftVersion = 1;
+    private const string UpgradeKeyPrefix = "workflow-editor-upgrade:";
+
+    private sealed record UpgradeDraft(int Version, int FromSpecVersion, string Name, string PackageVersion, string ManifestJson, Dictionary<string, string> Files, string? Notice);
+
+    private string UpgradeKey => UpgradeKeyPrefix + (content?.Ref ?? string.Empty);
 
     /// <summary>#963: the on-demand door — a package already at 23+ that still carries preludes.</summary>
     private async Task MigratePreludesOnDemandAsync()
@@ -3988,7 +4138,7 @@
         // question is whether the package as published has anywhere to go up
         // to. The pending side is the specVersionBump == null clause, which is
         // what hides the buttons once one has been pressed.
-        content != null && specVersionBump == null && LoadedSpecVersion < target && target <= NewestSpecVersion;
+        content != null && specVersionBump == null && upgradedFrom == null && LoadedSpecVersion < target && target <= MigratableSpecVersion;
 
     // #429: one button per rung while the ceilings differ (#492 reopened
     // the gap: 10 is publishable, 9 is the newest that runs).
@@ -4126,6 +4276,12 @@
     private string PendingSummary()
     {
         var parts = PendingKinds.Where(kind => kind.Count() > 0).Select(kind => kind.Fragment()).ToList();
+
+        // C6 (#1012): a migrated package is the whole change, said first.
+        if (upgradedFrom is { } from && content != null)
+        {
+            parts.Insert(0, $"upgraded {from} → {content.SpecVersion}");
+        }
 
         return parts.Count == 0 ? string.Empty : $" ({string.Join(" · ", parts)})";
     }
@@ -11281,10 +11437,11 @@
                     diagramIncludesPending = true;
                 }
             }
-            else if (imported)
+            else if (imported || upgradedFrom != null)
             {
                 // #855: an unedited import has no pending decoration — it IS the
                 // content. Draw it from the manifest (no registry ref exists).
+                // C6 (#1012): a migrated package likewise — the registry's diagram is the old one.
                 var diagram = await WorkflowService.GetDiagramForManifestAsync(ComposeManifest());
 
                 if (diagram != null)
@@ -11590,10 +11747,31 @@
                 }
             }
 
+            // C6 (#1012): an unpublished upgrade of THIS package held in this browser
+            // takes its place; the notice it was given comes back with it.
+            string? storedNotice = null;
+            if (storedImport == null && content != null && await ReadStoredUpgradeAsync() is { } storedUpgrade
+                && storedUpgrade.Name == content.Name && storedUpgrade.PackageVersion == content.Version)
+            {
+                try
+                {
+                    ApplyStoredUpgrade(storedUpgrade);
+                    storedNotice = storedUpgrade.Notice;
+                }
+                catch (Exception ex) when (ex is not AccessTokenNotAvailableException)
+                {
+                    await ForgetUpgradeAsync();
+                }
+            }
+
             ProjectLoadedContent();
             // v25 (C1 #1007): the formats catalogue, read once a 25 package is loaded.
             await LoadFormatsCatalogAsync();
             await RestoreDraftAsync();
+            if (storedNotice != null)
+            {
+                migrationNotice = storedNotice;
+            }
             // #815: restore the undo/redo history for this package (or start fresh).
             await RestoreHistoryAsync();
 
@@ -12821,6 +12999,8 @@
             await ForgetRememberedPackageAsync();
             // #857: the import is now a published package — drop the held copy.
             await ForgetImportAsync();
+            // C6 (#1012): the upgrade is now a published version — drop the held copy.
+            await ForgetUpgradeAsync();
             // Warnings arrive with a *successful* publish and the version is
             // immutable, so this is the only moment they can be read. Held
             // across LoadAsync, which resets the rest of the page state.
@@ -12871,6 +13051,17 @@
         }
 
         discardArmed = false;
+
+        // C6 (#1012): an upgrade with nothing else pending — discarding it drops the
+        // held migrated package and reloads the registry's version.
+        if (upgradedFrom is { } discardedFrom && PendingCount == 0)
+        {
+            ResetPublishFeedback();
+            await ForgetUpgradeAsync();
+            await LoadAsync();
+            selectionNotice = $"Discarded the upgrade from specVersion {discardedFrom}. Showing {content?.Ref} as published.";
+            return;
+        }
 
         // #857: an unedited import has no pending edits to clear — discarding it
         // means dropping the held import and returning to the pinned package.

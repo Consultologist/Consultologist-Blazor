@@ -778,6 +778,91 @@ public static class EditorFixtures
     /// declares the local format. Every node feeds the deliverable: the prose
     /// node reads the concept-list and the medications; the classifier is exempt.
     /// </summary>
+    /// <summary>
+    /// C6 (#1012): a 24 package carrying every row of the § 14 migration table — the
+    /// editor twin of the library's V24Package: bound variables of every source kind
+    /// (a concept node with and without a renderer, a classifier, a data scalar, fan
+    /// items), a classifier, a check and its deliverable's check, a template node, a
+    /// schemaRefs node, a customSchemas node, a canonical-body schemas node, a raw
+    /// prompt, a data scalar with a literal brace and a fanned collection, prompt-side
+    /// node macros (bare, gated, forItem), deliverable macros (bare, node-anchored with
+    /// a when, slot), hyphenated node ids.
+    /// </summary>
+    public static WorkflowPackageContentResponse V24Full() => Package("""
+        {
+          "name": "acct-1234567890ab",
+          "version": "v2026.10.1",
+          "specVersion": 24,
+          "tags": [],
+          "templating": { "engine": "scriban", "engineVersion": "7.2.5" },
+          "inputs": [
+            { "id": "notes", "label": "Referral notes", "required": true },
+            { "id": "kind", "label": "Kind", "required": true, "type": "enum", "values": ["new", "follow_up"] }
+          ],
+          "data": { "house_standards": "data/house_standards.txt", "sections": "data/sections/" },
+          "schemas": { "concepts": "schemas/concepts.json" },
+          "schemaRefs": { "problems": "concept-list" },
+          "customSchemas": { "plan-shape": "schemas/plan-shape.json" },
+          "macros": [
+            { "id": "tool_guidance", "label": "Tool guidance", "file": "macros/tool_guidance.md" },
+            { "id": "closing", "label": "Closing", "file": "macros/closing.md" },
+            { "id": "disclaimer", "label": "Disclaimer", "file": "macros/disclaimer.md" },
+            { "id": "handoff", "label": "Handoff", "file": "macros/handoff.md" },
+            { "id": "footer", "label": "Footer", "file": "macros/footer.md" }
+          ],
+          "prompts": [
+            { "id": "extract", "file": "prompts/extract.md", "variables": ["notes"] },
+            { "id": "problem", "file": "prompts/problem.md", "variables": ["notes", "concepts"] },
+            { "id": "scope", "file": "prompts/scope.md", "variables": ["notes"] },
+            { "id": "plan", "file": "prompts/plan.md", "variables": ["notes"] },
+            { "id": "assessment", "file": "prompts/assessment.md", "variables": ["notes", "problems", "scope_value", "standard", "plan"] },
+            { "id": "section", "file": "prompts/section.md", "variables": ["section_name", "section_text"] },
+            { "id": "summary", "file": "prompts/summary.md", "variables": ["notes"] },
+            { "id": "raw_note", "file": "prompts/raw_note.md", "variables": [], "raw": true }
+          ],
+          "results": [
+            { "id": "consult", "node": "node:assemble", "label": "Consultation note", "when": "kind == new", "check": "node:coverage",
+              "macros": [ "closing", { "id": "footer", "after": "node:section-notes", "when": "kind == new" }, { "id": "handoff", "slot": true } ] }
+          ],
+          "nodes": [
+            { "id": "extract-patient-concepts", "label": "Extract concepts", "prompt": "extract", "bindings": { "notes": "input:notes" }, "output": { "schema": "concepts" } },
+            { "id": "identify-problem", "label": "Identify problem", "prompt": "problem",
+              "bindings": { "notes": "input:notes", "concepts": "node:extract-patient-concepts" }, "output": { "schema": "problems" } },
+            { "id": "scope", "label": "Scope", "prompt": "scope", "kind": "classifier", "values": ["in_scope", "out_of_scope"], "bindings": { "notes": "input:notes" } },
+            { "id": "plan", "label": "Plan", "prompt": "plan", "bindings": { "notes": "input:notes" }, "output": { "schema": "plan-shape", "failIfEmpty": "No plan." } },
+            { "id": "assessment", "label": "Assessment", "prompt": "assessment",
+              "bindings": { "notes": "input:notes", "problems": { "from": "node:identify-problem", "as": "concept-context" }, "scope_value": "node:scope", "standard": "data:house_standards", "plan": "node:plan" },
+              "macros": [ "tool_guidance", { "id": "closing", "at": "after", "when": "node:scope == in_scope" } ] },
+            { "id": "section-notes", "label": "Section notes", "prompt": "section", "forEach": "data:sections",
+              "bindings": { "section_name": "item:name", "section_text": "item:content" },
+              "macros": [ { "id": "disclaimer", "forItem": "hpi" } ] },
+            { "id": "summary", "label": "Summary", "prompt": "summary", "kind": "template", "bindings": { "notes": "input:notes" } },
+            { "id": "raw_node", "label": "Raw", "prompt": "raw_note" },
+            { "id": "coverage", "label": "Coverage", "kind": "check", "op": "terms-subset", "of": "node:identify-problem", "in": "node:extract-patient-concepts", "failWith": "Problems the notes do not name." },
+            { "id": "assemble", "label": "Assemble", "aggregate": ["node:assessment", "node:section-notes", "node:summary", "node:raw_node"] }
+          ]
+        }
+        """, 24,
+        ("prompts/extract.md", "Extract the concepts from:\n{{ notes }}"),
+        ("prompts/problem.md", "Problems in {{ notes }} given:\n{{ concepts }}"),
+        ("prompts/scope.md", "Is this in scope? {{ notes }}"),
+        ("prompts/plan.md", "Plan steps for {{ notes }}."),
+        ("prompts/assessment.md", "Assess {{ notes }}.\nProblems:\n{{ problems }}\nScope: {{ scope_value }}\nStandard: {{ standard }}\nPlan: {{ plan }}\nHandoff: [[slot:handoff]]"),
+        ("prompts/section.md", "{{ section_name }}: {{ section_text }}"),
+        ("prompts/summary.md", "Summary of {{ notes }}"),
+        ("prompts/raw_note.md", "Literal {{ braces }} stay."),
+        ("data/house_standards.txt", "Follow the local standards. A literal {{ brace }}."),
+        ("data/sections/index.json", """{ "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md" }, { "id": "plan", "name": "Plan", "file": "plan.md" } ] }"""),
+        ("data/sections/hpi.md", "History of presenting illness."),
+        ("data/sections/plan.md", "The plan {{ in braces }}."),
+        ("macros/tool_guidance.md", "Use short terms for {{input:notes}} on {{run:date}}."),
+        ("macros/closing.md", "Closing: {{profile:name}}, {{classification:scope}}."),
+        ("macros/disclaimer.md", "Disclaimer for {{item:name}} ({{item:content}})."),
+        ("macros/handoff.md", "Handoff from {{data:house_standards}}."),
+        ("macros/footer.md", "Footer on {{run:date}}."),
+        ("schemas/concepts.json", EditorCatalogSchemas.ConceptListSchema),
+        ("schemas/plan-shape.json", """{ "type": "object", "description": "The plan as steps.", "additionalProperties": false, "required": ["steps"], "properties": { "steps": { "type": "array", "items": { "type": "string" } } } }"""));
+
     public static WorkflowPackageContentResponse V25() => Package("""
         {
           "name": "acct-1234567890ab",
