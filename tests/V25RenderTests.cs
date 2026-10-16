@@ -52,7 +52,7 @@ public class V25RenderTests
         var input = Input("assessment", "assessment") with { Folders = folders };
 
         var rendered = ConsultRenderPayload.RenderAt25(input, package,
-            "{{ for s in snippet.sections }}{{ s.name }}={{ s.text }};{{ end }}{{ macro.closing.text }}|{{ macro.closing.prompt }}");
+            "{{ for s in snippet.sections }}{{ s.name }}={{ s.content }};{{ end }}{{ macro.closing.content }}|{{ macro.closing.prompt }}");
 
         Assert.Equal(
             "HPI=History: Referral.;Closing: Dr Example.|" + WorkflowMacroMechanics.Prompt("closing", "Add a closing line if the plan changed."),
@@ -66,7 +66,7 @@ public class V25RenderTests
         const string json = """{ "concepts": [ { "term": "Asthma", "id": "195967001", "type": "disorder", "isActive": true } ] }""";
         var input = Input("assessment", "assessment", new Dictionary<string, string> { ["extract"] = json });
 
-        var rendered = ConsultRenderPayload.RenderAt25(input, package, "{{ node.extract.text | concept_context }}");
+        var rendered = ConsultRenderPayload.RenderAt25(input, package, "{{ node.extract.content | concept_context }}");
 
         Assert.Equal(AgentSectionGenerator.FormatConcepts(ConceptOutputContract.Deserialize(json, "extract")), rendered);
         Assert.Contains("Asthma", rendered, StringComparison.Ordinal);

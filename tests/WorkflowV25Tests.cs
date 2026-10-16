@@ -82,10 +82,10 @@ public static class V25Package
 
         var files = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["prompts/assessment.md"] = "Assess.\n{{ snippet.standards.text }}\n{{ input.notes }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}",
+            ["prompts/assessment.md"] = "Assess.\n{{ snippet.standards.content }}\n{{ input.notes }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}",
             ["prompts/extract.md"] = "Extract the concepts from:\n{{ input.notes }}",
             ["prompts/scope.md"] = "Is this in scope? {{ input.notes }}",
-            ["prompts/section.md"] = "{{ item.name }}: {{ item.text }}",
+            ["prompts/section.md"] = "{{ item.name }}: {{ item.content }}",
             ["snippets/standards.md"] = "Follow the local standards.",
             ["snippets/sections/index.json"] = """{ "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md" }, { "id": "plan", "name": "Plan", "file": "plan.md", "when": "input.kind == \"new\"" } ] }""",
             ["snippets/sections/hpi.md"] = "History: {{ input.notes }}",
@@ -149,8 +149,8 @@ public class WorkflowV25Tests
     // ----- § 10: retired by name, with the replacement ------------------------------
 
     [Theory]
-    [InlineData("preludes", "preludes is retired at specVersion 25; read the text inline ({{ snippet.<id>.text }}) — the editor migrated preludes at 23.")]
-    [InlineData("data", "data is retired at specVersion 25; declare snippets (read as {{ snippet.<id>.text }}).")]
+    [InlineData("preludes", "preludes is retired at specVersion 25; read the text inline ({{ snippet.<id>.content }}) — the editor migrated preludes at 23.")]
+    [InlineData("data", "data is retired at specVersion 25; declare snippets (read as {{ snippet.<id>.content }}).")]
     [InlineData("schemas", "schemas is retired at specVersion 25; declare formats and name one on each node (nodes[].format).")]
     [InlineData("schemaRefs", "schemaRefs is retired at specVersion 25; declare formats and name one on each node (nodes[].format).")]
     [InlineData("customSchemas", "customSchemas is retired at specVersion 25; declare formats and name one on each node (nodes[].format).")]
@@ -176,7 +176,7 @@ public class WorkflowV25Tests
 
     [Theory]
     [InlineData("prelude", "Prompt 'assessment' declares prelude, which is retired at specVersion 25; read the text inline")]
-    [InlineData("variables", "Prompt 'assessment' declares variables, which are retired at specVersion 25; a template reads objects (input.<id>, node.<id>.text, snippet.<id>.text, item.<member>, macro.<id>.text) and its reads are derived.")]
+    [InlineData("variables", "Prompt 'assessment' declares variables, which are retired at specVersion 25; a template reads objects (input.<id>, node.<id>.content, snippet.<id>.content, item.<member>, macro.<id>.content) and its reads are derived.")]
     [InlineData("raw", "Prompt 'assessment' declares raw, which is retired at specVersion 25; escape a literal '{{' as {{ \"{{\" }} or wrap it in {%{ … }%}.")]
     public void APromptKey_RetiredAt25_IsRefused(string key, string sentence)
     {
@@ -424,7 +424,7 @@ public class WorkflowV25TemplateTests
     [Fact]
     public void TheWalkersSentences_PassThrough()
     {
-        var bundle = V25Package.WithPrompt(Minimal(), "assessment", "{{ node.nope.text }} {{ input.nope }} {{ data.x }}");
+        var bundle = V25Package.WithPrompt(Minimal(), "assessment", "{{ node.nope.content }} {{ input.nope }} {{ data.x }}");
 
         var errors = V25Package.Errors(bundle);
 
@@ -436,9 +436,9 @@ public class WorkflowV25TemplateTests
     [Fact]
     public void ABareStructuredTextRead_Warns()
     {
-        var bundle = V25Package.WithPrompt(Minimal(), "assessment", "{{ snippet.standards.text }} {{ node.extract.text }}");
+        var bundle = V25Package.WithPrompt(Minimal(), "assessment", "{{ snippet.standards.content }} {{ node.extract.content }}");
 
-        Assert.Contains(V25Package.Warnings(bundle), w => w.Contains("Prompt 'assessment' reads node.extract.text of format 'concept_list' (object)"));
+        Assert.Contains(V25Package.Warnings(bundle), w => w.Contains("Prompt 'assessment' reads node.extract.content of format 'concept_list' (object)"));
     }
 
     [Fact]
@@ -462,7 +462,7 @@ public class WorkflowV25TemplateTests
     [Fact]
     public void ANonFan_ReadingAFan_MustAggregate()
     {
-        var bundle = V25Package.WithPrompt(Minimal(), "assessment", "{{ node.section_notes.text }}");
+        var bundle = V25Package.WithPrompt(Minimal(), "assessment", "{{ node.section_notes.content }}");
 
         Assert.Contains("Node 'assessment' reads node 'section_notes', which fans; aggregation is explicit at specVersion 25 — collect it through an aggregator node.", V25Package.Errors(bundle));
     }
@@ -478,7 +478,7 @@ public class WorkflowV25TemplateTests
             Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("per_event", "Per event", Prompt: "per_event", Format: "prose", ForEach: "input.history")).ToList(),
         };
         manifest = V25Package.WithNode(manifest, "all", n => n with { Aggregate = n.Aggregate!.Append("node.per_event").ToList() });
-        files["prompts/per_event.md"] = "{{ item.value }} {{ node.section_notes.text }}";
+        files["prompts/per_event.md"] = "{{ item.value }} {{ node.section_notes.content }}";
 
         Assert.Contains("Node 'per_event' reads node 'section_notes' across fans ('input.history' vs 'snippet.sections'); two fans align only over one source.", V25Package.Errors((manifest, files)));
     }
@@ -508,7 +508,7 @@ public class WorkflowV25TemplateTests
     [InlineData("input.notes", "Node 'section_notes' forEach 'input.notes' fans input 'notes', which is a text; only an array can be fanned.")]
     [InlineData("input.nope", "Node 'section_notes' forEach 'input.nope' fans undeclared input 'nope'.")]
     [InlineData("sections", "Node 'section_notes' forEach 'sections' must be snippet.<folder> or input.<id>.")]
-    [InlineData("snippet.sections.text", "Node 'section_notes' forEach 'snippet.sections.text' must be snippet.<folder> or input.<id>.")]
+    [InlineData("snippet.sections.content", "Node 'section_notes' forEach 'snippet.sections.content' must be snippet.<folder> or input.<id>.")]
     public void ForEach_NamesASnippetFolderOrAnArrayInput(string forEach, string sentence)
     {
         var (manifest, files) = Minimal();
@@ -555,7 +555,7 @@ public class WorkflowV25TemplateTests
         manifest = manifest with { Macros = manifest.Macros!.Append(new WorkflowMacroSpec("unused", "Unused", "macros/unused.md", Instruction: "x")).ToList() };
         files["macros/unused.md"] = "Nothing.";
 
-        Assert.Contains("Macro 'unused' is declared but never placed or read; place it on a node or a deliverable, or read macro.unused.text / macro.unused.prompt.", V25Package.Errors((manifest, files)));
+        Assert.Contains("Macro 'unused' is declared but never placed or read; place it on a node or a deliverable, or read macro.unused.content / macro.unused.prompt.", V25Package.Errors((manifest, files)));
     }
 
     [Fact]
@@ -587,7 +587,7 @@ public class WorkflowV25TemplateTests
         var (manifest, files) = Minimal();
         files["snippets/sections/hpi.md"] = "History. {{ macro.closing.prompt }}";
 
-        Assert.Contains("Node 'section_notes' fans snippet folder 'sections'; items plan carry no macro.closing.prompt read, so nothing tells the model to write macro.closing.text for them.", V25Package.Warnings((manifest, files)));
+        Assert.Contains("Node 'section_notes' fans snippet folder 'sections'; items plan carry no macro.closing.prompt read, so nothing tells the model to write macro.closing.content for them.", V25Package.Warnings((manifest, files)));
     }
 
     [Fact]
@@ -595,8 +595,8 @@ public class WorkflowV25TemplateTests
     {
         var (manifest, files) = Minimal();
         manifest = manifest with { Snippets = new Dictionary<string, string>(manifest.Snippets!) { ["intro"] = "snippets/intro.md" } };
-        files["snippets/standards.md"] = "{{ snippet.intro.text }}";
-        files["snippets/intro.md"] = "{{ snippet.standards.text }}";
+        files["snippets/standards.md"] = "{{ snippet.intro.content }}";
+        files["snippets/intro.md"] = "{{ snippet.standards.content }}";
 
         Assert.Contains("Templates contain a cycle: snippet 'standards' → snippet 'intro' → snippet 'standards'.", V25Package.Errors((manifest, files)));
     }
@@ -619,7 +619,7 @@ public class WorkflowV25TemplateTests
     public void AnInstruction_ReachingItsOwnInlineRead_IsACycle()
     {
         var (manifest, files) = Minimal();
-        manifest = manifest with { Macros = manifest.Macros!.Select(m => m with { Instruction = "Close as {{ snippet.standards.text }} says." }).ToList() };
+        manifest = manifest with { Macros = manifest.Macros!.Select(m => m with { Instruction = "Close as {{ snippet.standards.content }} says." }).ToList() };
         files["snippets/standards.md"] = "Standards. {{ macro.closing.prompt }}";
 
         Assert.Contains("Templates contain a cycle: snippet 'standards' → instruction 'closing' → snippet 'standards'.", V25Package.Errors((manifest, files)));
@@ -638,7 +638,7 @@ public class WorkflowV25TemplateTests
     public void AMacroText_ReachingAPromptRead_IsRefused()
     {
         var (manifest, files) = Minimal();
-        files["macros/closing.md"] = "{{ snippet.standards.text }}";
+        files["macros/closing.md"] = "{{ snippet.standards.content }}";
         files["snippets/standards.md"] = "{{ macro.closing.prompt }}";
 
         Assert.Contains("Macro 'closing' text reaches macro.closing.prompt through snippet 'standards'; text placed after a reply instructs no model.", V25Package.Errors((manifest, files)));
@@ -681,11 +681,11 @@ public class WorkflowV25TemplateTests
                     Macros: new List<WorkflowDeliverableMacroSpec> { new("closing", At: WorkflowDeliverableMacroSpec.Append) }),
             },
         };
-        files["macros/closing.md"] = "Closing: {{ node.section_notes.text }}.";
+        files["macros/closing.md"] = "Closing: {{ node.section_notes.content }}.";
 
         Assert.Contains("Deliverable 'consult' macro 'closing' reads node 'section_notes', which fans; a deliverable macro reads scalar nodes and aggregators — place the macro on the node to read its items.", V25Package.Errors((manifest, files)));
 
-        files["macros/closing.md"] = "Closing: {{ node.scope.text }}.";
+        files["macros/closing.md"] = "Closing: {{ node.scope.content }}.";
         Assert.True(V25Package.Validate((manifest, files), V25Package.Catalog()).IsValid, string.Join(" | ", V25Package.Errors((manifest, files))));
     }
 
@@ -734,7 +734,7 @@ public class WorkflowV25TemplateTests
     [Theory]
     [InlineData("node:assessment", "Aggregator node 'all' source 'node:assessment' is the ≤24 spelling; at specVersion 25 a source is node.<id>.")]
     [InlineData("assessment", "Aggregator node 'all' source 'assessment' must be node.<id>.")]
-    [InlineData("node.assessment.text", "Aggregator node 'all' source 'node.assessment.text' must be node.<id>.")]
+    [InlineData("node.assessment.content", "Aggregator node 'all' source 'node.assessment.content' must be node.<id>.")]
     [InlineData("node.nope", "Aggregator node 'all' references unknown node 'nope'.")]
     [InlineData("node.all", "Aggregator node 'all' aggregates itself.")]
     public void AnAggregateSource_IsANodeReference_InTheObjectSpelling(string source, string expected)
@@ -778,7 +778,7 @@ public class WorkflowV25TemplateTests
         Assert.Contains("Deliverable 'consult' condition compares node.scope.value to 'maybe', which it does not declare (values: in_scope, out_of_scope).", V25Package.Errors((badValue, files)));
 
         var notEnum = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node.assessment.value == \"x\"" }).ToList() };
-        Assert.Contains("Deliverable 'consult' condition reads node.assessment.value, but format 'prose' is text and has no value; read node.assessment.text.", V25Package.Errors((notEnum, files)));
+        Assert.Contains("Deliverable 'consult' condition reads node.assessment.value, but format 'prose' is text and has no value; read node.assessment.content.", V25Package.Errors((notEnum, files)));
 
         // #1037: the ≤24 grammar is refused by name, with the spelling.
         var legacy = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node:scope == in_scope and kind == new" }).ToList() };
@@ -831,7 +831,7 @@ public class WorkflowV25TemplateTests
     [Fact]
     public void ANodeCycle_IsRefused()
     {
-        var bundle = V25Package.WithPrompt(Minimal(), "extract", "{{ node.assessment.text }}");
+        var bundle = V25Package.WithPrompt(Minimal(), "extract", "{{ node.assessment.content }}");
 
         Assert.Contains(V25Package.Errors(bundle), e => e.StartsWith("nodes contain a cycle involving:", StringComparison.Ordinal));
     }

@@ -8,7 +8,7 @@ namespace Consultologist.Api.Tests;
 /// <summary>
 /// B5 #1004 → #1044 (design §§ 6–7): the completion order in the activity — the
 /// reply's digest, failIfEmpty on the reply, the reply RENDERED as a template
-/// over the node's scope (its macro.&lt;id&gt;.text reads are its inline macros; a reply
+/// over the node's scope (its macro.&lt;id&gt;.content reads are its inline macros; a reply
 /// that does not render fails the node), the instances composed, outputHash
 /// over what came out, and every placement and exclusion on the record.
 /// </summary>
@@ -93,20 +93,20 @@ public class ConsultNodeCompletionTests
             f => new Dictionary<string, string>(f, StringComparer.Ordinal)
             {
                 ["snippets/standards.md"] = "Standards. {{ macro.closing.prompt }}",
-                ["macros/closing.md"] = "Closing for {{ node.scope.text }}: {{ profile.name }}.",
+                ["macros/closing.md"] = "Closing for {{ node.scope.content }}: {{ profile.name }}.",
             });
 
         Assert.Contains(WorkflowMacroMechanics.Prompt("closing", "Add a closing line if the plan changed."), rendered);
-        Assert.Contains("{{ macro.closing.text }}", rendered);
+        Assert.Contains("{{ macro.closing.content }}", rendered);
         Assert.Equal(new[] { "closing" }, reads);
 
-        var result = ConsultNodeCompletion.Complete(Settled("Plan.\n\n{{ macro.closing.text }}"), input, package, reads);
+        var result = ConsultNodeCompletion.Complete(Settled("Plan.\n\n{{ macro.closing.content }}"), input, package, reads);
 
         Assert.Equal("Plan.\n\nClosing for in_scope: Dr Example.", result.RawOutput);
         Assert.Equal(new[] { "inline:closing" }, result.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
         Assert.Null(result.Excluded);
         Assert.Equal(ConsultGenerationProvenance.Sha256Hex(result.RawOutput), result.OutputHash);
-        Assert.Equal(ConsultGenerationProvenance.Sha256Hex("Plan.\n\n{{ macro.closing.text }}"), result.AgentOutputHash);
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex("Plan.\n\n{{ macro.closing.content }}"), result.AgentOutputHash);
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public class ConsultNodeCompletionTests
         // over the node's full scope, every macro in it.
         var (package, input, reads, _) = Prepare("assessment", Unplaced);
 
-        var result = ConsultNodeCompletion.Complete(Settled("Plan. {{ macro.closing.text }} End."), input, package, reads);
+        var result = ConsultNodeCompletion.Complete(Settled("Plan. {{ macro.closing.content }} End."), input, package, reads);
 
         Assert.Equal("Plan. Closing: Dr Example. End.", result.RawOutput);
         Assert.Equal(new[] { "inline:closing" }, result.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
@@ -128,7 +128,7 @@ public class ConsultNodeCompletionTests
     {
         var (package, input, reads, _) = Prepare("assessment", Unplaced);
 
-        var result = ConsultNodeCompletion.Complete(Settled("Scope {{ node.scope.text }}; kind {{ input.kind }}; {{ snippet.standards.text }}"), input, package, reads);
+        var result = ConsultNodeCompletion.Complete(Settled("Scope {{ node.scope.content }}; kind {{ input.kind }}; {{ snippet.standards.content }}"), input, package, reads);
 
         Assert.StartsWith("Scope in_scope; kind new; ", result.RawOutput);
         Assert.Null(result.Appended);
@@ -140,7 +140,7 @@ public class ConsultNodeCompletionTests
     [Theory]
     [InlineData("Plan {{ 1 + }}", "Node 'assessment' reply does not parse: ")]
     [InlineData("Plan {{ unclosed", "Node 'assessment' reply failed to render: ")]
-    [InlineData("Plan {{ node.meds.text }}", "Node 'assessment' reply reads node.meds, which this render has no value for.")]
+    [InlineData("Plan {{ node.meds.content }}", "Node 'assessment' reply reads node.meds, which this render has no value for.")]
     [InlineData("Plan {{ input.severity }}", "Node 'assessment' reply reads input.severity, which this render has no value for.")]
     [InlineData("Plan {{ macro.closing.size }}", "Node 'assessment' reply reads macro.closing.size, which this render has no value for.")]
     public void AReplyThatDoesNotRender_FailsTheNode_NonRetryably(string reply, string sentence)
@@ -164,11 +164,11 @@ public class ConsultNodeCompletionTests
             m => m with { Macros = m.Macros!.Append(new WorkflowMacroSpec("note", "Note", "macros/note.md", Instruction: "Add a note.")).ToList() },
             f => new Dictionary<string, string>(f, StringComparer.Ordinal)
             {
-                ["macros/closing.md"] = "Closing. {{ macro.note.text }}",
+                ["macros/closing.md"] = "Closing. {{ macro.note.content }}",
                 ["macros/note.md"] = "Note.",
             });
 
-        var result = ConsultNodeCompletion.Complete(Settled("{{ macro.closing.text }} {{ macro.closing.text }}"), input, package, reads);
+        var result = ConsultNodeCompletion.Complete(Settled("{{ macro.closing.content }} {{ macro.closing.content }}"), input, package, reads);
 
         Assert.Equal("Closing. Note. Closing. Note.\n\nClosing. Note.", result.RawOutput);
         Assert.Equal(new[] { "inline:closing", "inline:closing", "macro:closing" }, result.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
@@ -183,7 +183,7 @@ public class ConsultNodeCompletionTests
             "assessment",
             m => V25Package.WithNode(m, "assessment", n => n with { Macros = null }) with
             {
-                Macros = m.Macros!.Select(x => x with { Instruction = "Add a closing line for a {{ input.kind }} referral if {{ node.scope.text }}." }).ToList(),
+                Macros = m.Macros!.Select(x => x with { Instruction = "Add a closing line for a {{ input.kind }} referral if {{ node.scope.content }}." }).ToList(),
             },
             f => new Dictionary<string, string>(f, StringComparer.Ordinal) { ["snippets/standards.md"] = "Standards. {{ macro.closing.prompt }}" });
 
@@ -207,7 +207,7 @@ public class ConsultNodeCompletionTests
         Assert.Equal("Assess Referral.", rendered);
         Assert.Empty(reads);
 
-        var result = ConsultNodeCompletion.Complete(Settled("Plan. {{ macro.closing.text }}"), input, package, reads);
+        var result = ConsultNodeCompletion.Complete(Settled("Plan. {{ macro.closing.content }}"), input, package, reads);
 
         Assert.Equal("Plan. Closing: Dr Example.", result.RawOutput);
         Assert.Equal(new[] { "inline:closing" }, result.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
@@ -249,7 +249,7 @@ public class ConsultNodeCompletionTests
         // renders over; the ≤24 tree could not hold it.
         var (package, input, reads, _) = Prepare(
             "assessment",
-            m => V25Package.WithNode(m, "assessment", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "after", When: "node.extract.text != \"\"") } }));
+            m => V25Package.WithNode(m, "assessment", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: "after", When: "node.extract.content != \"\"") } }));
 
         var result = ConsultNodeCompletion.Complete(Settled("The plan."), input, package, reads);
 
@@ -318,8 +318,8 @@ public class ConsultNodeCompletionTests
         Assert.Equal(new[] { "closing" }, hpiReads);
         Assert.Empty(planReads);
 
-        var forHpiResult = ConsultNodeCompletion.Complete(Settled("H. {{ macro.closing.text }} ({{ item.name }})"), forHpi, package, hpiReads);
-        var forPlanResult = ConsultNodeCompletion.Complete(Settled("P. {{ macro.closing.text }} ({{ item.name }})"), forPlan, package, planReads);
+        var forHpiResult = ConsultNodeCompletion.Complete(Settled("H. {{ macro.closing.content }} ({{ item.name }})"), forHpi, package, hpiReads);
+        var forPlanResult = ConsultNodeCompletion.Complete(Settled("P. {{ macro.closing.content }} ({{ item.name }})"), forPlan, package, planReads);
 
         Assert.Equal("H. Closing: Dr Example. (HPI)", forHpiResult.RawOutput);
         Assert.Equal("P. Closing: Dr Example. (Plan)", forPlanResult.RawOutput);

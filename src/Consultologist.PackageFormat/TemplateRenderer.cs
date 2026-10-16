@@ -71,7 +71,7 @@ public sealed record TemplateRenderScope(
 /// render of a template over the seven reserved objects with closed members —
 /// <c>input</c>, <c>node</c>, <c>snippet</c>, <c>item</c>, <c>macro</c>,
 /// <c>run</c>, <c>profile</c> — and the renderer pipes. Snippets, folder items
-/// and macro texts are templates themselves: their <c>.text</c> renders over
+/// and macro texts are templates themselves: their <c>.content</c> renders over
 /// the same scope the first time it is read and is kept for the render (the
 /// validator refused cycles at publish). <c>macro.&lt;id&gt;.prompt</c> is
 /// the instruction composed with <see cref="WorkflowMacroMechanics"/>.
@@ -86,7 +86,7 @@ public static class TemplateRenderer
     /// <see cref="PromptReads"/> — every <c>macro.&lt;id&gt;.prompt</c> the render
     /// evaluated (the inline macros the prompt that ran instructed, exactly the
     /// instructions the model saw; a read behind a branch not taken is not one of
-    /// them); <see cref="TextReads"/> — every <c>macro.&lt;id&gt;.text</c> the
+    /// them); <see cref="ContentReads"/> — every <c>macro.&lt;id&gt;.content</c> the
     /// TOP-LEVEL template evaluated, in order, once per read (#1044: a reply's
     /// inline macros, as the record names them; a read inside a filled text is that
     /// text's, not an entry).
@@ -97,13 +97,13 @@ public static class TemplateRenderer
 
         public ISet<string> PromptReads { get; } = new HashSet<string>(StringComparer.Ordinal);
 
-        public IList<string> TextReads { get; } = new List<string>();
+        public IList<string> ContentReads { get; } = new List<string>();
 
-        internal void TextRead(string macroId)
+        internal void ContentRead(string macroId)
         {
             if (_depth == 0)
             {
-                TextReads.Add(macroId);
+                ContentReads.Add(macroId);
             }
         }
 
@@ -135,8 +135,8 @@ public static class TemplateRenderer
         return RenderWith(subject, templateText, globals, trace, nested: false);
     }
 
-    /// <summary>#1044: a macro's <c>.text</c> is produced on every read so the trace counts each one (the render itself is cached by its Lazy).</summary>
-    private static readonly ISet<string> UncachedMacroMembers = new HashSet<string>(StringComparer.Ordinal) { TemplateMembers.Text };
+    /// <summary>#1044: a macro's <c>.content</c> is produced on every read so the trace counts each one (the render itself is cached by its Lazy).</summary>
+    private static readonly ISet<string> UncachedMacroMembers = new HashSet<string>(StringComparer.Ordinal) { TemplateMembers.Content };
 
     /// <summary>The globals a probe or a renderer pushes: the seven objects and the pipes, over this scope.</summary>
     internal static ScriptObject Globals(string subject, TemplateRenderScope scope, IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes, TemplateRenderTrace? trace = null)
@@ -157,7 +157,7 @@ public static class TemplateRenderer
             node[id] = new LazyMembersObject(subject, $"{TemplateObjects.Node}.{id}",
                 new Dictionary<string, Func<object?>>(StringComparer.Ordinal)
                 {
-                    [TemplateMembers.Text] = () => output.Text,
+                    [TemplateMembers.Content] = () => output.Text,
                     [TemplateMembers.Value] = () => NodeValue(subject, id, output),
                 });
         }
@@ -212,9 +212,9 @@ public static class TemplateRenderer
                 },
             };
             var text = new Lazy<string>(() => RenderWith($"Macro '{id}'", source.Text, globals, trace, nested: true));
-            members[TemplateMembers.Text] = () =>
+            members[TemplateMembers.Content] = () =>
             {
-                trace?.TextRead(source.Id);
+                trace?.ContentRead(source.Id);
                 return text.Value;
             };
             macro[id] = new LazyMembersObject(subject, $"{TemplateObjects.Macro}.{id}", members, UncachedMacroMembers);
@@ -247,7 +247,7 @@ public static class TemplateRenderer
 
     /// <summary>
     /// A pipe renders a node's text and nothing else (design § 1): the argument
-    /// must be the very string a <c>node.&lt;id&gt;.text</c> read produced, so
+    /// must be the very string a <c>node.&lt;id&gt;.content</c> read produced, so
     /// the pipe receives the node's output whole — its concept source with it.
     /// </summary>
     private static string ApplyPipe(string subject, string name, Func<TemplateNodeOutput, string>? pipe, object? argument, IReadOnlyDictionary<string, TemplateNodeOutput> nodes)
@@ -259,14 +259,14 @@ public static class TemplateRenderer
 
         if (argument is not string text)
         {
-            throw new InvalidOperationException($"{subject} pipes a {Describe(argument)} through {name}; the pipe renders a node's text (node.<id>.text).");
+            throw new InvalidOperationException($"{subject} pipes a {Describe(argument)} through {name}; the pipe renders a node's text (node.<id>.content).");
         }
 
         var output = nodes.Values.FirstOrDefault(node => ReferenceEquals(node.Text, text));
 
         if (output is null)
         {
-            throw new InvalidOperationException($"{subject} pipes text that is not a node's output through {name}; the pipe renders a node's text (node.<id>.text).");
+            throw new InvalidOperationException($"{subject} pipes text that is not a node's output through {name}; the pipe renders a node's text (node.<id>.content).");
         }
 
         return pipe(output);
@@ -287,7 +287,7 @@ public static class TemplateRenderer
         {
             [TemplateMembers.Id] = () => id,
             [TemplateMembers.Name] = () => name,
-            [TemplateMembers.Text] = () => rendered.Value,
+            [TemplateMembers.Content] = () => rendered.Value,
         });
     }
 

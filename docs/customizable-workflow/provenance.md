@@ -351,7 +351,7 @@ system with no dependency on this application or its Azure tenant.
 > documents in the registry:
 >
 > - **Two hashes per node.** `outputHash` becomes the digest of the node's *output* — what
->   `node.<id>.text`, the aggregator and the deliverable read — and **`agentOutputHash`**
+>   `node.<id>.content`, the aggregator and the deliverable read — and **`agentOutputHash`**
 >   sits beside it, over the reply as returned (the render on a rendered node, the
 >   operation's result on a computed one). The two are one digest when nothing composed and
 >   nothing was stripped. This is **per-node definition 6**, the first rung that moves the
@@ -370,7 +370,7 @@ system with no dependency on this application or its Azure tenant.
 >   25 runs that composed the same output agree, and a 25 row never compares with a 5 row.
 >
 > **Amendment, 2026-10-16 (#1044; provenance@v2026.10.3).** At specVersion 25 the model writes
-> `{{ macro.<id>.text }}` where an inline macro's instruction told it to, and the completion **renders
+> `{{ macro.<id>.content }}` where an inline macro's instruction told it to, and the completion **renders
 > the reply as a template** over the node's scope before the instances compose: definition 6's
 > output side is the rendered reply with the instances around it (amended in place — no live
 > engine had written it); `agentOutputHash` stays the reply as returned. `appended[]`'s `slot`

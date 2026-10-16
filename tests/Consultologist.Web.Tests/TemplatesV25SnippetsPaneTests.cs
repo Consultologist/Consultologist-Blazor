@@ -183,7 +183,7 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
 
         var pane = page.Find(".editor-pane");
         Assert.Contains("snippets/standards.md", pane.TextContent);
-        Assert.Contains("{{ snippet.standards.text }}", pane.TextContent);
+        Assert.Contains("{{ snippet.standards.content }}", pane.TextContent);
         Assert.DoesNotContain("data:standards", pane.TextContent);
         Assert.Contains("Follow the local standards.", page.Find(".editor-pane fluent-text-area").GetAttribute("current-value"));
     }
@@ -254,7 +254,7 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
 
         CreateFolder(page, "care_plans");
         Assert.Contains("New care_plans item", page.Find(".editor-pane").TextContent);
-        Assert.Contains("item.text", page.Find(".editor-pane").TextContent);
+        Assert.Contains("item.content", page.Find(".editor-pane").TextContent);
     }
 
     [Fact]
@@ -564,7 +564,7 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
         Assert.Contains("Not read by any template yet", page.Find(".editor-pane").TextContent);
 
         // The new snippet reads standards: standards now lists it; the new one is still unread.
-        page.Find(".editor-pane fluent-text-area").Change("{{ snippet.standards.text }} Write plainly.");
+        page.Find(".editor-pane fluent-text-area").Change("{{ snippet.standards.content }} Write plainly.");
         Navigate(page, "standards");
 
         var readers = page.Find("ul.snippet-readers[aria-label='Readers of standards']").QuerySelectorAll("li").Select(li => li.TextContent.Trim()).ToList();

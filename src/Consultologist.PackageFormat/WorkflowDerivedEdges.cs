@@ -10,7 +10,7 @@ namespace Consultologist.PackageFormat;
 /// (which also takes the sentences) and the job starter (which takes the edges
 /// for the scheduler and the fire-set prune), so the scheduler can only see
 /// the graph the validator saw. A node's edges close over the snippets and
-/// macro texts its prompt reads: a snippet that reads <c>node.y.text</c> is
+/// macro texts its prompt reads: a snippet that reads <c>node.y.content</c> is
 /// rendered when the prompt is, so the prompt waits on y (design § 7, "through
 /// a snippet it reads"), and over the texts composed at its completion — its
 /// instances and the fills of the inline macros its prompt instructs (B5 #1004).
@@ -85,7 +85,7 @@ public static class WorkflowDerivedEdges
         /// <summary>
         /// The node ids a node depends on: its prompt's and its parameters' node
         /// reads, closed over the snippets and macro texts the prompt reads and,
-        /// on a snippet fan whose prompt reads <c>item.text</c>, the folder's
+        /// on a snippet fan whose prompt reads <c>item.content</c>, the folder's
         /// items — and (B5 #1004, design §§ 5–7) over the texts composed at this
         /// node when it completes: its before/after instances and the fills of
         /// the inline macros its prompt instructs (a <c>macro.&lt;id&gt;.prompt</c> read),
@@ -225,7 +225,7 @@ public static class WorkflowDerivedEdges
         /// <c>macro.&lt;id&gt;.prompt</c> read its template reaches — directly,
         /// through a snippet or macro text it reads (transitively), through the
         /// items of a folder it iterates, and — on a snippet fan whose prompt reads
-        /// <c>item.text</c> — through the fan item's own snippet: every item's when
+        /// <c>item.content</c> — through the fan item's own snippet: every item's when
         /// <paramref name="itemId"/> is null (the publish rule's "at least one
         /// item"), that item's alone when given (the instance that ran for it).
         /// The validator's rule and the engine's completion read ONE closure.
@@ -310,7 +310,7 @@ public static class WorkflowDerivedEdges
                 }
             }
 
-            foreach (var macro in prompt.MacroTexts)
+            foreach (var macro in prompt.MacroContents)
             {
                 if (TextItemReadOf(TemplateKind.Macro, macro) is { } read) { return read; }
             }
@@ -323,10 +323,10 @@ public static class WorkflowDerivedEdges
             return null;
         }
 
-        /// <summary>The folder-item keys a fanned prompt renders through <c>item.text</c>: all of them, or the one named.</summary>
+        /// <summary>The folder-item keys a fanned prompt renders through <c>item.content</c>: all of them, or the one named.</summary>
         private IEnumerable<string> FanItemsReadBy(string nodeId, TemplateReferences prompt, string? itemId)
         {
-            if (prompt.ItemMembers.Contains(TemplateMembers.Text)
+            if (prompt.ItemMembers.Contains(TemplateMembers.Content)
                 && _nodes.TryGetValue(nodeId, out var node)
                 && node.Fan is SnippetFolderFan fan
                 && _folders.TryGetValue(fan.Folder, out var items))
@@ -367,7 +367,7 @@ public static class WorkflowDerivedEdges
                 }
             }
 
-            foreach (var macro in refs.MacroTexts)
+            foreach (var macro in refs.MacroContents)
             {
                 VisitKey((TemplateKind.Macro, macro), seen, take);
             }

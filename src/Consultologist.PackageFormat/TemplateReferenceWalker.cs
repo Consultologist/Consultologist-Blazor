@@ -112,7 +112,7 @@ public static partial class TemplateReferenceWalker
     /// <summary>A bare object name with no id yet (<c>node</c>).</summary>
     private sealed record ObjectTarget(string Object) : Target;
 
-    /// <summary><c>node.&lt;id&gt;</c>, awaiting <c>.text</c> or <c>.value</c>.</summary>
+    /// <summary><c>node.&lt;id&gt;</c>, awaiting <c>.content</c> or <c>.value</c>.</summary>
     private sealed record NodeTarget(string Id, TemplateNodeShape Shape) : Target;
 
     /// <summary>A snippet — by id, or an item of a folder.</summary>
@@ -471,7 +471,7 @@ public static partial class TemplateReferenceWalker
             {
                 // {{input:x}} — the v24 placeholder grammar, which Scriban reads
                 // as a named argument. Name it rather than let it pass as noise.
-                Errors.Add($"{_subject} carries the placeholder '{{{{{named.Name?.Name}:{named.Value}}}}}'; at specVersion 25 references are objects — input.<id>, node.<id>.text, snippet.<id>.text, item.<member>, macro.<id>.text.");
+                Errors.Add($"{_subject} carries the placeholder '{{{{{named.Name?.Name}:{named.Value}}}}}'; at specVersion 25 references are objects — input.<id>, node.<id>.content, snippet.<id>.content, item.<member>, macro.<id>.content.");
                 return;
             }
 
@@ -487,7 +487,7 @@ public static partial class TemplateReferenceWalker
             // The piped value may be a folder (snippet.sections | array.size).
             ResolveExpression(node.From, ChainUse.Iterable);
 
-            // A renderer pipe (§ 1: {{ node.x.text | concept_context }}) is the closed
+            // A renderer pipe (§ 1: {{ node.x.content | concept_context }}) is the closed
             // set the engine provides — opaque here, checked when it renders (C4 #1010;
             // before this it was refused as an unknown root). Anything else is walked.
             var pipeTarget = node.To is ScriptFunctionCall call ? call.Target : node.To;
@@ -753,12 +753,12 @@ public static partial class TemplateReferenceWalker
                     return new FactsTarget(root);
 
                 case TemplateObjects.RetiredData:
-                    Errors.Add($"{_subject} reads 'data'; at specVersion 25 data is 'snippet' — read snippet.<id>.text.");
+                    Errors.Add($"{_subject} reads 'data'; at specVersion 25 data is 'snippet' — read snippet.<id>.content.");
                     return Refused;
 
                 case "bindings":
                 case "variables":
-                    Errors.Add($"{_subject} reads '{root}'; at specVersion 25 a template reads objects (input.<id>, node.<id>.text, snippet.<id>.text, item.<member>, macro.<id>.text), and bindings are derived from those reads.");
+                    Errors.Add($"{_subject} reads '{root}'; at specVersion 25 a template reads objects (input.<id>, node.<id>.content, snippet.<id>.content, item.<member>, macro.<id>.content), and bindings are derived from those reads.");
                     return Refused;
             }
 
@@ -774,9 +774,9 @@ public static partial class TemplateReferenceWalker
         private static string Example(string root) => root switch
         {
             TemplateObjects.Input => "input.<id>",
-            TemplateObjects.Node => "node.<id>.text or node.<id>.value",
-            TemplateObjects.Snippet => "snippet.<id>.text",
-            TemplateObjects.Macro => "macro.<id>.text or macro.<id>.prompt",
+            TemplateObjects.Node => "node.<id>.content or node.<id>.value",
+            TemplateObjects.Snippet => "snippet.<id>.content",
+            TemplateObjects.Macro => "macro.<id>.content or macro.<id>.prompt",
             _ => root
         };
 
@@ -874,7 +874,7 @@ public static partial class TemplateReferenceWalker
                 case SnippetTarget snippet:
                     if (!TemplateMembers.Snippet.Contains(name, StringComparer.Ordinal))
                     {
-                        Errors.Add($"{_subject} reads {walked}, which is not a member (a snippet has .id, .name and .text).");
+                        Errors.Add($"{_subject} reads {walked}, which is not a member (a snippet has .id, .name and .content).");
                         return Refused;
                     }
 
@@ -888,15 +888,15 @@ public static partial class TemplateReferenceWalker
                 case MacroTarget macro:
                     if (!TemplateMembers.Macro.Contains(name, StringComparer.Ordinal))
                     {
-                        Errors.Add($"{_subject} reads {walked}, which is not a member (a macro has .id, .name, .text and .prompt).");
+                        Errors.Add($"{_subject} reads {walked}, which is not a member (a macro has .id, .name, .content and .prompt).");
                         return Refused;
                     }
 
                     if (macro.Id is not null)
                     {
-                        if (name == TemplateMembers.Text)
+                        if (name == TemplateMembers.Content)
                         {
-                            _refs.ReadMacroText(macro.Id);
+                            _refs.ReadMacroContent(macro.Id);
                         }
                         else if (name == TemplateMembers.Prompt)
                         {
@@ -932,13 +932,13 @@ public static partial class TemplateReferenceWalker
 
         private Target StepNode(NodeTarget node, string name, string before)
         {
-            if (name == TemplateMembers.Text)
+            if (name == TemplateMembers.Content)
             {
-                _refs.ReadNode(node.Id, text: true, value: false);
+                _refs.ReadNode(node.Id, content: true, value: false);
 
                 if (node.Shape.HasValue)
                 {
-                    _refs.Warnings.Add($"{_subject} reads {before}.text of format '{node.Shape.Format}' ({node.Shape.Type}); the JSON renders as text — read {before}.value for the fields.");
+                    _refs.Warnings.Add($"{_subject} reads {before}.content of format '{node.Shape.Format}' ({node.Shape.Type}); the JSON renders as text — read {before}.value for the fields.");
                 }
 
                 return new ShapeTarget(TemplateValueShape.Text);
@@ -948,17 +948,17 @@ public static partial class TemplateReferenceWalker
             {
                 if (!node.Shape.HasValue)
                 {
-                    Errors.Add($"{_subject} reads {before}.value, but format '{node.Shape.Format}' is text and has no value; read {before}.text.");
+                    Errors.Add($"{_subject} reads {before}.value, but format '{node.Shape.Format}' is text and has no value; read {before}.content.");
                     return Refused;
                 }
 
-                _refs.ReadNode(node.Id, text: false, value: true);
+                _refs.ReadNode(node.Id, content: false, value: true);
                 return new ShapeTarget(node.Shape.Type == WorkflowInputTypes.Enum && node.Shape.Schema is null
                     ? new TemplateValueShape(WorkflowInputTypes.Enum, null, null, node.Shape.Values)
                     : TemplateValueShape.FromSchema(node.Shape.Schema));
             }
 
-            Errors.Add($"{_subject} reads {before}.{name}, which is not a member (node.<id> has .text and .value).");
+            Errors.Add($"{_subject} reads {before}.{name}, which is not a member (node.<id> has .content and .value).");
             return Refused;
         }
 
@@ -969,7 +969,7 @@ public static partial class TemplateReferenceWalker
                 case SnippetFolderFan:
                     if (!TemplateMembers.SnippetFanItem.Contains(name, StringComparer.Ordinal))
                     {
-                        Errors.Add($"{_subject} reads {walked}, which a snippet fan item does not carry (it carries: id, name, text).");
+                        Errors.Add($"{_subject} reads {walked}, which a snippet fan item does not carry (it carries: id, name, content).");
                         return Refused;
                     }
 
@@ -995,7 +995,7 @@ public static partial class TemplateReferenceWalker
                     {
                         if (!TemplateMembers.AnyFanItem.Contains(name, StringComparer.Ordinal))
                         {
-                            Errors.Add($"{_subject} reads {walked}, which a fan item does not carry (it carries: id, name, text or value).");
+                            Errors.Add($"{_subject} reads {walked}, which a fan item does not carry (it carries: id, name, content or value).");
                             return Refused;
                         }
 
@@ -1100,7 +1100,7 @@ public static partial class TemplateReferenceWalker
             }
         }
 
-        /// <summary>A chain's last word: a node needs .text or .value, a snippet or macro a member, a folder a loop.</summary>
+        /// <summary>A chain's last word: a node needs .content or .value, a snippet or macro a member, a folder a loop.</summary>
         private Target Finalize(Target target, string walked, ChainUse use)
         {
             if (use == ChainUse.With && target is NodeTarget or SnippetTarget or MacroTarget or ItemTarget or FactsTarget)
@@ -1111,15 +1111,15 @@ public static partial class TemplateReferenceWalker
             switch (target)
             {
                 case NodeTarget node:
-                    Errors.Add($"{_subject} reads node '{node.Id}' bare; read {walked}.text (its composed output) or {walked}.value.");
+                    Errors.Add($"{_subject} reads node '{node.Id}' bare; read {walked}.content (its composed output) or {walked}.value.");
                     return Refused;
 
                 case SnippetTarget { Id: { } id }:
-                    Errors.Add($"{_subject} reads snippet '{id}' bare; read {walked}.text.");
+                    Errors.Add($"{_subject} reads snippet '{id}' bare; read {walked}.content.");
                     return Refused;
 
                 case MacroTarget { Id: { } id }:
-                    Errors.Add($"{_subject} reads macro '{id}' bare; read {walked}.text or {walked}.prompt.");
+                    Errors.Add($"{_subject} reads macro '{id}' bare; read {walked}.content or {walked}.prompt.");
                     return Refused;
 
                 case FactsTarget facts:
@@ -1127,7 +1127,7 @@ public static partial class TemplateReferenceWalker
                     return Refused;
 
                 case ItemTarget:
-                    Errors.Add($"{_subject} reads item bare; read a member ({(_context.Fan is InputArrayFan ? "item.id, item.name, item.value" : "item.id, item.name, item.text")}).");
+                    Errors.Add($"{_subject} reads item bare; read a member ({(_context.Fan is InputArrayFan ? "item.id, item.name, item.value" : "item.id, item.name, item.content")}).");
                     return Refused;
 
                 case FolderTarget folder when use == ChainUse.Value:

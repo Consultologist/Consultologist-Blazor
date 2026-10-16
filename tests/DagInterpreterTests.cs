@@ -252,7 +252,7 @@ public class ConsultNodeSchedulerTests
         Macros: new[] { new ConsultNodeMacroDescriptor("ap_guardrails", After: false, Reads: new[] { "scope", "scope" }) });
 
     [Fact]
-    public void NodeDependencies_IncludeTheClassifiersAMacrosTextReads()
+    public void NodeDependencies_IncludeTheClassifiersAMacrosContentReads()
     {
         Assert.Equal(new[] { "scope" }, ConsultNodeScheduler.NodeDependencies(ReadsByMacro));
     }

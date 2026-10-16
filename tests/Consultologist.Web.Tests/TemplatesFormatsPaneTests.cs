@@ -185,7 +185,7 @@ public class TemplatesFormatsPaneTests : ClientRenderTestContext
         // C4 (#1010): the desk now says "every reference resolves" — the assessment prompt
         // read node.meds.value.medications, a field the plan shape does not declare; read its steps.
         Navigate(page, "assessment");
-        page.Find(".editor-pane fluent-text-area").Change("Assess.\n{{ snippet.standards.text }}\n{{ macro.tool_note.prompt }}\n{{ input.notes }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}\n{{ for s in node.meds.value.steps }}- {{ s }}\n{{ end }}");
+        page.Find(".editor-pane fluent-text-area").Change("Assess.\n{{ snippet.standards.content }}\n{{ macro.tool_note.prompt }}\n{{ input.notes }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}\n{{ for s in node.meds.value.steps }}- {{ s }}\n{{ end }}");
 
         Publish(page);
 
@@ -245,7 +245,7 @@ public class TemplatesFormatsPaneTests : ClientRenderTestContext
         page.Find("fluent-select.node-format").Change("prose");
         Services.GetRequiredService<WorkflowEditorSession>().SelectedKey = "prompts/assessment.md";
         page.Render();
-        page.Find("fluent-text-area").Change("Assess.\n{{ input.notes }}\n{{ node.meds.text }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}");
+        page.Find("fluent-text-area").Change("Assess.\n{{ input.notes }}\n{{ node.meds.content }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}");
 
         Navigate(page, "Formats");
         Assert.Null(page.Find("fluent-button[aria-label='Remove format medication_list']").GetAttribute("disabled"));

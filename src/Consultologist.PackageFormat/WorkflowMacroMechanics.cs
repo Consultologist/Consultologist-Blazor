@@ -7,7 +7,7 @@ namespace Consultologist.PackageFormat;
 /// sentence, a constant of this format version — the same words for every
 /// macro, published with the format and pinned by a test to the registry's
 /// text, so the record can say exactly what the model was told. #1044: the
-/// sentence names the read the model writes, <c>{{ macro.&lt;id&gt;.text }}</c>,
+/// sentence names the read the model writes, <c>{{ macro.&lt;id&gt;.content }}</c>,
 /// and the reply renders it (package-format-v25.md § The reply is a template);
 /// it is appended AFTER the instruction renders, so the read reaches the model
 /// as written.
@@ -16,7 +16,7 @@ public static class WorkflowMacroMechanics
 {
     /// <summary>The sentence as published, with <c>&lt;id&gt;</c> as the placeholder for the macro id.</summary>
     public const string Sentence =
-        "If so, write {{ macro.<id>.text }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.";
+        "If so, write {{ macro.<id>.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.";
 
     /// <summary>The inline prompt of one macro: its instruction (already rendered), a blank line, the mechanics sentence naming its read.</summary>
     public static string Prompt(string macroId, string renderedInstruction) =>

@@ -68,23 +68,23 @@ public class TemplatesV25DeskTests : ClientRenderTestContext
     public static IEnumerable<object[]> TemplateCases()
     {
         yield return new object[] { "prompt variables", new Action<System.Text.Json.Nodes.JsonObject>(root => PromptObject(root, "scope")["variables"] = System.Text.Json.Nodes.JsonNode.Parse("""[ "referral" ]""")), null!,
-            "Prompt 'scope' declares variables, which are retired at specVersion 25; a template reads objects (input.<id>, node.<id>.text, snippet.<id>.text, item.<member>, macro.<id>.text) and its reads are derived." };
+            "Prompt 'scope' declares variables, which are retired at specVersion 25; a template reads objects (input.<id>, node.<id>.content, snippet.<id>.content, item.<member>, macro.<id>.content) and its reads are derived." };
         yield return new object[] { "prompt raw false", new Action<System.Text.Json.Nodes.JsonObject>(root => PromptObject(root, "scope")["raw"] = false), null!,
             "Prompt 'scope' declares raw, which is retired at specVersion 25; escape a literal '{{' as {{ \"{{\" }} or wrap it in {%{ … }%}." };
         yield return new object[] { "node bindings", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "scope")["bindings"] = new System.Text.Json.Nodes.JsonObject()), null!,
-            "Node 'scope' declares bindings, which are retired at specVersion 25; a template reads objects (input.<id>, node.<id>.text, snippet.<id>.text, item.<member>, macro.<id>.text) and its reads are derived." };
-        yield return new object[] { "undeclared node", null!, ("prompts/assessment.md", "Assess {{ node.nope.text }} {{ snippet.standards.text }} {{ macro.tool_note.prompt }}"),
+            "Node 'scope' declares bindings, which are retired at specVersion 25; a template reads objects (input.<id>, node.<id>.content, snippet.<id>.content, item.<member>, macro.<id>.content) and its reads are derived." };
+        yield return new object[] { "undeclared node", null!, ("prompts/assessment.md", "Assess {{ node.nope.content }} {{ snippet.standards.content }} {{ macro.tool_note.prompt }}"),
             "Prompt 'assessment' reads node 'nope', which the package does not declare." };
         yield return new object[] { "unclosed brace names the line", null!, ("prompts/scope.md", "Is this in scope?\n{{ input.notes"),
             "Prompt 'scope' does not parse at line 2: '{{' is not closed; escape a literal '{{' as {{ \"{{\" }} or wrap it in {%{ … }%}." };
         yield return new object[] { "bare node", null!, ("prompts/scope.md", "{{ node.extract }} {{ input.notes }}"),
-            "Prompt 'scope' reads node 'extract' bare; read node.extract.text (its composed output) or node.extract.value." };
+            "Prompt 'scope' reads node 'extract' bare; read node.extract.content (its composed output) or node.extract.value." };
         yield return new object[] { "retired data root", null!, ("prompts/scope.md", "{{ data.standards }} {{ input.notes }}"),
-            "Prompt 'scope' reads 'data'; at specVersion 25 data is 'snippet' — read snippet.<id>.text." };
+            "Prompt 'scope' reads 'data'; at specVersion 25 data is 'snippet' — read snippet.<id>.content." };
         yield return new object[] { "a non-member", null!, ("prompts/scope.md", "{{ snippet.standards.body }} {{ input.notes }}"),
-            "Prompt 'scope' reads snippet.standards.body, which is not a member (a snippet has .id, .name and .text)." };
+            "Prompt 'scope' reads snippet.standards.body, which is not a member (a snippet has .id, .name and .content)." };
         yield return new object[] { "value on a text format", null!, ("prompts/scope.md", "{{ node.assessment.value }} {{ input.notes }}"),
-            "Prompt 'scope' reads node.assessment.value, but format 'prose' is text and has no value; read node.assessment.text." };
+            "Prompt 'scope' reads node.assessment.value, but format 'prose' is text and has no value; read node.assessment.content." };
     }
 
     [Theory]
@@ -104,7 +104,7 @@ public class TemplatesV25DeskTests : ClientRenderTestContext
         // meds and assessment both on the same text: one sentence, as the validator de-duplicates.
         var refusals = PublishRefusals(Reshaped(
             root => NodeObject(root, "meds")["prompt"] = "assessment",
-            ("prompts/assessment.md", "Assess {{ node.nope.text }} {{ snippet.standards.text }} {{ macro.tool_note.prompt }}")));
+            ("prompts/assessment.md", "Assess {{ node.nope.content }} {{ snippet.standards.content }} {{ macro.tool_note.prompt }}")));
 
         Assert.Single(refusals, r => r == "Prompt 'assessment' reads node 'nope', which the package does not declare.");
     }
@@ -219,7 +219,7 @@ public class TemplatesV25DeskTests : ClientRenderTestContext
             "Node 'assessment' condition compares node.scope.value to 'maybe', which it does not declare (values: in_scope, out_of_scope)." };
         yield return new object[] { "node when testing a text for truth", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "assessment")["when"] = "input.notes"),
             "Node 'assessment' condition tests input.notes for truth; a text cannot be tested — compare it to a value." };
-        yield return new object[] { "deliverable when yielding a text", new Action<System.Text.Json.Nodes.JsonObject>(root => DeliverableObject(root)["when"] = "snippet.standards.text | string.upcase"),
+        yield return new object[] { "deliverable when yielding a text", new Action<System.Text.Json.Nodes.JsonObject>(root => DeliverableObject(root)["when"] = "snippet.standards.content | string.upcase"),
             "Deliverable 'consult' condition must be a boolean expression; it yields a text." };
     }
 
@@ -244,7 +244,7 @@ public class TemplatesV25DeskTests : ClientRenderTestContext
     public void TheDesk_AcceptsADeliverableWhen_ThatReadsANodesText()
     {
         // #1038 widened the boundary: a gating when may read a node's text.
-        Assert.Empty(PublishRefusals(Reshaped(root => DeliverableObject(root)["when"] = "node.assessment.text != \"\"")));
+        Assert.Empty(PublishRefusals(Reshaped(root => DeliverableObject(root)["when"] = "node.assessment.content != \"\"")));
     }
 
     [Fact]

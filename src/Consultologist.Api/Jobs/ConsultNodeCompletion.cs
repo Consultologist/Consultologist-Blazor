@@ -16,7 +16,7 @@ namespace Consultologist.Api.Jobs;
 /// <item><c>failIfEmpty</c> is judged on the reply, before anything is composed;</item>
 /// <item>#1044 (package-format-v25.md § The reply is a template): the reply is
 /// RENDERED as a template over the node's own scope — the scope its prompt
-/// rendered over — so every <c>{{ macro.&lt;id&gt;.text }}</c> the model wrote
+/// rendered over — so every <c>{{ macro.&lt;id&gt;.content }}</c> the model wrote
 /// where an inline macro's instruction told it to is that macro's text, rendered, and
 /// any other read a template could make renders the same way; a reply that
 /// does not parse or reads what the scope has no value for FAILS the node
@@ -29,7 +29,7 @@ namespace Consultologist.Api.Jobs;
 /// <item>the before/after instances compose around the rendered reply —
 /// <c>forItem</c> anchors, <c>when</c> gates (a refusal is recorded by name
 /// with the explainer's sentence);</item>
-/// <item><c>outputHash</c> is taken over what came out — what <c>node.&lt;id&gt;.text</c>,
+/// <item><c>outputHash</c> is taken over what came out — what <c>node.&lt;id&gt;.content</c>,
 /// the aggregator and the deliverable read.</item>
 /// </list>
 /// Every text composed here — the reply, an instance's — renders over the
@@ -106,7 +106,7 @@ internal static class ConsultNodeCompletion
             instances.Add(new WorkflowNodeCompletion.Instance(instance.Id, instance.After, RenderMacro(scope, instance.Id, nodeId)));
         }
 
-        var composed = WorkflowNodeCompletion.Compose(renderedReply, instances, trace.TextReads.ToList());
+        var composed = WorkflowNodeCompletion.Compose(renderedReply, instances, trace.ContentReads.ToList());
 
         // 6. outputHash over what came out.
         return settled with

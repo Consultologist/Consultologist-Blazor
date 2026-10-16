@@ -76,18 +76,18 @@ public class TemplatesV25ConditionTextTests : ClientRenderTestContext
     [Fact]
     public void AHandWrittenWhen_IsVerbatim_WithTheTextDoor_AndPublishesAsTyped()
     {
-        var page = RenderEditor("node.assessment.text != \"\"");
+        var page = RenderEditor("node.assessment.content != \"\"");
         CapturePublish();
 
-        Assert.Equal("node.assessment.text != \"\"", page.Find(Condition).TextContent);
-        Assert.Equal("node.assessment.text != \"\"", page.Find(ConditionText).GetAttribute("value"));
+        Assert.Equal("node.assessment.content != \"\"", page.Find(Condition).TextContent);
+        Assert.Equal("node.assessment.content != \"\"", page.Find(ConditionText).GetAttribute("value"));
         Assert.Empty(OperandSelects(page));
 
-        page.Find(ConditionText).Change("node.assessment.text != \"\" && input.kind == \"new\"");
+        page.Find(ConditionText).Change("node.assessment.content != \"\" && input.kind == \"new\"");
         Publish(page);
 
         Assert.True(sent != null, string.Join(" | ", Refusals(page)));
-        Assert.Equal("node.assessment.text != \"\" && input.kind == \"new\"", When(sent!));
+        Assert.Equal("node.assessment.content != \"\" && input.kind == \"new\"", When(sent!));
         var validated = Validated();
         Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
     }
@@ -95,7 +95,7 @@ public class TemplatesV25ConditionTextTests : ClientRenderTestContext
     [Fact]
     public void ATypedWhen_TheRegistryRefuses_IsRefusedAtTheDesk_InItsWords()
     {
-        var page = RenderEditor("node.assessment.text != \"\"");
+        var page = RenderEditor("node.assessment.content != \"\"");
         CapturePublish();
 
         page.Find(ConditionText).Change("input.notes");
@@ -108,7 +108,7 @@ public class TemplatesV25ConditionTextTests : ClientRenderTestContext
     [Fact]
     public void ATypedWhen_InThe24Grammar_GetsTheSpelledHint()
     {
-        var page = RenderEditor("node.assessment.text != \"\"");
+        var page = RenderEditor("node.assessment.content != \"\"");
         CapturePublish();
 
         page.Find(ConditionText).Change("node:scope == in_scope");
@@ -123,7 +123,7 @@ public class TemplatesV25ConditionTextTests : ClientRenderTestContext
     [Fact]
     public void ClearingAVerbatimWhen_StillWorks_AndABlankTextClears()
     {
-        var page = RenderEditor("node.assessment.text != \"\"");
+        var page = RenderEditor("node.assessment.content != \"\"");
         CapturePublish();
 
         page.Find("[aria-label='Clear condition for consult']").Click();
@@ -133,7 +133,7 @@ public class TemplatesV25ConditionTextTests : ClientRenderTestContext
         Assert.Null(When(sent!));
 
         sent = null;
-        page = RenderEditor("node.assessment.text != \"\"");
+        page = RenderEditor("node.assessment.content != \"\"");
         CapturePublish();
         page.Find(ConditionText).Change("   ");
         Assert.Empty(page.FindAll(ConditionText));
