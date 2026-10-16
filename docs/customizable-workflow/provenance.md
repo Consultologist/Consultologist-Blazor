@@ -345,8 +345,8 @@ system with no dependency on this application or its Azure tenant.
 > **Amendment, 2026-10-14 (#1004 — specVersion 25 B5: the completion order and the two
 > per-node hashes; documented in the registry by #1006, provenance@v2026.10.1).** At specVersion 25 a node's output is
 > composed **at the node**, when it completes (design §§ 6–7): the reply is validated,
-> judged against `failIfEmpty`, its sanctioned `[[slot:<id>]]` markers are filled where the
-> model placed them, and its before/after macro instances compose around the result. Three
+> judged against `failIfEmpty`, rendered as a template (#1044 — before that, its sanctioned
+> `[[slot:<id>]]` markers were filled), and its before/after macro instances compose around the result. Three
 > consequences for the record, each a new trailing field the engine already writes and B7
 > documents in the registry:
 >
@@ -360,7 +360,7 @@ system with no dependency on this application or its Azure tenant.
 >   ladder gained row 6 with provenance@v2026.10.1 (#1006); the engine holds both numbers
 >   equal to the published ladder by test.
 > - **`appended[]` and `excluded[]` per node row.** What the completion placed, in output
->   order (`{ kind: macro | slot, id }`), and what it withheld or removed, by name
+>   order (`{ kind: macro | inline, id }` — `slot` until #1047), and what it withheld or removed, by name
 >   (`{ kind, id, reason }`): an instance whose `when` refused (the condition explainer's
 >   sentence), a marker whose `macro.<id>.prompt` read sits behind a branch the render did not
 >   take, a marker no read sanctions. The document-level slot fill and its `slot` entries are
@@ -370,11 +370,11 @@ system with no dependency on this application or its Azure tenant.
 >   25 runs that composed the same output agree, and a 25 row never compares with a 5 row.
 >
 > **Amendment, 2026-10-16 (#1044; provenance@v2026.10.3).** At specVersion 25 the model writes
-> `{{ macro.<id>.text }}` where a slot's instruction told it to, and the completion **renders
+> `{{ macro.<id>.text }}` where an inline macro's instruction told it to, and the completion **renders
 > the reply as a template** over the node's scope before the instances compose: definition 6's
 > output side is the rendered reply with the instances around it (amended in place — no live
 > engine had written it); `agentOutputHash` stays the reply as returned. `appended[]`'s `slot`
-> entries name each macro text the reply read, in render order; `excluded[]` keeps only
+> entries (`inline` since #1047, provenance@v2026.10.4) name each macro text the reply read, in render order; `excluded[]` keeps only
 > instance `when` refusals — nothing in a rendered reply is withheld or removed, and a reply
 > that does not render fails the node (`error` carries the renderer's sentence). The
 > `[[slot:<id>]]` marker is the ≤24 grammar.

@@ -55,7 +55,7 @@ member is a publish refusal naming it.
 | `snippet.<id>` | `.id`, `.name`, `.text` | a snippet rendered (§ 4) |
 | `snippet.<folder>` | iterable | each item a snippet with the three members above; folder size is resolved at job start (§ 4) |
 | `item` | `.id`, `.name`, `.text` (snippet fan) / `.id`, `.name`, `.value` (input fan) | the fan item the instance runs for; refused on a node that does not fan |
-| `macro.<id>` | `.id`, `.name`, `.text`, `.prompt` | `.text` is the macro's text rendered, read prompt-side like a snippet; `.prompt` is the slot marker's prompt text: its instruction composed with the mechanics sentence (§ 5.3) |
+| `macro.<id>` | `.id`, `.name`, `.text`, `.prompt` | `.text` is the macro's text rendered, read prompt-side like a snippet; `.prompt` is the inline macro's prompt text: its instruction (rendered) composed with the mechanics sentence (§ 5.3) |
 | `macro.<folder>` | iterable | each item a macro with the four members above (no manifest shape at 25 — see Deferred) |
 | `run` | `.date`, `.job`, `.package`, `.host` | the run facts, as the v11 `{{run:…}}` tokens gave them (A4, #999, 2026-10-13) |
 | `profile` | `.name`, `.signature` | the profile facts, as the v11/v12 `{{profile:…}}` tokens gave them; a `profile.signature` read signs, and a deliverable is signed once |
@@ -368,7 +368,7 @@ collection (an `index.json` listing id, name and file per item). The names: `+ S
   `item.text` is the item's rendered text (`item.content` is retired, § 14).
 
 Snippets may read snippets, inputs, nodes, `macro.<id>.text` and `macro.<id>.prompt` (the
-section-instructions pattern: a standard that carries the slot marker's text). A snippet is
+section-instructions pattern: a standard that carries an inline macro's prompt text). A snippet is
 a macro without an instruction, and the two differ only in what may be done with them: a
 snippet is only ever read; a macro may also be placed (§ 5).
 
@@ -381,7 +381,7 @@ be **read** inline as `{{ macro.<id>.text }}`, prompt-side, exactly as a snippet
 same words in a prompt and after a reply are one file. What a macro's text may contain does
 not depend on how it is read (§ 5.2). The **instruction is a template too** (#1044): rendered
 where `macro.<id>.prompt` is read, over the same scope, with a snippet's reads; its reads join
-the closure of the node whose prompt reads the slot, and a `.prompt` read is an edge to it in
+the closure of the node whose prompt reads it inline, and a `.prompt` read is an edge to it in
 the reference graph (§ 5.2).
 
 ### 5.1 Instances
@@ -399,11 +399,11 @@ A macro is used in three ways, all on the **output side**:
 ```
 
 and **inline**, by writing `{{ macro.letrozole.prompt }}` in a prompt or a snippet where the
-slot goes: that read *is* the slot's declaration — the model is told the instruction and asked
+macro goes: that read *is* the inline macro's declaration — the model is told the instruction and asked
 to write `{{ macro.letrozole.text }}` where the content belongs, and the reply renders it
 (§ 7, #1044) — so there is no `at: slot`, no `use` toggle, and no instruction override on an
 instance (one instruction per macro; a different instruction is a different macro). The node
-pane lists inline slots as a derived, read-only section beside the declared before/after rows.
+pane lists inline macros as a derived, read-only section beside the declared before/after rows.
 
 - **`at`** — `before` | `after` on a node; `prepend` | `append` on a deliverable.
 - **`when`** — a Scriban boolean expression over the objects a template reads (§ 16, #1037;
@@ -414,7 +414,7 @@ pane lists inline slots as a derived, read-only section beside the declared befo
   is one value, a rendered or computed node has no reply to decorate.
 
 **Order** is the node's list order per placement: before-blocks in order, the reply, then
-after-blocks. Inline slots have no order: the model places the marker. **Identity** is
+after-blocks. Inline macros have no order: the model places the read. **Identity** is
 (id, at, forItem); the same macro before *and* after is allowed, the same identity twice is
 refused — two gates to one text is one row with `when: a or b`.
 
@@ -471,13 +471,13 @@ Order at node completion, stated once:
 2. **Validation** (§ 3.5) and the node's `onInvalid`.
 3. `failIfEmpty` is judged on the reply, before anything is composed.
 4. The reply is **rendered as a template** over the node's scope (§ 7, #1044) — its
-   `{{ macro.<id>.text }}` reads are the slots; a reply that does not render fails the node.
+   `{{ macro.<id>.text }}` reads are the inline macros; a reply that does not render fails the node.
 5. Before/after instances compose around the rendered reply.
 6. `outputHash` is taken.
 
-## 7. Slot fill — the reply is a template (#1044, 2026-10-16)
+## 7. Inline macros — the reply is a template (#1044, 2026-10-16; the word, #1047)
 
-The model writes `{{ macro.<id>.text }}` where a slot's instruction told it to, and the
+The model writes `{{ macro.<id>.text }}` where an inline macro's instruction told it to, and the
 node's completion **renders the whole reply as a Scriban template** over the node's own
 scope — the scope its prompt rendered over: inputs, the nodes it reads (its derived edges),
 snippets and folders, the fan item, every macro, the run and profile facts. The rendered text
@@ -495,7 +495,7 @@ completion replaced sanctioned markers; the marker is the ≤24 grammar now.)
   parse: …` / `Node '<id>' reply reads node.x, which this render has no value for.`); the
   prompt or the agent is at fault. The reply is hashed as it came (`agentOutputHash`), before
   the render. For a fan, per item.
-- **Attribution:** `appended[] { kind: slot, id }` names each macro text the reply itself
+- **Attribution:** `appended[] { kind: inline, id }` (#1047; provenance@v2026.10.4) names each macro text the reply itself
   read, in render order, once per read (a read inside a filled text is that text's, not an
   entry). `excluded[]` keeps only instance `when` refusals.
 - `profile.signature` in a reply (or an instruction) is the node's fact — empty unless a
@@ -600,7 +600,7 @@ across every record ever written, and stay; the provenance document may say "the
 - **Node pane.** Format picker (catalogue + the package's custom files) with the entry's
   parameters rendered as fields and `onInvalid` when validatable; one **Macros** section —
   declared **Before / After** rows (macro, applies-when, fan-item scope, reorder within a
-  placement) and a derived, read-only **Inline slots** list; a derived, read-only **Reads**
+  placement) and a derived, read-only **Inline macros** list; a derived, read-only **Reads**
   list replacing Inputs and Variables, each row linking to the thing. The desk flips from
   "every variable is bound" to "every reference resolves".
 - **Prompt, snippet and macro panes.** The text editor becomes a **code editor** with
@@ -683,7 +683,7 @@ corrected.)*
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's
 text or an instruction — offering a snippet's choices, never the macro's own members), its
-help says the model writes `{{ macro.<id>.text }}` where its slot is read and the reply
+help says the model writes `{{ macro.<id>.text }}` where it is read inline and the reply
 renders it; the macro-text prose says placed text instructs no model; the fan-item warning and
 the blank-instruction sentence in the registry's new words; the desk at 25 says the walker's
 instruction sentences by construction (#1039).)*
@@ -918,15 +918,26 @@ before the bump. **Built:** the mechanics sentence names the read the model writ
 `TemplateRenderer` renders the instruction before appending the sentence and carries a
 `TemplateRenderTrace` (the prompt's `.prompt` reads; the top-level `.text` reads in order — a
 macro's `.text` is produced on every read so twice read is twice placed);
-`WorkflowNodeCompletion.Compose` takes the rendered reply and its slot reads (no marker fill,
+`WorkflowNodeCompletion.Compose` takes the rendered reply and its inline reads (no marker fill,
 no removals); `TemplateKind.Instruction` is walked per macro, visited from a `.prompt` read
 (edges, `PromptReadsOf`, item reads), an edge in the reference graph (an instruction reaching
-its own slot is a cycle named by its path), probed; `ConsultNodeCompletion.Complete` renders
+its own inline read is a cycle named by its path), probed; `ConsultNodeCompletion.Complete` renders
 the reply (a classification renders nothing; plain text renders to itself and keeps the early
 return). **Registry:** package-format-v25.md § The reply is a template (spec PR #29);
 provenance@v2026.10.3 amends definition 6 in place — never written by a live engine — and the
 `appended[]`/`excluded[]` wording (provenance PR #37). ≤24 keeps `[[slot:<id>]]`,
 `ConsultSlotFiller`, the v20 warnings and the editor's slot UI.)*
+
+*(#1047, 2026-10-16 — the word. **Decisions** (AskUserQuestion): a macro at 25 is **placed** (an
+instance), **read** (`macro.<id>.text`) or **inline** (`macro.<id>.prompt`); *inline* is reserved for
+the `.prompt` form — the `.text` section of the macro pane is "Read at", the node pane's list is
+"Inline macros", the reads and palette say `(inline)`; the 25 node-row record kind is **`inline`**
+(provenance@v2026.10.4, renamed in place — never stamped live; `slot` stays the ≤24 document kind);
+the 25-side identifiers follow (`RetiredAt25.Inline`, `InlineKind`, `ConsultAppendedKinds.Inline`,
+`node-inline-macros`, test names). "Slot" names only the ≤24 key `slot: true` and the `[[slot:<id>]]`
+marker. Landed before A5 so the exported v25 conformance vectors pin the final sentences — `…where the
+inline macro goes`, `reads macro.x.prompt (an inline macro), but …`, `…where it is read inline
+(macro.<id>.prompt).` The Create page's input "slots" are #1046's.)*
 
 ## Deferred, by name
 
