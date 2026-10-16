@@ -119,6 +119,24 @@ public class WorkflowDerivedEdgesTests
     }
 
     [Fact]
+    public void AnInstructionThatReadsANode_IsAnEdgeOfTheNodeWhosePromptReadsTheSlot()
+    {
+        // #1044: the instruction renders where macro.closing.prompt is read (the
+        // prompt, through its snippet), over that node's scope — so what it
+        // reads, the node waits on.
+        var (manifest, files) = V25Package.Minimal();
+        manifest = V25Package.WithNode(manifest, "assessment", n => n with { Macros = null });
+        manifest = manifest with { Macros = manifest.Macros!.Select(m => m with { Instruction = "Close for {{ node.scope.text }}." }).ToList() };
+        files = new Dictionary<string, string>(files, StringComparer.Ordinal)
+        {
+            ["snippets/standards.md"] = "Standards. {{ macro.closing.prompt }}",
+        };
+
+        Assert.Equal(new List<string>(), V25Package.Errors((manifest, files)));
+        Assert.Equal(new[] { "extract", "scope" }, Derive((manifest, files))["assessment"].Order());
+    }
+
+    [Fact]
     public void ASlotFillThatReadsANode_IsAnEdgeOfTheNodeWhosePromptSanctionsIt()
     {
         // The prompt reads macro.closing.prompt (through its snippet); the
@@ -212,7 +230,7 @@ public class WorkflowMacroMechanicsTests
     public void TheSentence_IsTheRegistrysBlockquote_WordForWord()
     {
         var lines = File.ReadAllLines(RegistryDocument());
-        var start = Array.FindIndex(lines, l => l.StartsWith("> If so, emit", StringComparison.Ordinal));
+        var start = Array.FindIndex(lines, l => l.StartsWith("> If so, write", StringComparison.Ordinal));
         Assert.True(start >= 0, "the registry document no longer carries the mechanics blockquote");
 
         var quoted = lines.Skip(start).TakeWhile(l => l.StartsWith("> ", StringComparison.Ordinal)).Select(l => l[2..].Trim());
@@ -222,13 +240,14 @@ public class WorkflowMacroMechanicsTests
     }
 
     [Fact]
-    public void ThePrompt_IsTheInstruction_ABlankLine_AndTheSentenceNamingTheMarker()
+    public void ThePrompt_IsTheInstruction_ABlankLine_AndTheSentenceNamingTheRead()
     {
         var prompt = WorkflowMacroMechanics.Prompt("closing", "Add a closing line if the plan changed.\n");
 
         Assert.Equal(
-            "Add a closing line if the plan changed.\n\nIf so, emit [[slot:closing]] verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward, and only when it applies.",
+            "Add a closing line if the plan changed.\n\nIf so, write {{ macro.closing.text }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.",
             prompt);
         Assert.DoesNotContain("<id>", prompt);
+        Assert.DoesNotContain("[[slot:", prompt);
     }
 }

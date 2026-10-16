@@ -4,7 +4,9 @@ namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// #863 (v20): the inline slot marker a section prompt's MODEL output may contain,
-/// <c>[[slot:&lt;macro-id&gt;]]</c>. The engine replaces each marker at document assembly
+/// <c>[[slot:&lt;macro-id&gt;]]</c> — the ≤24 grammar; #1044: at 25 the model writes
+/// <c>{{ macro.&lt;id&gt;.text }}</c> and the reply renders, so no marker exists there.
+/// The engine replaces each marker at document assembly
 /// with the named macro's verbatim expanded text (see the runtime slot filler).
 ///
 /// A distinct <c>[[…]]</c> delimiter, deliberately NOT <c>{{…}}</c>: the marker is

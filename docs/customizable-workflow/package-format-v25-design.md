@@ -379,7 +379,10 @@ The library (`manifest.macros[]`: id, label, file, **`instruction`** (mandatory)
 that renders where it is used and may read snippets, inputs and node outputs. It may also
 be **read** inline as `{{ macro.<id>.text }}`, prompt-side, exactly as a snippet is — the
 same words in a prompt and after a reply are one file. What a macro's text may contain does
-not depend on how it is read (§ 5.2).
+not depend on how it is read (§ 5.2). The **instruction is a template too** (#1044): rendered
+where `macro.<id>.prompt` is read, over the same scope, with a snippet's reads; its reads join
+the closure of the node whose prompt reads the slot, and a `.prompt` read is an edge to it in
+the reference graph (§ 5.2).
 
 ### 5.1 Instances
 
@@ -396,10 +399,11 @@ A macro is used in three ways, all on the **output side**:
 ```
 
 and **inline**, by writing `{{ macro.letrozole.prompt }}` in a prompt or a snippet where the
-slot goes: that read *is* the slot's declaration, so there is no `at: slot`, no `use`
-toggle, and no instruction override on an instance (one instruction per macro; a different
-instruction is a different macro). The node pane lists inline slots as a derived, read-only
-section beside the declared before/after rows.
+slot goes: that read *is* the slot's declaration — the model is told the instruction and asked
+to write `{{ macro.letrozole.text }}` where the content belongs, and the reply renders it
+(§ 7, #1044) — so there is no `at: slot`, no `use` toggle, and no instruction override on an
+instance (one instruction per macro; a different instruction is a different macro). The node
+pane lists inline slots as a derived, read-only section beside the declared before/after rows.
 
 - **`at`** — `before` | `after` on a node; `prepend` | `append` on a deliverable.
 - **`when`** — a Scriban boolean expression over the objects a template reads (§ 16, #1037;
@@ -433,11 +437,12 @@ depth-first search that names the path.
 
 ### 5.3 The mechanics sentence is the format's
 
-`macro.<id>.prompt` renders as `<instruction>` + a sentence that is a **constant published
-with this format version**:
+`macro.<id>.prompt` renders as `<instruction>` — itself rendered over the reading template's
+scope (#1044) — + a sentence that is a **constant published with this format version**,
+appended after the render so the read it names reaches the model as written:
 
-> *If so, emit `[[slot:<id>]]` verbatim and nothing else at that place; do not write that
-> content yourself — it is filled in afterward, and only when it applies.*
+> *If so, write `{{ macro.<id>.text }}` verbatim and nothing else at that place; do not write
+> that content yourself — it is filled in afterward.*
 
 It is the format's so the attested `inputHash` is determined by the package plus its
 declared format alone; an engine-authored sentence would put engine-versioned text inside
@@ -465,28 +470,45 @@ Order at node completion, stated once:
    stripped and the reply parsed.
 2. **Validation** (§ 3.5) and the node's `onInvalid`.
 3. `failIfEmpty` is judged on the reply, before anything is composed.
-4. Inline slots attached to this node fill their markers (§ 7).
-5. Before/after instances compose around the result.
+4. The reply is **rendered as a template** over the node's scope (§ 7, #1044) — its
+   `{{ macro.<id>.text }}` reads are the slots; a reply that does not render fails the node.
+5. Before/after instances compose around the rendered reply.
 6. `outputHash` is taken.
 
-## 7. Slot fill — on the node that read the marker
+## 7. Slot fill — the reply is a template (#1044, 2026-10-16)
 
-A marker `[[slot:<id>]]` is sanctioned only by a `macro.<id>.prompt` read in the prompt that
-produced the reply — so it is filled **at that node**, at completion, and the revision-1
-"node first, then document" order and the document-level slot are gone: there is nothing a
-document-level fill could sanction.
+The model writes `{{ macro.<id>.text }}` where a slot's instruction told it to, and the
+node's completion **renders the whole reply as a Scriban template** over the node's own
+scope — the scope its prompt rendered over: inputs, the nodes it reads (its derived edges),
+snippets and folders, the fan item, every macro, the run and profile facts. The rendered text
+is the reply the instances compose around (§ 6). One object form in, one out; the fill is a
+second render, at the node, at completion — the revision-1 "node first, then document" order
+and the document-level slot are gone. (Before #1044 the model emitted `[[slot:<id>]]` and the
+completion replaced sanctioned markers; the marker is the ≤24 grammar now.)
 
-- An instance whose `when` refuses **removes** its marker and records the exclusion on the
-  node row.
-- A marker no read sanctions is **removed**, as the assembler does today, and the record
-  says so.
-- For a fan, the same holds per item.
+- **What a reply may read is what a template may read.** A `{{ macro.<id>.text }}` is that
+  macro's text, rendered; `{{ node.extract.text }}` is the node's text, and so on. Nothing is
+  sanctioned, dropped or rewritten.
+- **A reply that does not render fails the node, non-retryably** (decision): a parse error,
+  or a read the scope has no value for (a node the prompt does not read, an undeclared input,
+  an unknown member) — the renderer's sentence on the node row (`Node '<id>' reply does not
+  parse: …` / `Node '<id>' reply reads node.x, which this render has no value for.`); the
+  prompt or the agent is at fault. The reply is hashed as it came (`agentOutputHash`), before
+  the render. For a fan, per item.
+- **Attribution:** `appended[] { kind: slot, id }` names each macro text the reply itself
+  read, in render order, once per read (a read inside a filled text is that text's, not an
+  entry). `excluded[]` keeps only instance `when` refusals.
+- `profile.signature` in a reply (or an instruction) is the node's fact — empty unless a
+  deliverable placement carried the signature; signing stays the deliverable's static rule.
 
-**Publish rule:** a `macro.<id>.prompt` read must be reachable from the node's template —
-directly, or through a snippet it reads, or through at least one item of the folder it fans.
-None → the macro is unused and the validator says so. Items of a fanned folder that lack
-the read are named in a **warning**: a section whose standard carries no instruction cannot
-emit the marker — intended in `section-instructions`, worth telling the author.
+**Publish rule (unchanged):** a `macro.<id>.prompt` read must be reachable from the node's
+template — directly, or through a snippet it reads, or through at least one item of the folder
+it fans. None → the macro is unused and the validator says so. Items of a fanned folder that
+lack the read are named in a **warning**: a section whose standard carries no instruction
+tells the model nothing — intended in `section-instructions`, worth telling the author. The
+`.prompt` read is also what makes a fill's node reads edges of the node (`EdgesOf`): a macro
+the prompt never instructed but the reply reads still renders — and fails loud if its text
+reads a node not in the scope.
 
 ## 8. Enum values — unchanged at 25
 
@@ -657,6 +679,14 @@ references already left (a dangling `nodes[].macros` id was a latent refusal). F
 registry doc's `when` examples spell `input:<id>`, but the condition grammar takes a bare
 input id (`kind == new`) — the fixture and the builder use the bare form; the doc is to be
 corrected.)*
+
+*(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
+field** carries the insert-reference palette (the palette generalised over a target — a file's
+text or an instruction — offering a snippet's choices, never the macro's own members), its
+help says the model writes `{{ macro.<id>.text }}` where its slot is read and the reply
+renders it; the macro-text prose says placed text instructs no model; the fan-item warning and
+the blank-instruction sentence in the registry's new words; the desk at 25 says the walker's
+instruction sentences by construction (#1039).)*
 
 *(C4 #1010, 2026-10-14 — the derived **Reads** list, the **insert-reference palette** and the
 desk's "every reference resolves" are built, gated on 25. **Node pane:** the Inputs (bindings)
@@ -878,6 +908,25 @@ fan at 25, which the registry refuses (now `input.<id>`); the Consults rail stri
 alone, so a 25 fan's items fell back to the package blocks (now
 `WorkflowFanSources.CollectionIdOf`). The ≤24 input-fan helper, the ≤24 bindings editor and the
 `SnippetColonPrefix` read stay as the ≤24 grammar's.)*
+
+*(#1044, 2026-10-16 — the reply is a template; the instruction is a template. **Decisions**
+(AskUserQuestion): the reply renders over the node's **full scope** (the scope its prompt
+rendered over, signature read included as the node's fact); a reply that does not render
+**fails the node non-retryably** (the existing `InvalidOperationException` policy — the
+prompt or the agent is at fault); filed and built ahead of A5 #1018 as the last format change
+before the bump. **Built:** the mechanics sentence names the read the model writes;
+`TemplateRenderer` renders the instruction before appending the sentence and carries a
+`TemplateRenderTrace` (the prompt's `.prompt` reads; the top-level `.text` reads in order — a
+macro's `.text` is produced on every read so twice read is twice placed);
+`WorkflowNodeCompletion.Compose` takes the rendered reply and its slot reads (no marker fill,
+no removals); `TemplateKind.Instruction` is walked per macro, visited from a `.prompt` read
+(edges, `PromptReadsOf`, item reads), an edge in the reference graph (an instruction reaching
+its own slot is a cycle named by its path), probed; `ConsultNodeCompletion.Complete` renders
+the reply (a classification renders nothing; plain text renders to itself and keeps the early
+return). **Registry:** package-format-v25.md § The reply is a template (spec PR #29);
+provenance@v2026.10.3 amends definition 6 in place — never written by a live engine — and the
+`appended[]`/`excluded[]` wording (provenance PR #37). ≤24 keeps `[[slot:<id>]]`,
+`ConsultSlotFiller`, the v20 warnings and the editor's slot UI.)*
 
 ## Deferred, by name
 

@@ -99,10 +99,12 @@ section's block (here, after Assessment & Plan). See the v19 design note.
 ## Placement is section-granular, not inline
 
 The block lands **after** the anchored section, not at a spot the model chooses
-mid-prose. Truly inline, model-chosen placement (a `{{slot:…}}` marker the model
-emits, filled verbatim by the assembler) is a design proposal, not built — see
-issue #863. Do **not** instruct the model in a prompt/standard to "run the macro":
-the model cannot invoke a macro, and it will just write a literal placeholder.
+mid-prose. Model-chosen inline placement exists since v20 as the **slot** (`[[slot:<id>]]`
+emitted by the model, filled at assembly; #863) and, at specVersion 25, as the
+`macro.<id>.prompt` read whose reply the engine renders (`{{ macro.<id>.text }}`, #1044 —
+`package-format-v25-design.md` § 7). For an anchored macro, do **not** instruct the model in
+a prompt/standard to "run the macro": the model cannot invoke a macro, and it will just write
+a literal placeholder.
 
 ## Publishing the change
 

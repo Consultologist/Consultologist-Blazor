@@ -131,9 +131,10 @@ public sealed record WorkflowMacroSpec(
     string File,
     bool? Optional = null,
     bool? Default = null,
-    // v25 (package-format-v25-design.md § 5, #998): what the model is told when
-    // the macro's slot marker is read inline (macro.<id>.prompt) — composed
-    // with the mechanics sentence. Mandatory at ≥ 25 (a macro is placed text,
+    // v25 (package-format-v25-design.md § 5, #998): what the model is told where
+    // the macro's slot is read inline (macro.<id>.prompt) — a Scriban template
+    // (#1044), rendered there, then composed with the mechanics sentence.
+    // Mandatory at ≥ 25 (a macro is placed text,
     // and placed text needs an instruction); below 25 refused by name. Trailing
     // optional, omitted when null.
     string? Instruction = null);

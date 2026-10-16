@@ -545,7 +545,7 @@ public static partial class WorkflowPackageValidator
 
             if (string.IsNullOrWhiteSpace(macro.Instruction))
             {
-                errors.Add($"Macro '{macro.Id}' must declare an instruction at specVersion 25; placed text tells the model when to emit its marker.");
+                errors.Add($"Macro '{macro.Id}' must declare an instruction at specVersion 25; placed text tells the model when to write its text read.");
             }
 
             if (string.IsNullOrWhiteSpace(macro.File) || !files.ContainsKey(macro.File))
@@ -844,7 +844,7 @@ public static partial class WorkflowPackageValidator
 
                     if (lacking.Count > 0)
                     {
-                        warnings.Add($"Node '{spec.Id}' fans snippet folder '{folderId}'; items {string.Join(", ", lacking)} carry no macro.{slot}.prompt read, so no marker is emitted for them.");
+                        warnings.Add($"Node '{spec.Id}' fans snippet folder '{folderId}'; items {string.Join(", ", lacking)} carry no macro.{slot}.prompt read, so nothing tells the model to write macro.{slot}.text for them.");
                     }
                 }
             }
@@ -897,7 +897,7 @@ public static partial class WorkflowPackageValidator
         if (graph.TryFindMacroTextReachingPrompt(out var path, out var promptMacro))
         {
             var through = path.Count > 1 ? $" through {string.Join(" → ", path.Skip(1))}" : string.Empty;
-            errors.Add($"{Capitalize(path[0])} text reaches macro.{promptMacro}.prompt{through}; text placed after a reply cannot carry a slot marker.");
+            errors.Add($"{Capitalize(path[0])} text reaches macro.{promptMacro}.prompt{through}; text placed after a reply instructs no model.");
         }
 
         static string Capitalize(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];

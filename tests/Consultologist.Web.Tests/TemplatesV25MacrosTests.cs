@@ -127,6 +127,33 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void TheInstruction_HasThePalette_ThatAppendsIntoIt_AndNeverOffersTheMacrosOwnMembers()
+    {
+        // #1044: the instruction is a template — the palette inserts into it; the
+        // macro's own .text and .prompt are not offered (its text is what the slot
+        // fills, its slot is itself), another macro's are.
+        var page = RenderEditor();
+        CapturePublish();
+        Navigate(page, "closing");
+
+        var options = OptionValues(page, "fluent-select[aria-label='Reference to insert into instruction of macro closing']");
+        Assert.Contains("{{ input.kind }}", options);
+        Assert.Contains("{{ macro.tool_note.prompt }}", options);
+        Assert.DoesNotContain("{{ macro.closing.prompt }}", options);
+        Assert.DoesNotContain("{{ macro.closing.text }}", options);
+
+        page.Find("fluent-select[aria-label='Reference to insert into instruction of macro closing']").Change("{{ input.kind }}");
+        page.Find("fluent-button[aria-label='Insert reference into instruction of macro closing']").Click();
+
+        Assert.Equal("Add a closing line if the plan changed.\n{{ input.kind }}", page.Find("fluent-text-area[aria-label='Instruction for macro closing']").GetAttribute("value"));
+        Publish(page);
+        Assert.NotNull(sent);
+        Assert.Equal("Add a closing line if the plan changed.\n{{ input.kind }}", Macro(Manifest(sent!), "closing").GetProperty("instruction").GetString());
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
+    }
+
+    [Fact]
     public void TheInstruction_SurvivesAReload_WithItsDraft()
     {
         var page = RenderEditor();
@@ -395,7 +422,7 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
 
         Assert.Contains("macro.tool_note.prompt", page.Find("ul.node-inline-slots[aria-label='Inline slots of section_notes']").TextContent);
         Assert.Equal(
-            "Node 'section_notes' fans snippet folder 'sections'; items plan carry no macro.tool_note.prompt read, so no marker is emitted for them.",
+            "Node 'section_notes' fans snippet folder 'sections'; items plan carry no macro.tool_note.prompt read, so nothing tells the model to write macro.tool_note.text for them.",
             page.Find(".node-inline-slots__warning").TextContent.Trim());
     }
 
@@ -541,7 +568,7 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
     public static IEnumerable<object[]> DeskCases()
     {
         yield return new object[] { "blank instruction", new Action<System.Text.Json.Nodes.JsonObject>(root => root["macros"]!.AsArray()[0]!["instruction"] = "  "),
-            "Macro 'closing' must declare an instruction at specVersion 25; placed text tells the model when to emit its marker." };
+            "Macro 'closing' must declare an instruction at specVersion 25; placed text tells the model when to write its text read." };
         yield return new object[] { "aggregator places", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "all")["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ "closing" ]""")),
             "Node 'all' aggregates and must not place macros; place them on the nodes it aggregates or on the deliverable." };
         yield return new object[] { "undeclared on node", new Action<System.Text.Json.Nodes.JsonObject>(root => NodeObject(root, "assessment")["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ "nope" ]""")),
@@ -616,7 +643,7 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
 
         var refusals = Refusals(page);
         Assert.Contains("Deliverable 'consult' macro 'tool_note' must declare at (prepend | append).", refusals);
-        Assert.Contains("Macro 'spare' must declare an instruction at specVersion 25; placed text tells the model when to emit its marker.", refusals);
+        Assert.Contains("Macro 'spare' must declare an instruction at specVersion 25; placed text tells the model when to write its text read.", refusals);
         Assert.Contains("Macro 'spare' is declared but never placed or read; place it on a node or a deliverable, or read macro.spare.text / macro.spare.prompt.", refusals);
         Assert.Null(sent);
     }

@@ -709,7 +709,7 @@ public record ConsultAppendedEntry(string Kind, string Id, string? AsOf = null);
 /// <summary>
 /// Mirrors Consultologist.Api.Models.ConsultNodeExclusion (v25 B5 #1004): one
 /// thing a node's completion withheld or removed, by name — an instance whose
-/// when refused, a slot marker no read sanctioned — and the sentence why.
+/// when refused (#1044: a reply's reads are never withheld) — and the sentence why.
 /// </summary>
 public record ConsultNodeExclusion(string Kind, string Id, string Reason);
 

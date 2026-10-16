@@ -81,23 +81,65 @@ public sealed record TemplateRenderScope(
 /// </summary>
 public static class TemplateRenderer
 {
-    /// <param name="promptReads">B5 #1004 (design § 7): when given, every
-    /// <c>macro.&lt;id&gt;.prompt</c> this render evaluated is added — the slots
-    /// the prompt that ran sanctions, exactly the instructions the model saw
-    /// (a read behind a branch not taken is not one of them).</param>
+    /// <summary>
+    /// What a render read, where the engine needs to know (B5 #1004, #1044):
+    /// <see cref="PromptReads"/> — every <c>macro.&lt;id&gt;.prompt</c> the render
+    /// evaluated (the slots the prompt that ran instructed, exactly the
+    /// instructions the model saw; a read behind a branch not taken is not one of
+    /// them); <see cref="TextReads"/> — every <c>macro.&lt;id&gt;.text</c> the
+    /// TOP-LEVEL template evaluated, in order, once per read (#1044: a reply's
+    /// slots, as the record names them; a read inside a filled text is that
+    /// text's, not an entry).
+    /// </summary>
+    public sealed class TemplateRenderTrace
+    {
+        private int _depth;
+
+        public ISet<string> PromptReads { get; } = new HashSet<string>(StringComparer.Ordinal);
+
+        public IList<string> TextReads { get; } = new List<string>();
+
+        internal void TextRead(string macroId)
+        {
+            if (_depth == 0)
+            {
+                TextReads.Add(macroId);
+            }
+        }
+
+        internal IDisposable Nested() => new Nesting(this);
+
+        private sealed class Nesting : IDisposable
+        {
+            private readonly TemplateRenderTrace _trace;
+
+            public Nesting(TemplateRenderTrace trace)
+            {
+                _trace = trace;
+                _trace._depth++;
+            }
+
+            public void Dispose() => _trace._depth--;
+        }
+    }
+
+    /// <param name="trace">When given, what this render read (<see cref="TemplateRenderTrace"/>).</param>
     public static string Render(
         string subject,
         string templateText,
         TemplateRenderScope scope,
         IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes = null,
-        ISet<string>? promptReads = null)
+        TemplateRenderTrace? trace = null)
     {
-        var globals = Globals(subject, scope, pipes, promptReads);
-        return RenderWith(subject, templateText, globals);
+        var globals = Globals(subject, scope, pipes, trace);
+        return RenderWith(subject, templateText, globals, trace, nested: false);
     }
 
+    /// <summary>#1044: a macro's <c>.text</c> is produced on every read so the trace counts each one (the render itself is cached by its Lazy).</summary>
+    private static readonly ISet<string> UncachedMacroMembers = new HashSet<string>(StringComparer.Ordinal) { TemplateMembers.Text };
+
     /// <summary>The globals a probe or a renderer pushes: the seven objects and the pipes, over this scope.</summary>
-    internal static ScriptObject Globals(string subject, TemplateRenderScope scope, IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes, ISet<string>? promptReads = null)
+    internal static ScriptObject Globals(string subject, TemplateRenderScope scope, IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes, TemplateRenderTrace? trace = null)
     {
         var globals = new ScriptObject();
 
@@ -125,7 +167,7 @@ public static class TemplateRenderer
         var snippet = new ClosedObject(subject, TemplateObjects.Snippet);
         foreach (var (id, text) in scope.Snippets)
         {
-            snippet[id] = Rendered(subject, $"{TemplateObjects.Snippet}.{id}", id, id, text, $"Snippet '{id}'", globals);
+            snippet[id] = Rendered(subject, $"{TemplateObjects.Snippet}.{id}", id, id, text, $"Snippet '{id}'", globals, trace);
         }
 
         foreach (var (folder, items) in scope.Folders)
@@ -133,7 +175,7 @@ public static class TemplateRenderer
             var array = new ScriptArray();
             foreach (var item in items)
             {
-                array.Add(Rendered(subject, $"{TemplateObjects.Snippet}.{folder}[{item.Id}]", item.Id, item.Name, item.Text, $"Snippet '{folder}/{item.Id}'", globals));
+                array.Add(Rendered(subject, $"{TemplateObjects.Snippet}.{folder}[{item.Id}]", item.Id, item.Name, item.Text, $"Snippet '{folder}/{item.Id}'", globals, trace));
             }
 
             snippet[folder] = array;
@@ -144,7 +186,7 @@ public static class TemplateRenderer
         if (scope.Item is { } fanItem)
         {
             globals[TemplateObjects.Item] = fanItem.Text is not null
-                ? Rendered(subject, TemplateObjects.Item, fanItem.Id, fanItem.Name, fanItem.Text, $"{subject} item '{fanItem.Id}'", globals)
+                ? Rendered(subject, TemplateObjects.Item, fanItem.Id, fanItem.Name, fanItem.Text, $"{subject} item '{fanItem.Id}'", globals, trace)
                 : new ClosedObject(subject, TemplateObjects.Item)
                 {
                     [TemplateMembers.Id] = fanItem.Id,
@@ -160,15 +202,22 @@ public static class TemplateRenderer
             {
                 [TemplateMembers.Id] = () => source.Id,
                 [TemplateMembers.Name] = () => source.Name,
+                // #1044: the instruction is a template, rendered over the same
+                // scope FIRST; the mechanics sentence — carrying the literal read
+                // the model is to write — is appended after, never rendered.
                 [TemplateMembers.Prompt] = () =>
                 {
-                    promptReads?.Add(source.Id);
-                    return WorkflowMacroMechanics.Prompt(source.Id, source.Instruction);
+                    trace?.PromptReads.Add(source.Id);
+                    return WorkflowMacroMechanics.Prompt(source.Id, RenderWith($"Macro '{id}' instruction", source.Instruction, globals, trace, nested: true));
                 },
             };
-            var text = new Lazy<string>(() => RenderWith($"Macro '{id}'", source.Text, globals));
-            members[TemplateMembers.Text] = () => text.Value;
-            macro[id] = new LazyMembersObject(subject, $"{TemplateObjects.Macro}.{id}", members);
+            var text = new Lazy<string>(() => RenderWith($"Macro '{id}'", source.Text, globals, trace, nested: true));
+            members[TemplateMembers.Text] = () =>
+            {
+                trace?.TextRead(source.Id);
+                return text.Value;
+            };
+            macro[id] = new LazyMembersObject(subject, $"{TemplateObjects.Macro}.{id}", members, UncachedMacroMembers);
         }
 
         globals[TemplateObjects.Macro] = macro;
@@ -231,9 +280,9 @@ public static class TemplateRenderer
         _ => value.GetType().Name.ToLowerInvariant(),
     };
 
-    private static LazyMembersObject Rendered(string subject, string path, string id, string name, string text, string templateSubject, ScriptObject globals)
+    private static LazyMembersObject Rendered(string subject, string path, string id, string name, string text, string templateSubject, ScriptObject globals, TemplateRenderTrace? trace)
     {
-        var rendered = new Lazy<string>(() => RenderWith(templateSubject, text, globals));
+        var rendered = new Lazy<string>(() => RenderWith(templateSubject, text, globals, trace, nested: true));
         return new LazyMembersObject(subject, path, new Dictionary<string, Func<object?>>(StringComparer.Ordinal)
         {
             [TemplateMembers.Id] = () => id,
@@ -242,7 +291,7 @@ public static class TemplateRenderer
         });
     }
 
-    private static string RenderWith(string subject, string templateText, ScriptObject globals)
+    private static string RenderWith(string subject, string templateText, ScriptObject globals, TemplateRenderTrace? trace, bool nested)
     {
         var template = Template.Parse(templateText);
 
@@ -252,6 +301,7 @@ public static class TemplateRenderer
                 $"{subject} does not parse: {string.Join(" ", template.Messages.Select(m => m.Message))}");
         }
 
+        using var nesting = nested ? trace?.Nested() : null;
         return Unwrap(subject, "render", () => template.Render(ContextWith(globals)));
     }
 
@@ -393,13 +443,16 @@ public static class TemplateRenderer
         private readonly string _path;
         private readonly Dictionary<string, Func<object?>> _members;
         private readonly Dictionary<string, object?> _read = new(StringComparer.Ordinal);
+        private readonly ISet<string>? _uncached;
 
-        public LazyMembersObject(string subject, string path, Dictionary<string, Func<object?>> members)
+        /// <param name="uncached">#1044: members produced on EVERY read (the producer records the read; its value is cached underneath).</param>
+        public LazyMembersObject(string subject, string path, Dictionary<string, Func<object?>> members, ISet<string>? uncached = null)
             : base(subject, path)
         {
             _subject = subject;
             _path = path;
             _members = members;
+            _uncached = uncached;
         }
 
         public override bool Contains(string member) => _members.ContainsKey(member);
@@ -409,6 +462,12 @@ public static class TemplateRenderer
             if (!_members.TryGetValue(member, out var produce))
             {
                 throw new InvalidOperationException($"{_subject} reads {_path}.{member}, which this render has no value for.");
+            }
+
+            if (_uncached?.Contains(member) == true)
+            {
+                value = produce();
+                return true;
             }
 
             if (!_read.TryGetValue(member, out value))

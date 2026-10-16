@@ -315,6 +315,11 @@ public static class WorkflowDerivedEdges
                 if (TextItemReadOf(TemplateKind.Macro, macro) is { } read) { return read; }
             }
 
+            foreach (var slot in prompt.MacroPrompts)
+            {
+                if (TextItemReadOf(TemplateKind.Instruction, slot) is { } read) { return read; }
+            }
+
             return null;
         }
 
@@ -336,10 +341,15 @@ public static class WorkflowDerivedEdges
             }
         }
 
-        /// <summary>The closure a template renders: itself, the snippets and folder items it reads, the macro texts it reads — each once.</summary>
+        /// <summary>The closure a template renders: itself, the snippets and folder items it reads, the macro texts it reads, the instructions of the slots it reads (#1044) — each once.</summary>
         private void Visit(TemplateReferences refs, HashSet<(TemplateKind, string)> seen, Action<TemplateReferences> take)
         {
             take(refs);
+
+            foreach (var slot in refs.MacroPrompts)
+            {
+                VisitKey((TemplateKind.Instruction, slot), seen, take);
+            }
 
             foreach (var snippet in refs.Snippets)
             {
@@ -484,6 +494,14 @@ public static class WorkflowDerivedEdges
 
             var subject = $"Macro '{macro.Id}'";
             templates.Add(new WalkedTemplate(TemplateKind.Macro, macro.Id, subject, text, TemplateReferenceWalker.Walk(subject, text, snippetContext), snippetContext));
+
+            // #1044: the instruction is a template, rendered where macro.<id>.prompt
+            // is read — walked under the reader's fan like the text.
+            if (!string.IsNullOrWhiteSpace(macro.Instruction))
+            {
+                var instructionSubject = $"Macro '{macro.Id}' instruction";
+                templates.Add(new WalkedTemplate(TemplateKind.Instruction, macro.Id, instructionSubject, macro.Instruction, TemplateReferenceWalker.Walk(instructionSubject, macro.Instruction, snippetContext), snippetContext));
+            }
         }
 
         foreach (var deliverable in manifest.Deliverables ?? new List<WorkflowDeliverableSpec>())

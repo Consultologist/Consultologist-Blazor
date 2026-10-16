@@ -227,9 +227,9 @@ public sealed class RunPromptNodeActivity
             // in hand; below 25 the flat map, as ever.
             // v25 (B5 #1004, design § 7): the macro.<id>.prompt reads the render
             // evaluates are the slots the prompt that ran sanctions.
-            var promptReads = new HashSet<string>(StringComparer.Ordinal);
+            var promptTrace = new TemplateRenderer.TemplateRenderTrace();
             var rendered = input.Format is not null
-                ? ConsultRenderPayload.RenderAt25(input, package, prompt.TemplateText, promptReads)
+                ? ConsultRenderPayload.RenderAt25(input, package, prompt.TemplateText, promptTrace)
                 : PromptTemplateRenderer.Render(
                     prompt,
                     input.Variables,
@@ -281,7 +281,7 @@ public sealed class RunPromptNodeActivity
                 // the instances composed, outputHash over what came out.
                 if (input.Format is not null)
                 {
-                    settled = ConsultNodeCompletion.Complete(settled, input, package, promptReads);
+                    settled = ConsultNodeCompletion.Complete(settled, input, package, promptTrace.PromptReads.ToHashSet(StringComparer.Ordinal));
                 }
 
                 _logger.LogInformation(

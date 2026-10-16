@@ -392,7 +392,7 @@ public class WorkflowV25Tests
         var (manifest, files) = V25Package.Minimal();
         manifest = manifest with { Macros = manifest.Macros!.Select(m => m with { Instruction = " " }).ToList() };
 
-        Assert.Contains("Macro 'closing' must declare an instruction at specVersion 25; placed text tells the model when to emit its marker.", V25Package.Errors((manifest, files)));
+        Assert.Contains("Macro 'closing' must declare an instruction at specVersion 25; placed text tells the model when to write its text read.", V25Package.Errors((manifest, files)));
     }
 
     [Fact]
@@ -587,7 +587,7 @@ public class WorkflowV25TemplateTests
         var (manifest, files) = Minimal();
         files["snippets/sections/hpi.md"] = "History. {{ macro.closing.prompt }}";
 
-        Assert.Contains("Node 'section_notes' fans snippet folder 'sections'; items plan carry no macro.closing.prompt read, so no marker is emitted for them.", V25Package.Warnings((manifest, files)));
+        Assert.Contains("Node 'section_notes' fans snippet folder 'sections'; items plan carry no macro.closing.prompt read, so nothing tells the model to write macro.closing.text for them.", V25Package.Warnings((manifest, files)));
     }
 
     [Fact]
@@ -602,13 +602,46 @@ public class WorkflowV25TemplateTests
     }
 
     [Fact]
+    public void AnInstruction_IsATemplate_WalkedInItsOwnName()
+    {
+        // #1044: an instruction's reads are checked like a snippet's; the subject
+        // names the instruction, not the macro's text.
+        var (manifest, files) = Minimal();
+        manifest = manifest with { Macros = manifest.Macros!.Select(m => m with { Instruction = "Close for {{ input.severity }} with {{ macro.closing.size }}." }).ToList() };
+
+        var errors = V25Package.Errors((manifest, files));
+
+        Assert.Contains(errors, e => e.StartsWith("Macro 'closing' instruction reads input 'severity'", StringComparison.Ordinal));
+        Assert.Contains(errors, e => e.StartsWith("Macro 'closing' instruction reads macro.closing.size", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AnInstruction_ReachingItsOwnSlot_IsACycle()
+    {
+        var (manifest, files) = Minimal();
+        manifest = manifest with { Macros = manifest.Macros!.Select(m => m with { Instruction = "Close as {{ snippet.standards.text }} says." }).ToList() };
+        files["snippets/standards.md"] = "Standards. {{ macro.closing.prompt }}";
+
+        Assert.Contains("Templates contain a cycle: snippet 'standards' → instruction 'closing' → snippet 'standards'.", V25Package.Errors((manifest, files)));
+    }
+
+    [Fact]
+    public void AnInstruction_ThatDoesNotRenderStrictly_IsNamedByTheProbe()
+    {
+        var (manifest, files) = Minimal();
+        manifest = manifest with { Macros = manifest.Macros!.Select(m => m with { Instruction = "Close {{ 1 | date.to_string '%Y' }}." }).ToList() };
+
+        Assert.Contains(V25Package.Errors((manifest, files)), e => e.StartsWith("Macro 'closing' instruction failed strict rendering:", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void AMacroText_ReachingAPromptRead_IsRefused()
     {
         var (manifest, files) = Minimal();
         files["macros/closing.md"] = "{{ snippet.standards.text }}";
         files["snippets/standards.md"] = "{{ macro.closing.prompt }}";
 
-        Assert.Contains("Macro 'closing' text reaches macro.closing.prompt through snippet 'standards'; text placed after a reply cannot carry a slot marker.", V25Package.Errors((manifest, files)));
+        Assert.Contains("Macro 'closing' text reaches macro.closing.prompt through snippet 'standards'; text placed after a reply instructs no model.", V25Package.Errors((manifest, files)));
     }
 
     [Fact]

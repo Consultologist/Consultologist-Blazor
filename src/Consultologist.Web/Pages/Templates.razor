@@ -1772,7 +1772,8 @@
                                         A named Scriban text the package owns, placed before or after a node's
                                         output, prepended or appended to a deliverable, or read inline as
                                         <code>{{ macro.&lt;id&gt;.text }}</code> / <code>{{ macro.&lt;id&gt;.prompt }}</code> (its slot).
-                                        It carries an instruction — what tells the model when to emit its marker.
+                                        It carries an instruction — a Scriban template that tells the model when to write
+                                        <code>{{ macro.&lt;id&gt;.text }}</code> where its slot is read; the reply renders it.
                                         Publish stays blocked until the instruction is written and something places or reads it.
                                     </p>
                                 }
@@ -2239,13 +2240,13 @@
                                         </ul>
                                         @if (NodeFanItems(selectedNode) is { Count: > 0 } slotFanItems && FanFolderOf(selectedNode.ForEach) is { } slotFolder)
                                         {
-                                            @* The validator's warning, word for word: items whose text carries no read emit no marker. *@
+                                            @* The validator's warning, word for word: items whose text carries no read instruct nothing. *@
                                             foreach (var slotMacroId in inlineSlots.Order(StringComparer.Ordinal))
                                             {
                                                 var lacking = slotFanItems.Where(item => !(PackageWalk?.PromptReadsOf(selectedNode.Id, item.Id).Contains(slotMacroId) ?? false)).Select(item => item.Id).ToList();
                                                 if (lacking.Count > 0)
                                                 {
-                                                    <p class="muted-text node-inline-slots__warning">Node '@selectedNode.Id' fans snippet folder '@slotFolder'; items @string.Join(", ", lacking) carry no macro.@(slotMacroId).prompt read, so no marker is emitted for them.</p>
+                                                    <p class="muted-text node-inline-slots__warning">Node '@selectedNode.Id' fans snippet folder '@slotFolder'; items @string.Join(", ", lacking) carry no macro.@(slotMacroId).prompt read, so nothing tells the model to write macro.@(slotMacroId).text for them.</p>
                                                 }
                                             }
                                         }
@@ -2655,7 +2656,9 @@
                             @if (At25)
                             {
                                 @* v25 (C3 #1009): the instruction — mandatory at 25; what the model is told
-                                   where {{ macro.<id>.prompt }} is read, ahead of the format's mechanics sentence. *@
+                                   where {{ macro.<id>.prompt }} is read, ahead of the format's mechanics sentence.
+                                   #1044: a Scriban template, rendered where it is read — the palette inserts
+                                   into it as into any text. *@
                                 <label class="node-field macro-instruction-field">
                                     <span>instruction</span>
                                     <FluentTextArea class="macro-instruction" Rows="3"
@@ -2663,7 +2666,8 @@
                                                     ValueChanged="@(v => SetMacroInstructionAsync(macro.Id, v))"
                                                     aria-label="@($"Instruction for macro {macro.Id}")" />
                                 </label>
-                                <p class="muted-text">Tells the model when to emit this macro's marker where its slot is read (<code>{{ macro.@(macro.Id).prompt }}</code>). Required at specVersion 25.</p>
+                                @ReferencePalette(InstructionPaletteTarget(macro))
+                                <p class="muted-text">Tells the model when to write <code>{{ macro.@(macro.Id).text }}</code> where its slot is read (<code>{{ macro.@(macro.Id).prompt }}</code>); the reply renders it. A Scriban template, rendered where it is read, ahead of the format's mechanics sentence. Required at specVersion 25.</p>
                             }
                             @{
                                 @* #936: which deliverables this macro is attached to — used by the
@@ -3001,7 +3005,7 @@
                             }
                             @if (At25)
                             {
-                                <p class="muted-text macro-objects">A Scriban template: it may read <code>input.&lt;id&gt;</code>, <code>node.&lt;id&gt;.text</code> / <code>.value</code>, <code>snippet.&lt;id&gt;.text</code>, <code>macro.&lt;id&gt;.text</code>, <code>run.&lt;fact&gt;</code> and <code>profile.&lt;fact&gt;</code>; never <code>macro.&lt;id&gt;.prompt</code> — placed text cannot carry a slot marker.</p>
+                                <p class="muted-text macro-objects">A Scriban template: it may read <code>input.&lt;id&gt;</code>, <code>node.&lt;id&gt;.text</code> / <code>.value</code>, <code>snippet.&lt;id&gt;.text</code>, <code>macro.&lt;id&gt;.text</code>, <code>run.&lt;fact&gt;</code> and <code>profile.&lt;fact&gt;</code>; never <code>macro.&lt;id&gt;.prompt</code> — placed text instructs no model.</p>
                             }
                             else
                             {
@@ -4747,10 +4751,36 @@
         return choices;
     }
 
-    /// <summary>Append the picked reference (with its pipe) to the file's text on its own line — the cursor is the code editor rung's.</summary>
-    private async Task InsertReferenceAsync(string file, IReadOnlyList<ReferenceChoice> choices)
+    /// <summary>
+    /// #1044: what a palette inserts into — a file's text, or a macro's instruction (a template
+    /// that is no file): its name for the labels, the choices it offers, its walk (reads and
+    /// warnings), and how the picked snippet is appended.
+    /// </summary>
+    private sealed record PaletteTarget(string Name, IReadOnlyList<ReferenceChoice> Choices, PF.WorkflowDerivedEdges.WalkedTemplate? Walked, Func<string, Task> Append);
+
+    /// <summary>A file's palette target: the choices for its text, its walk, appended through the text editor.</summary>
+    private PaletteTarget FilePaletteTarget(string file, WorkflowManifestReader.NodeView? fanNode, bool isMacroText) =>
+        new(file, ReferenceChoices(file, fanNode, isMacroText), TemplateWalkOf(file), snippet => OnTextChangedAsync(file, Appended(GetText(file), snippet)));
+
+    /// <summary>
+    /// #1044: a macro's instruction as a palette target — the choices a snippet gets (never the
+    /// macro's own members: its text is what the slot fills, its slot is itself), the
+    /// instruction's own walk, appended into the instruction.
+    /// </summary>
+    private PaletteTarget InstructionPaletteTarget(WorkflowManifestReader.MacroView macro) =>
+        new(
+            $"instruction of macro {macro.Id}",
+            ReferenceChoices(macro.File, null, isMacroText: false),
+            PackageWalk?.Templates.FirstOrDefault(t => t.Kind == PF.TemplateKind.Instruction && t.Id == macro.Id),
+            snippet => SetMacroInstructionAsync(macro.Id, Appended(MacroInstruction(macro) ?? string.Empty, snippet)));
+
+    private static string Appended(string text, string snippet) =>
+        text.Length == 0 ? snippet : text.EndsWith('\n') ? text + snippet : text + "\n" + snippet;
+
+    /// <summary>Append the picked reference (with its pipe) to the target's text on its own line — the cursor is the code editor rung's.</summary>
+    private async Task InsertReferenceAsync(PaletteTarget target)
     {
-        if (string.IsNullOrEmpty(insertPick) || choices.FirstOrDefault(c => c.Value == insertPick) is not { } choice)
+        if (string.IsNullOrEmpty(insertPick) || target.Choices.FirstOrDefault(c => c.Value == insertPick) is not { } choice)
         {
             return;
         }
@@ -4758,11 +4788,9 @@
         var snippet = choice.TakesPipe && !string.IsNullOrEmpty(insertPipe)
             ? choice.Value.Replace(" }}", $" | {insertPipe} }}}}")
             : choice.Value;
-        var text = GetText(file);
-        var appended = text.Length == 0 ? snippet : text.EndsWith('\n') ? text + snippet : text + "\n" + snippet;
         insertPick = null;
         insertPipe = null;
-        await OnTextChangedAsync(file, appended);
+        await target.Append(snippet);
     }
 
     /// <summary>
@@ -4770,11 +4798,15 @@
     /// reference (grouped), a renderer pipe for a node's text, Insert appends it; under it the
     /// template's reads and the walker's warnings, from the walk.
     /// </summary>
-    private RenderFragment<(string File, WorkflowManifestReader.NodeView? FanNode, bool IsMacroText)> InsertReferencePalette => spec => @<text>
+    private RenderFragment<(string File, WorkflowManifestReader.NodeView? FanNode, bool IsMacroText)> InsertReferencePalette => spec =>
+        ReferencePalette(FilePaletteTarget(spec.File, spec.FanNode, spec.IsMacroText));
+
+    /// <summary>The palette over any target (#1044): a file's text, or a macro's instruction.</summary>
+    private RenderFragment<PaletteTarget> ReferencePalette => target => @<text>
         @{
-            var choices = ReferenceChoices(spec.File, spec.FanNode, spec.IsMacroText);
+            var choices = target.Choices;
             var picked = choices.FirstOrDefault(c => c.Value == insertPick);
-            var walked = TemplateWalkOf(spec.File);
+            var walked = target.Walked;
         }
         <details class="insert-reference">
             <summary>+ reference</summary>
@@ -4782,7 +4814,7 @@
                 <FluentSelect TOption="string" class="binding-row__select insert-reference__pick"
                         Value="@(insertPick ?? "")"
                         ValueChanged="@(v => { insertPick = string.IsNullOrEmpty(v) ? null : v; if (picked?.TakesPipe != true) { insertPipe = null; } })"
-                        aria-label="@($"Reference to insert into {spec.File}")">
+                        aria-label="@($"Reference to insert into {target.Name}")">
                     <FluentOption TOption="string" Value="">choose a reference…</FluentOption>
                     @foreach (var group in choices.GroupBy(c => c.Group))
                     {
@@ -4807,8 +4839,8 @@
                     </FluentSelect>
                 }
                 <FluentButton Appearance="Appearance.Outline" Disabled="@(picked is null)"
-                              aria-label="@($"Insert reference into {spec.File}")"
-                              @onclick="() => InsertReferenceAsync(spec.File, choices)">Insert</FluentButton>
+                              aria-label="@($"Insert reference into {target.Name}")"
+                              @onclick="() => InsertReferenceAsync(target)">Insert</FluentButton>
             </div>
             <p class="muted-text">Appended at the end of the text — move it where it belongs. A literal <code>{{</code> is escaped as <code>{{ "{{" }}</code>.</p>
         </details>
