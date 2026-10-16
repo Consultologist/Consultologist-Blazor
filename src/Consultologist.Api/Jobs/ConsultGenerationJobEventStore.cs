@@ -123,13 +123,13 @@ internal sealed class TableConsultGenerationJobEventStore : IConsultGenerationJo
         var filter = TableClient.CreateQueryFilter($"PartitionKey eq {jobId} and RowKey gt {minRowKey}");
         var storedEvents = new List<ConsultGenerationJobStoredEvent>();
 
-        await foreach (var entity in _events.QueryAsync<ConsultGenerationJobEventEntity>(
+        await foreach (var entity in _events.QueryAsync<TableEntity>(
             filter,
             cancellationToken: cancellationToken))
         {
-            if (!string.Equals(entity.AppUserId, appUserId, StringComparison.Ordinal))
+            if (!string.Equals(entity.GetString("AppUserId"), appUserId, StringComparison.Ordinal))
             {
-                throw new InvalidOperationException($"Consult generation SSE event app user mismatch. JobId={jobId}, Sequence={entity.Sequence}");
+                throw new InvalidOperationException($"Consult generation SSE event app user mismatch. JobId={jobId}, Sequence={entity.GetInt64("Sequence")}");
             }
 
             storedEvents.Add(ToStoredEvent(entity));
@@ -169,17 +169,17 @@ internal sealed class TableConsultGenerationJobEventStore : IConsultGenerationJo
             var eventRowKey = FormatSequence(sequence);
             var now = DateTimeOffset.UtcNow;
 
-            var eventEntity = new ConsultGenerationJobEventEntity
+            // #1051: the payload rides in chunks (ConsultGenerationJobEventPayload) —
+            // one property cannot hold a large job's snapshot.
+            var eventEntity = new TableEntity(jobId, eventRowKey)
             {
-                PartitionKey = jobId,
-                RowKey = eventRowKey,
-                AppUserId = appUserId,
-                Sequence = sequence,
-                EventType = candidate.EventType,
-                EventKey = candidate.EventKey,
-                PayloadJson = candidate.PayloadJson,
-                CreatedAtUtc = now
+                ["AppUserId"] = appUserId,
+                ["Sequence"] = sequence,
+                ["EventType"] = candidate.EventType,
+                ["EventKey"] = candidate.EventKey,
+                ["CreatedAtUtc"] = now,
             };
+            ConsultGenerationJobEventPayload.Write(eventEntity, candidate.PayloadJson);
 
             var eventKeyEntity = new ConsultGenerationJobEventKeyEntity
             {
@@ -234,7 +234,7 @@ internal sealed class TableConsultGenerationJobEventStore : IConsultGenerationJo
                     candidate.EventKey,
                     sequence);
 
-                return ToStoredEvent(eventEntity);
+                return new ConsultGenerationJobStoredEvent(jobId, appUserId, sequence, candidate.EventType, candidate.EventKey, candidate.PayloadJson, now);
             }
             catch (RequestFailedException ex) when (ex.Status is 409 or 412)
             {
@@ -273,7 +273,7 @@ internal sealed class TableConsultGenerationJobEventStore : IConsultGenerationJo
             return null;
         }
 
-        var eventEntity = await TryGetEntityAsync<ConsultGenerationJobEventEntity>(
+        var eventEntity = await TryGetEntityAsync<TableEntity>(
             jobId,
             keyEntity.EventRowKey,
             cancellationToken);
@@ -283,7 +283,7 @@ internal sealed class TableConsultGenerationJobEventStore : IConsultGenerationJo
             throw new InvalidOperationException($"Consult generation SSE event key exists without event row. JobId={jobId}, EventKey={eventKey}");
         }
 
-        if (!string.Equals(eventEntity.AppUserId, appUserId, StringComparison.Ordinal))
+        if (!string.Equals(eventEntity.GetString("AppUserId"), appUserId, StringComparison.Ordinal))
         {
             throw new InvalidOperationException($"Consult generation SSE event app user mismatch. JobId={jobId}, EventKey={eventKey}");
         }
@@ -358,16 +358,17 @@ internal sealed class TableConsultGenerationJobEventStore : IConsultGenerationJo
         }
     }
 
-    private static ConsultGenerationJobStoredEvent ToStoredEvent(ConsultGenerationJobEventEntity entity)
+    /// <summary>The stored event off its row — the payload joined from its chunks (#1051), one property on a row written before.</summary>
+    internal static ConsultGenerationJobStoredEvent ToStoredEvent(TableEntity entity)
     {
         return new ConsultGenerationJobStoredEvent(
             entity.PartitionKey,
-            entity.AppUserId,
-            entity.Sequence,
-            entity.EventType,
-            entity.EventKey,
-            entity.PayloadJson,
-            entity.CreatedAtUtc);
+            entity.GetString("AppUserId") ?? string.Empty,
+            entity.GetInt64("Sequence") ?? 0,
+            entity.GetString("EventType") ?? string.Empty,
+            entity.GetString("EventKey") ?? string.Empty,
+            ConsultGenerationJobEventPayload.Read(entity),
+            entity.GetDateTimeOffset("CreatedAtUtc") ?? default);
     }
 
     private static string FormatSequence(long sequence)
@@ -397,20 +398,6 @@ public sealed record ConsultGenerationJobStoredEvent(
     DateTimeOffset CreatedAtUtc)
 {
     public string SseId => $"{JobId}:{Sequence.ToString("D12", CultureInfo.InvariantCulture)}";
-}
-
-internal sealed class ConsultGenerationJobEventEntity : ITableEntity
-{
-    public string PartitionKey { get; set; } = string.Empty;
-    public string RowKey { get; set; } = string.Empty;
-    public DateTimeOffset? Timestamp { get; set; }
-    public ETag ETag { get; set; }
-    public string AppUserId { get; set; } = string.Empty;
-    public long Sequence { get; set; }
-    public string EventType { get; set; } = string.Empty;
-    public string EventKey { get; set; } = string.Empty;
-    public string PayloadJson { get; set; } = string.Empty;
-    public DateTimeOffset CreatedAtUtc { get; set; }
 }
 
 internal sealed class ConsultGenerationJobEventKeyEntity : ITableEntity

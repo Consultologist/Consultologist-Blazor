@@ -55,6 +55,32 @@ public class ConsultsResultTests : ClientRenderTestContext
             NodeOutputs: nodeOutputs));
     }
 
+    [Fact]
+    public void AnEmptyHeldInputsMap_StillCountsAsInputsAvailable_TheRerunStaysOffered()
+    {
+        // #1051: a catch-up event carries an empty map in place of the held
+        // input text (the text never rides the events table); the flag the
+        // Rerun control reads is "a map is present", not "the map has text".
+        WithCompletedJob(documents: OneNote, heldInputs: new Dictionary<string, string>());
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var rerun = page.Find("fluent-button.rerun-button");
+        Assert.Null(rerun.GetAttribute("disabled"));
+        Assert.Empty(page.FindAll(".rerun-blocked-line"));
+    }
+
+    [Fact]
+    public void NoHeldInputs_GreysTheRerun_AndSaysWhy()
+    {
+        WithCompletedJob(documents: OneNote, heldInputs: null);
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.NotNull(page.Find("fluent-button.rerun-button").GetAttribute("disabled"));
+        Assert.Contains("Rerun unavailable", page.Find(".rerun-blocked-line").TextContent);
+    }
+
     // ----- #933: the custom tier's unattested marker (#760) on the result -----
 
     private static readonly ConsultGenerationNodeDescriptor[] CustomNodes =

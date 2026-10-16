@@ -109,7 +109,7 @@ sequenceDiagram
 
 The `/events` endpoint emits these server-sent event names:
 
-- `snapshot`: initial full `ConsultGenerationJobResponse`.
+- `snapshot`: initial public `ConsultGenerationJobResponse` — nulls omitted and `HeldInputs` an empty map when the job holds inputs (#1051: the input text never rides an event; History reads it through GET).
 - `node-completed`: one DAG node's completion (or the map node's start), with
   `JobId`, `NodeId`, package-declared `Label`, `Message`, and node counts
   (milestone 4; replaces the fixed analysis stage events).
@@ -119,13 +119,13 @@ The `/events` endpoint emits these server-sent event names:
 - `block-completed`: one completed block with `JobId`, `BlockId`, and generated `Text`.
 - `block-failed`: one failed block with `JobId`, `BlockId`, and `Error`.
 - `heartbeat`: stream keepalive with `JobId` and current `Status`.
-- `done`: final full `ConsultGenerationJobResponse`.
+- `done`: final public `ConsultGenerationJobResponse`, the same way (nulls omitted, `HeldInputs` emptied).
 - `error`: stream-level failure with `JobId` and `Error`.
 
 Legacy event names (`analysis-started`, `concepts-extracted`, …,
 `section-standard-draft-created`, …) are never emitted for new jobs but replay from
 the event store for jobs that ran before milestones 3–4; the client ignores them.
 
-Semantic events include persisted `id:` values in the form `{jobId}:{sequence:D12}`. Heartbeat events are not persisted and do not advance the semantic event sequence.
+Semantic events include persisted `id:` values in the form `{jobId}:{sequence:D12}`. Heartbeat events are not persisted and do not advance the semantic event sequence. #1051: when the store refuses a response's events (a payload past what a row holds, storage down) the stream still sends them, **without `id:`** — they cannot be resumed by `Last-Event-ID` — and always sends `done`; the client treats such a stream exactly as a live one.
 
 The Blazor page treats `snapshot`, `node-completed`, `item-step`, `block-completed`, `block-failed`, and `done` as live UI update events. It falls back to polling `GET /api/ConsultGenerationJobs/{jobId}` when stream setup fails, the stream times out, the stream ends before `done`, event handling fails, or the server emits `error`.

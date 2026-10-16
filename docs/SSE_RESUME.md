@@ -1,5 +1,13 @@
 # SSE Resume Plan
 
+> **Amendment, 2026-10-16 (#1051).** On prod the catch-up store refused a job's `snapshot`/`done` row:
+> the whole public job response (~46K characters on a test/general job) in one Table property, over
+> the 64KB / 32K-character limit, and the live stream closed without `done` (the client reconnected
+> once, then polled). Since #1051 a row holds its payload in chunks (`PayloadJson`, `PayloadJson1` …
+> `PayloadJson15`, `PayloadChunkCount`), event JSON omits nulls and never carries the held input text,
+> and a stream whose events the store still refuses keeps streaming: it sends them **without ids**
+> (not resumable) and always sends `done`. The polling path logs the refusal and serves the job.
+
 ## Goal
 
 Consult generation progress should use this resilience chain:
@@ -211,9 +219,16 @@ RowKey       = zero-padded sequence number
 AppUserId
 EventType
 EventKey
-PayloadJson
+PayloadChunkCount        (#1051; absent on rows written before)
+PayloadJson              (chunk 0 — the whole payload on a row written before #1051)
+PayloadJson1 … PayloadJson15   (chunks of 30 000 UTF-16 characters, never split inside a surrogate pair)
 CreatedAtUtc
 ```
+
+A property holds 32K UTF-16 characters at most; the row's own cap is sixteen chunks (480 000
+characters, ≈960KB under the 1MB entity limit), past which the store refuses by name — and the SSE
+path then sends that response's events unpersisted (see the amendment above). The event row is a
+dictionary entity; the `!sequence` and `!event-key` rows keep their typed shapes.
 
 Example row key:
 
