@@ -121,7 +121,7 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
         var refusals = Refusals(page);
         foreach (var macro in new[] { "closing", "footer", "handoff" })
         {
-            Assert.Contains($"Macro '{macro}' must declare an instruction at specVersion 25; placed text tells the model when to emit its marker.", refusals);
+            Assert.Contains($"Macro '{macro}' must declare an instruction at specVersion 25; placed text tells the model when to write its text read.", refusals);
         }
 
         foreach (var macro in new[] { "closing", "footer", "handoff" })

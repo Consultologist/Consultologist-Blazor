@@ -967,7 +967,8 @@ public class HistoryDetailTests : ClientRenderTestContext
                     Appended: new[] { new ConsultAppendedEntry("macro", "closing") },
                     Excluded: new[]
                     {
-                        new ConsultNodeExclusion("slot", "stray", "no read in this node's prompt sanctions [[slot:stray]]"),
+                        // #1044: nothing in a rendered reply is withheld; a 25 exclusion is an instance's when refusal.
+                        new ConsultNodeExclusion("macro", "stray", "needs `input.kind == \"follow_up\"`; it does not hold"),
                         // #1038: a 25 instance's reason is the fixed form over the condition's own text.
                         new ConsultNodeExclusion("macro", "footer", "needs `node.scope.value == \"in_scope\"`; it does not hold"),
                     })
@@ -996,7 +997,7 @@ public class HistoryDetailTests : ClientRenderTestContext
         Assert.Contains("invalid: $.items: expected array", page.Find(".node-row__validation--invalid").TextContent);
         Assert.Equal("+1 placed", page.Find(".node-row__appended").TextContent.Trim());
         Assert.Equal("2 excluded", page.Find(".node-row__excluded").TextContent.Trim());
-        Assert.Contains("slot stray — no read in this node's prompt sanctions [[slot:stray]]", page.Find(".node-row__excluded").GetAttribute("title"));
+        Assert.Contains("macro stray — needs `input.kind == \"follow_up\"`; it does not hold", page.Find(".node-row__excluded").GetAttribute("title"));
         Assert.Contains("macro footer — needs `node.scope.value == \"in_scope\"`; it does not hold", page.Find(".node-row__excluded").GetAttribute("title"));
         // The agents row lists the 25 formats by their descriptor agents.
         Assert.Contains("concept_list → concept-extraction@1", page.Find(".provenance-agents").TextContent);

@@ -351,9 +351,9 @@ public class WorkflowPackageMigration24To25Tests
 
         var expected = new[]
         {
-            "Macro 'closing' must declare an instruction at specVersion 25; placed text tells the model when to emit its marker.",
-            "Macro 'footer' must declare an instruction at specVersion 25; placed text tells the model when to emit its marker.",
-            "Macro 'handoff' must declare an instruction at specVersion 25; placed text tells the model when to emit its marker."
+            "Macro 'closing' must declare an instruction at specVersion 25; placed text tells the model when to write its text read.",
+            "Macro 'footer' must declare an instruction at specVersion 25; placed text tells the model when to write its text read.",
+            "Macro 'handoff' must declare an instruction at specVersion 25; placed text tells the model when to write its text read."
         };
         Assert.True(expected.Order(StringComparer.Ordinal).SequenceEqual(errors.Order(StringComparer.Ordinal)), string.Join("\n", errors));
 

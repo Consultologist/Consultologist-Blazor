@@ -392,7 +392,7 @@ public class WorkflowV25Tests
         var (manifest, files) = V25Package.Minimal();
         manifest = manifest with { Macros = manifest.Macros!.Select(m => m with { Instruction = " " }).ToList() };
 
-        Assert.Contains("Macro 'closing' must declare an instruction at specVersion 25; placed text tells the model when to emit its marker.", V25Package.Errors((manifest, files)));
+        Assert.Contains("Macro 'closing' must declare an instruction at specVersion 25; placed text tells the model when to write its text read.", V25Package.Errors((manifest, files)));
     }
 
     [Fact]
@@ -611,7 +611,7 @@ public class WorkflowV25TemplateTests
 
         var errors = V25Package.Errors((manifest, files));
 
-        Assert.Contains(errors, e => e.StartsWith("Macro 'closing' instruction reads input.severity", StringComparison.Ordinal));
+        Assert.Contains(errors, e => e.StartsWith("Macro 'closing' instruction reads input 'severity'", StringComparison.Ordinal));
         Assert.Contains(errors, e => e.StartsWith("Macro 'closing' instruction reads macro.closing.size", StringComparison.Ordinal));
     }
 

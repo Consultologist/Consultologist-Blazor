@@ -545,7 +545,7 @@ public static partial class WorkflowPackageValidator
 
             if (string.IsNullOrWhiteSpace(macro.Instruction))
             {
-                errors.Add($"Macro '{macro.Id}' must declare an instruction at specVersion 25; placed text tells the model when to emit its marker.");
+                errors.Add($"Macro '{macro.Id}' must declare an instruction at specVersion 25; placed text tells the model when to write its text read.");
             }
 
             if (string.IsNullOrWhiteSpace(macro.File) || !files.ContainsKey(macro.File))
