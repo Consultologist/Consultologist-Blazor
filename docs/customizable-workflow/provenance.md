@@ -368,6 +368,16 @@ system with no dependency on this application or its Azure tenant.
 >   signature.
 > - **The rerun verdict** compares `outputHash` as before, under the same `hashVersion`; two
 >   25 runs that composed the same output agree, and a 25 row never compares with a 5 row.
+>
+> **Amendment, 2026-10-16 (#1044; provenance@v2026.10.3).** At specVersion 25 the model writes
+> `{{ macro.<id>.text }}` where a slot's instruction told it to, and the completion **renders
+> the reply as a template** over the node's scope before the instances compose: definition 6's
+> output side is the rendered reply with the instances around it (amended in place — no live
+> engine had written it); `agentOutputHash` stays the reply as returned. `appended[]`'s `slot`
+> entries name each macro text the reply read, in render order; `excluded[]` keeps only
+> instance `when` refusals — nothing in a rendered reply is withheld or removed, and a reply
+> that does not render fails the node (`error` carries the renderer's sentence). The
+> `[[slot:<id>]]` marker is the ≤24 grammar.
 
 > **Amendment, 2026-10-14 (#1006 — specVersion 25 B7: `provenance@v2026.10.1`).** The registry
 > now documents what the engine writes for a 25 package (the record's shape did not move for
