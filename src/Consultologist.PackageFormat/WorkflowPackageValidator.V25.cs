@@ -450,6 +450,14 @@ public static partial class WorkflowPackageValidator
                 errors.Add($"Node '{node.Id}' declares failIfEmpty, but format '{format.Id}' is {spec.Producer} and has no reply to judge.");
             }
 
+            // A5 #1018: the ≤24 twins (a template, a check) in the format's
+            // words — a render and an operation are deterministic by
+            // construction, so the claim is not theirs to make.
+            if (node.Reproducible != null && spec.Producer is WorkflowFormatProducers.Rendered or WorkflowFormatProducers.Computed)
+            {
+                errors.Add($"Node '{node.Id}' declares reproducible, but format '{format.Id}' is {spec.Producer} and deterministic by construction; the claim is not its to make.");
+            }
+
             nodes[node.Id] = new NodeAt25(node, format, fan, folder);
         }
 

@@ -690,6 +690,30 @@ public class WorkflowV25TemplateTests
     }
 
     [Fact]
+    public void Reproducible_IsRefusedOnARenderOrAnOperation_At25()
+    {
+        // A5 #1018: the ≤24 twins (a template, a check may not claim it) in the
+        // format's words — rendered and computed producers are deterministic by
+        // construction; attested and custom nodes may still claim it.
+        var (manifest, files) = Minimal();
+
+        var onProse = V25Package.WithNode(manifest, "assessment", n => n with { Reproducible = true });
+        Assert.True(V25Package.Validate((onProse, files), V25Package.Catalog()).IsValid, string.Join(" | ", V25Package.Errors((onProse, files))));
+
+        var onComputed = V25Package.WithNode(manifest, "coverage", n => n with { Reproducible = true });
+        Assert.Contains("Node 'coverage' declares reproducible, but format 'terms_subset' is computed and deterministic by construction; the claim is not its to make.", V25Package.Errors((onComputed, files)));
+
+        var withRender = manifest with
+        {
+            Prompts = manifest.Prompts!.Append(new WorkflowPromptSpec("summary", "prompts/summary.md", new List<string>())).ToList(),
+            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("summary", "Summary", Prompt: "summary", Format: "rendered", Reproducible: true)).ToList(),
+        };
+        withRender = V25Package.WithNode(withRender, "all", n => n with { Aggregate = n.Aggregate!.Append("node.summary").ToList() });
+        var renderFiles = new Dictionary<string, string>(files, StringComparer.Ordinal) { ["prompts/summary.md"] = "Summary of {{ node.assessment.content }}." };
+        Assert.Contains("Node 'summary' declares reproducible, but format 'rendered' is rendered and deterministic by construction; the claim is not its to make.", V25Package.Errors((withRender, renderFiles)));
+    }
+
+    [Fact]
     public void FailIfEmpty_LivesOnTheNode_At25()
     {
         // B5 #1004 (design § 3.6): output is refused at 25, so failIfEmpty moves
