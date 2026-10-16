@@ -701,8 +701,9 @@ public record ConsultFailedDocumentResponse(
 /// <summary>
 /// Mirrors Consultologist.Api.Models.ConsultAppendedEntry (v11 #513, #863):
 /// one block appended to a deliverable's document after the sections — an
-/// appended macro, a slot the model placed inline (#863), or the signature
-/// block (AsOf carries its as-of date; null on macro/slot entries).
+/// appended macro, a slot the model placed inline (#863, ≤24), or the signature
+/// block (AsOf carries its as-of date; null on macro/slot entries) — and, at 25,
+/// a node row's placed entries (macro, or inline: #1047).
 /// </summary>
 public record ConsultAppendedEntry(string Kind, string Id, string? AsOf = null);
 

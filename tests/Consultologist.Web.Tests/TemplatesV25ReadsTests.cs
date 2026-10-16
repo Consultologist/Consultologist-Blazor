@@ -66,7 +66,7 @@ public class TemplatesV25ReadsTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".binding-row"));
 
         Assert.Equal(
-            new[] { "input.intake", "input.notes", "node.extract.value", "node.meds.value", "snippet.standards.text", "macro.tool_note.prompt (slot)" },
+            new[] { "input.intake", "input.notes", "node.extract.value", "node.meds.value", "snippet.standards.text", "macro.tool_note.prompt (inline)" },
             Reads(page, "assessment"));
     }
 

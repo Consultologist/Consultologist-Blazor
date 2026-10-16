@@ -10,8 +10,8 @@ namespace Consultologist.Web.Tests;
 
 /// <summary>
 /// v25 C3 (#1009, design §§ 5, 7, 13): macros at 25 — the macro pane's instruction,
-/// Instances (node and deliverable rows) and Read inline at; the node pane's one Macros
-/// section with its derived inline slots; the Deliverables pane's prepend/append; the
+/// Instances (node and deliverable rows) and Read at; the node pane's one Macros
+/// section with its derived inline macros; the Deliverables pane's prepend/append; the
 /// desk in the registry's words. Rendered at 25 alone; the four ≤24 macro suites stay
 /// as the parity proof. Inert on the live editor until A5.
 /// </summary>
@@ -130,8 +130,8 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
     public void TheInstruction_HasThePalette_ThatAppendsIntoIt_AndNeverOffersTheMacrosOwnMembers()
     {
         // #1044: the instruction is a template — the palette inserts into it; the
-        // macro's own .text and .prompt are not offered (its text is what the slot
-        // fills, its slot is itself), another macro's are.
+        // macro's own .text and .prompt are not offered (its text is what the inline
+        // read fills, its inline read is itself), another macro's are.
         var page = RenderEditor();
         CapturePublish();
         Navigate(page, "closing");
@@ -285,7 +285,7 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         Assert.Contains("deliverable 'consult'", remove.TextContent);
     }
 
-    // ----- the macro pane: Read inline at -----
+    // ----- the macro pane: Read at -----
 
     [Fact]
     public void TheMacroPane_ListsWhereItIsReadInline_FromTheWalk()
@@ -294,7 +294,7 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         Navigate(page, "tool_note");
 
         var readers = page.Find("ul.macro-readers[aria-label='Readers of tool_note']");
-        Assert.Equal(new[] { "Prompt 'assessment' — macro.tool_note.prompt (slot)" }, readers.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
+        Assert.Equal(new[] { "Prompt 'assessment' — macro.tool_note.prompt (inline)" }, readers.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
 
         page.Find("ul.macro-readers button.snippet-readers__row").Click();
         Assert.Equal("assessment", page.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim());
@@ -305,7 +305,7 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
     {
         var page = RenderEditor();
         Navigate(page, "closing");
-        Assert.Contains("Not read inline by any template", page.Find(".editor-pane").TextContent);
+        Assert.Contains("Not read by any template", page.Find(".editor-pane").TextContent);
 
         // Read as text from the standards snippet.
         Navigate(page, "standards");
@@ -396,34 +396,34 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void InlineSlots_AreDerivedFromTheWalk_AndOpenTheMacro()
+    public void InlineMacros_AreDerivedFromTheWalk_AndOpenTheMacro()
     {
         var page = RenderEditor();
         ShowNode(page, "assessment");
 
-        var slots = page.Find("ul.node-inline-slots[aria-label='Inline slots of assessment']");
+        var slots = page.Find("ul.node-inline-macros[aria-label='Inline macros of assessment']");
         Assert.Equal(new[] { "macro.tool_note.prompt — Tool note" }, slots.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
 
-        page.Find("ul.node-inline-slots button").Click();
+        page.Find("ul.node-inline-macros button").Click();
         Assert.Equal("tool_note", page.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim());
     }
 
     [Fact]
-    public void AFanNode_NamesTheItemsLackingTheSlotRead_InTheValidatorsWords()
+    public void AFanNode_NamesTheItemsLackingTheInlineRead_InTheValidatorsWords()
     {
         var page = RenderEditor();
         ShowNode(page, "section_notes");
-        Assert.Contains("No inline slot", page.Find(".editor-pane").TextContent);
+        Assert.Contains("No inline macro", page.Find(".editor-pane").TextContent);
 
         // The hpi item's text reads the slot; plan's does not.
         Navigate(page, "HPI");
         page.Find(".editor-pane fluent-text-area").Change("History: {{ input.notes }} {{ macro.tool_note.prompt }}");
         ShowNode(page, "section_notes");
 
-        Assert.Contains("macro.tool_note.prompt", page.Find("ul.node-inline-slots[aria-label='Inline slots of section_notes']").TextContent);
+        Assert.Contains("macro.tool_note.prompt", page.Find("ul.node-inline-macros[aria-label='Inline macros of section_notes']").TextContent);
         Assert.Equal(
             "Node 'section_notes' fans snippet folder 'sections'; items plan carry no macro.tool_note.prompt read, so nothing tells the model to write macro.tool_note.text for them.",
-            page.Find(".node-inline-slots__warning").TextContent.Trim());
+            page.Find(".node-inline-macros__warning").TextContent.Trim());
     }
 
     // ----- the Deliverables pane: prepend / append, document scope -----
@@ -619,11 +619,11 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void TheDesk_RefusesAnInlineSlot_OnAFormatTakingNoOutputMacros()
+    public void TheDesk_RefusesAnInlineMacro_OnAFormatTakingNoOutputMacros()
     {
         var refusals = DeskRefusals(Reshaped(_ => { }, ("prompts/scope.md", "Is this in scope? {{ input.notes }} {{ macro.tool_note.prompt }}")));
 
-        Assert.Contains("Node 'scope' reads macro.tool_note.prompt (a slot), but format 'classification' takes no output macros; only a text format with outputMacros may.", refusals);
+        Assert.Contains("Node 'scope' reads macro.tool_note.prompt (an inline macro), but format 'classification' takes no output macros; only a text format with outputMacros may.", refusals);
     }
 
     [Fact]

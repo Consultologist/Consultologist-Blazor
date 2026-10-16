@@ -167,7 +167,7 @@ public class TemplatesV25PaletteTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void TheMacroPane_HasThePalette_ButNeverASlotRead()
+    public void TheMacroPane_HasThePalette_ButNeverAnInlineRead()
     {
         var page = RenderEditor();
         Navigate(page, "closing");
@@ -200,7 +200,7 @@ public class TemplatesV25PaletteTests : ClientRenderTestContext
         Navigate(page, "assessment");
 
         Assert.Equal(
-            "Reads: input.intake, input.notes, node.extract.value, node.meds.value, snippet.standards.text, macro.tool_note.prompt (slot)",
+            "Reads: input.intake, input.notes, node.extract.value, node.meds.value, snippet.standards.text, macro.tool_note.prompt (inline)",
             page.Find(".template-reads").TextContent.Trim());
 
         page.Find(".editor-pane fluent-text-area").Change("{{ node.extract.text }} {{ snippet.standards.text }} {{ macro.tool_note.prompt }}");
