@@ -83,7 +83,7 @@ The identity's roles and the shared-key posture are in
 | `LinkedInLinkStates` | `linkedin-state` / token | nonce, return origin, expiry (10 min) | no | single-use take; the sweep deletes expired rows once per run (#558) | `Auth/LinkedInLinkStateStore.cs:25` |
 | `PackageOwners` | appUserId / package name | a timestamp | no | none | `Workflow/WorkflowPackageOwnership.cs:53` |
 | `ConsultGenerationJobIndex` | appUserId / reverse-ticks_jobId | status, counts, timestamps, `Source`, `TextDroppedAtUtc`, delivery | no | **none — the permanent pointer** | `Jobs/ConsultGenerationJobIndexStore.cs:29` |
-| `ConsultGenerationJobEvents` | jobId / sequence (+ dedupe, counter rows) | `PayloadJson`: streamed snapshots **with the generated prose** | **yes** | the retention sweep, whole partition | `Jobs/ConsultGenerationJobEventStore.cs:32` |
+| `ConsultGenerationJobEvents` | jobId / sequence (+ dedupe, counter rows) | `PayloadJson` (+ chunks, #1051): streamed snapshots **with the generated prose**, never the held input text since #1051 | **yes** | the retention sweep, whole partition | `Jobs/ConsultGenerationJobEventStore.cs:32` |
 | `EmailIntakeProcessed` | `email-intake` / hash of message id | message id, from address, outcome, job id — never subject or body | PII | only a `queued` claim's release | `Email/EmailIntakeClaimStore.cs:78` |
 
 ### 1.3 Where text is today

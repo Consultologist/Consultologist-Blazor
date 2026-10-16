@@ -618,9 +618,11 @@ sampled for requests, non-authoritative, on its own retention — and since
 entity and is served by `GET /api/ConsultGenerationJobs/{jobId}`; History
 renders it as the Provenance panel and the script prints the same thing.
 
-**`ConsultGenerationJobEvents` is not an audit trail.** It is written only by
-the SSE endpoint, for browser resume. A job nobody streamed — which is every
-emailed one — correctly has zero rows, and that says nothing about the job.
+**`ConsultGenerationJobEvents` is not an audit trail.** It is written for browser
+resume — by the SSE endpoint, and (since the polling materialization) by
+`GET /api/ConsultGenerationJobs/{jobId}` too. A job nobody streamed or polled —
+which is every emailed one — correctly has zero rows, and that says nothing
+about the job.
 
 
 ### Driving it by hand (verified in production 2026-08-01)
