@@ -14,20 +14,26 @@ namespace Consultologist.Api.Jobs;
 /// <item>the reply is taken and <c>agentOutputHash</c> computed — <see cref="ConsultNodeDispatch.Settle"/>'s, over the bytes as returned;</item>
 /// <item>validation and <c>onInvalid</c> — <see cref="ConsultNodeDispatch.Settle"/>'s;</item>
 /// <item><c>failIfEmpty</c> is judged on the reply, before anything is composed;</item>
-/// <item>the inline slots this prompt sanctioned fill their markers (§ 7): a
-/// sanctioned marker is the one whose <c>macro.&lt;id&gt;.prompt</c> the render
-/// that produced the reply evaluated; the package's own walk is the cross-check
-/// (a render read the walk does not reach is an engine fault, thrown) and the
-/// wording of a removal — behind a branch the render did not take, or never
-/// read at all;</item>
-/// <item>the before/after instances compose around the result — <c>forItem</c>
-/// anchors, <c>when</c> gates (a refusal is recorded by name with the
-/// explainer's sentence);</item>
+/// <item>#1044 (package-format-v25.md § The reply is a template): the reply is
+/// RENDERED as a template over the node's own scope — the scope its prompt
+/// rendered over — so every <c>{{ macro.&lt;id&gt;.text }}</c> the model wrote
+/// where a slot's instruction told it to is that macro's text, rendered, and
+/// any other read a template could make renders the same way; a reply that
+/// does not parse or reads what the scope has no value for FAILS the node
+/// (the renderer's <see cref="InvalidOperationException"/>, which the Durable
+/// policy does not retry — the prompt or the agent is at fault). Nothing is
+/// sanctioned, dropped or rewritten. The package's walk is still the
+/// cross-check on the prompt's own <c>.prompt</c> reads (a render read the
+/// walk does not reach is an engine fault, thrown): the walk is what made the
+/// fills' reads edges of this node;</item>
+/// <item>the before/after instances compose around the rendered reply —
+/// <c>forItem</c> anchors, <c>when</c> gates (a refusal is recorded by name
+/// with the explainer's sentence);</item>
 /// <item><c>outputHash</c> is taken over what came out — what <c>node.&lt;id&gt;.text</c>,
 /// the aggregator and the deliverable read.</item>
 /// </list>
-/// Every text composed here — an instance's, a fill's — renders over the node's
-/// own 25 scope, which is why its reads are the node's derived edges.
+/// Every text composed here — the reply, an instance's — renders over the
+/// node's own 25 scope, which is why its reads are the node's derived edges.
 /// </summary>
 internal static class ConsultNodeCompletion
 {
@@ -50,17 +56,15 @@ internal static class ConsultNodeCompletion
 
         var hasInstances = input.Instances is { Count: > 0 };
 
-        if (!hasInstances && promptReads.Count == 0 && !WorkflowSlotMarker.Pattern.IsMatch(settled.RawOutput))
+        if (!hasInstances && promptReads.Count == 0 && !LooksLikeATemplate(settled.RawOutput))
         {
-            // Nothing to compose, no marker: step 6 is step 1's digest, already taken.
+            // Nothing to compose, nothing to render (plain text renders to itself):
+            // step 6 is step 1's digest, already taken.
             return settled;
         }
 
         var scope = ConsultRenderPayload.ScopeAt25(input, package);
         var sanctioned = SanctionedBy(package, nodeId, itemId);
-
-        // 4. The fills: what the render read, cross-checked against the walk.
-        var fills = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var read in promptReads.Order(StringComparer.Ordinal))
         {
@@ -69,9 +73,14 @@ internal static class ConsultNodeCompletion
                 throw new InvalidOperationException(
                     $"Node '{nodeId}' rendered macro.{read}.prompt, which the package's walk does not reach from its prompt; the walk and the render disagree.");
             }
-
-            fills[read] = RenderMacro(scope, read, nodeId);
         }
+
+        // 4. The reply rendered (#1044): a classification is its normalised answer
+        // and renders nothing; everything else is a template over the node's scope.
+        var trace = new TemplateRenderer.TemplateRenderTrace();
+        var renderedReply = settled.Classification is not null
+            ? settled.RawOutput
+            : TemplateRenderer.Render($"Node '{nodeId}' reply", settled.RawOutput, scope, ConceptPipes.All, trace);
 
         // 5. The instances: anchored by forItem, gated by when.
         var instances = new List<WorkflowNodeCompletion.Instance>();
@@ -97,15 +106,7 @@ internal static class ConsultNodeCompletion
             instances.Add(new WorkflowNodeCompletion.Instance(instance.Id, instance.After, RenderMacro(scope, instance.Id, nodeId)));
         }
 
-        var composed = WorkflowNodeCompletion.Compose(
-            settled.RawOutput,
-            instances,
-            fills,
-            id => sanctioned.Contains(id)
-                ? $"the prompt that ran did not read macro.{id}.prompt; the read sits behind a condition the render did not take"
-                : $"no read in this node's prompt sanctions [[slot:{id}]]");
-
-        excluded.AddRange(composed.Removals.Select(r => new ConsultNodeExclusion(r.Kind, r.Id, r.Reason)));
+        var composed = WorkflowNodeCompletion.Compose(renderedReply, instances, trace.TextReads.ToList());
 
         // 6. outputHash over what came out.
         return settled with
@@ -116,6 +117,10 @@ internal static class ConsultNodeCompletion
             Excluded = excluded.Count > 0 ? excluded : null,
         };
     }
+
+    /// <summary>#1044: whether a reply carries anything a render would change — a Scriban code or statement block; plain text renders to itself.</summary>
+    internal static bool LooksLikeATemplate(string reply) =>
+        reply.Contains("{{", StringComparison.Ordinal) || reply.Contains("{%", StringComparison.Ordinal);
 
     /// <summary>Whether a failure that crossed the activity boundary is the empty-reply refusal (its type name rides FailureDetails; the message never does).</summary>
     public static bool IsEmptyReplyFailure(string? errorType) =>

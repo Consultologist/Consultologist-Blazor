@@ -6,9 +6,10 @@ using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
 
 /// <summary>
-/// B5 #1004 (design §§ 6–7): the completion order in the activity — the reply's
-/// digest, failIfEmpty on the reply, the sanctioned slots filled (the render's
-/// reads, cross-checked against the walk), the instances composed, outputHash
+/// B5 #1004 → #1044 (design §§ 6–7): the completion order in the activity — the
+/// reply's digest, failIfEmpty on the reply, the reply RENDERED as a template
+/// over the node's scope (its macro.&lt;id&gt;.text reads are its slots; a reply
+/// that does not render fails the node), the instances composed, outputHash
 /// over what came out, and every placement and exclusion on the record.
 /// </summary>
 public class ConsultNodeCompletionTests
@@ -37,9 +38,9 @@ public class ConsultNodeCompletionTests
             Item: item, ForEach: forEach, Run: Run, Profile: Profile,
             Supplied: Supplied, Classifications: new Dictionary<string, string> { ["scope"] = "in_scope" },
             FailIfEmpty: failIfEmpty ?? descriptor.FailIfEmpty, Instances: descriptor.Macros);
-        var reads = new HashSet<string>(StringComparer.Ordinal);
-        var rendered = ConsultRenderPayload.RenderAt25(input, package, package.SourceFiles![$"prompts/{node.Prompt}.md"], reads);
-        return (package, input, reads, rendered);
+        var trace = new TemplateRenderer.TemplateRenderTrace();
+        var rendered = ConsultRenderPayload.RenderAt25(input, package, package.SourceFiles![$"prompts/{node.Prompt}.md"], trace);
+        return (package, input, trace.PromptReads.ToHashSet(StringComparer.Ordinal), rendered);
     }
 
     /// <summary>The closing instance moved off assessment (onto section_notes, so the macro stays placed and the package valid).</summary>
@@ -81,10 +82,11 @@ public class ConsultNodeCompletionTests
     }
 
     [Fact]
-    public void ASanctionedMarker_IsFilledWithTheMacrosText_RenderedOverTheNodesScope()
+    public void TheReplysTextRead_IsTheMacrosText_RenderedOverTheNodesScope()
     {
         // The prompt reads macro.closing.prompt (through its snippet); the model
-        // emits the marker; closing.md reads scope — one of this node's edges.
+        // writes the read the sentence named; closing.md reads scope — one of
+        // this node's edges.
         var (package, input, reads, rendered) = Prepare(
             "assessment",
             m => V25Package.WithNode(m, "assessment", n => n with { Macros = null }),
@@ -95,34 +97,105 @@ public class ConsultNodeCompletionTests
             });
 
         Assert.Contains(WorkflowMacroMechanics.Prompt("closing", "Add a closing line if the plan changed."), rendered);
+        Assert.Contains("{{ macro.closing.text }}", rendered);
         Assert.Equal(new[] { "closing" }, reads);
 
-        var result = ConsultNodeCompletion.Complete(Settled("Plan.\n\n[[slot:closing]]"), input, package, reads);
+        var result = ConsultNodeCompletion.Complete(Settled("Plan.\n\n{{ macro.closing.text }}"), input, package, reads);
 
         Assert.Equal("Plan.\n\nClosing for in_scope: Dr Example.", result.RawOutput);
         Assert.Equal(new[] { "slot:closing" }, result.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
         Assert.Null(result.Excluded);
         Assert.Equal(ConsultGenerationProvenance.Sha256Hex(result.RawOutput), result.OutputHash);
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex("Plan.\n\n{{ macro.closing.text }}"), result.AgentOutputHash);
     }
 
     [Fact]
-    public void AMarkerNoReadSanctions_IsRemoved_AndNamed()
+    public void AReplysRead_NoPromptInstructed_StillRenders_OverTheFullScope()
+    {
+        // #1044: nothing in a reply is sanctioned or removed — the reply renders
+        // over the node's full scope, every macro in it.
+        var (package, input, reads, _) = Prepare("assessment", Unplaced);
+
+        var result = ConsultNodeCompletion.Complete(Settled("Plan. {{ macro.closing.text }} End."), input, package, reads);
+
+        Assert.Equal("Plan. Closing: Dr Example. End.", result.RawOutput);
+        Assert.Equal(new[] { "slot:closing" }, result.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
+        Assert.Null(result.Excluded);
+    }
+
+    [Fact]
+    public void AReplyReadingTheScope_RendersIt_AndNamesNoSlot()
     {
         var (package, input, reads, _) = Prepare("assessment", Unplaced);
 
-        var result = ConsultNodeCompletion.Complete(Settled("Plan. [[slot:closing]] End."), input, package, reads);
+        var result = ConsultNodeCompletion.Complete(Settled("Scope {{ node.scope.text }}; kind {{ input.kind }}; {{ snippet.standards.text }}"), input, package, reads);
 
-        Assert.Equal("Plan.  End.", result.RawOutput);
+        Assert.StartsWith("Scope in_scope; kind new; ", result.RawOutput);
         Assert.Null(result.Appended);
-        Assert.Equal(new ConsultNodeExclusion("slot", "closing", "no read in this node's prompt sanctions [[slot:closing]]"), Assert.Single(result.Excluded!));
+        Assert.Null(result.Excluded);
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(result.RawOutput), result.OutputHash);
+        Assert.NotEqual(result.OutputHash, result.AgentOutputHash);
+    }
+
+    [Theory]
+    [InlineData("Plan {{ 1 + }}", "Node 'assessment' reply does not parse: ")]
+    [InlineData("Plan {{ unclosed", "Node 'assessment' reply failed to render: ")]
+    [InlineData("Plan {{ node.meds.text }}", "Node 'assessment' reply reads node.meds, which this render has no value for.")]
+    [InlineData("Plan {{ input.severity }}", "Node 'assessment' reply reads input.severity, which this render has no value for.")]
+    [InlineData("Plan {{ macro.closing.size }}", "Node 'assessment' reply reads macro.closing.size, which this render has no value for.")]
+    public void AReplyThatDoesNotRender_FailsTheNode_NonRetryably(string reply, string sentence)
+    {
+        // #1044: the prompt or the agent is at fault — an InvalidOperationException,
+        // which the orchestrator's retry policy does not retry (ConsultGenerationEngine.AgentActivityRetryOptions).
+        var (package, input, reads, _) = Prepare("assessment", Unplaced);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => ConsultNodeCompletion.Complete(Settled(reply), input, package, reads));
+
+        Assert.StartsWith(sentence, ex.Message);
     }
 
     [Fact]
-    public void AMarkerWhoseReadSitsBehindABranchNotTaken_IsRemoved_AndSaysSo()
+    public void AReadInsideAFilledText_IsTheTextsNotAnEntry_AndTwiceReadIsTwicePlaced()
+    {
+        // The fixture keeps closing placed after assessment (so the package stays
+        // valid); note is read only through closing's text.
+        var (package, input, reads, _) = Prepare(
+            "assessment",
+            m => m with { Macros = m.Macros!.Append(new WorkflowMacroSpec("note", "Note", "macros/note.md", Instruction: "Add a note.")).ToList() },
+            f => new Dictionary<string, string>(f, StringComparer.Ordinal)
+            {
+                ["macros/closing.md"] = "Closing. {{ macro.note.text }}",
+                ["macros/note.md"] = "Note.",
+            });
+
+        var result = ConsultNodeCompletion.Complete(Settled("{{ macro.closing.text }} {{ macro.closing.text }}"), input, package, reads);
+
+        Assert.Equal("Closing. Note. Closing. Note.\n\nClosing. Note.", result.RawOutput);
+        Assert.Equal(new[] { "slot:closing", "slot:closing", "macro:closing" }, result.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
+    }
+
+    [Fact]
+    public void AnInstructionIsATemplate_RenderedBeforeTheSentence()
+    {
+        // #1044: the instruction renders over the node's scope; the sentence,
+        // carrying the literal read, is appended after.
+        var (_, _, reads, rendered) = Prepare(
+            "assessment",
+            m => V25Package.WithNode(m, "assessment", n => n with { Macros = null }) with
+            {
+                Macros = m.Macros!.Select(x => x with { Instruction = "Add a closing line for a {{ input.kind }} referral if {{ node.scope.text }}." }).ToList(),
+            },
+            f => new Dictionary<string, string>(f, StringComparer.Ordinal) { ["snippets/standards.md"] = "Standards. {{ macro.closing.prompt }}" });
+
+        Assert.Contains(WorkflowMacroMechanics.Prompt("closing", "Add a closing line for a new referral if in_scope."), rendered);
+        Assert.Equal(new[] { "closing" }, reads);
+    }
+
+    [Fact]
+    public void AReplyRead_BehindABranchThePromptDidNotTake_StillRenders()
     {
         // The walk reaches the read (conservative over branches); the render did
-        // not take it: the marker is unsanctioned by the prompt that ran, and
-        // the record says exactly that.
+        // not take it; the reply renders all the same — no sanction at 25.
         var (package, input, reads, rendered) = Prepare(
             "assessment",
             m => V25Package.WithNode(m, "assessment", n => n with { Macros = null }),
@@ -134,12 +207,11 @@ public class ConsultNodeCompletionTests
         Assert.Equal("Assess Referral.", rendered);
         Assert.Empty(reads);
 
-        var result = ConsultNodeCompletion.Complete(Settled("Plan. [[slot:closing]]"), input, package, reads);
+        var result = ConsultNodeCompletion.Complete(Settled("Plan. {{ macro.closing.text }}"), input, package, reads);
 
-        Assert.Equal("Plan. ", result.RawOutput);
-        Assert.Equal(
-            new ConsultNodeExclusion("slot", "closing", "the prompt that ran did not read macro.closing.prompt; the read sits behind a condition the render did not take"),
-            Assert.Single(result.Excluded!));
+        Assert.Equal("Plan. Closing: Dr Example.", result.RawOutput);
+        Assert.Equal(new[] { "slot:closing" }, result.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
+        Assert.Null(result.Excluded);
     }
 
     [Fact]
@@ -231,7 +303,7 @@ public class ConsultNodeCompletionTests
     }
 
     [Fact]
-    public void AFanItemsOwnSlotRead_SanctionsItsMarker_AndNotAnotherItems()
+    public void AFanItemsOwnSlotRead_InstructsItsItem_AndEitherItemsReplyRenders()
     {
         var hpi = new Dictionary<string, string> { ["id"] = "hpi", ["name"] = "HPI", ["content"] = "History. {{ macro.closing.prompt }}" };
         var plan = new Dictionary<string, string> { ["id"] = "plan", ["name"] = "Plan", ["content"] = "Plan." };
@@ -246,12 +318,12 @@ public class ConsultNodeCompletionTests
         Assert.Equal(new[] { "closing" }, hpiReads);
         Assert.Empty(planReads);
 
-        var filled = ConsultNodeCompletion.Complete(Settled("H. [[slot:closing]]"), forHpi, package, hpiReads);
-        var removed = ConsultNodeCompletion.Complete(Settled("P. [[slot:closing]]"), forPlan, package, planReads);
+        var forHpiResult = ConsultNodeCompletion.Complete(Settled("H. {{ macro.closing.text }} ({{ item.name }})"), forHpi, package, hpiReads);
+        var forPlanResult = ConsultNodeCompletion.Complete(Settled("P. {{ macro.closing.text }} ({{ item.name }})"), forPlan, package, planReads);
 
-        Assert.Equal("H. Closing: Dr Example.", filled.RawOutput);
-        Assert.Equal("P. ", removed.RawOutput);
-        Assert.Equal("no read in this node's prompt sanctions [[slot:closing]]", Assert.Single(removed.Excluded!).Reason);
+        Assert.Equal("H. Closing: Dr Example. (HPI)", forHpiResult.RawOutput);
+        Assert.Equal("P. Closing: Dr Example. (Plan)", forPlanResult.RawOutput);
+        Assert.Null(forPlanResult.Excluded);
     }
 
     [Fact]
