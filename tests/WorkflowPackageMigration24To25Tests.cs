@@ -360,7 +360,7 @@ public class WorkflowPackageMigration24To25Tests
         // Each of those is named by a notice.
         foreach (var macro in new[] { "closing", "footer", "handoff" })
         {
-            Assert.Contains(result.Notices, n => n == $"Macro '{macro}' needs an instruction before publishing (specVersion 25): what the model is told where its slot is read.");
+            Assert.Contains(result.Notices, n => n == $"Macro '{macro}' needs an instruction before publishing (specVersion 25): what the model is told where it is read inline (macro.<id>.prompt).");
         }
     }
 

@@ -1771,9 +1771,9 @@
                                     <p class="muted-text">
                                         A named Scriban text the package owns, placed before or after a node's
                                         output, prepended or appended to a deliverable, or read inline as
-                                        <code>{{ macro.&lt;id&gt;.text }}</code> / <code>{{ macro.&lt;id&gt;.prompt }}</code> (its slot).
+                                        <code>{{ macro.&lt;id&gt;.text }}</code> / <code>{{ macro.&lt;id&gt;.prompt }}</code> (inline).
                                         It carries an instruction — a Scriban template that tells the model when to write
-                                        <code>{{ macro.&lt;id&gt;.text }}</code> where its slot is read; the reply renders it.
+                                        <code>{{ macro.&lt;id&gt;.text }}</code> where it is read inline; the reply renders it.
                                         Publish stays blocked until the instruction is written and something places or reads it.
                                     </p>
                                 }
@@ -2113,7 +2113,7 @@
                             @* v25 (C3 #1009): ONE Macros section — the node's instances placed around its
                                OUTPUT (before-blocks in order, the reply, then after-blocks), grouped by
                                placement with reorder within each; attach only where the format takes
-                               output macros; and the inline slots the walk derives from the prompt. The
+                               output macros; and the inline macros the walk derives from the prompt. The
                                v23 prompt-side composition and the #966 Output-macros view are ≤24. *@
                             <div class="node-section">
                                 <span class="node-section__head">Macros</span>
@@ -2223,37 +2223,37 @@
                                 }
                                 @if (At25)
                                 {
-                                    @* Derived, read-only: the slots this node's prompt reaches
+                                    @* Derived, read-only: the inline macros this node's prompt reaches
                                        (macro.<id>.prompt, directly or through what it reads), from the walk. *@
-                                    var inlineSlots = PackageWalk?.PromptReadsOf(selectedNode.Id) ?? new HashSet<string>(StringComparer.Ordinal);
-                                    <span class="node-section__head">Inline slots</span>
-                                    @if (inlineSlots.Count > 0)
+                                    var inlineMacros = PackageWalk?.PromptReadsOf(selectedNode.Id) ?? new HashSet<string>(StringComparer.Ordinal);
+                                    <span class="node-section__head">Inline macros</span>
+                                    @if (inlineMacros.Count > 0)
                                     {
-                                        <ul class="snippet-readers node-inline-slots" aria-label="@($"Inline slots of {selectedNode.Id}")">
-                                            @foreach (var slotMacroId in inlineSlots.Order(StringComparer.Ordinal))
+                                        <ul class="snippet-readers node-inline-macros" aria-label="@($"Inline macros of {selectedNode.Id}")">
+                                            @foreach (var inlineMacroId in inlineMacros.Order(StringComparer.Ordinal))
                                             {
-                                                var slotMacro = EffectiveMacros.FirstOrDefault(m => m.Id == slotMacroId);
+                                                var inlineMacro = EffectiveMacros.FirstOrDefault(m => m.Id == inlineMacroId);
                                                 <li>
-                                                    <button type="button" class="snippet-readers__row" @onclick="() => SelectMacro(slotMacroId)">macro.@(slotMacroId).prompt@(slotMacro is null ? "" : $" — {slotMacro.Label}")</button>
+                                                    <button type="button" class="snippet-readers__row" @onclick="() => SelectMacro(inlineMacroId)">macro.@(inlineMacroId).prompt@(inlineMacro is null ? "" : $" — {inlineMacro.Label}")</button>
                                                 </li>
                                             }
                                         </ul>
-                                        @if (NodeFanItems(selectedNode) is { Count: > 0 } slotFanItems && FanFolderOf(selectedNode.ForEach) is { } slotFolder)
+                                        @if (NodeFanItems(selectedNode) is { Count: > 0 } inlineFanItems && FanFolderOf(selectedNode.ForEach) is { } inlineFolder)
                                         {
                                             @* The validator's warning, word for word: items whose text carries no read instruct nothing. *@
-                                            foreach (var slotMacroId in inlineSlots.Order(StringComparer.Ordinal))
+                                            foreach (var inlineMacroId in inlineMacros.Order(StringComparer.Ordinal))
                                             {
-                                                var lacking = slotFanItems.Where(item => !(PackageWalk?.PromptReadsOf(selectedNode.Id, item.Id).Contains(slotMacroId) ?? false)).Select(item => item.Id).ToList();
+                                                var lacking = inlineFanItems.Where(item => !(PackageWalk?.PromptReadsOf(selectedNode.Id, item.Id).Contains(inlineMacroId) ?? false)).Select(item => item.Id).ToList();
                                                 if (lacking.Count > 0)
                                                 {
-                                                    <p class="muted-text node-inline-slots__warning">Node '@selectedNode.Id' fans snippet folder '@slotFolder'; items @string.Join(", ", lacking) carry no macro.@(slotMacroId).prompt read, so nothing tells the model to write macro.@(slotMacroId).text for them.</p>
+                                                    <p class="muted-text node-inline-macros__warning">Node '@selectedNode.Id' fans snippet folder '@inlineFolder'; items @string.Join(", ", lacking) carry no macro.@(inlineMacroId).prompt read, so nothing tells the model to write macro.@(inlineMacroId).text for them.</p>
                                                 }
                                             }
                                         }
                                     }
                                     else
                                     {
-                                        <p class="muted-text">No inline slot — read <code>{{ macro.&lt;id&gt;.prompt }}</code> in the prompt where a slot goes.</p>
+                                        <p class="muted-text">No inline macro — read <code>{{ macro.&lt;id&gt;.prompt }}</code> in the prompt where the macro goes inline.</p>
                                     }
                                     @if (formatsCatalog is null)
                                     {
@@ -2667,7 +2667,7 @@
                                                     aria-label="@($"Instruction for macro {macro.Id}")" />
                                 </label>
                                 @ReferencePalette(InstructionPaletteTarget(macro))
-                                <p class="muted-text">Tells the model when to write <code>{{ macro.@(macro.Id).text }}</code> where its slot is read (<code>{{ macro.@(macro.Id).prompt }}</code>); the reply renders it. A Scriban template, rendered where it is read, ahead of the format's mechanics sentence. Required at specVersion 25.</p>
+                                <p class="muted-text">Tells the model when to write <code>{{ macro.@(macro.Id).text }}</code> where it is read inline (<code>{{ macro.@(macro.Id).prompt }}</code>); the reply renders it. A Scriban template, rendered where it is read, ahead of the format's mechanics sentence. Required at specVersion 25.</p>
                             }
                             @{
                                 @* #936: which deliverables this macro is attached to — used by the
@@ -2934,7 +2934,7 @@
                                     }
                                 </div>
                                 <div class="macro-readers-section">
-                                    <span class="macro-attachments__head">Read inline at</span>
+                                    <span class="macro-attachments__head">Read at</span>
                                     @{ var macroReaders = MacroReaders(macro.Id); }
                                     @if (macroReaders.Count > 0)
                                     {
@@ -2956,7 +2956,7 @@
                                     }
                                     else
                                     {
-                                        <p class="muted-text">Not read inline by any template — read it as <code>{{ macro.@(macro.Id).text }}</code>, or <code>{{ macro.@(macro.Id).prompt }}</code> where its slot goes.</p>
+                                        <p class="muted-text">Not read by any template — read it as <code>{{ macro.@(macro.Id).text }}</code>, or <code>{{ macro.@(macro.Id).prompt }}</code> where it goes inline.</p>
                                     }
                                     @if (formatsCatalog is null)
                                     {
@@ -4545,7 +4545,7 @@
 
         foreach (var macro in references.MacroPrompts.Order(StringComparer.Ordinal))
         {
-            reads.Add(new TemplateRead($"macro.{macro}.prompt (slot)", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File));
+            reads.Add(new TemplateRead($"macro.{macro}.prompt (inline)", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File));
         }
 
         foreach (var fact in references.RunFacts.Order(StringComparer.Ordinal))
@@ -4734,7 +4734,7 @@
             choices.Add(new ReferenceChoice($"{{{{ macro.{macro.Id}.text }}}}", $"macro.{macro.Id}.text", "macros"));
             if (!isMacroText)
             {
-                choices.Add(new ReferenceChoice($"{{{{ macro.{macro.Id}.prompt }}}}", $"macro.{macro.Id}.prompt (slot)", "macros"));
+                choices.Add(new ReferenceChoice($"{{{{ macro.{macro.Id}.prompt }}}}", $"macro.{macro.Id}.prompt (inline)", "macros"));
             }
         }
 
@@ -4764,7 +4764,7 @@
 
     /// <summary>
     /// #1044: a macro's instruction as a palette target — the choices a snippet gets (never the
-    /// macro's own members: its text is what the slot fills, its slot is itself), the
+    /// macro's own members: its text is what the inline read fills, its inline read is itself), the
     /// instruction's own walk, appended into the instruction.
     /// </summary>
     private PaletteTarget InstructionPaletteTarget(WorkflowManifestReader.MacroView macro) =>
@@ -5643,7 +5643,7 @@
         });
 
     /// <summary>
-    /// v25 (C3 #1009): whether a node may carry a macro instance or an inline slot — a
+    /// v25 (C3 #1009): whether a node may carry a macro instance or an inline macro — a
     /// non-aggregator whose format declares outputMacros. A format the editor cannot
     /// resolve (no catalogue loaded) is taken on trust, as the validator takes it.
     /// </summary>
@@ -6003,7 +6003,7 @@
     /// <summary>One place a macro is read inline: the walk's subject, the member read, and the pane that holds it.</summary>
     private sealed record MacroReader(string Subject, string Member, string? Key);
 
-    /// <summary>v25 (C3 #1009): where a macro is read inline — macro.&lt;id&gt;.prompt (a slot) or macro.&lt;id&gt;.text — from the walk.</summary>
+    /// <summary>v25 (C3 #1009): where a macro is read — macro.&lt;id&gt;.prompt (inline) or macro.&lt;id&gt;.text — from the walk.</summary>
     private IReadOnlyList<MacroReader> MacroReaders(string macroId)
     {
         var readers = new List<MacroReader>();
@@ -6014,7 +6014,7 @@
             {
                 if (template.References.MacroPrompts.Contains(macroId))
                 {
-                    readers.Add(new MacroReader(template.Subject, $"macro.{macroId}.prompt (slot)", PaneKeyOf(template)));
+                    readers.Add(new MacroReader(template.Subject, $"macro.{macroId}.prompt (inline)", PaneKeyOf(template)));
                 }
 
                 if (template.References.MacroTexts.Contains(macroId))

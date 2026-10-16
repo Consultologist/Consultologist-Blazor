@@ -8,7 +8,7 @@ namespace Consultologist.Api.Tests;
 /// <summary>
 /// B5 #1004 → #1044 (design §§ 6–7): the completion order in the activity — the
 /// reply's digest, failIfEmpty on the reply, the reply RENDERED as a template
-/// over the node's scope (its macro.&lt;id&gt;.text reads are its slots; a reply
+/// over the node's scope (its macro.&lt;id&gt;.text reads are its inline macros; a reply
 /// that does not render fails the node), the instances composed, outputHash
 /// over what came out, and every placement and exclusion on the record.
 /// </summary>
@@ -103,7 +103,7 @@ public class ConsultNodeCompletionTests
         var result = ConsultNodeCompletion.Complete(Settled("Plan.\n\n{{ macro.closing.text }}"), input, package, reads);
 
         Assert.Equal("Plan.\n\nClosing for in_scope: Dr Example.", result.RawOutput);
-        Assert.Equal(new[] { "slot:closing" }, result.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
+        Assert.Equal(new[] { "inline:closing" }, result.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
         Assert.Null(result.Excluded);
         Assert.Equal(ConsultGenerationProvenance.Sha256Hex(result.RawOutput), result.OutputHash);
         Assert.Equal(ConsultGenerationProvenance.Sha256Hex("Plan.\n\n{{ macro.closing.text }}"), result.AgentOutputHash);
@@ -119,12 +119,12 @@ public class ConsultNodeCompletionTests
         var result = ConsultNodeCompletion.Complete(Settled("Plan. {{ macro.closing.text }} End."), input, package, reads);
 
         Assert.Equal("Plan. Closing: Dr Example. End.", result.RawOutput);
-        Assert.Equal(new[] { "slot:closing" }, result.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
+        Assert.Equal(new[] { "inline:closing" }, result.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
         Assert.Null(result.Excluded);
     }
 
     [Fact]
-    public void AReplyReadingTheScope_RendersIt_AndNamesNoSlot()
+    public void AReplyReadingTheScope_RendersIt_AndNamesNoInlineMacro()
     {
         var (package, input, reads, _) = Prepare("assessment", Unplaced);
 
@@ -171,7 +171,7 @@ public class ConsultNodeCompletionTests
         var result = ConsultNodeCompletion.Complete(Settled("{{ macro.closing.text }} {{ macro.closing.text }}"), input, package, reads);
 
         Assert.Equal("Closing. Note. Closing. Note.\n\nClosing. Note.", result.RawOutput);
-        Assert.Equal(new[] { "slot:closing", "slot:closing", "macro:closing" }, result.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
+        Assert.Equal(new[] { "inline:closing", "inline:closing", "macro:closing" }, result.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
     }
 
     [Fact]
@@ -210,7 +210,7 @@ public class ConsultNodeCompletionTests
         var result = ConsultNodeCompletion.Complete(Settled("Plan. {{ macro.closing.text }}"), input, package, reads);
 
         Assert.Equal("Plan. Closing: Dr Example.", result.RawOutput);
-        Assert.Equal(new[] { "slot:closing" }, result.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
+        Assert.Equal(new[] { "inline:closing" }, result.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
         Assert.Null(result.Excluded);
     }
 
@@ -303,7 +303,7 @@ public class ConsultNodeCompletionTests
     }
 
     [Fact]
-    public void AFanItemsOwnSlotRead_InstructsItsItem_AndEitherItemsReplyRenders()
+    public void AFanItemsOwnInlineRead_InstructsItsItem_AndEitherItemsReplyRenders()
     {
         var hpi = new Dictionary<string, string> { ["id"] = "hpi", ["name"] = "HPI", ["content"] = "History. {{ macro.closing.prompt }}" };
         var plan = new Dictionary<string, string> { ["id"] = "plan", ["name"] = "Plan", ["content"] = "Plan." };

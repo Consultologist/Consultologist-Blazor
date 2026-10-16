@@ -6,7 +6,7 @@ namespace Consultologist.Api.Tests;
 /// C6 (#1012): a snippet or macro text is walked with no fan of its own, so its
 /// fan-item reads are recorded, not refused — and refused at the READING site when
 /// that node does not fan: a node instance, what a prompt reaches through a snippet
-/// or macro text, a slot's fill, a deliverable instance. Restores what v24 (#957)
+/// or macro text, an inline macro's fill, a deliverable instance. Restores what v24 (#957)
 /// allowed as {{item:field}} in a macro composed into a fan node.
 /// </summary>
 public class WorkflowV25ItemReadsTests
@@ -96,7 +96,7 @@ public class WorkflowV25ItemReadsTests
     }
 
     [Fact]
-    public void ASlotFill_ReadingTheItem_IsRefused_WhereTheSanctioningNodeDoesNotFan()
+    public void AnInlineMacrosFill_ReadingTheItem_IsRefused_WhereTheInstructingNodeDoesNotFan()
     {
         var (manifest, files) = WithClosingText("Closing for {{ item.name }}.");
         manifest = manifest with { Nodes = manifest.Nodes!.Select(n => n.Id == "assessment" ? n with { Macros = null } : n).ToList() };
@@ -104,6 +104,6 @@ public class WorkflowV25ItemReadsTests
 
         var result = Validate((manifest, files));
 
-        Assert.Contains("Node 'assessment' reads macro.closing.prompt (a slot), but its fill reads item.name and 'assessment' does not fan.", result.Errors);
+        Assert.Contains("Node 'assessment' reads macro.closing.prompt (an inline macro), but its fill reads item.name and 'assessment' does not fan.", result.Errors);
     }
 }

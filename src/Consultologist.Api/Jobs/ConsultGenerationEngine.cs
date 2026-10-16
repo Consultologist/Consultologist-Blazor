@@ -168,8 +168,8 @@ public sealed class ConsultGenerationOrchestrator
         var aggregators = nodes.Where(node => node.Aggregate != null).ToList();
         // v25 (B5 #1004): a 25 job — one whose nodes carry formats (the job
         // starter's IsAt25, over the snapshot it took). Its aggregators stamp
-        // definition 6, and its deliverables fill no slot: every marker was
-        // filled or removed at the node that read it.
+        // definition 6, and its deliverables fill no slot: an inline macro
+        // rendered in the reply of the node that read it (#1044).
         var at25 = nodes.Any(node => node.Format is not null);
         var outputs = new Dictionary<string, NodeRunResult>(StringComparer.Ordinal);
         var pendingTasks = new Dictionary<Task<NodeRunResult>, (string NodeId, string? ItemId)>();

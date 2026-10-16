@@ -71,7 +71,7 @@ internal static class ConsultRenderPayload
     /// render over a partial scope would send a different prompt than the
     /// record says.
     /// </summary>
-    /// <param name="trace">B5 #1004: when given, what this render read — its macro.&lt;id&gt;.prompt reads are the slots the prompt that ran instructed.</param>
+    /// <param name="trace">B5 #1004: when given, what this render read — its macro.&lt;id&gt;.prompt reads are the inline macros the prompt that ran instructed.</param>
     public static string RenderAt25(ConsultPromptNodeActivityInput input, WorkflowPackage package, string promptText, TemplateRenderer.TemplateRenderTrace? trace = null) =>
         TemplateRenderer.Render($"Prompt '{input.PromptId}'", promptText, ScopeAt25(input, package), ConceptPipes.All, trace);
 

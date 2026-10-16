@@ -119,8 +119,8 @@ public sealed record NodeRunResult(
     ConsultCheckOutcome? Check = null,
     // v25 (B5 #1004, design § 6): the digest of the reply as returned — the
     // model's, the render, the operation's result — beside OutputHash, which
-    // at 25 is over RawOutput after the node's instances compose and its
-    // slots fill (definition 6); and what that completion placed and
+    // at 25 is over RawOutput after the reply renders and the node's instances
+    // compose (definition 6); and what that completion placed and
     // excluded. Null below 25. Appended last, same positional-call rule.
     string? AgentOutputHash = null,
     IReadOnlyList<ConsultAppendedEntry>? Appended = null,
@@ -226,7 +226,7 @@ public sealed class RunPromptNodeActivity
             // objects from the scope the orchestrator threaded and the package
             // in hand; below 25 the flat map, as ever.
             // v25 (B5 #1004, design § 7): the macro.<id>.prompt reads the render
-            // evaluates are the slots the prompt that ran sanctions.
+            // evaluates are the inline macros the prompt that ran instructs.
             var promptTrace = new TemplateRenderer.TemplateRenderTrace();
             var rendered = input.Format is not null
                 ? ConsultRenderPayload.RenderAt25(input, package, prompt.TemplateText, promptTrace)
@@ -277,7 +277,7 @@ public sealed class RunPromptNodeActivity
                 var settled = ConsultNodeDispatch.Settle(plan, input.NodeId, reply.Text, planInputHash, reply.Tokens);
 
                 // v25 (B5 #1004, design §§ 6–7): the completion order, stated
-                // once — failIfEmpty on the reply, the sanctioned slots filled,
+                // once — failIfEmpty on the reply, the reply rendered,
                 // the instances composed, outputHash over what came out.
                 if (input.Format is not null)
                 {

@@ -80,7 +80,7 @@ public class TemplateReferenceGraphTests
     }
 
     [Fact]
-    public void MacroPromptReads_AreNotEdges_SoAPromptReadingASlotIsFine()
+    public void MacroPromptReads_AreNotTextEdges_SoAPromptReadingAMacroInlineIsFine()
     {
         var graph = new TemplateReferenceGraph();
         graph.Add(TemplateKind.Prompt, "p", Refs("{{ macro.m.prompt }}"));
@@ -93,7 +93,7 @@ public class TemplateReferenceGraphTests
     }
 
     [Fact]
-    public void AnInstruction_ReachingItsOwnSlot_IsACycle_NamedByItsPath()
+    public void AnInstruction_ReachingItsOwnInlineRead_IsACycle_NamedByItsPath()
     {
         // #1044: a .prompt read is an edge to the macro's instruction, which is a
         // template; one that reads a snippet carrying the same slot loops.

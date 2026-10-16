@@ -116,7 +116,7 @@ public class V25DispatchTests
         // reach the node update and the item update alike.
         var node = Describe("assessment");
         var appended = new[] { new ConsultAppendedEntry("macro", "closing") };
-        var excluded = new[] { new ConsultNodeExclusion("slot", "stray", "no read in this node's prompt sanctions [[slot:stray]]") };
+        var excluded = new[] { new ConsultNodeExclusion("macro", "stray", "needs `input.kind == \"follow_up\"`; it does not hold") };
         var result = new NodeRunResult("x", null, "i", "o", ConsultGenerationProvenance.NodeHashVersionAt25, AgentOutputHash: "a", Appended: appended, Excluded: excluded);
 
         var update = ConsultGenerationOrchestrator.NodeUpdateFrom(node, result, 1, 2);
@@ -137,7 +137,7 @@ public class V25DispatchTests
             NSubstitute.Substitute.For<IConsultGenerationJobIndexStore>(), NSubstitute.Substitute.For<IJobOutputsBlobStore>(),
             NSubstitute.Substitute.For<IJobInputsBlobStore>(), NSubstitute.Substitute.For<IAccountUsageStore>());
         await entity.Initialize(new ConsultGenerationJobInitialize("job-1", "user-1", Array.Empty<IReadOnlyDictionary<string, string>>()));
-        var appended = new[] { new ConsultAppendedEntry("slot", "letrozole"), new ConsultAppendedEntry("macro", "closing") };
+        var appended = new[] { new ConsultAppendedEntry("inline", "letrozole"), new ConsultAppendedEntry("macro", "closing") };
         var excluded = new[] { new ConsultNodeExclusion("macro", "warning", "needs `input.kind == \"new\"`; it does not hold") };
 
         entity.MarkNodeCompleted(new ConsultGenerationNodeUpdate("assessment", "Assessment", null, "i", "o", 1, 1, ConsultGenerationProvenance.NodeHashVersionAt25,
@@ -153,7 +153,7 @@ public class V25DispatchTests
         var item = response.NodeOutputs["section_notes:hpi"];
 
         Assert.Equal(("a", 6), (scalar.AgentOutputHash, scalar.HashVersion));
-        Assert.Equal(new[] { "slot:letrozole", "macro:closing" }, scalar.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
+        Assert.Equal(new[] { "inline:letrozole", "macro:closing" }, scalar.Appended!.Select(e => $"{e.Kind}:{e.Id}"));
         Assert.Equal("needs `input.kind == \"new\"`; it does not hold", Assert.Single(scalar.Excluded!).Reason);
         Assert.Equal("b", item.AgentOutputHash);
         Assert.Equal(2, item.Appended!.Count);

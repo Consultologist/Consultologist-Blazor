@@ -224,7 +224,7 @@ public class WorkflowV25Tests
     [InlineData("before", "Deliverable 'consult' macro 'closing' declares before, which is retired at specVersion 25; place it on the node as a node instance ({ id, at: before|after }).")]
     [InlineData("after", "Deliverable 'consult' macro 'closing' declares after, which is retired at specVersion 25;")]
     [InlineData("forItem", "Deliverable 'consult' macro 'closing' declares forItem, which is retired at specVersion 25;")]
-    [InlineData("slot", "Deliverable 'consult' macro 'closing' declares slot, which is retired at specVersion 25; read {{ macro.<id>.prompt }} in the template where the slot goes.")]
+    [InlineData("slot", "Deliverable 'consult' macro 'closing' declares slot, which is retired at specVersion 25; read {{ macro.<id>.prompt }} in the template where the inline macro goes.")]
     public void ADeliverableMacroKey_RetiredAt25_IsRefused(string key, string sentence)
     {
         var (manifest, files) = V25Package.Minimal();
@@ -534,11 +534,11 @@ public class WorkflowV25TemplateTests
         Assert.Contains("Node 'extract' macro 'closing' is placed after the output, but format 'concept_list' takes no output macros; only a text format with outputMacros may.", V25Package.Errors((placed, files)));
 
         var inline = V25Package.WithPrompt((manifest, files), "extract", "{{ input.notes }} {{ macro.closing.prompt }}");
-        Assert.Contains("Node 'extract' reads macro.closing.prompt (a slot), but format 'concept_list' takes no output macros; only a text format with outputMacros may.", V25Package.Errors(inline));
+        Assert.Contains("Node 'extract' reads macro.closing.prompt (an inline macro), but format 'concept_list' takes no output macros; only a text format with outputMacros may.", V25Package.Errors(inline));
     }
 
     [Fact]
-    public void AnInlineSlot_ThroughASnippet_IsFine_OnProse()
+    public void AnInlineMacro_ThroughASnippet_IsFine_OnProse()
     {
         var (manifest, files) = Minimal();
         files["snippets/standards.md"] = "Standards. {{ macro.closing.prompt }}";
@@ -582,7 +582,7 @@ public class WorkflowV25TemplateTests
     }
 
     [Fact]
-    public void FolderItems_LackingTheSlotRead_AreNamed()
+    public void FolderItems_LackingTheInlineRead_AreNamed()
     {
         var (manifest, files) = Minimal();
         files["snippets/sections/hpi.md"] = "History. {{ macro.closing.prompt }}";
@@ -616,7 +616,7 @@ public class WorkflowV25TemplateTests
     }
 
     [Fact]
-    public void AnInstruction_ReachingItsOwnSlot_IsACycle()
+    public void AnInstruction_ReachingItsOwnInlineRead_IsACycle()
     {
         var (manifest, files) = Minimal();
         manifest = manifest with { Macros = manifest.Macros!.Select(m => m with { Instruction = "Close as {{ snippet.standards.text }} says." }).ToList() };

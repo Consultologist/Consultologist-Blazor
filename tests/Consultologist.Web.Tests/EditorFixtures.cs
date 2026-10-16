@@ -772,7 +772,7 @@ public static class EditorFixtures
     /// a node fanning a snippet folder (two items, one gated on the kind input — C2
     /// #1008), a single snippet read by the assessment prompt, two macros (C3 #1009:
     /// closing after the assessment and prepended to the deliverable when kind is new;
-    /// tool_note before the hpi section item and read as a slot by the assessment
+    /// tool_note before the hpi section item and read inline by the assessment
     /// prompt), an aggregator, and one deliverable naming
     /// the aggregator and the check. No kind, no output, no schemas; formats[]
     /// declares the local format. Every node feeds the deliverable: the prose

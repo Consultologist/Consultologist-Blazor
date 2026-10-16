@@ -619,7 +619,7 @@
     /// to judge empty (an agent writes it), and its declared parameters in order.
     /// </summary>
     /// <summary>One format the picker offers. <paramref name="OutputMacros"/> (C3 #1009): whether a node on
-    /// it may carry a macro instance or an inline slot — the format's outputMacros flag.</summary>
+    /// it may carry a macro instance or an inline macro — the format's outputMacros flag.</summary>
     public sealed record FormatOption(string Id, string Producer, string Type, string? Description, IReadOnlyList<FormatParameter> Parameters, bool OutputMacros = false)
     {
         public bool Validatable => Type is "object" or "enum";

@@ -13,7 +13,7 @@ namespace Consultologist.PackageFormat;
 /// macro texts its prompt reads: a snippet that reads <c>node.y.text</c> is
 /// rendered when the prompt is, so the prompt waits on y (design § 7, "through
 /// a snippet it reads"), and over the texts composed at its completion — its
-/// instances and the fills of the slots its prompt sanctions (B5 #1004).
+/// instances and the fills of the inline macros its prompt instructs (B5 #1004).
 /// Aggregate sources join in
 /// <see cref="WorkflowNodeClosure.Edges(IReadOnlyList{WorkflowNodeSpec}, IReadOnlyDictionary{string, IReadOnlySet{string}})"/>.
 /// </summary>
@@ -88,7 +88,7 @@ public static class WorkflowDerivedEdges
         /// on a snippet fan whose prompt reads <c>item.text</c>, the folder's
         /// items — and (B5 #1004, design §§ 5–7) over the texts composed at this
         /// node when it completes: its before/after instances and the fills of
-        /// the slots its prompt sanctions (a <c>macro.&lt;id&gt;.prompt</c> read),
+        /// the inline macros its prompt instructs (a <c>macro.&lt;id&gt;.prompt</c> read),
         /// which render over the same outputs, so the node waits on what they read.
         /// </summary>
         public IReadOnlySet<string> EdgesOf(string nodeId)
@@ -221,7 +221,7 @@ public static class WorkflowDerivedEdges
             _byKey.TryGetValue((TemplateKind.Macro, macroId), out var refs) && refs.ProfileFacts.Contains("signature");
 
         /// <summary>
-        /// The slots a node's prompt sanctions (design § 7): every
+        /// The inline macros a node's prompt instructs (design § 7): every
         /// <c>macro.&lt;id&gt;.prompt</c> read its template reaches — directly,
         /// through a snippet or macro text it reads (transitively), through the
         /// items of a folder it iterates, and — on a snippet fan whose prompt reads
@@ -341,7 +341,7 @@ public static class WorkflowDerivedEdges
             }
         }
 
-        /// <summary>The closure a template renders: itself, the snippets and folder items it reads, the macro texts it reads, the instructions of the slots it reads (#1044) — each once.</summary>
+        /// <summary>The closure a template renders: itself, the snippets and folder items it reads, the macro texts it reads, the instructions of the inline macros it reads (#1044) — each once.</summary>
         private void Visit(TemplateReferences refs, HashSet<(TemplateKind, string)> seen, Action<TemplateReferences> take)
         {
             take(refs);

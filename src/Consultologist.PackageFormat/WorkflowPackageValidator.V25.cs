@@ -30,7 +30,7 @@ public static partial class WorkflowPackageValidator
         public const string Check = "a check is a node of format terms_subset with with: { of, in, failWith }";
         public const string Results = "declare deliverables";
         public const string Placement = "place it on the node as a node instance ({ id, at: before|after })";
-        public const string Slot = "read {{ macro.<id>.prompt }} in the template where the slot goes";
+        public const string Inline = "read {{ macro.<id>.prompt }} in the template where the inline macro goes";
         public const string ForEach = "fan a snippet folder (snippet.<folder>) or an array input (input.<id>)";
     }
 
@@ -209,7 +209,7 @@ public static partial class WorkflowPackageValidator
 
                 if (entry.Slot != null)
                 {
-                    errors.Add($"Deliverable '{deliverable.Id}' macro '{entry.Id}' declares slot, which is retired at specVersion 25; {RetiredAt25.Slot}.");
+                    errors.Add($"Deliverable '{deliverable.Id}' macro '{entry.Id}' declares slot, which is retired at specVersion 25; {RetiredAt25.Inline}.");
                 }
             }
         }
@@ -801,20 +801,20 @@ public static partial class WorkflowPackageValidator
                 }
             }
 
-            // Inline slots.
+            // Inline macros (#1047: the word).
             if (!walk.HasPrompt(spec.Id))
             {
                 continue;
             }
 
-            var inlineSlots = walk.PromptReadsOf(spec.Id);
+            var inlineMacros = walk.PromptReadsOf(spec.Id);
 
-            if (inlineSlots.Count > 0 && !allowsOutputMacros)
+            if (inlineMacros.Count > 0 && !allowsOutputMacros)
             {
-                errors.Add($"Node '{spec.Id}' reads macro.{inlineSlots.Order(StringComparer.Ordinal).First()}.prompt (a slot), but format '{formatName}' takes no output macros; only a text format with outputMacros may.");
+                errors.Add($"Node '{spec.Id}' reads macro.{inlineMacros.Order(StringComparer.Ordinal).First()}.prompt (an inline macro), but format '{formatName}' takes no output macros; only a text format with outputMacros may.");
             }
 
-            // C6 (#1012): what the prompt reads — a snippet, a macro text, a slot's fill — may read the fan item only where the node fans.
+            // C6 (#1012): what the prompt reads — a snippet, a macro text, an inline macro's fill — may read the fan item only where the node fans.
             if (node.Fan is null)
             {
                 if (walk.PromptItemReadThroughOf(spec.Id) is { } through)
@@ -822,11 +822,11 @@ public static partial class WorkflowPackageValidator
                     errors.Add($"Node '{spec.Id}' reaches item.{through.Member} through {through.Subject}, but '{spec.Id}' does not fan.");
                 }
 
-                foreach (var slot in inlineSlots.Order(StringComparer.Ordinal))
+                foreach (var slot in inlineMacros.Order(StringComparer.Ordinal))
                 {
                     if (walk.TextItemReadOf(TemplateKind.Macro, slot) is { } fillRead)
                     {
-                        errors.Add($"Node '{spec.Id}' reads macro.{slot}.prompt (a slot), but its fill reads item.{fillRead.Member} and '{spec.Id}' does not fan.");
+                        errors.Add($"Node '{spec.Id}' reads macro.{slot}.prompt (an inline macro), but its fill reads item.{fillRead.Member} and '{spec.Id}' does not fan.");
                     }
                 }
             }
@@ -836,9 +836,9 @@ public static partial class WorkflowPackageValidator
             {
                 var folderId = WorkflowFanSources.CollectionIdOf(node.FanSource);
                 var perItem = folder.Items.ToDictionary(i => i.Id, i => walk.PromptReadsOf(spec.Id, i.Id), StringComparer.Ordinal);
-                var slotsAnywhere = perItem.Values.SelectMany(s => s).ToHashSet(StringComparer.Ordinal);
+                var inlineAnywhere = perItem.Values.SelectMany(s => s).ToHashSet(StringComparer.Ordinal);
 
-                foreach (var slot in slotsAnywhere.Order(StringComparer.Ordinal))
+                foreach (var slot in inlineAnywhere.Order(StringComparer.Ordinal))
                 {
                     var lacking = perItem.Where(p => !p.Value.Contains(slot)).Select(p => p.Key).Order(StringComparer.Ordinal).ToList();
 

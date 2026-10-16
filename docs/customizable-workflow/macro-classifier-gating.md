@@ -100,7 +100,7 @@ section's block (here, after Assessment & Plan). See the v19 design note.
 
 The block lands **after** the anchored section, not at a spot the model chooses
 mid-prose. Model-chosen inline placement exists since v20 as the **slot** (`[[slot:<id>]]`
-emitted by the model, filled at assembly; #863) and, at specVersion 25, as the
+emitted by the model, filled at assembly; #863) and, at specVersion 25, as the **inline macro** — the
 `macro.<id>.prompt` read whose reply the engine renders (`{{ macro.<id>.text }}`, #1044 —
 `package-format-v25-design.md` § 7). For an anchored macro, do **not** instruct the model in
 a prompt/standard to "run the macro": the model cannot invoke a macro, and it will just write

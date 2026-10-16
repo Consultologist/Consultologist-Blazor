@@ -2018,8 +2018,8 @@ public sealed class ConsultNodeOutputState
     public ConsultValidationOutcome? Validation { get; set; }
 
     // v25 (B5 #1004, design § 6): the reply's own digest beside OutputHash
-    // (definition 6: over the output after this node's instances composed
-    // and its slots filled), what the completion placed, in output order, and
+    // (definition 6: over the output after this node's reply rendered and its
+    // instances composed), what the completion placed, in output order, and
     // what it withheld or removed, by name. Null below 25 and on records from
     // before; the hashes stay when the text is dropped.
     public string? AgentOutputHash { get; set; }

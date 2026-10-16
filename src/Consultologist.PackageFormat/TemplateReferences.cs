@@ -4,7 +4,7 @@ namespace Consultologist.PackageFormat;
 /// What one template reads and depends on (package-format-v25-design.md § 2),
 /// derived from its syntax tree: the inputs, snippets, macros and item members
 /// it reads; the nodes it reads — the template's **edges**; the macros whose
-/// <c>.prompt</c> it reads — its inline slots; and the sentences that refuse
+/// <c>.prompt</c> it reads — its inline macros; and the sentences that refuse
 /// it. Edges inside a conditional branch count the same: conservative, stated.
 /// </summary>
 public sealed record TemplateReferences(

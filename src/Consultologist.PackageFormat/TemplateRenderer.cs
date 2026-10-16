@@ -84,11 +84,11 @@ public static class TemplateRenderer
     /// <summary>
     /// What a render read, where the engine needs to know (B5 #1004, #1044):
     /// <see cref="PromptReads"/> — every <c>macro.&lt;id&gt;.prompt</c> the render
-    /// evaluated (the slots the prompt that ran instructed, exactly the
+    /// evaluated (the inline macros the prompt that ran instructed, exactly the
     /// instructions the model saw; a read behind a branch not taken is not one of
     /// them); <see cref="TextReads"/> — every <c>macro.&lt;id&gt;.text</c> the
     /// TOP-LEVEL template evaluated, in order, once per read (#1044: a reply's
-    /// slots, as the record names them; a read inside a filled text is that
+    /// inline macros, as the record names them; a read inside a filled text is that
     /// text's, not an entry).
     /// </summary>
     public sealed class TemplateRenderTrace

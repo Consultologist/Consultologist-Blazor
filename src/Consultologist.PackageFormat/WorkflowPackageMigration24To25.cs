@@ -1229,7 +1229,7 @@ public static class WorkflowPackageMigration24To25
         {
             if (Str(macro, "id") is { } id && string.IsNullOrWhiteSpace(Str(macro, "instruction")))
             {
-                notices.Add($"Macro '{id}' needs an instruction before publishing (specVersion 25): what the model is told where its slot is read.");
+                notices.Add($"Macro '{id}' needs an instruction before publishing (specVersion 25): what the model is told where it is read inline (macro.<id>.prompt).");
             }
         }
     }
