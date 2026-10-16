@@ -536,7 +536,7 @@
                     }
                     @* C2 (#1008): at 25 this group is Snippets — the same machinery
                        under the snippets table (a snippet is a Scriban template read
-                       as snippet.<id>.text; a folder is today's collection). *@
+                       as snippet.<id>.content; a folder is today's collection). *@
                     @if (At25)
                     {
                         <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.DocumentText())" /> Snippets</span>
@@ -664,7 +664,7 @@
                                 <h3 class="panel-title">New @newCollection item</h3>
                                 @if (At25)
                                 {
-                                    <p class="muted-text">A snippet in the folder: a Scriban template a fanning node reads as <code>item.text</code>, included on every run unless its condition says otherwise.</p>
+                                    <p class="muted-text">A snippet in the folder: a Scriban template a fanning node reads as <code>item.content</code>, included on every run unless its condition says otherwise.</p>
                                 }
                                 else
                                 {
@@ -752,7 +752,7 @@
                                 {
                                     <p class="muted-text">
                                         A Scriban template the package owns — a standard, a house style — that a
-                                        prompt, a macro or another snippet reads as <code>{{ snippet.&lt;id&gt;.text }}</code>.
+                                        prompt, a macro or another snippet reads as <code>{{ snippet.&lt;id&gt;.content }}</code>.
                                         It is never attached to a node: the reading template decides where it goes.
                                     </p>
                                 }
@@ -825,7 +825,7 @@
                                 @if (At25)
                                 {
                                     <p class="muted-text">
-                                        Read as <code>{{ snippet.@(scalar.Id).text }}</code> — rendered as a template
+                                        Read as <code>{{ snippet.@(scalar.Id).content }}</code> — rendered as a template
                                         where it is read, exactly as typed.
                                     </p>
                                     @SnippetReadersList((scalar.Id, false))
@@ -859,7 +859,7 @@
                             <ChildContent>
                                 @if (At25)
                                 {
-                                    <p class="muted-text">Read as <code>item.text</code> by the node fanning '@addedItem.Collection'.</p>
+                                    <p class="muted-text">Read as <code>item.content</code> by the node fanning '@addedItem.Collection'.</p>
                                     @ConditionField(("Included when", AddedItemWhenTarget(addedItem), "Every run"))
                                     @SnippetReadersList((addedItem.Collection, true))
                                 }
@@ -1771,9 +1771,9 @@
                                     <p class="muted-text">
                                         A named Scriban text the package owns, placed before or after a node's
                                         output, prepended or appended to a deliverable, or read inline as
-                                        <code>{{ macro.&lt;id&gt;.text }}</code> / <code>{{ macro.&lt;id&gt;.prompt }}</code> (inline).
+                                        <code>{{ macro.&lt;id&gt;.content }}</code> / <code>{{ macro.&lt;id&gt;.prompt }}</code> (inline).
                                         It carries an instruction — a Scriban template that tells the model when to write
-                                        <code>{{ macro.&lt;id&gt;.text }}</code> where it is read inline; the reply renders it.
+                                        <code>{{ macro.&lt;id&gt;.content }}</code> where it is read inline; the reply renders it.
                                         Publish stays blocked until the instruction is written and something places or reads it.
                                     </p>
                                 }
@@ -2246,7 +2246,7 @@
                                                 var lacking = inlineFanItems.Where(item => !(PackageWalk?.PromptReadsOf(selectedNode.Id, item.Id).Contains(inlineMacroId) ?? false)).Select(item => item.Id).ToList();
                                                 if (lacking.Count > 0)
                                                 {
-                                                    <p class="muted-text node-inline-macros__warning">Node '@selectedNode.Id' fans snippet folder '@inlineFolder'; items @string.Join(", ", lacking) carry no macro.@(inlineMacroId).prompt read, so nothing tells the model to write macro.@(inlineMacroId).text for them.</p>
+                                                    <p class="muted-text node-inline-macros__warning">Node '@selectedNode.Id' fans snippet folder '@inlineFolder'; items @string.Join(", ", lacking) carry no macro.@(inlineMacroId).prompt read, so nothing tells the model to write macro.@(inlineMacroId).content for them.</p>
                                                 }
                                             }
                                         }
@@ -2418,7 +2418,7 @@
                                 </label>
                                 @if (At25)
                                 {
-                                    <p class="muted-text">Read as <code>item.text</code> by the node fanning this folder.</p>
+                                    <p class="muted-text">Read as <code>item.content</code> by the node fanning this folder.</p>
                                     @* v25 (#1008): the item's input-only when — a folder's size is settled at job start. *@
                                     @ConditionField(("Included when", ItemWhenTarget(standard), "Every run"))
                                     @SnippetReadersList((FolderOfItem(standard.File), true))
@@ -2667,7 +2667,7 @@
                                                     aria-label="@($"Instruction for macro {macro.Id}")" />
                                 </label>
                                 @ReferencePalette(InstructionPaletteTarget(macro))
-                                <p class="muted-text">Tells the model when to write <code>{{ macro.@(macro.Id).text }}</code> where it is read inline (<code>{{ macro.@(macro.Id).prompt }}</code>); the reply renders it. A Scriban template, rendered where it is read, ahead of the format's mechanics sentence. Required at specVersion 25.</p>
+                                <p class="muted-text">Tells the model when to write <code>{{ macro.@(macro.Id).content }}</code> where it is read inline (<code>{{ macro.@(macro.Id).prompt }}</code>); the reply renders it. A Scriban template, rendered where it is read, ahead of the format's mechanics sentence. Required at specVersion 25.</p>
                             }
                             @{
                                 @* #936: which deliverables this macro is attached to — used by the
@@ -2956,7 +2956,7 @@
                                     }
                                     else
                                     {
-                                        <p class="muted-text">Not read by any template — read it as <code>{{ macro.@(macro.Id).text }}</code>, or <code>{{ macro.@(macro.Id).prompt }}</code> where it goes inline.</p>
+                                        <p class="muted-text">Not read by any template — read it as <code>{{ macro.@(macro.Id).content }}</code>, or <code>{{ macro.@(macro.Id).prompt }}</code> where it goes inline.</p>
                                     }
                                     @if (formatsCatalog is null)
                                     {
@@ -3005,7 +3005,7 @@
                             }
                             @if (At25)
                             {
-                                <p class="muted-text macro-objects">A Scriban template: it may read <code>input.&lt;id&gt;</code>, <code>node.&lt;id&gt;.text</code> / <code>.value</code>, <code>snippet.&lt;id&gt;.text</code>, <code>macro.&lt;id&gt;.text</code>, <code>run.&lt;fact&gt;</code> and <code>profile.&lt;fact&gt;</code>; never <code>macro.&lt;id&gt;.prompt</code> — placed text instructs no model.</p>
+                                <p class="muted-text macro-objects">A Scriban template: it may read <code>input.&lt;id&gt;</code>, <code>node.&lt;id&gt;.content</code> / <code>.value</code>, <code>snippet.&lt;id&gt;.content</code>, <code>macro.&lt;id&gt;.content</code>, <code>run.&lt;fact&gt;</code> and <code>profile.&lt;fact&gt;</code>; never <code>macro.&lt;id&gt;.prompt</code> — placed text instructs no model.</p>
                             }
                             else
                             {
@@ -4503,8 +4503,8 @@
     private sealed record TemplateRead(string Reference, string? Key);
 
     /// <summary>
-    /// A template's reads in the objects' order — inputs, nodes (.text / .value), snippets,
-    /// folders, the fan item's members, macros (.text / .prompt), run and profile facts —
+    /// A template's reads in the objects' order — inputs, nodes (.content / .value), snippets,
+    /// folders, the fan item's members, macros (.content / .prompt), run and profile facts —
     /// each linking to its pane where there is one.
     /// </summary>
     private IReadOnlyList<TemplateRead> ReadsOf(PF.TemplateReferences references)
@@ -4518,13 +4518,13 @@
 
         foreach (var (nodeId, read) in references.Nodes)
         {
-            var members = read.ReadsText && read.ReadsValue ? ".text, .value" : read.ReadsValue ? ".value" : ".text";
+            var members = read.ReadsContent && read.ReadsValue ? ".content, .value" : read.ReadsValue ? ".value" : ".content";
             reads.Add(new TemplateRead($"node.{nodeId}{members}", NodeKeyPrefix + nodeId));
         }
 
         foreach (var snippet in references.Snippets.Order(StringComparer.Ordinal))
         {
-            reads.Add(new TemplateRead($"snippet.{snippet}.text", ScalarPath(snippet)));
+            reads.Add(new TemplateRead($"snippet.{snippet}.content", ScalarPath(snippet)));
         }
 
         foreach (var folder in references.SnippetFolders.Order(StringComparer.Ordinal))
@@ -4538,9 +4538,9 @@
             reads.Add(new TemplateRead($"item.{member} — the fan item", null));
         }
 
-        foreach (var macro in references.MacroTexts.Order(StringComparer.Ordinal))
+        foreach (var macro in references.MacroContents.Order(StringComparer.Ordinal))
         {
-            reads.Add(new TemplateRead($"macro.{macro}.text", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File));
+            reads.Add(new TemplateRead($"macro.{macro}.content", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File));
         }
 
         foreach (var macro in references.MacroPrompts.Order(StringComparer.Ordinal))
@@ -4604,7 +4604,7 @@
             }
             else if (promptReads.Count + withReads.Count == 0)
             {
-                <p class="muted-text">Reads nothing yet — reference an object in the prompt: <code>{{ input.&lt;id&gt; }}</code>, <code>{{ node.&lt;id&gt;.text }}</code>, <code>{{ snippet.&lt;id&gt;.text }}</code>, <code>{{ macro.&lt;id&gt;.text }}</code>.</p>
+                <p class="muted-text">Reads nothing yet — reference an object in the prompt: <code>{{ input.&lt;id&gt; }}</code>, <code>{{ node.&lt;id&gt;.content }}</code>, <code>{{ snippet.&lt;id&gt;.content }}</code>, <code>{{ macro.&lt;id&gt;.content }}</code>.</p>
             }
             else
             {
@@ -4650,9 +4650,9 @@
 
     /// <summary>
     /// What the palette offers for a text at 25, in the objects' order: inputs (an array as a
-    /// loop), nodes (.text; .value and its fields on an object format, an array field as a
+    /// loop), nodes (.content; .value and its fields on an object format, an array field as a
     /// loop, .value on an enum), snippets (a folder as a loop), the fan item's members where
-    /// the reading node fans, macros (.text; .prompt — never from a macro's own text, § 5.2),
+    /// the reading node fans, macros (.content; .prompt — never from a macro's own text, § 5.2),
     /// run and profile facts.
     /// </summary>
     private IReadOnlyList<ReferenceChoice> ReferenceChoices(string file, WorkflowManifestReader.NodeView? fanNode, bool isMacroText)
@@ -4678,7 +4678,7 @@
         foreach (var node in EffectiveNodes.Where(n => n.Id != readingNode))
         {
             var format = node.Format is { } formatId ? FormatOptions.FirstOrDefault(f => f.Id == formatId) : null;
-            choices.Add(new ReferenceChoice($"{{{{ node.{node.Id}.text }}}}", $"node.{node.Id}.text", "nodes", TakesPipe: true));
+            choices.Add(new ReferenceChoice($"{{{{ node.{node.Id}.content }}}}", $"node.{node.Id}.content", "nodes", TakesPipe: true));
 
             if (format is { Type: "enum" })
             {
@@ -4712,17 +4712,17 @@
 
         foreach (var snippet in EffectiveScalars.Where(sc => !ScalarIsRemoved(sc) && sc.Path != file))
         {
-            choices.Add(new ReferenceChoice($"{{{{ snippet.{snippet.Id}.text }}}}", $"snippet.{snippet.Id}.text", "snippets"));
+            choices.Add(new ReferenceChoice($"{{{{ snippet.{snippet.Id}.content }}}}", $"snippet.{snippet.Id}.content", "snippets"));
         }
 
         foreach (var folder in EffectiveCollections)
         {
-            choices.Add(new ReferenceChoice($"{{{{ for s in snippet.{folder.Id} }}}}\n{{{{ s.text }}}}\n{{{{ end }}}}", $"for s in snippet.{folder.Id} (each item)", "snippets"));
+            choices.Add(new ReferenceChoice($"{{{{ for s in snippet.{folder.Id} }}}}\n{{{{ s.content }}}}\n{{{{ end }}}}", $"for s in snippet.{folder.Id} (each item)", "snippets"));
         }
 
         if (fanNode is { ForEach: { } forEach })
         {
-            var members = PF.WorkflowFanSources.IsSnippetFan(forEach) ? new[] { "id", "name", "text" } : new[] { "id", "name", "value" };
+            var members = PF.WorkflowFanSources.IsSnippetFan(forEach) ? new[] { "id", "name", "content" } : new[] { "id", "name", "value" };
             foreach (var member in members)
             {
                 choices.Add(new ReferenceChoice($"{{{{ item.{member} }}}}", $"item.{member}", "the fan item"));
@@ -4731,7 +4731,7 @@
 
         foreach (var macro in EffectiveMacros.Where(m => m.File != file))
         {
-            choices.Add(new ReferenceChoice($"{{{{ macro.{macro.Id}.text }}}}", $"macro.{macro.Id}.text", "macros"));
+            choices.Add(new ReferenceChoice($"{{{{ macro.{macro.Id}.content }}}}", $"macro.{macro.Id}.content", "macros"));
             if (!isMacroText)
             {
                 choices.Add(new ReferenceChoice($"{{{{ macro.{macro.Id}.prompt }}}}", $"macro.{macro.Id}.prompt (inline)", "macros"));
@@ -4887,7 +4887,7 @@
         }
         else
         {
-            <p class="muted-text">Not read by any template yet — read it as <code>{{ snippet.@(spec.Id).text }}</code>.</p>
+            <p class="muted-text">Not read by any template yet — read it as <code>{{ snippet.@(spec.Id).content }}</code>.</p>
         }
         @if (formatsCatalog is null)
         {
@@ -6003,7 +6003,7 @@
     /// <summary>One place a macro is read inline: the walk's subject, the member read, and the pane that holds it.</summary>
     private sealed record MacroReader(string Subject, string Member, string? Key);
 
-    /// <summary>v25 (C3 #1009): where a macro is read — macro.&lt;id&gt;.prompt (inline) or macro.&lt;id&gt;.text — from the walk.</summary>
+    /// <summary>v25 (C3 #1009): where a macro is read — macro.&lt;id&gt;.prompt (inline) or macro.&lt;id&gt;.content — from the walk.</summary>
     private IReadOnlyList<MacroReader> MacroReaders(string macroId)
     {
         var readers = new List<MacroReader>();
@@ -6017,9 +6017,9 @@
                     readers.Add(new MacroReader(template.Subject, $"macro.{macroId}.prompt (inline)", PaneKeyOf(template)));
                 }
 
-                if (template.References.MacroTexts.Contains(macroId))
+                if (template.References.MacroContents.Contains(macroId))
                 {
-                    readers.Add(new MacroReader(template.Subject, $"macro.{macroId}.text", PaneKeyOf(template)));
+                    readers.Add(new MacroReader(template.Subject, $"macro.{macroId}.content", PaneKeyOf(template)));
                 }
             }
         }
@@ -9259,8 +9259,8 @@
 
     private static readonly IReadOnlyList<string> DataFanFields = new[] { "id", "name", "content" };
 
-    /// <summary>A snippet fan item at 25: id, name and the item's rendered text (content is retired).</summary>
-    private static readonly IReadOnlyList<string> SnippetFanFields = new[] { PF.TemplateMembers.Id, PF.TemplateMembers.Name, PF.TemplateMembers.Text };
+    /// <summary>A snippet fan item at 25: id, name and the item's rendered content (the ≤24 item:content under the object spelling).</summary>
+    private static readonly IReadOnlyList<string> SnippetFanFields = new[] { PF.TemplateMembers.Id, PF.TemplateMembers.Name, PF.TemplateMembers.Content };
 
     /// <summary>The fan nodes a library macro is composed into (v23+), with the item fields each exposes.</summary>
     private IEnumerable<WorkflowManifestReader.NodeView> FanNodesComposing(string macroId) =>

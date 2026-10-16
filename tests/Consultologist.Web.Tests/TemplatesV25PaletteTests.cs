@@ -95,25 +95,25 @@ public class TemplatesV25PaletteTests : ClientRenderTestContext
         var choices = Choices(page, Assessment);
         Assert.Contains("{{ input.notes }}", choices);
         Assert.Contains("{{ input.kind }}", choices);
-        Assert.Contains("{{ node.extract.text }}", choices);
+        Assert.Contains("{{ node.extract.content }}", choices);
         Assert.Contains("{{ node.extract.value }}", choices);
         Assert.Contains("{{ for c in node.extract.value.concepts }}\n- {{ c }}\n{{ end }}", choices);
         // The package-local format's schema: medications is an array field.
         Assert.Contains("{{ for c in node.meds.value.medications }}\n- {{ c }}\n{{ end }}", choices);
         // The classifier's enum value.
         Assert.Contains("{{ node.scope.value }}", choices);
-        Assert.Contains("{{ snippet.standards.text }}", choices);
-        Assert.Contains("{{ for s in snippet.sections }}\n{{ s.text }}\n{{ end }}", choices);
-        Assert.Contains("{{ macro.closing.text }}", choices);
+        Assert.Contains("{{ snippet.standards.content }}", choices);
+        Assert.Contains("{{ for s in snippet.sections }}\n{{ s.content }}\n{{ end }}", choices);
+        Assert.Contains("{{ macro.closing.content }}", choices);
         Assert.Contains("{{ macro.closing.prompt }}", choices);
         Assert.Contains("{{ run.date }}", choices);
         Assert.Contains("{{ profile.name }}", choices);
         // Not itself, and no item on a node that does not fan.
-        Assert.DoesNotContain("{{ node.assessment.text }}", choices);
+        Assert.DoesNotContain("{{ node.assessment.content }}", choices);
         Assert.DoesNotContain(choices, c => c!.StartsWith("{{ item.", StringComparison.Ordinal));
 
         // In the objects' order: inputs, nodes, snippets, macros, run, profile.
-        var order = new[] { "{{ input.notes }}", "{{ node.extract.text }}", "{{ snippet.standards.text }}", "{{ macro.closing.text }}", "{{ run.date }}", "{{ profile.name }}" }
+        var order = new[] { "{{ input.notes }}", "{{ node.extract.content }}", "{{ snippet.standards.content }}", "{{ macro.closing.content }}", "{{ run.date }}", "{{ profile.name }}" }
             .Select(v => choices.ToList().IndexOf(v)).ToList();
         Assert.Equal(order.OrderBy(i => i), order);
     }
@@ -125,7 +125,7 @@ public class TemplatesV25PaletteTests : ClientRenderTestContext
         Navigate(page, "section");
 
         var choices = Choices(page, "prompts/section.md");
-        Assert.Contains("{{ item.text }}", choices);
+        Assert.Contains("{{ item.content }}", choices);
         Assert.Contains("{{ item.name }}", choices);
     }
 
@@ -137,18 +137,18 @@ public class TemplatesV25PaletteTests : ClientRenderTestContext
         Navigate(page, "assessment");
         var before = EditorText(page);
 
-        page.Find($"fluent-select[aria-label='Reference to insert into {Assessment}']").Change("{{ node.extract.text }}");
+        page.Find($"fluent-select[aria-label='Reference to insert into {Assessment}']").Change("{{ node.extract.content }}");
         page.Find("fluent-select[aria-label='Renderer for the reference']").Change("concept_context");
         page.Find($"fluent-button[aria-label='Insert reference into {Assessment}']").Click();
 
-        Assert.Equal(before + "\n{{ node.extract.text | concept_context }}", EditorText(page));
+        Assert.Equal(before + "\n{{ node.extract.content | concept_context }}", EditorText(page));
         Assert.Contains("Reads:", page.Find(".template-reads").TextContent);
         // The palette resets after an insert.
         Assert.Equal("", page.Find($"fluent-select[aria-label='Reference to insert into {Assessment}']").GetAttribute("current-value") ?? "");
 
         page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish")).Click();
         Assert.NotNull(sent);
-        Assert.EndsWith("{{ node.extract.text | concept_context }}", sent!.Files[Assessment]);
+        Assert.EndsWith("{{ node.extract.content | concept_context }}", sent!.Files[Assessment]);
         var validated = Validated();
         Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
     }
@@ -159,11 +159,11 @@ public class TemplatesV25PaletteTests : ClientRenderTestContext
         var page = RenderEditor();
         Navigate(page, "assessment");
 
-        page.Find($"fluent-select[aria-label='Reference to insert into {Assessment}']").Change("{{ for s in snippet.sections }}\n{{ s.text }}\n{{ end }}");
+        page.Find($"fluent-select[aria-label='Reference to insert into {Assessment}']").Change("{{ for s in snippet.sections }}\n{{ s.content }}\n{{ end }}");
         Assert.Empty(page.FindAll("fluent-select[aria-label='Renderer for the reference']"));
         page.Find($"fluent-button[aria-label='Insert reference into {Assessment}']").Click();
 
-        Assert.EndsWith("\n{{ for s in snippet.sections }}\n{{ s.text }}\n{{ end }}", EditorText(page));
+        Assert.EndsWith("\n{{ for s in snippet.sections }}\n{{ s.content }}\n{{ end }}", EditorText(page));
     }
 
     [Fact]
@@ -173,9 +173,9 @@ public class TemplatesV25PaletteTests : ClientRenderTestContext
         Navigate(page, "closing");
 
         var choices = Choices(page, "macros/closing.md");
-        Assert.Contains("{{ macro.tool_note.text }}", choices);
+        Assert.Contains("{{ macro.tool_note.content }}", choices);
         Assert.DoesNotContain("{{ macro.tool_note.prompt }}", choices);
-        Assert.DoesNotContain("{{ macro.closing.text }}", choices);
+        Assert.DoesNotContain("{{ macro.closing.content }}", choices);
         Assert.Contains("{{ profile.name }}", choices);
     }
 
@@ -187,7 +187,7 @@ public class TemplatesV25PaletteTests : ClientRenderTestContext
         Navigate(page, "standards");
         var snippetChoices = Choices(page, "snippets/standards.md");
         Assert.Contains("{{ input.notes }}", snippetChoices);
-        Assert.DoesNotContain("{{ snippet.standards.text }}", snippetChoices);
+        Assert.DoesNotContain("{{ snippet.standards.content }}", snippetChoices);
 
         Navigate(page, "HPI");
         Assert.Contains("{{ macro.tool_note.prompt }}", Choices(page, "snippets/sections/hpi.md"));
@@ -200,10 +200,10 @@ public class TemplatesV25PaletteTests : ClientRenderTestContext
         Navigate(page, "assessment");
 
         Assert.Equal(
-            "Reads: input.intake, input.notes, node.extract.value, node.meds.value, snippet.standards.text, macro.tool_note.prompt (inline)",
+            "Reads: input.intake, input.notes, node.extract.value, node.meds.value, snippet.standards.content, macro.tool_note.prompt (inline)",
             page.Find(".template-reads").TextContent.Trim());
 
-        page.Find(".editor-pane fluent-text-area").Change("{{ node.extract.text }} {{ snippet.standards.text }} {{ macro.tool_note.prompt }}");
+        page.Find(".editor-pane fluent-text-area").Change("{{ node.extract.content }} {{ snippet.standards.content }} {{ macro.tool_note.prompt }}");
         Assert.Contains("the JSON renders as text — read node.extract.value for the fields.", page.Find(".node-reads__warning").TextContent);
     }
 }

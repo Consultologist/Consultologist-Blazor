@@ -130,7 +130,7 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
     public void TheInstruction_HasThePalette_ThatAppendsIntoIt_AndNeverOffersTheMacrosOwnMembers()
     {
         // #1044: the instruction is a template — the palette inserts into it; the
-        // macro's own .text and .prompt are not offered (its text is what the inline
+        // macro's own .content and .prompt are not offered (its text is what the inline
         // read fills, its inline read is itself), another macro's are.
         var page = RenderEditor();
         CapturePublish();
@@ -140,7 +140,7 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         Assert.Contains("{{ input.kind }}", options);
         Assert.Contains("{{ macro.tool_note.prompt }}", options);
         Assert.DoesNotContain("{{ macro.closing.prompt }}", options);
-        Assert.DoesNotContain("{{ macro.closing.text }}", options);
+        Assert.DoesNotContain("{{ macro.closing.content }}", options);
 
         page.Find("fluent-select[aria-label='Reference to insert into instruction of macro closing']").Change("{{ input.kind }}");
         page.Find("fluent-button[aria-label='Insert reference into instruction of macro closing']").Click();
@@ -309,11 +309,11 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
 
         // Read as text from the standards snippet.
         Navigate(page, "standards");
-        page.Find(".editor-pane fluent-text-area").Change("Follow the local standards. {{ macro.closing.text }}");
+        page.Find(".editor-pane fluent-text-area").Change("Follow the local standards. {{ macro.closing.content }}");
         Navigate(page, "closing");
 
         var readers = page.Find("ul.macro-readers[aria-label='Readers of closing']");
-        Assert.Equal(new[] { "Snippet 'standards' — macro.closing.text" }, readers.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
+        Assert.Equal(new[] { "Snippet 'standards' — macro.closing.content" }, readers.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
     }
 
     // ----- the node pane: one Macros section -----
@@ -422,7 +422,7 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
 
         Assert.Contains("macro.tool_note.prompt", page.Find("ul.node-inline-macros[aria-label='Inline macros of section_notes']").TextContent);
         Assert.Equal(
-            "Node 'section_notes' fans snippet folder 'sections'; items plan carry no macro.tool_note.prompt read, so nothing tells the model to write macro.tool_note.text for them.",
+            "Node 'section_notes' fans snippet folder 'sections'; items plan carry no macro.tool_note.prompt read, so nothing tells the model to write macro.tool_note.content for them.",
             page.Find(".node-inline-macros__warning").TextContent.Trim());
     }
 
@@ -597,7 +597,7 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         yield return new object[] { "deliverable undeclared", new Action<System.Text.Json.Nodes.JsonObject>(root => DeliverableObject(root)["macros"] = System.Text.Json.Nodes.JsonNode.Parse("""[ { "id": "nope", "at": "append" } ]""")),
             "Deliverable 'consult' macro 'nope' is not a declared macro." };
         yield return new object[] { "unused macro", new Action<System.Text.Json.Nodes.JsonObject>(root => root["macros"]!.AsArray().Add(System.Text.Json.Nodes.JsonNode.Parse("""{ "id": "spare", "label": "Spare", "file": "macros/closing.md", "instruction": "Never." }"""))),
-            "Macro 'spare' is declared but never placed or read; place it on a node or a deliverable, or read macro.spare.text / macro.spare.prompt." };
+            "Macro 'spare' is declared but never placed or read; place it on a node or a deliverable, or read macro.spare.content / macro.spare.prompt." };
     }
 
     [Theory]
@@ -613,7 +613,7 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
     [Fact]
     public void TheDesk_RefusesADeliverableMacro_ReadingAFanningNode()
     {
-        var refusals = DeskRefusals(Reshaped(_ => { }, ("macros/closing.md", "Closing: {{ node.section_notes.text }}")));
+        var refusals = DeskRefusals(Reshaped(_ => { }, ("macros/closing.md", "Closing: {{ node.section_notes.content }}")));
 
         Assert.Contains("Deliverable 'consult' macro 'closing' reads node 'section_notes', which fans; a deliverable macro reads scalar nodes and aggregators — place the macro on the node to read its items.", refusals);
     }
@@ -644,7 +644,7 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         var refusals = Refusals(page);
         Assert.Contains("Deliverable 'consult' macro 'tool_note' must declare at (prepend | append).", refusals);
         Assert.Contains("Macro 'spare' must declare an instruction at specVersion 25; placed text tells the model when to write its text read.", refusals);
-        Assert.Contains("Macro 'spare' is declared but never placed or read; place it on a node or a deliverable, or read macro.spare.text / macro.spare.prompt.", refusals);
+        Assert.Contains("Macro 'spare' is declared but never placed or read; place it on a node or a deliverable, or read macro.spare.content / macro.spare.prompt.", refusals);
         Assert.Null(sent);
     }
 

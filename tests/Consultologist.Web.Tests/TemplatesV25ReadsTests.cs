@@ -66,7 +66,7 @@ public class TemplatesV25ReadsTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".binding-row"));
 
         Assert.Equal(
-            new[] { "input.intake", "input.notes", "node.extract.value", "node.meds.value", "snippet.standards.text", "macro.tool_note.prompt (inline)" },
+            new[] { "input.intake", "input.notes", "node.extract.value", "node.meds.value", "snippet.standards.content", "macro.tool_note.prompt (inline)" },
             Reads(page, "assessment"));
     }
 
@@ -80,7 +80,7 @@ public class TemplatesV25ReadsTests : ClientRenderTestContext
         Assert.Equal("Extract concepts", Selected(page));
 
         ShowNode(page, "assessment");
-        page.FindAll("ul.node-reads button").First(b => b.TextContent.Trim() == "snippet.standards.text").Click();
+        page.FindAll("ul.node-reads button").First(b => b.TextContent.Trim() == "snippet.standards.content").Click();
         Assert.Equal("standards", Selected(page));
 
         ShowNode(page, "assessment");
@@ -95,7 +95,7 @@ public class TemplatesV25ReadsTests : ClientRenderTestContext
         ShowNode(page, "section_notes");
 
         var rows = page.Find("ul.node-reads[aria-label='Reads of section_notes']").QuerySelectorAll("li").ToList();
-        Assert.Equal(new[] { "item.name — the fan item", "item.text — the fan item" }, rows.Select(li => li.TextContent.Trim()));
+        Assert.Equal(new[] { "item.content — the fan item", "item.name — the fan item" }, rows.Select(li => li.TextContent.Trim()));
         Assert.All(rows, li => Assert.NotNull(li.QuerySelector("span.snippet-readers__row")));
     }
 
@@ -130,13 +130,13 @@ public class TemplatesV25ReadsTests : ClientRenderTestContext
             .Returns(new WorkflowPublishOutcome(new WorkflowPackagePublishResponse("acct-1234567890ab", "v2026.10.2", "acct-1234567890ab@v2026.10.2"), Array.Empty<string>()));
         var page = RenderEditor();
         Navigate(page, "assessment");
-        page.Find(".editor-pane fluent-text-area").Change("Assess.\n{{ snippet.standards.text }}\n{{ macro.tool_note.prompt }}\n{{ node.extract.text }}\n{{ for m in node.meds.value.medications }}- {{ m.name }}\n{{ end }}");
+        page.Find(".editor-pane fluent-text-area").Change("Assess.\n{{ snippet.standards.content }}\n{{ macro.tool_note.prompt }}\n{{ node.extract.content }}\n{{ for m in node.meds.value.medications }}- {{ m.name }}\n{{ end }}");
         ShowNode(page, "assessment");
 
         var warning = page.Find(".node-reads__warning").TextContent.Trim();
-        Assert.StartsWith("Prompt 'assessment' reads node.extract.text of format 'concept_list'", warning);
+        Assert.StartsWith("Prompt 'assessment' reads node.extract.content of format 'concept_list'", warning);
         Assert.EndsWith("the JSON renders as text — read node.extract.value for the fields.", warning);
-        Assert.Contains("node.extract.text", Reads(page, "assessment"));
+        Assert.Contains("node.extract.content", Reads(page, "assessment"));
 
         page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish")).Click();
         Assert.NotNull(sent);
@@ -145,7 +145,7 @@ public class TemplatesV25ReadsTests : ClientRenderTestContext
     [Fact]
     public void AnUnresolvedReference_IsSaidEarly_OnTheReadsList()
     {
-        var page = RenderEditor(WithFile("prompts/assessment.md", "Assess {{ node.nope.text }} and {{ snippet.standards.text }}"));
+        var page = RenderEditor(WithFile("prompts/assessment.md", "Assess {{ node.nope.content }} and {{ snippet.standards.content }}"));
         ShowNode(page, "assessment");
 
         Assert.Equal("1 reference does not resolve — Publish says which.", page.Find(".node-reads__unresolved").TextContent.Trim());

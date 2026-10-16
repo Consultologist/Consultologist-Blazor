@@ -378,7 +378,7 @@ public static class WorkflowManifestReader
 
     /// <summary>
     /// The 25 table (#1008): <c>snippets</c> — the same shape as data (id → file,
-    /// or folder → "dir/" with an index.json), read as <c>{{ snippet.&lt;id&gt;.text }}</c>.
+    /// or folder → "dir/" with an index.json), read as <c>{{ snippet.&lt;id&gt;.content }}</c>.
     /// </summary>
     public const string SnippetsKey = "snippets";
 

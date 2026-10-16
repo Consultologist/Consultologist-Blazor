@@ -187,7 +187,7 @@ public class TemplatesV25FormatPickerTests : ClientRenderTestContext
         // — the author's second step after the re-pick.
         Services.GetRequiredService<WorkflowEditorSession>().SelectedKey = "prompts/assessment.md";
         page.Render();
-        page.Find("fluent-text-area").Change("Assess.\n{{ input.notes }}\n{{ node.scope.text }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}\n{{ for m in node.meds.value.medications }}- {{ m.name }}\n{{ end }}");
+        page.Find("fluent-text-area").Change("Assess.\n{{ input.notes }}\n{{ node.scope.content }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}\n{{ for m in node.meds.value.medications }}- {{ m.name }}\n{{ end }}");
 
         Publish(page);
 
