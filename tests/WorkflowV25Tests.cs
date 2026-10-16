@@ -1,18 +1,16 @@
 using System.Text.Json.Nodes;
+using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
 
 namespace Consultologist.Api.Tests;
 
 /// <summary>
 /// A 25-shaped package (package-format-v25-design.md) and the fixture
-/// catalogue of A1's five formats. Validation goes through the A4 seam that
-/// accepts 25 for the call; the public entry still refuses 25 until A5.
+/// catalogue of A1's five formats. Validation goes through the public entry
+/// (25 is accepted since A5 #1018; the A4 seam carried these tests before).
 /// </summary>
 public static class V25Package
 {
-    public static readonly IReadOnlyCollection<int> Accepting25 =
-        WorkflowPackageValidator.AcceptedSpecVersions.Append(25).ToList();
-
     public static WorkflowFormatCatalog Catalog()
     {
         var files = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -97,7 +95,7 @@ public static class V25Package
     }
 
     public static WorkflowPackageValidator.ValidationResult Validate((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle, WorkflowFormatCatalog? catalog) =>
-        WorkflowPackageValidator.Validate(bundle.Manifest, bundle.Files, TestOutputContracts.CatalogSchemas, null, catalog, Accepting25);
+        WorkflowPackageValidator.Validate(bundle.Manifest, bundle.Files, TestOutputContracts.CatalogSchemas, null, catalog);
 
     public static List<string> Errors((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle) =>
         Validate(bundle, Catalog()).Errors;
@@ -128,14 +126,23 @@ public class WorkflowV25Tests
     }
 
     [Fact]
-    public void ThePublicEntry_StillRefuses25_UntilA5()
+    public void ThePublicEntry_Accepts25_AndTheStoreRunsIt()
     {
+        // A5 (#1018): the two ceilings meet at 25 — the shape every gate flip
+        // has had (WorkflowV24GateTests). The store's gate is the manifest read
+        // under SupportedSpecVersions, which threw for 25 until now.
+        Assert.Contains(25, WorkflowPackageValidator.AcceptedSpecVersions);
+        Assert.Contains(25, WorkflowPackageStore.SupportedSpecVersions);
+
         var (manifest, files) = V25Package.Minimal();
-
         var result = WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
 
-        Assert.Contains(result.Errors, e => e.Contains("specVersion 25 is not supported"));
-        Assert.DoesNotContain(25, WorkflowPackageValidator.AcceptedSpecVersions);
+        var json = System.Text.Json.JsonSerializer.Serialize(manifest, V25Fixtures.Wire);
+        var read = WorkflowPackageManifestJson.Read(json, "test/minimal@v1", WorkflowPackageStore.SupportedSpecVersions);
+        Assert.Equal(25, read.SpecVersion);
+        Assert.Throws<WorkflowPackageSpecVersionException>(() =>
+            WorkflowPackageManifestJson.Read(json.Replace("\"specVersion\": 25", "\"specVersion\": 26"), "test/minimal@v1", WorkflowPackageStore.SupportedSpecVersions));
     }
 
     [Fact]

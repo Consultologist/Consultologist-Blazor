@@ -470,7 +470,7 @@ public class WorkflowPackageMigration24To25Tests
         Assert.DoesNotContain(root["prompts"]!.AsArray().OfType<JsonObject>(), p => p["id"]!.GetValue<string>().Contains('-'));
         Assert.Equal("extract_concepts", Node(root, "extract_patient_concepts")["prompt"]!.GetValue<string>());
         Assert.Contains("Prompt 'extract-concepts' renamed 'extract_concepts' (a 25 prompt id is snake_case), on every node that names it.", result.Notices);
-        Assert.DoesNotContain(WorkflowPackageValidator.Validate(V24Package.Manifest(result.ManifestJson), result.Files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog(), V25Package.Accepting25).Errors,
+        Assert.DoesNotContain(WorkflowPackageValidator.Validate(V24Package.Manifest(result.ManifestJson), result.Files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog()).Errors,
             e => e.Contains("snake_case"));
     }
 

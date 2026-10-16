@@ -33,7 +33,10 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     // for its classifier (scheduling dependency).
     // v24 (#957): the per-item layer — a node macro on a data: fan may anchor
     // to one item (forItem), gate on item:id, and carry {{item:…}} tokens.
-    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24 };
+    // v25 (#1018): object templates — the template is the source of truth:
+    // formats (local and catalogue), snippets, deliverables, inline macros, the
+    // reply is a template; every id snake_case, every reference an object read.
+    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 };
     private static readonly TimeSpan LatestPointerCacheDuration = TimeSpan.FromSeconds(60);
 
     private static readonly JsonSerializerOptions JsonOptions = new()

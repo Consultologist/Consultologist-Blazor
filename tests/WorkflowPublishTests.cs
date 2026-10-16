@@ -764,19 +764,22 @@ public class WorkflowPackagePublisherTests
     // ----- v25 (B2 #1001): the formats catalogue at the publish desk ---------
 
     [Fact]
-    public async Task A25Publish_IsStillRefusedByTheVersionGate_UntilA5()
+    public async Task A25Publish_Succeeds_AndStampsTheFormatsItResolvedAgainst()
     {
-        // The publisher now passes the loaded formats catalogue into the
-        // validator and the stamp; neither is reachable for a 25 package until
-        // the bump accepts 25. The gate speaks first.
+        // A5 (#1018): the gate accepts 25, so the publisher's B2 wiring is
+        // reachable — the loaded formats catalogue goes into the validator and
+        // the stamp names it; the snippets and macro files ride along.
         var (publisher, writer, _) = CreatePublisher();
         var (manifest, files) = V25Package.Minimal();
 
         var result = await publisher.PublishAsync(OwnerId, null, Request(manifest: manifest, files: files), CancellationToken.None);
 
-        Assert.False(result.Succeeded);
-        Assert.Contains(result.Errors, e => e.Contains("specVersion 25 is not supported"));
-        Assert.Empty(writer.Blobs);
+        Assert.True(result.Succeeded, string.Join(" | ", result.Errors));
+        var stamp = WorkflowPackageStamp.Read(writer.Blobs[StampBlob("v2026.07.1")], "x@v1");
+        Assert.Equal(TestFormats.Catalog.ResolvedRef, stamp.FormatsRef);
+        Assert.Equal(
+            files.Keys.Append("manifest.json").Append(WorkflowPackageStamp.FileName).Select(path => $"{AccountName}/v2026.07.1/{path}").Order(StringComparer.Ordinal),
+            writer.Blobs.Keys.Order(StringComparer.Ordinal));
     }
 
     [Fact]
