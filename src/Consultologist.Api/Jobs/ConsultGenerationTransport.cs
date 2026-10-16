@@ -65,10 +65,28 @@ public sealed class ConsultGenerationJobs
     private static readonly TimeSpan SseInitialJobResponsePollInterval = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan SseInitialJobResponseTimeout = TimeSpan.FromSeconds(10);
 
+    // #1051: nulls are omitted — a 35-node job carries ~19 null fields per
+    // node row, and the catch-up store holds the bytes. The client reads a
+    // missing member as it reads an explicit null. The GET response is the
+    // worker's serialiser and is not affected.
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
     };
+
+    /// <summary>
+    /// #1051: the held INPUT text never rides a catch-up event — the snapshot
+    /// and done payloads carry this empty map in its place when the job holds
+    /// inputs, so the client's "inputs available" flag still holds (History
+    /// reads the text through GET). The events table holds the produced prose
+    /// and no input PHI.
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<string, string> EmptyHeldInputs = new Dictionary<string, string>();
+
+    /// <summary>The job response as a catch-up event carries it: inputs emptied (<see cref="EmptyHeldInputs"/>), everything else as is.</summary>
+    internal static ConsultGenerationJobResponse ForCatchUp(ConsultGenerationJobResponse response) =>
+        response.HeldInputs is null ? response : response with { HeldInputs = EmptyHeldInputs };
 
     private readonly ILogger<ConsultGenerationJobs> _logger;
     private readonly IAccountAuthorizer _authorizer;
@@ -951,6 +969,9 @@ public sealed class ConsultGenerationJobs
         var liveEventCount = 0;
         var heartbeatCount = 0;
         var highestEmittedSequence = resumeAfterSequence;
+        // #1051: the keys this connection has already sent unpersisted (the
+        // store refused them) — never sent twice, and never again as stored.
+        var connection = new SseConnectionState();
         var latestEventId = (string?)null;
         var latestEventType = (string?)null;
         var terminalStatus = (string?)null;
@@ -974,6 +995,7 @@ public sealed class ConsultGenerationJobs
                     jobId,
                     appUserId,
                     resumeAfterSequence,
+                    connection,
                     cancellationToken);
                 highestEmittedSequence = replayWriteResult.HighestEmittedSequence;
                 replayEventCount += replayWriteResult.EventCount;
@@ -994,6 +1016,7 @@ public sealed class ConsultGenerationJobs
                 writer,
                 initialResponse,
                 highestEmittedSequence,
+                connection,
                 cancellationToken);
             highestEmittedSequence = initialWriteResult.HighestEmittedSequence;
             initialEventCount += initialWriteResult.EventCount;
@@ -1041,6 +1064,7 @@ public sealed class ConsultGenerationJobs
                     writer,
                     latestResponse,
                     highestEmittedSequence,
+                    connection,
                     cancellationToken);
                 highestEmittedSequence = liveWriteResult.HighestEmittedSequence;
                 liveEventCount += liveWriteResult.EventCount;
@@ -1848,6 +1872,7 @@ public sealed class ConsultGenerationJobs
         string jobId,
         string appUserId,
         long resumeAfterSequence,
+        SseConnectionState connection,
         CancellationToken cancellationToken)
     {
         IReadOnlyList<ConsultGenerationJobStoredEvent> storedEvents;
@@ -1875,15 +1900,40 @@ public sealed class ConsultGenerationJobs
             writer,
             storedEvents,
             resumeAfterSequence,
+            connection,
             cancellationToken);
     }
 
-    private async Task<SseMaterializedWriteResult> WriteMaterializedEventsAsync(
+    /// <summary>
+    /// #1051: what one SSE connection has sent without a stored id — the
+    /// event keys the store refused to persist and the stream emitted anyway.
+    /// A key sent unpersisted is never sent again on this connection, stored
+    /// or not; a later connection resuming by id will not see it (the store
+    /// never held it) and reads the job through GET as the client does on a
+    /// stream that ends without <c>done</c>.
+    /// </summary>
+    internal sealed class SseConnectionState
+    {
+        public HashSet<string> EmittedUnpersistedKeys { get; } = new(StringComparer.Ordinal);
+
+        public bool PersistenceFailureLogged { get; set; }
+    }
+
+    /// <summary>
+    /// The response's catch-up events, persisted and sent with ids — or,
+    /// #1051, when the store refuses them (a payload past what a row holds,
+    /// storage down), logged once per connection and sent WITHOUT ids so the
+    /// stream stays live and <c>done</c> reaches the client; such events are
+    /// not resumable. Nothing is sent twice on one connection.
+    /// </summary>
+    internal async Task<SseMaterializedWriteResult> WriteMaterializedEventsAsync(
         ChannelWriter<SseItem<string>> writer,
         ConsultGenerationJobResponse response,
         long highestEmittedSequence,
+        SseConnectionState connection,
         CancellationToken cancellationToken)
     {
+        var candidates = CreateSemanticEventCandidates(response);
         IReadOnlyList<ConsultGenerationJobStoredEvent> storedEvents;
 
         try
@@ -1891,31 +1941,66 @@ public sealed class ConsultGenerationJobs
             storedEvents = await _eventStore.AppendAsync(
                 response.JobId,
                 response.AppUserId,
-                CreateSemanticEventCandidates(response),
+                candidates,
                 cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(
-                ex,
-                "Consult generation SSE event persistence failed. JobId={JobId}, Status={Status}",
-                response.JobId,
-                response.Status);
+            if (!connection.PersistenceFailureLogged)
+            {
+                connection.PersistenceFailureLogged = true;
+                _logger.LogError(
+                    ex,
+                    "Consult generation SSE event persistence failed; the stream continues without ids for this response's events. JobId={JobId}, Status={Status}",
+                    response.JobId,
+                    response.Status);
+            }
 
-            throw;
+            return await WriteUnpersistedEventsAsync(writer, candidates, highestEmittedSequence, connection, cancellationToken);
         }
 
         return await WriteStoredEventsAsync(
             writer,
             storedEvents,
             highestEmittedSequence,
+            connection,
             cancellationToken);
+    }
+
+    private static async Task<SseMaterializedWriteResult> WriteUnpersistedEventsAsync(
+        ChannelWriter<SseItem<string>> writer,
+        IReadOnlyList<ConsultGenerationJobEventCandidate> candidates,
+        long highestEmittedSequence,
+        SseConnectionState connection,
+        CancellationToken cancellationToken)
+    {
+        var eventCount = 0;
+        var latestEventType = (string?)null;
+
+        foreach (var candidate in candidates)
+        {
+            if (!connection.EmittedUnpersistedKeys.Add(candidate.EventKey))
+            {
+                continue;
+            }
+
+            await writer.WriteAsync(new SseItem<string>(candidate.PayloadJson, candidate.EventType), cancellationToken);
+            eventCount++;
+            latestEventType = candidate.EventType;
+        }
+
+        return new SseMaterializedWriteResult(highestEmittedSequence, eventCount, null, latestEventType);
     }
 
     private static async Task<SseMaterializedWriteResult> WriteStoredEventsAsync(
         ChannelWriter<SseItem<string>> writer,
         IReadOnlyList<ConsultGenerationJobStoredEvent> storedEvents,
         long highestEmittedSequence,
+        SseConnectionState connection,
         CancellationToken cancellationToken)
     {
         var eventCount = 0;
@@ -1924,6 +2009,14 @@ public sealed class ConsultGenerationJobs
 
         foreach (var storedEvent in storedEvents.Where(storedEvent => storedEvent.Sequence > highestEmittedSequence))
         {
+            if (connection.EmittedUnpersistedKeys.Contains(storedEvent.EventKey))
+            {
+                // Sent on this connection already, without an id; the sequence
+                // still advances so the stored row is not sent again later.
+                highestEmittedSequence = Math.Max(highestEmittedSequence, storedEvent.Sequence);
+                continue;
+            }
+
             var item = CreateSseItem(storedEvent);
             await writer.WriteAsync(item, cancellationToken);
             highestEmittedSequence = Math.Max(highestEmittedSequence, storedEvent.Sequence);
@@ -1986,7 +2079,7 @@ public sealed class ConsultGenerationJobs
     {
         var candidates = new List<ConsultGenerationJobEventCandidate>();
 
-        AddEventCandidate(candidates, "snapshot", "snapshot", response);
+        AddEventCandidate(candidates, "snapshot", "snapshot", ForCatchUp(response));
         // Pre-DAG (SchemaVersion 2) snapshots regenerate no stage candidates; their
         // events were materialized while they ran and replay from the event store. The
         // node path's failure branch covers both eras via the '-failed' status suffix.
@@ -2019,7 +2112,7 @@ public sealed class ConsultGenerationJobs
                 return candidates;
             }
 
-            AddEventCandidate(candidates, "done", "done", response);
+            AddEventCandidate(candidates, "done", "done", ForCatchUp(response));
         }
 
         return candidates;
@@ -2274,7 +2367,7 @@ public sealed class ConsultGenerationJobs
         }
     }
 
-    private sealed record SseMaterializedWriteResult(
+    internal sealed record SseMaterializedWriteResult(
         long HighestEmittedSequence,
         int EventCount,
         string? LatestEventId,
