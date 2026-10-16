@@ -86,21 +86,23 @@ public class ProvenanceVersionSetTests
     [Fact]
     public void Definition6_OutputHash_IsOverTheComposedOutput_AndAgentOutputHash_OverTheReply()
     {
-        // hash-definitions.md § 4, definition 6 (provenance@v2026.10.1): reply
+        // hash-definitions.md § 4, definition 6 (provenance@v2026.10.1; #1044
+        // provenance@v2026.10.3 — the reply is rendered first, plain text to
+        // itself, so the worked example stands): reply
         // `Hello` with one after-instance `Bye` composes to `Hello\n\nBye`;
         // outputHash is over the composition, agentOutputHash over the reply —
         // definition 5's `Hello` digest, unmoved — and the two are one digest
         // when nothing composed and nothing was stripped. Both digests are read
         // off the published rows, recomputed through the engine's own code.
         var composed = WorkflowNodeCompletion.Compose(
-            "Hello", new[] { new WorkflowNodeCompletion.Instance("closing", After: true, "Bye") }, new Dictionary<string, string>(), id => id);
+            "Hello", new[] { new WorkflowNodeCompletion.Instance("closing", After: true, "Bye") }, Array.Empty<string>());
 
         Assert.Equal("Hello\n\nBye", composed.Text);
         Assert.Equal(NodeWorkedExample("6 (composed output)"), ConsultGenerationProvenance.Sha256Hex(composed.Text));
         Assert.Equal(NodeWorkedExample("6 (agentOutputHash)"), ConsultGenerationProvenance.Sha256Hex("Hello"));
         Assert.Equal("09f92f8f5ae8928340e5ea63c7a3d3a70c9d4ef94cf9ae858cc1dd95bfb243e4", NodeWorkedExample("6 (composed output)"));
 
-        var bare = WorkflowNodeCompletion.Compose("Hello", Array.Empty<WorkflowNodeCompletion.Instance>(), new Dictionary<string, string>(), id => id);
+        var bare = WorkflowNodeCompletion.Compose("Hello", Array.Empty<WorkflowNodeCompletion.Instance>(), Array.Empty<string>());
         Assert.Equal(ConsultGenerationProvenance.Sha256Hex("Hello"), ConsultGenerationProvenance.Sha256Hex(bare.Text));
     }
 

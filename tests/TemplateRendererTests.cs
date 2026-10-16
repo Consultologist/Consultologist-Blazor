@@ -156,11 +156,48 @@ public class TemplateRendererTests
                 ["b"] = new("b", "B", "B.", "Add b."),
                 ["c"] = new("c", "C", "C.", "Add c."),
             });
-        var reads = new HashSet<string>(StringComparer.Ordinal);
+        var trace = new TemplateRenderer.TemplateRenderTrace();
 
-        TemplateRenderer.Render("Prompt 'p'", "{{ if false }}{{ macro.a.prompt }}{{ end }}{{ snippet.standards.text }} {{ macro.c.text }}", scope, promptReads: reads);
+        TemplateRenderer.Render("Prompt 'p'", "{{ if false }}{{ macro.a.prompt }}{{ end }}{{ snippet.standards.text }} {{ macro.c.text }}", scope, trace: trace);
 
-        Assert.Equal(new[] { "b" }, reads.Order());
+        Assert.Equal(new[] { "b" }, trace.PromptReads.Order());
+    }
+
+    [Fact]
+    public void Macro_Prompt_RendersTheInstruction_ThenAppendsTheSentence_Unrendered()
+    {
+        // #1044: the instruction is a template over the same scope; the mechanics
+        // sentence carries the literal read the model is to write, so it is
+        // appended after the render — never evaluated into the macro's text.
+        var scope = Scope(macros: new Dictionary<string, TemplateMacroSource>
+        {
+            ["closing"] = new("closing", "Closing", "Closing: {{ profile.name }}.", "Add a closing line for {{ profile.name }} if the plan changed."),
+        });
+
+        var prompt = Render("{{ macro.closing.prompt }}", scope);
+
+        Assert.Equal(WorkflowMacroMechanics.Prompt("closing", "Add a closing line for Dr Example if the plan changed."), prompt);
+        Assert.Contains("{{ macro.closing.text }}", prompt);
+        Assert.DoesNotContain("Closing: Dr Example.", prompt);
+    }
+
+    [Fact]
+    public void Macro_TextReads_AreTraced_AtTheTopLevelOnly_InOrder_OncePerRead()
+    {
+        // #1044: a reply's slot reads are the macro texts IT read; a read inside a
+        // filled text (closing reads note) is that text's, not an entry; twice
+        // read is twice placed.
+        var scope = Scope(macros: new Dictionary<string, TemplateMacroSource>
+        {
+            ["closing"] = new("closing", "Closing", "Closing. {{ macro.note.text }}", "Add a closing line."),
+            ["note"] = new("note", "Note", "Note.", "Add a note."),
+        });
+        var trace = new TemplateRenderer.TemplateRenderTrace();
+
+        var rendered = TemplateRenderer.Render("Node 'assessment' reply", "Plan. {{ macro.closing.text }} {{ macro.note.text }} {{ macro.closing.text }}", scope, trace: trace);
+
+        Assert.Equal("Plan. Closing. Note. Note. Closing. Note.", rendered);
+        Assert.Equal(new[] { "closing", "note", "closing" }, trace.TextReads);
     }
 
     [Fact]

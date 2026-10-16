@@ -93,6 +93,34 @@ public class TemplateReferenceGraphTests
     }
 
     [Fact]
+    public void AnInstruction_ReachingItsOwnSlot_IsACycle_NamedByItsPath()
+    {
+        // #1044: a .prompt read is an edge to the macro's instruction, which is a
+        // template; one that reads a snippet carrying the same slot loops.
+        var graph = new TemplateReferenceGraph();
+        graph.Add(TemplateKind.Prompt, "p", Refs("{{ macro.m.prompt }}"));
+        graph.Add(TemplateKind.Instruction, "m", Refs("Say it as {{ snippet.intro.text }}."));
+        graph.Add(TemplateKind.Snippet, "intro", Refs("Plainly. {{ macro.m.prompt }}"));
+        graph.Add(TemplateKind.Macro, "m", Refs("M."));
+
+        Assert.True(graph.TryFindCycle(out var path));
+        Assert.Equal("instruction 'm' → snippet 'intro' → instruction 'm'", TemplateReferenceGraph.Describe(path));
+    }
+
+    [Fact]
+    public void AnInstruction_ReadingAMacrosText_IsFine_AndIsNotAPlacedText()
+    {
+        var graph = new TemplateReferenceGraph();
+        graph.Add(TemplateKind.Prompt, "p", Refs("{{ macro.m.prompt }}"));
+        graph.Add(TemplateKind.Instruction, "m", Refs("Like {{ macro.n.text }}, but shorter."));
+        graph.Add(TemplateKind.Macro, "n", Refs("Example."));
+        graph.Add(TemplateKind.Macro, "m", Refs("M."));
+
+        Assert.False(graph.TryFindCycle(out _));
+        Assert.False(graph.TryFindMacroTextReachingPrompt(out _, out _));
+    }
+
+    [Fact]
     public void AMacroText_CarryingAPromptRead_IsRefused_Directly()
     {
         var graph = new TemplateReferenceGraph();

@@ -1,23 +1,26 @@
 namespace Consultologist.PackageFormat;
 
-/// <summary>Which kind of template a graph entry is; prompts are sources only (nothing reads a prompt).</summary>
+/// <summary>Which kind of template a graph entry is; prompts are sources only (nothing reads a prompt). #1044: a macro's instruction is a template too, read through <c>macro.&lt;id&gt;.prompt</c>.</summary>
 public enum TemplateKind
 {
     Prompt,
     Snippet,
-    Macro
+    Macro,
+    Instruction
 }
 
 /// <summary>
 /// The derived reference graph over templates (package-format-v25-design.md
-/// § 5.2): a template reads snippets (by id, or every item of a folder) and
-/// macro texts; those are its edges here. Node edges are not in this graph —
-/// a node's composed output already has its slots filled, and node cycles are
-/// the manifest's acyclic check. Two questions are asked of it: is there a
-/// cycle anywhere (snippet to snippet, macro text to snippet to macro), named
-/// by its path; and does any macro's text reach a <c>macro.&lt;id&gt;.prompt</c>
-/// read — the one transitive rule, since text placed after a reply has no
-/// second call to honour a marker it would carry.
+/// § 5.2): a template reads snippets (by id, or every item of a folder), macro
+/// texts and — #1044 — macro instructions (a <c>macro.&lt;id&gt;.prompt</c> read
+/// is an edge to that macro's instruction); those are its edges here. Node
+/// edges are not in this graph — a node's composed output already has its
+/// slots filled, and node cycles are the manifest's acyclic check. Two
+/// questions are asked of it: is there a cycle anywhere (snippet to snippet,
+/// macro text to snippet to macro, instruction to snippet to the same
+/// instruction), named by its path; and does any macro's text reach a
+/// <c>macro.&lt;id&gt;.prompt</c> read — the one transitive rule, since text
+/// placed after a reply instructs no model.
 /// </summary>
 public sealed class TemplateReferenceGraph
 {
@@ -86,6 +89,12 @@ public sealed class TemplateReferenceGraph
                     yield return Key(TemplateKind.Macro, member);
                 }
             }
+        }
+
+        // #1044: the slot's prompt text is the instruction rendered — a read of it.
+        foreach (var macro in refs.MacroPrompts)
+        {
+            yield return Key(TemplateKind.Instruction, macro);
         }
     }
 

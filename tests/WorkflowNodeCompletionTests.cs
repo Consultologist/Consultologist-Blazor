@@ -3,24 +3,21 @@ using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
 
 /// <summary>
-/// B5 #1004 (design §§ 6–7): a node's output composed at completion — slots
-/// filled where the model placed their markers, before/after instances around
-/// the result, attribution in output order, every removal named.
+/// B5 #1004 → #1044 (design §§ 6–7): a node's output composed at completion —
+/// the reply already rendered (its slot reads are the render's trace), the
+/// before/after instances around it, attribution in output order.
 /// </summary>
 public class WorkflowNodeCompletionTests
 {
-    private static readonly IReadOnlyDictionary<string, string> NoFills = new Dictionary<string, string>();
-
-    private static string Unsanctioned(string id) => $"no read in this node's prompt sanctions [[slot:{id}]]";
+    private static readonly IReadOnlyList<string> NoSlots = Array.Empty<string>();
 
     [Fact]
     public void NothingToCompose_ReturnsTheReplyBytes()
     {
-        var result = WorkflowNodeCompletion.Compose("The plan.\n", Array.Empty<WorkflowNodeCompletion.Instance>(), NoFills, Unsanctioned);
+        var result = WorkflowNodeCompletion.Compose("The plan.\n", Array.Empty<WorkflowNodeCompletion.Instance>(), NoSlots);
 
         Assert.Equal("The plan.\n", result.Text);
         Assert.Empty(result.Appended);
-        Assert.Empty(result.Removals);
     }
 
     [Fact]
@@ -31,8 +28,7 @@ public class WorkflowNodeCompletionTests
         var result = WorkflowNodeCompletion.Compose(
             "Hello",
             new[] { new WorkflowNodeCompletion.Instance("closing", After: true, "Bye") },
-            NoFills,
-            Unsanctioned);
+            NoSlots);
 
         Assert.Equal("Hello\n\nBye", result.Text);
         Assert.Equal(new[] { new WorkflowNodeCompletion.Placed("macro", "closing") }, result.Appended);
@@ -49,51 +45,32 @@ public class WorkflowNodeCompletionTests
                 new WorkflowNodeCompletion.Instance("a1", After: true, "Last.\n\n"),
                 new WorkflowNodeCompletion.Instance("b2", After: false, "Second."),
             },
-            NoFills,
-            Unsanctioned);
+            NoSlots);
 
         Assert.Equal("First.\n\nSecond.\n\nThe plan.\n\nLast.", result.Text);
         Assert.Equal(new[] { "macro:b1", "macro:b2", "macro:a1" }, result.Appended.Select(p => $"{p.Kind}:{p.Id}"));
     }
 
     [Fact]
-    public void ASanctionedMarker_IsFilledInPlace_AndAttributedInOutputOrder()
+    public void TheReplysSlotReads_AreAttributedBetweenTheInstances_InRenderOrder()
     {
+        // #1044: the reply came in rendered; its trace says which macro texts it
+        // read, in order — once per read, as the record names them.
         var result = WorkflowNodeCompletion.Compose(
-            "Plan. [[slot:letrozole]] End. [[slot:closing]]",
+            "Plan. Letrozole counselling. End. Closing.",
             new[] { new WorkflowNodeCompletion.Instance("before", After: false, "B."), new WorkflowNodeCompletion.Instance("after", After: true, "A.") },
-            new Dictionary<string, string> { ["letrozole"] = "Letrozole counselling.", ["closing"] = "Closing." },
-            Unsanctioned);
+            new[] { "letrozole", "closing" });
 
         Assert.Equal("B.\n\nPlan. Letrozole counselling. End. Closing.\n\nA.", result.Text);
         Assert.Equal(new[] { "macro:before", "slot:letrozole", "slot:closing", "macro:after" }, result.Appended.Select(p => $"{p.Kind}:{p.Id}"));
-        Assert.Empty(result.Removals);
     }
 
     [Fact]
-    public void AMarkerNoFillSanctions_IsRemoved_AndNamedWithItsReason()
+    public void TheSameReadTwice_IsAttributedTwice_WithNoInstance()
     {
-        var result = WorkflowNodeCompletion.Compose(
-            "Plan. [[slot:stray]] End.",
-            Array.Empty<WorkflowNodeCompletion.Instance>(),
-            NoFills,
-            Unsanctioned);
-
-        Assert.Equal("Plan.  End.", result.Text);
-        Assert.Empty(result.Appended);
-        Assert.Equal(new[] { new WorkflowNodeCompletion.Removed("slot", "stray", "no read in this node's prompt sanctions [[slot:stray]]") }, result.Removals);
-    }
-
-    [Fact]
-    public void TheSameMarkerTwice_FillsTwice_AndIsAttributedTwice()
-    {
-        var result = WorkflowNodeCompletion.Compose(
-            "[[slot:x]] and [[slot:x]]",
-            Array.Empty<WorkflowNodeCompletion.Instance>(),
-            new Dictionary<string, string> { ["x"] = "X" },
-            Unsanctioned);
+        var result = WorkflowNodeCompletion.Compose("X and X", Array.Empty<WorkflowNodeCompletion.Instance>(), new[] { "x", "x" });
 
         Assert.Equal("X and X", result.Text);
-        Assert.Equal(2, result.Appended.Count);
+        Assert.Equal(new[] { "slot:x", "slot:x" }, result.Appended.Select(p => $"{p.Kind}:{p.Id}"));
     }
 }
