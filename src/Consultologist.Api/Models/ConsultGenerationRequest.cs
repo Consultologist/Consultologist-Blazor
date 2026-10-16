@@ -459,7 +459,7 @@ public static class ConsultAppendedKinds
     // outputHash (and agentOutputHash still says what the model replied).
     public const string Slot = "slot";
 
-    /// <summary>#1047 (specVersion 25, provenance@v2026.10.4): the macro the reply read inline as <c>{{ macro.&lt;id&gt;.text }}</c> — the inline macro the prompt instructed; a node-row kind only (<see cref="WorkflowNodeCompletion.InlineKind"/>).</summary>
+    /// <summary>#1047 (specVersion 25, provenance@v2026.10.4): the macro the reply read inline as <c>{{ macro.&lt;id&gt;.content }}</c> — the inline macro the prompt instructed; a node-row kind only (<see cref="WorkflowNodeCompletion.InlineKind"/>).</summary>
     public const string Inline = "inline";
 }
 

@@ -33,7 +33,7 @@ public class V25RunPathTests
         };
         files = new Dictionary<string, string>(files, StringComparer.Ordinal)
         {
-            ["macros/scope_line.md"] = "Scope: {{ node.scope.text }}.",
+            ["macros/scope_line.md"] = "Scope: {{ node.scope.content }}.",
         };
         return (manifest, files);
     }
@@ -69,17 +69,17 @@ public class V25RunPathTests
         {
             Deliverables = manifest.Deliverables!.Select(d => d with
             {
-                When = "node.assessment.text != \"\"",
-                Macros = new List<WorkflowDeliverableMacroSpec> { new("closing", At: WorkflowDeliverableMacroSpec.Append, When: "snippet.standards.text != \"\"") },
+                When = "node.assessment.content != \"\"",
+                Macros = new List<WorkflowDeliverableMacroSpec> { new("closing", At: WorkflowDeliverableMacroSpec.Append, When: "snippet.standards.content != \"\"") },
             }).ToList(),
         };
 
         var result = Assert.Single(WorkflowPackageStore.ResolveResultSet(manifest)!);
 
-        Assert.Equal("node.assessment.text != \"\"", result.When);
+        Assert.Equal("node.assessment.content != \"\"", result.When);
         Assert.Null(result.Condition);
         var gate = Assert.Single(result.MacroConditions!);
-        Assert.Equal(("closing", "append", "snippet.standards.text != \"\""), (gate.MacroId, gate.At!, gate.When!));
+        Assert.Equal(("closing", "append", "snippet.standards.content != \"\""), (gate.MacroId, gate.At!, gate.When!));
     }
 
     [Fact]
@@ -178,7 +178,7 @@ public class V25RunPathTests
         // macro reads instead.
         var (manifest, files) = WithDeliverableMacros();
         manifest = V25Package.WithNode(manifest, "assessment", n => n with { When = "input.kind == \"follow_up\"" });
-        files["macros/scope_line.md"] = "Scope: {{ node.assessment.text }}.";
+        files["macros/scope_line.md"] = "Scope: {{ node.assessment.content }}.";
         var package = Package((manifest, files));
 
         var decision = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, new Dictionary<string, string> { ["scope"] = "in_scope" }, V25JobStartTests.Scope(package, NewPatient));
@@ -239,7 +239,7 @@ public class V25RunPathTests
         // The deliverable's when reads assessment's TEXT — no classifier; the
         // boundary gets the stage-one output as a node text and judges it.
         var (manifest, files) = WithDeliverableMacros();
-        manifest = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node.assessment.text != \"\"" }).ToList() };
+        manifest = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node.assessment.content != \"\"" }).ToList() };
         var package = Package((manifest, files));
         var effective = new Dictionary<string, string> { ["notes"] = "Referral.", ["kind"] = "new" };
         var facts = (Run: ConsultRenderPayload.RunFactsFor(new DateTime(2026, 1, 2), "job", package.Ref, "host"), Profile: ConsultRenderPayload.ProfileFactsFor("Dr Example", null));
@@ -252,14 +252,14 @@ public class V25RunPathTests
             nodeTexts: new Dictionary<string, string> { ["assessment"] = "" }, run: facts.Run, profile: facts.Profile);
         Assert.Empty(empty.Results);
         var skipped = Assert.Single(empty.Skipped);
-        Assert.Equal(("consult", "needs `node.assessment.text != \"\"`; it does not hold"), (skipped.ResultId, skipped.Reason));
+        Assert.Equal(("consult", "needs `node.assessment.content != \"\"`; it does not hold"), (skipped.ResultId, skipped.Reason));
     }
 
     [Fact]
     public void TheBoundary_IsLoud_WhenAWhenReadsANodeTheStageDidNotRun()
     {
         var (manifest, files) = WithDeliverableMacros();
-        manifest = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node.assessment.text != \"\"" }).ToList() };
+        manifest = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node.assessment.content != \"\"" }).ToList() };
         var package = Package((manifest, files));
         var effective = new Dictionary<string, string> { ["notes"] = "Referral.", ["kind"] = "new" };
 
@@ -295,7 +295,7 @@ public class V25RunPathTests
         {
             Prompts = manifest.Prompts!.Append(new WorkflowPromptSpec("extra", "prompts/extra.md", new List<string>())).ToList(),
             Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("extra", "Extra", Prompt: "extra", Format: "prose")).ToList(),
-            Deliverables = manifest.Deliverables!.Select(d => d with { When = "node.extra.text != \"\"" }).ToList(),
+            Deliverables = manifest.Deliverables!.Select(d => d with { When = "node.extra.content != \"\"" }).ToList(),
         };
         files = new Dictionary<string, string>(files, StringComparer.Ordinal) { ["prompts/extra.md"] = "{{ input.notes }}" };
         var package = Package((manifest, files));
