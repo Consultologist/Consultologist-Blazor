@@ -254,9 +254,10 @@ public class PackageFormatSchemaTests
     }
 
     /// <summary>
-    /// A4 (#999): the v25 schema is generated but published only at A5 (the
-    /// bump); this pins its shape until then — every retired key gone, the
-    /// replacements present and required.
+    /// A4 (#999) generated the v25 schema; A5 (#1018) published it. This pins
+    /// its shape — every retired key gone, the replacements present and
+    /// required, every reference in the object spelling (#1037), every id
+    /// snake_case.
     /// </summary>
     [Fact]
     public void TheV25Schema_Renders_WithoutTheRetiredKeys()
@@ -281,8 +282,10 @@ public class PackageFormatSchemaTests
             Assert.False(node.ContainsKey(retired), retired);
         }
 
-        Assert.Equal("^(snippet|input):.+$", node["forEach"]!["pattern"]!.GetValue<string>());
-        Assert.NotNull(node["format"]);
+        Assert.Equal("^(snippet|input)\\.[a-z][a-z0-9_]*$", node["forEach"]!["pattern"]!.GetValue<string>());
+        Assert.Equal("^[a-z][a-z0-9_]*$", node["format"]!["pattern"]!.GetValue<string>());
+        Assert.Equal("^node\\.[a-z][a-z0-9_]*$", node["aggregate"]!["items"]!["pattern"]!.GetValue<string>());
+        Assert.Equal(1, node["failIfEmpty"]!["minLength"]!.GetValue<int>());
         Assert.NotNull(node["with"]);
         Assert.Equal(3, node["onInvalid"]!["enum"]!.AsArray().Count);
 
@@ -291,6 +294,9 @@ public class PackageFormatSchemaTests
         {
             Assert.False(prompt.ContainsKey(retired), retired);
         }
+        Assert.Equal("^[a-z][a-z0-9_]*$", prompt["id"]!["pattern"]!.GetValue<string>());
+        Assert.Equal("^[a-z][a-z0-9_]*$", properties["snippets"]!["propertyNames"]!["pattern"]!.GetValue<string>());
+        Assert.Equal("^node\\.[a-z][a-z0-9_]*$", properties["deliverables"]!["items"]!["properties"]!["node"]!["pattern"]!.GetValue<string>());
 
         var macro = (JsonObject)properties["macros"]!["items"]!;
         Assert.Contains("instruction", macro["required"]!.AsArray().Select(r => r!.GetValue<string>()));
@@ -300,5 +306,22 @@ public class PackageFormatSchemaTests
         Assert.Equal("^node\\.[a-z][a-z0-9_]*$", properties["deliverables"]!["items"]!["properties"]!["check"]!["pattern"]!.GetValue<string>());
 
         Assert.NotEmpty(PackageFormatSchema.Render(25));
+    }
+
+    [Fact]
+    public void TheV24Schema_KeepsTheColonSpellings_TheBytesMustNotMove()
+    {
+        // A5 (#1018): every 25 pattern fix is gated ≥25; the published v≤24
+        // schemas are byte-identical (the theory above proves the bytes; this
+        // names the spellings so a regression reads as one).
+        var schema = PackageFormatSchema.Build(24);
+        var properties = (JsonObject)schema["properties"]!;
+        var node = (JsonObject)properties["nodes"]!["items"]!["properties"]!;
+
+        Assert.Equal("^(data|input):.+$", node["forEach"]!["pattern"]!.GetValue<string>());
+        Assert.Equal("^node:.+$", node["aggregate"]!["items"]!["pattern"]!.GetValue<string>());
+        Assert.Equal("^node:.+$", properties["results"]!["items"]!["properties"]!["node"]!["pattern"]!.GetValue<string>());
+        Assert.Null(((JsonObject)properties["prompts"]!["items"]!["properties"]!)["id"]!["pattern"]);
+        Assert.False(node.ContainsKey("failIfEmpty"));
     }
 }

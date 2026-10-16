@@ -29,8 +29,14 @@ internal static class PackageFormatSchema
     /// <summary>Snake_case declared ids: input ids, result ids, enum values.</summary>
     private const string DeclaredId = "^[a-z][a-z0-9_]*$";
 
-    /// <summary>A node reference, as `result`, `results[].node` and `aggregate[]` all use.</summary>
+    /// <summary>A node reference, as `result`, `results[].node` and `aggregate[]` all use (≤24).</summary>
     private const string NodeRef = "^node:.+$";
+
+    /// <summary>
+    /// A5 (#1018, after #1037): at 25 a node reference is the object read,
+    /// node.&lt;id&gt; — aggregate[], deliverables[].node and deliverables[].check.
+    /// </summary>
+    private const string NodeObjectRef = "^node\\.[a-z][a-z0-9_]*$";
 
     /// <summary>
     /// A concrete package ref. The month range is spelled out because C# checks
@@ -141,6 +147,9 @@ internal static class PackageFormatSchema
             }
 
             EnrichFormats(Object(properties, "formats"));
+
+            // A5 (#1018): a snippet id is a Scriban member — snake_case.
+            Object(properties, "snippets")["propertyNames"] = new JsonObject { ["pattern"] = DeclaredId };
         }
 
         if (specVersion < 9)
@@ -234,6 +243,8 @@ internal static class PackageFormatSchema
             Remove(properties, "variables");
             Remove(properties, "prelude");
             Remove(properties, "raw");
+            // A5 (#1018, after #1037): a prompt id is snake_case at 25.
+            Object(properties, "id")["pattern"] = DeclaredId;
             Close(item);
             return;
         }
@@ -296,7 +307,8 @@ internal static class PackageFormatSchema
         // v9 (#426): a fan may also walk a caller-supplied array. Below 9
         // only a data: collection can be fanned, and the schema says so.
         // v25 (#999): a fan walks a snippet folder or an array input.
-        Object(properties, "forEach")["pattern"] = specVersion >= 25 ? "^(snippet|input):.+$" : specVersion >= 9 ? "^(data|input):.+$" : "^data:.+$";
+        // A5 (#1018, after #1037): the object spelling — snippet.<folder> or input.<id>.
+        Object(properties, "forEach")["pattern"] = specVersion >= 25 ? "^(snippet|input)\\.[a-z][a-z0-9_]*$" : specVersion >= 9 ? "^(data|input):.+$" : "^data:.+$";
 
         if (specVersion >= 25)
         {
@@ -309,9 +321,12 @@ internal static class PackageFormatSchema
                 Remove(properties, retired);
             }
 
-            Object(properties, "format")["pattern"] = "^[a-z][a-z0-9_-]*$";
+            // A5 (#1018, after #1037): a format id is snake_case — no hyphen.
+            Object(properties, "format")["pattern"] = DeclaredId;
             Object(properties, "with")["type"] = "object";
             Object(properties, "onInvalid")["enum"] = new JsonArray(WorkflowOnInvalid.All.Select(v => JsonValue.Create(v)).ToArray<JsonNode?>());
+            // B5 #1004 / A5: failIfEmpty is a sentence; blank is refused by name.
+            Object(properties, "failIfEmpty")["minLength"] = 1;
         }
 
         // The exporter cannot see through WorkflowBindingValueConverter: it
@@ -333,7 +348,7 @@ internal static class PackageFormatSchema
         {
             var aggregate = Object(properties, "aggregate");
             aggregate["minItems"] = 1;
-            Object(aggregate, "items")["pattern"] = NodeRef;
+            Object(aggregate, "items")["pattern"] = specVersion >= 25 ? NodeObjectRef : NodeRef;
         }
 
         // v11 (§ 6): reproducible arrives at 11; a boolean needs no enriching.
@@ -733,7 +748,7 @@ internal static class PackageFormatSchema
 
         Object(properties, "id")["pattern"] = DeclaredId;
         Object(properties, "label")["minLength"] = 1;
-        Object(properties, "node")["pattern"] = NodeRef;
+        Object(properties, "node")["pattern"] = specVersion >= 25 ? NodeObjectRef : NodeRef;
 
         if (specVersion < 8)
         {
@@ -831,7 +846,7 @@ internal static class PackageFormatSchema
         else
         {
             // v25 (#999): the check is an object reference, node.<id>, naming a computed-format node.
-            Object(properties, "check")["pattern"] = specVersion >= 25 ? "^node\\.[a-z][a-z0-9_]*$" : NodeRef;
+            Object(properties, "check")["pattern"] = specVersion >= 25 ? NodeObjectRef : NodeRef;
         }
 
         Close(item);
