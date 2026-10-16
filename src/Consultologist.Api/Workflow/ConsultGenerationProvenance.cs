@@ -271,8 +271,8 @@ public static class ConsultGenerationProvenance
     /// (seven objects, closed members, snippets and macro texts rendered when
     /// read; a custom node's trailer and schema, an enum's answer set, inside
     /// the bytes). The output side moves for the first time: outputHash is over
-    /// the node's OUTPUT — the reply after its sanctioned slots fill and its
-    /// before/after instances compose, what node.&lt;id&gt;.text, the aggregator
+    /// the node's OUTPUT — the reply rendered as a template and its
+    /// before/after instances composed, what node.&lt;id&gt;.text, the aggregator
     /// and the deliverable read — while agentOutputHash, beside it, is over the
     /// reply as returned. Equal on a node with nothing composed and nothing
     /// stripped. Nodes below 25 keep stamping 5: their output never composes at

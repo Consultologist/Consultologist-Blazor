@@ -17,7 +17,7 @@ namespace Consultologist.Api.Jobs;
 /// <item>#1044 (package-format-v25.md § The reply is a template): the reply is
 /// RENDERED as a template over the node's own scope — the scope its prompt
 /// rendered over — so every <c>{{ macro.&lt;id&gt;.text }}</c> the model wrote
-/// where a slot's instruction told it to is that macro's text, rendered, and
+/// where an inline macro's instruction told it to is that macro's text, rendered, and
 /// any other read a template could make renders the same way; a reply that
 /// does not parse or reads what the scope has no value for FAILS the node
 /// (the renderer's <see cref="InvalidOperationException"/>, which the Durable
@@ -165,7 +165,7 @@ internal static class ConsultNodeCompletion
         return colon < 0 ? instanceKey : instanceKey[..colon];
     }
 
-    /// <summary>The slots the package's walk says this prompt reaches — the validator's closure, for this instance (B5: the static half).</summary>
+    /// <summary>The inline macros the package's walk says this prompt reaches — the validator's closure, for this instance (B5: the static half).</summary>
     private static IReadOnlySet<string> SanctionedBy(WorkflowPackage package, string nodeId, string? itemId)
     {
         if (package.SourceFiles is null)

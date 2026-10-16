@@ -458,6 +458,9 @@ public static class ConsultAppendedKinds
     // read macro.<id>.prompt, so the entry sits on the node row, inside its
     // outputHash (and agentOutputHash still says what the model replied).
     public const string Slot = "slot";
+
+    /// <summary>#1047 (specVersion 25, provenance@v2026.10.4): the macro the reply read inline as <c>{{ macro.&lt;id&gt;.text }}</c> — the inline macro the prompt instructed; a node-row kind only (<see cref="WorkflowNodeCompletion.InlineKind"/>).</summary>
+    public const string Inline = "inline";
 }
 
 /// <summary>
@@ -597,11 +600,11 @@ public sealed record ConsultNodeDescriptor(
 public sealed record ConsultValidationOutcome(bool Valid, IReadOnlyList<string> Errors);
 
 /// <summary>
-/// v25 (B5 #1004, design §§ 6–7): one thing a node's completion withheld or
-/// removed, by name — a before/after instance whose <c>when</c> refused
-/// (<c>macro</c>), a slot marker the model emitted that no read in the prompt
-/// that ran sanctions (<c>slot</c>) — with the sentence that says why (authored
-/// names and declared values only; never the reply's text).
+/// v25 (B5 #1004, design §§ 6–7): one thing a node's completion withheld, by
+/// name — a before/after instance whose <c>when</c> refused (<c>macro</c>) —
+/// with the sentence that says why (authored names and declared values only;
+/// never the reply's text). #1044: nothing in a rendered reply is withheld or
+/// removed, so <c>macro</c> is the only kind at 25.
 /// </summary>
 public sealed record ConsultNodeExclusion(string Kind, string Id, string Reason);
 
