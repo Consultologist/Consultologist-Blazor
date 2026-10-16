@@ -446,8 +446,8 @@ public static class WorkflowPackageMigration24To25
         public string ReadOf(string nodeId, string? renderer) => _readOf.GetValueOrDefault(nodeId) switch
         {
             "value" => $"{TemplateObjects.Node}.{nodeId}.{TemplateMembers.Value}",
-            "concepts" => $"{TemplateObjects.Node}.{nodeId}.{TemplateMembers.Text} | {(renderer == WorkflowConceptRenderers.ConceptContext ? TemplatePipes.ConceptContext : TemplatePipes.ConceptBullets)}",
-            _ => $"{TemplateObjects.Node}.{nodeId}.{TemplateMembers.Text}"
+            "concepts" => $"{TemplateObjects.Node}.{nodeId}.{TemplateMembers.Content} | {(renderer == WorkflowConceptRenderers.ConceptContext ? TemplatePipes.ConceptContext : TemplatePipes.ConceptBullets)}",
+            _ => $"{TemplateObjects.Node}.{nodeId}.{TemplateMembers.Content}"
         };
 
         private static string? ContractOf(WorkflowPackageManifest manifest, IReadOnlyDictionary<string, string> files, string schemaId, Func<JsonNode, string?>? resolveContract)
@@ -571,13 +571,13 @@ public static class WorkflowPackageMigration24To25
 
         if (from.StartsWith(DataPrefix, StringComparison.Ordinal))
         {
-            return $"{TemplateObjects.Snippet}.{from[DataPrefix.Length..]}.{TemplateMembers.Text}";
+            return $"{TemplateObjects.Snippet}.{from[DataPrefix.Length..]}.{TemplateMembers.Content}";
         }
 
         if (from.StartsWith(ItemPrefix, StringComparison.Ordinal))
         {
             var member = from[ItemPrefix.Length..];
-            return $"{TemplateObjects.Item}.{(member == "content" ? TemplateMembers.Text : member)}";
+            return $"{TemplateObjects.Item}.{(member == "content" ? TemplateMembers.Content : member)}";
         }
 
         if (from.StartsWith(NodePrefix, StringComparison.Ordinal))
@@ -1024,8 +1024,8 @@ public static class WorkflowPackageMigration24To25
             foreach (var macro in macros)
             {
                 var read = snippetised.Contains(macro.Id)
-                    ? $"{{{{ {TemplateObjects.Snippet}.{macro.Id}.{TemplateMembers.Text} }}}}"
-                    : $"{{{{ {TemplateObjects.Macro}.{macro.Id}.{TemplateMembers.Text} }}}}";
+                    ? $"{{{{ {TemplateObjects.Snippet}.{macro.Id}.{TemplateMembers.Content} }}}}"
+                    : $"{{{{ {TemplateObjects.Macro}.{macro.Id}.{TemplateMembers.Content} }}}}";
                 var conditions = new List<string>();
                 if (macro.When is { } when && WorkflowResultConditions.TryParseExpression(when, out var expression, out _) && expression is not null)
                 {
@@ -1054,7 +1054,7 @@ public static class WorkflowPackageMigration24To25
 
             files[prompt.File] = composed;
             rewrittenPrompts.Add(prompt.Id);
-            notices.Add($"Node '{nodeId}' composed {macros.Count} macro{(macros.Count == 1 ? "" : "s")} around its prompt; prompt '{prompt.Id}' now reads {string.Join(", ", macros.Select(m => snippetised.Contains(m.Id) ? $"snippet.{m.Id}.text" : $"macro.{m.Id}.text"))} inline{(macros.Any(m => m.When is not null || m.ForItem is not null) ? " under its gates" : "")}.");
+            notices.Add($"Node '{nodeId}' composed {macros.Count} macro{(macros.Count == 1 ? "" : "s")} around its prompt; prompt '{prompt.Id}' now reads {string.Join(", ", macros.Select(m => snippetised.Contains(m.Id) ? $"snippet.{m.Id}.content" : $"macro.{m.Id}.content"))} inline{(macros.Any(m => m.When is not null || m.ForItem is not null) ? " under its gates" : "")}.");
         }
 
         // Drop the ≤24 prompt-side entries from every node's list (the output-side instances stay).
@@ -1189,9 +1189,9 @@ public static class WorkflowPackageMigration24To25
                 return ns switch
                 {
                     "input" => $"{{{{ {TemplateObjects.Input}.{id} }}}}",
-                    "data" => $"{{{{ {TemplateObjects.Snippet}.{id}.{TemplateMembers.Text} }}}}",
+                    "data" => $"{{{{ {TemplateObjects.Snippet}.{id}.{TemplateMembers.Content} }}}}",
                     "classification" => $"{{{{ {TemplateObjects.Node}.{id}.{TemplateMembers.Value} }}}}",
-                    "item" => $"{{{{ {TemplateObjects.Item}.{(id == "content" ? TemplateMembers.Text : id)} }}}}",
+                    "item" => $"{{{{ {TemplateObjects.Item}.{(id == "content" ? TemplateMembers.Content : id)} }}}}",
                     "run" => $"{{{{ {TemplateObjects.Run}.{id} }}}}",
                     "profile" => $"{{{{ {TemplateObjects.Profile}.{id} }}}}",
                     _ => match.Value

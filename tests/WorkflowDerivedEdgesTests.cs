@@ -32,7 +32,7 @@ public class WorkflowDerivedEdgesTests
     {
         // extract reads assessment, assessment reads extract: the validator
         // refuses the cycle; Derive reports exactly that edge — one walk.
-        var bundle = V25Package.WithPrompt(V25Package.Minimal(), "extract", "{{ node.assessment.text }}\n{{ input.notes }}");
+        var bundle = V25Package.WithPrompt(V25Package.Minimal(), "extract", "{{ node.assessment.content }}\n{{ input.notes }}");
 
         Assert.Contains(V25Package.Errors(bundle), e => e.Contains("cycle", StringComparison.OrdinalIgnoreCase));
         Assert.Equal(new[] { "assessment" }, Derive(bundle)["extract"].Order());
@@ -52,7 +52,7 @@ public class WorkflowDerivedEdgesTests
         };
         files = new Dictionary<string, string>(files, StringComparer.Ordinal)
         {
-            ["prompts/per_section.md"] = "{{ item.name }}\n{{ node.section_notes.text }}\n{{ node.assessment.text }}",
+            ["prompts/per_section.md"] = "{{ item.name }}\n{{ node.section_notes.content }}\n{{ node.assessment.content }}",
         };
 
         Assert.Equal(new List<string>(), V25Package.Errors((manifest, files)));
@@ -62,12 +62,12 @@ public class WorkflowDerivedEdgesTests
     [Fact]
     public void ASnippetThatReadsANode_IsAnEdgeOfEveryPromptThatReadsTheSnippet()
     {
-        // assessment reads snippet.standards; standards reads node.scope.text:
+        // assessment reads snippet.standards; standards reads node.scope.content:
         // assessment waits on scope (design § 7, "through a snippet it reads").
         var (manifest, files) = V25Package.Minimal();
         files = new Dictionary<string, string>(files, StringComparer.Ordinal)
         {
-            ["snippets/standards.md"] = "Follow the local standards for {{ node.scope.text }}.",
+            ["snippets/standards.md"] = "Follow the local standards for {{ node.scope.content }}.",
         };
 
         Assert.Equal(new List<string>(), V25Package.Errors((manifest, files)));
@@ -77,12 +77,12 @@ public class WorkflowDerivedEdgesTests
     [Fact]
     public void AFolderItemThatReadsANode_IsAnEdgeOfTheFanThatReadsItemText()
     {
-        // section_notes fans snippet:sections and reads item.text; plan.md
-        // reads node.scope.text: every instance waits on scope.
+        // section_notes fans snippet:sections and reads item.content; plan.md
+        // reads node.scope.content: every instance waits on scope.
         var (manifest, files) = V25Package.Minimal();
         files = new Dictionary<string, string>(files, StringComparer.Ordinal)
         {
-            ["snippets/sections/plan.md"] = "Plan for {{ node.scope.text }}.",
+            ["snippets/sections/plan.md"] = "Plan for {{ node.scope.content }}.",
         };
 
         Assert.Equal(new List<string>(), V25Package.Errors((manifest, files)));
@@ -95,9 +95,9 @@ public class WorkflowDerivedEdgesTests
         var (manifest, files) = V25Package.Minimal();
         files = new Dictionary<string, string>(files, StringComparer.Ordinal)
         {
-            ["macros/closing.md"] = "Closing: {{ profile.name }} on {{ node.scope.text }}.",
+            ["macros/closing.md"] = "Closing: {{ profile.name }} on {{ node.scope.content }}.",
         };
-        var bundle = V25Package.WithPrompt((manifest, files), "extract", "{{ macro.closing.text }}\n{{ input.notes }}");
+        var bundle = V25Package.WithPrompt((manifest, files), "extract", "{{ macro.closing.content }}\n{{ input.notes }}");
 
         Assert.Equal(new[] { "scope" }, Derive(bundle)["extract"].Order());
     }
@@ -106,12 +106,12 @@ public class WorkflowDerivedEdgesTests
     public void AnInstanceTextThatReadsANode_IsAnEdgeOfTheNodeItIsPlacedOn()
     {
         // B5 #1004: assessment places closing after its output; closing.md reads
-        // node.scope.text — the text composes at assessment's completion, over
+        // node.scope.content — the text composes at assessment's completion, over
         // scope's output, so assessment waits on scope.
         var (manifest, files) = V25Package.Minimal();
         files = new Dictionary<string, string>(files, StringComparer.Ordinal)
         {
-            ["macros/closing.md"] = "Closing: {{ profile.name }} on {{ node.scope.text }}.",
+            ["macros/closing.md"] = "Closing: {{ profile.name }} on {{ node.scope.content }}.",
         };
 
         Assert.Equal(new List<string>(), V25Package.Errors((manifest, files)));
@@ -126,7 +126,7 @@ public class WorkflowDerivedEdgesTests
         // reads, the node waits on.
         var (manifest, files) = V25Package.Minimal();
         manifest = V25Package.WithNode(manifest, "assessment", n => n with { Macros = null });
-        manifest = manifest with { Macros = manifest.Macros!.Select(m => m with { Instruction = "Close for {{ node.scope.text }}." }).ToList() };
+        manifest = manifest with { Macros = manifest.Macros!.Select(m => m with { Instruction = "Close for {{ node.scope.content }}." }).ToList() };
         files = new Dictionary<string, string>(files, StringComparer.Ordinal)
         {
             ["snippets/standards.md"] = "Standards. {{ macro.closing.prompt }}",
@@ -147,7 +147,7 @@ public class WorkflowDerivedEdgesTests
         files = new Dictionary<string, string>(files, StringComparer.Ordinal)
         {
             ["snippets/standards.md"] = "Standards. {{ macro.closing.prompt }}",
-            ["macros/closing.md"] = "Closing: {{ node.scope.text }}.",
+            ["macros/closing.md"] = "Closing: {{ node.scope.content }}.",
         };
 
         Assert.Equal(new List<string>(), V25Package.Errors((manifest, files)));
@@ -157,12 +157,12 @@ public class WorkflowDerivedEdgesTests
     [Fact]
     public void ACycleThroughAnInstanceText_IsRefused()
     {
-        // closing reads node.assessment.text and is placed on assessment: the
+        // closing reads node.assessment.content and is placed on assessment: the
         // node would wait on itself.
         var (manifest, files) = V25Package.Minimal();
         files = new Dictionary<string, string>(files, StringComparer.Ordinal)
         {
-            ["macros/closing.md"] = "Closing: {{ node.assessment.text }}.",
+            ["macros/closing.md"] = "Closing: {{ node.assessment.content }}.",
         };
 
         Assert.Contains(V25Package.Errors((manifest, files)), e => e.Contains("cycle", StringComparison.OrdinalIgnoreCase));
@@ -245,7 +245,7 @@ public class WorkflowMacroMechanicsTests
         var prompt = WorkflowMacroMechanics.Prompt("closing", "Add a closing line if the plan changed.\n");
 
         Assert.Equal(
-            "Add a closing line if the plan changed.\n\nIf so, write {{ macro.closing.text }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.",
+            "Add a closing line if the plan changed.\n\nIf so, write {{ macro.closing.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.",
             prompt);
         Assert.DoesNotContain("<id>", prompt);
         Assert.DoesNotContain("[[slot:", prompt);

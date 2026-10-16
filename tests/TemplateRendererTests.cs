@@ -52,7 +52,7 @@ public class TemplateRendererTests
             ["scope"] = new("in_scope", "enum"),
         });
 
-        Assert.Equal("The plan. in_scope in_scope", Render("{{ node.assessment.text }} {{ node.scope.text }} {{ node.scope.value }}", scope));
+        Assert.Equal("The plan. in_scope in_scope", Render("{{ node.assessment.content }} {{ node.scope.content }} {{ node.scope.value }}", scope));
     }
 
     [Fact]
@@ -87,11 +87,11 @@ public class TemplateRendererTests
             nodes: new Dictionary<string, TemplateNodeOutput> { ["scope"] = new("in_scope", "enum") },
             snippets: new Dictionary<string, string>
             {
-                ["standards"] = "Standards for {{ node.scope.text }} ({{ snippet.intro.text }})",
+                ["standards"] = "Standards for {{ node.scope.content }} ({{ snippet.intro.content }})",
                 ["intro"] = "intro:{{ input.notes }}",
             });
 
-        Assert.Equal("standards|standards|Standards for in_scope (intro:N)", Render("{{ snippet.standards.id }}|{{ snippet.standards.name }}|{{ snippet.standards.text }}", scope));
+        Assert.Equal("standards|standards|Standards for in_scope (intro:N)", Render("{{ snippet.standards.id }}|{{ snippet.standards.name }}|{{ snippet.standards.content }}", scope));
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public class TemplateRendererTests
                 ["sections"] = new List<TemplateFolderItem> { new("hpi", "HPI", "History: {{ input.notes }}"), new("plan", "Plan", "Plan.") },
             });
 
-        Assert.Equal("2;hpi/HPI/History: N;plan/Plan/Plan.;", Render("{{ snippet.sections.size }};{{ for s in snippet.sections }}{{ s.id }}/{{ s.name }}/{{ s.text }};{{ end }}", scope));
+        Assert.Equal("2;hpi/HPI/History: N;plan/Plan/Plan.;", Render("{{ snippet.sections.size }};{{ for s in snippet.sections }}{{ s.id }}/{{ s.name }}/{{ s.content }};{{ end }}", scope));
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public class TemplateRendererTests
             inputs: new Dictionary<string, string> { ["notes"] = "N" },
             item: new TemplateFanItem("hpi", "HPI", Text: "History: {{ input.notes }}"));
 
-        Assert.Equal("hpi HPI History: N", Render("{{ item.id }} {{ item.name }} {{ item.text }}", scope));
+        Assert.Equal("hpi HPI History: N", Render("{{ item.id }} {{ item.name }} {{ item.content }}", scope));
     }
 
     [Fact]
@@ -138,7 +138,7 @@ public class TemplateRendererTests
             ["closing"] = new("closing", "Closing", "Closing: {{ profile.name }} on {{ run.date }}.", "Add a closing line if the plan changed."),
         });
 
-        Assert.Equal("closing|Closing|Closing: Dr Example on 2026-10-13.", Render("{{ macro.closing.id }}|{{ macro.closing.name }}|{{ macro.closing.text }}", scope));
+        Assert.Equal("closing|Closing|Closing: Dr Example on 2026-10-13.", Render("{{ macro.closing.id }}|{{ macro.closing.name }}|{{ macro.closing.content }}", scope));
         Assert.Equal(WorkflowMacroMechanics.Prompt("closing", "Add a closing line if the plan changed."), Render("{{ macro.closing.prompt }}", scope));
     }
 
@@ -158,7 +158,7 @@ public class TemplateRendererTests
             });
         var trace = new TemplateRenderer.TemplateRenderTrace();
 
-        TemplateRenderer.Render("Prompt 'p'", "{{ if false }}{{ macro.a.prompt }}{{ end }}{{ snippet.standards.text }} {{ macro.c.text }}", scope, trace: trace);
+        TemplateRenderer.Render("Prompt 'p'", "{{ if false }}{{ macro.a.prompt }}{{ end }}{{ snippet.standards.content }} {{ macro.c.content }}", scope, trace: trace);
 
         Assert.Equal(new[] { "b" }, trace.PromptReads.Order());
     }
@@ -177,27 +177,27 @@ public class TemplateRendererTests
         var prompt = Render("{{ macro.closing.prompt }}", scope);
 
         Assert.Equal(WorkflowMacroMechanics.Prompt("closing", "Add a closing line for Dr Example if the plan changed."), prompt);
-        Assert.Contains("{{ macro.closing.text }}", prompt);
+        Assert.Contains("{{ macro.closing.content }}", prompt);
         Assert.DoesNotContain("Closing: Dr Example.", prompt);
     }
 
     [Fact]
-    public void Macro_TextReads_AreTraced_AtTheTopLevelOnly_InOrder_OncePerRead()
+    public void Macro_ContentReads_AreTraced_AtTheTopLevelOnly_InOrder_OncePerRead()
     {
         // #1044: a reply's slot reads are the macro texts IT read; a read inside a
         // filled text (closing reads note) is that text's, not an entry; twice
         // read is twice placed.
         var scope = Scope(macros: new Dictionary<string, TemplateMacroSource>
         {
-            ["closing"] = new("closing", "Closing", "Closing. {{ macro.note.text }}", "Add a closing line."),
+            ["closing"] = new("closing", "Closing", "Closing. {{ macro.note.content }}", "Add a closing line."),
             ["note"] = new("note", "Note", "Note.", "Add a note."),
         });
         var trace = new TemplateRenderer.TemplateRenderTrace();
 
-        var rendered = TemplateRenderer.Render("Node 'assessment' reply", "Plan. {{ macro.closing.text }} {{ macro.note.text }} {{ macro.closing.text }}", scope, trace: trace);
+        var rendered = TemplateRenderer.Render("Node 'assessment' reply", "Plan. {{ macro.closing.content }} {{ macro.note.content }} {{ macro.closing.content }}", scope, trace: trace);
 
         Assert.Equal("Plan. Closing. Note. Note. Closing. Note.", rendered);
-        Assert.Equal(new[] { "closing", "note", "closing" }, trace.TextReads);
+        Assert.Equal(new[] { "closing", "note", "closing" }, trace.ContentReads);
     }
 
     [Fact]
@@ -218,7 +218,7 @@ public class TemplateRendererTests
             [TemplatePipes.ConceptBullets] = output => $"bul({output.Text})",
         };
 
-        Assert.Equal("""ctx({"concepts":[]}|clinical-note) bul({"concepts":[]})""", Render("{{ node.extract.text | concept_context }} {{ node.extract.text | concept_bullets }}", scope, pipes));
+        Assert.Equal("""ctx({"concepts":[]}|clinical-note) bul({"concepts":[]})""", Render("{{ node.extract.content | concept_context }} {{ node.extract.content | concept_bullets }}", scope, pipes));
     }
 
     [Fact]
@@ -228,12 +228,12 @@ public class TemplateRendererTests
         var pipes = new Dictionary<string, Func<TemplateNodeOutput, string>> { [TemplatePipes.ConceptContext] = output => output.Text };
 
         var value = Assert.Throws<InvalidOperationException>(() => Render("{{ node.extract.value | concept_context }}", scope, pipes));
-        Assert.Equal("Prompt 'p' pipes a object through concept_context; the pipe renders a node's text (node.<id>.text).", value.Message);
+        Assert.Equal("Prompt 'p' pipes a object through concept_context; the pipe renders a node's text (node.<id>.content).", value.Message);
 
         var literal = Assert.Throws<InvalidOperationException>(() => Render("{{ 'free text' | concept_context }}", scope, pipes));
-        Assert.Equal("Prompt 'p' pipes text that is not a node's output through concept_context; the pipe renders a node's text (node.<id>.text).", literal.Message);
+        Assert.Equal("Prompt 'p' pipes text that is not a node's output through concept_context; the pipe renders a node's text (node.<id>.content).", literal.Message);
 
-        var missing = Assert.Throws<InvalidOperationException>(() => Render("{{ node.extract.text | concept_bullets }}", scope, pipes));
+        var missing = Assert.Throws<InvalidOperationException>(() => Render("{{ node.extract.content | concept_bullets }}", scope, pipes));
         Assert.Equal("Prompt 'p' pipes through concept_bullets, which this renderer does not provide.", missing.Message);
     }
 
@@ -243,7 +243,7 @@ public class TemplateRendererTests
         var scope = Scope(nodes: new Dictionary<string, TemplateNodeOutput> { ["extract"] = new("x", "text") });
 
         Assert.Equal("Prompt 'p' reads node.extract.nope, which this render has no value for.", Assert.Throws<InvalidOperationException>(() => Render("{{ node.extract.nope }}", scope)).Message);
-        Assert.Equal("Prompt 'p' reads node.other.text, which this render has no value for.".Replace(".text", string.Empty), Assert.Throws<InvalidOperationException>(() => Render("{{ node.other.text }}", scope)).Message);
+        Assert.Equal("Prompt 'p' reads node.other.content, which this render has no value for.".Replace(".content", string.Empty), Assert.Throws<InvalidOperationException>(() => Render("{{ node.other.content }}", scope)).Message);
         Assert.Equal("Prompt 'p' reads input.nope, which this render has no value for.", Assert.Throws<InvalidOperationException>(() => Render("{{ input.nope }}", scope)).Message);
         Assert.Throws<InvalidOperationException>(() => Render("{{ data.x }}", scope));
         Assert.Throws<InvalidOperationException>(() => Render("{{ item.id }}", scope));
@@ -254,7 +254,7 @@ public class TemplateRendererTests
     {
         var scope = Scope(snippets: new Dictionary<string, string> { ["bad"] = "{{ if }}" });
 
-        var ex = Assert.Throws<InvalidOperationException>(() => Render("{{ snippet.bad.text }}", scope));
+        var ex = Assert.Throws<InvalidOperationException>(() => Render("{{ snippet.bad.content }}", scope));
 
         Assert.StartsWith("Snippet 'bad'", ex.Message);
     }

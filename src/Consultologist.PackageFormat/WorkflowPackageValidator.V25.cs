@@ -20,10 +20,10 @@ public static partial class WorkflowPackageValidator
     /// <summary>The replacement sentences of § 10, one per retired key.</summary>
     private static class RetiredAt25
     {
-        public const string Objects = "a template reads objects (input.<id>, node.<id>.text, snippet.<id>.text, item.<member>, macro.<id>.text) and its reads are derived";
-        public const string Preludes = "read the text inline ({{ snippet.<id>.text }}) — the editor migrated preludes at 23";
+        public const string Objects = "a template reads objects (input.<id>, node.<id>.content, snippet.<id>.content, item.<member>, macro.<id>.content) and its reads are derived";
+        public const string Preludes = "read the text inline ({{ snippet.<id>.content }}) — the editor migrated preludes at 23";
         public const string Raw = "escape a literal '{{' as {{ \"{{\" }} or wrap it in {%{ … }%}";
-        public const string Data = "declare snippets (read as {{ snippet.<id>.text }})";
+        public const string Data = "declare snippets (read as {{ snippet.<id>.content }})";
         public const string Schemas = "declare formats and name one on each node (nodes[].format)";
         public const string Kind = "the format says what the node is (classification, rendered, terms_subset)";
         public const string Values = "a classification takes its answer set through with: { values: [...] }";
@@ -695,7 +695,7 @@ public static partial class WorkflowPackageValidator
             var offending = refs.Nodes.Keys.Select(id => $"{TemplateObjects.Node}.{id}")
                 .Concat(refs.Snippets.Select(id => $"{TemplateObjects.Snippet}.{id}"))
                 .Concat(refs.SnippetFolders.Select(id => $"{TemplateObjects.Snippet}.{id}"))
-                .Concat(refs.MacroTexts.Concat(refs.MacroPrompts).Select(id => $"{TemplateObjects.Macro}.{id}"))
+                .Concat(refs.MacroContents.Concat(refs.MacroPrompts).Select(id => $"{TemplateObjects.Macro}.{id}"))
                 .Concat(refs.ItemMembers.Select(m => $"{TemplateObjects.Item}.{m}"))
                 .Concat(refs.RunFacts.Select(m => $"{TemplateObjects.Run}.{m}"))
                 .Concat(refs.ProfileFacts.Select(m => $"{TemplateObjects.Profile}.{m}"))
@@ -727,7 +727,7 @@ public static partial class WorkflowPackageValidator
 
         foreach (var template in walk.Templates)
         {
-            used.UnionWith(template.References.MacroTexts);
+            used.UnionWith(template.References.MacroContents);
             used.UnionWith(template.References.MacroPrompts);
         }
 
@@ -844,7 +844,7 @@ public static partial class WorkflowPackageValidator
 
                     if (lacking.Count > 0)
                     {
-                        warnings.Add($"Node '{spec.Id}' fans snippet folder '{folderId}'; items {string.Join(", ", lacking)} carry no macro.{slot}.prompt read, so nothing tells the model to write macro.{slot}.text for them.");
+                        warnings.Add($"Node '{spec.Id}' fans snippet folder '{folderId}'; items {string.Join(", ", lacking)} carry no macro.{slot}.prompt read, so nothing tells the model to write macro.{slot}.content for them.");
                     }
                 }
             }
@@ -860,7 +860,7 @@ public static partial class WorkflowPackageValidator
 
         foreach (var macro in declared.Where(id => !used.Contains(id)).Order(StringComparer.Ordinal))
         {
-            errors.Add($"Macro '{macro}' is declared but never placed or read; place it on a node or a deliverable, or read macro.{macro}.text / macro.{macro}.prompt.");
+            errors.Add($"Macro '{macro}' is declared but never placed or read; place it on a node or a deliverable, or read macro.{macro}.content / macro.{macro}.prompt.");
         }
     }
 
@@ -926,7 +926,7 @@ public static partial class WorkflowPackageValidator
             var shape = n.Format!.Spec.Type == WorkflowInputTypes.Enum && n.Format.Spec.Schema is null
                 ? TemplateValueShape.Text
                 : TemplateValueShape.FromSchema(n.Format.Spec.Schema);
-            node.Add(n.Node.Id, new ScriptObject { ["text"] = "placeholder", ["value"] = ProbeFromShape(shape) });
+            node.Add(n.Node.Id, new ScriptObject { ["content"] = "placeholder", ["value"] = ProbeFromShape(shape) });
         }
 
         var snippet = new ScriptObject();
@@ -949,7 +949,7 @@ public static partial class WorkflowPackageValidator
         var macro = new ScriptObject();
         foreach (var m in manifest.Macros ?? new List<WorkflowMacroSpec>())
         {
-            macro.Add(m.Id, new ScriptObject { ["id"] = m.Id, ["name"] = m.Label, ["text"] = "placeholder", ["prompt"] = "placeholder" });
+            macro.Add(m.Id, new ScriptObject { ["id"] = m.Id, ["name"] = m.Label, ["content"] = "placeholder", ["prompt"] = "placeholder" });
         }
 
         var run = new ScriptObject();
@@ -992,7 +992,7 @@ public static partial class WorkflowPackageValidator
             else if (templateContext.ItemDeferred)
             {
                 // C6 (#1012): a snippet or macro text runs under its reader's fan; the probe lends every member.
-                globals[TemplateObjects.Item] = new ScriptObject { ["id"] = "item", ["name"] = "placeholder", ["text"] = "placeholder", ["value"] = "placeholder" };
+                globals[TemplateObjects.Item] = new ScriptObject { ["id"] = "item", ["name"] = "placeholder", ["content"] = "placeholder", ["value"] = "placeholder" };
             }
 
             var context = new PromptTemplateRenderer.RenderingContext();
@@ -1031,7 +1031,7 @@ public static partial class WorkflowPackageValidator
             }
         }
 
-        static ScriptObject SnippetProbe(string id) => new() { ["id"] = id, ["name"] = "placeholder", ["text"] = "placeholder" };
+        static ScriptObject SnippetProbe(string id) => new() { ["id"] = id, ["name"] = "placeholder", ["content"] = "placeholder" };
     }
 
     /// <summary>A probe value for a format's shape — the schema's structure, two elements per array, scalars by kind.</summary>

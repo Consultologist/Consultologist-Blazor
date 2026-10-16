@@ -175,14 +175,14 @@ public class WorkflowPackageMigration24To25Tests
 
         Assert.Equal("Extract the concepts from:\n{{ input.notes }}", result.Files["prompts/extract.md"]);
         // A concept node bound without a renderer rendered as bullets at 24 — the pipe keeps the bytes.
-        Assert.Equal("Problems in {{ input.notes }} given:\n{{ node.extract_patient_concepts.text | concept_bullets }}", result.Files["prompts/problem.md"]);
-        Assert.EndsWith("{{ item.name }}: {{ item.text }}", result.Files["prompts/section.md"]);
+        Assert.Equal("Problems in {{ input.notes }} given:\n{{ node.extract_patient_concepts.content | concept_bullets }}", result.Files["prompts/problem.md"]);
+        Assert.EndsWith("{{ item.name }}: {{ item.content }}", result.Files["prompts/section.md"]);
 
         var assessment = result.Files["prompts/assessment.md"];
-        Assert.Contains("Problems:\n{{ node.identify_problem.text | concept_context }}", assessment);
+        Assert.Contains("Problems:\n{{ node.identify_problem.content | concept_context }}", assessment);
         Assert.Contains("Scope: {{ node.scope.value }}", assessment);
-        Assert.Contains("Standard: {{ snippet.standards.text }}", assessment);
-        Assert.Contains("Plan: {{ node.plan.text }}", assessment);
+        Assert.Contains("Standard: {{ snippet.standards.content }}", assessment);
+        Assert.Contains("Plan: {{ node.plan.content }}", assessment);
         // Inside a larger expression the read keeps its meaning without a pipe to parenthesise.
         Assert.Contains("{{ if node.scope.value == \"in_scope\" }}In scope.{{ end }}", assessment);
         // The slot marker is the slot read.
@@ -302,11 +302,11 @@ public class WorkflowPackageMigration24To25Tests
         var root = Root(result);
 
         var assessment = result.Files["prompts/assessment.md"];
-        Assert.StartsWith("{{ snippet.tool_guidance.text }}\n\nAssess {{ input.notes }}.", assessment);
-        Assert.EndsWith("\n\n{{ if node.scope.value == \"in_scope\" }}{{ macro.closing.text }}{{ end }}", assessment);
+        Assert.StartsWith("{{ snippet.tool_guidance.content }}\n\nAssess {{ input.notes }}.", assessment);
+        Assert.EndsWith("\n\n{{ if node.scope.value == \"in_scope\" }}{{ macro.closing.content }}{{ end }}", assessment);
 
         var section = result.Files["prompts/section.md"];
-        Assert.Equal("{{ if item.id == \"hpi\" }}{{ snippet.disclaimer.text }}{{ end }}\n\n{{ item.name }}: {{ item.text }}", section);
+        Assert.Equal("{{ if item.id == \"hpi\" }}{{ snippet.disclaimer.content }}{{ end }}\n\n{{ item.name }}: {{ item.content }}", section);
 
         // tool_guidance and disclaimer: read prompt-side only → snippets, their placeholders now objects
         // (disclaimer's item reads run under section_notes' fan — the reading node's business).
@@ -318,11 +318,11 @@ public class WorkflowPackageMigration24To25Tests
         }
 
         Assert.Equal("Use short terms for {{ input.notes }} on {{ run.date }}.", result.Files["snippets/tool_guidance.md"]);
-        Assert.Equal("Disclaimer for {{ item.name }} ({{ item.text }}).", result.Files["snippets/disclaimer.md"]);
+        Assert.Equal("Disclaimer for {{ item.name }} ({{ item.content }}).", result.Files["snippets/disclaimer.md"]);
 
         // The remaining macros read objects where placeholders stood.
         Assert.Equal("Closing: {{ profile.name }}, {{ node.scope.value }}.", result.Files["macros/closing.md"]);
-        Assert.Equal("Handoff from {{ snippet.standards.text }}.", result.Files["macros/handoff.md"]);
+        Assert.Equal("Handoff from {{ snippet.standards.content }}.", result.Files["macros/handoff.md"]);
         Assert.Equal("Footer on {{ run.date }}.", result.Files["macros/footer.md"]);
     }
 

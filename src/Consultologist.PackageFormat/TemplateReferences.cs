@@ -12,7 +12,7 @@ public sealed record TemplateReferences(
     IReadOnlyDictionary<string, TemplateNodeRead> Nodes,
     IReadOnlySet<string> Snippets,
     IReadOnlySet<string> SnippetFolders,
-    IReadOnlySet<string> MacroTexts,
+    IReadOnlySet<string> MacroContents,
     IReadOnlySet<string> MacroPrompts,
     IReadOnlySet<string> MacroFolders,
     IReadOnlySet<string> ItemMembers,
@@ -28,10 +28,10 @@ public sealed record TemplateReferences(
 }
 
 /// <summary>How a template reads a node: its composed text, its parsed value, or both.</summary>
-public sealed record TemplateNodeRead(bool ReadsText, bool ReadsValue)
+public sealed record TemplateNodeRead(bool ReadsContent, bool ReadsValue)
 {
     public TemplateNodeRead Merge(TemplateNodeRead other) =>
-        new(ReadsText || other.ReadsText, ReadsValue || other.ReadsValue);
+        new(ReadsContent || other.ReadsContent, ReadsValue || other.ReadsValue);
 }
 
 /// <summary>Gathers a template's references while the walker runs; <see cref="ToReferences"/> freezes them.</summary>
@@ -41,7 +41,7 @@ internal sealed class TemplateReferenceCollector
     private readonly Dictionary<string, TemplateNodeRead> _nodes = new(StringComparer.Ordinal);
     private readonly HashSet<string> _snippets = new(StringComparer.Ordinal);
     private readonly HashSet<string> _snippetFolders = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _macroTexts = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _macroContents = new(StringComparer.Ordinal);
     private readonly HashSet<string> _macroPrompts = new(StringComparer.Ordinal);
     private readonly HashSet<string> _macroFolders = new(StringComparer.Ordinal);
     private readonly HashSet<string> _itemMembers = new(StringComparer.Ordinal);
@@ -54,9 +54,9 @@ internal sealed class TemplateReferenceCollector
 
     public void ReadInput(string id) => _inputs.Add(id);
 
-    public void ReadNode(string id, bool text, bool value)
+    public void ReadNode(string id, bool content, bool value)
     {
-        var read = new TemplateNodeRead(text, value);
+        var read = new TemplateNodeRead(content, value);
         _nodes[id] = _nodes.TryGetValue(id, out var existing) ? existing.Merge(read) : read;
     }
 
@@ -64,7 +64,7 @@ internal sealed class TemplateReferenceCollector
 
     public void ReadSnippetFolder(string folder) => _snippetFolders.Add(folder);
 
-    public void ReadMacroText(string id) => _macroTexts.Add(id);
+    public void ReadMacroContent(string id) => _macroContents.Add(id);
 
     public void ReadMacroPrompt(string id) => _macroPrompts.Add(id);
 
@@ -77,6 +77,6 @@ internal sealed class TemplateReferenceCollector
     public void ReadProfileFact(string member) => _profileFacts.Add(member);
 
     public TemplateReferences ToReferences() => new(
-        _inputs, _nodes, _snippets, _snippetFolders, _macroTexts, _macroPrompts, _macroFolders, _itemMembers,
+        _inputs, _nodes, _snippets, _snippetFolders, _macroContents, _macroPrompts, _macroFolders, _itemMembers,
         _runFacts, _profileFacts, Errors, Warnings);
 }

@@ -67,7 +67,7 @@ public sealed record WorkflowPackageManifest(
     // writer's normaliser. Trailing optional, omitted when null, so every
     // earlier manifest writes the bytes it always wrote.
     List<WorkflowDeliverableSpec>? Deliverables = null,
-    // v25 (§ 4): snippets — Scriban templates a template READS (snippet.<id>.text),
+    // v25 (§ 4): snippets — Scriban templates a template READS (snippet.<id>.content),
     // never attached — replace data at 25. Same shape as data: id → file, or
     // folder → "dir/" with an index.json (id, name, file, when). Trailing
     // optional; below 25 refused by name by the validator.

@@ -40,8 +40,8 @@ public class WorkflowConditionAt25Tests
     [InlineData("input.kind == \"new\"")]
     [InlineData("input.kind != \"new\" && node.scope.value == \"out_of_scope\"")]
     [InlineData("!(input.kind == \"new\") || node.scope.value == \"in_scope\"")]
-    [InlineData("node.assessment.text == \"\"")]
-    [InlineData("snippet.standards.text != \"\"")]
+    [InlineData("node.assessment.content == \"\"")]
+    [InlineData("snippet.standards.content != \"\"")]
     [InlineData("run.date == \"2026-01-02\"")]
     public void AConditionOverTheObjects_IsAccepted(string when)
     {
@@ -93,7 +93,7 @@ public class WorkflowConditionAt25Tests
     [InlineData("input.kind == \"new\" && input.notes", "tests input.notes for truth; a text cannot be tested — compare it to a value.")]
     [InlineData("input.nope == \"x\"", "reads input 'nope', which the package does not declare.")]
     [InlineData("node.nope.value == \"x\"", "reads node 'nope', which the package does not declare.")]
-    [InlineData("node.assessment.value == \"x\"", "reads node.assessment.value, but format 'prose' is text and has no value; read node.assessment.text.")]
+    [InlineData("node.assessment.value == \"x\"", "reads node.assessment.value, but format 'prose' is text and has no value; read node.assessment.content.")]
     [InlineData("input.kind + 1 > 2", "computes with input.kind, which is an enum; arithmetic takes numbers.")]
     [InlineData("input.kind .. 3", "uses 'RangeInclude', which is not a condition operator (&&, ||, !, ==, !=, <, >, <=, >=, + - * /).")]
     public void AComparison_IsTyped(string when, string tail)
@@ -191,7 +191,7 @@ public class WorkflowConditionAt25Tests
     public void TheProbe_RefusesAConditionThatYieldsNoBoolean()
     {
         // Typed as untyped by the walker (a snippet's text is a text, compared to nothing here).
-        Assert.Contains("Deliverable 'consult' condition must be a boolean expression; it yields a text.", Errors(WithDeliverableWhen("snippet.standards.text | string.upcase")));
+        Assert.Contains("Deliverable 'consult' condition must be a boolean expression; it yields a text.", Errors(WithDeliverableWhen("snippet.standards.content | string.upcase")));
     }
 
     [Fact]
@@ -238,9 +238,9 @@ public class WorkflowConditionAt25Tests
     [InlineData("input.kind == \"new\"", true)]
     [InlineData("input.kind != \"new\"", false)]
     [InlineData("node.scope.value == \"in_scope\"", true)]
-    [InlineData("node.scope.text == \"in_scope\"", true)]
-    [InlineData("node.assessment.text != \"\"", true)]
-    [InlineData("snippet.standards.text == \"Follow the standards.\"", true)]
+    [InlineData("node.scope.content == \"in_scope\"", true)]
+    [InlineData("node.assessment.content != \"\"", true)]
+    [InlineData("snippet.standards.content == \"Follow the standards.\"", true)]
     [InlineData("run.date == \"2026-01-02\"", true)]
     [InlineData("profile.name == \"Dr Example\" && input.kind == \"new\"", true)]
     [InlineData("!(input.kind == \"new\") || node.scope.value == \"out_of_scope\"", false)]
@@ -287,7 +287,7 @@ public class WorkflowConditionAt25Tests
         var text = Assert.Throws<InvalidOperationException>(() => WorkflowConditionAt25.Holds("Deliverable 'consult' condition", "input.notes", Scope()));
         Assert.Equal("Deliverable 'consult' condition must be a boolean expression; it yields a text.", text.Message);
 
-        var beyond = Assert.Throws<InvalidOperationException>(() => WorkflowConditionAt25.Holds("Deliverable 'consult' condition", "node.nope.text == \"\"", Scope()));
+        var beyond = Assert.Throws<InvalidOperationException>(() => WorkflowConditionAt25.Holds("Deliverable 'consult' condition", "node.nope.content == \"\"", Scope()));
         Assert.Contains("node.nope", beyond.Message);
 
         var parse = Assert.Throws<InvalidOperationException>(() => WorkflowConditionAt25.Holds("Deliverable 'consult' condition", "input.kind == ", Scope()));
@@ -353,7 +353,7 @@ public class WorkflowConditionAt25Tests
         var deliverableGate = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "node.scope.value == \"in_scope\"" }).ToList() };
         Assert.Equal(new[] { "scope" }, WorkflowDerivedEdges.GatingReads(deliverableGate, files, V25Package.Catalog()));
 
-        var nodeGate = V25Package.WithNode(manifest, "section_notes", n => n with { When = "node.assessment.text != \"\"" });
+        var nodeGate = V25Package.WithNode(manifest, "section_notes", n => n with { When = "node.assessment.content != \"\"" });
         Assert.Equal(new[] { "assessment" }, WorkflowDerivedEdges.GatingReads(nodeGate, files, V25Package.Catalog()));
 
         // A placement's when gates the boundary too; a node instance's is judged at
@@ -369,8 +369,8 @@ public class WorkflowConditionAt25Tests
     public void GatingReads_CloseOverTheTextsAWhenReads()
     {
         var (manifest, files) = V25Package.Minimal();
-        files["snippets/standards.md"] = "Standards for {{ node.scope.text }}.";
-        var gated = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "snippet.standards.text != \"\"" }).ToList() };
+        files["snippets/standards.md"] = "Standards for {{ node.scope.content }}.";
+        var gated = manifest with { Deliverables = manifest.Deliverables!.Select(d => d with { When = "snippet.standards.content != \"\"" }).ToList() };
 
         Assert.Equal(new[] { "scope" }, WorkflowDerivedEdges.GatingReads(gated, files, V25Package.Catalog()));
     }
@@ -403,8 +403,8 @@ public class WorkflowConditionAt25Tests
     }
 
     [Theory]
-    [InlineData("node.assessment.text == \"\"", "reads node.assessment.text; the builder reads an enum node's value (node.assessment.value).")]
-    [InlineData("snippet.standards.text == \"x\"", "reads snippet.standards.text; the builder reads input.<path>, node.<id>.value and item.id (snippet is beyond it).")]
+    [InlineData("node.assessment.content == \"\"", "reads node.assessment.content; the builder reads an enum node's value (node.assessment.value).")]
+    [InlineData("snippet.standards.content == \"x\"", "reads snippet.standards.content; the builder reads input.<path>, node.<id>.value and item.id (snippet is beyond it).")]
     [InlineData("input.notes | string.upcase", "pipes a value; a condition counts an array as (input.<id> | array.size) and reads nothing else through a pipe.")]
     public void ARead_BeyondTheBuildersSubset_IsSaid(string when, string tail)
     {

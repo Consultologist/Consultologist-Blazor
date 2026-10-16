@@ -24,10 +24,10 @@ public class TemplateReferenceGraphTests
     public void ATreeOfReads_HasNoCycle_AndNoPromptReach()
     {
         var graph = new TemplateReferenceGraph();
-        graph.Add(TemplateKind.Prompt, "p", Refs("{{ snippet.a.text }} {{ macro.m.text }} {{ macro.letrozole.prompt }}"));
-        graph.Add(TemplateKind.Snippet, "a", Refs("{{ snippet.b.text }} {{ input.notes }}"));
+        graph.Add(TemplateKind.Prompt, "p", Refs("{{ snippet.a.content }} {{ macro.m.content }} {{ macro.letrozole.prompt }}"));
+        graph.Add(TemplateKind.Snippet, "a", Refs("{{ snippet.b.content }} {{ input.notes }}"));
         graph.Add(TemplateKind.Snippet, "b", Refs("plain"));
-        graph.Add(TemplateKind.Macro, "m", Refs("{{ snippet.b.text }} {{ node.assessment.text }}"));
+        graph.Add(TemplateKind.Macro, "m", Refs("{{ snippet.b.content }} {{ node.assessment.content }}"));
 
         Assert.False(graph.TryFindCycle(out _));
         Assert.False(graph.TryFindMacroTextReachingPrompt(out _, out _));
@@ -37,9 +37,9 @@ public class TemplateReferenceGraphTests
     public void ASnippetCycle_IsNamedByItsPath()
     {
         var graph = new TemplateReferenceGraph();
-        graph.Add(TemplateKind.Snippet, "a", Refs("{{ snippet.b.text }}"));
-        graph.Add(TemplateKind.Snippet, "b", Refs("{{ snippet.c.text }}"));
-        graph.Add(TemplateKind.Snippet, "c", Refs("{{ snippet.a.text }}"));
+        graph.Add(TemplateKind.Snippet, "a", Refs("{{ snippet.b.content }}"));
+        graph.Add(TemplateKind.Snippet, "b", Refs("{{ snippet.c.content }}"));
+        graph.Add(TemplateKind.Snippet, "c", Refs("{{ snippet.a.content }}"));
 
         Assert.True(graph.TryFindCycle(out var path));
         Assert.Equal("snippet 'a' → snippet 'b' → snippet 'c' → snippet 'a'", TemplateReferenceGraph.Describe(path));
@@ -49,9 +49,9 @@ public class TemplateReferenceGraphTests
     public void AMacroThroughASnippet_Cycles()
     {
         var graph = new TemplateReferenceGraph();
-        graph.Add(TemplateKind.Prompt, "p", Refs("{{ macro.m.text }}"));
-        graph.Add(TemplateKind.Macro, "m", Refs("{{ snippet.a.text }}"));
-        graph.Add(TemplateKind.Snippet, "a", Refs("{{ macro.m.text }}"));
+        graph.Add(TemplateKind.Prompt, "p", Refs("{{ macro.m.content }}"));
+        graph.Add(TemplateKind.Macro, "m", Refs("{{ snippet.a.content }}"));
+        graph.Add(TemplateKind.Snippet, "a", Refs("{{ macro.m.content }}"));
 
         Assert.True(graph.TryFindCycle(out var path));
         Assert.Equal("macro 'm' → snippet 'a' → macro 'm'", TemplateReferenceGraph.Describe(path));
@@ -61,7 +61,7 @@ public class TemplateReferenceGraphTests
     public void ASelfRead_IsACycleOfOne()
     {
         var graph = new TemplateReferenceGraph();
-        graph.Add(TemplateKind.Snippet, "a", Refs("{{ snippet.a.text }}"));
+        graph.Add(TemplateKind.Snippet, "a", Refs("{{ snippet.a.content }}"));
 
         Assert.True(graph.TryFindCycle(out var path));
         Assert.Equal("snippet 'a' → snippet 'a'", TemplateReferenceGraph.Describe(path));
@@ -72,7 +72,7 @@ public class TemplateReferenceGraphTests
     {
         var graph = new TemplateReferenceGraph();
         graph.AddSnippetFolder("sections", new[] { "a", "b" });
-        graph.Add(TemplateKind.Snippet, "a", Refs("{{ for s in snippet.sections }}{{ s.text }}{{ end }}"));
+        graph.Add(TemplateKind.Snippet, "a", Refs("{{ for s in snippet.sections }}{{ s.content }}{{ end }}"));
         graph.Add(TemplateKind.Snippet, "b", Refs("plain"));
 
         Assert.True(graph.TryFindCycle(out var path));
@@ -84,7 +84,7 @@ public class TemplateReferenceGraphTests
     {
         var graph = new TemplateReferenceGraph();
         graph.Add(TemplateKind.Prompt, "p", Refs("{{ macro.m.prompt }}"));
-        graph.Add(TemplateKind.Macro, "m", Refs("{{ snippet.a.text }}"));
+        graph.Add(TemplateKind.Macro, "m", Refs("{{ snippet.a.content }}"));
         graph.Add(TemplateKind.Snippet, "a", Refs("{{ macro.m.prompt }}"));
 
         // The snippet reads m's prompt; the prompt reads the snippet only by
@@ -99,7 +99,7 @@ public class TemplateReferenceGraphTests
         // template; one that reads a snippet carrying the same slot loops.
         var graph = new TemplateReferenceGraph();
         graph.Add(TemplateKind.Prompt, "p", Refs("{{ macro.m.prompt }}"));
-        graph.Add(TemplateKind.Instruction, "m", Refs("Say it as {{ snippet.intro.text }}."));
+        graph.Add(TemplateKind.Instruction, "m", Refs("Say it as {{ snippet.intro.content }}."));
         graph.Add(TemplateKind.Snippet, "intro", Refs("Plainly. {{ macro.m.prompt }}"));
         graph.Add(TemplateKind.Macro, "m", Refs("M."));
 
@@ -112,7 +112,7 @@ public class TemplateReferenceGraphTests
     {
         var graph = new TemplateReferenceGraph();
         graph.Add(TemplateKind.Prompt, "p", Refs("{{ macro.m.prompt }}"));
-        graph.Add(TemplateKind.Instruction, "m", Refs("Like {{ macro.n.text }}, but shorter."));
+        graph.Add(TemplateKind.Instruction, "m", Refs("Like {{ macro.n.content }}, but shorter."));
         graph.Add(TemplateKind.Macro, "n", Refs("Example."));
         graph.Add(TemplateKind.Macro, "m", Refs("M."));
 
@@ -135,10 +135,10 @@ public class TemplateReferenceGraphTests
     public void AMacroText_ReachingAPromptRead_ThroughASnippet_IsRefused()
     {
         var graph = new TemplateReferenceGraph();
-        graph.Add(TemplateKind.Prompt, "p", Refs("{{ snippet.standards.text }}"));
-        graph.Add(TemplateKind.Snippet, "standards", Refs("{{ snippet.intro.text }}"));
+        graph.Add(TemplateKind.Prompt, "p", Refs("{{ snippet.standards.content }}"));
+        graph.Add(TemplateKind.Snippet, "standards", Refs("{{ snippet.intro.content }}"));
         graph.Add(TemplateKind.Snippet, "intro", Refs("{{ macro.letrozole.prompt }}"));
-        graph.Add(TemplateKind.Macro, "closing", Refs("{{ snippet.standards.text }}"));
+        graph.Add(TemplateKind.Macro, "closing", Refs("{{ snippet.standards.content }}"));
 
         Assert.True(graph.TryFindMacroTextReachingPrompt(out var path, out var promptMacro));
         Assert.Equal("macro 'closing' → snippet 'standards' → snippet 'intro'", TemplateReferenceGraph.Describe(path));
@@ -150,7 +150,7 @@ public class TemplateReferenceGraphTests
     {
         var graph = new TemplateReferenceGraph();
         graph.AddMacroFolder("addenda", new[] { "n" });
-        graph.Add(TemplateKind.Macro, "m", Refs("{{ for x in macro.addenda }}{{ x.text }}{{ end }}"));
+        graph.Add(TemplateKind.Macro, "m", Refs("{{ for x in macro.addenda }}{{ x.content }}{{ end }}"));
         graph.Add(TemplateKind.Macro, "n", Refs("{{ macro.letrozole.prompt }}"));
 
         Assert.True(graph.TryFindMacroTextReachingPrompt(out var path, out _));
@@ -161,9 +161,9 @@ public class TemplateReferenceGraphTests
     public void ASnippetWithAPromptRead_ReadOnlyByPrompts_IsFine()
     {
         var graph = new TemplateReferenceGraph();
-        graph.Add(TemplateKind.Prompt, "p", Refs("{{ snippet.intro.text }}"));
+        graph.Add(TemplateKind.Prompt, "p", Refs("{{ snippet.intro.content }}"));
         graph.Add(TemplateKind.Snippet, "intro", Refs("{{ macro.letrozole.prompt }}"));
-        graph.Add(TemplateKind.Macro, "closing", Refs("{{ snippet.standards.text }}"));
+        graph.Add(TemplateKind.Macro, "closing", Refs("{{ snippet.standards.content }}"));
         graph.Add(TemplateKind.Snippet, "standards", Refs("plain"));
 
         Assert.False(graph.TryFindMacroTextReachingPrompt(out _, out _));
@@ -173,7 +173,7 @@ public class TemplateReferenceGraphTests
     public void AnUnknownTarget_IsSkipped_NotAnError()
     {
         var graph = new TemplateReferenceGraph();
-        graph.Add(TemplateKind.Prompt, "p", Refs("{{ snippet.a.text }}"));
+        graph.Add(TemplateKind.Prompt, "p", Refs("{{ snippet.a.content }}"));
 
         Assert.False(graph.TryFindCycle(out _));
         Assert.False(graph.TryFindMacroTextReachingPrompt(out _, out _));

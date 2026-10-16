@@ -94,7 +94,7 @@ public static partial class TemplateReferenceWalker
             return;
         }
 
-        refs.ReadNode(id, text: false, value: true);
+        refs.ReadNode(id, content: false, value: true);
     }
 
     private static void WalkTextParameter(string prefix, JsonNode? value, TemplateReferenceContext context, TemplateReferenceCollector refs)

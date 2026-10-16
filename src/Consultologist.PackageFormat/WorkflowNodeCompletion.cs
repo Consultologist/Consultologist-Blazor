@@ -4,10 +4,10 @@ namespace Consultologist.PackageFormat;
 /// v25 (package-format-v25-design.md §§ 6–7; B5 #1004, #1044): a node's
 /// output composed at its completion, stated once. The reply — validated,
 /// judged non-empty, then RENDERED as a template over the node's scope (#1044:
-/// every <c>{{ macro.&lt;id&gt;.text }}</c> the model wrote is that macro's text,
+/// every <c>{{ macro.&lt;id&gt;.content }}</c> the model wrote is that macro's text,
 /// rendered; the render's own trace names each such read) — has its before and
 /// after instances composed around it; what comes out is what
-/// <c>node.&lt;id&gt;.text</c>, the aggregator and the deliverable read, and
+/// <c>node.&lt;id&gt;.content</c>, the aggregator and the deliverable read, and
 /// what <c>outputHash</c> is over. Pure over rendered texts: the engine renders
 /// the reply and each instance's text over the node's own scope; this composes
 /// and attributes. A node with no instance returns the rendered reply's bytes
@@ -26,7 +26,7 @@ public static class WorkflowNodeCompletion
     /// <summary>A before/after instance (the library macro's text placed around the output).</summary>
     public const string MacroKind = "macro";
 
-    /// <summary>An inline macro (#1047, the word): the macro whose text the reply read as <c>{{ macro.&lt;id&gt;.text }}</c> when it rendered (#1044). Below 25 the document-level kind is <c>slot</c>, the marker's fill.</summary>
+    /// <summary>An inline macro (#1047, the word): the macro whose text the reply read as <c>{{ macro.&lt;id&gt;.content }}</c> when it rendered (#1044). Below 25 the document-level kind is <c>slot</c>, the marker's fill.</summary>
     public const string InlineKind = "inline";
 
     /// <summary>
@@ -37,7 +37,7 @@ public static class WorkflowNodeCompletion
     /// reads as the render met them, after macros.
     /// </summary>
     /// <param name="renderedReply">The reply rendered over the node's scope.</param>
-    /// <param name="inlineReads">The macro ids whose text the reply's render read, in order, once per read (<see cref="TemplateRenderer.TemplateRenderTrace.TextReads"/>).</param>
+    /// <param name="inlineReads">The macro ids whose text the reply's render read, in order, once per read (<see cref="TemplateRenderer.TemplateRenderTrace.ContentReads"/>).</param>
     public static Result Compose(
         string renderedReply,
         IReadOnlyList<Instance> instances,

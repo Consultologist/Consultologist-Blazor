@@ -75,7 +75,7 @@ public sealed class TemplateReferenceGraph
             }
         }
 
-        foreach (var macro in refs.MacroTexts)
+        foreach (var macro in refs.MacroContents)
         {
             yield return Key(TemplateKind.Macro, macro);
         }

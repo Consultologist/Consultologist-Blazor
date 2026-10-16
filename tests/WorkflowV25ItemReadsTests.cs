@@ -26,12 +26,12 @@ public class WorkflowV25ItemReadsTests
     {
         var deferred = TemplateReferenceContext.Empty with { ItemDeferred = true };
 
-        var refs = TemplateReferenceWalker.Walk("Macro 'm'", "{{ item.name }} {{ item.text }} {{ item.value.x }}", deferred);
+        var refs = TemplateReferenceWalker.Walk("Macro 'm'", "{{ item.name }} {{ item.content }} {{ item.value.x }}", deferred);
         Assert.True(refs.IsValid, string.Join(" | ", refs.Errors));
-        Assert.Equal(new[] { "name", "text", "value" }, refs.ItemMembers.Order());
+        Assert.Equal(new[] { "content", "name", "value" }, refs.ItemMembers.Order());
 
-        var stray = TemplateReferenceWalker.Walk("Macro 'm'", "{{ item.content }}", deferred);
-        Assert.Contains("Macro 'm' reads item.content, which a fan item does not carry (it carries: id, name, text or value).", stray.Errors);
+        var stray = TemplateReferenceWalker.Walk("Macro 'm'", "{{ item.text }}", deferred);
+        Assert.Contains("Macro 'm' reads item.text, which a fan item does not carry (it carries: id, name, content or value).", stray.Errors);
 
         var prompt = TemplateReferenceWalker.Walk("Prompt 'p'", "{{ item.name }}", TemplateReferenceContext.Empty);
         Assert.Contains("Prompt 'p' reads item.name, but the node does not fan.", prompt.Errors);
@@ -48,7 +48,7 @@ public class WorkflowV25ItemReadsTests
     [Fact]
     public void ANodeInstance_OnAFanNode_MayReadTheItem()
     {
-        var (manifest, files) = WithClosingText("Closing for {{ item.name }}: {{ item.text }}.");
+        var (manifest, files) = WithClosingText("Closing for {{ item.name }}: {{ item.content }}.");
         manifest = manifest with
         {
             Nodes = manifest.Nodes!.Select(n => n.Id switch
