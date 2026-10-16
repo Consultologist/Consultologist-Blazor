@@ -26,28 +26,28 @@ public static class WorkflowNodeCompletion
     /// <summary>A before/after instance (the library macro's text placed around the output).</summary>
     public const string MacroKind = "macro";
 
-    /// <summary>A slot: the macro whose text the reply read as <c>{{ macro.&lt;id&gt;.text }}</c> when it rendered (#1044); below 25, the marker's fill.</summary>
-    public const string SlotKind = "slot";
+    /// <summary>An inline macro (#1047, the word): the macro whose text the reply read as <c>{{ macro.&lt;id&gt;.text }}</c> when it rendered (#1044). Below 25 the document-level kind is <c>slot</c>, the marker's fill.</summary>
+    public const string InlineKind = "inline";
 
     /// <summary>
     /// The order: the before instances in their order, the rendered reply, the
     /// after instances in theirs — one blank line between blocks, each block
     /// trailing-trimmed (the convention the prompt-side composition set at v23).
-    /// <c>appended[]</c> reads in output order: before macros, the reply's slot
+    /// <c>appended[]</c> reads in output order: before macros, the reply's inline
     /// reads as the render met them, after macros.
     /// </summary>
     /// <param name="renderedReply">The reply rendered over the node's scope.</param>
-    /// <param name="slotReads">The macro ids whose text the reply's render read, in order, once per read (<see cref="TemplateRenderer.TemplateRenderTrace.TextReads"/>).</param>
+    /// <param name="inlineReads">The macro ids whose text the reply's render read, in order, once per read (<see cref="TemplateRenderer.TemplateRenderTrace.TextReads"/>).</param>
     public static Result Compose(
         string renderedReply,
         IReadOnlyList<Instance> instances,
-        IReadOnlyList<string> slotReads)
+        IReadOnlyList<string> inlineReads)
     {
-        var slots = slotReads.Select(id => new Placed(SlotKind, id)).ToList();
+        var inline = inlineReads.Select(id => new Placed(InlineKind, id)).ToList();
 
         if (instances.Count == 0)
         {
-            return new Result(renderedReply, slots);
+            return new Result(renderedReply, inline);
         }
 
         var appended = new List<Placed>();
@@ -60,7 +60,7 @@ public static class WorkflowNodeCompletion
         }
 
         parts.Add(renderedReply);
-        appended.AddRange(slots);
+        appended.AddRange(inline);
 
         foreach (var instance in instances.Where(i => i.After))
         {

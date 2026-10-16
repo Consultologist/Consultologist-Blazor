@@ -132,7 +132,7 @@ public sealed record WorkflowMacroSpec(
     bool? Optional = null,
     bool? Default = null,
     // v25 (package-format-v25-design.md § 5, #998): what the model is told where
-    // the macro's slot is read inline (macro.<id>.prompt) — a Scriban template
+    // the macro is read inline (macro.<id>.prompt) — a Scriban template
     // (#1044), rendered there, then composed with the mechanics sentence.
     // Mandatory at ≥ 25 (a macro is placed text,
     // and placed text needs an instruction); below 25 refused by name. Trailing
@@ -523,7 +523,7 @@ public sealed record WorkflowDeliverableMacroSpec(
     // v25 (package-format-v25-design.md § 5.1, #998): the deliverable instance —
     // `prepend` | `append`, document scope only. Node-anchored before/after and
     // forItem become node instances at 25, and the slot becomes the inline
-    // macro.<id>.prompt read; below 25 `at` is refused by name. Trailing optional.
+    // macro (the macro.<id>.prompt read); below 25 `at` is refused by name. Trailing optional.
     string? At = null)
 {
     public const string Prepend = "prepend";

@@ -119,7 +119,7 @@ public class WorkflowDerivedEdgesTests
     }
 
     [Fact]
-    public void AnInstructionThatReadsANode_IsAnEdgeOfTheNodeWhosePromptReadsTheSlot()
+    public void AnInstructionThatReadsANode_IsAnEdgeOfTheNodeWhosePromptReadsItInline()
     {
         // #1044: the instruction renders where macro.closing.prompt is read (the
         // prompt, through its snippet), over that node's scope — so what it
@@ -137,7 +137,7 @@ public class WorkflowDerivedEdgesTests
     }
 
     [Fact]
-    public void ASlotFillThatReadsANode_IsAnEdgeOfTheNodeWhosePromptSanctionsIt()
+    public void AnInlineMacroThatReadsANode_IsAnEdgeOfTheNodeWhosePromptInstructsIt()
     {
         // The prompt reads macro.closing.prompt (through its snippet); the
         // fill renders at this node, so its reads are this node's edges — and

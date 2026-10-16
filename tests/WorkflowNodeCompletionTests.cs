@@ -4,17 +4,17 @@ namespace Consultologist.Api.Tests;
 
 /// <summary>
 /// B5 #1004 → #1044 (design §§ 6–7): a node's output composed at completion —
-/// the reply already rendered (its slot reads are the render's trace), the
+/// the reply already rendered (its inline reads are the render's trace), the
 /// before/after instances around it, attribution in output order.
 /// </summary>
 public class WorkflowNodeCompletionTests
 {
-    private static readonly IReadOnlyList<string> NoSlots = Array.Empty<string>();
+    private static readonly IReadOnlyList<string> NoInline = Array.Empty<string>();
 
     [Fact]
     public void NothingToCompose_ReturnsTheReplyBytes()
     {
-        var result = WorkflowNodeCompletion.Compose("The plan.\n", Array.Empty<WorkflowNodeCompletion.Instance>(), NoSlots);
+        var result = WorkflowNodeCompletion.Compose("The plan.\n", Array.Empty<WorkflowNodeCompletion.Instance>(), NoInline);
 
         Assert.Equal("The plan.\n", result.Text);
         Assert.Empty(result.Appended);
@@ -28,7 +28,7 @@ public class WorkflowNodeCompletionTests
         var result = WorkflowNodeCompletion.Compose(
             "Hello",
             new[] { new WorkflowNodeCompletion.Instance("closing", After: true, "Bye") },
-            NoSlots);
+            NoInline);
 
         Assert.Equal("Hello\n\nBye", result.Text);
         Assert.Equal(new[] { new WorkflowNodeCompletion.Placed("macro", "closing") }, result.Appended);
@@ -45,14 +45,14 @@ public class WorkflowNodeCompletionTests
                 new WorkflowNodeCompletion.Instance("a1", After: true, "Last.\n\n"),
                 new WorkflowNodeCompletion.Instance("b2", After: false, "Second."),
             },
-            NoSlots);
+            NoInline);
 
         Assert.Equal("First.\n\nSecond.\n\nThe plan.\n\nLast.", result.Text);
         Assert.Equal(new[] { "macro:b1", "macro:b2", "macro:a1" }, result.Appended.Select(p => $"{p.Kind}:{p.Id}"));
     }
 
     [Fact]
-    public void TheReplysSlotReads_AreAttributedBetweenTheInstances_InRenderOrder()
+    public void TheReplysInlineReads_AreAttributedBetweenTheInstances_InRenderOrder()
     {
         // #1044: the reply came in rendered; its trace says which macro texts it
         // read, in order — once per read, as the record names them.
@@ -62,7 +62,7 @@ public class WorkflowNodeCompletionTests
             new[] { "letrozole", "closing" });
 
         Assert.Equal("B.\n\nPlan. Letrozole counselling. End. Closing.\n\nA.", result.Text);
-        Assert.Equal(new[] { "macro:before", "slot:letrozole", "slot:closing", "macro:after" }, result.Appended.Select(p => $"{p.Kind}:{p.Id}"));
+        Assert.Equal(new[] { "macro:before", "inline:letrozole", "inline:closing", "macro:after" }, result.Appended.Select(p => $"{p.Kind}:{p.Id}"));
     }
 
     [Fact]
@@ -71,6 +71,6 @@ public class WorkflowNodeCompletionTests
         var result = WorkflowNodeCompletion.Compose("X and X", Array.Empty<WorkflowNodeCompletion.Instance>(), new[] { "x", "x" });
 
         Assert.Equal("X and X", result.Text);
-        Assert.Equal(new[] { "slot:x", "slot:x" }, result.Appended.Select(p => $"{p.Kind}:{p.Id}"));
+        Assert.Equal(new[] { "inline:x", "inline:x" }, result.Appended.Select(p => $"{p.Kind}:{p.Id}"));
     }
 }

@@ -132,7 +132,7 @@ public class TemplateReferenceWalkerTests
     }
 
     [Fact]
-    public void Macros_TextIsARead_PromptIsAnInlineSlot()
+    public void Macros_TextIsARead_PromptIsAnInlineMacro()
     {
         var refs = TemplateFixtures.Ok("""
             {{ macro.closing.text }} {{ macro.letrozole.prompt }} {{ macro.closing.id }} {{ macro.closing.name }}
