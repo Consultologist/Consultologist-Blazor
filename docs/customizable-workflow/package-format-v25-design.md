@@ -51,19 +51,19 @@ member is a publish refusal naming it.
 | Object | Members | Value |
 |---|---|---|
 | `input.<id>` | the value (bare) | the supplied input, **typed** as declared — a date formats, a boolean branches, an object paths, an array iterates (the v8/v9 semantics, unchanged) |
-| `node.<id>` | `.text`, `.value` | `.text` is the node's **composed** output as text (§ 6); `.value` is the parsed output on an `object`, `enum` or `array` format — fields path, arrays iterate, every path checked against the format's schema at publish. The bare read is refused by a sentence naming `.text`. |
-| `snippet.<id>` | `.id`, `.name`, `.text` | a snippet rendered (§ 4) |
+| `node.<id>` | `.content`, `.value` | `.content` is the node's **composed** output as text (§ 6); `.value` is the parsed output on an `object`, `enum` or `array` format — fields path, arrays iterate, every path checked against the format's schema at publish. The bare read is refused by a sentence naming `.content`. |
+| `snippet.<id>` | `.id`, `.name`, `.content` | a snippet rendered (§ 4) |
 | `snippet.<folder>` | iterable | each item a snippet with the three members above; folder size is resolved at job start (§ 4) |
-| `item` | `.id`, `.name`, `.text` (snippet fan) / `.id`, `.name`, `.value` (input fan) | the fan item the instance runs for; refused on a node that does not fan |
-| `macro.<id>` | `.id`, `.name`, `.text`, `.prompt` | `.text` is the macro's text rendered, read prompt-side like a snippet; `.prompt` is the inline macro's prompt text: its instruction (rendered) composed with the mechanics sentence (§ 5.3) |
+| `item` | `.id`, `.name`, `.content` (snippet fan) / `.id`, `.name`, `.value` (input fan) | the fan item the instance runs for; refused on a node that does not fan |
+| `macro.<id>` | `.id`, `.name`, `.content`, `.prompt` | `.content` is the macro's text rendered, read prompt-side like a snippet; `.prompt` is the inline macro's prompt text: its instruction (rendered) composed with the mechanics sentence (§ 5.3) |
 | `macro.<folder>` | iterable | each item a macro with the four members above (no manifest shape at 25 — see Deferred) |
 | `run` | `.date`, `.job`, `.package`, `.host` | the run facts, as the v11 `{{run:…}}` tokens gave them (A4, #999, 2026-10-13) |
 | `profile` | `.name`, `.signature` | the profile facts, as the v11/v12 `{{profile:…}}` tokens gave them; a `profile.signature` read signs, and a deliverable is signed once |
 
-**Renderers are pipes.** `{{ node.extract.text | concept_context }}` is the attested,
+**Renderers are pipes.** `{{ node.extract.content | concept_context }}` is the attested,
 byte-stable rendering a binding's `as: concept-context` gave; the closed renderer set is
 unchanged. A loop over `node.extract.value.concepts` is the package's own rendering. Both
-are allowed; a bare `.text` read of a structured format renders the JSON and the validator
+are allowed; a bare `.content` read of a structured format renders the JSON and the validator
 warns.
 
 **Everything is a template.** Snippets render (§ 4), macro text renders (§ 5), prompts
@@ -84,7 +84,7 @@ At publish the validator parses each template with Scriban and walks the syntax 
 - **dynamic access is refused** (`node[name]`): static member access only. A literal integer
   index on an array path (`node.extract.value.concepts[0].term`) is static and steps into the
   element; a string-literal index is a member spelled the only way Scriban allows a hyphen
-  (`node["identify-problem"].text` — Scriban reads `node.identify-problem` as a subtraction);
+  (`node["identify-problem"].content` — Scriban reads `node.identify-problem` as a subtraction);
 - a reference that does not resolve, or a member outside the closed set, is refused by name;
 - **loop, `with` and `capture` variables are typed from what they bind** (A2, #997,
   2026-10-13): `for s in snippet.sections` gives `s` the snippet members, `for c in
@@ -104,7 +104,7 @@ is structure, not prose: a node's `forEach`, an aggregator's `aggregate`, a deli
 `node` and `check` — each spelled as an object reference at 25 (`snippet.<folder>`,
 `input.<id>`, `node.<id>`; § 16, #1037).
 
-**Consequence, stated:** a template that writes `{{ node.identify-problem.text }}` names
+**Consequence, stated:** a template that writes `{{ node.identify-problem.content }}` names
 that node, so a prompt that reads a node is in effect that node's prompt. One prompt used by
 two nodes with *different* upstream nodes needs a per-node alias map, **deferred until a
 package needs it**.
@@ -281,12 +281,12 @@ named here so the word is reserved. A `text` format validates nothing and carrie
   template reads a node as a Scriban member and Scriban reads `node.identify-problem` as a
   subtraction (A3, #998, 2026-10-13). A hyphenated id is refused by name with the rename in
   the sentence; the migration (§ 14) rewrites the id and every reference. The bracket
-  spelling `node["identify-problem"].text` remains a valid static access, never the
+  spelling `node["identify-problem"].content` remains a valid static access, never the
   expected one.
 - **`prompt`** — required unless the producer is `computed`, refused then.
 - **`with`** — only the parameters the format declares, every declared one supplied; values
   are object references or literals typed by the declaration (A2, #997, 2026-10-13): a
-  `node` parameter is a bare `node.<id>` (it names the node, so it is an edge; `.text`/`.value`
+  `node` parameter is a bare `node.<id>` (it names the node, so it is an edge; `.content`/`.value`
   refused there) whose format must match the declaration's when one is named — `of` must name
   a node of format `concept_list`; a `text` parameter is a string literal or an `input.<id>`
   reference to a text input; a `values` parameter is a list of snake_case values (the enum
@@ -351,8 +351,8 @@ set, and only the operator moves things between them.
 collection (an `index.json` listing id, name and file per item). The names: `+ Snippet`,
 `+ Snippet folder` in the editor.
 
-- A snippet is used by **reading** it — `{{ snippet.standards.text }}`, or
-  `{{ for s in snippet.sections }}{{ s.text }}{{ end }}` — from a prompt, another snippet,
+- A snippet is used by **reading** it — `{{ snippet.standards.content }}`, or
+  `{{ for s in snippet.sections }}{{ s.content }}{{ end }}` — from a prompt, another snippet,
   or a macro's text. It is **never attached** to a node or a deliverable: an inline read at
   the top of a template is the prompt-side "before" of v23, and a Scriban `if` around it is
   that attachment's `when`, with the edge derived like any other.
@@ -365,9 +365,9 @@ collection (an `index.json` listing id, name and file per item). The names: `+ S
 - A node fans over a folder as it fans over a collection today — spelled `forEach:
   snippet.<folder>`, one grammar beside `input.<id>` (A4, #999 spelled it `snippet:<folder>`;
   #1037 moved it to the object spelling, § 16; the bare folder name is not accepted);
-  `item.text` is the item's rendered text (`item.content` is retired, § 14).
+  `item.content` is the item's rendered content (the ≤24 `item:content` under the object spelling, § 14).
 
-Snippets may read snippets, inputs, nodes, `macro.<id>.text` and `macro.<id>.prompt` (the
+Snippets may read snippets, inputs, nodes, `macro.<id>.content` and `macro.<id>.prompt` (the
 section-instructions pattern: a standard that carries an inline macro's prompt text). A snippet is
 a macro without an instruction, and the two differ only in what may be done with them: a
 snippet is only ever read; a macro may also be placed (§ 5).
@@ -377,7 +377,7 @@ snippet is only ever read; a macro may also be placed (§ 5).
 The library (`manifest.macros[]`: id, label, file, **`instruction`** (mandatory),
 `optional`/`default`) is the only kind of placed text. A macro's text is a Scriban template
 that renders where it is used and may read snippets, inputs and node outputs. It may also
-be **read** inline as `{{ macro.<id>.text }}`, prompt-side, exactly as a snippet is — the
+be **read** inline as `{{ macro.<id>.content }}`, prompt-side, exactly as a snippet is — the
 same words in a prompt and after a reply are one file. What a macro's text may contain does
 not depend on how it is read (§ 5.2). The **instruction is a template too** (#1044): rendered
 where `macro.<id>.prompt` is read, over the same scope, with a snippet's reads; its reads join
@@ -400,7 +400,7 @@ A macro is used in three ways, all on the **output side**:
 
 and **inline**, by writing `{{ macro.letrozole.prompt }}` in a prompt or a snippet where the
 macro goes: that read *is* the inline macro's declaration — the model is told the instruction and asked
-to write `{{ macro.letrozole.text }}` where the content belongs, and the reply renders it
+to write `{{ macro.letrozole.content }}` where the content belongs, and the reply renders it
 (§ 7, #1044) — so there is no `at: slot`, no `use` toggle, and no instruction override on an
 instance (one instruction per macro; a different instruction is a different macro). The node
 pane lists inline macros as a derived, read-only section beside the declared before/after rows.
@@ -441,7 +441,7 @@ depth-first search that names the path.
 scope (#1044) — + a sentence that is a **constant published with this format version**,
 appended after the render so the read it names reaches the model as written:
 
-> *If so, write `{{ macro.<id>.text }}` verbatim and nothing else at that place; do not write
+> *If so, write `{{ macro.<id>.content }}` verbatim and nothing else at that place; do not write
 > that content yourself — it is filled in afterward.*
 
 It is the format's so the attested `inputHash` is determined by the package plus its
@@ -458,7 +458,7 @@ A node row records:
   on a `rendered` node (the proof that nothing but rendering happened), or the operation's
   result on a `computed` node;
 - **`outputHash`** — SHA-256 of the node's output after its instances are composed: what
-  `node.<id>.text` and assembly read. Equal to `agentOutputHash` on a node with no instance.
+  `node.<id>.content` and assembly read. Equal to `agentOutputHash` on a node with no instance.
 
 `NodeHashVersion` moves to **6**, hash-definitions.md § 4 gains the definition, and the
 record gains per-node **`appended[]`** entries (`{ kind: macro | slot, id }`) in order. The
@@ -471,13 +471,13 @@ Order at node completion, stated once:
 2. **Validation** (§ 3.5) and the node's `onInvalid`.
 3. `failIfEmpty` is judged on the reply, before anything is composed.
 4. The reply is **rendered as a template** over the node's scope (§ 7, #1044) — its
-   `{{ macro.<id>.text }}` reads are the inline macros; a reply that does not render fails the node.
+   `{{ macro.<id>.content }}` reads are the inline macros; a reply that does not render fails the node.
 5. Before/after instances compose around the rendered reply.
 6. `outputHash` is taken.
 
 ## 7. Inline macros — the reply is a template (#1044, 2026-10-16; the word, #1047)
 
-The model writes `{{ macro.<id>.text }}` where an inline macro's instruction told it to, and the
+The model writes `{{ macro.<id>.content }}` where an inline macro's instruction told it to, and the
 node's completion **renders the whole reply as a Scriban template** over the node's own
 scope — the scope its prompt rendered over: inputs, the nodes it reads (its derived edges),
 snippets and folders, the fan item, every macro, the run and profile facts. The rendered text
@@ -486,8 +486,8 @@ second render, at the node, at completion — the revision-1 "node first, then d
 and the document-level slot are gone. (Before #1044 the model emitted `[[slot:<id>]]` and the
 completion replaced sanctioned markers; the marker is the ≤24 grammar now.)
 
-- **What a reply may read is what a template may read.** A `{{ macro.<id>.text }}` is that
-  macro's text, rendered; `{{ node.extract.text }}` is the node's text, and so on. Nothing is
+- **What a reply may read is what a template may read.** A `{{ macro.<id>.content }}` is that
+  macro's text, rendered; `{{ node.extract.content }}` is the node's text, and so on. Nothing is
   sanctioned, dropped or rewritten.
 - **A reply that does not render fails the node, non-retryably** (decision): a parse error,
   or a read the scope has no value for (a node the prompt does not read, an undeclared input,
@@ -607,8 +607,8 @@ across every record ever written, and stay; the provenance document may say "the
   Scriban highlighting and reference completion — never WYSIWYG, since a markdown round-trip
   changes bytes the hash covers; until it lands, plain text with manual escaping and no
   plain-text toggle. "+ variable" becomes an **insert reference** palette inserting
-  `{{ input.x }}`, `{{ node.x.text | concept_context }}`, `{{ snippet.x.text }}`,
-  `{{ macro.x.text }}`, `{{ macro.x.prompt }}` at the cursor. Each pane lists what the text reads and, for a
+  `{{ input.x }}`, `{{ node.x.content | concept_context }}`, `{{ snippet.x.content }}`,
+  `{{ macro.x.content }}`, `{{ macro.x.prompt }}` at the cursor. Each pane lists what the text reads and, for a
   snippet or macro, where it is read.
 - **Macro pane.** Title / id / file / **instruction** → text → **Instances** (node and
   deliverable rows) and **Read inline at** (derived).
@@ -661,7 +661,7 @@ a new macro is born with it blank and the desk refuses it until written — expl
 output, fan item, applies-when, remove) and per deliverable instance (prepend/append, gated
 when, detach) on the panes' own handlers, attach pickers for a node whose format takes output
 macros with a free identity and for a deliverable not yet listing it; **Read inline at** from
-the engine's walk (`macro.<id>.prompt` as a slot, `macro.<id>.text`), each row a link.
+the engine's walk (`macro.<id>.prompt` as a slot, `macro.<id>.content`), each row a link.
 **Node pane:** one Macros section — instances placed around the output, grouped before then
 after with reorder within each placement, attach only where the format takes output macros,
 and the **Inline slots** the walk derives from the prompt with the validator's warning for
@@ -683,7 +683,7 @@ corrected.)*
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's
 text or an instruction — offering a snippet's choices, never the macro's own members), its
-help says the model writes `{{ macro.<id>.text }}` where it is read inline and the reply
+help says the model writes `{{ macro.<id>.content }}` where it is read inline and the reply
 renders it; the macro-text prose says placed text instructs no model; the fan-item warning and
 the blank-instruction sentence in the registry's new words; the desk at 25 says the walker's
 instruction sentences by construction (#1039).)*
@@ -691,7 +691,7 @@ instruction sentences by construction (#1039).)*
 *(C4 #1010, 2026-10-14 — the derived **Reads** list, the **insert-reference palette** and the
 desk's "every reference resolves" are built, gated on 25. **Node pane:** the Inputs (bindings)
 section gives way to Reads — what the node's prompt references, from the engine's walk (inputs,
-nodes by `.text`/`.value`, snippets, folders, the fan item's members, macros by `.text`/`.prompt`,
+nodes by `.content`/`.value`, snippets, folders, the fan item's members, macros by `.content`/`.prompt`,
 run and profile facts), a computed node's parameter reads, each row a link to the thing; the
 walker's warnings word for word and an early word when a reference does not resolve; an
 aggregator keeps its ordered sources. **Text panes** (prompt, snippet, folder item, macro): the
@@ -704,7 +704,7 @@ line and the warnings sit under the palette. **Compose:** a new prompt is its id
 `variables`, no `raw`); a re-pointed node writes no `bindings`. **Desk:** the retired keys in
 the validator's sentences, then every walked template's own sentences once each (the walker
 names the line that does not parse). Decisions: palette on all three text panes; warnings shown
-non-blocking. Found and fixed: the walker refused the renderer pipes (`{{ node.x.text |
+non-blocking. Found and fixed: the walker refused the renderer pipes (`{{ node.x.content |
 concept_context }}`) as an unknown root — the closed pipe set is now accepted by the walk and
 judged when it renders; and the editor's reader-pane lookup went by prompt id where the walk
 keys a prompt by the node reading it.)*
@@ -739,8 +739,8 @@ untouched. See § 16's C note for the builder and the last colon spellings.
 
 | At 24 | At 25 |
 |---|---|
-| `{{ <variable> }}` bound to `input:x` / `node:x` (`as: r`) / `data:x` / `item:name` | `{{ input.x }}` / `{{ node.x.text \| r }}` / `{{ snippet.x.text }}` / `{{ item.name }}`; `bindings` and `variables` dropped |
-| `item:content` / `{{ item:content }}` | `item.text` |
+| `{{ <variable> }}` bound to `input:x` / `node:x` (`as: r`) / `data:x` / `item:name` | `{{ input.x }}` / `{{ node.x.content \| r }}` / `{{ snippet.x.content }}` / `{{ item.name }}`; `bindings` and `variables` dropped |
+| `item:content` / `{{ item:content }}` | `item.content` |
 | no contract | `format: prose` |
 | `kind: classifier` + `values` | `format: classification`, `with: { values }` |
 | `kind: template` | `format: rendered` |
@@ -748,7 +748,7 @@ untouched. See § 16's C note for the builder and the last colon spellings.
 | `schemaRefs: { s: concept-list }` + `output.schema: s` | `format: concept-list` |
 | `customSchemas` file | `formats/<id>.json` with the schema under `schema`, `producer: custom`; `onInvalid: fail` as the migration's explicit choice, named in the notice |
 | `data` scalar / collection | a snippet / a snippet folder, files moved under `snippets/` |
-| a prompt-side node macro (bare / `use: prompt`) | an inline `{{ macro.x.text }}` read at the top (`before`) or bottom (`after`) of the template, wrapped in `{{ if }}` when it had a `when`; a macro never placed on any output becomes a **snippet** (it has no instruction to give) and the read becomes `snippet.x.text` |
+| a prompt-side node macro (bare / `use: prompt`) | an inline `{{ macro.x.content }}` read at the top (`before`) or bottom (`after`) of the template, wrapped in `{{ if }}` when it had a `when`; a macro never placed on any output becomes a **snippet** (it has no instruction to give) and the read becomes `snippet.x.content` |
 | an output-side node macro `at: slot` + `instruction` | the instruction moves to the library macro; the template keeps `{{ macro.x.prompt }}` |
 | a deliverable macro `before/after: node:x` (± `forItem`) | a node instance `{ id, at, forItem }` — the node's `outputHash` now covers it, and the record says so |
 | `raw: true` prompt | the text with `{{` escaped |
@@ -760,7 +760,7 @@ untouched. See § 16's C note for the builder and the last colon spellings.
 | `schemaRefs: { s: concept-list }`, `kind: check` | `format: concept_list`, `format: terms_subset` — the snake_case catalogue ids (#1037; the contract ids a ≤24 package names stay hyphenated) |
 
 A library macro placed on an output somewhere *and* used prompt-side elsewhere stays one
-macro: the prompt-side use is a `.text` read. Nothing is split.
+macro: the prompt-side use is a `.content` read. Nothing is split.
 
 *(C6 #1012, 2026-10-15 — the migration is built, as a pure library rewriter
 (`WorkflowPackageMigration24To25`: manifest and files in, manifest and files at 25 out, one
@@ -771,7 +771,7 @@ version. The toolbar still offers only the ceilings (A5 moves them); the seam ta
 tests drive it. Decisions: library rewriter + replaced package; internal seam; the four
 canonical concept-source stamps ride their snake_case twins so a renamed canonical node renders
 the same concept-context bytes. Byte identity, handled: a concept node bound with no renderer
-rendered as bullets at 24 and reads `node.x.text | concept_bullets` at 25 (a bare `.text` would
+rendered as bullets at 24 and reads `node.x.content | concept_bullets` at 25 (a bare `.content` would
 be the JSON); a moved data file has its literal `{{` escaped (a snippet renders as a template);
 a prompt-side macro's `when` becomes a Scriban `if` (`ConditionScriban`). Explicit init the
 notice names: every remaining library macro needs an instruction (a macro read prompt-side only
@@ -916,8 +916,8 @@ rendered over, signature read included as the node's fact); a reply that does no
 prompt or the agent is at fault); filed and built ahead of A5 #1018 as the last format change
 before the bump. **Built:** the mechanics sentence names the read the model writes;
 `TemplateRenderer` renders the instruction before appending the sentence and carries a
-`TemplateRenderTrace` (the prompt's `.prompt` reads; the top-level `.text` reads in order — a
-macro's `.text` is produced on every read so twice read is twice placed);
+`TemplateRenderTrace` (the prompt's `.prompt` reads; the top-level `.content` reads in order — a
+macro's `.content` is produced on every read so twice read is twice placed);
 `WorkflowNodeCompletion.Compose` takes the rendered reply and its inline reads (no marker fill,
 no removals); `TemplateKind.Instruction` is walked per macro, visited from a `.prompt` read
 (edges, `PromptReadsOf`, item reads), an edge in the reference graph (an instruction reaching
@@ -929,8 +929,8 @@ provenance@v2026.10.3 amends definition 6 in place — never written by a live e
 `ConsultSlotFiller`, the v20 warnings and the editor's slot UI.)*
 
 *(#1047, 2026-10-16 — the word. **Decisions** (AskUserQuestion): a macro at 25 is **placed** (an
-instance), **read** (`macro.<id>.text`) or **inline** (`macro.<id>.prompt`); *inline* is reserved for
-the `.prompt` form — the `.text` section of the macro pane is "Read at", the node pane's list is
+instance), **read** (`macro.<id>.content`) or **inline** (`macro.<id>.prompt`); *inline* is reserved for
+the `.prompt` form — the `.content` section of the macro pane is "Read at", the node pane's list is
 "Inline macros", the reads and palette say `(inline)`; the 25 node-row record kind is **`inline`**
 (provenance@v2026.10.4, renamed in place — never stamped live; `slot` stays the ≤24 document kind);
 the 25-side identifiers follow (`RetiredAt25.Inline`, `InlineKind`, `ConsultAppendedKinds.Inline`,
@@ -938,6 +938,19 @@ the 25-side identifiers follow (`RetiredAt25.Inline`, `InlineKind`, `ConsultAppe
 marker. Landed before A5 so the exported v25 conformance vectors pin the final sentences — `…where the
 inline macro goes`, `reads macro.x.prompt (an inline macro), but …`, `…where it is read inline
 (macro.<id>.prompt).` The Create page's input "slots" are #1046's.)*
+
+*(#1049, 2026-10-16 — the member. **Decision:** the member that holds a thing's rendered output is
+**`.content`** on all four objects — `node.<id>.content` (beside `.value`), `snippet.<id>.content` and a
+folder item's, `item.content` (a snippet-folder fan — the ≤24 `item:content` under the object spelling),
+`macro.<id>.content` (beside `.prompt`) — where 25 had said `.text`. One word: `content` is already the
+folder index's field and the ≤24 item member, and a node's JSON output beside `.value` reads straighter as
+`.content`. The `text` FORMAT type, the `text` content channel and the record field
+`assembledDocuments[].text` are untouched. The C# identifiers that denote the member follow
+(`TemplateMembers.Content`, `ReadsContent`, `MacroContents`, `ReadMacroContent`, `ReadNode(content:)`,
+`ContentReads`); plain text properties (`TemplateNodeOutput.Text`, `TemplateMacroSource.Text`, the Api's
+`MacroTexts` source maps) keep their names. The mechanics sentence names `{{ macro.<id>.content }}`.
+Registry: spec PR #31; provenance@v2026.10.5 (doc-only). Landed before A5 so the exported conformance
+vectors pin the final spelling. The dated notes above keep `.text` as the history they record.)*
 
 ## Deferred, by name
 
