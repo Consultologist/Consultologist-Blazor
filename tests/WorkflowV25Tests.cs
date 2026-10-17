@@ -11,21 +11,30 @@ namespace Consultologist.Api.Tests;
 /// </summary>
 public static class V25Package
 {
-    public static WorkflowFormatCatalog Catalog()
-    {
-        var files = new Dictionary<string, string>(StringComparer.Ordinal)
+    /// <summary>The fixture catalogue as files — what the conformance suite ships as conformance/format-catalog.json (A5 #1018).</summary>
+    public static (string IndexJson, Dictionary<string, string> Files) CatalogFiles() =>
+        (WorkflowFormatCatalogIndexTests.Example, new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["formats/prose.json"] = FormatFixtures.Prose,
             ["formats/classification.json"] = FormatFixtures.Classification,
             ["formats/concept_list.json"] = FormatFixtures.ConceptList,
             ["formats/rendered.json"] = FormatFixtures.Rendered,
             ["formats/terms_subset.json"] = FormatFixtures.TermsSubset,
-        };
-        var index = WorkflowFormatCatalogIndexTests.Read(WorkflowFormatCatalogIndexTests.Example);
+        });
+
+    public static WorkflowFormatCatalog BuildCatalog(string indexJson, IReadOnlyDictionary<string, string> files)
+    {
         var errors = new List<string>();
-        var catalog = WorkflowFormatCatalog.Build(index, path => files.GetValueOrDefault(path), errors);
+        Assert.True(WorkflowFormatCatalogIndexJson.TryRead(indexJson, "Format catalogue", errors, out var index), string.Join(" | ", errors));
+        var catalog = WorkflowFormatCatalog.Build(index!, path => files.GetValueOrDefault(path), errors);
         Assert.Empty(errors);
         return catalog!;
+    }
+
+    public static WorkflowFormatCatalog Catalog()
+    {
+        var (index, files) = CatalogFiles();
+        return BuildCatalog(index, files);
     }
 
     /// <summary>
@@ -694,6 +703,17 @@ public class WorkflowV25TemplateTests
 
         files["macros/closing.md"] = "Closing: {{ node.scope.content }}.";
         Assert.True(V25Package.Validate((manifest, files), V25Package.Catalog()).IsValid, string.Join(" | ", V25Package.Errors((manifest, files))));
+    }
+
+    [Fact]
+    public void ADuplicateMacroId_IsRefusedBySentence_NotByTheProbeThrowing()
+    {
+        // A5 #1018: the conformance export found the render probe adding the
+        // same macro id twice to its scope object and throwing.
+        var (manifest, files) = Minimal();
+        var twice = manifest with { Macros = manifest.Macros!.Concat(manifest.Macros!).ToList() };
+
+        Assert.Contains("Duplicate macro id 'closing'.", V25Package.Errors((twice, files)));
     }
 
     [Fact]

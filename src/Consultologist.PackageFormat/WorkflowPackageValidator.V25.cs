@@ -957,7 +957,9 @@ public static partial class WorkflowPackageValidator
         var macro = new ScriptObject();
         foreach (var m in manifest.Macros ?? new List<WorkflowMacroSpec>())
         {
-            macro.Add(m.Id, new ScriptObject { ["id"] = m.Id, ["name"] = m.Label, ["content"] = "placeholder", ["prompt"] = "placeholder" });
+            // A duplicate id is refused by sentence above; the probe must not
+            // throw on it (A5 #1018 — found by the conformance export).
+            macro[m.Id] = new ScriptObject { ["id"] = m.Id, ["name"] = m.Label, ["content"] = "placeholder", ["prompt"] = "placeholder" };
         }
 
         var run = new ScriptObject();
