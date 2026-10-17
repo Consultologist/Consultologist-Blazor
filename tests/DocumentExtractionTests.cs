@@ -180,6 +180,7 @@ public class DocumentExtractionTests
         // than extended. Extract takes bytes and nothing else.
         Assert.Equal("text/1", DocumentExtraction.Extract(Encoding.UTF8.GetBytes(Referral)).ExtractorId);
         Assert.StartsWith("pdfpig/", DocumentExtraction.Extract(TextPdf(Referral)).ExtractorId);
+        Assert.Equal("vtt/1", DocumentExtraction.Extract(Encoding.UTF8.GetBytes(TeamsVtt)).ExtractorId);
     }
 
     [Fact]
@@ -663,6 +664,245 @@ public class DocumentExtractionTests
         var result = DocumentExtraction.Extract(Encoding.UTF8.GetBytes(html));
 
         Assert.Equal(DocumentExtractionOutcomes.TooMuchText, result.Outcome);
+    }
+
+    // ---- transcripts (#994) --------------------------------------------
+
+    private const string TeamsVtt =
+        "WEBVTT\n\n"
+        + "00:00:01.000 --> 00:00:03.000\n<v Dr Lee>Good morning. Let's review the scan results from last week.</v>\n\n"
+        + "00:00:03.000 --> 00:00:05.000\n<v Dr Lee>How are you feeling today?</v>\n\n"
+        + "00:00:05.000 --> 00:00:07.000\n<v Patient>Fine, thanks. The cough is better.</v>\n";
+
+    private const string TeamsTurns =
+        "Dr Lee: Good morning. Let's review the scan results from last week. How are you feeling today?\n"
+        + "Patient: Fine, thanks. The cough is better.";
+
+    private const string ZoomVtt =
+        "WEBVTT\n\n"
+        + "1\n00:00:01.000 --> 00:00:03.000\nAnn Smith: We started metformin.\n\n"
+        + "2\n00:00:03.000 --> 00:00:05.000\nAnn Smith: 500 mg.\n\n"
+        + "3\n00:00:05.000 --> 00:00:07.000\nBob: Noted.\n";
+
+    private const string ConversationSrt =
+        "1\n00:00:01,000 --> 00:00:03,000\nDr Lee: Good morning. Let's review the scan results from last week.\n\n"
+        + "2\n00:00:03,000 --> 00:00:05,000\nDr Lee: How are you feeling today?\n\n"
+        + "3\n00:00:05,000 --> 00:00:07,000\nPatient: Fine, thanks. The cough is better.\n";
+
+    private static DocumentExtractionResult ExtractText(string text) =>
+        DocumentExtraction.Extract(Encoding.UTF8.GetBytes(text));
+
+    [Fact]
+    public void TeamsVtt_WithVoiceTags_ReadsAsTurns()
+    {
+        // The decision: speakers kept, timings and cue markup gone, one line
+        // per turn, consecutive cues of one speaker merged.
+        var result = ExtractText(TeamsVtt);
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.Equal(TeamsTurns, result.Text);
+        Assert.Equal("vtt/1", result.ExtractorId);
+        Assert.Null(result.PageCount);
+    }
+
+    [Fact]
+    public void ZoomVtt_WithNamePrefixesAndCueIds_ReadsAsTurns()
+    {
+        var result = ExtractText(ZoomVtt);
+
+        Assert.Equal("Ann Smith: We started metformin. 500 mg.\nBob: Noted.", result.Text);
+        Assert.Equal("vtt/1", result.ExtractorId);
+    }
+
+    [Fact]
+    public void Vtt_DropsHeaderNoteStyleRegionIdsSettingsTagsAndTimestamps_AndDecodesAfterStripping()
+    {
+        var vtt =
+            "WEBVTT - meeting 2026-10-17\nKind: captions\nLanguage: en\n\n"
+            + "NOTE copyright 2026\n\n"
+            + "STYLE\n::cue { color: red }\n\n"
+            + "REGION\nid:r1 width:40%\n\n"
+            + "intro\n00:00:01.000 --> 00:00:03.000 align:start position:10%\n"
+            + "<c.red>BP &lt; 140</c> <00:00:02.500>and &amp; stable\n";
+
+        var result = ExtractText(vtt);
+
+        // "Kind: captions" in the header is container, not a speaker; the
+        // escaped &lt; is speech and survives because stripping precedes decoding.
+        Assert.Equal("BP < 140 and & stable", result.Text);
+        Assert.Equal("vtt/1", result.ExtractorId);
+    }
+
+    [Fact]
+    public void Srt_WithIndicesAndCommaMillis_ReadsAsTurns()
+    {
+        var result = ExtractText(ConversationSrt);
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.Equal(TeamsTurns, result.Text);
+        Assert.Equal("srt/1", result.ExtractorId);
+    }
+
+    [Fact]
+    public void Srt_StripsItalicsFontAndAssOverrides()
+    {
+        var srt = "1\n00:00:01,000 --> 00:00:02,000\n<i>Hello</i> {\\an8}<font color=\"#fff\">world</font>.\n";
+
+        Assert.Equal("Hello world.", ExtractText(srt).Text);
+    }
+
+    [Fact]
+    public void UnlabelledCues_MergeUntilASentenceEnds()
+    {
+        // An auto-caption file with no speakers reads one sentence per line
+        // rather than as one paragraph — deterministic, so the hash is stable.
+        var srt =
+            "1\n00:00:01,000 --> 00:00:02,000\nwe started\n\n"
+            + "2\n00:00:02,000 --> 00:00:03,000\nmetformin last week.\n\n"
+            + "3\n00:00:03,000 --> 00:00:04,000\nThe dose is 500 mg.\n";
+
+        Assert.Equal("we started metformin last week.\nThe dose is 500 mg.", ExtractText(srt).Text);
+    }
+
+    [Fact]
+    public void ASpeakerChange_StartsANewTurn_EvenMidSentence()
+    {
+        var vtt = "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v A>I think</v>\n\n00:00:02.000 --> 00:00:03.000\n<v B>no</v>\n";
+
+        Assert.Equal("A: I think\nB: no", ExtractText(vtt).Text);
+    }
+
+    [Fact]
+    public void AVttWithoutTheBlankLineAfterItsHeader_StillReadsItsFirstCue()
+    {
+        var vtt = "WEBVTT\n00:00:01.000 --> 00:00:02.000\nHello there.\n";
+
+        Assert.Equal("Hello there.", ExtractText(vtt).Text);
+    }
+
+    [Theory]
+    [InlineData("WEBVTT\n")]
+    [InlineData("WEBVTT\n\nNOTE nothing was said\n")]
+    public void AVttWithNoSpeech_IsEmpty(string vtt)
+    {
+        Assert.Equal(DocumentExtractionOutcomes.Empty, ExtractText(vtt).Outcome);
+    }
+
+    [Fact]
+    public void AVttBlockThatIsNotACue_IsCorrupt_NotSilentlyDropped()
+    {
+        // The file announced a format and did not keep it; speech is never
+        // dropped silently and never handed back as cue soup.
+        var result = ExtractText("WEBVTT\n\nJust prose\nwith no timing line\n");
+
+        Assert.Equal(DocumentExtractionOutcomes.Corrupt, result.Outcome);
+        Assert.Null(result.Text);
+    }
+
+    [Fact]
+    public void ProseStartingWithADigitLine_IsNotSrt()
+    {
+        var text = "1\nOn 2024-03-01 the patient was seen in clinic and the plan was agreed.";
+
+        var result = ExtractText(text);
+
+        Assert.Equal(text, result.Text);
+        Assert.Equal("text/1", result.ExtractorId);
+    }
+
+    [Fact]
+    public void PlainTextWithBracketTimestamps_IsPassedThroughUnchanged()
+    {
+        // Plain text has no signature; a referral that mentions a time must
+        // not be rewritten (docs/DOCUMENT_INPUT.md § 3).
+        var text = "[00:01:23] Dr Lee: hello there, how are you\n[00:01:30] Patient: hi, I am well";
+
+        var result = ExtractText(text);
+
+        Assert.Equal(text, result.Text);
+        Assert.Equal("text/1", result.ExtractorId);
+    }
+
+    [Fact]
+    public void BomPrefixedVtt_IsStillVtt()
+    {
+        var bytes = new UTF8Encoding(true).GetPreamble().Concat(Encoding.UTF8.GetBytes(TeamsVtt)).ToArray();
+
+        var result = DocumentExtraction.Extract(bytes);
+
+        Assert.Equal("vtt/1", result.ExtractorId);
+        Assert.Equal(TeamsTurns, result.Text);
+    }
+
+    [Fact]
+    public void CrlfVtt_ReadsTheSameAsLf()
+    {
+        Assert.Equal(ExtractText(TeamsVtt).Text, ExtractText(TeamsVtt.Replace("\n", "\r\n")).Text);
+    }
+
+    [Fact]
+    public void TheSameConversation_HashesTheSame_InVttAndSrt()
+    {
+        // The provenance point: one conversation reads the same whichever
+        // container it arrived in; the containers differ only in fileSha256
+        // and extractor.
+        var vtt = ExtractText(TeamsVtt);
+        var srt = ExtractText(ConversationSrt);
+
+        Assert.Equal(vtt.Text, srt.Text);
+        Assert.NotEqual(vtt.ExtractorId, srt.ExtractorId);
+    }
+
+    [Fact]
+    public void TranscriptMarkup_IsNotMistakenForHtml()
+    {
+        // The order pin: the HTML sniffer's close-tag rule would claim </v>
+        // and </i>, so both transcript formats sit before it.
+        Assert.StartsWith("vtt/", ExtractText(TeamsVtt).ExtractorId);
+        Assert.StartsWith("srt/", ExtractText("1\n00:00:01,000 --> 00:00:02,000\n<i>Hello</i> there.\n").ExtractorId);
+    }
+
+    [Fact]
+    public void TranscriptExtractors_AreHandVersioned()
+    {
+        Assert.Equal("vtt/1", VttDocumentExtractor.ExtractorId);
+        Assert.Equal("srt/1", SrtDocumentExtractor.ExtractorId);
+    }
+
+    [Fact]
+    public void AngleBracketsInSpeech_Survive()
+    {
+        var vtt = "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Dr Lee>BP < 140 and HR > 90 today.</v>\n";
+
+        Assert.Equal("Dr Lee: BP < 140 and HR > 90 today.", ExtractText(vtt).Text);
+    }
+
+    [Fact]
+    public void ATranscriptOverTheCharacterCap_IsTooMuchText()
+    {
+        var vtt = "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n" + new string('a', 256 * 1024 + 1) + "\n";
+
+        Assert.Equal(DocumentExtractionOutcomes.TooMuchText, ExtractText(vtt).Outcome);
+    }
+
+    [Fact]
+    public void AHostileVtt_ProducesANamedOutcome()
+    {
+        var result = ExtractText("WEBVTT\n\n\u0001\u0002 <v <v <v\n");
+
+        Assert.Equal(DocumentExtractionOutcomes.Corrupt, result.Outcome);
+    }
+
+    [Fact]
+    public void UnsupportedTypeCopy_NamesEveryFormatTheParserReads()
+    {
+        // The one sentence that goes stale when a format is added.
+        var copy = DocumentExtractionCopy.For(DocumentExtractionOutcomes.UnsupportedType);
+
+        foreach (var extension in new[] { ".txt", ".md", ".pdf", ".docx", ".html", ".vtt", ".srt" })
+        {
+            Assert.Contains(extension, copy);
+        }
     }
 
     // ---- image (#730) --------------------------------------------------

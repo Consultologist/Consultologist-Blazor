@@ -2491,6 +2491,64 @@ public class ConsultGenerationJobStarterTests
         Assert.Null(captured.OrchestrationInput!.Request.TranscriptInputs);
     }
 
+    private const string TeamsVtt =
+        "WEBVTT\n\n"
+        + "00:00:01.000 --> 00:00:03.000\n<v Dr Lee>Good morning. Let's review the scan results from last week.</v>\n\n"
+        + "00:00:03.000 --> 00:00:05.000\n<v Dr Lee>How are you feeling today?</v>\n\n"
+        + "00:00:05.000 --> 00:00:07.000\n<v Patient>Fine, thanks. The cough is better.</v>\n";
+
+    private const string TeamsTurns =
+        "Dr Lee: Good morning. Let's review the scan results from last week. How are you feeling today?\n"
+        + "Patient: Fine, thanks. The cough is better.";
+
+    [Fact]
+    public async Task AVttInADeclaredTranscriptInput_StampsTranscript_WithTheParserAndBothDigests()
+    {
+        // #994: the Create page's transcript door is the declaration plus the
+        // parser — FileSha256 over the bytes as received, TextSha256 over the
+        // turns the parser read, the extractor naming the parser build.
+        var minimal = V7Fixtures.Minimal();
+        var manifest = minimal with
+        {
+            SpecVersion = 13,
+            Inputs = minimal.Inputs!.Select(input => input.Id == "consult_draft"
+                ? input with { Type = WorkflowInputTypes.Text, ExpectedContent = WorkflowExpectedContent.Transcript }
+                : input).ToList()
+        };
+        var vtt = System.Text.Encoding.UTF8.GetBytes(TeamsVtt);
+        var request = new ConsultGenerationRequest(
+            null,
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [new("text/vtt", vtt)] });
+
+        var captured = await StartAndCaptureAsync(manifest, request);
+
+        Assert.Null(captured.Outcome.Error);
+        var origin = Assert.Single(Assert.Contains("consult_draft", captured.Initialize!.InputDocumentOrigins));
+        Assert.Equal(ConsultInputOriginKinds.Transcript, origin.Kind);
+        Assert.Equal("vtt/1", origin.Extractor);
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(vtt), origin.FileSha256);
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(TeamsTurns), origin.TextSha256);
+    }
+
+    [Fact]
+    public async Task AVttInAPlainTextInput_StaysADocument_ReadByTheVttParser()
+    {
+        // The kind comes from the declaration; the parser from the bytes.
+        var request = new ConsultGenerationRequest(
+            null,
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
+            {
+                ["consult_draft"] = [new("text/vtt", System.Text.Encoding.UTF8.GetBytes(TeamsVtt))]
+            });
+
+        var captured = await StartAndCaptureAsync(V7Fixtures.Minimal(), request);
+
+        Assert.Null(captured.Outcome.Error);
+        var origin = Assert.Single(Assert.Contains("consult_draft", captured.Initialize!.InputDocumentOrigins));
+        Assert.Equal(ConsultInputOriginKinds.Document, origin.Kind);
+        Assert.Equal("vtt/1", origin.Extractor);
+    }
+
     [Fact]
     public async Task ATranscript_HashesLikeTheSameTextAsADocument_DifferingOnlyInOrigin()
     {

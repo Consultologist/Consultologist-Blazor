@@ -199,10 +199,14 @@ public static class ConsultInputOriginKinds
     // hash, like every kind above.
     public const string Transcript = "transcript";
 
-    // v25 (B7 #1006, provenance@v2026.10.1): a transcript file (VTT, SRT, plain
-    // text) loaded on the Create page (#994) is the same kind with the same
-    // fields — TextSha256 over the text after speaker labels and timestamps
-    // were stripped, the assertion still the submitter's. No new kind.
+    // v25 (B7 #1006; provenance@v2026.10.6 for the wording): a transcript file
+    // loaded on the Create page (#994) is the same kind with the same fields.
+    // For a VTT or SRT the parser reads TURNS — "Speaker: text" per turn where
+    // the source labels one, consecutive cues of a speaker merged, header, cue
+    // ids, timings, cue settings and inline tags removed — and TextSha256 is
+    // over those turns; the extractor (vtt/1, srt/1) names the parser build.
+    // Plain text is read as any text. The assertion is still the submitter's.
+    // No new kind.
 
     // #730 (provenance@v2026.09.10): an uploaded image (PNG/JPEG/TIFF) whose
     // text was produced by OCR. Its server-observed fields are a Document's

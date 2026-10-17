@@ -505,8 +505,10 @@ public record ConsultGenerationRequest(
     Dictionary<string, bool>? MacroChoices = null,
     // #613/#671: mirrors the API record's trailing member — the file inputs
     // whose supplied documents are transcripts. The setup form does not send
-    // it (the SPA has no transcript intake); the Zoom satellite, a separate
-    // client, is what populates it. Kept here so the mirror stays faithful.
+    // it (the Create page's transcript door, #994, relies on the package's
+    // declaration — expectedContent: transcript — which the engine reads
+    // itself); the Zoom satellite, a separate client, is what populates it.
+    // Kept here so the mirror stays faithful.
     IReadOnlyCollection<string>? TranscriptInputs = null,
     // #802: mirrors the API record's trailing member — the required ids the
     // clinician acknowledged as intentionally short, waiving the content floor.

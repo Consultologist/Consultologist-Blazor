@@ -425,7 +425,7 @@
                                                                  Multiple="true"
                                                                  MaximumFileSize="long.MaxValue" MaximumFileCount="int.MaxValue"
                                                                  Class="input-field__dropzone">
-                                                    <ChildContent><span class="muted-text">Drop documents here, or browse&hellip;</span></ChildContent>
+                                                    <ChildContent><span class="muted-text">@field.DropSeveralPrompt</span></ChildContent>
                                                 </FluentInputFile>
                                                 @if (field.IsReading)
                                                 {
@@ -491,12 +491,17 @@
                                         @* No accept filter and no extension list: the
                                            parser is the only thing that knows what a
                                            format is, and a second opinion here could
-                                           disagree with it (docs/DOCUMENT_INPUT.md § 1). *@
+                                           disagree with it (docs/DOCUMENT_INPUT.md § 1).
+                                           A transcript-channel input changes only the
+                                           sentence (#994) — still no Accept, still no
+                                           list; a VTT dropped on a plain input is parsed
+                                           the same way server-side and stays a `document`
+                                           because the kind comes from the declaration. *@
                                         <span class="input-field__file" @onclick:stopPropagation="true">
                                             <FluentInputFile OnInputFileChange="args => LoadFileAsync(field, args)"
                                                              MaximumFileSize="long.MaxValue" MaximumFileCount="int.MaxValue"
                                                              Class="input-field__dropzone">
-                                                <ChildContent><span class="muted-text">Drop a document here, or browse&hellip;</span></ChildContent>
+                                                <ChildContent><span class="muted-text">@field.DropOnePrompt</span></ChildContent>
                                             </FluentInputFile>
                                             @if (field.IsReading)
                                             {
@@ -3929,6 +3934,17 @@
     public bool TakesQuestionnaireFile =>
       Type == WorkflowInputTypes.Object && AcceptedTypes is not { Count: > 1 } && ExpectedContent == WorkflowExpectedContent.Form;
     /// <summary>The chip shown beside the label for a declared channel.</summary>
+    /// <summary>
+    /// #994: a transcript-channel input's dropzone names what it expects. The
+    /// sentence is the whole door — the parser still decides the format, and
+    /// the engine stamps the transcript origin from the declaration.
+    /// </summary>
+    public bool IsTranscriptChannel => ExpectedContent == WorkflowExpectedContent.Transcript;
+
+    public string DropOnePrompt => IsTranscriptChannel ? "Drop a transcript here, or browse…" : "Drop a document here, or browse…";
+
+    public string DropSeveralPrompt => IsTranscriptChannel ? "Drop transcripts here, or browse…" : "Drop documents here, or browse…";
+
     public string? ChannelLabel => ExpectedContent switch
     {
         WorkflowExpectedContent.Transcript => "Transcript",

@@ -91,6 +91,8 @@ internal sealed record DocumentExtractionResult(
 /// .txt full of PDF bytes is the case that exposes it.
 ///
 /// <see cref="Extract"/> is pure: no I/O, no configuration, no logging.
+/// A transcript container (WebVTT, SubRip — #994) is a format like any
+/// other here: its extractor reads the conversation as turns.
 /// Adding a format means one entry in <see cref="Formats"/> plus its
 /// extractor, and nothing else anywhere — which is #240's acceptance
 /// criterion.
@@ -201,6 +203,10 @@ internal static class DocumentExtraction
     [
         new DocumentFormat(PdfDocumentExtractor.Matches, PdfDocumentExtractor.Extract),
         new DocumentFormat(DocxDocumentExtractor.Matches, DocxDocumentExtractor.Extract),
+        // #994: transcript containers, read as turns — before HTML, whose
+        // close-tag sniff would claim a VTT's </v> or an SRT's </i>.
+        new DocumentFormat(VttDocumentExtractor.Matches, VttDocumentExtractor.Extract),
+        new DocumentFormat(SrtDocumentExtractor.Matches, SrtDocumentExtractor.Extract),
         // #655: before the text fallback, so HTML yields visible text rather
         // than the tag soup the decoder would return for it.
         new DocumentFormat(HtmlDocumentExtractor.Matches, HtmlDocumentExtractor.Extract),

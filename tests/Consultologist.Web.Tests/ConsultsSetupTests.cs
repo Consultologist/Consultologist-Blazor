@@ -7,6 +7,7 @@ using Consultologist.Web.Services.AI;
 using Consultologist.Web.Services.Accounts;
 using Consultologist.Web.Services.Documents;
 using Consultologist.Web.Services.Workflow;
+using Microsoft.FluentUI.AspNetCore.Components;
 using NSubstitute;
 
 namespace Consultologist.Web.Tests;
@@ -566,6 +567,50 @@ public class ConsultsSetupTests : ClientRenderTestContext
 
         Assert.Contains("Error calling agent", page.Markup, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void ATranscriptChannelInput_AsksForATranscript()
+    {
+        // #994: the sentence is the door — no Accept filter, no format list;
+        // the parser decides the format and the declaration decides the kind.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: new[]
+        {
+            new WorkflowPackageInputResponse("meeting_transcript", "Meeting transcript", false,
+                WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.Transcript),
+            new WorkflowPackageInputResponse("prior_notes", "Prior notes", false),
+            new WorkflowPackageInputResponse("visits", "Visit transcripts", false, WorkflowInputTypes.Array,
+                Items: new WorkflowPackageElementResponse(WorkflowInputTypes.Text), ExpectedContent: WorkflowExpectedContent.Transcript)
+        });
+
+        var page = Render<Consults>();
+
+        var prompts = page.FindAll(".input-field__dropzone").Select(zone => zone.TextContent.Trim()).ToList();
+        Assert.Contains("Drop a transcript here, or browse…", prompts);
+        Assert.Contains("Drop a document here, or browse…", prompts);
+        Assert.Contains("Drop transcripts here, or browse…", prompts);
+        Assert.DoesNotContain(page.FindComponents<FluentInputFile>(), file => !string.IsNullOrEmpty(file.Instance.Accept));
+    }
+
+    [Fact]
+    public void ATranscriptInputsPreview_ShowsTheTurnsTheServerRead()
+    {
+        // #994: what runs is the parser's turns, shown for review before the
+        // run — the same preview a document gets, under the transcript chip.
+        const string turns = "Dr Lee: Good morning. How are you feeling today?\nPatient: Fine, thanks. The cough is better.";
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: new[]
+        {
+            new WorkflowPackageInputResponse("meeting_transcript", "Meeting transcript", false,
+                WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.Transcript)
+        });
+        WithExtraction(turns, "vtt/1");
+
+        var page = Render<Consults>();
+        FileInput(page, 0).UploadFiles(InputFileContent.CreateFromText("WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Dr Lee>Good morning.</v>", "meeting.vtt", contentType: "text/vtt"));
+
+        Assert.Equal(turns, page.Find(".input-field__preview").TextContent);
+        Assert.Contains("meeting.vtt", page.Find(".input-field__chip").TextContent);
+        Assert.Contains("Transcript", page.Find(".input-field__channel").TextContent);
+    }
 }
 
 /// <summary>
@@ -619,6 +664,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         // The transcript input is still a text input: its document upload is present.
         Assert.NotEmpty(page.FindAll("input[type=file]"));
     }
+
 
     [Fact]
     public void AnImageChannel_LabelsTheInput_AndKeepsItsUpload()

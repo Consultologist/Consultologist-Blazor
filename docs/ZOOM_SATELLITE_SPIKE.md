@@ -78,7 +78,11 @@ https://developers.zoom.us/docs/zoom-apps/security/owasp/
 3. It submits the transcript to **`POST ConsultGenerationJobs` as the clinician** —
    the transcript rides an existing declared slot as an `InputFilePayload`
    (VTT bytes) or `ConsultInputValue.OfText` (extracted text), exactly like a
-   document.
+   document. *(2026-10-17, #994: VTT is a format now — the engine reads the
+   bytes as turns under `vtt/1` (`Speaker: text` per turn, timings and cue
+   markup removed), so `textSha256` is over the turns rather than the cue
+   text and the origin's `extractor` says so. The satellite is not deployed;
+   nothing to migrate.)*
 
 **It is a new input *origin kind*, not a new source** — the Forms-intake precedent
 (`docs/customizable-workflow/forms-intake-spike.md:206-210`): `source` stays the

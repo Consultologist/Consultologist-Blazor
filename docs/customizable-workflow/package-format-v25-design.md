@@ -835,9 +835,14 @@ grammar and validation PRs.
 - **C — editor**: the panes of § 13 and the migration of § 14.
 - **Siblings:** #985 (Deliverables rename, first); #983 (narrowed to the Deliverables pane);
   #991 (the questionnaire file door); a **transcript door** on the Create page — a text
-  transcript file (VTT, SRT, plain text) with speaker labels and timestamps stripped, the
-  file hash on a `transcript` origin that already exists as an input medium since v13; audio
-  with speech-to-text is **v26**, by name. **Folded in:** #969, #984. **Made structural:**
+  transcript file (VTT, SRT, plain text) read as turns (`Speaker: text`, consecutive cues of
+  one speaker merged, timings and cue markup removed; plain text untouched), the file hash on
+  a `transcript` origin that already exists as an input medium since v13; audio with
+  speech-to-text is **v26**, by name. *(2026-10-17: landed — #994; the parser reads VTT and
+  SRT to turns under `vtt/1`/`srt/1`, the door is the transcript-channel input's own dropzone
+  sentence, and provenance v2026.10.6 words the hashed text — speakers kept, since who said
+  what is clinical content; timings dropped, since they fragment sentences and survive in the
+  file `fileSha256` identifies.)* **Folded in:** #969, #984. **Made structural:**
   #941, #942.
 
 **The bump is the last sub-issue (2026-10-13).** A4 (#999) wires the validator at ≥ 25 behind the

@@ -751,6 +751,21 @@ public class HistoryDetailTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ATranscriptFileOrigin_NamesTheParserBuild()
+    {
+        // #994: a VTT read as turns has no pages; the extractor is the one
+        // place the container survives on the record, and the row prints it.
+        WithJob(3, inputOrigins: new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
+        {
+            ["consult_draft"] = new[] { new ConsultInputOrigin(Consultologist.Api.Models.ConsultInputOriginKinds.Transcript, "vtt/1", null) }
+        });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Equal("read from a transcript by vtt/1", page.Find(".provenance-list__nested + dd").TextContent.Trim());
+    }
+
+    [Fact]
     public void AnAmbientNoteOrigin_ReadsAsAnAmbientNote_NotADocument()
     {
         // #673: an ambient-scribe note reads like a document but is named for
