@@ -7,9 +7,9 @@ namespace Consultologist.Web.Tests;
 
 /// <summary>
 /// #376: the client mirrors the engine's spec-version set by hand, in two
-/// places — the picker's floor and the editor's ceiling. It has to:
-/// Consultologist.Web carries no ProjectReference at all, so the client
-/// assembly genuinely cannot see WorkflowPackageStore.SupportedSpecVersions.
+/// places — the picker's floor and the editor's ceilings. The engine's set
+/// lives in the Api project, which the client does not reference (it references
+/// the PackageFormat library, whose accepted set is the ceiling's twin).
 ///
 /// This test project references BOTH, which is what makes the mirror provable
 /// without the client fetching anything at runtime. A drift here means a

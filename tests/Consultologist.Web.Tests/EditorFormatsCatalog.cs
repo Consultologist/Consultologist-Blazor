@@ -20,9 +20,6 @@ public static class EditorFormatsCatalog
             JsonSerializer.Serialize(Consultologist.Api.Workflow.WorkflowFormats.Describe(Catalog)),
             new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
 
-    /// <summary>The accepted set with 25 — the A4 seam the round-trip proofs validate through until A5.</summary>
-    public static IReadOnlyCollection<int> AcceptedWith25 => WorkflowPackageValidator.AcceptedSpecVersions.Append(25).ToList();
-
     private static WorkflowFormatCatalog Load()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

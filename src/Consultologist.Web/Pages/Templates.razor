@@ -3739,22 +3739,21 @@
 
     /// <summary>
     /// Mirrors WorkflowPackageValidator.AcceptedSpecVersions' maximum — the
-    /// newest format the registry will PUBLISH. The client has no endpoint for
-    /// it, and WorkflowPackagePicker already mirrors the floor the same way —
-    /// both by hand, because Consultologist.Web references no project and so
-    /// cannot see the engine's constant. internal so SpecVersionMirrorTests
-    /// can prove the mirror still matches. Not necessarily runnable: see
-    /// RunnableSpecVersion.
+    /// newest format the registry will PUBLISH. Kept by hand so the client never
+    /// fetches it (WorkflowPackagePicker mirrors the floor the same way);
+    /// internal so SpecVersionMirrorTests can prove the mirror still matches
+    /// the library's set. Not necessarily runnable: see RunnableSpecVersion.
     /// </summary>
-    internal const int NewestSpecVersion = 24;
+    internal const int NewestSpecVersion = 25;
 
     /// <summary>
-    /// C6 (#1012): the version the editor can MIGRATE a package to — 25, the § 14
-    /// rewrite — ahead of the ceilings above. The toolbar offers only the
-    /// ceilings; the seam (UpgradeSpecVersionTo) takes this too, so the migration
-    /// is built and tested while A5 (#1018) still holds the ceilings at 24.
+    /// The newest version a bump can STAGE as pending state (specVersionBump).
+    /// From 25 the upgrade is the § 14 rewrite — the whole package replaced,
+    /// never a staged bump (C6 #1012) — so the toolbar's one button chains: a
+    /// package below 24 stages this rung first, then migrates what it composed
+    /// (A5 #1018).
     /// </summary>
-    internal const int MigratableSpecVersion = 25;
+    private const int LastStagedSpecVersion = 24;
 
     /// <summary>
     /// Mirrors WorkflowPackageStore.SupportedSpecVersions' maximum — the
@@ -3764,10 +3763,10 @@
     /// silence: the not-yet-runnable notice, its publish-success sentence
     /// and the second Upgrade button (#429's pattern) come back with the
     /// gap and retire when the two ceilings meet — as they did for ten
-    /// (#500), eleven (#566) and now twelve (#623). The mechanism stays
-    /// for the next format.
+    /// (#500), eleven (#566), twelve (#623) and every bump since, twenty-five
+    /// (#1018) included. The mechanism stays for the next format.
     /// </summary>
-    internal const int RunnableSpecVersion = 24;
+    internal const int RunnableSpecVersion = 25;
 
     /// <summary>The version this publish will carry: the bump, or what is loaded.</summary>
     /// <summary>
@@ -3877,8 +3876,9 @@
         }
 
         // C6 (#1012): past 24 the upgrade is the § 14 rewrite — the whole package
-        // replaced, not a staged bump (nothing below could express it as pending state).
-        if (target >= MigratableSpecVersion && LoadedSpecVersion < MigratableSpecVersion)
+        // replaced, not a staged bump (nothing below could express it as pending
+        // state). A5 (#1018): below 24 the chain stages the 24 rung first.
+        if (target > LastStagedSpecVersion)
         {
             await MigrateTo25Async();
             return;
@@ -3913,12 +3913,42 @@
     /// the import door's shape (#847): replaced, persisted, publishable as a new
     /// version of the same package, discarded by reloading the registry's. A
     /// refusal applies nothing and is said in the toolbar.
+    ///
+    /// A5 (#1018): a package below 24 is first staged to 24 exactly as the
+    /// staged path does it — the prelude→node-macro migration when crossing 23
+    /// (#963) into the pending shapes, the bump as specVersionBump — so the
+    /// compose is a 24 package the rewriter takes; nothing is persisted or
+    /// recorded in between. A refusal from either step puts the pending state
+    /// back as it was (the author's own edits included) and is said in the
+    /// toolbar; a step-one refusal writes nothing to revert.
     /// </summary>
     private async Task MigrateTo25Async()
     {
         if (content == null)
         {
             return;
+        }
+
+        var from = LoadedSpecVersion;
+        var pendingBefore = PendingCount == 0 ? null : JsonSerializer.Serialize(BuildDraft());
+        var selectedBefore = selectedKey;
+        string? through24 = null;
+
+        if (from < LastStagedSpecVersion)
+        {
+            if (from < 23 && LivePreludes.Any())
+            {
+                var (migrated24, refusal, notices24) = MigratePreludes();
+                if (!migrated24)
+                {
+                    upgradeRefusal = refusal;
+                    return;
+                }
+
+                through24 = MigrationSentence(notices24);
+            }
+
+            specVersionBump = LastStagedSpecVersion;
         }
 
         var manifestJson = ComposeManifest().GetRawText();
@@ -3939,15 +3969,19 @@
 
         if (!result.Succeeded)
         {
+            // The staged rung and the prelude shapes go; the author's edits come
+            // back with the snapshot. ApplyDraft clears the refusal, so it is
+            // said after.
+            ApplyDraft(pendingBefore is null ? null : JsonSerializer.Deserialize<DraftPayload>(pendingBefore));
+            selectedKey = selectedBefore;
             upgradeRefusal = string.Join(" ", result.Refusals);
             return;
         }
 
-        var from = LoadedSpecVersion;
         var migrated = new WorkflowPackageContentResponse(
             content.Name,
             content.Version,
-            MigratableSpecVersion,
+            NewestSpecVersion,
             JsonDocument.Parse(result.ManifestJson).RootElement.Clone(),
             result.Files);
 
@@ -3961,7 +3995,9 @@
         upgradedFrom = from;
         ProjectLoadedContent();
         await LoadFormatsCatalogAsync();
-        migrationNotice = $"Migrated to specVersion {MigratableSpecVersion}. {string.Join(" ", result.Notices)}";
+        migrationNotice = $"Migrated to specVersion {NewestSpecVersion}. "
+            + (through24 is null ? string.Empty : $"Through 24: {through24} ")
+            + string.Join(" ", result.Notices);
         upgradeRefusal = null;
         selectedKey = GraphKey;
         await PersistUpgradeAsync();
@@ -4023,7 +4059,7 @@
     /// <summary>A stored upgrade of the package just loaded takes its place — the stored-import idiom (#857).</summary>
     private void ApplyStoredUpgrade(UpgradeDraft draft)
     {
-        content = new WorkflowPackageContentResponse(draft.Name, draft.PackageVersion, MigratableSpecVersion, JsonDocument.Parse(draft.ManifestJson).RootElement.Clone(), draft.Files);
+        content = new WorkflowPackageContentResponse(draft.Name, draft.PackageVersion, NewestSpecVersion, JsonDocument.Parse(draft.ManifestJson).RootElement.Clone(), draft.Files);
         upgradedFrom = draft.FromSpecVersion;
         migrationNotice = draft.Notice;
     }
@@ -4153,7 +4189,7 @@
         // question is whether the package as published has anywhere to go up
         // to. The pending side is the specVersionBump == null clause, which is
         // what hides the buttons once one has been pressed.
-        content != null && specVersionBump == null && upgradedFrom == null && LoadedSpecVersion < target && target <= MigratableSpecVersion;
+        content != null && specVersionBump == null && upgradedFrom == null && LoadedSpecVersion < target && target <= NewestSpecVersion;
 
     // #429: one button per rung while the ceilings differ (#492 reopened
     // the gap: 10 is publishable, 9 is the newest that runs).
@@ -7221,11 +7257,10 @@
     /// </summary>
     private (List<string> Errors, List<string> Warnings) RegistryDesk25()
     {
-        var accepted = PF.WorkflowPackageValidator.AcceptedSpecVersions.Append(MigratableSpecVersion).Distinct().ToList();
         PF.WorkflowPackageManifest manifest;
         try
         {
-            manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", accepted);
+            manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -7237,8 +7272,7 @@
             AssembleFiles(),
             new Dictionary<string, string>(StringComparer.Ordinal),
             null,
-            EditorPackageWalk.CatalogFrom(formatsCatalog),
-            accepted);
+            EditorPackageWalk.CatalogFrom(formatsCatalog));
 
         var errors = formatsCatalog is null
             ? result.Errors.Where(e => !e.StartsWith("The format catalogue is not available", StringComparison.Ordinal)).ToList()
@@ -11871,7 +11905,10 @@
         // this asks whether a drafted bump is still upward for the package now
         // loaded. Comparing against the effective version would compare the
         // bump with itself.
-        if (draftSpecVersionBump is { } bump && content != null && bump > LoadedSpecVersion && bump <= NewestSpecVersion)
+        // A5 (#1018): a bump past the last staged rung cannot be pending state
+        // (the 25 upgrade replaces the content and is persisted as such), so a
+        // draft carrying one is stale and is dropped.
+        if (draftSpecVersionBump is { } bump && content != null && bump > LoadedSpecVersion && bump <= LastStagedSpecVersion)
         {
             specVersionBump = bump;
         }

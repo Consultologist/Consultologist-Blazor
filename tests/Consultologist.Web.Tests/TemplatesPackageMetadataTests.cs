@@ -17,6 +17,10 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
     private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse fixture)
     {
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture);
+        // A5 (#1018): the one upgrade is the 24→25 rewrite; the migrator maps schemas
+        // through the catalogue schemas and the desk at 25 resolves formats.
+        WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
+        WorkflowService.GetCatalogSchemasAsync().Returns(EditorCatalogSchemas.CatalogSchemas);
         return Render<Templates>();
     }
 
@@ -55,7 +59,7 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
         var manifest = System.Text.Json.JsonSerializer.Deserialize<Consultologist.PackageFormat.WorkflowPackageManifest>(
             request.Manifest.GetRawText(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
         return Consultologist.PackageFormat.WorkflowPackageValidator.Validate(
-            manifest, request.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal));
+            manifest, request.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal), null, EditorFormatsCatalog.Catalog);
     }
 
     private string? draftJson;
@@ -79,7 +83,7 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
 
         var v8 = RenderEditor(EditorFixtures.V8());
         Assert.DoesNotContain("Package", NavLabels(v8));
-        UpgradeTo(v8, 24);
+        UpgradeTo(v8, Templates.NewestSpecVersion);
         Assert.Contains("Package", NavLabels(v8));
     }
 
@@ -186,13 +190,19 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains(
-            "The package declares a title, which requires specVersion 9. Use \"Upgrade to specVersion 24\" and publish.",
+            "The package declares a title, which requires specVersion 9. Use \"Upgrade to specVersion 25\" and publish.",
             Refusals(page));
 
         WithPublishAccepted();
-        UpgradeTo(page, 24);
+        // A5 (#1018): the upgrade is the 25 rewrite, which replaces the package and
+        // drops the draft with it — the title is typed again on the migrated package.
+        UpgradeTo(page, Templates.NewestSpecVersion);
+        Navigate(page, "Package");
+        page.Find("input[aria-label='Package title']").Change("Too early");
         Publish(page);
+        Assert.NotNull(sent);
         Assert.Equal("Too early", SentManifest(sent!).GetProperty("title").GetString());
+        Assert.Equal(25, SentManifest(sent!).GetProperty("specVersion").GetInt32());
     }
 
     [Fact]
@@ -381,8 +391,13 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
         Assert.Null(sent);
         Assert.Contains(Refusals(page), refusal => refusal.StartsWith("The package declares tags, which requires specVersion 9.", StringComparison.Ordinal));
 
-        UpgradeTo(page, 24);
+        // A5 (#1018): the 25 rewrite replaces the package and drops the draft; the tag
+        // is added again on the migrated package.
+        UpgradeTo(page, Templates.NewestSpecVersion);
+        Navigate(page, "Package");
+        AddTag(page, "too-early");
         Publish(page);
+        Assert.NotNull(sent);
         Assert.Equal(new[] { "too-early" }, SentManifest(sent!).GetProperty("tags").EnumerateArray().Select(tag => tag.GetString()));
         Assert.True(ValidateSent(sent).IsValid, string.Join(" | ", ValidateSent(sent).Errors));
     }

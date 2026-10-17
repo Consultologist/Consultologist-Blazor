@@ -57,8 +57,7 @@ public class TemplatesV25PaletteTests : ClientRenderTestContext
             sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
             new Dictionary<string, string>(StringComparer.Ordinal),
             null,
-            EditorFormatsCatalog.Catalog,
-            EditorFormatsCatalog.AcceptedWith25);
+            EditorFormatsCatalog.Catalog);
     }
 
     private const string Assessment = "prompts/assessment.md";

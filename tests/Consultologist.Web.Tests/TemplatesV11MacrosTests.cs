@@ -17,6 +17,10 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
     private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse fixture)
     {
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture);
+        // A5 (#1018): the one upgrade is the 24→25 rewrite; the migrator maps schemas
+        // through the catalogue schemas and the desk at 25 resolves formats.
+        WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
+        WorkflowService.GetCatalogSchemasAsync().Returns(EditorCatalogSchemas.CatalogSchemas);
         return Render<Templates>();
     }
 
@@ -44,7 +48,7 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         var manifest = JsonSerializer.Deserialize<Consultologist.PackageFormat.WorkflowPackageManifest>(
             sent!.Manifest.GetRawText(), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
         return Consultologist.PackageFormat.WorkflowPackageValidator.Validate(
-            manifest, sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal));
+            manifest, sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal), null, EditorFormatsCatalog.Catalog);
     }
 
     private static JsonElement Result(WorkflowPackagePublishRequest request) =>
@@ -568,10 +572,10 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         Publish(page);
 
         var refusals = Refusals(page);
-        Assert.Contains("macros requires specVersion 11. Use \"Upgrade to specVersion 24\" and publish.", refusals);
-        Assert.Contains("Result 'consult_note' declares macros, which requires specVersion 11. Use \"Upgrade to specVersion 24\" and publish.", refusals);
-        Assert.Contains("Result 'consult_note' declares signature, which requires specVersion 11. Use \"Upgrade to specVersion 24\" and publish.", refusals);
-        Assert.Contains("Node 'scope' declares reproducible, which requires specVersion 11. Use \"Upgrade to specVersion 24\" and publish.", refusals);
+        Assert.Contains("macros requires specVersion 11. Use \"Upgrade to specVersion 25\" and publish.", refusals);
+        Assert.Contains("Result 'consult_note' declares macros, which requires specVersion 11. Use \"Upgrade to specVersion 25\" and publish.", refusals);
+        Assert.Contains("Result 'consult_note' declares signature, which requires specVersion 11. Use \"Upgrade to specVersion 25\" and publish.", refusals);
+        Assert.Contains("Node 'scope' declares reproducible, which requires specVersion 11. Use \"Upgrade to specVersion 25\" and publish.", refusals);
         Assert.Null(sent);
     }
 
@@ -652,13 +656,10 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
     [Fact]
     public void TheForItemPicker_ComposesAPerSectionAnchor_AtV19()
     {
-        var page = RenderEditor(EditorFixtures.V11Macro());
+        // forItem is v19; A5 (#1018) made the one upgrade the 25 rewrite, which
+        // retires this grammar — so the fixture is loaded at 24 instead.
+        var page = RenderEditor(At24(EditorFixtures.V11Macro()));
         CapturePublish();
-
-        // forItem is v19; upgrade the v11 fixture to the newest version.
-        page.FindAll("fluent-button")
-            .First(b => b.TextContent.Contains("Upgrade to specVersion 24", StringComparison.Ordinal))
-            .Click();
 
         Navigate(page, "Deliverables");
 
@@ -678,6 +679,10 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
         Assert.True(validated.IsValid, string.Join(" | ", validated.Errors));
     }
 
+    /// <summary>A5 (#1018): the v11 macro fixture re-versioned to 24, the last version of the deliverable-anchored grammar.</summary>
+    private static WorkflowPackageContentResponse At24(WorkflowPackageContentResponse package) =>
+        package with { SpecVersion = 24, Manifest = JsonDocument.Parse(package.Manifest.GetRawText().Replace("\"specVersion\": 11", "\"specVersion\": 24")).RootElement.Clone() };
+
     // #863: at specVersion 20, a macro's placement may be "slot" — the model
     // places it inline via a [[slot:<id>]] marker; the entry names no anchor.
     private static WorkflowPackageContentResponse V20Slot()
@@ -693,12 +698,8 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
     [Fact]
     public void TheSlotPlacement_ComposesASlotEntry_AtV20()
     {
-        var page = RenderEditor(EditorFixtures.V11Macro());
+        var page = RenderEditor(At24(EditorFixtures.V11Macro()));
         CapturePublish();
-
-        page.FindAll("fluent-button")
-            .First(b => b.TextContent.Contains("Upgrade to specVersion 24", StringComparison.Ordinal))
-            .Click();
 
         Navigate(page, "Deliverables");
 
@@ -723,12 +724,8 @@ public class TemplatesV11MacrosTests : ClientRenderTestContext
     [Fact]
     public void SwitchingFromSlot_BackToAppended_DropsTheSlotKey()
     {
-        var page = RenderEditor(EditorFixtures.V11Macro());
+        var page = RenderEditor(At24(EditorFixtures.V11Macro()));
         CapturePublish();
-
-        page.FindAll("fluent-button")
-            .First(b => b.TextContent.Contains("Upgrade to specVersion 24", StringComparison.Ordinal))
-            .Click();
         Navigate(page, "Deliverables");
 
         page.Find("fluent-select.result-macro-placement").Change("slot");

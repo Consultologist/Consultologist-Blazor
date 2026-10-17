@@ -16,6 +16,10 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
     private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse fixture)
     {
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture);
+        // A5 (#1018): the one upgrade is the 24→25 rewrite; the migrator maps schemas
+        // through the catalogue schemas and the desk at 25 resolves formats.
+        WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
+        WorkflowService.GetCatalogSchemasAsync().Returns(EditorCatalogSchemas.CatalogSchemas);
         return Render<Templates>();
     }
 
@@ -58,7 +62,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
     public async Task DeclaringAnArray_StartsWithNoEntryType_AndIsRefusedUntilChosen()
     {
         var page = RenderEditor(EditorFixtures.V8());
-        UpgradeTo(page, 24);
+        UpgradeTo(page, Templates.NewestSpecVersion);
         Navigate(page, "Inputs");
         page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
 
@@ -69,14 +73,16 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         Publish(page);
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
-        Assert.Contains("Input 'prior_notes' is an array and must declare what its entries are.", Refusals(page));
+        // A5 (#1018): the upgrade lands at 25, where the desk is the registry's validator
+        // itself — its sentence, not the editor's hand-mirrored one.
+        Assert.Contains("Input 'prior_notes' is type 'array' and must declare items.", Refusals(page));
     }
 
     [Fact]
     public void ChoosingObjectEntries_OpensTheFieldsEditor_AndTheShapePublishes()
     {
         var page = RenderEditor(EditorFixtures.V8());
-        UpgradeTo(page, 24);
+        UpgradeTo(page, Templates.NewestSpecVersion);
         Navigate(page, "Inputs");
         page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
         page.Find("fluent-select.declared-row__items").Change(WorkflowInputTypes.Object);
@@ -118,7 +124,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         var manifest = System.Text.Json.JsonSerializer.Deserialize<Consultologist.PackageFormat.WorkflowPackageManifest>(
             sent.Manifest.GetRawText(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
         var result = Consultologist.PackageFormat.WorkflowPackageValidator.Validate(
-            manifest, sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal));
+            manifest, sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal), null, EditorFormatsCatalog.Catalog);
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
 
@@ -130,7 +136,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         // Reached two ways: retyping to object (fields null → []), and adding
         // a field then removing it (fields []). Both are refused.
         var page = RenderEditor(EditorFixtures.V8());
-        UpgradeTo(page, 24);
+        UpgradeTo(page, Templates.NewestSpecVersion);
         Navigate(page, "Inputs");
         page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Object);
 
@@ -144,14 +150,15 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
         Publish(page);
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
-        Assert.Contains("Input 'prior_notes' is an object and must declare at least one field.", Refusals(page));
+        // A5 (#1018): at 25 the desk is the registry's validator — its sentence.
+        Assert.Contains("Input 'prior_notes' is type 'object' and must declare fields.", Refusals(page));
     }
 
     [Fact]
     public void AnArrayOfEnums_KeepsInputLevelValues()
     {
         var page = RenderEditor(EditorFixtures.V8());
-        UpgradeTo(page, 24);
+        UpgradeTo(page, Templates.NewestSpecVersion);
         Navigate(page, "Inputs");
         page.FindAll("fluent-select.declared-row__type")[1].Change(WorkflowInputTypes.Array);
         page.Find("fluent-select.declared-row__items").Change(WorkflowInputTypes.Enum);
@@ -486,7 +493,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains(
-            "Input 'prior_notes' declares a type that requires specVersion 9. Use \"Upgrade to specVersion 24\" and publish.",
+            "Input 'prior_notes' declares a type that requires specVersion 9. Use \"Upgrade to specVersion 25\" and publish.",
             Refusals(page));
     }
 
@@ -517,7 +524,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains(
-            "Deliverable 'consult_note' declares a condition form that requires specVersion 9. Use \"Upgrade to specVersion 24\" and publish.",
+            "Deliverable 'consult_note' declares a condition form that requires specVersion 9. Use \"Upgrade to specVersion 25\" and publish.",
             Refusals(page));
     }
 
