@@ -81,7 +81,20 @@ public record ConsultGenerationRequest(
     // the ids actually overridden are recorded on the job as AcknowledgedShortInputs
     // (attribution, beside the input hash — provenance@v2026.09.12). Appended
     // last, wire-compat.
-    IReadOnlyCollection<string>? AcknowledgedShortInputs = null);
+    IReadOnlyCollection<string>? AcknowledgedShortInputs = null,
+    // #991 (provenance@v2026.10.1, the FormResponse kind's file-sourced
+    // VARIANT): per object input declared expectedContent: form, the
+    // questionnaire response as a JSON file — a BARE object whose keys are the
+    // input's declared field ids. Like InputFormRefs an assertion BESIDE the
+    // value: the coerced value rides Inputs (typed, reviewed, maybe edited),
+    // the bytes ride here so the server can re-coerce them against the
+    // declaration and require equality, then stamp FileSha256 over the bytes
+    // as received and TextSha256 over the object as it entered the effective
+    // map — no SourceFormId/SourceResponseId: nothing was held, nothing
+    // resolves. No filename (the InputFilePayload rule). Cleared once the
+    // origins are stamped, so it never rides the durable payload. Appended
+    // last, wire-compat.
+    Dictionary<string, InputFilePayload>? InputFormFiles = null);
 
 /// <summary>#510: one deliverable of one of the account's completed runs.</summary>
 public sealed record ConsultInputRef(string JobId, string ResultId);
