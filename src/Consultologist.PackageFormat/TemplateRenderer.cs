@@ -8,7 +8,14 @@ using Scriban.Runtime;
 
 namespace Consultologist.PackageFormat;
 
-/// <summary>The renderers a 25 template applies as pipes (design § 1: "renderers are pipes"; the closed set bindings' <c>as:</c> had).</summary>
+/// <summary>
+/// A renderer pipe: its name and the format whose node text it renders (design
+/// § 1, #1058: a pipe renders <c>node.&lt;id&gt;.content</c>, and only of a node
+/// of this format — the walker refuses any other operand at publish).
+/// </summary>
+public sealed record TemplatePipeSpec(string Name, string Format);
+
+/// <summary>The renderers a 25 template applies as pipes (design § 1: "renderers are pipes"; the closed set bindings' <c>as:</c> had), each typed by the format it renders (#1058).</summary>
 public static class TemplatePipes
 {
     /// <summary>The attested, byte-stable context rendering <c>as: concept-context</c> gave.</summary>
@@ -17,7 +24,19 @@ public static class TemplatePipes
     /// <summary>The bullet rendering <c>as: concept-bullets</c> gave.</summary>
     public const string ConceptBullets = "concept_bullets";
 
-    public static readonly IReadOnlyList<string> All = new[] { ConceptContext, ConceptBullets };
+    /// <summary>The closed set, each with the format it renders. Declared before <see cref="All"/>, which derives from it.</summary>
+    public static readonly IReadOnlyList<TemplatePipeSpec> Specs = new[]
+    {
+        new TemplatePipeSpec(ConceptContext, WorkflowFormatIds.ConceptList),
+        new TemplatePipeSpec(ConceptBullets, WorkflowFormatIds.ConceptList),
+    };
+
+    /// <summary>The names — for the renderer's globals, the validator's probe and the editor's select.</summary>
+    public static readonly IReadOnlyList<string> All = Specs.Select(spec => spec.Name).ToList();
+
+    /// <summary>The format a pipe renders; null when the name is not a renderer pipe.</summary>
+    public static string? FormatOf(string name) =>
+        Specs.FirstOrDefault(spec => string.Equals(spec.Name, name, StringComparison.Ordinal))?.Format;
 }
 
 /// <summary>
