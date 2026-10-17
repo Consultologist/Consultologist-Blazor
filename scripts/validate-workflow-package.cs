@@ -33,6 +33,11 @@
 //
 // Read-only: it reads a directory and prints. --dag writes nothing either;
 // redirect it yourself, which keeps "check this" and "change this" separate.
+//
+// A specVersion 25 package names catalogue formats, so the formats catalogue
+// is loaded from the same agents directory as the output contracts (#1058's
+// follow-on: without it every 25 package fails "the format catalogue is not
+// available", and a stamped 25 package reads as stale).
 
 using System.Text.Json;
 using Consultologist.Api.Agents;
@@ -121,12 +126,14 @@ if (repo is null)
     return 2;
 }
 
-var catalog = OutputContractCatalog.Load(Path.Combine(repo.FullName, "external", "consultologist-agents", "agents"));
+var agentsDir = Path.Combine(repo.FullName, "external", "consultologist-agents", "agents");
+var catalog = OutputContractCatalog.Load(agentsDir);
+var formats = FormatCatalogLoader.Load(agentsDir);
 var catalogSchemas = catalog.Entries.Values
     .Where(entry => entry.SchemaJson != null)
     .ToDictionary(entry => entry.ContractId, entry => entry.SchemaJson!, StringComparer.Ordinal);
 
-var result = WorkflowPackageValidator.Validate(manifest, files, catalogSchemas);
+var result = WorkflowPackageValidator.Validate(manifest, files, catalogSchemas, formats: formats);
 
 foreach (var warning in result.Warnings)
 {
@@ -148,7 +155,7 @@ if (result.IsValid && File.Exists(stampPath))
     try
     {
         var declared = WorkflowPackageStamp.Read(File.ReadAllText(stampPath), $"{manifest.Name}@{manifest.Version}");
-        var expected = WorkflowPackageStamp.Compute(manifest, files, catalog, new List<string>());
+        var expected = WorkflowPackageStamp.Compute(manifest, files, catalog, formats, new List<string>());
 
         if (!string.Equals(declared.ToJson(), expected.ToJson(), StringComparison.Ordinal))
         {

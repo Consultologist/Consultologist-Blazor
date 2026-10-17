@@ -101,13 +101,16 @@ if (repo is null)
     return 2;
 }
 
-var catalog = OutputContractCatalog.Load(Path.Combine(repo.FullName, "external", "consultologist-agents", "agents"));
+var agentsDir = Path.Combine(repo.FullName, "external", "consultologist-agents", "agents");
+var catalog = OutputContractCatalog.Load(agentsDir);
+// A specVersion 25 package names catalogue formats; the stamp carries their ref.
+var formats = FormatCatalogLoader.Load(agentsDir);
 var catalogSchemas = catalog.Entries.Values
     .Where(entry => entry.SchemaJson != null)
     .ToDictionary(entry => entry.ContractId, entry => entry.SchemaJson!, StringComparer.Ordinal);
 
 // No stamp passed: this is where the match is proved, not where it is trusted.
-var result = WorkflowPackageValidator.Validate(manifest, files, catalogSchemas);
+var result = WorkflowPackageValidator.Validate(manifest, files, catalogSchemas, formats: formats);
 
 foreach (var error in result.Errors)
 {
@@ -121,7 +124,7 @@ if (!result.IsValid)
 }
 
 var stampErrors = new List<string>();
-var stamp = WorkflowPackageStamp.Compute(manifest, files, catalog, stampErrors);
+var stamp = WorkflowPackageStamp.Compute(manifest, files, catalog, formats, stampErrors);
 
 foreach (var error in stampErrors)
 {
