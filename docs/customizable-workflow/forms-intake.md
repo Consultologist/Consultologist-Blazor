@@ -177,3 +177,15 @@ why. Done 2026-08-28 for `consultologist.ai`.
 >   mirrored coercion are untouched; filling an object input from the picker is
 >   the C layer's.
 
+> **Amendment, 2026-10-17 (#991 — the questionnaire file door).** The Create page's
+> other way in: an object `form` input takes a **JSON file** — a bare object keyed
+> by the input's declared field ids (the input's value as a file; the flow's
+> nesting under the input id exists only because one response fills several
+> inputs). The client coerces it through the library's `CoerceDeclared` (the
+> Web's hand-mirrored string table is gone, and the picker's compact-JSON text
+> for an object now fills an object input too), the bytes ride the request as
+> `InputFormFiles` beside the value, and the server re-coerces, requires equality
+> and stamps the `form-response` kind's **file-sourced variant** (`fileSha256`,
+> `textSha256`, no source ids). A raw Forms export is not a questionnaire file:
+> its keys are question ids, and only the flow maps them.
+

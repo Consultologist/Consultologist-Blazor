@@ -540,6 +540,28 @@ and typed conditions need the shape, and an editor helper derives `fields` from 
 response. The **file door** on the Create page (#991) and the **transcript door** (§ 15)
 are siblings; their origin kinds ride this version's provenance bump.
 
+*(#991, 2026-10-17 — the file door and the editor helper, as built. **The file is a bare
+object** whose keys are the input's declared field ids — the input's value as a file. Nothing
+wraps it on the way in: the held payload nests under the input id only because one flow
+response fills several inputs; a raw Microsoft Forms "Get response details" export (question-id
+keys) is not importable without the flow's mapping; an EMR extension that knows the declared
+fields emits the bare shape by construction. **The door is offered on an object input declared
+`expectedContent: form`** (beside the "From a form" chip). The bytes ride the request as
+`InputFormFiles[id]` BESIDE the coerced value in `Inputs` — the `InputFormRefs` posture — so the
+server re-coerces them by the one coercion (`FormResponseCoercion.CoerceDeclared`), requires
+equality with the submitted value, and stamps the `form-response` kind's file-sourced variant:
+`fileSha256` over the bytes as received, `textSha256` over the object as it entered the
+effective map, no source ids. The fill is editable; an edit drops the bytes and the input is
+typed. The cap is the held-value cap (256 KiB). **The client's coercion is the library's**
+(`DeclaredInputCoercion` over a `WorkflowInputSpec` built from the served declaration), which
+also closed the C5 gap: a held response's object value, served as its raw JSON, fills an object
+input. **The editor helper** derives the fields an owner lacks from a pasted sample object —
+optional, typed from the sample (`yyyy-MM-dd` → date; an array of objects in the v9 form),
+never an enum, existing fields never retyped; a key that is not snake_case, a null, an empty
+array or object is refused by name and derives nothing (no "form definition" format exists to
+read). Rolled out server first: engine release v2026.10.6 carried the Api half before the
+editor's door merged, since an older server drops the request member silently.)*
+
 ## 10. Refused by name at ≥ 25
 
 Each below 25 keeps its frozen rules; each at ≥ 25 is a sentence naming the key and the
@@ -723,7 +745,8 @@ version gate, a union, an unknown channel, transcript / image / ambient-note on 
 form on an object below 25 or on an array of objects, form on an object with no fields at 25).
 The object's fields are today's object fields. Deferred (decision): the run page's client-side
 form-response coercion lacks the nested-object case B6 gave the server, so a held response
-cannot yet fill an object input in the browser — a follow-up under #991.)*
+cannot yet fill an object input in the browser — a follow-up under #991. *(Closed under #991,
+2026-10-17: the client coerces through the library; the hand mirror is gone — § 9 note.)*)*
 
 **#1039 (C, 2026-10-15) — the desk at 25 is the registry's validator.** Every earlier version's
 desk is a hand-written mirror of the validator's sentences; at 25 the editor runs

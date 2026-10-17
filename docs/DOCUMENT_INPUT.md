@@ -535,6 +535,22 @@ POST /api/ConsultGenerationJobs
 > empty referral. The setup form still attaches one file per input; the
 > multi-file picker is #429's.
 
+### Questionnaire file (#991, 2026-10-17)
+
+An object input declared `expectedContent: form` takes a **questionnaire response saved as a
+JSON file** beside its fields: a bare object whose keys are the input's declared field ids —
+the input's value as a file, never wrapped (the held form-response payload nests under the
+input id only because one flow response fills several inputs). The Create page parses the file,
+coerces it by the library's own coercion against the declaration, names a misfit on the field
+(an undeclared key, a missing required field, a non-object, not JSON) and fills the fields for
+review — editable; an edit drops the file and the input is typed. The bytes ride the request as
+`InputFormFiles[id]` beside the coerced value in `Inputs`, so the server re-coerces them,
+requires equality with the submitted value, and stamps the `form-response` origin's
+**file-sourced variant**: `fileSha256` over the bytes as received, `textSha256` over the object
+as it entered the effective map, and no source ids (nothing was held, nothing resolves). The cap
+is the held-value cap, 256 KiB; the bytes are cleared before the durable payload and never rest.
+History reads the variant as "from a questionnaire file".
+
 ## 6. The email source
 
 - `GraphMailClient.ListAttachmentsAsync` reads each non-inline attachment's
