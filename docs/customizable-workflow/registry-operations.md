@@ -328,4 +328,7 @@ time and CalVer already answer "when", and git / the `acct-*` name already answe
 > until then public versions are unstamped and load as they always did. The
 > stamp is never part of the editor's files: a request carrying one is
 > refused by path. `publishedBy`/`publishedAt` join the same file when they
-> land.
+> land. *(2026-10-17: both `validate-workflow-package.cs` and
+> `stamp-workflow-package.cs` load the formats catalogue beside the output
+> contracts, so a specVersion 25 package validates and stamps offline; a
+> package below 25 is migrated on disk by `migrate-workflow-package.cs`.)*
