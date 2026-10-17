@@ -28,7 +28,7 @@ public enum ConsultInputKind
     /// Carried rather than refused at the wire, because whether a null
     /// element is acceptable is a question for the declaration, and the
     /// starter is where the declaration is known (v9 § 4: a 422 naming the
-    /// slot). Never produced at the top of the map: a top-level null reads as
+    /// input). Never produced at the top of the map: a top-level null reads as
     /// blank text, as it has since v8.
     /// </summary>
     Null
@@ -145,8 +145,8 @@ public sealed record ConsultInputValue
 
     /// <summary>
     /// An object of fields, ids unique. v10 (#493): a field may hold structure
-    /// — whether it may in a given slot is the declaration's question, asked
-    /// by the starter with the slot named.
+    /// — whether it may in a given input is the declaration's question, asked
+    /// by the starter with the input named.
     /// </summary>
     public static ConsultInputValue OfObject(IEnumerable<ConsultInputEntry> fields)
     {
@@ -193,7 +193,7 @@ public sealed record ConsultInputValue
     /// <summary>
     /// A bare string means text. Compile-time strictness was never available
     /// here — the starter cannot know at the call site whether 'billable' is a
-    /// boolean slot — so the type discipline lives where the declaration is
+    /// boolean input — so the type discipline lives where the declaration is
     /// known: the wire converter rejects a shape JSON should not carry (400),
     /// and the starter rejects a value the declaration disagrees with (422).
     /// </summary>
@@ -214,7 +214,7 @@ public sealed record ConsultInputValue
     /// <summary>
     /// Only text can be blank. A boolean is an answer, a number is an answer,
     /// and an empty array is present and empty (v9 § 4) — not absent, so a
-    /// required slot holding one is refused by the starter naming the slot,
+    /// required input holding one is refused by the starter naming the input,
     /// never waved through as "supplied".
     /// </summary>
     public bool IsBlank => Kind == ConsultInputKind.Text && string.IsNullOrWhiteSpace(Text);
@@ -330,7 +330,7 @@ public sealed class ConsultInputShapeException : JsonException
 /// <see cref="ConsultInputShapeException"/>, which the HTTP door answers with
 /// 400. A value disagreeing with the package's declaration is the 422, and
 /// that check lives in the job starter, where the declaration is known and the
-/// slot can be named.
+/// input can be named.
 /// </summary>
 public sealed class ConsultInputValueConverter : JsonConverter<ConsultInputValue>
 {
@@ -380,7 +380,7 @@ public sealed class ConsultInputValueConverter : JsonConverter<ConsultInputValue
                 // arrive as a null string and read as blank — "required input
                 // missing" — and handing back null would put a null into the map
                 // that every downstream check dereferences. Inside structure it
-                // is carried as itself, for the starter to refuse with the slot
+                // is carried as itself, for the starter to refuse with the input
                 // named (v9 § 4).
                 return site.IsTop ? ConsultInputValue.OfText(string.Empty) : ConsultInputValue.NullElement;
 

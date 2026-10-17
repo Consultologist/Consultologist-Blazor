@@ -177,10 +177,10 @@ state. The provenance registry's "three kinds of field"
 snapshots. The links index (#546, built) is a records-account table keyed
 by the source job, ids only, never deleted while the account exists
 (account closure, #559). Its row key refines the
-consumer id with the slot and element for a previous-run copy
+consumer id with the input and element for a previous-run copy
 (`{consumerJobId}_{inputId}_{i}` — one consumer may copy twice from one
 source) and is the bare consumer id for a rerun — one row per replay,
-never one per slot origin. Written best-effort at start (a storage blip
+never one per input origin. Written best-effort at start (a storage blip
 never refuses the run; the consumer's own origins remain the truth this
 index projects), which also means edges from runs started before #546
 are absent, not back-filled.

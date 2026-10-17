@@ -238,8 +238,8 @@ public class WorkflowV8ValidationTests
     [Fact]
     public void ARequiredBoolean_WarnsThatEmailCannotStartIt()
     {
-        // An emailed value is always text and a string in a boolean slot is a
-        // 422, so the slot can never be filled through that door.
+        // An emailed value is always text and a string in a boolean input is a
+        // 422, so the input can never be filled through that door.
         var result = ValidateWithBoolean(required: true);
 
         Assert.Contains(result.Warnings, w => w.Contains("'billable' is a required boolean", StringComparison.Ordinal));
@@ -705,7 +705,7 @@ public class WorkflowResultConditionEvaluationTests
     [InlineData("billable")]
     [InlineData("billable == true")]
     // The negated form too: without this it would fire on every job that left
-    // the slot blank, which is the opposite of what an author means.
+    // the input blank, which is the opposite of what an author means.
     [InlineData("billable != true")]
     public void AnAbsentOptionalInput_DoesNotSatisfyAnything(string when)
     {
@@ -739,7 +739,7 @@ public class WorkflowResultConditionEvaluationTests
 /// A shape the format cannot carry is a 400, thrown as
 /// ConsultInputShapeException so the door can say which token and where. A
 /// well-formed value that disagrees with the declaration is the 422, and that
-/// check lives in the starter where the slot can be named.
+/// check lives in the starter where the input can be named.
 /// </summary>
 public class ConsultInputValueWireTests
 {
@@ -811,7 +811,7 @@ public class ConsultInputValueWireTests
     public void AStringOfDigits_IsText()
     {
         // "3" is a JSON string and stays text; whether a text is acceptable in
-        // a number slot is the starter's 422, not the converter's business.
+        // a number input is the starter's 422, not the converter's business.
         var value = Read("""{"v":"3"}""")!;
 
         Assert.Equal(ConsultInputKind.Text, value.Kind);
@@ -891,7 +891,7 @@ public class ConsultInputValueWireTests
     public void StructureNests_OnTheWire(string json)
     {
         // v10 (#493): the format admits depth, so the wire does; whether a
-        // declaration admits it in a given slot is the starter's 422. Before
+        // declaration admits it in a given input is the starter's 422. Before
         // v10 these four were shape errors.
         var value = Read(json);
 
@@ -946,8 +946,8 @@ public class ConsultInputValueWireTests
     [Fact]
     public void AnEmptyArray_IsPresentAndNotBlank()
     {
-        // Present and empty, not absent (v9 § 4): a required slot holding one
-        // is refused by the starter naming the slot, never waved through.
+        // Present and empty, not absent (v9 § 4): a required input holding one
+        // is refused by the starter naming the input, never waved through.
         var value = Read("""{"v":[]}""")!;
 
         Assert.True(value.IsArray);

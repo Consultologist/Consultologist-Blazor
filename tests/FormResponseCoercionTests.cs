@@ -157,7 +157,7 @@ public class FormResponseCoercionTests
         Assert.Equal("1.50", JsonSerializer.Serialize(FormResponseCoercion.Coerce(Node("number"), Json("1.50")).Value).Trim('"'));
         Assert.Equal("7", FormResponseCoercion.Coerce(Node("text"), Json("7")).Value!.Text);
         Assert.Equal("2026", FormResponseCoercion.Coerce(Node("date"), Json("2026")).Value!.Text);
-        Assert.Equal("is a JSON number; the slot is an object", FormResponseCoercion.Coerce(Intake(), Json("7")).Misfit);
+        Assert.Equal("is a JSON number; the input is an object", FormResponseCoercion.Coerce(Intake(), Json("7")).Misfit);
     }
 
     [Fact]
@@ -167,7 +167,7 @@ public class FormResponseCoercionTests
         Assert.Equal("false", FormResponseCoercion.Coerce(Node("text"), Json("false")).Value!.Text);
         Assert.Equal("is not a plain decimal number", FormResponseCoercion.Coerce(Node("number"), Json("true")).Misfit);
         Assert.Equal("is not Yes, No, true or false", FormResponseCoercion.Coerce(Node("boolean"), Json("1")).Misfit);
-        Assert.Equal("is a JSON boolean; the slot is an array", FormResponseCoercion.Coerce(Node("array", itemsType: "text"), Json("true")).Misfit);
+        Assert.Equal("is a JSON boolean; the input is an array", FormResponseCoercion.Coerce(Node("array", itemsType: "text"), Json("true")).Misfit);
     }
 
     [Fact]
@@ -180,7 +180,7 @@ public class FormResponseCoercionTests
         Assert.Equal("element 1 is not a plain decimal number", FormResponseCoercion.Coerce(Node("array", itemsType: "number"), Json("[1, \"x\"]")).Misfit);
         Assert.Equal("element 0 is null", FormResponseCoercion.Coerce(Node("array", itemsType: "text"), Json("[null]")).Misfit);
         Assert.Equal((null, null), FormResponseCoercion.Coerce(Node("array", itemsType: "text"), Json("[]")));
-        Assert.Equal("is a JSON array; the slot is a text", FormResponseCoercion.Coerce(Node("text"), Json("[\"a\"]")).Misfit);
+        Assert.Equal("is a JSON array; the input is a text", FormResponseCoercion.Coerce(Node("text"), Json("[\"a\"]")).Misfit);
     }
 
     [Fact]
@@ -214,7 +214,7 @@ public class FormResponseCoercionTests
             FormResponseCoercion.Coerce(Intake(), Json("""{ "allergies": ["x"], "on_letrozole": "maybe" }""")).Misfit);
         Assert.Equal("field 'address' is missing required field 'city'",
             FormResponseCoercion.Coerce(Intake(), Json("""{ "allergies": ["x"], "on_letrozole": true, "address": {} }""")).Misfit);
-        Assert.Equal("is a JSON object; the slot is a text", FormResponseCoercion.Coerce(Node("text"), Json("{}")).Misfit);
+        Assert.Equal("is a JSON object; the input is a text", FormResponseCoercion.Coerce(Node("text"), Json("{}")).Misfit);
     }
 
     [Fact]
@@ -223,7 +223,7 @@ public class FormResponseCoercionTests
         var union = new WorkflowInputSpec("when", "When", Type: new WorkflowTypeSet(new[] { "date", "text" }));
 
         Assert.Equal("2026-08-29", FormResponseCoercion.CoerceDeclared(union, Json("\"2026-08-29\"")).Value!.Text);
-        Assert.Equal("is a JSON array; the slot is a text", FormResponseCoercion.CoerceDeclared(union, Json("[1]")).Misfit);
+        Assert.Equal("is a JSON array; the input is a text", FormResponseCoercion.CoerceDeclared(union, Json("[1]")).Misfit);
 
         var single = new WorkflowInputSpec("n", "N", Type: new WorkflowTypeSet(new[] { "number" }));
         Assert.Equal("is not a plain decimal number", FormResponseCoercion.CoerceDeclared(single, Json("\"x\"")).Misfit);

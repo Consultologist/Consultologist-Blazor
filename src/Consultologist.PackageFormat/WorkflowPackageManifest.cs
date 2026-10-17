@@ -140,11 +140,11 @@ public sealed record WorkflowMacroSpec(
     string? Instruction = null);
 
 /// <summary>
-/// One declared input slot of a specVersion-7 package: the id nodes bind as
+/// One declared input of a specVersion-7 package: the id nodes bind as
 /// "input:&lt;id&gt;" and callers supply per job
 /// (external/consultologist-package-format/package-format-v7.md § 2).
 ///
-/// v8 types the slot. <c>Type</c> is optional and absent means "text", so a
+/// v8 types the input. <c>Type</c> is optional and absent means "text", so a
 /// v7 declaration is a valid v8 one and the minimal migration is the
 /// specVersion line alone (package-format-v8-design.md § 4). <c>Values</c>
 /// belongs to <c>enum</c> and to nothing else.
@@ -154,7 +154,7 @@ public sealed record WorkflowMacroSpec(
 /// canonical string, so the resolver and every durable payload are untouched.
 /// </summary>
 /// <summary>
-/// v14 (#729): a slot's declared type — one value type, or a union of several
+/// v14 (#729): an input's declared type — one value type, or a union of several
 /// ("this or that", e.g. <c>type: [text, array]</c>). On the wire a lone type
 /// is the bare v≤13 string and round-trips byte for byte; a union is a JSON
 /// array of type names, in the order the engine tries them (first match wins).
@@ -164,7 +164,7 @@ public sealed record WorkflowMacroSpec(
 [JsonConverter(typeof(WorkflowTypeSetConverter))]
 public sealed record WorkflowTypeSet(IReadOnlyList<string> Types)
 {
-    /// <summary>The first arm — the single type of a non-union slot, and the primary of a union.</summary>
+    /// <summary>The first arm — the single type of a non-union input, and the primary of a union.</summary>
     public string Primary => Types[0];
 
     public bool IsUnion => Types.Count > 1;
@@ -237,7 +237,7 @@ public sealed record WorkflowInputSpec(
     // which still writes the v9 string when it is only a name.
     WorkflowElementSpec? Items = null,
     List<WorkflowFieldSpec>? Fields = null,
-    // v13 (#728): the medium/source a slot expects — a transcript or a form
+    // v13 (#728): the medium/source an input expects — a transcript or a form
     // response — distinct from Type, which stays the value kind. A trailing
     // optional, omitted when null, so a v≤12 manifest writes the bytes it
     // always wrote. See WorkflowExpectedContent.
@@ -425,13 +425,13 @@ public static class WorkflowInputTypes
 
 /// <summary>
 /// The declarable input content channels (package-format-v13-design.md § 4,
-/// #728): the medium or source a slot expects, distinct from its value
+/// #728): the medium or source an input expects, distinct from its value
 /// <see cref="WorkflowInputTypes"/>. A <c>transcript</c> is a document whose
-/// extracted text fills a text slot and whose origin is stamped `transcript`
-/// (a submitter assertion, not read from the bytes); a <c>form</c> is a slot
+/// extracted text fills a text input and whose origin is stamped `transcript`
+/// (a submitter assertion, not read from the bytes); a <c>form</c> is an input
 /// whose value is meant to be filled from a held form response, coerced to the
-/// slot's declared value type. Transcript and form arrive at specVersion 13.
-/// v16 (#730): <c>image</c> — an uploaded image OCR'd into a text slot; its
+/// input's declared value type. Transcript and form arrive at specVersion 13.
+/// v16 (#730): <c>image</c> — an uploaded image OCR'd into a text input; its
 /// origin is stamped `image`, observed from the bytes (unlike transcript).
 /// v17 (#673): <c>ambient-note</c> — a clinical note from an ambient scribe
 /// (Dragon Copilot); like transcript it is a text channel and a submitter

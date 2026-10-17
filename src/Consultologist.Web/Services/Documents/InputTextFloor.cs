@@ -6,7 +6,7 @@ namespace Consultologist.Web.Services.Documents;
 /// The client's copy of the engine's content floor (#290/#291), so a document
 /// that carries no referral is caught the moment it is attached rather than at
 /// Create. A file whose extracted text falls below the floor still attaches —
-/// this is a warning, not a block — but the slot says so, and names the
+/// this is a warning, not a block — but the input says so, and names the
 /// cloud-link shortcut case that produces it most often.
 ///
 /// The authority is <c>Consultologist.Api.Jobs.InputContent</c>: the server

@@ -95,7 +95,7 @@ public class WorkflowV7ValidationTests
         var manifest = V7Fixtures.Minimal() with { Inputs = new List<WorkflowInputSpec>() };
 
         Assert.Contains(V7Fixtures.Validate(manifest).Errors,
-            e => e.Contains("inputs must declare at least one input slot"));
+            e => e.Contains("inputs must declare at least one input"));
     }
 
     [Theory]

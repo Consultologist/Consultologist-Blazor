@@ -64,7 +64,7 @@ public sealed class ConsultGenerationOrchestrator
         var v6 = collections is { Count: > 0 };
 
         // The input map: v7 jobs carry the effective map from the starter;
-        // v5/v6 jobs fold the single draft into the conventional slot — a pure
+        // v5/v6 jobs fold the single draft into the conventional input — a pure
         // value-identical view, so replaying instances render the same bytes.
         var effectiveInputs = input.Inputs
             ?? new Dictionary<string, string>(StringComparer.Ordinal)

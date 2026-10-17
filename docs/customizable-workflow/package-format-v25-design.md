@@ -520,19 +520,19 @@ v26** (2026-10-12): it is independent of everything else in this version, it is 
 change that touches the Create page's rendering of an input, and 25 is large enough. At 25
 `values` entries are strings, as at 24, and `input.<id>` has no `.label` member.
 
-## 9. A form slot may be an object
+## 9. A form input may be an object
 
-v13 refuses `expectedContent: form` on an `object` slot by name; the held form response is
-a flat id → string map. v25 lifts the refusal: a `form` slot may be an **object with
+v13 refuses `expectedContent: form` on an `object` input by name; the held form response is
+a flat id → string map. v25 lifts the refusal: a `form` input may be an **object with
 declared `fields`**. The response's keys fill the fields, each coerced to its field type; a
-missing required field is refused at start the way a missing required input is; the slot is
+missing required field is refused at start the way a missing required input is; the input is
 stamped `form-response` once; the held-response payload moves to a version that holds JSON
 values. Reading needs nothing new: `{{ input.intake.allergies }}`, a loop over an array
 field, a typed `when` on `input.intake.on_letrozole`.
 
 *(B6 #1005, 2026-10-14: the keys are **nested** — the response carries the object under the
-slot's id and its members are the fields; the sender groups, so the response's shape is the
-slot's shape and one fill serves the held response and #991's file. Any declared field
+input's id and its members are the fields; the sender groups, so the response's shape is the
+input's shape and one fill serves the held response and #991's file. Any declared field
 shape fills from a JSON value; a string value still goes through the v13 table.)*
 
 Declared fields are chosen over a schemaless `type: json`: coercion, required-field refusal
@@ -588,7 +588,7 @@ across every record ever written, and stay; the provenance document may say "the
 - **package-format** (bump to 25): the object grammar and closed members (§ 1), derived
   edges (§ 2), the **format file definition** and producer vocabulary (§ 3.1–3.2), the node
   shape (§ 3.6), snippets (§ 4), the macro library and instance shape (§ 5), the mechanics
-  sentence (§ 5.3), the object form slot (§ 9), every refusal of § 10;
+  sentence (§ 5.3), the object form input (§ 9), every refusal of § 10;
   schema generated from the model; conformance vectors for every refusal (cross-field ones
   `SHAPE_BLIND`).
 - **agents** (a catalogue version): `agents/formats.json` with its two sections, the five
@@ -617,7 +617,7 @@ across every record ever written, and stay; the provenance document may say "the
   catalogue entries read-only with their detail line (§ 3.8).
 - **Deliverables pane** (#985): prepend / append with applies-when, the one-line note for
   node-placed instances, the two-way picker exclusion (#983).
-- **Inputs pane:** the object-form slot's fields as today's object fields.
+- **Inputs pane:** the object-form input's fields as today's object fields.
 
 *(C1 #1007, 2026-10-14 — the node pane's picker and the Formats pane are built, gated on
 `EffectiveSpecVersion >= 25` and inert until A5 moves the editor's version constants — moved
@@ -710,20 +710,20 @@ concept_context }}`) as an unknown root — the closed pipe set is now accepted 
 judged when it renders; and the editor's reader-pane lookup went by prompt id where the walk
 keys a prompt by the node reading it.)*
 
-*(C5 #1011, 2026-10-15 — the object form slot on the Inputs pane. Found: the editor had never
+*(C5 #1011, 2026-10-15 — the object form input on the Inputs pane. Found: the editor had never
 refused `expectedContent: form` on an object — its content-channel select offered every channel
 of the version to every type and the desk mirrored none of the validator's channel sentences
 ("the server validates channel/type fit"). So the lift at 25 was already true by omission;
 C5 adds the **rule**, at every version (decision): the select offers only the channels the
-slot's type and version take — a union none, text and an array of text every channel of the
+input's type and version take — a union none, text and an array of text every channel of the
 version, a scalar `form`, an object `form` from 25, an array of anything else none — a loaded
 value the list no longer offers still shown as itself; a retype drops a channel the new type
 cannot be filled from; and the desk says the validator's channel sentences word for word (the
-version gate, a union, an unknown channel, transcript / image / ambient-note on a non-text slot,
+version gate, a union, an unknown channel, transcript / image / ambient-note on a non-text input,
 form on an object below 25 or on an array of objects, form on an object with no fields at 25).
 The object's fields are today's object fields. Deferred (decision): the run page's client-side
 form-response coercion lacks the nested-object case B6 gave the server, so a held response
-cannot yet fill an object slot in the browser — a follow-up under #991.)*
+cannot yet fill an object input in the browser — a follow-up under #991.)*
 
 **#1039 (C, 2026-10-15) — the desk at 25 is the registry's validator.** Every earlier version's
 desk is a hand-written mirror of the validator's sentences; at 25 the editor runs
@@ -813,7 +813,7 @@ grammar and validation PRs.
 - **Siblings:** #985 (Deliverables rename, first); #983 (narrowed to the Deliverables pane);
   #991 (the questionnaire file door); a **transcript door** on the Create page — a text
   transcript file (VTT, SRT, plain text) with speaker labels and timestamps stripped, the
-  file hash on a `transcript` origin that already exists as a slot medium since v13; audio
+  file hash on a `transcript` origin that already exists as an input medium since v13; audio
   with speech-to-text is **v26**, by name. **Folded in:** #969, #984. **Made structural:**
   #941, #942.
 
@@ -994,6 +994,17 @@ with warnings — the rewrite spells a concept-list read as `node.x.content | co
 and the walker warns on every `.content` read of a shaped format regardless of the pipe;
 suppressing the warning when the read goes through a renderer pipe (C4 blesses it) is a
 validator refinement. Prod runs 25 with engine release v2026.10.5.
+
+*(#1046, 2026-10-17 — an input is not a "slot". The word named two things: the macro the model places
+(the ≤24 `[[slot:<id>]]` marker, `slot: true`, the record kind, `WorkflowSlotMarker`, `ConsultSlotFiller`, the
+v20 sentences, the editor's slot-instruction UI — all unchanged) and an *input* on the Create page (`ScalarSlot`,
+"text/form/transcript slot", the editor's Inputs-pane alias, `slotOrigins`, the email-intake regex group,
+~128 live-doc lines, ~280 test names). The input meaning is "input" everywhere now, § 9 above included. Four
+validator sentences carried it and are pinned by the conformance vectors; they were reworded with a registry
+bump — package-format **v2026.10.6**, the v13/v16/v17 vectors re-exported, the v16/v17 doc lines that quote them
+and the v25 "form input" line following; the other frozen per-version docs keep their era's prose. The
+form-response 422 misfits say "the input is …". `MacroChoiceSlot`, the per-run optional-macro checkbox and
+neither meaning, is `MacroChoice`. No release is needed; the engine's vendored registry version rides the next.)*
 
 ## Deferred, by name
 

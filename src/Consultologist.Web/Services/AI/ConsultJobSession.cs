@@ -21,8 +21,8 @@ public sealed record ConsultJobMemento(
     IReadOnlyDictionary<string, string> Inputs,
     IReadOnlyList<ConsultJobBlock> Blocks,
     // #429: the inputs as typed — a number, an object, an array of rows —
-    // so a structured slot re-attaches as itself rather than as its text.
-    // A document slot rides as the text the server read, the way the text
+    // so a structured input re-attaches as itself rather than as its text.
+    // A document input rides as the text the server read, the way the text
     // map always carried it. Trailing optional: a memento written before
     // this restores from the text.
     IReadOnlyDictionary<string, ConsultInputValue>? Values = null);

@@ -9,7 +9,7 @@ using NSubstitute;
 namespace Consultologist.Web.Tests;
 
 /// <summary>
-/// #510: a previous run's deliverable into an input slot. The form shows the
+/// #510: a previous run's deliverable into an input. The form shows the
 /// text as a preview and sends the reference; a run whose text was deleted is
 /// listed and not choosable; the loaded text is shown, never editable.
 /// </summary>
@@ -69,12 +69,12 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
         return page;
     }
 
-    private static void OpenPicker(IRenderedComponent<Consults> page, int slot) =>
-        page.FindAll(".run-picker__trigger")[slot].Click();
+    private static void OpenPicker(IRenderedComponent<Consults> page, int input) =>
+        page.FindAll(".run-picker__trigger")[input].Click();
 
-    private static void ChooseNote(IRenderedComponent<Consults> page, int slot)
+    private static void ChooseNote(IRenderedComponent<Consults> page, int input)
     {
-        OpenPicker(page, slot);
+        OpenPicker(page, input);
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".run-picker__run-toggle")));
         page.FindAll(".run-picker__run-toggle").First(b => !b.HasAttribute("disabled")).Click();
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".run-picker__deliverable")));
@@ -119,7 +119,7 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void ChoosingADeliverable_FillsTheSlotAsAPreview_AndTheSubmitCarriesTheReference()
+    public void ChoosingADeliverable_FillsTheInputAsAPreview_AndTheSubmitCarriesTheReference()
     {
         WithRuns();
         CaptureSubmit();
@@ -163,7 +163,7 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
     [Fact]
     public void MixedArray_TypedRowAndDeliverable_TravelTogetherForTheSameId()
     {
-        // #874: a several (array<text>) slot is no longer typed XOR loaded — a
+        // #874: a several (array<text>) input is no longer typed XOR loaded — a
         // typed row and a previous-run deliverable can travel together, the
         // typed portion via Inputs and the deliverable via Refs, for one id.
         WithRuns();
@@ -189,7 +189,7 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
     [Fact]
     public void MixedArray_ShowsTypedRowsAndLoadedChipsTogether()
     {
-        // #874: attaching a previous-run deliverable to a several slot no
+        // #874: attaching a previous-run deliverable to a several input no
         // longer hides the typed rows underneath it — both render at once.
         WithRuns();
         var page = Rendered(this);

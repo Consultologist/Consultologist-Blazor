@@ -156,14 +156,14 @@ internal static class InputContent
         IReadOnlyDictionary<string, string>? effective,
         IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? origins)
     {
-        // #510: only a document origin exempts a slot — a previous run's text
+        // #510: only a document origin exempts an input — a previous run's text
         // was typed by someone once, and its links are as unreachable as any.
         // #549: a rerun origin exempts too — the text already ran once, and
         // the acceptance decision was made at the source; refusing the replay
         // would refuse what was accepted.
         bool FromNoDocument(string id) =>
-            origins?.TryGetValue(id, out var slotOrigins) != true
-            || slotOrigins.All(o => o.Kind != ConsultInputOriginKinds.Document
+            origins?.TryGetValue(id, out var inputOrigins) != true
+            || inputOrigins.All(o => o.Kind != ConsultInputOriginKinds.Document
                 && o.Kind != ConsultInputOriginKinds.Rerun);
 
         if (manifest.SpecVersion < 7 || effective == null)
@@ -215,7 +215,7 @@ internal static class InputContent
     /// <summary>
     /// #802: the required ids that were both below the floor and acknowledged —
     /// the overrides that actually happened, recorded on the job so a reviewer
-    /// sees the floor was consciously bypassed. A caller acknowledging a slot
+    /// sees the floor was consciously bypassed. A caller acknowledging an input
     /// that was fine records nothing (the floor never applied to it).
     /// </summary>
     internal static IReadOnlyList<string> AcknowledgedBelowFloor(
@@ -273,7 +273,7 @@ internal static class InputContent
             // constrains it far more tightly than a length ever could.
             //
             // #428: an array of text is prose too — several documents, or
-            // several typed notes — and is measured as the slot, the sum of
+            // several typed notes — and is measured as the input, the sum of
             // its elements: one thin document among four is not an empty
             // referral, and four thin ones are.
             if (!IsProse(declared))

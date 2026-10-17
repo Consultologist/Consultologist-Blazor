@@ -165,8 +165,8 @@ each has, or needs, its own work:
 >
 > Since #549 (provenance `v2026.08.12`) an origin may be `rerun`: the
 > whole run replays a completed run's held inputs (#547), every
-> effective slot carries one naming `sourceJobId`, and `textSha256` is
-> over the slot's effective value verbatim — equal to the source's by
+> effective input carries one naming `sourceJobId`, and `textSha256` is
+> over the input's effective value verbatim — equal to the source's by
 > construction, so the two records' `effectiveInputHash` agree or one of
 > them is wrong. The rerun could only start while the source's held
 > inputs existed; the origin stands after they are deleted. The rerun's

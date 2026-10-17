@@ -30,7 +30,7 @@ public class ConsultsSetupTests : ClientRenderTestContext
     public void LegacyPackage_RendersTheSingleDraftField()
     {
         // A package that declares no inputs is the v5/v6 shape: the page
-        // synthesizes the frozen consult_draft slot.
+        // synthesizes the frozen consult_draft input.
         WithPinnedPackage(blocks: NineSections());
 
         var page = Render<Consults>();
@@ -167,9 +167,9 @@ public class ConsultsSetupTests : ClientRenderTestContext
         page.FindAll(".input-field")[index];
 
     [Fact]
-    public void AttachingAFile_ReplacesThatSlotsTextAreaOnly()
+    public void AttachingAFile_ReplacesThatInputsTextAreaOnly()
     {
-        // The per-slot behaviour v7 made possible: two declared inputs, and a
+        // The per-input behaviour v7 made possible: two declared inputs, and a
         // file aimed at the second leaves the first's text area alone.
         WithPinnedPackage(
             blocks: NineSections(),
@@ -243,7 +243,7 @@ public class ConsultsSetupTests : ClientRenderTestContext
     public void AThinFile_WarnsButStaysAttached()
     {
         // #800: read, but below the referral floor — the file is kept (chip and
-        // preview show) and Create is not blocked, but the slot says so.
+        // preview show) and Create is not blocked, but the input says so.
         WithPinnedPackage(blocks: NineSections());
         WithExtraction("Too short.");
 
@@ -333,7 +333,7 @@ public class ConsultsSetupTests : ClientRenderTestContext
     // cannot flip it by dispatching a DOM event (the bUnit+Fluent gotcha the
     // Queue-multiple test hits too). Set the bound AcknowledgedShort directly,
     // as that test sets its page field, then re-render.
-    private static void AcknowledgeEveryShortSlot(IRenderedComponent<Consults> page)
+    private static void AcknowledgeEveryShortInput(IRenderedComponent<Consults> page)
     {
         var fields = (System.Collections.IEnumerable)typeof(Consults)
             .GetField("inputFields", BindingFlags.Instance | BindingFlags.NonPublic)!
@@ -354,7 +354,7 @@ public class ConsultsSetupTests : ClientRenderTestContext
         page.Find("fluent-text-area").Change("Chest pain.");
         Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
 
-        AcknowledgeEveryShortSlot(page);
+        AcknowledgeEveryShortInput(page);
 
         Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
     }
@@ -391,7 +391,7 @@ public class ConsultsSetupTests : ClientRenderTestContext
 
         var page = Render<Consults>();
         page.Find("fluent-text-area").Change("Chest pain.");
-        AcknowledgeEveryShortSlot(page);
+        AcknowledgeEveryShortInput(page);
         page.FindAll("fluent-button").Last().Click();
 
         Assert.Equal(new[] { "consult_draft" }, sentAck?.ToArray());
@@ -411,31 +411,31 @@ public class ConsultsSetupTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void AttachingIntoARequiredSlot_CountsAsFilled()
+    public void AttachingIntoARequiredInput_CountsAsFilled()
     {
         // The interaction most likely to regress: every fill-check used to read
-        // field.Value, and a file-backed slot has none — a file must count as
+        // field.Value, and a file-backed input has none — a file must count as
         // filled. Proven through the #683 required hint rather than the gate.
         WithPinnedPackage(blocks: NineSections());
         WithExtraction("Referral body.");
 
         var page = Render<Consults>();
 
-        // A submit attempt flags the empty required draft slot.
+        // A submit attempt flags the empty required draft input.
         page.FindAll("fluent-button").Last().Click();
         Assert.NotEmpty(page.FindAll(".input-field__required-hint"));
 
         FileInput(page, 0).UploadFiles(InputFileContent.CreateFromText("Referral body.", "referral.txt"));
 
-        // The attached file fills the slot, so the hint clears.
+        // The attached file fills the input, so the hint clears.
         Assert.Empty(page.FindAll(".input-field__required-hint"));
     }
 
     [Fact]
-    public void Submitting_SendsTheFileItselfAndTypedSlotsAsText()
+    public void Submitting_SendsTheFileItselfAndTypedInputsAsText()
     {
         // The whole point of the model: the bytes travel, not the preview. The
-        // server extracts them again, so a slot's origin is something it
+        // server extracts them again, so an input's origin is something it
         // observed rather than something this client asserted.
         WithPinnedPackage(
             blocks: NineSections(),
@@ -466,7 +466,7 @@ public class ConsultsSetupTests : ClientRenderTestContext
 
         Assert.NotNull(sentFiles);
         Assert.Equal(new[] { "prior_notes" }, sentFiles!.Keys.ToArray());
-        // #428: a slot lists its documents; this form attaches one, so one.
+        // #428: an input lists its documents; this form attaches one, so one.
         var document = Assert.Single(sentFiles["prior_notes"]);
         Assert.Equal("Old records.", System.Text.Encoding.UTF8.GetString(document.Content));
     }
@@ -571,7 +571,7 @@ public class ConsultsSetupTests : ClientRenderTestContext
 /// <summary>
 /// v8 intake (#316): a declared type decides the control, and — for boolean —
 /// what the wire carries. Typed inputs are strict, so sending "true" for a
-/// boolean slot is a 422; this is the surface that makes such a package
+/// boolean input is a 422; this is the surface that makes such a package
 /// submittable at all.
 /// </summary>
 public class ConsultsTypedIntakeTests : ClientRenderTestContext
@@ -599,10 +599,10 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void ADeclaredContentChannel_LabelsTheSlot()
+    public void ADeclaredContentChannel_LabelsTheInput()
     {
-        // #728: a transcript slot is a text slot (so it still offers the file
-        // upload) marked with a channel chip; a form slot names its source.
+        // #728: a transcript input is a text input (so it still offers the file
+        // upload) marked with a channel chip; a form input names its source.
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: new[]
         {
             new WorkflowPackageInputResponse("meeting_transcript", "Meeting transcript", false,
@@ -616,14 +616,14 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         var chips = page.FindAll(".input-field__channel").Select(c => c.TextContent.Trim()).ToList();
         Assert.Contains("Transcript", chips);
         Assert.Contains("From a form", chips);
-        // The transcript slot is still a text slot: its document upload is present.
+        // The transcript input is still a text input: its document upload is present.
         Assert.NotEmpty(page.FindAll("input[type=file]"));
     }
 
     [Fact]
-    public void AnImageChannel_LabelsTheSlot_AndKeepsItsUpload()
+    public void AnImageChannel_LabelsTheInput_AndKeepsItsUpload()
     {
-        // #730: an image slot is a text slot marked with the "Image" chip; it
+        // #730: an image input is a text input marked with the "Image" chip; it
         // still offers the file upload — the uploaded image is OCR'd into text.
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: new[]
         {
@@ -639,10 +639,10 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void AnAmbientNoteChannel_LabelsTheSlot_AndKeepsItsUpload()
+    public void AnAmbientNoteChannel_LabelsTheInput_AndKeepsItsUpload()
     {
-        // #673: an ambient-note slot is a text slot marked with the "Ambient note"
-        // chip; it still offers the file upload — the note's text fills the slot.
+        // #673: an ambient-note input is a text input marked with the "Ambient note"
+        // chip; it still offers the file upload — the note's text fills the input.
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: new[]
         {
             new WorkflowPackageInputResponse("encounter_note", "Encounter note", false,
@@ -657,7 +657,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void AUnionSlot_RendersItsPrimaryArmControl_AndNamesTheAlternatives()
+    public void AUnionInput_RendersItsPrimaryArmControl_AndNamesTheAlternatives()
     {
         // #729: a union renders the first arm's control (text -> textarea) and a
         // chip naming the alternatives; a caller may send another arm as JSON.
@@ -694,7 +694,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     public void ABooleanTravelsAsAJsonBoolean_AndADateAsItsCanonicalString()
     {
         // The reason this issue blocked the demo package: the form used to send
-        // a string map, and a boolean slot rejects "true" with a 422.
+        // a string map, and a boolean input rejects "true" with a 422.
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: TypedInputs());
 
         IReadOnlyDictionary<string, ConsultInputValue>? sent = null;
@@ -794,7 +794,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     [Fact]
     public void ANonNumber_NamesTheFieldAndHoldsTheRun()
     {
-        // On an OPTIONAL slot: a value that is present and wrong must not be
+        // On an OPTIONAL input: a value that is present and wrong must not be
         // quietly omitted. Clearing it reopens the gate.
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNumber(), specVersion: 9);
 
@@ -1032,7 +1032,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     [Fact]
     public void ARequiredArrayWithNoRows_IsSurfaced_NotSilentlyGated()
     {
-        // No rows is absent, and a required slot cannot be absent — but that is
+        // No rows is absent, and a required input cannot be absent — but that is
         // surfaced on a submit attempt, not left as a silent disable (#683).
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(required: true), specVersion: 9);
 
@@ -1123,7 +1123,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         Assert.Equal(new[] { "", "clinic", "ward" }, options);
     }
 
-    // ----- #429: several documents for one slot ----------------------------
+    // ----- #429: several documents for one input ----------------------------
 
     /// <summary>Each file reads as its own text, so order is observable.</summary>
     private void WithExtractionOfEachFile() =>
@@ -1173,7 +1173,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         Assert.Equal(
             new[] { "First note.", "Second note." },
             page.FindAll(".input-field__document .input-field__preview").Select(preview => preview.TextContent.Trim()));
-        // #872 Task 5: no rows were added, but a mixed slot still offers to
+        // #872 Task 5: no rows were added, but a mixed input still offers to
         // add a typed one alongside the documents.
         Assert.Empty(page.FindAll(".input-field__row"));
         Assert.NotEmpty(page.FindAll(".input-field__add"));
@@ -1228,7 +1228,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     [Fact]
     public void MixedArrayInput_SubmitsTypedRowsAndFilesForTheSameId()
     {
-        // #872: a several-document (array<text>) slot is no longer typed XOR
+        // #872: a several-document (array<text>) input is no longer typed XOR
         // filed — a typed row and an attached document can travel together,
         // the typed portion via Inputs and the document via Files.
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
@@ -1256,7 +1256,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     [Fact]
     public void MixedArray_ShowsTypedRowsAndDocumentChipsTogether()
     {
-        // #872 Task 5: a several-document slot renders its typed rows and its
+        // #872 Task 5: a several-document input renders its typed rows and its
         // attached documents at the same time — attaching a file no longer
         // hides the rows underneath it.
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
@@ -1320,7 +1320,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     [Fact]
     public void OnlyAnArrayOfTextTakesSeveral()
     {
-        // A text slot's picker is single; an array of text's is multiple; an
+        // A text input's picker is single; an array of text's is multiple; an
         // array of anything else has none — the server's own rule.
         var inputs = new[]
         {
@@ -1436,7 +1436,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     [Fact]
     public async Task SwitchingPackages_CarriesAChosenBoolean()
     {
-        // #429: the whole answer carries into a slot the next package still
+        // #429: the whole answer carries into an input the next package still
         // declares with the same shape. A chosen boolean used to be dropped
         // here — Value carried, Flag did not.
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: TypedInputs());
@@ -1456,7 +1456,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     [Fact]
     public void AV7Package_RendersExactlyAsItDid()
     {
-        // Every v5-v7 input is a text slot, so nothing about the old form moves.
+        // Every v5-v7 input is a text input, so nothing about the old form moves.
         WithPinnedPackage(
             blocks: new[] { Block("s:hpi", "History") },
             inputs: new[] { new WorkflowPackageInputResponse("consult_draft", "Consult draft", true) });

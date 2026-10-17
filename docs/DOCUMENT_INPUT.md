@@ -5,7 +5,7 @@ verified in production — #235 the parser, #236 the app source, #237 the
 email source, #238 files at job start, #240 DOCX, #241 hardening, #242
 the decoding defect, plus #251 lone-CR normalisation, #253 the extractor
 id, and #254/#256 the verification tooling. One thing is left, and it is
-tracked in #266: per-account rate limiting.** v7 declared named input slots (#209) and
+tracked in #266: per-account rate limiting.** v7 declared named inputs (#209) and
 both intake paths then stalled at `.txt`/`.md`, which is not the shape
 referrals arrive in. Decisions taken with the operator: the file itself
 is submitted rather than text extracted from it in the browser;
@@ -28,7 +28,7 @@ So a component that turns bytes into a string, running before the map is
 built, changes nothing else. `package-format-v7-design.md` already fixed
 this boundary from both ends: § 7's closure set puts *"non-text inputs
 (files bind through extraction … never as binary inputs)"* out of scope,
-and § 11 names extraction as the thing that *"feeds text into slots and
+and § 11 names extraction as the thing that *"feeds text into inputs and
 stays outside the format"*.
 
 **There is no `specVersion` 8 here.** The package format does not learn
@@ -385,7 +385,7 @@ yield 400 KB, and a 1 MB zip may expand to a gigabyte.
 | Pages parsed | 100 | Parse cost is per page, not per byte |
 | Decompressed size | 100 MB | A container's cost is not its size |
 | Characters extracted | 256 KB | `ConsultGenerationJobs.MaxInputLength` |
-| Characters per slot, all its documents | 256 KB | The same bound, summed after extraction (#428) |
+| Characters per input, all its documents | 256 KB | The same bound, summed after extraction (#428) |
 | Bytes per email, all attachments | 20 MB | A message-level property |
 | Bytes per job request, all files | 20 MB | Likewise, per request |
 
@@ -408,7 +408,7 @@ yield 400 KB, and a 1 MB zip may expand to a gigabyte.
 > memory bound is #241's.
 
 > **Amended 2026-08-22 during #428.** Two character caps, and they
-> compose. The parser bounds each document at 256 KB as before; a slot
+> compose. The parser bounds each document at 256 KB as before; an input
 > filled by **several** documents (v9, `package-format-v9-design.md`
 > § 7) is also held as a whole to `MaxInputLength` — the same bound the
 > door holds typed text to — summed at the starter **after** extraction,
@@ -416,16 +416,16 @@ yield 400 KB, and a 1 MB zip may expand to a gigabyte.
 > (422; the email door files it as a rejected attachment), never
 > truncated: *"Input 'prior_notes' exceeds 256 KB across its 3
 > documents."* Raw extracted lengths, before normalisation, as the door's
-> are. A slot may list at most 256 documents, the array bound.
+> are. An input may list at most 256 documents, the array bound.
 
 ## 5. The app source
 
-- **A slot holds either typed text or an attached file, never both.**
+- **An input holds either typed text or an attached file, never both.**
   Attaching replaces the textarea with a file chip and a **read-only
   preview** of the extracted text; removing the file restores the
   textarea with whatever was there before.
 - **Why the text is not editable.** If the client submitted text, then
-  "this slot was machine-read from a PDF" would be a claim the client
+  "this input was machine-read from a PDF" would be a claim the client
   makes about itself, while the same statement on the email path is a
   fact the server observed. Asymmetric trust in a provenance record is
   worse than no record. Submitting the file makes both doors mean the
@@ -499,7 +499,7 @@ POST /api/ConsultGenerationJobs
   rides the existing JSON path — no multipart parser, no blob-plus-SAS
   upload, no staging table, and **no PHI at rest** between attaching and
   submitting.
-- Supplying both text and a file for one slot is **rejected**; file ids
+- Supplying both text and a file for one input is **rejected**; file ids
   are validated against the declared set exactly as
   `ResolveEffectiveInputs` validates unknown ids.
 - The server extracts again at job start. That is deterministic for the
@@ -510,7 +510,7 @@ POST /api/ConsultGenerationJobs
   base64 and then a ~26 MB UTF-16 string; deserialise from the stream
   instead so the bytes are parsed once.
 
-> **Amended 2026-08-22 during #428.** `inputFiles` maps a slot to a
+> **Amended 2026-08-22 during #428.** `inputFiles` maps an input to a
 > **list** of documents, in the order supplied; one document is a
 > one-element list:
 >
@@ -519,20 +519,20 @@ POST /api/ConsultGenerationJobs
 >                                    { "contentType": "text/plain",      "content": "<base64>" } ] } }
 > ```
 >
-> Only a slot declared `type: array, items: text` takes several — each
+> Only an input declared `type: array, items: text` takes several — each
 > document becomes one element, in that order, which is the order the
-> elements hash in. A `text` slot takes exactly one and the starter
+> elements hash in. A `text` input takes exactly one and the starter
 > refuses more by name once it knows the declaration: *"Input
 > 'consult_draft' is a text and takes one document; declare it an array
-> of text to supply several."* One document into an array slot is a
-> one-element array; one into a text slot is the text it always was, so
+> of text to supply several."* One document into an array input is a
+> one-element array; one into a text input is the text it always was, so
 > hash definitions 3 and 4 are unchanged. The door bounds each document
 > as it bounded the one and names a document by its position — counted
 > from one, only when there is more than one: *"Input file 'prior_notes'
 > document 2 is empty."* An empty list is refused like an empty file.
-> The #290 content floor measures the **slot**: an array of text is
+> The #290 content floor measures the **input**: an array of text is
 > prose, however supplied, and one thin document among four is not an
-> empty referral. The setup form still attaches one file per slot; the
+> empty referral. The setup form still attaches one file per input; the
 > multi-file picker is #429's.
 
 ## 6. The email source
@@ -559,11 +559,11 @@ POST /api/ConsultGenerationJobs
 > place it reads the app door's — one extraction site, and an emailed
 > document records the same origin an attached one does. Two consequences
 > the design above did not state. A package declaring **no inputs**
-> (v5/v6) now **refuses attachments**: it has one implicit slot, the old
+> (v5/v6) now **refuses attachments**: it has one implicit input, the old
 > behaviour concatenated them into the body, and that only worked while
 > email decoded files itself. And the reply names the cause for every
 > rejection here, not only the unreadable ones — the resolver's reasons
-> were already written for the sender and name only slot ids, which are
+> were already written for the sender and name only input ids, which are
 > authored package content.
 
 - **Honest boundary**: this is the one place the no-PHI reply rule bends
@@ -590,7 +590,7 @@ POST /api/ConsultGenerationJobs
 > **Outlook sets `isInline: true` on signature images.** The skip at the top
 > of `GraphMailClient.Classify` is therefore load-bearing in both directions.
 > Were it wrong, every signed email would bounce; and because a lone unmatched
-> readable attachment is assigned to the one free slot
+> readable attachment is assigned to the one free input
 > (`EmailAttachmentInputs.cs`), a signature logo could otherwise land in
 > `prior_notes` as a silent wrong input. Verified by a signed message whose
 > provenance shows `consult_draft` read and `prior_notes` empty.
@@ -605,30 +605,30 @@ POST /api/ConsultGenerationJobs
 > file → Share link* is the likeliest producer — becomes available, this is
 > the one case left to measure.
 
-> **Amended 2026-08-22 during #428.** Several attachments for one slot
-> are accepted when the slot is an array of text and the sender names
+> **Amended 2026-08-22 during #428.** Several attachments for one input
+> are accepted when the input is an array of text and the sender names
 > their order: `prior_notes-1.pdf`, `prior_notes-2.docx`, … numbered 1 to
 > n with no gaps and no repeats. The numbers are read as numbers (ten
 > after two), the order is the sender's, and it is the order the elements
 > hash in — the only ordering signal a message carries is the one the
 > sender wrote, since a no-PHI reply can confirm nothing back. Refused,
-> each by a sentence naming only the slot: a numbered stem for a slot
+> each by a sentence naming only the input: a numbered stem for an input
 > that takes one (*"takes one document and cannot be numbered"*), a gap
 > (*"numbered with gaps"*), a repeat (*"more than one document with the
 > same number"*), a plain stem beside a numbered one (*"supplied both as
 > 'prior_notes' and as numbered files"*). Two **plain** stems for one
-> slot keep today's refusal, array slots included. A numbered stem naming
-> no declared slot — `fax-2.pdf` — is the unmatched file it always was.
+> input keep today's refusal, array inputs included. A numbered stem naming
+> no declared input — `fax-2.pdf` — is the unmatched file it always was.
 > The resolver now receives the declarations rather than the ids, since
-> which slot takes several is a question about its type.
+> which input takes several is a question about its type.
 
 ## 7. Provenance
 
-- **Record the origin, beside the hash and not inside it.** Per slot:
+- **Record the origin, beside the hash and not inside it.** Per input:
   whether the text was typed or extracted, the extractor's
   `name/version`, and the page count. `Source` today is only `app` or
   `email` (`ConsultGenerationJobSources`), which cannot express that a
-  slot was machine-read from a document.
+  input was machine-read from a document.
 - **Why it matters here specifically.** `provenance.md` says the
   record's job is that *"the record fully identifies what produced the
   output"*. If a consult says something the referral did not, the first
@@ -663,14 +663,14 @@ POST /api/ConsultGenerationJobs
   jobs already in flight — the discipline #215 and #217 followed.
 
 > **Amended 2026-08-22 during #428.** Per **document**, positionally —
-> `origins[id][i]` describes element `i` of the slot — rather than per
-> slot. Stored beside the #238 field, not in its place: records at rest
+> `origins[id][i]` describes element `i` of the input — rather than per
+> input. Stored beside the #238 field, not in its place: records at rest
 > and instances in flight hold the single shape, so
 > `InputDocumentOrigins` is a new trailing slot on both durable records
 > and a new state field, and new jobs write only it. The response has
-> one map, `inputOrigins`, of slot → list; a record written before this
+> one map, `inputOrigins`, of input → list; a record written before this
 > projects its single origin as a one-element list. History lists one
-> row per document under the slot, in the order supplied; a slot read
+> row per document under the input, in the order supplied; an input read
 > from one keeps its sentence. A document that extracted to nothing is
 > still one element and one origin, so the record says which one it was.
 - **Not in v1**: retaining the source file. The record references
@@ -688,33 +688,33 @@ POST /api/ConsultGenerationJobs
   > **Amended 2026-08-29 (#510).** A second origin kind, `previous-run`:
   > an input copied from one of the same account's completed runs. The
   > request names the run and the deliverable (`InputRefs`, one per
-  > element — a text slot one, an array of text one per entry), never the
+  > element — a text input one, an array of text one per entry), never the
   > text: the starter reads the run (this account's, completed, text still
   > held — a foreign or unknown run is *not found*, never forbidden; a run
   > past the retention sweep is refused naming the day), copies the
-  > deliverable's text into the slot the way it copies a document's, and
+  > deliverable's text into the input the way it copies a document's, and
   > records `{ kind: previous-run, sourceJobId, sourceResultId, textSha256 }`
   > with the copy's canonical digest. The copy is the new job's own input
   > with its own retention clock. The form shows the text so the user sees
   > what is loaded, and never lets it be edited — different words mean
   > removing it and pasting text — so `previous-run` always means
   > byte-for-byte the deliverable. Only a
-  > `document` origin exempts a slot from the cloud-link check (§ 4): a
+  > `document` origin exempts an input from the cloud-link check (§ 4): a
   > previous run's text was typed by someone once.
   > **Amended (#549).** A third origin kind, `rerun`: the whole run
   > replays a completed run's held inputs (`POST
   > ConsultGenerationJobs/{jobId}/Rerun` — no request body; the server
   > reads the held blob's Supplied half under the record's exact package
-  > ref, never a re-resolved pin). Every effective slot records
+  > ref, never a re-resolved pin). Every effective input records
   > `{ kind: rerun, sourceJobId, textSha256 }` with the digest of the
-  > slot's effective value verbatim. A `rerun` origin exempts the
+  > input's effective value verbatim. A `rerun` origin exempts the
   > cloud-link check the way `document` does: the text already ran once,
   > and refusing the replay would refuse what was accepted.
   > **Amended (#546).** The link runs both ways: at start the origins are
   > inverted into the `ConsultGenerationLinks` index (records account,
   > keyed by the source, ids only, never deleted), so the source run's
   > History shows *Used by* rows — which run copied which deliverable
-  > into which slot, and which runs replayed it — while the consumer's
+  > into which input, and which runs replayed it — while the consumer's
   > copied-from line links back. Best-effort at start: a storage blip
   > never refuses the run, and the origins remain the truth.
 
@@ -887,7 +887,7 @@ job start, and email intake.
 > `InputFilePayload` has no filename field at all, so the app and job
 > doors have nothing to leak; email is the only door carrying one, and
 > its rejection paths log `Detail`, which holds either an attachment
-> **size** message or a reject reason naming an input **slot**
+> **size** message or a reject reason naming an input **input**
 > (`consult_draft`), never a file. That is now asserted rather than
 > observed — the tests capture structured values and scopes, not only
 > rendered messages, because Application Insights stores template

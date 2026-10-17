@@ -111,7 +111,7 @@ public class InputContentTests
     public void ARequiredArrayOfText_IsMeasuredAsTheSumOfItsElements()
     {
         // #428: one thin note among several is not an empty referral; several
-        // thin ones are — the slot is measured, not the element.
+        // thin ones are — the input is measured, not the element.
         var manifest = V9Fixtures.WithInput(new("prior_notes", "Prior notes", Required: true, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
 
         Assert.Null(InputContent.FindInputWithoutContent(
@@ -215,7 +215,7 @@ public class InputContentTests
     public void ALinkInAnInputCopiedFromAPreviousRun_IsStillNamed()
     {
         // #510: a previous run's text was typed by someone once, and its
-        // links are as unreachable as any. Only a document exempts a slot.
+        // links are as unreachable as any. Only a document exempts an input.
         var fromARun = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
         {
             ["consult_draft"] = new[] { new ConsultInputOrigin(ConsultInputOriginKinds.PreviousRun, SourceJobId: "0123456789abcdef0123456789abcdef", SourceResultId: "consult") }
@@ -302,7 +302,7 @@ public class InputContentTests
     [Fact]
     public void V7_AnUnacknowledgedShortRequiredInput_IsStillNamed()
     {
-        // Acknowledging a different slot does not waive this one.
+        // Acknowledging a different input does not waive this one.
         Assert.Equal("consult_draft", InputContent.FindInputWithoutContent(
             new ConsultGenerationRequest(null),
             V7(),
@@ -347,7 +347,7 @@ public class InputContentTests
                 40,
                 acknowledged: new[] { "consult_draft", "prior_notes" }));
 
-        // Acknowledging a slot that was never below the floor records nothing.
+        // Acknowledging an input that was never below the floor records nothing.
         Assert.Empty(InputContent.AcknowledgedBelowFloor(
             new ConsultGenerationRequest(null),
             V7(),

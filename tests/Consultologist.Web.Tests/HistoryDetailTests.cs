@@ -716,7 +716,7 @@ public class HistoryDetailTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void ASlotReadFromOneDocument_KeepsTheSentence()
+    public void AnInputReadFromOneDocument_KeepsTheSentence()
     {
         // #428 changed the shape, not the words: one document is the plain
         // sentence, with no list around it.
@@ -806,9 +806,9 @@ public class HistoryDetailTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void ASlotReadFromFourDocuments_ListsOneRowPerDocumentInOrder()
+    public void AnInputReadFromFourDocuments_ListsOneRowPerDocumentInOrder()
     {
-        // One slot, four readings: the slot's row stays one, and the documents
+        // One input, four readings: the input's row stays one, and the documents
         // are listed under it in the order they were supplied.
         WithJob(5, inputOrigins: new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
         {
@@ -1609,7 +1609,7 @@ public class HistoryDetailTests : ClientRenderTestContext
     [Fact]
     public void A549EraRerun_ShowsTheTable_AndNoVerdictLine()
     {
-        // The comparison resolves through the slot origins; the record has no
+        // The comparison resolves through the input origins; the record has no
         // stamped verdict, and no line is guessed.
         WithJob(3, inputOrigins: RerunOrigins(),
             nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus> { ["extract"] = Node("extract", "in1", "outA") });

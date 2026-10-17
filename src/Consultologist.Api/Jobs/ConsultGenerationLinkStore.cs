@@ -10,7 +10,7 @@ namespace Consultologist.Api.Jobs;
 /// #546: one edge of the lineage graph, ids only, never text. The consumer's
 /// own origins name the source (the "copied from" side); this row is the
 /// inversion — keyed by the source so its History can say "used by". Kind is
-/// the origin vocabulary: previous-run edges carry the slot and deliverable
+/// the origin vocabulary: previous-run edges carry the input and deliverable
 /// (one row per copied element — one consumer may copy twice from one
 /// source), a rerun edge is one row for the whole replay.
 /// </summary>
@@ -63,7 +63,7 @@ internal sealed class TableConsultGenerationLinkStore : IConsultGenerationLinkSt
 
     /// <summary>
     /// The consumer-side key. The #545 record says consumerJobId; the
-    /// refinement carries the slot and element so one consumer copying twice
+    /// refinement carries the input and element so one consumer copying twice
     /// from one source keeps both rows. A rerun edge is the bare consumer id
     /// — one row for the whole replay. Upserts are Replace, so a replayed
     /// start writes the same rows again harmlessly.

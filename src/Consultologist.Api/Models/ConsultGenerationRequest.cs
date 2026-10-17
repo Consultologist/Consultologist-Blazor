@@ -8,7 +8,7 @@ namespace Consultologist.Api.Models;
 public record ConsultGenerationRequest(
     // Exactly one of ConsultDraft / Inputs per request. The legacy field stays
     // valid for every package; against a v7 package it back-fills the
-    // consult_draft slot (package-format-v7.md).
+    // consult_draft input (package-format-v7.md).
     string? ConsultDraft,
     string? WorkflowPackage = null,
     // #157: run later — the orchestrator sleeps on a durable timer until
@@ -20,25 +20,25 @@ public record ConsultGenerationRequest(
     // v8 types the value on the wire: a JSON string for text, date and enum,
     // a JSON boolean for boolean (package-format-v8-design.md § 4). A v7
     // caller's {"id": "text"} is unchanged and still valid — every v5–v7
-    // input is a text slot.
+    // input is a text input.
     Dictionary<string, ConsultInputValue>? Inputs = null,
-    // #238: the same slots, filled by documents instead of text. The server
-    // extracts these at job start (docs/DOCUMENT_INPUT.md § 5), so a slot's
+    // #238: the same inputs, filled by documents instead of text. The server
+    // extracts these at job start (docs/DOCUMENT_INPUT.md § 5), so an input's
     // origin is something the server observed rather than something the
-    // caller asserted. A slot appears in one map or the other, never both.
+    // caller asserted. An input appears in one map or the other, never both.
     //
-    // v9 (#428): a slot maps to its documents, in the order supplied. One
-    // document is a one-element list. A slot declared an array of text takes
-    // several, each becoming one element; a text slot takes exactly one, and
+    // v9 (#428): an input maps to its documents, in the order supplied. One
+    // document is a one-element list. An input declared an array of text takes
+    // several, each becoming one element; a text input takes exactly one, and
     // the starter refuses more once it knows the declaration
     // (package-format-v9-design.md § 7).
     Dictionary<string, List<InputFilePayload>>? InputFiles = null,
-    // #510: the same slots, filled from the account's own previous runs. A
-    // slot maps to the deliverables it is copied from, in order — a text slot
+    // #510: the same inputs, filled from the account's own previous runs. A
+    // input maps to the deliverables it is copied from, in order — a text input
     // one, an array of text one per element. The server copies the text at
     // start and records the origin, so a reference is resolved, never
     // trusted: the caller names a run and a deliverable, not what they said.
-    // A slot appears in one map only.
+    // An input appears in one map only.
     Dictionary<string, List<ConsultInputRef>>? InputRefs = null,
     // #540: per filled input, the held form response its value was loaded
     // from — InputRefs' sibling, but an assertion BESIDE the value rather
@@ -55,19 +55,19 @@ public record ConsultGenerationRequest(
     // effectiveInputHash (the hash covers supplied inputs only — that is the
     // construct's point). Appended last, same reason as everything above.
     Dictionary<string, bool>? MacroChoices = null,
-    // #613/#671: the file slots whose supplied documents are transcripts
+    // #613/#671: the file inputs whose supplied documents are transcripts
     // rather than referral documents — a caller assertion BESIDE the value
     // (like InputFormRefs), but needing no verification because the bytes ride
-    // InputFiles inline, with nothing external to resolve. A slot named here
+    // InputFiles inline, with nothing external to resolve. An input named here
     // must appear in InputFiles; its extracted elements stamp the `transcript`
     // origin (ConsultInputOriginKinds.Transcript) instead of `document`.
     // Cleared once origins are stamped, so it never rides the durable payload
     // (the InputFiles/InputFormRefs precedent). Appended last, wire-compat.
     IReadOnlyCollection<string>? TranscriptInputs = null,
-    // #673: the file slots whose supplied documents are ambient-scribe clinical
+    // #673: the file inputs whose supplied documents are ambient-scribe clinical
     // notes (Dragon Copilot) rather than referral documents — the TranscriptInputs
     // shape exactly, a caller assertion beside the value needing no verification
-    // (the bytes ride InputFiles inline). A slot named here must appear in
+    // (the bytes ride InputFiles inline). An input named here must appear in
     // InputFiles; its extracted elements stamp the `ambient-note` origin
     // (ConsultInputOriginKinds.AmbientNote) instead of `document`. A distinct kind
     // from transcript keeps the SaMD/anti-ambient boundary legible. Cleared once
@@ -90,7 +90,7 @@ public sealed record ConsultInputRef(string JobId, string ResultId);
 public sealed record ConsultInputFormRef(string FormId, string ResponseId);
 
 /// <summary>
-/// A document supplied for an input slot. System.Text.Json serialises byte[]
+/// A document supplied for an input. System.Text.Json serialises byte[]
 /// as base64, so this rides the existing JSON body — no multipart parser for
 /// untrusted input, no upload-then-reference staging, and no bytes at rest.
 ///
@@ -104,7 +104,7 @@ public sealed record InputFilePayload(string ContentType, byte[] Content);
 /// #238: what the server observed about where an input's text came from.
 /// Recorded beside the effective-input hash and never inside it — per
 /// document, positionally, since v9 (#428): origins[id][i] describes element
-/// i of the slot.
+/// i of the input.
 ///
 /// Absence means "not recorded" — never "typed". Email jobs supply text until
 /// #237 lands, and every job recorded before this existed has no entry at
@@ -154,8 +154,8 @@ public static class ConsultInputOriginKinds
     public const string PreviousRun = "previous-run";
 
     // #549: the whole run is a replay of one of the account's own completed
-    // runs' held inputs — every effective slot carries one, SourceJobId names
-    // the source, and TextSha256 digests the slot's effective value verbatim
+    // runs' held inputs — every effective input carries one, SourceJobId names
+    // the source, and TextSha256 digests the input's effective value verbatim
     // (equal to the source's by construction, so the two records'
     // effectiveInputHash agree or one of them is wrong).
     public const string Rerun = "rerun";
@@ -210,7 +210,7 @@ public static class ConsultInputOriginKinds
     public const string AmbientNote = "ambient-note";
 
     // #872 (provenance@v2026.09.13): an array element the clinician entered as
-    // text in a slot that also carries documents or previous-run deliverables.
+    // text in an input that also carries documents or previous-run deliverables.
     // Carries only TextSha256; no extractor/pages/file hash. Stamped only for a
     // mixed array — a pure typed input records no origin, as before.
     public const string Typed = "typed";
@@ -230,7 +230,7 @@ public sealed record ConsultTokenUsage(int Input, int Output);
 
 /// <summary>
 /// #546: one "used by" edge on a source run — the consumer's id and how it
-/// used this run: a previous-run copy names the deliverable and the slot it
+/// used this run: a previous-run copy names the deliverable and the input it
 /// filled; a rerun names neither (the whole run was replayed). Ids and
 /// declared words only, never text.
 /// </summary>
@@ -289,8 +289,8 @@ public record ConsultGenerationJobResponse(
     // v9 (#428): one origin per document, positionally. A job recorded
     // before this with one document reads as a one-element list.
     IReadOnlyDictionary<string, IReadOnlyList<ConsultInputOrigin>>? InputOrigins = null,
-    // #729: for each union slot, the value type its supplied value matched
-    // (first-match in declared order). Null when no slot is a union. Recorded
+    // #729: for each union input, the value type its supplied value matched
+    // (first-match in declared order). Null when no input is a union. Recorded
     // beside the input hash, never inside it (provenance@v2026.09.9).
     IReadOnlyDictionary<string, string>? ResolvedInputTypes = null,
     // #315: declared deliverables this job's inputs excluded, with the reason.
@@ -368,7 +368,7 @@ public record ConsultGenerationJobResponse(
     // is held — what History shows; null once dropped or never held.
     IReadOnlyDictionary<string, string>? HeldInputs = null,
     // #582: a rerun's lineage and judgment. RerunOf names the source run
-    // (the slot origins carry it too); RerunVerdict is "pass" | "fail" |
+    // (the input origins carry it too); RerunVerdict is "pass" | "fail" |
     // "no-reproducible-stages" (RerunVerdicts), stamped once at the rerun's
     // completion; RerunDivergence names the first divergent stage on a fail,
     // or "effective-inputs" for the by-construction breach. All null on
@@ -402,7 +402,7 @@ public record ConsultGenerationJobResponse(
     // the referral floor and which the submitter acknowledged as intentionally
     // short — the overrides that let this job start instead of being refused.
     // Recorded beside the input hash, never inside it (attribution). Null when no
-    // slot was overridden and on records predating the field. Appended last.
+    // input was overridden and on records predating the field. Appended last.
     IReadOnlyList<string>? AcknowledgedShortInputs = null,
     // v25 (B7 #1006, provenance@v2026.10.1): the formats catalogue version the
     // job ran under (formats@vYYYY.MM.N) — the registry artifact a 25 node's

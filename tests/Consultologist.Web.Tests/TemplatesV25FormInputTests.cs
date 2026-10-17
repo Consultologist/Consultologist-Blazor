@@ -9,12 +9,12 @@ using PF = Consultologist.PackageFormat;
 namespace Consultologist.Web.Tests;
 
 /// <summary>
-/// v25 C5 (#1011, design §§ 9, 13): a form slot may be an object with declared fields at 25.
-/// The editor's content-channel select offers only the channels the slot's type and version
+/// v25 C5 (#1011, design §§ 9, 13): a form input may be an object with declared fields at 25.
+/// The editor's content-channel select offers only the channels the input's type and version
 /// take (the validator's rule, at every version), a retype drops a channel the new type cannot
 /// be filled from, and the desk says the validator's channel sentences word for word.
 /// </summary>
-public class TemplatesV25FormSlotTests : ClientRenderTestContext
+public class TemplatesV25FormInputTests : ClientRenderTestContext
 {
     private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse? fixture = null, bool withCatalogue = true)
     {
@@ -62,7 +62,7 @@ public class TemplatesV25FormSlotTests : ClientRenderTestContext
 
     // ----- the rule -----
 
-    private static WorkflowManifestReader.InputView Slot(string type, string? elementType = null, IReadOnlyList<string>? types = null) =>
+    private static WorkflowManifestReader.InputView Input(string type, string? elementType = null, IReadOnlyList<string>? types = null) =>
         new("x", "X", false, type == "text" ? null : type,
             Items: elementType is null ? null : new WorkflowManifestReader.ElementView(elementType),
             Types: types);
@@ -83,21 +83,21 @@ public class TemplatesV25FormSlotTests : ClientRenderTestContext
     [InlineData("array", "enum", 25, "")]
     public void ChannelsFor_IsTheValidatorsRule(string type, string? elementType, int specVersion, string expected)
     {
-        var offered = WorkflowExpectedContent.ChannelsFor(Slot(type, elementType), specVersion);
+        var offered = WorkflowExpectedContent.ChannelsFor(Input(type, elementType), specVersion);
 
         Assert.Equal(expected.Length == 0 ? Array.Empty<string>() : expected.Split(','), offered);
     }
 
     [Fact]
-    public void AUnionSlot_TakesNoChannel()
+    public void AUnionInput_TakesNoChannel()
     {
-        Assert.Empty(WorkflowExpectedContent.ChannelsFor(Slot("text", null, new[] { "text", "array" }), 25));
+        Assert.Empty(WorkflowExpectedContent.ChannelsFor(Input("text", null, new[] { "text", "array" }), 25));
     }
 
     // ----- the Inputs pane -----
 
     [Fact]
-    public void AnObjectSlot_At25_OffersFormAlone_AndItsFieldsEditor()
+    public void AnObjectInput_At25_OffersFormAlone_AndItsFieldsEditor()
     {
         var page = RenderEditor();
         Navigate(page, "Inputs");
@@ -112,7 +112,7 @@ public class TemplatesV25FormSlotTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void ATextSlot_OffersEveryChannel_AndAnEnumOnlyForm()
+    public void ATextInput_OffersEveryChannel_AndAnEnumOnlyForm()
     {
         var page = RenderEditor();
         Navigate(page, "Inputs");
@@ -122,7 +122,7 @@ public class TemplatesV25FormSlotTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void AddingAField_ToTheFormSlot_RoundTrips_AndTheRegistryAccepts()
+    public void AddingAField_ToTheFormInput_RoundTrips_AndTheRegistryAccepts()
     {
         var page = RenderEditor();
         CapturePublish();
@@ -155,7 +155,7 @@ public class TemplatesV25FormSlotTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void RetypingASlot_DropsAChannelTheNewTypeCannotTake_AndKeepsOneItCan()
+    public void RetypingAnInput_DropsAChannelTheNewTypeCannotTake_AndKeepsOneItCan()
     {
         var page = RenderEditor(EditorFixtures.V17ChannelAndUnion());
         CapturePublish();
@@ -201,17 +201,17 @@ public class TemplatesV25FormSlotTests : ClientRenderTestContext
         yield return new object[] { "form on an object with no fields (25)", 25, new Action<System.Text.Json.Nodes.JsonObject>(root => InputObject(root, "intake").Remove("fields")),
             "Input 'intake' declares expectedContent 'form' on an object with no fields; declare the fields a response fills." };
         yield return new object[] { "form on an array of objects (25)", 25, new Action<System.Text.Json.Nodes.JsonObject>(root => { var i = InputObject(root, "intake"); i["type"] = "array"; i["items"] = "object"; }),
-            "Input 'intake' declares expectedContent 'form', which a slot of type 'array' cannot be filled from." };
+            "Input 'intake' declares expectedContent 'form', which an input of type 'array' cannot be filled from." };
         yield return new object[] { "transcript on an enum (25)", 25, new Action<System.Text.Json.Nodes.JsonObject>(root => InputObject(root, "kind")["expectedContent"] = "transcript"),
-            "Input 'kind' declares expectedContent 'transcript', which is only for a text slot or an array of text." };
+            "Input 'kind' declares expectedContent 'transcript', which is only for a text input or an array of text." };
         yield return new object[] { "unknown channel (25)", 25, new Action<System.Text.Json.Nodes.JsonObject>(root => InputObject(root, "notes")["expectedContent"] = "fax"),
             "Input 'notes' declares unknown expectedContent 'fax' (accepted: transcript, form, image, ambient-note)." };
         yield return new object[] { "a channel on a union (17)", 17, new Action<System.Text.Json.Nodes.JsonObject>(root => InputObject(root, "notes")["expectedContent"] = "transcript"),
-            "Input 'notes' declares expectedContent on a union type; a content channel is only for a single-type slot." };
+            "Input 'notes' declares expectedContent on a union type; a content channel is only for a single-type input." };
         yield return new object[] { "form on an object (17)", 17, new Action<System.Text.Json.Nodes.JsonObject>(root => { var i = InputObject(root, "consult_draft"); i["type"] = "object"; i["expectedContent"] = "form"; i["fields"] = System.Text.Json.Nodes.JsonNode.Parse("""[ { "id": "a", "label": "A", "required": false } ]"""); }),
-            "Input 'consult_draft' declares expectedContent 'form', which a slot of type 'object' cannot be filled from." };
+            "Input 'consult_draft' declares expectedContent 'form', which an input of type 'object' cannot be filled from." };
         yield return new object[] { "image on a boolean (17)", 17, new Action<System.Text.Json.Nodes.JsonObject>(root => { var i = InputObject(root, "consult_draft"); i["type"] = "boolean"; i["expectedContent"] = "image"; }),
-            "Input 'consult_draft' declares expectedContent 'image', which is only for a text slot or an array of text." };
+            "Input 'consult_draft' declares expectedContent 'image', which is only for a text input or an array of text." };
     }
 
     [Theory]
@@ -227,12 +227,12 @@ public class TemplatesV25FormSlotTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void Below25_AnObjectSlot_AndAUnion_OfferNoChannel()
+    public void Below25_AnObjectInput_AndAUnion_OfferNoChannel()
     {
         var page = RenderEditor(EditorFixtures.V17ChannelAndUnion());
         Navigate(page, "Inputs");
 
-        // The union slot takes no channel: no select at all.
+        // The union input takes no channel: no select at all.
         Assert.Empty(page.FindAll("fluent-select[aria-label='Content channel for input notes']"));
 
         // An object at 17 takes none either.

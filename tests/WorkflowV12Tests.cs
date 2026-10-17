@@ -699,7 +699,7 @@ public class WorkflowV12SignatureTokenRuntimeTests
     {
         Assert.Equal("Signed Taylor Reyes, MD.", Consultologist.Api.Jobs.ConsultMacroExpander.Expand(
             "Signed {{profile:signature}}.", NoValues, null, NoValues, Facts(Snapshot)));
-        // The § 4 optional-input semantic: the slot renders empty, the
+        // The § 4 optional-input semantic: the input renders empty, the
         // surrounding text lands, and the record names why downstream.
         Assert.Equal("Signed .", Consultologist.Api.Jobs.ConsultMacroExpander.Expand(
             "Signed {{profile:signature}}.", NoValues, null, NoValues, Facts(null)));
@@ -912,7 +912,7 @@ public class WorkflowV12CheckRuntimeTests
 /// v12 rung (h) (#624, design § 13): the record's third state — a refused
 /// document is upserted by ResultId with a "failure" history event naming
 /// the package's sentence, and a check's verdict lives in its own node
-/// slots (never Concepts, which FinalizeJob sheds) and round-trips through
+/// inputs (never Concepts, which FinalizeJob sheds) and round-trips through
 /// ToResponse.
 /// </summary>
 public class WorkflowV12CheckRecordTests
@@ -955,7 +955,7 @@ public class WorkflowV12CheckRecordTests
     }
 
     [Fact]
-    public void ACheckVerdict_LivesInItsOwnSlots_AndRoundTrips()
+    public void ACheckVerdict_LivesInItsOwnInputs_AndRoundTrips()
     {
         var (entity, state) = Job();
 

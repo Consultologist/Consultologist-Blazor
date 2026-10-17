@@ -33,7 +33,7 @@ public sealed record ConsultGenerationJobOrigin(
     bool EmailRequested = true,
     // #549: set only by the rerun door — the completed run whose held inputs
     // this start replays. Server-derived, never from the wire: it makes the
-    // starter stamp a rerun origin on every effective slot.
+    // starter stamp a rerun origin on every effective input.
     string? RerunOfJobId = null,
     // #582: the source's hashes, captured by the rerun door beside the id —
     // the verdict's evidence, seeded onto the new job's record at Initialize.
@@ -57,7 +57,7 @@ public enum ConsultGenerationJobStartError
     // #238: a supplied document could not be read. Well-formed request,
     // unsatisfiable content — 422 like InputsMismatch, not 400.
     InputFileUnreadable,
-    // #428: a slot's documents read to more text than an input may carry.
+    // #428: an input's documents read to more text than an input may carry.
     // Well-formed, every document readable, the sum over the cap — refused,
     // never truncated: a consult written from most of a referral with nothing
     // saying so is the worst available outcome (v9 design § 7).
@@ -70,7 +70,7 @@ public enum ConsultGenerationJobStartError
     // from InputsMismatch, which is about the shape of the request; this is
     // about there being nothing in it to generate from.
     InputWithoutContent,
-    // #510: a slot refers to a previous run that is not this account's (or
+    // #510: an input refers to a previous run that is not this account's (or
     // does not exist — the two are one answer, never a 403), that did not
     // complete or has no such deliverable, or whose produced text the
     // retention sweep has deleted. Well-formed, unsatisfiable: 422.
@@ -87,7 +87,7 @@ public enum ConsultGenerationJobStartError
     // recorded — the outcome carries a job id born Failed.
     NoApplicableDeliverable,
 
-    // #540: a slot's form-response reference names a response that is not
+    // #540: an input's form-response reference names a response that is not
     // this account's (or does not exist — one answer, never a 403), one
     // whose values the discard or the sweep deleted (named by the day), or
     // one whose held answer, coerced by the declaration, does not equal the
@@ -116,8 +116,8 @@ internal sealed record EffectiveInputsResolution(
     // email door may quote it back to the sender. Null for the canonical-form
     // complaints, which end in got '<supplied value>'.
     string? SenderSafeError = null,
-    // #729: for each union slot, the arm the supplied value matched (first-match
-    // in declared order). Null when no slot is a union.
+    // #729: for each union input, the arm the supplied value matched (first-match
+    // in declared order). Null when no input is a union.
     IReadOnlyDictionary<string, string>? ResolvedInputTypes = null);
 
 /// <summary>
@@ -389,7 +389,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // way they always were. A reference that SHARES its id with typed rows
         // or documents is not in resolution.Origins; it rides in
         // resolution.RefGroups and is combined by ExtractInputFilesAsync into
-        // the array<text> slot (typed → documents → previous-run) below.
+        // the array<text> input (typed → documents → previous-run) below.
         // #872 task 3.5 (defensive): a form-ref'd id is under the combine
         // hazard the standalone reference used to be — its Inputs[id] is the
         // value the form response verified, not a typed row to prepend, and a
@@ -483,9 +483,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         }
 
         // #549: a rerun replays the source's held inputs, so every effective
-        // slot names the run it came from. Built server-side like every
+        // input names the run it came from. Built server-side like every
         // origin; the digest is over the effective value verbatim, equal to
-        // the source's slot values by construction.
+        // the source's input values by construction.
         // #872 task 3.5 (defensive): same overwriteForIds, so a ref/form-ref'd
         // id a rerun replays cannot double its origin against a combine
         // either — never observed to reach this state today, but the gate
@@ -520,7 +520,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             package.Manifest,
             inputs.Supplied,
             InputContent.MinimumCharacters,
-            // #802: a slot the submitter acknowledged as intentionally short is
+            // #802: an input the submitter acknowledged as intentionally short is
             // not refused here — the length floor only; the cloud-link guard
             // below is untouched.
             request.AcknowledgedShortInputs);
@@ -551,7 +551,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         // #802: the floor passed; record which required ids were below it and
         // acknowledged, so the record shows the override was conscious. Only the
-        // ids actually overridden — a spurious acknowledgement of a fine slot
+        // ids actually overridden — a spurious acknowledgement of a fine input
         // records nothing.
         var acknowledgedShort = InputContent.AcknowledgedBelowFloor(
             request,
@@ -1466,7 +1466,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// </summary>
     /// <summary>
     /// The result of turning a request's attached documents into text: the
-    /// request with those slots filled and <see cref="ConsultGenerationRequest.InputFiles"/>
+    /// request with those inputs filled and <see cref="ConsultGenerationRequest.InputFiles"/>
     /// cleared, plus what the server observed about each one.
     /// </summary>
     internal sealed record InputFileExtraction(
@@ -1508,8 +1508,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
     // #874: the elements a previous-run reference resolved to, kept beside
     // their positional origins so a downstream owner can fold them into a
-    // mixed array<text> slot (typed rows → documents → previous-run) rather
-    // than overwriting the slot the way a standalone reference does.
+    // mixed array<text> input (typed rows → documents → previous-run) rather
+    // than overwriting the input the way a standalone reference does.
     internal sealed record RefGroup(
         IReadOnlyList<ConsultInputValue> Elements,
         IReadOnlyList<ConsultInputOrigin> Origins);
@@ -1527,7 +1527,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IReadOnlyDictionary<string, RefGroup>? RefGroups = null);
 
     /// <summary>
-    /// #510: copy each referenced deliverable's text into its slot and record
+    /// #510: copy each referenced deliverable's text into its input and record
     /// where it came from. The run must be this account's (a foreign or
     /// unknown id is one answer: not found), completed, still holding its
     /// text, and have the deliverable. The reference itself leaves the
@@ -1549,7 +1549,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             ? new Dictionary<string, ConsultInputValue>(request.Inputs, StringComparer.Ordinal)
             : new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal);
         var origins = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>(StringComparer.Ordinal);
-        // #874: ids whose reference shares the slot with typed rows or
+        // #874: ids whose reference shares the input with typed rows or
         // documents — deferred to ExtractInputFilesAsync's combine.
         var refGroups = new Dictionary<string, RefGroup>(StringComparer.Ordinal);
         var sources = new Dictionary<string, ConsultGenerationJobState?>(StringComparer.Ordinal);
@@ -1557,7 +1557,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         foreach (var (id, refs) in request.InputRefs)
         {
             var texts = new List<ConsultInputValue>();
-            var slotOrigins = new List<ConsultInputOrigin>();
+            var inputOrigins = new List<ConsultInputOrigin>();
 
             foreach (var reference in refs)
             {
@@ -1623,7 +1623,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 }
 
                 texts.Add(ConsultInputValue.OfText(document.Text));
-                slotOrigins.Add(new ConsultInputOrigin(
+                inputOrigins.Add(new ConsultInputOrigin(
                     ConsultInputOriginKinds.PreviousRun,
                     TextSha256: ConsultGenerationProvenance.Sha256Hex(CanonicalText.Normalize(document.Text)),
                     SourceJobId: reference.JobId,
@@ -1632,20 +1632,20 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
             // #874: a reference sharing its id with typed rows or documents
             // is combined with them by ExtractInputFilesAsync, the single
-            // slot-assembly owner — so its value must NOT be written here (that
+            // input-assembly owner — so its value must NOT be written here (that
             // would drop the typed rows the request also carries). Surface the
             // resolved elements + positional origins instead. A reference that
-            // stands alone keeps the original behavior: a text slot takes one,
+            // stands alone keeps the original behavior: a text input takes one,
             // several become an array, and the declaration is checked
             // downstream, the way it is for files.
             if (request.Inputs?.ContainsKey(id) == true || request.InputFiles?.ContainsKey(id) == true)
             {
-                refGroups[id] = new RefGroup(texts, slotOrigins);
+                refGroups[id] = new RefGroup(texts, inputOrigins);
             }
             else
             {
                 inputs[id] = texts.Count == 1 ? texts[0] : ConsultInputValue.OfArray(texts);
-                origins[id] = slotOrigins;
+                origins[id] = inputOrigins;
             }
         }
 
@@ -1984,7 +1984,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         }
 
         // Every declared input, not WorkflowVariableDeclarations.For — that
-        // helper filters to the typed slots, and a text slot fills too.
+        // helper filters to the typed inputs, and a text input fills too.
         var declarations = (manifest.Inputs ?? new List<WorkflowInputSpec>())
             .ToDictionary(input => input.Id, StringComparer.Ordinal);
         var payloads = new Dictionary<(string FormId, string ResponseId), Forms.FormResponsePayload?>();
@@ -2042,7 +2042,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             }
 
             // v25 (B6 #1005): the same coercion the run-at-once door makes —
-            // union-aware; a held JSON object fills an object slot's declared
+            // union-aware; a held JSON object fills an object input's declared
             // fields, a missing required field refusing the start by name.
             var (coerced, misfit) = FormResponseCoercion.CoerceDeclared(declaration, held);
             if (misfit != null)
@@ -2108,11 +2108,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
     /// <summary>
     /// #546: the lineage edges this start creates, from the final origins.
-    /// One row per previous-run element (slot id + element index, so one
+    /// One row per previous-run element (input id + element index, so one
     /// consumer copying twice from one source keeps both rows) and exactly
-    /// one row for a replay — never one per rerun slot origin, which would
+    /// one row for a replay — never one per rerun input origin, which would
     /// spell one logical edge N times. Deterministic order for the tests:
-    /// the rerun edge first, then previous-run edges by slot id.
+    /// the rerun edge first, then previous-run edges by input id.
     /// </summary>
     internal static IReadOnlyList<ConsultGenerationLink> LinksFrom(
         string jobId,
@@ -2129,17 +2129,17 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 rerunOfJobId, jobId, ConsultInputOriginKinds.Rerun, null, null, appUserId, now));
         }
 
-        foreach (var (inputId, slotOrigins) in (origins ?? new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>())
+        foreach (var (inputId, inputOrigins) in (origins ?? new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>())
             .OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
-            for (var index = 0; index < slotOrigins.Count; index++)
+            for (var index = 0; index < inputOrigins.Count; index++)
             {
-                var slotOrigin = slotOrigins[index];
-                if (slotOrigin.Kind == ConsultInputOriginKinds.PreviousRun && slotOrigin.SourceJobId != null)
+                var inputOrigin = inputOrigins[index];
+                if (inputOrigin.Kind == ConsultInputOriginKinds.PreviousRun && inputOrigin.SourceJobId != null)
                 {
                     links.Add(new ConsultGenerationLink(
-                        slotOrigin.SourceJobId, jobId, ConsultInputOriginKinds.PreviousRun,
-                        inputId, slotOrigin.SourceResultId, appUserId, now, index));
+                        inputOrigin.SourceJobId, jobId, ConsultInputOriginKinds.PreviousRun,
+                        inputId, inputOrigin.SourceResultId, appUserId, now, index));
                 }
             }
         }
@@ -2165,14 +2165,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IReadOnlyCollection<string>? excludeFromCombine = null,
         // #874: previous-run references that share an id with typed rows or
         // documents (ResolveInputRefsAsync surfaced them here rather than
-        // writing the slot). This method is the single owner that assembles
-        // the mixed array<text> slot — typed rows → documents → previous-run —
+        // writing the input). This method is the single owner that assembles
+        // the mixed array<text> input — typed rows → documents → previous-run —
         // for both the file-bearing ids (the loop below) and the ref-only ids
         // (the post-loop after it). Null when nothing combined.
         IReadOnlyDictionary<string, RefGroup>? refGroups = null)
     {
         // #874: refGroups can carry ids with NO file (typed + previous-run,
-        // no document), so a request with only references still has slots to
+        // no document), so a request with only references still has inputs to
         // assemble here.
         if (request.InputFiles is not { Count: > 0 } && refGroups is not { Count: > 0 })
         {
@@ -2188,9 +2188,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var combinedRefIds = new HashSet<string>(StringComparer.Ordinal);
 
         // #872/#874: a positional `typed` origin for a row already sitting in
-        // the slot, and the raw (pre-normalisation) length the aggregate cap
+        // the input, and the raw (pre-normalisation) length the aggregate cap
         // counts — both shared by the file-loop combine and the ref-only
-        // post-loop so the two assemble a mixed slot identically.
+        // post-loop so the two assemble a mixed input identically.
         static ConsultInputOrigin TypedOrigin(ConsultInputValue element) =>
             new(ConsultInputOriginKinds.Typed, null, null, false,
                 TextSha256: ConsultGenerationProvenance.Sha256Hex(
@@ -2199,7 +2199,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         static int RawLength(ConsultInputValue element) =>
             (element.HasCanonical ? element.Canonical : element.AsJson()).Length;
 
-        // v5/v6 declare nothing: the one implicit slot is a text.
+        // v5/v6 declare nothing: the one implicit input is a text.
         var declared = manifest.SpecVersion >= 7
             ? (manifest.Inputs ?? []).ToDictionary(input => input.Id, StringComparer.Ordinal)
             : new Dictionary<string, WorkflowInputSpec>(StringComparer.Ordinal)
@@ -2211,11 +2211,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             .OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
             // #428: several documents become the elements of an array of text
-            // (v9 design § 7). Anything else takes one — a text slot because
+            // (v9 design § 7). Anything else takes one — a text input because
             // concatenation would have to invent a boundary the request is
             // careful never to carry, every other type because a document is
             // text. Checked before any bytes are parsed, once the declaration
-            // is known; a lone document into an undeclared slot keeps today's
+            // is known; a lone document into an undeclared input keeps today's
             // path and is refused by name further on.
             var spec = declared.GetValueOrDefault(id);
             var several = spec != null
@@ -2230,7 +2230,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // other type keeps the door's old, unconditional refusal: nobody
             // needs both, and choosing one would drop the other silently.
             // #874: the previous-run twin of the same rule, relocated from the
-            // same wire door for the same reason — a scalar slot cannot hold a
+            // same wire door for the same reason — a scalar input cannot hold a
             // document AND a reference, but an array<text> one combines them.
             if (!several && request.Inputs?.ContainsKey(id) == true)
             {
@@ -2280,17 +2280,17 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     request, null, takesOne, null, ConsultGenerationJobStartError.InputsMismatch, SenderSafeError: takesOne);
             }
 
-            // #613/#671: a slot the caller marked a transcript stamps that
+            // #613/#671: an input the caller marked a transcript stamps that
             // origin for every element it holds; every other file is a
-            // document. #728: a slot the package DECLARES a transcript
+            // document. #728: an input the package DECLARES a transcript
             // (expectedContent) stamps it too, so the origin is right whatever
             // client submitted — the declaration is authoritative, the caller
-            // flag still serves an undeclared slot (the Zoom satellite). Only
+            // flag still serves an undeclared input (the Zoom satellite). Only
             // the label changes — the observed digests, extractor and page
             // count below are computed identically.
             // #673: an ambient-scribe note is the transcript's twin — a package
             // declaration (expectedContent) or a caller flag, same as transcript,
-            // but its own origin kind. Transcript is checked first; a slot is one
+            // but its own origin kind. Transcript is checked first; an input is one
             // or the other, never both.
             var kind = spec?.ExpectedContent == WorkflowExpectedContent.Transcript
                     || request.TranscriptInputs?.Contains(id) == true
@@ -2301,13 +2301,13 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     : ConsultInputOriginKinds.Document;
 
             var texts = new List<ConsultInputValue>(documents.Count);
-            var slotOrigins = new List<ConsultInputOrigin>(documents.Count);
+            var inputOrigins = new List<ConsultInputOrigin>(documents.Count);
 
             // #872 (final review, finding 1): a several id's typed rows,
             // already sitting in inputs[id] when there's a combine ahead
-            // (below), share the same slot and the same cap as its
+            // (below), share the same input and the same cap as its
             // documents — so the aggregate total starts from their length
-            // rather than zero, or a combined slot could carry unbounded
+            // rather than zero, or a combined input could carry unbounded
             // typed text behind one small document. Same text as the
             // `typed` origin hashes, so this is exactly what the combine
             // will add.
@@ -2340,7 +2340,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 }
 
                 // The aggregate cap (v9 design § 7): each document is bounded
-                // by the parser, the slot by what an input may carry — the
+                // by the parser, the input by what an input may carry — the
                 // same bound the door holds typed text to, first knowable
                 // here. Raw lengths, before normalisation, as the door's are.
                 total += result.Text!.Length;
@@ -2362,10 +2362,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // hashes the record carries for one document are the file and
                 // exactly the bytes the input hash saw for it.
                 // #730: an OCR'd image stamps the `image` origin, observed from
-                // the bytes — it wins over the slot's declaration (image-ness is
-                // a server fact). Every other element keeps the slot's kind.
+                // the bytes — it wins over the input's declaration (image-ness is
+                // a server fact). Every other element keeps the input's kind.
                 var elementKind = result.FromImage ? ConsultInputOriginKinds.Image : kind;
-                slotOrigins.Add(new ConsultInputOrigin(
+                inputOrigins.Add(new ConsultInputOrigin(
                     elementKind,
                     result.ExtractorId,
                     result.PageCount,
@@ -2374,7 +2374,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     TextSha256: ConsultGenerationProvenance.Sha256Hex(CanonicalText.Normalize(result.Text!))));
             }
 
-            // #872: for a mixed array<text> slot the request may already carry
+            // #872: for a mixed array<text> input the request may already carry
             // typed rows in inputs[id]; keep them, in order, ahead of the
             // documents, each with a positional `typed` origin. Round 1: an id
             // ResolveInputRefsAsync already resolved (or, per the task 3.5
@@ -2384,7 +2384,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // So `several` here is never also an excluded id.
             if (several)
             {
-                // #874: a reference sharing this slot is the third source —
+                // #874: a reference sharing this input is the third source —
                 // typed rows → documents → previous-run. Its elements are
                 // already extracted text, so they add no parse cost, but they
                 // count toward the same aggregate cap the typed rows and
@@ -2407,14 +2407,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // the aggregate cap with the same rows this combines.
                 var refCount = refGroup?.Elements.Count ?? 0;
                 var combined = new List<ConsultInputValue>(typedElements.Count + texts.Count + refCount);
-                var combinedOrigins = new List<ConsultInputOrigin>(typedElements.Count + slotOrigins.Count + refCount);
+                var combinedOrigins = new List<ConsultInputOrigin>(typedElements.Count + inputOrigins.Count + refCount);
                 foreach (var element in typedElements)
                 {
                     combined.Add(element);
                     combinedOrigins.Add(TypedOrigin(element));
                 }
                 combined.AddRange(texts);
-                combinedOrigins.AddRange(slotOrigins);
+                combinedOrigins.AddRange(inputOrigins);
                 if (refGroup != null)
                 {
                     combined.AddRange(refGroup.Elements);
@@ -2427,22 +2427,22 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             }
             else
             {
-                // A single document into a text (non-several) slot is the
+                // A single document into a text (non-several) input is the
                 // text it always was, so hash definitions 3 and 4 see the
                 // same bytes they did — unaffected by the combine above.
                 inputs[id] = texts[0];
-                origins[id] = slotOrigins;
+                origins[id] = inputOrigins;
             }
         }
 
         // #874: a previous-run reference sharing its id with typed rows but
         // NO document never enters the file loop above (nothing to extract) —
-        // assemble it here, the single remaining slot-assembly path, in the
+        // assemble it here, the single remaining input-assembly path, in the
         // same typed → previous-run order and under the same aggregate cap. A
         // reference whose id also had documents was already folded in above
-        // (combinedRefIds), and a standalone reference wrote its own slot in
+        // (combinedRefIds), and a standalone reference wrote its own input in
         // ResolveInputRefsAsync and never reached refGroups at all — so every
-        // id left here shares its slot with a typed value.
+        // id left here shares its input with a typed value.
         foreach (var (id, refGroup) in (refGroups ?? new Dictionary<string, RefGroup>())
             .OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
@@ -2474,11 +2474,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     request, null, collisionSentence, null, ConsultGenerationJobStartError.InputsMismatch, SenderSafeError: collisionSentence);
             }
 
-            // A scalar slot cannot hold both a typed value and a reference —
+            // A scalar input cannot hold both a typed value and a reference —
             // the manifest-aware twin of ValidateRequest's old text+ref refusal
             // (relocated for #874, exactly as the text+file one was for #872,
             // because only here is a declared array<text> distinguishable from
-            // a scalar). An array<text> slot combines them below.
+            // a scalar). An array<text> input combines them below.
             if (!several)
             {
                 var bothSentence = $"Input '{id}' was supplied as both text and a previous run.";
@@ -2604,7 +2604,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
                 // v9 layer 1 (#421): the draft folds into the v5/v6 shape through
                 // its canonical string, which structure does not have. Refused
-                // here, where the slot can be named, rather than thrown at the
+                // here, where the input can be named, rather than thrown at the
                 // fold. An authored id and fixed prose, so sender-safe.
                 if (request.Inputs.TryGetValue(ConsultDraftInputId, out var draft)
                     && draft.Kind is ConsultInputKind.Number or ConsultInputKind.Object or ConsultInputKind.Array)
@@ -2641,7 +2641,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // No SenderSafeError, deliberately: these ids are the CALLER's, and
             // on the email door an input id is an attachment's filename stem —
             // "Smith_John_referral" (EmailAttachmentInputs). Email cannot in
-            // fact reach this branch, since it only ever assigns slots it
+            // fact reach this branch, since it only ever assigns inputs it
             // matched against declared ids, but the guarantee is about the
             // sentence rather than the door that produced it.
             return new EffectiveInputsResolution(null, null,
@@ -2667,7 +2667,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // silently rewriting '2026-8-1' would hash a value nobody sent, and
         // provenance would record input that never arrived. An absent optional
         // is not checked: absence is not a malformed value.
-        // #729: a union slot's value must match one of its arms; the matched
+        // #729: a union input's value must match one of its arms; the matched
         // arm (first in declared order) is recorded for provenance.
         var resolvedTypes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var input in declared)
@@ -2693,7 +2693,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             if (expected != null)
             {
                 // No SenderSafeError: every canonical-form complaint ends in
-                // got '<the supplied value>'. A date slot's rejected value is a
+                // got '<the supplied value>'. A date input's rejected value is a
                 // date of service — the plain case for why a refusal reply may
                 // not quote what was sent. The web door still shows it.
                 return new EffectiveInputsResolution(null, null, $"Input '{input.Id}' {expected}");
@@ -2720,9 +2720,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     }
 
     /// <summary>
-    /// #729: which arm of a union slot the supplied value matches — the first,
+    /// #729: which arm of a union input the supplied value matches — the first,
     /// in declared order, whose per-arm complaint is null. Reuses the whole
-    /// ValueComplaint machinery per arm (the slot's one items/fields/values
+    /// ValueComplaint machinery per arm (the input's one items/fields/values
     /// serves the sub-declaring arm). Returns the matched arm, or a combined
     /// refusal completing "Input '&lt;id&gt;' …" that names every arm.
     /// </summary>
@@ -2759,13 +2759,13 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// <summary>
     /// What is wrong with a supplied value for its declared type, or null when
     /// nothing is. Phrased to complete "Input '&lt;id&gt;' …" so the caller
-    /// always names the slot — a message that says only "invalid date" makes
+    /// always names the input — a message that says only "invalid date" makes
     /// the author hunt for which field.
     ///
     /// v9 (#424): declaration-aware. A number wants a JSON number; an object
     /// wants exactly its declared fields, each a canonical scalar; an array
     /// wants every element canonical for its items, names the element that
-    /// is not, and — required — has at least one. A v8 scalar slot still
+    /// is not, and — required — has at least one. A v8 scalar input still
     /// refuses structure. Messages name kinds, ids and indices, never a
     /// structured value.
     /// </summary>
@@ -2801,7 +2801,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             return value.IsNumber ? null : $"is a number and must be sent as a JSON number; got {value.Described}.";
         }
 
-        // A number, an object, an array or a null in a slot declared as one of
+        // A number, an object, an array or a null in an input declared as one of
         // v8's scalars. The message names the kind, never the value.
         if (value.Kind is ConsultInputKind.Number or ConsultInputKind.Object or ConsultInputKind.Array or ConsultInputKind.Null)
         {

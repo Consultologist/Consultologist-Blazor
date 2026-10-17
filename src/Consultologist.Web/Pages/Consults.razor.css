@@ -363,7 +363,7 @@
 	margin-top: 0.25rem;
 }
 
-/* #236: an attached document replaces this slot's text area — the chip names
+/* #236: an attached document replaces this input's text area — the chip names
    the file, the panel shows what the server read from it. */
 .input-field__chip {
 	display: flex;
@@ -476,7 +476,7 @@
 	font-weight: 500;
 }
 
-/* #429: a slot read from several documents, in the order chosen. */
+/* #429: an input read from several documents, in the order chosen. */
 .input-field__documents {
 	display: flex;
 	flex-direction: column;

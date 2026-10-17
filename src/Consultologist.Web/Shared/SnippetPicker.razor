@@ -1,6 +1,6 @@
 @* #561: a snippet into a text input. The PreviousRunPicker's inline
    disclosure — no dialog infrastructure exists — and the same
-   preventDefault rule on every button: the picker sits inside the slot's
+   preventDefault rule on every button: the picker sits inside the input's
    <label>, and when a click's target is removed by the re-render it causes,
    the browser runs the label's activation on the first labelable control.
    preventDefault cancels that; bUnit has no browser to show it, so it is
@@ -13,7 +13,7 @@
     @* #893: a FluentMenu flyout (keyboard nav + Escape/Tab dismissal + focus for free).
        UseMenuService="false" renders it inline (no FluentMenuProvider); Open is driven
        from the trigger (not FluentMenu's JS Trigger) so it stays bUnit-driveable. The
-       wrapper span still carries the preventDefault the slot <label> needs — FluentButton
+       wrapper span still carries the preventDefault the input <label> needs — FluentButton
        and FluentMenuItem OnClick can't — and now wraps the menu so item clicks don't
        activate the label either. *@
     <span @onclick:preventDefault="true" @onclick:stopPropagation="true">

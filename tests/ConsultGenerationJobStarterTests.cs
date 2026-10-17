@@ -422,7 +422,7 @@ public class ConsultGenerationJobStarterTests
     // ----- #549: a rerun replays the held inputs and names its source -----
 
     [Fact]
-    public async Task ARerunStart_StampsARerunOrigin_OnEveryEffectiveSlot()
+    public async Task ARerunStart_StampsARerunOrigin_OnEveryEffectiveInput()
     {
         _pinResolver.ResolvePinAsync("user-1", Arg.Any<CancellationToken>())
             .Returns(new WorkflowPackageRef("general", "latest"));
@@ -451,7 +451,7 @@ public class ConsultGenerationJobStarterTests
         Assert.Null(outcome.Error);
         // #582: the baseline rides Initialize untouched — the verdict's evidence.
         Assert.Same(baseline, initialize!.RerunBaseline);
-        // #546: one lineage edge for the whole replay, never one per slot.
+        // #546: one lineage edge for the whole replay, never one per input.
         await _links.Received(1).WriteAsync(
             Arg.Is<IReadOnlyList<ConsultGenerationLink>>(links =>
                 links.Count == 1
@@ -464,7 +464,7 @@ public class ConsultGenerationJobStarterTests
         Assert.Equal(ConsultInputOriginKinds.Rerun, origin.Kind);
         Assert.Equal("source-job-1", origin.SourceJobId);
         // The digest is over the effective value verbatim — equal to the
-        // source's slot value by construction.
+        // source's input value by construction.
         Assert.Equal(ConsultGenerationProvenance.Sha256Hex(Referral), origin.TextSha256);
         Assert.Null(origin.SourceResultId);
         Assert.Null(origin.FileSha256);
@@ -1385,7 +1385,7 @@ public class ConsultGenerationJobStarterTests
             orchestrationInput.EffectiveInputHash);
 
         // The declared types reach the orchestrator so the renderer can type
-        // the variables; text slots are omitted, so a v7 job carries nothing.
+        // the variables; text inputs are omitted, so a v7 job carries nothing.
         Assert.Equal(
             new Dictionary<string, string>
             {
@@ -1906,7 +1906,7 @@ public class ConsultGenerationJobStarterTests
     {
         // Same error code as the test above, opposite answer — which is the
         // whole reason this cannot be an allowlist over ConsultGenerationJobStartError.
-        // The complaint ends in got '<the supplied value>', and a date slot's
+        // The complaint ends in got '<the supplied value>', and a date input's
         // rejected value is a date of service.
         WithTypedPackage();
 
@@ -1926,7 +1926,7 @@ public class ConsultGenerationJobStarterTests
     {
         // An input id is an attachment's filename stem on the email door, and a
         // filename can itself be PHI. Email cannot reach this branch — it only
-        // assigns slots it matched against declared ids — but the guarantee is
+        // assigns inputs it matched against declared ids — but the guarantee is
         // about the sentence, not about the door that produced it.
         WithTypedPackage();
 
@@ -2112,7 +2112,7 @@ public class ConsultGenerationJobStarterTests
     [Fact]
     public async Task SpecVersion7Package_StartsWithPrefixedBlocksAndInputMap()
     {
-        // The legacy draft field back-fills the consult_draft slot; the
+        // The legacy draft field back-fills the consult_draft input; the
         // snapshot carries prefixed block ids, the result set, the effective
         // input map, and hash version 3.
         var request = new ConsultGenerationRequest(Referral);
@@ -2280,10 +2280,10 @@ public class ConsultGenerationJobStarterTests
         Assert.Equal(initialize.EffectiveInputHash, orchestrationInput.EffectiveInputHash);
     }
     [Fact]
-    public async Task AttachedDocument_FillsItsSlotAndHashesLikeTheEquivalentText()
+    public async Task AttachedDocument_FillsItsInputAndHashesLikeTheEquivalentText()
     {
-        // The check that proves extraction stayed a pre-step: a slot filled
-        // from a document and the same slot typed by hand are the same input,
+        // The check that proves extraction stayed a pre-step: an input filled
+        // from a document and the same input typed by hand are the same input,
         // and the record says so by producing the same hash.
         var request = new ConsultGenerationRequest(
             null,
@@ -2317,7 +2317,7 @@ public class ConsultGenerationJobStarterTests
         var captured = await StartV7AndCaptureAsync(request);
 
         // #428: per document, positionally — one document, one origin, and
-        // the #238-era single-valued slot left null.
+        // the #238-era single-valued input left null.
         var origin = Assert.Single(Assert.Contains("consult_draft", captured.Initialize!.InputDocumentOrigins));
         Assert.Equal(ConsultInputOriginKinds.Document, origin.Kind);
         Assert.Equal("text/1", origin.Extractor);
@@ -2327,7 +2327,7 @@ public class ConsultGenerationJobStarterTests
     // ----- #613/#671: a file the caller marked a transcript -----
 
     [Fact]
-    public async Task ATranscriptMarkedSlot_IsReadLikeADocument_ButRecordedAsATranscript()
+    public async Task ATranscriptMarkedInput_IsReadLikeADocument_ButRecordedAsATranscript()
     {
         var request = new ConsultGenerationRequest(
             null,
@@ -2357,7 +2357,7 @@ public class ConsultGenerationJobStarterTests
     public async Task AnUploadedImage_IsRecordedAsReadFromAnImage_WithoutAnyDeclaration()
     {
         // Image-ness is observed by the extractor, not asserted by the caller:
-        // a raw image in an undeclared slot stamps the `image` origin because
+        // a raw image in an undeclared input stamps the `image` origin because
         // that is what the bytes were, precedence image > transcript > document.
         _ocr.IsConfigured.Returns(true);
         _ocr.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int?>(), Arg.Any<CancellationToken>())
@@ -2388,7 +2388,7 @@ public class ConsultGenerationJobStarterTests
         Assert.Equal("image", ConsultInputOriginKinds.Image);
     }
 
-    // #729: an optional "notes" slot accepting text OR an array of text.
+    // #729: an optional "notes" input accepting text OR an array of text.
     private static WorkflowInputSpec UnionNotes() =>
         new("notes", "Notes", Required: false,
             Type: new WorkflowTypeSet(new[] { WorkflowInputTypes.Text, WorkflowInputTypes.Array }),
@@ -2432,7 +2432,7 @@ public class ConsultGenerationJobStarterTests
 
         Assert.Null(resolution.Error);
         Assert.Equal("array", resolution.ResolvedInputTypes!["notes"]);
-        // A single-type slot is never recorded — only the union.
+        // A single-type input is never recorded — only the union.
         Assert.DoesNotContain("consult_draft", resolution.ResolvedInputTypes.Keys);
     }
 
@@ -2460,9 +2460,9 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public async Task ADeclaredTranscriptSlot_StampsTheTranscriptOrigin_WithoutACallerAssertion()
+    public async Task ADeclaredTranscriptInput_StampsTheTranscriptOrigin_WithoutACallerAssertion()
     {
-        // #728: the package DECLARES the slot a transcript (expectedContent), so
+        // #728: the package DECLARES the input a transcript (expectedContent), so
         // the origin is right even though the request carries no TranscriptInputs
         // — the SPA never sends it, and the declaration is authoritative.
         var minimal = V7Fixtures.Minimal();
@@ -2527,8 +2527,8 @@ public class ConsultGenerationJobStarterTests
     [Fact]
     public void TheTranscriptMarkerShape_IsCheckedAtTheDoor()
     {
-        // A transcript marker names which file slots are transcripts, so every
-        // id must be a file slot; a blank or unmatched id is a 400 here, like a
+        // A transcript marker names which file inputs are transcripts, so every
+        // id must be a file input; a blank or unmatched id is a 400 here, like a
         // form reference without a value.
         Assert.Contains("was not supplied as a file", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
             null,
@@ -2538,7 +2538,7 @@ public class ConsultGenerationJobStarterTests
             null,
             InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))] },
             TranscriptInputs: new[] { " " })));
-        // A marker that names its file slot is well formed.
+        // A marker that names its file input is well formed.
         Assert.Null(ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
             null,
             InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))] },
@@ -2549,8 +2549,8 @@ public class ConsultGenerationJobStarterTests
     public void TheShortInputAcknowledgement_RefusesOnlyABlankId()
     {
         // #802: unlike the transcript marker, an acknowledgement is not tied to a
-        // file slot (a typed slot can be acknowledged), so only a blank id is a
-        // 400 — an id matching no below-floor slot simply overrides nothing.
+        // file input (a typed input can be acknowledged), so only a blank id is a
+        // 400 — an id matching no below-floor input simply overrides nothing.
         Assert.Contains("blank id", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
             null,
             Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = ConsultInputValue.OfText("Chest pain.") },
@@ -2565,7 +2565,7 @@ public class ConsultGenerationJobStarterTests
     // ----- #673: a file the caller/package declared an ambient-scribe note -----
 
     [Fact]
-    public async Task AnAmbientNoteMarkedSlot_IsReadLikeADocument_ButRecordedAsAnAmbientNote()
+    public async Task AnAmbientNoteMarkedInput_IsReadLikeADocument_ButRecordedAsAnAmbientNote()
     {
         var request = new ConsultGenerationRequest(
             null,
@@ -2590,9 +2590,9 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public async Task ADeclaredAmbientNoteSlot_StampsTheAmbientNoteOrigin_WithoutACallerAssertion()
+    public async Task ADeclaredAmbientNoteInput_StampsTheAmbientNoteOrigin_WithoutACallerAssertion()
     {
-        // The package DECLARES the slot an ambient note (expectedContent), so the
+        // The package DECLARES the input an ambient note (expectedContent), so the
         // origin is right even though the request carries no AmbientNoteInputs.
         var minimal = V7Fixtures.Minimal();
         var manifest = minimal with
@@ -2656,7 +2656,7 @@ public class ConsultGenerationJobStarterTests
     public void TheAmbientNoteMarkerShape_IsCheckedAtTheDoor()
     {
         // The ambient-note marker is the transcript marker's twin: every id must
-        // be a file slot; a blank or unmatched id is a 400 here.
+        // be a file input; a blank or unmatched id is a 400 here.
         Assert.Contains("was not supplied as a file", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
             null,
             Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = ConsultInputValue.OfText(Referral) },
@@ -2665,7 +2665,7 @@ public class ConsultGenerationJobStarterTests
             null,
             InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))] },
             AmbientNoteInputs: new[] { " " })));
-        // A marker that names its file slot is well formed.
+        // A marker that names its file input is well formed.
         Assert.Null(ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
             null,
             InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [new("text/plain", System.Text.Encoding.UTF8.GetBytes(Referral))] },
@@ -2903,9 +2903,9 @@ public class ConsultGenerationJobStarterTests
         Assert.Contains("does not carry input 'consult_draft'", outcome.ErrorDetail);
     }
 
-    // ----- v25 (B6 #1005): an object form slot verified against its held JSON object -----
+    // ----- v25 (B6 #1005): an object form input verified against its held JSON object -----
 
-    private static WorkflowPackageManifest WithIntakeSlot()
+    private static WorkflowPackageManifest WithIntakeInput()
     {
         var minimal = V7Fixtures.Minimal();
         return minimal with
@@ -2943,7 +2943,7 @@ public class ConsultGenerationJobStarterTests
         InputFormRefs: new Dictionary<string, ConsultInputFormRef> { ["intake"] = new("triage-intake", "17") });
 
     [Fact]
-    public async Task AnObjectSlot_FilledFromItsHeldObject_IsVerified_AndStampedOnce()
+    public async Task AnObjectInput_FilledFromItsHeldObject_IsVerified_AndStampedOnce()
     {
         WithHeldObject("""{ "on_letrozole": true, "allergies": ["latex"] }""");
         var filled = ConsultInputValue.OfObject(new[]
@@ -2952,7 +2952,7 @@ public class ConsultGenerationJobStarterTests
             new ConsultInputEntry("on_letrozole", ConsultInputValue.OfBoolean(true)),
         });
 
-        var captured = await StartAndCaptureAsync(WithIntakeSlot(), IntakeRequest(filled));
+        var captured = await StartAndCaptureAsync(WithIntakeInput(), IntakeRequest(filled));
 
         Assert.True(captured.Outcome.Error is null, captured.Outcome.ErrorDetail);
         var input = captured.OrchestrationInput!;
@@ -2969,7 +2969,7 @@ public class ConsultGenerationJobStarterTests
         WithHeldObject("""{ "allergies": ["latex"] }""");
         var claimed = ConsultInputValue.OfObject(new[] { new ConsultInputEntry("allergies", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("latex") })) });
 
-        var outcome = (await StartAndCaptureAsync(WithIntakeSlot(), IntakeRequest(claimed))).Outcome;
+        var outcome = (await StartAndCaptureAsync(WithIntakeInput(), IntakeRequest(claimed))).Outcome;
 
         Assert.Equal(ConsultGenerationJobStartError.InputFormRefMismatch, outcome.Error);
         Assert.Equal("The response's answer for input 'intake' is missing required field 'on_letrozole'.", outcome.ErrorDetail);
@@ -3263,7 +3263,7 @@ public class ConsultGenerationJobStarterTests
         Assert.DoesNotContain(Sentinel, log.Everything, StringComparison.Ordinal);
     }
 
-    // ----- #428: several documents for one slot -------------------------
+    // ----- #428: several documents for one input -------------------------
 
     private static Dictionary<string, ConsultInputValue> V9Typed() => new(StringComparer.Ordinal)
     {
@@ -3313,7 +3313,7 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public async Task FourDocumentsIntoOneSlot_BecomeFourElementsInSuppliedOrderWithFourOrigins()
+    public async Task FourDocumentsIntoOneInput_BecomeFourElementsInSuppliedOrderWithFourOrigins()
     {
         // The issue's first test: order is the caller's and is the order the
         // elements hash in (definition 5), so a reversal would be a different
@@ -3346,7 +3346,7 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public async Task OneDocumentIntoAnArrayOfTextSlot_IsAOneElementArray()
+    public async Task OneDocumentIntoAnArrayOfTextInput_IsAOneElementArray()
     {
         var request = new ConsultGenerationRequest(
             null,
@@ -3366,7 +3366,7 @@ public class ConsultGenerationJobStarterTests
     public async Task ASlotWhoseDocumentsSumPastTheCap_IsRefusedNotTruncated()
     {
         // Each document clears the parser's own bound; together they exceed
-        // what an input may carry. Refused with the slot named and the count
+        // what an input may carry. Refused with the input named and the count
         // of documents — never the text, never a filename.
         var half = new string('a', ConsultGenerationJobs.MaxInputLength / 2);
         var over = await StartAndCaptureAsync(V9Fixtures.Structured(), new ConsultGenerationRequest(
@@ -3390,7 +3390,7 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public async Task TheContentFloor_MeasuresTheSlotNotTheElement()
+    public async Task TheContentFloor_MeasuresTheInputNotTheElement()
     {
         // One thin document among several is not an empty referral; several
         // thin ones are.
@@ -3413,15 +3413,15 @@ public class ConsultGenerationJobStarterTests
 
         // And the origins of the thin documents were never the question: a
         // document that read to little is still recorded — the refusal here
-        // is about the slot, before anything is recorded.
+        // is about the input, before anything is recorded.
         Assert.Null(thin.Initialize);
     }
 
     [Fact]
-    public async Task OneDocumentIntoATextSlot_OnAV8Package_HashesLikeTheEquivalentText()
+    public async Task OneDocumentIntoATextInput_OnAV8Package_HashesLikeTheEquivalentText()
     {
-        // The v8 twin of AttachedDocument_FillsItsSlotAndHashesLikeTheEquivalentText:
-        // a text slot's one document is OfText, so definition 4 sees the
+        // The v8 twin of AttachedDocument_FillsItsInputAndHashesLikeTheEquivalentText:
+        // a text input's one document is OfText, so definition 4 sees the
         // bytes it always did.
         var request = new ConsultGenerationRequest(
             null,
@@ -3448,9 +3448,9 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public async Task TwoDocumentsIntoATextSlot_AreRefusedByName()
+    public async Task TwoDocumentsIntoATextInput_AreRefusedByName()
     {
-        // A text slot takes one: concatenation would invent the boundary the
+        // A text input takes one: concatenation would invent the boundary the
         // request is careful never to carry (v9 design § 7). Refused before a
         // byte is parsed, with a sentence the email door may quote back.
         const string expected = "Input 'consult_draft' is a text and takes one document; declare it an array of text to supply several.";
@@ -3464,7 +3464,7 @@ public class ConsultGenerationJobStarterTests
         Assert.Equal(expected, v9.Outcome.ErrorDetail);
         Assert.Equal(expected, v9.Outcome.SenderSafeDetail);
 
-        // The same on a v7 package, whose every slot is a text.
+        // The same on a v7 package, whose every input is a text.
         var v7 = await StartV7AndCaptureAsync(new ConsultGenerationRequest(
             null,
             InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [Text("One."), Text("Two.")] }));
@@ -3474,7 +3474,7 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public async Task SeveralDocumentsIntoAnUndeclaredSlot_AreRefusedWithoutQuotingTheIdToTheSender()
+    public async Task SeveralDocumentsIntoAnUndeclaredInput_AreRefusedWithoutQuotingTheIdToTheSender()
     {
         var captured = await StartAndCaptureAsync(V9Fixtures.Structured(), new ConsultGenerationRequest(
             null,
@@ -3582,9 +3582,9 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public async Task ExtractInputFiles_ScalarSlotWithOneFile_KeepsTheSingleDocumentOverwrite()
+    public async Task ExtractInputFiles_ScalarInputWithOneFile_KeepsTheSingleDocumentOverwrite()
     {
-        // A text (non-array) slot's one document is still the text itself —
+        // A text (non-array) input's one document is still the text itself —
         // the else arm, unaffected by the combine logic above. No Inputs
         // entry shares the id, so the both-maps refusal below never fires.
         var request = new ConsultGenerationRequest(
@@ -3628,10 +3628,10 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public async Task CombinedSlot_CapCountsTypedTextTogetherWithDocuments()
+    public async Task CombinedInput_CapCountsTypedTextTogetherWithDocuments()
     {
         // Finding 1 (final review, #872): the aggregate cap on a combined
-        // array<text> slot must bound typed rows and documents together, not
+        // array<text> input must bound typed rows and documents together, not
         // just the documents' text — otherwise a caller could stash
         // arbitrarily long text in the typed elements and add only a small
         // document to reach the combine path.
@@ -3668,7 +3668,7 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public async Task MixedTypedAndFileArraySlot_ThroughFullStart_IsAcceptedAndCombines()
+    public async Task MixedTypedAndFileArrayInput_ThroughFullStart_IsAcceptedAndCombines()
     {
         // The full pipeline's own proof, not just ExtractInputFilesAsync in
         // isolation: with the wire door's refusal gone (#872 task 3.5), an
@@ -3822,7 +3822,7 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public async Task ScalarSlotWithTypedTextAndRef_IsRefused_FromTheManifestAwareLayer()
+    public async Task ScalarInputWithTypedTextAndRef_IsRefused_FromTheManifestAwareLayer()
     {
         // #874: the manifest-aware twin of ValidateRequest's old text+ref
         // refusal (relocated). consult_draft is a text (scalar) in this
@@ -3846,9 +3846,9 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public async Task ScalarSlotWithAFileAndRef_IsRefused_FromTheManifestAwareLayer()
+    public async Task ScalarInputWithAFileAndRef_IsRefused_FromTheManifestAwareLayer()
     {
-        // #874: the file+ref twin of the refusal above — a scalar slot given a
+        // #874: the file+ref twin of the refusal above — a scalar input given a
         // document AND a previous-run reference is refused by name from the
         // manifest-aware layer.
         const string expected = "Input 'consult_draft' was supplied as both a file and a previous run.";
@@ -3873,9 +3873,9 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public async Task CombinedSlot_CapCountsPreviousRunTogetherWithTypedText()
+    public async Task CombinedInput_CapCountsPreviousRunTogetherWithTypedText()
     {
-        // #874: the aggregate cap on a combined array<text> slot bounds the
+        // #874: the aggregate cap on a combined array<text> input bounds the
         // previous-run elements alongside the typed rows and documents — the
         // ref-only post-loop's own cap check, exercised directly (no file).
         var manifest = V9Fixtures.WithInput(new WorkflowInputSpec(
@@ -3907,7 +3907,7 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public async Task AFormRefAndAFileForTheSameArraySlot_IsRefused()
+    public async Task AFormRefAndAFileForTheSameArrayInput_IsRefused()
     {
         // #872 review fix (round 1 of task 3.5): the form-ref'd twin of the
         // ref/file refusal above — a form-ref'd id that ALSO has a file used
@@ -3952,7 +3952,7 @@ public class ConsultGenerationJobStarterTests
     }
 
     [Fact]
-    public async Task AFormRefAndAPreviousRunRefForTheSameArraySlot_WithNoFile_IsRefused()
+    public async Task AFormRefAndAPreviousRunRefForTheSameArrayInput_WithNoFile_IsRefused()
     {
         // #874: the ref-only twin of the form+document refusal above — a
         // form-ref'd array<text> id that ALSO carries a previous-run reference
@@ -4524,7 +4524,7 @@ public class ResolveEffectiveInputsTests
     }
 
     [Fact]
-    public void V7_LegacyDraft_BackFillsTheConventionalSlot()
+    public void V7_LegacyDraft_BackFillsTheConventionalInput()
     {
         var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
             new ConsultGenerationRequest("Draft."), V7Fixtures.Minimal());
@@ -4547,7 +4547,7 @@ public class ResolveEffectiveInputsTests
         Assert.Equal("Draft.", resolution.Effective["consult_draft"]);
     }
 
-    // #313: v8 types a slot, and a supplied value must be canonical for its
+    // #313: v8 types an input, and a supplied value must be canonical for its
     // type — rejected, never normalised, so provenance records what arrived.
 
     private static Dictionary<string, ConsultInputValue> TypedInputs(
@@ -4584,7 +4584,7 @@ public class ResolveEffectiveInputsTests
     // nobody sent.
     [InlineData("seen_on", "2026-8-1", "must be written YYYY-MM-DD")]
     [InlineData("seen_on", "10/08/2026", "must be written YYYY-MM-DD")]
-    // A string for a boolean slot is now a TYPE error, not a spelling one:
+    // A string for a boolean input is now a TYPE error, not a spelling one:
     // the wire carries JSON true/false, so any string is the wrong shape.
     [InlineData("billable", "yes", "must be sent as JSON true or false")]
     [InlineData("billable", "true", "must be sent as JSON true or false")]
@@ -4613,10 +4613,10 @@ public class ResolveEffectiveInputsTests
     }
 
     [Fact]
-    public void V8_StringForANonBooleanSlot_IsStillRequired()
+    public void V8_StringForANonBooleanInput_IsStillRequired()
     {
         // The mirror of the boolean rule: a JSON boolean in a text, date or
-        // enum slot is the wrong shape too.
+        // enum input is the wrong shape too.
         var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
             new ConsultGenerationRequest(null, Inputs: TypedInputs(("seen_on", ConsultInputValue.OfBoolean(true)))),
             V8Fixtures.Typed());
@@ -4639,7 +4639,7 @@ public class ResolveEffectiveInputsTests
 
     // #421 (v9 layer 1): the wire now carries a number, an object and an
     // array, and no v5–v8 declaration can ask for any of them. Each is a 422
-    // naming the slot — never a crash, and never the value, which is why the
+    // naming the input — never a crash, and never the value, which is why the
     // payloads here are distinctive strings asserted absent from the error.
 
     private static ConsultInputValue Structured(string kind) => kind switch
@@ -4690,7 +4690,7 @@ public class ResolveEffectiveInputsTests
     {
         // A v5/v6 package folds consult_draft into the draft field through its
         // canonical string. Structure has none, so the fold would throw; the
-        // refusal lands in the <7 branch where the slot can be named.
+        // refusal lands in the <7 branch where the input can be named.
         var resolution = ConsultGenerationJobStarter.ResolveEffectiveInputs(
             new ConsultGenerationRequest(null, Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
             {
@@ -4796,7 +4796,7 @@ public class ResolveEffectiveInputsTests
             "element 1 is missing required field 'name'.");
         Add("medications", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("metformin") }),
             "element 0 is an object and must be sent as a JSON object; got text.");
-        // A v8 scalar slot still refuses structure, as it has since #421.
+        // A v8 scalar input still refuses structure, as it has since #421.
         Add("seen_on", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("2026-08-10") }),
             "is a date and must be sent as a JSON string; got an array.");
 
@@ -4818,7 +4818,7 @@ public class ResolveEffectiveInputsTests
     public void V9_ARequiredArrayWithNoEntries_IsRefusedByName()
     {
         // Present and empty is not absent (v9 § 4): the required check lets it
-        // through, and the shape check refuses it naming the slot.
+        // through, and the shape check refuses it naming the input.
         var manifest = V9Fixtures.WithInput(new WorkflowInputSpec("prior_notes", "Prior notes",
             Required: true, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
 

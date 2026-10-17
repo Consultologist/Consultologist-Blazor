@@ -14,7 +14,7 @@ public class ConsultGenerationLinkTests
     [Fact]
     public void PreviousRunOrigins_BecomeOneRowPerCopiedElement()
     {
-        // One slot copying twice from the SAME source — both rows must
+        // One input copying twice from the SAME source — both rows must
         // survive, which is what the element index in the key is for.
         var origins = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
         {
@@ -41,9 +41,9 @@ public class ConsultGenerationLinkTests
     }
 
     [Fact]
-    public void ARerun_IsOneEdge_NeverOnePerSlotOrigin()
+    public void ARerun_IsOneEdge_NeverOnePerInputOrigin()
     {
-        // The rerun stamps a rerun origin on EVERY effective slot; the edge
+        // The rerun stamps a rerun origin on EVERY effective input; the edge
         // is still one replay of one run.
         var origins = new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
         {
@@ -71,7 +71,7 @@ public class ConsultGenerationLinkTests
     }
 
     [Fact]
-    public void ThePreviousRunKey_CarriesSlotAndElement()
+    public void ThePreviousRunKey_CarriesInputAndElement()
     {
         var link = new ConsultGenerationLink("source-1", "consumer-1", "previous-run", "referrals", "note", "user-1", Now, 1);
 

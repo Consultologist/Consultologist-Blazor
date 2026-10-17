@@ -3,9 +3,9 @@ using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
 
 /// <summary>
-/// v16 (#730): a slot may declare `expectedContent: image` — it expects an
+/// v16 (#730): an input may declare `expectedContent: image` — it expects an
 /// uploaded raw image (PNG/JPEG/TIFF) whose text is produced by OCR. Like
-/// `transcript`, image is a text channel: only a text slot or an array of text
+/// `transcript`, image is a text channel: only a text input or an array of text
 /// can be filled from it. The baseline is v15's plus the version line.
 /// </summary>
 public static class V16Fixtures
@@ -29,7 +29,7 @@ public class WorkflowV16ImageContentTests
     private static IReadOnlyList<string> Errors(WorkflowPackageManifest manifest) => V16Fixtures.Validate(manifest).Errors;
 
     [Fact]
-    public void AnImageSlot_OnAText_IsValid()
+    public void AnImageInput_OnAText_IsValid()
     {
         var manifest = V16Fixtures.WithInput(new WorkflowInputSpec(
             "referral_letter", "Referral letter", Required: false,
@@ -39,7 +39,7 @@ public class WorkflowV16ImageContentTests
     }
 
     [Fact]
-    public void AnImageSlot_OnAnArrayOfText_IsValid()
+    public void AnImageInput_OnAnArrayOfText_IsValid()
     {
         var manifest = V16Fixtures.WithInput(new WorkflowInputSpec(
             "scanned_pages", "Scanned pages", Required: false,
@@ -71,7 +71,7 @@ public class WorkflowV16ImageContentTests
             Type: WorkflowInputTypes.Number, ExpectedContent: WorkflowExpectedContent.Image));
 
         Assert.Contains(
-            "Input 'length_of_stay' declares expectedContent 'image', which is only for a text slot or an array of text.",
+            "Input 'length_of_stay' declares expectedContent 'image', which is only for a text input or an array of text.",
             Errors(manifest));
     }
 

@@ -118,7 +118,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
     public async Task V7Package_RenamedInput_ComposesAValidManifest()
     {
         // The cascade's whole purpose: after a rename the bindings still name
-        // a declared slot, so the package validates.
+        // a declared input, so the package validates.
         var result = await PublishAndValidateAsync(page =>
         {
             Navigate(page, "Inputs");
@@ -403,7 +403,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
     public async Task AChannelAndUnionPackage_KeepsThemThroughAnUnrelatedRelabel()
     {
         // #745: the composer rebuilds the whole inputs list from the editor's
-        // records. Before this, editing one input dropped every slot's
+        // records. Before this, editing one input dropped every input's
         // expectedContent and flattened unions to their first arm.
         var (result, sent) = await PublishAndCaptureAsync(page =>
         {
@@ -431,7 +431,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         var (result, sent) = await PublishAndCaptureAsync(page =>
         {
             Navigate(page, "Inputs");
-            // consult_draft (a text slot, first row) → mark it an image channel.
+            // consult_draft (a text input, first row) → mark it an image channel.
             page.FindAll("fluent-select.declared-row__channel")[0].Change(WorkflowExpectedContent.Image);
             return Task.CompletedTask;
         }, EditorFixtures.V17ChannelAndUnion());
@@ -535,7 +535,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
     [Fact]
     public async Task RetypingAnArrayToText_ClearsItsItemsAndFields()
     {
-        // Items belong to an array, fields to an object: a slot retyped to
+        // Items belong to an array, fields to an object: an input retyped to
         // text carries neither, or the validator refuses the publish.
         var (result, sent) = await PublishAndCaptureAsync(page =>
         {

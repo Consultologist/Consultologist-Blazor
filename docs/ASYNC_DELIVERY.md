@@ -127,10 +127,10 @@ files: `src/Consultologist.Api/Email/*`, settings in
   running a PHI job twice.
 - **Attachments as inputs (#210, 2026-07-28; reshaped by #237,
   2026-07-29)**: attachments fill the pinned package's declared input
-  slots — a filename stem claims the slot it names and outranks the body
+  inputs — a filename stem claims the input it names and outranks the body
   for it (a body is often just a signature), the body then takes
   `consult_draft` if still free, and one leftover file fills one
-  leftover slot. Wider ambiguity, or bytes over 10 MB per attachment
+  leftover input. Wider ambiguity, or bytes over 10 MB per attachment
   (20 MB across all of them), rejects the message with
   `rejected-attachments`; inline parts (signature logos) are ignored
   entirely. A blank body is no longer fatal when an attachment carries
@@ -142,7 +142,7 @@ files: `src/Consultologist.Api/Email/*`, settings in
   is one place that knows what a format is
   (`docs/DOCUMENT_INPUT.md` § 1). Formats are no longer listed here:
   whatever the parser reads, email accepts. A package declaring no
-  inputs (v5/v6) has one implicit slot and refuses attachments outright,
+  inputs (v5/v6) has one implicit input and refuses attachments outright,
   saying so rather than silently concatenating them into the body. The
   reply now names the cause — a scan, a size, an ambiguous assignment —
   because that describes a file's format rather than its contents. The

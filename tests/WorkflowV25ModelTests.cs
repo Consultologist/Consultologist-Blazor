@@ -384,7 +384,7 @@ public class WorkflowV25BelowGateTests
     }
 
     [Fact]
-    public void AnObjectFormSlot_Below25_IsStillRefused()
+    public void AnObjectFormInput_Below25_IsStillRefused()
     {
         // B6 #1005: the v13 sentence holds at 24; the lift is 25's.
         var errors = ErrorsAt24(m => m with
@@ -393,7 +393,7 @@ public class WorkflowV25BelowGateTests
                 Fields: new List<WorkflowFieldSpec> { new("age", "Age") }, ExpectedContent: WorkflowExpectedContent.Form)).ToList(),
         });
 
-        Assert.Contains("Input 'intake' declares expectedContent 'form', which a slot of type 'object' cannot be filled from.", errors);
+        Assert.Contains("Input 'intake' declares expectedContent 'form', which an input of type 'object' cannot be filled from.", errors);
     }
 
     [Fact]

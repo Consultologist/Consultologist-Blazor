@@ -200,7 +200,7 @@ public static class PromptTemplateRenderer
         // EmptyScriptObject.Default and bool false, so the empty string was
         // truthy and {{ if billable }} fired for a question nobody answered —
         // on every emailed job, since a boolean cannot be supplied by email at
-        // all (a string in a boolean slot is a 422).
+        // all (a string in a boolean input is a 422).
         //
         // null rather than false: false is an ANSWER, and it renders the five
         // characters "false" wherever the variable is interpolated bare. null
@@ -210,7 +210,7 @@ public static class PromptTemplateRenderer
         // optional object an EMPTY object — both falsy under RenderingContext,
         // both safe to reach into. null would have made the idiom the format
         // prescribes, {{ if notes.size > 0 }}, throw on exactly the job where
-        // the slot was left empty: Scriban refuses a member of null.
+        // the input was left empty: Scriban refuses a member of null.
         //
         // text and enum stay strings — both are JSON strings on the wire, and
         // the `(x | string.strip) == ""` idiom the published packages use to

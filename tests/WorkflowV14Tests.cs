@@ -3,8 +3,8 @@ using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
 
 /// <summary>
-/// v14 (#729): a slot may declare a union of accepted value types — `type:
-/// [text, array]`. The baseline is v13's plus the version line; the slot's one
+/// v14 (#729): an input may declare a union of accepted value types — `type:
+/// [text, array]`. The baseline is v13's plus the version line; the input's one
 /// items/fields/values serves the single sub-declaring arm.
 /// </summary>
 public static class V14Fixtures

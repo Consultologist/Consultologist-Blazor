@@ -499,7 +499,7 @@ public class EmailIntakeProcessorTests
     public async Task BlankBodyWithAttachment_StartsFromTheAttachment()
     {
         // The referral-as-attachment case: a blank-body rejection would have
-        // thrown this away. The file fills the draft slot and travels as bytes.
+        // thrown this away. The file fills the draft input and travels as bytes.
         WithV7Package();
         SetupAcceptedSender(Message(body: "  ", hasAttachments: true));
         WithAttachments(Attachment("referral.txt", "The referral text."));
@@ -566,7 +566,7 @@ public class EmailIntakeProcessorTests
     [Fact]
     public async Task LegacyPackageAttachment_IsRefusedAndTheReplySaysWhy()
     {
-        // A package declaring no inputs has one implicit slot, so a file has
+        // A package declaring no inputs has one implicit input, so a file has
         // nowhere of its own to go. The sender is told that, rather than
         // getting the generic bounce.
         SetupAcceptedSender(Message(hasAttachments: true));
@@ -637,7 +637,7 @@ public class EmailIntakeProcessorTests
     }
 
     [Fact]
-    public async Task NumberedAttachments_ReachTheStarterAsOneSlotInOrder()
+    public async Task NumberedAttachments_ReachTheStarterAsOneInputInOrder()
     {
         // #428: the sender's numbers are the order the elements hash in.
         WithV9Package();
@@ -659,7 +659,7 @@ public class EmailIntakeProcessorTests
     }
 
     [Fact]
-    public async Task ANumberedAttachmentForATextSlot_IsRejectedAndTheReplySaysWhy()
+    public async Task ANumberedAttachmentForATextInput_IsRejectedAndTheReplySaysWhy()
     {
         WithV9Package();
         SetupAcceptedSender(Message(body: "  ", hasAttachments: true));
@@ -725,7 +725,7 @@ public class EmailIntakeProcessorTests
     }
 
     [Fact]
-    public async Task NamedAttachment_FillsItsDeclaredSlot()
+    public async Task NamedAttachment_FillsItsDeclaredInput()
     {
         WithV7Package();
         SetupAcceptedSender(Message(hasAttachments: true));

@@ -484,7 +484,7 @@
                                                    attestation is unavailable: nothing is invented. *@
                                                 <dt>Input hash (@VersionRef(detail, detail.EffectiveInputHashVersion, "hash-definitions.md", "effective-input definition"))</dt>
                                                 <dd class="hash-text">@(detail.EffectiveInputHash ?? "—")</dd>
-                                                @* #238: beside the hash, never inside it. Only slots
+                                                @* #238: beside the hash, never inside it. Only inputs
                                                    the server read from a document appear — an absent
                                                    entry means nothing was recorded, not that the
                                                    input was typed. *@
@@ -975,7 +975,7 @@
         // is not on the origin, so the deliverable's id and the run's.
         "previous-run" => $"copied from deliverable '{origin.SourceResultId}' of run {ShortRun(origin.SourceJobId)}",
         // #549: the whole run replays the source; the comparison section
-        // below carries the detail, this row just says the slot's part.
+        // below carries the detail, this row just says the input's part.
         "rerun" => $"replayed from run {ShortRun(origin.SourceJobId)}",
         // #540: filled at start from a held form response, verified by the
         // server. No source link — a response is not a run; the digest chip

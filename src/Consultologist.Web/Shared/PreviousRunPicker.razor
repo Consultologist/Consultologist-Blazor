@@ -1,7 +1,7 @@
-@* #510: a previous run's deliverable into an input slot. An inline
+@* #510: a previous run's deliverable into an input. An inline
    disclosure like the package picker — no dialog infrastructure exists.
    Every button cancels the click's default action: the picker sits inside
-   the slot's <label>, and when a click's target is removed by the re-render
+   the input's <label>, and when a click's target is removed by the re-render
    it causes (choosing replaces the picker with the chip), the browser no
    longer sees an interactive target and runs the label's activation — a
    synthetic click on the first labelable control, which is the chip's
@@ -17,14 +17,14 @@
 @inject IAIEndpointService AIService
 
 <span class="run-picker" @onclick:stopPropagation="true">
-    @* FluentButton's OnClick can't carry @onclick:preventDefault, which the slot
+    @* FluentButton's OnClick can't carry @onclick:preventDefault, which the input
        label needs (this picker lives inside the input's <label>); the wrapper
        span intercepts the bubbling click so the label isn't activated. *@
     @* #893: a FluentMenu flyout. The two-level run→deliverable interaction stays an
        expand-in-place accordion inside the one menu (runs keep the menu open with
        KeepOpen; choosing a deliverable closes it) — a cleaner fit than a side-submenu
        for the lazy per-run load + "Load more". Open is driven from the trigger so it
-       stays bUnit-driveable; the wrapper span keeps the slot-label preventDefault. *@
+       stays bUnit-driveable; the wrapper span keeps the input-label preventDefault. *@
     <span @onclick:preventDefault="true" @onclick:stopPropagation="true">
         <FluentButton Id="@triggerId"
                       Appearance="Appearance.Stealth"
@@ -107,7 +107,7 @@
 @code {
     [Parameter] public bool Disabled { get; set; }
 
-    /// <summary>The chosen deliverable; the slot decides whether it replaces or joins.</summary>
+    /// <summary>The chosen deliverable; the input decides whether it replaces or joins.</summary>
     [Parameter] public EventCallback<LoadedDeliverable> OnChosen { get; set; }
 
     private bool isOpen;
@@ -189,7 +189,7 @@
         }
 
         // #874: reset the expanded run too, not just the open flag — a mixed
-        // array<text> slot keeps this picker mounted across a choice (it no
+        // array<text> input keeps this picker mounted across a choice (it no
         // longer swaps render branches), so the next open should start fresh
         // rather than reopening on the run just chosen.
         isOpen = false;

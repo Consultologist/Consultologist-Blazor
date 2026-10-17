@@ -733,7 +733,7 @@ public static partial class WorkflowPackageValidator
             {
                 case WorkflowNodeBindingSource.Input input:
                     // The input vocabulary closure: parsing is structural, the
-                    // declaration (v7) or the fixed v5/v6 slot closes the set.
+                    // declaration (v7) or the fixed v5/v6 input closes the set.
                     if (!declaredInputs.Contains(input.Name))
                     {
                         errors.Add(manifest.SpecVersion >= 7
@@ -1342,8 +1342,8 @@ public static partial class WorkflowPackageValidator
 
     /// <summary>
     /// The input vocabulary: v5/v6 packages bind exactly consult_draft (the
-    /// declaration-free closure, frozen); v7 packages declare their slots —
-    /// required section, at least one slot, snake_case unique ids, non-blank
+    /// declaration-free closure, frozen); v7 packages declare their inputs —
+    /// required section, at least one input, snake_case unique ids, non-blank
     /// labels (package-format-v7.md § 2). Returns the closed set the binding
     /// checks validate against.
     /// </summary>
@@ -1365,7 +1365,7 @@ public static partial class WorkflowPackageValidator
         {
             errors.Add(manifest.Inputs is null
                 ? "inputs is required in specVersion 7."
-                : "inputs must declare at least one input slot in specVersion 7.");
+                : "inputs must declare at least one input in specVersion 7.");
             return declared;
         }
 
@@ -1394,7 +1394,7 @@ public static partial class WorkflowPackageValidator
     }
 
     /// <summary>
-    /// v8 types an input slot (package-format-v8-design.md § 4). An absent type
+    /// v8 types an input (package-format-v8-design.md § 4). An absent type
     /// is text, which is what keeps every v7 declaration valid — so the minimal
     /// v8 migration is the specVersion line and nothing else.
     ///
@@ -1436,7 +1436,7 @@ public static partial class WorkflowPackageValidator
         var type = WorkflowInputTypes.Of(input);
 
         // v14 (#729): a union type — several accepted value types, first-match
-        // at start. Version-gated; every arm known and unique; the slot's one
+        // at start. Version-gated; every arm known and unique; the input's one
         // items/fields/values serves the single sub-declaring arm, so a union
         // carries at most one of array/object/enum. Content channels stay off a
         // union. Validated here end to end; a single type falls through below.
@@ -1474,7 +1474,7 @@ public static partial class WorkflowPackageValidator
 
             if (input.ExpectedContent != null)
             {
-                errors.Add($"Input '{input.Id}' declares expectedContent on a union type; a content channel is only for a single-type slot.");
+                errors.Add($"Input '{input.Id}' declares expectedContent on a union type; a content channel is only for a single-type input.");
                 return;
             }
 
@@ -1525,8 +1525,8 @@ public static partial class WorkflowPackageValidator
 
         // v13 (#728): the declared content channel — version-gated like items
         // and fields, then checked for membership and for fit with the value
-        // type. A transcript is a document read into a text slot; a form is a
-        // held response coerced to the slot's value type (never an object).
+        // type. A transcript is a document read into a text input; a form is a
+        // held response coerced to the input's value type (never an object).
         if (input.ExpectedContent is { } content)
         {
             if (manifest.SpecVersion < 13)
@@ -1544,17 +1544,17 @@ public static partial class WorkflowPackageValidator
                 && type != WorkflowInputTypes.Text
                 && !(type == WorkflowInputTypes.Array && WorkflowInputTypes.ElementTypeOf(input) == WorkflowInputTypes.Text))
             {
-                errors.Add($"Input '{input.Id}' declares expectedContent 'transcript', which is only for a text slot or an array of text.");
+                errors.Add($"Input '{input.Id}' declares expectedContent 'transcript', which is only for a text input or an array of text.");
             }
             else if (content == WorkflowExpectedContent.Form
                 && ((type == WorkflowInputTypes.Object && manifest.SpecVersion < 25)
                     || (type == WorkflowInputTypes.Array && WorkflowInputTypes.ElementTypeOf(input) == WorkflowInputTypes.Object)))
             {
                 // v25 (package-format-v25-design.md § 9, B6 #1005) lifts the
-                // object refusal: a form slot may be an object with declared
+                // object refusal: a form input may be an object with declared
                 // fields, filled from a held response's JSON object. An array
                 // of objects stays refused at every version.
-                errors.Add($"Input '{input.Id}' declares expectedContent 'form', which a slot of type '{type}' cannot be filled from.");
+                errors.Add($"Input '{input.Id}' declares expectedContent 'form', which an input of type '{type}' cannot be filled from.");
             }
             else if (content == WorkflowExpectedContent.Form && type == WorkflowInputTypes.Object && input.Fields is not { Count: > 0 })
             {
@@ -1564,13 +1564,13 @@ public static partial class WorkflowPackageValidator
                 && type != WorkflowInputTypes.Text
                 && !(type == WorkflowInputTypes.Array && WorkflowInputTypes.ElementTypeOf(input) == WorkflowInputTypes.Text))
             {
-                errors.Add($"Input '{input.Id}' declares expectedContent 'image', which is only for a text slot or an array of text.");
+                errors.Add($"Input '{input.Id}' declares expectedContent 'image', which is only for a text input or an array of text.");
             }
             else if (content == WorkflowExpectedContent.AmbientNote
                 && type != WorkflowInputTypes.Text
                 && !(type == WorkflowInputTypes.Array && WorkflowInputTypes.ElementTypeOf(input) == WorkflowInputTypes.Text))
             {
-                errors.Add($"Input '{input.Id}' declares expectedContent 'ambient-note', which is only for a text slot or an array of text.");
+                errors.Add($"Input '{input.Id}' declares expectedContent 'ambient-note', which is only for a text input or an array of text.");
             }
         }
 
@@ -3710,9 +3710,9 @@ public static partial class WorkflowPackageValidator
     /// than left for a sender to discover.
     ///
     /// An emailed value is always text — a body or a .txt attachment — and a
-    /// string in a boolean slot is a 422 by design (package-format-v8.md § wire
+    /// string in a boolean input is a 422 by design (package-format-v8.md § wire
     /// form), deliberately, since the alternative is guessing that "yes" in a
-    /// body means true. So a boolean slot cannot be filled through that door at
+    /// body means true. So a boolean input cannot be filled through that door at
     /// all, and two declarations make a package unreachable by construction:
     /// a REQUIRED boolean (inputs never resolve), and every deliverable
     /// conditioned on a boolean (inputs resolve, but no condition can hold —
@@ -3737,7 +3737,7 @@ public static partial class WorkflowPackageValidator
     /// empty fanned input produces no items, therefore no blocks, therefore no
     /// document — the job is refused at start by name. That is correct, and
     /// it is worth the author hearing at publish rather than discovering on
-    /// every consult that skipped the slot. A warning: this validator runs at
+    /// every consult that skipped the input. A warning: this validator runs at
     /// load.
     /// </summary>
     private static void WarnFannedOptionalInputs(WorkflowPackageManifest manifest, List<string> warnings)

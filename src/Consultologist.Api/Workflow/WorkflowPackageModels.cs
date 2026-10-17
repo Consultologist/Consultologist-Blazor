@@ -85,9 +85,9 @@ public sealed record WorkflowPackage(
 public sealed record WorkflowPackageBlockResponse(string Id, string Name);
 
 /// <summary>
-/// One declared input slot on the current-package response — what the consult
+/// One declared input on the current-package response — what the consult
 /// setup form renders a field for (package-format-v7.md § inputs). Null on
-/// v5/v6 packages, whose single slot is the frozen consult_draft convention.
+/// v5/v6 packages, whose single input is the frozen consult_draft convention.
 /// </summary>
 public sealed record WorkflowPackageInputResponse(
     string Id,
@@ -105,10 +105,10 @@ public sealed record WorkflowPackageInputResponse(
     WorkflowPackageElementResponse? Items = null,
     IReadOnlyList<WorkflowPackageFieldResponse>? Fields = null,
     // v13 (#728): the declared content channel — transcript or form — so the
-    // setup form labels the slot and offers the right source. Null before 13.
+    // setup form labels the input and offers the right source. Null before 13.
     string? ExpectedContent = null,
-    // v14 (#729): a union slot's accepted types, in try order (Type is the
-    // primary/first arm). Null for a single-type slot.
+    // v14 (#729): a union input's accepted types, in try order (Type is the
+    // primary/first arm). Null for a single-type input.
     IReadOnlyList<string>? Types = null);
 
 /// <summary>

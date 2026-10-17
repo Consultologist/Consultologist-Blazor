@@ -9,7 +9,7 @@ using NSubstitute;
 namespace Consultologist.Web.Tests;
 
 /// <summary>
-/// #615: the OneDrive/SharePoint link road into the document slot. The
+/// #615: the OneDrive/SharePoint link road into the document input. The
 /// affordance is organisation-only and TELLS a personal account early —
 /// rendered disabled with the reason in words, never silently hidden.
 /// </summary>
@@ -24,7 +24,7 @@ public class ConsultsLinkDocumentTests : ClientRenderTestContext
             SignInKind: kind));
     }
 
-    private IRenderedComponent<Consults> RenderWithDocumentSlot()
+    private IRenderedComponent<Consults> RenderWithDocumentInput()
     {
         WithPinnedPackage(
             blocks: new[] { Block("consult_note:hpi", "hpi") },
@@ -38,7 +38,7 @@ public class ConsultsLinkDocumentTests : ClientRenderTestContext
     {
         WithSignInKind("organisation");
 
-        var page = RenderWithDocumentSlot();
+        var page = RenderWithDocumentInput();
 
         var link = page.Find(".input-field__link input");
         Assert.False(link.HasAttribute("disabled"));
@@ -52,7 +52,7 @@ public class ConsultsLinkDocumentTests : ClientRenderTestContext
         // stands beside it — never the silent hide.
         WithSignInKind("personal");
 
-        var page = RenderWithDocumentSlot();
+        var page = RenderWithDocumentInput();
 
         Assert.True(page.Find(".input-field__link input").HasAttribute("disabled"));
         Assert.True(page.Find(".input-field__link-fetch").HasAttribute("disabled"));
@@ -60,14 +60,14 @@ public class ConsultsLinkDocumentTests : ClientRenderTestContext
     }
 
     [Fact]
-    public async Task RetrievingALink_FillsTheSlot_LikeAnUpload()
+    public async Task RetrievingALink_FillsTheInput_LikeAnUpload()
     {
         WithSignInKind("organisation");
         DocumentService.ExtractFromLinkAsync("https://1drv.ms/x").Returns(
             new LinkDocumentOutcome("The referral text.", "openxml/1", 2,
                 new byte[] { 1, 2, 3 }, "referral.docx", null));
 
-        var page = RenderWithDocumentSlot();
+        var page = RenderWithDocumentInput();
         await page.Find(".input-field__link input").InputAsync(new() { Value = "https://1drv.ms/x" });
         await page.Find(".input-field__link-fetch").ClickAsync(new());
 
@@ -82,7 +82,7 @@ public class ConsultsLinkDocumentTests : ClientRenderTestContext
         DocumentService.ExtractFromLinkAsync("https://1drv.ms/gone").Returns(
             LinkDocumentOutcome.Refused("That link does not point at a file any more — it may have been deleted or the sharing may have expired."));
 
-        var page = RenderWithDocumentSlot();
+        var page = RenderWithDocumentInput();
         await page.Find(".input-field__link input").InputAsync(new() { Value = "https://1drv.ms/gone" });
         await page.Find(".input-field__link-fetch").ClickAsync(new());
 

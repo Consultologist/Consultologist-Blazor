@@ -25,7 +25,7 @@ public static class EmailIntakeOutcomes
     // v7 email eligibility: the pinned package's input declaration cannot be
     // satisfied by a body-only email (package-format-v7.md).
     public const string RejectedInputs = "rejected-inputs";
-    // #210: an attachment this version cannot read, or one whose slot could
+    // #210: an attachment this version cannot read, or one whose input could
     // not be determined without guessing.
     public const string RejectedAttachments = "rejected-attachments";
     public const string StartFailed = "start-failed";

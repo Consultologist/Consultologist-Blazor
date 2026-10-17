@@ -90,7 +90,7 @@ public static class WorkflowManifestReader
     }
 
     /// <summary>
-    /// One declared input slot. v8 types it: <c>Type</c> null means text, which
+    /// One declared input. v8 types it: <c>Type</c> null means text, which
     /// is what keeps a v7 declaration valid. <c>Values</c> belongs to enum.
     ///
     /// v9 (#429): <c>Items</c> is an array's element type and <c>Fields</c> an
@@ -490,8 +490,8 @@ public static class WorkflowManifestReader
     public static string? ReadResultRef(JsonElement manifest) => ReadString(manifest, "result");
 
     /// <summary>
-    /// The declared input slots (specVersion 7). Empty for v5/v6, whose single
-    /// slot is the frozen consult_draft convention rather than a declaration.
+    /// The declared inputs (specVersion 7). Empty for v5/v6, whose single
+    /// input is the frozen consult_draft convention rather than a declaration.
     /// `required` defaults true when absent, matching the server's spec record.
     /// </summary>
     public static IReadOnlyList<InputView> ReadInputs(JsonElement manifest)

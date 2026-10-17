@@ -35,8 +35,8 @@ public static class ConsultGenerationProvenance
     /// The effective-input hash, definition version 3 (v7 jobs): SHA-256 of the
     /// canonical JSON of the supplied inputs as an ordinal-sorted {id: text} map.
     /// Hashes the SUPPLIED map — absent optional inputs are omitted, never
-    /// empty-string-filled — so a job that leaves an optional slot blank and one
-    /// that never had the slot hash identically only when the package agrees
+    /// empty-string-filled — so a job that leaves an optional input blank and one
+    /// that never had the input hash identically only when the package agrees
     /// (package-format-v7.md). v2 (draft only) stays the definition for v5/v6.
     /// </summary>
     public const int DeclaredInputsHashVersion = 3;
@@ -84,7 +84,7 @@ public static class ConsultGenerationProvenance
     /// <summary>
     /// The effective-input hash, definition version 5 (v9 jobs): SHA-256 of
     /// the canonical JSON of the supplied inputs as structured values
-    /// (package-format-v9-design.md § 8). Canonical means: top-level slot ids
+    /// (package-format-v9-design.md § 8). Canonical means: top-level input ids
     /// and object field ids ordinal-sorted at every level — UTF-16 code-unit
     /// order, which is also RFC 8785's; array elements in supplied order,
     /// which is significant and is the caller's; a number as the digits the

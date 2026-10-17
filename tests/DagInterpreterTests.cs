@@ -347,7 +347,7 @@ public class ProvenanceHashTests
         // #422: version 4's domain is v8's scalars. Structure reaching it can
         // only mean a misrouted version gate — the failure that would
         // otherwise produce a plausible hash stamped 4 — so it throws rather
-        // than hashing, and names the slot.
+        // than hashing, and names the input.
         var value = kind switch
         {
             "number" => ConsultInputValue.OfNumber("3"),
@@ -367,7 +367,7 @@ public class ProvenanceHashTests
     public void StructuredInputsHash_PinsTheCanonicalShape()
     {
         // Canonical shape pin for definition 5 (package-format-v9-design.md
-        // § 8): slot ids and field ids ordinal-sorted at every level, array
+        // § 8): input ids and field ids ordinal-sorted at every level, array
         // elements in supplied order, a number as the digits sent.
         var supplied = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
         {
@@ -474,8 +474,8 @@ public class StartRequestValidationTests
         Assert.Equal("Send ConsultDraft or InputRefs, not both.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
             "Draft.", InputRefs: new() { ["consult_draft"] = new() { reference } })));
         // #874: text+ref and file+ref for one id are no longer refused at this
-        // manifest-blind door — an array<text> slot combines all three sources
-        // (typed rows, documents, previous-run references), and a scalar slot
+        // manifest-blind door — an array<text> input combines all three sources
+        // (typed rows, documents, previous-run references), and a scalar input
         // is still refused, but only from the manifest-aware start layer
         // (ConsultGenerationJobStarter), where the declared type is known.
         Assert.Null(ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
@@ -504,7 +504,7 @@ public class StartRequestValidationTests
     [Fact]
     public void ValidateRequest_ChecksAttachedDocuments()
     {
-        // #238 originally refused a slot filled from both directions here,
+        // #238 originally refused an input filled from both directions here,
         // unconditionally — the same ambiguity the v7 contract already
         // refuses for ConsultDraft-vs-Inputs. #872 (task 3.5) moved that
         // refusal down to the manifest-aware layer (ExtractInputFilesAsync),
@@ -557,7 +557,7 @@ public class StartRequestValidationTests
     [Fact]
     public void ValidateRequest_ChecksEachDocumentOfASlot()
     {
-        // #428: a slot lists its documents. Each is bounded as one was, and
+        // #428: an input lists its documents. Each is bounded as one was, and
         // named by its position — counted from one — only when there is more
         // than one, so a single document's sentences read as they did.
         static string? Validate(Dictionary<string, List<InputFilePayload>> files) =>
@@ -610,7 +610,7 @@ public class StartRequestValidationTests
     public void ValidateRequest_AdmitsNumbersAndEmptyArrays()
     {
         // #421: a number has no length to run away with, and an empty array is
-        // present and empty — whether that satisfies the slot is the
+        // present and empty — whether that satisfies the input is the
         // starter's 422, not the door's 400.
         Assert.Null(Validate(new Dictionary<string, ConsultInputValue> { ["length_of_stay"] = ConsultInputValue.OfNumber("3") }));
         Assert.Null(Validate(new Dictionary<string, ConsultInputValue> { ["prior_notes"] = ConsultInputValue.OfArray(Array.Empty<ConsultInputValue>()) }));
