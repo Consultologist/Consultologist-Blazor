@@ -112,7 +112,7 @@ public partial class ConformanceFixtureExport
             m);
 
         Valid("v25-minimal-is-the-migrated-v24-minimal",
-            "The migration v25 promises: the v24 minimal — its prelude already a node macro, as the 23 editor leaves it — run through WorkflowPackageMigration24To25 and nothing else changed. Valid with the warning on each concept-list .content read the rewrite spelled through a renderer pipe.",
+            "The migration v25 promises: the v24 minimal — its prelude already a node macro, as the 23 editor leaves it — run through WorkflowPackageMigration24To25 and nothing else changed. Valid with no warnings: each concept-list .content read the rewrite spelled through a renderer pipe is typed by the pipe (#1058).",
             MigratedV24Minimal());
 
         {
@@ -522,6 +522,10 @@ public partial class ConformanceFixtureExport
         Invalid("invalid-node-cycle", "Two nodes reading each other.", V25Package.WithPrompt(m, "extract", "{{ node.assessment.content }}"));
         Invalid("invalid-template-fails-strict-rendering", "A template that parses and types but fails the strict render probe.",
             P("{{ input.notes | date.to_string \"%Y\" }}"));
+        // #1058: renderer pipes are typed — each renders the .content of a concept_list node and nothing else.
+        Invalid("invalid-template-renderer-pipe-on-another-format", "A renderer pipe over the text of a node whose format is not the one it renders (a classification through concept_bullets).", P("{{ node.scope.content | concept_bullets }}"));
+        Invalid("invalid-template-renderer-pipe-on-a-value", "A renderer pipe over a node's parsed value — a renderer renders a node's text.", P("{{ node.extract.value | concept_bullets }}"));
+        Invalid("invalid-template-renderer-pipe-on-a-snippets-text", "A renderer pipe over a text that is not a node's.", P("{{ snippet.standards.content | concept_bullets }}"));
         Invalid("invalid-instruction-fails-strict-rendering", "An instruction that fails the strict render probe.",
             Macro(m, mc => mc with { Instruction = "Close {{ 1 | date.to_string '%Y' }}." }));
 
