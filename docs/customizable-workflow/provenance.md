@@ -411,7 +411,8 @@ system with no dependency on this application or its Azure tenant.
 >   entry sits on the node row.
 >
 > Not in this version: the version flip (`AcceptedSpecVersions`/`SupportedSpecVersions`
-> += 25) is A5's (#1018), after B8 (#1027, the 25 run path) and C6.
+> += 25) is A5's (#1018), after B8 (#1027, the 25 run path) and C6. *(2026-10-16: landed — both
+> sets and the editor's two mirrors are 25; package-format v2026.10.5 lists the version.)*
 
 > **Amendment, 2026-10-14 (#1027 — specVersion 25 B8: the 25 run path).** No change to the
 > record's shape. A 25 deliverable's `assembledDocuments[].appended` carries its prepend and
