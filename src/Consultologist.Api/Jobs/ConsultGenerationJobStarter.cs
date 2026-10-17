@@ -98,8 +98,16 @@ public enum ConsultGenerationJobStartError
 
     // v12 #618 (design § 3): a MacroChoices key names a macro the package
     // does not declare, or one that is not optional. Well-formed,
-    // unsatisfiable against this package: 422. Appended last.
-    MacroChoiceMismatch
+    // unsatisfiable against this package: 422.
+    MacroChoiceMismatch,
+
+    // #991: a questionnaire file that could not be read as a JSON object, that
+    // names an input which is not a form-channel object input, or whose object
+    // misfits the declaration; and a submitted value that does not equal the
+    // file's coerced object. Distinct from InputFormRef* so the start log's
+    // Kind says which door refused. Well-formed, unsatisfiable: 422. Appended last.
+    InputFormFileInvalid,
+    InputFormFileMismatch
 }
 
 /// <summary>
@@ -357,6 +365,23 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var formRefs = formVerification.Refs;
         request = request with { InputFormRefs = null };
 
+        // #991: the questionnaire files are the FormResponse kind's file-sourced
+        // variant — the same posture (re-coerce, require equality) with the
+        // bytes inline, so nothing resolves. Verified BEFORE the effective map
+        // is resolved so a disagreeing value is refused by this door's sentence
+        // rather than the resolver's canonical-form complaint: a value equal to
+        // the coerced object always passes the resolver (declared fields,
+        // declared order, no nulls, required present).
+        var formFileVerification = VerifyInputFormFiles(request, package.Manifest);
+        if (formFileVerification.Error != null)
+        {
+            _logger.LogWarning("Rejected job start: a questionnaire file was refused. Kind={Kind}", formFileVerification.ErrorKind);
+            return new ConsultGenerationJobStartOutcome(null, formFileVerification.ErrorKind, formFileVerification.Error);
+        }
+
+        var formFiles = formFileVerification.FileHashes;
+        request = request with { InputFormFiles = null };
+
         // v12 #618 (design § 3): the optional macros resolve ONCE, here —
         // the request's choice, else the declared default — for every door
         // and both descriptor birthplaces (the boundary filters with the
@@ -408,6 +433,15 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             refResolvedIds = refResolvedIds is { Count: > 0 }
                 ? new HashSet<string>(refResolvedIds.Concat(formRefs.Keys), StringComparer.Ordinal)
                 : new HashSet<string>(formRefs.Keys, StringComparer.Ordinal);
+        }
+
+        // #991: a questionnaire-filled id is replaced, never concatenated, the
+        // same way (the door already refuses the same id in InputFiles).
+        if (formFiles is { Count: > 0 })
+        {
+            refResolvedIds = refResolvedIds is { Count: > 0 }
+                ? new HashSet<string>(refResolvedIds.Concat(formFiles.Keys), StringComparer.Ordinal)
+                : new HashSet<string>(formFiles.Keys, StringComparer.Ordinal);
         }
 
         var extraction = await ExtractInputFilesAsync(
@@ -477,6 +511,27 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                             TextSha256: ConsultGenerationProvenance.Sha256Hex(inputs.Effective[pair.Key]),
                             SourceFormId: pair.Value.FormId,
                             SourceResponseId: pair.Value.ResponseId)
+                    },
+                    StringComparer.Ordinal),
+                refResolvedIds);
+        }
+
+        // #991: the verified questionnaire files — the same kind, told apart by
+        // its fields: FileSha256 over the bytes as received, TextSha256 over the
+        // object as it entered the effective map, and no source ids (nothing was
+        // held). History already reads this variant as "from a questionnaire file".
+        if (formFiles is { Count: > 0 } && inputs.Effective != null)
+        {
+            inputOrigins = MergeOrigins(inputOrigins, formFiles
+                .Where(pair => inputs.Effective.ContainsKey(pair.Key))
+                .ToDictionary(
+                    pair => pair.Key,
+                    pair => (IReadOnlyList<ConsultInputOrigin>)new[]
+                    {
+                        new ConsultInputOrigin(
+                            ConsultInputOriginKinds.FormResponse,
+                            FileSha256: pair.Value,
+                            TextSha256: ConsultGenerationProvenance.Sha256Hex(inputs.Effective[pair.Key]))
                     },
                     StringComparer.Ordinal),
                 refResolvedIds);
@@ -1972,6 +2027,123 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// provenance would then be a claim nobody checked. An edited input
     /// simply carries no reference and no origin.
     /// </summary>
+    /// <summary>
+    /// #991: the verified questionnaire files as id → SHA-256 over the bytes as
+    /// received, or the refusal. Hashes come back for the origin block to record
+    /// once the effective map exists (the FormRefVerification shape).
+    /// </summary>
+    internal sealed record FormFileVerification(
+        Dictionary<string, string>? FileHashes,
+        ConsultGenerationJobStartError? ErrorKind = null,
+        string? Error = null);
+
+    /// <summary>
+    /// #991: a questionnaire file is a bare JSON object keyed by the input's
+    /// declared field ids — the input's value as a file. Read as UTF-8 JSON (a
+    /// BOM tolerated for parsing; the digest is over the raw bytes), coerced by
+    /// the one coercion the held-response verification makes, and required to
+    /// equal the submitted value. Synchronous: nothing resolves.
+    /// </summary>
+    internal static FormFileVerification VerifyInputFormFiles(
+        ConsultGenerationRequest request,
+        WorkflowPackageManifest manifest)
+    {
+        if (request.InputFormFiles is not { Count: > 0 })
+        {
+            return new FormFileVerification(null);
+        }
+
+        var declarations = (manifest.Inputs ?? new List<WorkflowInputSpec>())
+            .ToDictionary(input => input.Id, StringComparer.Ordinal);
+        var verified = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var (inputId, file) in request.InputFormFiles)
+        {
+            if (request.Inputs is null || !request.Inputs.TryGetValue(inputId, out var submitted))
+            {
+                return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid,
+                    $"Input '{inputId}' carries a questionnaire file but no value.");
+            }
+
+            if (!declarations.TryGetValue(inputId, out var declaration))
+            {
+                return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid,
+                    $"Input '{inputId}' is not declared by the package.");
+            }
+
+            // The door is for one shape only: an object input declared
+            // expectedContent: form. A union is not that shape.
+            if (WorkflowInputTypes.Of(declaration) != WorkflowInputTypes.Object
+                || declaration.Type is { IsUnion: true }
+                || declaration.ExpectedContent != WorkflowExpectedContent.Form)
+            {
+                return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid,
+                    $"Input '{inputId}' does not take a questionnaire file; only an object input declared expectedContent 'form' does.");
+            }
+
+            System.Text.Json.JsonDocument document;
+            try
+            {
+                document = System.Text.Json.JsonDocument.Parse(
+                    StripUtf8Bom(file.Content),
+                    new System.Text.Json.JsonDocumentOptions { MaxDepth = ConsultInputValueConverter.MaxDepth + 1 });
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid,
+                    $"The questionnaire file for input '{inputId}' is not JSON.");
+            }
+
+            using (document)
+            {
+                var root = document.RootElement;
+                if (root.ValueKind != System.Text.Json.JsonValueKind.Object)
+                {
+                    return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid,
+                        $"The questionnaire file for input '{inputId}' must be a JSON object; got {JsonKindWord(root.ValueKind)}.");
+                }
+
+                // The one coercion the run-at-once door and the held-response
+                // verification make, so a file and a held response fill identically.
+                var (coerced, misfit) = FormResponseCoercion.CoerceDeclared(declaration, root);
+                if (misfit != null)
+                {
+                    return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid,
+                        $"The questionnaire file for input '{inputId}' {misfit}.");
+                }
+
+                if (coerced == null)
+                {
+                    return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileInvalid,
+                        $"The questionnaire file for input '{inputId}' holds no value.");
+                }
+
+                if (System.Text.Json.JsonSerializer.Serialize(coerced) != System.Text.Json.JsonSerializer.Serialize(submitted))
+                {
+                    return new FormFileVerification(null, ConsultGenerationJobStartError.InputFormFileMismatch,
+                        $"Input '{inputId}' does not equal the questionnaire file's value.");
+                }
+            }
+
+            // Over the bytes as received — BOM and all — the InputFiles rule.
+            verified[inputId] = ConsultGenerationProvenance.Sha256Hex(file.Content);
+        }
+
+        return new FormFileVerification(verified);
+    }
+
+    private static ReadOnlyMemory<byte> StripUtf8Bom(byte[] bytes) =>
+        bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? bytes.AsMemory(3) : bytes;
+
+    private static string JsonKindWord(System.Text.Json.JsonValueKind kind) => kind switch
+    {
+        System.Text.Json.JsonValueKind.Array => "a JSON array",
+        System.Text.Json.JsonValueKind.String => "a JSON string",
+        System.Text.Json.JsonValueKind.Number => "a JSON number",
+        System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False => "a JSON boolean",
+        _ => "JSON null",
+    };
+
     internal async Task<FormRefVerification> VerifyInputFormRefsAsync(
         ConsultGenerationRequest request,
         WorkflowPackageManifest manifest,
@@ -2524,7 +2696,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // TranscriptInputs is cleared for the same reason InputFormRefs is —
         // it has done its work here (the transcript origins are stamped) and
         // must not ride the durable payload a sleeping instance re-reads.
-        // #673: AmbientNoteInputs is cleared for the same reason.
+        // #673: AmbientNoteInputs is cleared for the same reason. #991:
+        // InputFormFiles is cleared at the start, right after its verification.
         return new InputFileExtraction(
             request with { Inputs = inputs, InputFiles = null, TranscriptInputs = null, AmbientNoteInputs = null },
             origins,

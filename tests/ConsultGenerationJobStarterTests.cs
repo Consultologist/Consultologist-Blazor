@@ -3007,6 +3007,188 @@ public class ConsultGenerationJobStarterTests
         Assert.Equal("form-response", ConsultInputOriginKinds.FormResponse);
     }
 
+    // ----- #991: an object form input filled from a questionnaire FILE — the FormResponse kind's file-sourced variant -----
+
+    private static WorkflowPackageManifest WithFormIntakeInput(bool letrozoleRequired = false)
+    {
+        var manifest = WithIntakeInput();
+        return manifest with
+        {
+            SpecVersion = 25,
+            Inputs = manifest.Inputs!.Select(input => input.Id == "intake"
+                ? input with
+                {
+                    ExpectedContent = WorkflowExpectedContent.Form,
+                    Fields = input.Fields!.Select(field => field with { Required = field.Id == "on_letrozole" && letrozoleRequired }).ToList(),
+                }
+                : input).ToList(),
+        };
+    }
+
+    private static byte[] Utf8(string json) => System.Text.Encoding.UTF8.GetBytes(json);
+
+    private static readonly ConsultInputValue FilledIntake = ConsultInputValue.OfObject(new[]
+    {
+        new ConsultInputEntry("allergies", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("latex") })),
+        new ConsultInputEntry("on_letrozole", ConsultInputValue.OfBoolean(true)),
+    });
+
+    private static ConsultGenerationRequest IntakeFileRequest(ConsultInputValue intake, byte[] file, string inputId = "intake") => new(
+        null,
+        Inputs: new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = ConsultInputValue.OfText(Referral),
+            [inputId] = intake,
+        },
+        InputFormFiles: new Dictionary<string, InputFilePayload> { [inputId] = new("application/json", file) });
+
+    [Fact]
+    public async Task AnObjectInput_FilledFromAQuestionnaireFile_IsVerified_AndStampedWithTheFileDigest()
+    {
+        // The file's key order differs from the declared order; coercion lands
+        // the fields in declared order, so equality with the submitted value holds.
+        var bytes = Utf8("""{ "on_letrozole": true, "allergies": ["latex"] }""");
+
+        var captured = await StartAndCaptureAsync(WithFormIntakeInput(), IntakeFileRequest(FilledIntake, bytes));
+
+        Assert.True(captured.Outcome.Error is null, captured.Outcome.ErrorDetail);
+        var input = captured.OrchestrationInput!;
+        Assert.Equal("""{"allergies":["latex"],"on_letrozole":true}""", input.Inputs!["intake"]);
+        var origin = Assert.Single(input.InputDocumentOrigins!["intake"]);
+        Assert.Equal(ConsultInputOriginKinds.FormResponse, origin.Kind);
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(bytes), origin.FileSha256);
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(input.Inputs["intake"]), origin.TextSha256);
+        Assert.Null(origin.SourceFormId);
+        Assert.Null(origin.SourceResponseId);
+        // Cleared before the durable payload: the bytes never rest.
+        Assert.Null(input.Request.InputFormFiles);
+    }
+
+    [Fact]
+    public async Task AQuestionnaireFileWithABom_IsRead_AndHashedOverTheRawBytes()
+    {
+        var bytes = new byte[] { 0xEF, 0xBB, 0xBF }.Concat(Utf8("""{ "allergies": ["latex"], "on_letrozole": true }""")).ToArray();
+
+        var captured = await StartAndCaptureAsync(WithFormIntakeInput(), IntakeFileRequest(FilledIntake, bytes));
+
+        Assert.True(captured.Outcome.Error is null, captured.Outcome.ErrorDetail);
+        var origin = Assert.Single(captured.OrchestrationInput!.InputDocumentOrigins!["intake"]);
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(bytes), origin.FileSha256);
+    }
+
+    [Theory]
+    [InlineData("{ not json", "The questionnaire file for input 'intake' is not JSON.")]
+    [InlineData("[1, 2]", "The questionnaire file for input 'intake' must be a JSON object; got a JSON array.")]
+    [InlineData("\"text\"", "The questionnaire file for input 'intake' must be a JSON object; got a JSON string.")]
+    [InlineData("{}", "The questionnaire file for input 'intake' holds no value.")]
+    [InlineData("""{ "allergies": ["latex"], "on_letrozole": true, "smoker": false }""", "The questionnaire file for input 'intake' has a field 'smoker' it does not declare (fields: allergies, on_letrozole).")]
+    public async Task AQuestionnaireFileTheDeclarationRefuses_RefusesTheStart_ByName(string file, string sentence)
+    {
+        var outcome = (await StartAndCaptureAsync(WithFormIntakeInput(), IntakeFileRequest(FilledIntake, Utf8(file)))).Outcome;
+
+        Assert.Equal(ConsultGenerationJobStartError.InputFormFileInvalid, outcome.Error);
+        Assert.Equal(sentence, outcome.ErrorDetail);
+    }
+
+    [Fact]
+    public async Task AQuestionnaireFileMissingARequiredField_RefusesTheStart_ByName()
+    {
+        var claimed = ConsultInputValue.OfObject(new[] { new ConsultInputEntry("allergies", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("latex") })) });
+
+        var outcome = (await StartAndCaptureAsync(WithFormIntakeInput(letrozoleRequired: true), IntakeFileRequest(claimed, Utf8("""{ "allergies": ["latex"] }""")))).Outcome;
+
+        Assert.Equal(ConsultGenerationJobStartError.InputFormFileInvalid, outcome.Error);
+        Assert.Equal("The questionnaire file for input 'intake' is missing required field 'on_letrozole'.", outcome.ErrorDetail);
+    }
+
+    [Fact]
+    public async Task AValueThatDoesNotEqualTheQuestionnaireFile_RefusesTheStart()
+    {
+        var edited = ConsultInputValue.OfObject(new[]
+        {
+            new ConsultInputEntry("allergies", ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("latex") })),
+            new ConsultInputEntry("on_letrozole", ConsultInputValue.OfBoolean(false)),
+        });
+
+        var outcome = (await StartAndCaptureAsync(WithFormIntakeInput(), IntakeFileRequest(edited, Utf8("""{ "allergies": ["latex"], "on_letrozole": true }""")))).Outcome;
+
+        Assert.Equal(ConsultGenerationJobStartError.InputFormFileMismatch, outcome.Error);
+        Assert.Equal("Input 'intake' does not equal the questionnaire file's value.", outcome.ErrorDetail);
+    }
+
+    [Fact]
+    public async Task AQuestionnaireFileForAnObjectInputWithoutTheFormChannel_RefusesTheStart()
+    {
+        // WithIntakeInput() declares the same object with no expectedContent.
+        var outcome = (await StartAndCaptureAsync(WithIntakeInput(), IntakeFileRequest(FilledIntake, Utf8("""{ "allergies": ["latex"], "on_letrozole": true }""")))).Outcome;
+
+        Assert.Equal(ConsultGenerationJobStartError.InputFormFileInvalid, outcome.Error);
+        Assert.Equal("Input 'intake' does not take a questionnaire file; only an object input declared expectedContent 'form' does.", outcome.ErrorDetail);
+    }
+
+    [Fact]
+    public async Task AQuestionnaireFileForAnUndeclaredInput_RefusesTheStart_BeforeTheResolverSpeaks()
+    {
+        var outcome = (await StartAndCaptureAsync(WithFormIntakeInput(), IntakeFileRequest(FilledIntake, Utf8("{}"), inputId: "nope"))).Outcome;
+
+        Assert.Equal(ConsultGenerationJobStartError.InputFormFileInvalid, outcome.Error);
+        Assert.Equal("Input 'nope' is not declared by the package.", outcome.ErrorDetail);
+    }
+
+    [Fact]
+    public async Task AQuestionnaireFile_HashesLikeTheSameObjectTyped_DifferingOnlyInOrigin()
+    {
+        var bytes = Utf8("""{ "allergies": ["latex"], "on_letrozole": true }""");
+        var typed = await StartAndCaptureAsync(WithFormIntakeInput(), IntakeFileRequest(FilledIntake, bytes) with { InputFormFiles = null });
+        var fromFile = await StartAndCaptureAsync(WithFormIntakeInput(), IntakeFileRequest(FilledIntake, bytes));
+
+        Assert.True(typed.Outcome.Error is null, typed.Outcome.ErrorDetail);
+        Assert.True(fromFile.Outcome.Error is null, fromFile.Outcome.ErrorDetail);
+        Assert.Equal(typed.OrchestrationInput!.EffectiveInputHash, fromFile.OrchestrationInput!.EffectiveInputHash);
+        Assert.False(typed.OrchestrationInput.InputDocumentOrigins?.ContainsKey("intake") ?? false);
+        Assert.Equal(ConsultInputOriginKinds.FormResponse, Assert.Single(fromFile.OrchestrationInput.InputDocumentOrigins!["intake"]).Kind);
+    }
+
+    [Fact]
+    public void TheQuestionnaireFileShape_IsCheckedAtTheDoor()
+    {
+        var value = new Dictionary<string, ConsultInputValue> { ["intake"] = FilledIntake, ["consult_draft"] = ConsultInputValue.OfText(Referral) };
+        static InputFilePayload File(int length = 2) => new("application/json", new byte[length]);
+
+        Assert.Equal("InputFormFiles contains a blank id.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null, Inputs: value, InputFormFiles: new Dictionary<string, InputFilePayload> { [" "] = File() })));
+        Assert.Equal("Input 'intake' carries a questionnaire file but no value.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null, Inputs: new Dictionary<string, ConsultInputValue> { ["consult_draft"] = ConsultInputValue.OfText(Referral) },
+            InputFormFiles: new Dictionary<string, InputFilePayload> { ["intake"] = File() })));
+        Assert.Equal("Input 'intake' was supplied as both a questionnaire file and a form reference.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null, Inputs: value,
+            InputFormRefs: new Dictionary<string, ConsultInputFormRef> { ["intake"] = new("triage-intake", "17") },
+            InputFormFiles: new Dictionary<string, InputFilePayload> { ["intake"] = File() })));
+        Assert.Equal("Input 'intake' was supplied as both a questionnaire file and a document.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null, Inputs: value,
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["intake"] = [File()] },
+            InputFormFiles: new Dictionary<string, InputFilePayload> { ["intake"] = File() })));
+        // A previous-run reference beside a typed value is refused by the InputRefs
+        // door before this one speaks; the one-source rule holds either way.
+        Assert.Contains("previous run", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null, Inputs: value,
+            InputRefs: new Dictionary<string, List<ConsultInputRef>> { ["intake"] = [new("job-1", "consult")] },
+            InputFormFiles: new Dictionary<string, InputFilePayload> { ["intake"] = File() })));
+        Assert.Equal("Questionnaire file for input 'intake' is empty.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null, Inputs: value, InputFormFiles: new Dictionary<string, InputFilePayload> { ["intake"] = File(0) })));
+        Assert.Equal("Questionnaire file for input 'intake' exceeds 256 KB.", ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null, Inputs: value, InputFormFiles: new Dictionary<string, InputFilePayload> { ["intake"] = File(ConsultGenerationJobs.MaxInputFormFileBytes + 1) })));
+        Assert.Null(ConsultGenerationJobs.ValidateRequest(new ConsultGenerationRequest(
+            null, Inputs: value, InputFormFiles: new Dictionary<string, InputFilePayload> { ["intake"] = File() })));
+    }
+
+    [Fact]
+    public void TheQuestionnaireFileCap_IsTheHeldValueCap()
+    {
+        // The same thing, the same bound: a questionnaire file is a held value as a file.
+        Assert.Equal(Consultologist.Api.Forms.FormsIntake.MaxValueLength, ConsultGenerationJobs.MaxInputFormFileBytes);
+    }
+
     [Fact]
     public void TheFormsSource_IsTheRegistrysWord()
     {

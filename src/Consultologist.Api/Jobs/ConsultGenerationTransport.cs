@@ -31,6 +31,11 @@ public sealed class ConsultGenerationJobs
     // (EmailIntakeProcessor.MaxDraftLength).
     internal const int MaxInputLength = 256 * 1024;
 
+    // #991: a questionnaire file is a held form response's value as a file,
+    // so it takes the held-payload value cap (FormsIntake.MaxValueLength),
+    // not the document cap — the same thing, the same bound.
+    internal const int MaxInputFormFileBytes = Forms.FormsIntake.MaxValueLength;
+
     // #238: bytes accepted per attached document, and across one request.
     // The per-file bound matches the parser's own (DocumentExtraction.MaxBytes)
     // so a file that clears this is one the parser will also accept; the total
@@ -1332,6 +1337,52 @@ public sealed class ConsultGenerationJobs
             }
         }
 
+        // #991: a questionnaire file is an assertion BESIDE a value in Inputs,
+        // like a form reference — only its shape here; the starter re-coerces
+        // the bytes against the declaration. One source per input: an id here
+        // may not also carry a form reference, documents or a previous run
+        // (choosing one would drop the other silently).
+        if (request.InputFormFiles is { Count: > 0 })
+        {
+            foreach (var (id, file) in request.InputFormFiles)
+            {
+                if (string.IsNullOrWhiteSpace(id))
+                {
+                    return "InputFormFiles contains a blank id.";
+                }
+
+                if (request.Inputs?.ContainsKey(id) != true)
+                {
+                    return $"Input '{id}' carries a questionnaire file but no value.";
+                }
+
+                if (request.InputFormRefs?.ContainsKey(id) == true)
+                {
+                    return $"Input '{id}' was supplied as both a questionnaire file and a form reference.";
+                }
+
+                if (request.InputFiles?.ContainsKey(id) == true)
+                {
+                    return $"Input '{id}' was supplied as both a questionnaire file and a document.";
+                }
+
+                if (request.InputRefs?.ContainsKey(id) == true)
+                {
+                    return $"Input '{id}' was supplied as both a questionnaire file and a previous run.";
+                }
+
+                if (file?.Content is not { Length: > 0 })
+                {
+                    return $"Questionnaire file for input '{id}' is empty.";
+                }
+
+                if (file.Content.Length > MaxInputFormFileBytes)
+                {
+                    return $"Questionnaire file for input '{id}' exceeds {MaxInputFormFileBytes / 1024} KB.";
+                }
+            }
+        }
+
         // v12 #618: choices are shape-checked only — a blank key is a 400;
         // whether the id names an optional macro is the starter's question,
         // answered against the resolved package (a 422 there).
@@ -2419,6 +2470,11 @@ public sealed class ConsultGenerationJobs
             ConsultGenerationJobStartError.InputFormRefNotFound => HttpStatusCode.UnprocessableEntity,
             ConsultGenerationJobStartError.InputFormRefValuesDeleted => HttpStatusCode.UnprocessableEntity,
             ConsultGenerationJobStartError.InputFormRefMismatch => HttpStatusCode.UnprocessableEntity,
+            // #991: a questionnaire file that is not JSON / not an object / not
+            // for a form-channel object input / misfits the declaration, and a
+            // value that does not equal the file's — well-formed, unsatisfiable.
+            ConsultGenerationJobStartError.InputFormFileInvalid => HttpStatusCode.UnprocessableEntity,
+            ConsultGenerationJobStartError.InputFormFileMismatch => HttpStatusCode.UnprocessableEntity,
             // v12 #618: same family — well-formed, unsatisfiable against
             // this package's macro declarations.
             ConsultGenerationJobStartError.MacroChoiceMismatch => HttpStatusCode.UnprocessableEntity,
