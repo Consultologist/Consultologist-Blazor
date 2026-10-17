@@ -677,3 +677,21 @@ fluent-button.package-tag__button::part(control) {
 	width: 14rem;
 	font-family: var(--consultologist-font-mono, monospace);
 }
+
+/* #991: the derive-from-a-sample door under a fields editor — a pasted sample
+   object and the one-line note of what it added. */
+.fields-sample {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	margin: 0.5rem 0;
+}
+
+.fields-sample__text {
+	width: 100%;
+	max-width: 48rem;
+}
+
+.fields-sample__note {
+	margin: 0.25rem 0 0;
+}
