@@ -807,6 +807,17 @@ step is said in the toolbar and leaves the package as loaded, the staged rung re
 hyphenated **prompt** id is renamed, on every node that names it (every pre-24 fixture carried
 one and migrated into a package the validator refused); the string-form `result` of a v5/v6
 package becomes the one-entry `deliverables` instead of the "migrate to 24 first" refusal.)*
+*(2026-10-17 — the same two steps offline: `scripts/migrate-workflow-package.cs` in the engine repo
+(`dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> [--write]`) stages a
+folder to 24 the editor's way — a port of `MigratePreludes` + the additive bump, with a hyphenated
+prelude id snake_cased since the rewriter renames node, prompt, data and schema ids but not macro
+ids — then runs the library rewriter with the editor's contract resolver, validates the 25 result
+with the formats catalogue, prints the notices and the file plan, and with `--write` applies files,
+`manifest.json` and a regenerated `dag.mmd`. The hand edits 25 asks for — a placed macro's
+`instruction`, a custom format's description — are printed as the validator's errors and made on
+the written files. The public packages repository migrates with it. `validate-workflow-package.cs`
+and `stamp-workflow-package.cs` now load the formats catalogue too; before this every 25 package
+failed them with "the format catalogue is not available".)*
 Decisions: library rewriter + replaced package; internal seam; the four
 canonical concept-source stamps ride their snake_case twins so a renamed canonical node renders
 the same concept-context bytes. Byte identity, handled: a concept node bound with no renderer
