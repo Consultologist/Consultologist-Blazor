@@ -69,6 +69,45 @@ public class ConsultsFormResponseTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ChoosingAResponse_FillsAnObjectInput_FromItsHeldObject()
+    {
+        // #991 closed the C5 gap: the forms endpoint flattens a version-2
+        // object value to its raw JSON, and the client now coerces it through
+        // the library, so an object input fills from a held response.
+        WithPinnedPackage(
+            blocks: new[] { Block("section-instructions:hpi", "History of Present Illness") },
+            inputs: new[]
+            {
+                new WorkflowPackageInputResponse("consult_draft", "Consult draft", true),
+                new WorkflowPackageInputResponse("intake", "Intake", false, WorkflowInputTypes.Object,
+                    Fields: new[]
+                    {
+                        new WorkflowPackageFieldResponse("allergies", "Allergies", false, WorkflowInputTypes.Array, Items: new WorkflowPackageElementResponse(WorkflowInputTypes.Text)),
+                        new WorkflowPackageFieldResponse("on_letrozole", "On letrozole", false, WorkflowInputTypes.Boolean),
+                    },
+                    ExpectedContent: WorkflowExpectedContent.Form)
+            },
+            specVersion: 25);
+        FormsService.ListResponsesAsync().Returns(new[]
+        {
+            new FormResponseListRow("triage-intake", "17", Submitted, new[] { "consult_draft", "intake" }, null)
+        });
+        FormsService.GetResponseAsync("triage-intake", "17").Returns(new FormResponseValues(
+            "triage-intake", "17", Submitted,
+            new Dictionary<string, string> { ["consult_draft"] = Referral, ["intake"] = """{"allergies":["latex"],"on_letrozole":true}""" }));
+        CaptureSubmit();
+        var page = Rendered();
+
+        Choose(page);
+
+        Assert.Empty(page.FindAll(".fluent-messagebar-message"));
+        page.FindAll("fluent-button").Last().Click();
+        Assert.True(submitted);
+        Assert.Equal("""{"allergies":["latex"],"on_letrozole":true}""", System.Text.Json.JsonSerializer.Serialize(sentInputs!["intake"]));
+        Assert.Equal(new ConsultInputFormRef("triage-intake", "17"), Assert.Contains("intake", sentFormRefs!));
+    }
+
+    [Fact]
     public void ThePicker_ListsResponsesNewestFirst_AndAdeletedOneIsNotChoosable()
     {
         WithResponses();

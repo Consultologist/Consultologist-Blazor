@@ -297,6 +297,37 @@
                                        absent; a touched one answers every required
                                        field before the run opens. *@
                                     <div class="input-field__group" @onclick:stopPropagation="true">
+                                        @if (field.TakesQuestionnaireFile)
+                                        {
+                                            var questionnaireField = field;
+                                            @* #991: a questionnaire response saved as a JSON file — a
+                                               bare object keyed by this input's field ids — fills the
+                                               fields below for review; they stay editable, and an edit
+                                               drops the file (the fill is then typed). preventDefault:
+                                               inside the input's <label>, a click here would otherwise
+                                               activate the label's first control (#510's lesson). *@
+                                            @if (questionnaireFills.TryGetValue(field.Id, out var questionnaireFill))
+                                            {
+                                                <span class="input-field__chip input-field__questionnaire" @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                                                    <span class="input-field__chip-name">Questionnaire file</span>
+                                                    <span class="muted-text">@questionnaireFill.FieldCount field@(questionnaireFill.FieldCount == 1 ? "" : "s")@(QuestionnaireIntact(field) ? "" : " · edited")</span>
+                                                    <FluentButton Appearance="Appearance.Stealth" Title="Remove this questionnaire file"
+                                                                  @onclick="() => RemoveQuestionnaireFile(questionnaireField)">Remove</FluentButton>
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="input-field__file input-field__questionnaire-door" @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                                                    <FluentButton Id="@QuestionnaireTriggerId(field)" Appearance="Appearance.Stealth"
+                                                                  Class="input-field__questionnaire-trigger"
+                                                                  IconStart="@(new Icons.Regular.Size20.ArrowUpload())"
+                                                                  Title="Import a questionnaire response saved as a JSON file">Import a questionnaire response…</FluentButton>
+                                                    <FluentInputFile AnchorId="@QuestionnaireTriggerId(field)" DragDropZoneVisible="false"
+                                                                     Accept=".json,application/json" MaximumFileSize="long.MaxValue" MaximumFileCount="int.MaxValue"
+                                                                     OnInputFileChange="args => LoadQuestionnaireFileAsync(questionnaireField, args)" />
+                                                </span>
+                                            }
+                                        }
                                         @StructureControl(field.Root)
                                     </div>
                                 }
@@ -1807,7 +1838,7 @@
           ?? ScheduleDefault.NextOccurrenceUtc(accountScheduleTime, DateTime.Now);
         var job = await AIService.StartConsultGenerationJobAsync(
           SuppliedInputs(), currentPackageRef, scheduledAtUtc, SuppliedFiles(), SuppliedRefs(), SuppliedFormRefs(), SuppliedMacroChoices(),
-          SuppliedAcknowledgedShortInputs());
+          SuppliedAcknowledgedShortInputs(), SuppliedFormFiles());
         runOvernight = false;
         scheduledAtLocal = string.Empty;
         ClearInputs();
@@ -1847,7 +1878,7 @@
         isSchedulingRequest = true;
         await AIService.StartConsultGenerationJobAsync(
           SuppliedInputs(), currentPackageRef, files: SuppliedFiles(), refs: SuppliedRefs(), formRefs: SuppliedFormRefs(), macroChoices: SuppliedMacroChoices(),
-          acknowledgedShortInputs: SuppliedAcknowledgedShortInputs());
+          acknowledgedShortInputs: SuppliedAcknowledgedShortInputs(), formFiles: SuppliedFormFiles());
         ClearInputs();
         queuedThisSession++;
         // Set AFTER ClearInputs — ClearInputs nulls scheduleConfirmation — so the
@@ -1880,6 +1911,8 @@
       var fileSnapshot = SuppliedFiles();
       // #802: captured before the run phase changes the fields, like the others.
       var acknowledgedShortSnapshot = SuppliedAcknowledgedShortInputs();
+      // #991: the questionnaire files, likewise.
+      var formFileSnapshot = SuppliedFormFiles();
       // What the run displays and what re-attach restores: the text, however
       // the input was filled. The request itself carries the files.
       var textSnapshot = EffectiveInputTexts();
@@ -1891,7 +1924,7 @@
       // the declared inputs (and the resolved package ref).
       var job = await AIService.StartConsultGenerationJobAsync(
         inputSnapshot, currentPackageRef, files: fileSnapshot, refs: SuppliedRefs(), formRefs: SuppliedFormRefs(), macroChoices: SuppliedMacroChoices(),
-        acknowledgedShortInputs: acknowledgedShortSnapshot);
+        acknowledgedShortInputs: acknowledgedShortSnapshot, formFiles: formFileSnapshot);
 
       // #207: remember the job per-tab so navigating away and back re-attaches.
       JobSession.Current = new ConsultJobMemento(
@@ -2504,6 +2537,14 @@
         return field;
       })
       .ToList();
+
+    // #991: a questionnaire fill survives a same-shape adopt (the equality
+    // guard still decides the wire); one whose id is no longer a form-channel
+    // object is dropped with the package that declared it.
+    foreach (var stale in questionnaireFills.Keys.Where(id => inputFields.All(field => field.Id != id || !field.TakesQuestionnaireFile)).ToList())
+    {
+      questionnaireFills.Remove(stale);
+    }
   }
 
   // Re-attaching to a running job restores what it ran on — as typed when
@@ -2514,6 +2555,8 @@
     IReadOnlyDictionary<string, string> values,
     IReadOnlyDictionary<string, ConsultInputValue>? typed)
   {
+    // #991: a restored memento is not this session's file.
+    questionnaireFills.Clear();
     foreach (var field in inputFields)
     {
       if (typed != null && typed.TryGetValue(field.Id, out var value))
@@ -2544,6 +2587,7 @@
       field.Clear();
     }
 
+    questionnaireFills.Clear();
     scheduleConfirmation = null;
     attemptedSubmit = false;
   }
@@ -2776,11 +2820,9 @@
         continue;
       }
 
-      var (value, misfit) = FormResponseCoercion.Coerce(
-        field.Type,
-        field.Type == WorkflowInputTypes.Enum ? field.Scalar.Values : null,
-        field.Type == WorkflowInputTypes.Array ? field.Items : null,
-        held);
+      // #991: the library's coercion over the input's declaration — union-aware,
+      // and an object input now fills from its held object (design § 13's gap).
+      var (value, misfit) = DeclaredInputCoercion.CoerceHeldText(field.Declaration, held);
 
       if (misfit != null)
       {
@@ -2819,6 +2861,101 @@
     }
 
     return refs.Count > 0 ? refs : null;
+  }
+
+  // #991: mirrors ConsultGenerationJobs.MaxInputFormFileBytes (FormsIntake.MaxValueLength).
+  private const int MaxQuestionnaireFileBytes = 256 * 1024;
+
+  // #991: per form-channel object input, the questionnaire file's bytes and the
+  // exact value the fill produced. At submit an input still equal to its fill
+  // carries the bytes (the server re-coerces them and requires equality); an
+  // edited one is typed and carries none — the formFills rule.
+  private readonly Dictionary<string, (byte[] Bytes, ConsultInputValue Value, int FieldCount)> questionnaireFills = new(StringComparer.Ordinal);
+
+  private static string QuestionnaireTriggerId(ConsultInputField field) => $"questionnaire-trigger-{field.Id}";
+
+  private async Task LoadQuestionnaireFileAsync(ConsultInputField field, InputFileChangeEventArgs args)
+  {
+    if (args.FileCount == 0)
+    {
+      return;
+    }
+
+    var file = args.File;
+    field.FileError = null;
+    scheduleConfirmation = null;
+
+    if (file.Size > MaxQuestionnaireFileBytes)
+    {
+      field.FileError = $"That file is larger than {MaxQuestionnaireFileBytes / 1024} KB.";
+      return;
+    }
+
+    byte[] bytes;
+    try
+    {
+      using var buffer = new MemoryStream();
+      await using (var stream = file.OpenReadStream(MaxQuestionnaireFileBytes))
+      {
+        await stream.CopyToAsync(buffer);
+      }
+
+      bytes = buffer.ToArray();
+    }
+    catch (Exception ex)
+    {
+      field.FileError = $"That file could not be read: {ex.Message}";
+      return;
+    }
+
+    var (value, misfit) = DeclaredInputCoercion.CoerceFile(field.Declaration, bytes);
+    if (misfit != null)
+    {
+      field.FileError = $"That questionnaire file {misfit}.";
+      return;
+    }
+
+    if (value == null)
+    {
+      field.FileError = "That questionnaire file holds no answers.";
+      return;
+    }
+
+    // The file becomes the fields — editable, like a held response's fill.
+    field.Restore(value);
+    questionnaireFills[field.Id] = (bytes, value, value.Fields?.Count ?? 0);
+  }
+
+  private bool QuestionnaireIntact(ConsultInputField field) =>
+    questionnaireFills.TryGetValue(field.Id, out var fill)
+    && field.Supplied is { } supplied
+    && System.Text.Json.JsonSerializer.Serialize(supplied) == System.Text.Json.JsonSerializer.Serialize(fill.Value);
+
+  // Remove clears the fill AND the fields: an object input holds no text
+  // underneath the way a document input does, and leaving the values behind
+  // would run them as typed after the clinician said "remove".
+  private void RemoveQuestionnaireFile(ConsultInputField field)
+  {
+    questionnaireFills.Remove(field.Id);
+    field.Clear();
+    scheduleConfirmation = null;
+  }
+
+  // #991: the bytes that still tell the truth — the SuppliedFormRefs rule.
+  private Dictionary<string, InputFilePayload>? SuppliedFormFiles()
+  {
+    var files = new Dictionary<string, InputFilePayload>(StringComparer.Ordinal);
+    foreach (var (id, fill) in questionnaireFills)
+    {
+      var field = inputFields.FirstOrDefault(candidate => candidate.Id == id);
+      if (field is { Supplied: { } supplied }
+          && System.Text.Json.JsonSerializer.Serialize(supplied) == System.Text.Json.JsonSerializer.Serialize(fill.Value))
+      {
+        files[id] = new InputFilePayload("application/json", fill.Bytes);
+      }
+    }
+
+    return files.Count > 0 ? files : null;
   }
 
   private void LoadDeliverable(ConsultInputField field, LoadedDeliverable loaded)
@@ -3760,6 +3897,7 @@
   {
     public ConsultInputField(WorkflowPackageInputResponse input, int textRows)
     {
+      Declaration = input;
       Id = input.Id;
       Label = input.Label;
       Required = input.Required;
@@ -3780,11 +3918,16 @@
       Root = new ConsultInputNode(Id, Label, Required, Type, input.Values, input.Items, input.Fields, depth: 0, textRows, placeholder);
     }
 
+    /// <summary>#991: the declaration as served — what the library coerces a held or filed answer against.</summary>
+    public WorkflowPackageInputResponse Declaration { get; }
     public string Id { get; }
     public string Label { get; }
     public bool Required { get; }
     /// <summary>#728: the declared content channel (transcript/form), or null.</summary>
     public string? ExpectedContent { get; }
+    /// <summary>#991: an object input declared expectedContent: form takes a questionnaire file.</summary>
+    public bool TakesQuestionnaireFile =>
+      Type == WorkflowInputTypes.Object && AcceptedTypes is not { Count: > 1 } && ExpectedContent == WorkflowExpectedContent.Form;
     /// <summary>The chip shown beside the label for a declared channel.</summary>
     public string? ChannelLabel => ExpectedContent switch
     {
