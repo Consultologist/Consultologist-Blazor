@@ -406,7 +406,10 @@ system with no dependency on this application or its Azure tenant.
 >   unchanged, word for word.
 > - **Origin variants, by fields, no new kind:** a `form-response` origin whose bytes came
 >   from a questionnaire file (#991: `fileSha256`, no source ids) and a `transcript` origin
->   from a transcript file loaded on the Create page (#994). History names the first.
+>   from a transcript file loaded on the Create page (#994). History names the first; the
+>   second is told by its `extractor` — `vtt/1`/`srt/1` for a file read as turns — since the
+>   fields are the same as a satellite-submitted transcript's. *(2026-10-17: #994 landed;
+>   provenance v2026.10.6 words the turns rule — speakers kept, timings and cue markup removed.)*
 > - The `slot` kind on a document's `appended[]` (specVersion 20) is documented; at 25 a slot
 >   entry sits on the node row.
 >

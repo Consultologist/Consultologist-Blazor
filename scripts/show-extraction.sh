@@ -35,7 +35,7 @@ files=("$@")
 # source text does, under scripts/fixtures.
 if [ ${#files[@]} -eq 0 ]; then
     mapfile -t files < <(find "$PWD" -maxdepth 1 -type f \
-        \( -name '*.pdf' -o -name '*.docx' -o -name 'consult_draft.txt' -o -name 'prior_notes*.txt' \) | sort)
+        \( -name '*.pdf' -o -name '*.docx' -o -name '*.vtt' -o -name '*.srt' -o -name 'consult_draft.txt' -o -name 'prior_notes*.txt' \) | sort)
     [ ${#files[@]} -gt 0 ] || { echo "no documents found in $PWD — pass one as an argument" >&2; exit 1; }
 fi
 

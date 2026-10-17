@@ -39,7 +39,7 @@ about documents; the intake layer does.
 ```
                     PARSER  (sole format authority)
               sniff → decode/extract → named outcome
-                 owns: txt · md · pdf · docx · html
+                 owns: txt · md · pdf · docx · html · vtt · srt
                       ↑                ↑
               SOURCE: app        SOURCE: email
               (bytes only)       (bytes only)
@@ -370,6 +370,70 @@ and both doors agree.
 > it: a stored copy of a fixture can go stale against it silently, and a
 > run posting the wrong bytes still passes. `--print-payload` shows what
 > would be sent without sending it.
+
+### Transcripts — `.vtt`, `.srt` (#994, 2026-10-17)
+
+A recorded encounter's transcript arrives as a cue container — WebVTT from
+Teams or Zoom, SubRip from most other tools — and before #994 both fell
+through the text fallback verbatim: `WEBVTT`, cue numbers and `-->` timings
+became the "text" the model read and the record hashed. They are formats
+now, sniffed on content like every other (`VttDocumentExtractor`,
+`SrtDocumentExtractor`), and read through one shared rule
+(`TranscriptTurns`) as **turns**:
+
+- **Signatures.** VTT: the decoded prefix (BOM already dropped) starts with
+  `WEBVTT` followed by the end of the file, a space, a tab or a line break.
+  SRT has no magic number; its signature is structural — the first non-blank
+  line is a cue index (ASCII digits only) and the next is a timing line
+  (`hh:mm:ss,mmm --> hh:mm:ss,mmm`; `.` millis tolerated). Prose that happens
+  to start with `1` fails the second test. **Both sit before HTML** in the
+  format list: the HTML sniffer's close-tag rule would claim a voice span's
+  `</v>` or an italic's `</i>`.
+- **Turns, not cues.** One line per turn, `Speaker: text` where the source
+  labels a speaker — a WebVTT voice tag (`<v Dr Lee>`, Teams) or a `Name:`
+  prefix on the cue (Zoom; up to 40 characters holding a letter and no `?`
+  or `!`) — with consecutive cues of one speaker merged into one turn, since
+  a cue boundary is a timing artefact. Unlabelled cues merge too, but break
+  after a cue that ends a sentence, so an auto-caption file with no speakers
+  reads one sentence per line rather than as one paragraph the preview
+  cannot be checked against. Deterministic (ordinal, culture-invariant, no
+  I/O): the same bytes always read the same, and one conversation reads the
+  same whichever container it arrived in.
+- **Container goes, speech stays.** Removed: the `WEBVTT` header block
+  (including header lines such as `Kind: captions`), `NOTE`/`STYLE`/`REGION`
+  blocks, cue identifiers, timing lines and their cue settings, inline tags
+  (`<c>`, `<b>`, `<i>`, `<u>`, `<ruby>`, `<lang>`, `<font>`, `</v>`), inline
+  timestamps (`<00:01:02.000>`) and SubRip's ASS overrides (`{\an8}`).
+  Entities are decoded **after** stripping, so an escaped `&lt;b&gt;` is
+  speech about a tag and comes through as the literal characters; the tag
+  regex is narrow (`<` must be followed by `/`, a letter or a timestamp), so
+  `BP < 140` and `HR > 90` survive. Speakers stay because who said what is
+  clinical content; cue numbers carry nothing the line order does not;
+  timings fragment sentences, cost tokens and survive in the file the
+  origin's `fileSha256` identifies.
+- **Named failures.** A block with text but no timing line is `corrupt` — the
+  file announced a format and did not keep it; speech is never dropped
+  silently and never handed back as the cue soup the old fallback produced
+  (the HTML extractor's PDF-in-spans `corrupt` is the precedent). The
+  character cap applies to the **output** (the turns), as HTML's does to its
+  stripped text: a 2 MB VTT whose speech is 200 KB is readable. A lone header
+  or a NOTE-only file is `empty` through the shared Normalize gate.
+- **Extractor ids** are hand-versioned like `text/1`: `vtt/1`, `srt/1`. The
+  id is the only place the container survives on the record (the fields of a
+  loaded transcript file and a satellite-submitted one are identical), and
+  History prints it: "read from a transcript by vtt/1". Any change to the
+  shared turns rule bumps both ids in the same commit.
+- **Plain text is untouched.** `.txt`/`.md` have no signature, and a referral
+  letter that mentions a time must not be rewritten — a plain transcript with
+  `[00:01:23]` prefixes is read verbatim as `text/1`.
+- **Where it applies.** Every door: the Create page's dropzone (a
+  transcript-channel input says "Drop a transcript here, or browse…" — the
+  sentence is the whole door; no `accept`, § 1), the preview endpoint, and
+  email intake, whose `.vtt`/`.srt` attachments now read as turns too. The
+  origin **kind** is unchanged by the format: it comes from the declaration
+  (`expectedContent: transcript`) or the caller's `TranscriptInputs`, so a VTT
+  dropped on a plain text input is parsed the same way and stays a
+  `document`. `textSha256` is over the turns; provenance@v2026.10.6 words it.
 
 ## 4. Limits
 
@@ -741,7 +805,7 @@ happened and what to do instead.
 
 | Outcome | App |
 |---|---|
-| `unsupported-type` | We can read .txt, .md, .pdf, .docx and .html files — that one is something else. |
+| `unsupported-type` | We can read .txt, .md, .pdf, .docx, .html, .vtt and .srt files — that one is something else. |
 | `no-text-layer` | This PDF has no text layer, so it is a scan or a fax. Paste the text instead, or attach a PDF exported from your system. |
 | `ocr-unavailable` | We could not read this scan right now. Nothing is wrong with it — try again in a moment, or paste the text instead. |
 | `ocr-low-confidence` | This scan was read, but its text confidence was below the minimum set in your profile. Paste the text instead, or lower the minimum in your profile. |
