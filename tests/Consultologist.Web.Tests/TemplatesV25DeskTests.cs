@@ -85,6 +85,9 @@ public class TemplatesV25DeskTests : ClientRenderTestContext
             "Prompt 'scope' reads snippet.standards.body, which is not a member (a snippet has .id, .name and .content)." };
         yield return new object[] { "value on a text format", null!, ("prompts/scope.md", "{{ node.assessment.value }} {{ input.notes }}"),
             "Prompt 'scope' reads node.assessment.value, but format 'prose' is text and has no value; read node.assessment.content." };
+        // #1058: renderer pipes are typed.
+        yield return new object[] { "renderer pipe on another format", null!, ("prompts/assessment.md", "Assess {{ node.scope.content | concept_bullets }} {{ snippet.standards.content }} {{ macro.tool_note.prompt }}"),
+            "Prompt 'assessment' pipes node.scope.content through concept_bullets, but format 'classification' (enum) is not concept_list; concept_bullets renders a concept_list node's text (node.<id>.content)." };
     }
 
     [Theory]

@@ -148,7 +148,7 @@ public class TemplatesV25ReadsTests : ClientRenderTestContext
         var page = RenderEditor(WithFile("prompts/assessment.md", "Assess {{ node.nope.content }} and {{ snippet.standards.content }}"));
         ShowNode(page, "assessment");
 
-        Assert.Equal("1 reference does not resolve — Publish says which.", page.Find(".node-reads__unresolved").TextContent.Trim());
+        Assert.Equal("1 problem in this text — Publish says which.", page.Find(".node-reads__unresolved").TextContent.Trim());
     }
 
     [Fact]

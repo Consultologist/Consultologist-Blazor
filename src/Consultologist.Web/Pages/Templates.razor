@@ -4642,7 +4642,9 @@
     /// <summary>
     /// v25 (C4 #1010): the node pane's Reads section — what the node's prompt reads
     /// (derived, read-only), the computed node's parameter reads, the walker's warnings
-    /// word for word, and an early word when a reference does not resolve (the desk says which).
+    /// word for word, and an early count of the walker's refusals — a reference that
+    /// does not resolve, a member outside the closed set, a mistyped renderer pipe
+    /// (#1058) — as problems in the text (the desk says which).
     /// </summary>
     private RenderFragment NodeReadsSection(WorkflowManifestReader.NodeView node) => @<text>
         <div class="node-section node-reads-section">
@@ -4677,7 +4679,7 @@
                 }
                 @if (walked.References.Errors.Count > 0)
                 {
-                    <p class="muted-text node-reads__unresolved">@walked.References.Errors.Count @(walked.References.Errors.Count == 1 ? "reference does" : "references do") not resolve — Publish says which.</p>
+                    <p class="muted-text node-reads__unresolved">@walked.References.Errors.Count @(walked.References.Errors.Count == 1 ? "problem" : "problems") in this text — Publish says which.</p>
                 }
             }
         </div>
@@ -4737,7 +4739,10 @@
         foreach (var node in EffectiveNodes.Where(n => n.Id != readingNode))
         {
             var format = node.Format is { } formatId ? FormatOptions.FirstOrDefault(f => f.Id == formatId) : null;
-            choices.Add(new ReferenceChoice($"{{{{ node.{node.Id}.content }}}}", $"node.{node.Id}.content", "nodes", TakesPipe: true));
+            // #1058: a renderer pipe renders a concept_list node's text and the validator
+            // refuses it on any other format, so the renderer select is offered only there.
+            choices.Add(new ReferenceChoice($"{{{{ node.{node.Id}.content }}}}", $"node.{node.Id}.content", "nodes",
+                TakesPipe: format is { Id: PF.WorkflowFormatIds.ConceptList }));
 
             if (format is { Type: "enum" })
             {
@@ -4913,7 +4918,7 @@
             }
             @if (template.References.Errors.Count > 0)
             {
-                <p class="muted-text node-reads__unresolved">@template.References.Errors.Count @(template.References.Errors.Count == 1 ? "reference does" : "references do") not resolve — Publish says which.</p>
+                <p class="muted-text node-reads__unresolved">@template.References.Errors.Count @(template.References.Errors.Count == 1 ? "problem" : "problems") in this text — Publish says which.</p>
             }
         }
     </text>;
