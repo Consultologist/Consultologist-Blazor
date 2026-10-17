@@ -88,17 +88,163 @@ public class TemplateReferenceWalkerTests
         Assert.Empty(refs.Nodes);
     }
 
-    // C4 (#1010): the renderer pipes of § 1 are the engine's closed set — accepted by the
-    // walk, judged when they render. An unknown pipe name is still an unknown root.
-    [Fact]
-    public void ARendererPipe_OnANodesText_IsAccepted_AnUnknownPipeIsNot()
-    {
-        var piped = TemplateFixtures.Ok("{{ node.extract.content | concept_context }} {{ node.assessment.content | concept_bullets }}");
-        Assert.Equal(new[] { "assessment", "extract" }, piped.Edges.Order());
-        Assert.Equal(new TemplateNodeRead(true, false), piped.Nodes["extract"]);
+    // C4 (#1010) accepted the renderer pipes as the engine's closed set; #1058 types the
+    // operand: a concept_list node's text passes without the bare-read warning, anything
+    // else the walk can type is refused, anything it cannot is judged when it renders.
+    // ----- #1058: renderer pipes typed -----
 
+    [Fact]
+    public void ARendererPipe_OnAConceptListNodesText_IsAccepted_WithoutTheWarning()
+    {
+        var refs = TemplateFixtures.Ok("{{ node.extract.content | concept_context }} {{ node.extract.content | concept_bullets }}");
+
+        Assert.Equal(new[] { "extract" }, refs.Edges);
+        Assert.Equal(new TemplateNodeRead(true, false), refs.Nodes["extract"]);
+        Assert.Empty(refs.Warnings);
+    }
+
+    [Fact]
+    public void ARendererPipe_OnATextNodesText_IsRefused_AndTheEdgeIsStillRecorded()
+    {
+        const string sentence = "pipes node.assessment.content through concept_bullets, but format 'prose' is text; concept_bullets renders a concept_list node's text (node.<id>.content).";
+        TemplateFixtures.Refused("{{ node.assessment.content | concept_bullets }}", sentence);
+
+        var refs = TemplateFixtures.Walk("{{ node.assessment.content | concept_bullets }}");
+        Assert.Contains("assessment", refs.Edges);
+        Assert.Equal(new TemplateNodeRead(true, false), refs.Nodes["assessment"]);
+    }
+
+    [Theory]
+    [InlineData("{{ node.meds.content | concept_context }}", "pipes node.meds.content through concept_context, but format 'medication_list' (object) is not concept_list; concept_context renders a concept_list node's text (node.<id>.content).")]
+    [InlineData("{{ node.scope.content | concept_bullets }}", "pipes node.scope.content through concept_bullets, but format 'classification' (enum) is not concept_list; concept_bullets renders a concept_list node's text (node.<id>.content).")]
+    [InlineData("{{ node.coverage.content | concept_bullets }}", "pipes node.coverage.content through concept_bullets, but format 'terms_subset' (object) is not concept_list;")]
+    public void ARendererPipe_OnAnotherShapedNodesText_IsRefused(string template, string sentence) =>
+        TemplateFixtures.Refused(template, sentence);
+
+    [Theory]
+    [InlineData("{{ node.extract.value | concept_bullets }}", "pipes node.extract.value through concept_bullets; a renderer pipe renders a node's text — pipe node.extract.content.")]
+    [InlineData("{{ node.scope.value | concept_context }}", "pipes node.scope.value through concept_context; a renderer pipe renders a node's text — pipe node.scope.content.")]
+    [InlineData("{{ node.extract.value.concepts | concept_bullets }}", "pipes node.extract.value.concepts through concept_bullets; a renderer pipe renders a node's text (node.<id>.content).")]
+    public void ARendererPipe_OnANodesValue_IsRefused(string template, string sentence) =>
+        TemplateFixtures.Refused(template, sentence);
+
+    [Theory]
+    [InlineData("{{ snippet.standards.content | concept_bullets }}", "pipes snippet.standards.content through concept_bullets; a renderer pipe renders a node's text (node.<id>.content).")]
+    [InlineData("{{ input.notes | concept_context }}", "pipes input.notes through concept_context; a renderer pipe renders a node's text (node.<id>.content).")]
+    [InlineData("{{ input.patient | concept_bullets }}", "pipes input.patient through concept_bullets; a renderer pipe renders a node's text (node.<id>.content).")]
+    [InlineData("{{ macro.closing.content | concept_bullets }}", "pipes macro.closing.content through concept_bullets; a renderer pipe renders a node's text (node.<id>.content).")]
+    [InlineData("{{ run.date | concept_bullets }}", "pipes run.date through concept_bullets; a renderer pipe renders a node's text (node.<id>.content).")]
+    [InlineData("{{ profile.name | concept_context }}", "pipes profile.name through concept_context; a renderer pipe renders a node's text (node.<id>.content).")]
+    [InlineData("{{ snippet.sections | concept_bullets }}", "pipes snippet.sections through concept_bullets; a renderer pipe renders a node's text (node.<id>.content).")]
+    [InlineData("{{ 'free text' | concept_bullets }}", "through concept_bullets; a renderer pipe renders a node's text (node.<id>.content).")]
+    [InlineData("{{ 42 | concept_bullets }}", "through concept_bullets; a renderer pipe renders a node's text (node.<id>.content).")]
+    [InlineData("{{ for s in snippet.sections }}{{ s.content | concept_bullets }}{{ end }}", "through concept_bullets; a renderer pipe renders a node's text (node.<id>.content).")]
+    [InlineData("{{ for c in node.extract.value.concepts }}{{ c | concept_bullets }}{{ end }}", "through concept_bullets; a renderer pipe renders a node's text (node.<id>.content).")]
+    [InlineData("{{ node.extract | concept_bullets }}", "reads node 'extract' bare; read node.extract.content (its composed output) or node.extract.value.")]
+    public void ARendererPipe_OnAnythingButANodesText_IsRefused(string template, string sentence) =>
+        TemplateFixtures.Refused(template, sentence);
+
+    [Fact]
+    public void ARendererPipe_OnAFanItemsText_IsRefused() =>
+        TemplateFixtures.Refused("{{ item.content | concept_bullets }}", "pipes item.content through concept_bullets; a renderer pipe renders a node's text (node.<id>.content).", new SnippetFolderFan("sections"));
+
+    [Fact]
+    public void ARendererPipe_OnAnOperandTheWalkCannotType_IsAccepted()
+    {
+        // An assigned variable, a range's element, a builtin's result, a nested expression:
+        // untyped here, judged when it renders (TemplateRenderer.ApplyPipe), as before.
+        // (The assignment itself is a bare shaped read and warns as one — the walk cannot
+        // see that the variable is piped later.)
+        var refs = TemplateFixtures.Ok("""
+            {{ x = node.extract.content }}{{ x | concept_bullets }}
+            {{ for i in 1..3 }}{{ i | concept_bullets }}{{ end }}
+            {{ for w in (input.notes | string.split " ") }}{{ w | concept_context }}{{ end }}
+            {{ (node.assessment.content) | concept_bullets }}
+            """);
+
+        Assert.All(refs.Warnings, w => Assert.Contains("reads node.extract.content of format 'concept_list'", w));
+    }
+
+    [Fact]
+    public void AnUnknownPipe_IsStillAnUnknownRoot()
+    {
         var unknown = TemplateFixtures.Walk("{{ node.extract.content | frobnicate }}");
+
         Assert.Contains(unknown.Errors, e => e.Contains("reads 'frobnicate', which is not an object"));
+    }
+
+    [Fact]
+    public void ARendererPipe_InsideWith_IsJudgedTheSame()
+    {
+        var ok = TemplateFixtures.Ok("{{ with node.extract }}{{ content | concept_bullets }}{{ end }}");
+        Assert.Empty(ok.Warnings);
+        Assert.Equal(new TemplateNodeRead(true, false), ok.Nodes["extract"]);
+
+        TemplateFixtures.Refused("{{ with node.assessment }}{{ content | concept_bullets }}{{ end }}", "pipes node.assessment.content through concept_bullets, but format 'prose' is text");
+        TemplateFixtures.Refused("{{ with node.extract }}{{ value | concept_bullets }}{{ end }}", "pipes node.extract.value through concept_bullets");
+    }
+
+    [Fact]
+    public void ARendererPipe_InTheCallForm_IsJudgedTheSame()
+    {
+        Assert.Empty(TemplateFixtures.Ok("{{ node.extract.content | concept_bullets() }}").Warnings);
+        TemplateFixtures.Refused("{{ node.assessment.content | concept_bullets() }}", "but format 'prose' is text");
+    }
+
+    [Fact]
+    public void AChainedRendererPipe_RendersTheNodeThenPipesOn()
+    {
+        // Scriban nests pipes to the right — `a | r | g` is Pipe(a, Pipe(call r, call g)) —
+        // so the renderer is the first destination and the rest is piped on.
+        Assert.Empty(TemplateFixtures.Ok("{{ node.extract.content | concept_bullets | string.upcase }}").Warnings);
+        TemplateFixtures.Refused("{{ node.assessment.content | concept_bullets | string.upcase }}", "pipes node.assessment.content through concept_bullets, but format 'prose' is text");
+    }
+
+    [Fact]
+    public void ARendererPipe_AfterAnotherPipe_IsAccepted_AndTheBareReadWarns()
+    {
+        // The renderer's operand is a builtin's result (untyped); the .content itself was
+        // read bare into string.upcase, so that read warns as any bare shaped read does.
+        var refs = TemplateFixtures.Ok("{{ node.extract.content | string.upcase | concept_bullets }}");
+
+        Assert.Contains(refs.Warnings, w => w.Contains("reads node.extract.content of format 'concept_list'"));
+    }
+
+    [Fact]
+    public void NonRendererPipes_AreUnchanged() =>
+        Assert.Empty(TemplateFixtures.Ok("{{ snippet.sections | array.size }} {{ input.notes | string.upcase }} {{ node.assessment.content | string.truncate 10 }}").Warnings);
+
+    [Fact]
+    public void ABareShapedContentRead_StillWarns_Verbatim()
+    {
+        const string warning = "Prompt 'p' reads node.extract.content of format 'concept_list' (object); the JSON renders as text — read node.extract.value for the fields.";
+
+        Assert.Equal(warning, Assert.Single(TemplateFixtures.Walk("{{ node.extract.content }}").Warnings));
+        Assert.Equal(warning, Assert.Single(TemplateFixtures.Walk("{{ with node.extract }}{{ content }}{{ end }}").Warnings));
+        Assert.Contains(TemplateFixtures.Walk("{{ if node.extract.content == \"x\" }}y{{ end }}").Warnings, w => w == warning);
+        Assert.Empty(TemplateFixtures.Ok("{{ node.assessment.content }}").Warnings);
+    }
+
+    [Fact]
+    public void AContentChainThatContinues_IsRefusedNotWarned()
+    {
+        var refs = TemplateFixtures.Walk("{{ node.extract.content.words }}");
+
+        Assert.Contains(refs.Errors, e => e.Contains("which is a text, not an object"));
+        Assert.Empty(refs.Warnings);
+    }
+
+    [Fact]
+    public void ARendererPipe_InACondition_IsJudgedTheSame() =>
+        TemplateFixtures.Refused("{{ if (node.assessment.content | concept_bullets) == \"x\" }}y{{ end }}", "pipes node.assessment.content through concept_bullets, but format 'prose' is text");
+
+    [Fact]
+    public void TemplatePipes_DeclareTheFormatTheyRender()
+    {
+        Assert.Equal(WorkflowFormatIds.ConceptList, TemplatePipes.FormatOf(TemplatePipes.ConceptBullets));
+        Assert.Equal(WorkflowFormatIds.ConceptList, TemplatePipes.FormatOf(TemplatePipes.ConceptContext));
+        Assert.Null(TemplatePipes.FormatOf("frobnicate"));
+        Assert.Equal(TemplatePipes.Specs.Select(spec => spec.Name), TemplatePipes.All);
     }
 
     [Fact]
