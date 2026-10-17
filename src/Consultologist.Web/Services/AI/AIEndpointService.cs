@@ -34,7 +34,11 @@ public interface IAIEndpointService
         IReadOnlyDictionary<string, bool>? macroChoices = null,
         // #802: required ids the clinician acknowledged as intentionally short,
         // waiving the content floor for them; null when none.
-        IReadOnlyCollection<string>? acknowledgedShortInputs = null);
+        IReadOnlyCollection<string>? acknowledgedShortInputs = null,
+        // #991: per form-channel object input, the questionnaire file whose
+        // coerced object the value in `inputs` equals — bytes beside the value,
+        // verified by the server at start; null when none.
+        IReadOnlyDictionary<string, InputFilePayload>? formFiles = null);
 
     Task<ConsultGenerationJobResponse> GetConsultGenerationJobAsync(string jobId);
 
@@ -170,7 +174,8 @@ public class AIEndpointService : IAIEndpointService
         IReadOnlyDictionary<string, IReadOnlyList<ConsultInputRef>>? refs = null,
         IReadOnlyDictionary<string, ConsultInputFormRef>? formRefs = null,
         IReadOnlyDictionary<string, bool>? macroChoices = null,
-        IReadOnlyCollection<string>? acknowledgedShortInputs = null)
+        IReadOnlyCollection<string>? acknowledgedShortInputs = null,
+        IReadOnlyDictionary<string, InputFilePayload>? formFiles = null)
     {
         var stopwatch = Stopwatch.StartNew();
 
@@ -198,6 +203,10 @@ public class AIEndpointService : IAIEndpointService
                 // record's TranscriptInputs sits between this and MacroChoices.
                 AcknowledgedShortInputs: acknowledgedShortInputs is { Count: > 0 }
                     ? acknowledgedShortInputs.ToList()
+                    : null,
+                // #991: the questionnaire files, beside their values.
+                InputFormFiles: formFiles is { Count: > 0 }
+                    ? formFiles.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
                     : null);
 
             _logger.LogInformation(
@@ -502,7 +511,13 @@ public record ConsultGenerationRequest(
     // #802: mirrors the API record's trailing member — the required ids the
     // clinician acknowledged as intentionally short, waiving the content floor.
     // The Create page's short-input toggle populates it.
-    IReadOnlyCollection<string>? AcknowledgedShortInputs = null);
+    IReadOnlyCollection<string>? AcknowledgedShortInputs = null,
+    // #991: mirrors the API record's trailing member — per form-channel object
+    // input, the questionnaire file (a bare JSON object keyed by the field ids)
+    // the value was imported from. The Create page's questionnaire door
+    // populates it; the server verifies and stamps the file-sourced
+    // form-response origin.
+    Dictionary<string, InputFilePayload>? InputFormFiles = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultInputRef.</summary>
 public sealed record ConsultInputRef(string JobId, string ResultId);

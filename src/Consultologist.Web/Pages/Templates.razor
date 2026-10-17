@@ -3559,7 +3559,30 @@
                      @onchange="args => newFieldIds[scope.Owner] = args.Value?.ToString() ?? string.Empty"
                      aria-label="@($"New field id for {scope.Owner}")" />
               <FluentButton Appearance="Appearance.Stealth" Class="variable-chips__add" @onclick="() => AddFieldAsync(scope.Owner, scope.Fields)">+ Field</FluentButton>
+              @* #991: the shape as a paste — a sample response's keys become the
+                 fields the owner lacks (optional, typed from the sample); the
+                 toggle + text-area idiom of #941. *@
+              <FluentButton Appearance="Appearance.Stealth" Class="variable-chips__add fields-sample__toggle"
+                            aria-label="@($"Derive fields for {scope.Owner} from a sample")"
+                            @onclick="() => ToggleSample(scope.Owner)">Derive from a sample…</FluentButton>
           </div>
+          @if (_sampleShown.Contains(scope.Owner))
+          {
+              <div class="fields-sample" data-sample-for="@scope.Owner">
+                  <FluentTextArea class="fields-sample__text" Rows="6"
+                                  Placeholder="@("{ \"allergies\": [\"latex\"], \"on_letrozole\": true }")"
+                                  Value="@SampleText(scope.Owner)"
+                                  ValueChanged="@(v => _sampleText[scope.Owner] = v ?? string.Empty)"
+                                  aria-label="@($"Sample for {scope.Owner}")" />
+                  <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit fields-sample__derive"
+                                aria-label="@($"Derive fields for {scope.Owner}")"
+                                @onclick="() => DeriveFieldsAsync(scope.Owner, scope.Fields)">Derive fields</FluentButton>
+              </div>
+          }
+          @if (_sampleNotes.TryGetValue(scope.Owner, out var sampleNote))
+          {
+              <p class="declared-row__note fields-sample__note"><span class="muted-text">@sampleNote</span></p>
+          }
       </li>
     </text>;
 
@@ -8302,6 +8325,63 @@
     private readonly Dictionary<string, string> newFieldIds = new(StringComparer.Ordinal);
 
     private string NewFieldId(string owner) => newFieldIds.GetValueOrDefault(owner, string.Empty);
+
+    // #991: the derive-from-a-sample door, per owner path — shown or not, the
+    // pasted text, and the one-line note of what the last derivation added.
+    private readonly HashSet<string> _sampleShown = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _sampleText = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _sampleNotes = new(StringComparer.Ordinal);
+
+    private void ToggleSample(string owner)
+    {
+        if (!_sampleShown.Remove(owner))
+        {
+            _sampleShown.Add(owner);
+        }
+    }
+
+    private string SampleText(string owner) => _sampleText.GetValueOrDefault(owner, string.Empty);
+
+    /// <summary>
+    /// #991: derive the owner's missing fields from a pasted sample object —
+    /// SampleFieldDerivation's rules (optional, typed from the sample, never an
+    /// enum; existing fields untouched). Refusals name keys and derive nothing;
+    /// the success note names what was added.
+    /// </summary>
+    private async Task DeriveFieldsAsync(string owner, IReadOnlyList<WorkflowManifestReader.FieldView> fields)
+    {
+        System.Text.Json.JsonElement sample;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(SampleText(owner));
+            sample = document.RootElement.Clone();
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            declaredError = $"The sample for '{owner}' is not JSON.";
+            return;
+        }
+
+        var outcome = SampleFieldDerivation.DeriveFields(sample, fields, allowStructure: EffectiveSpecVersion >= 10);
+        if (outcome.Refusals.Count > 0)
+        {
+            declaredError = string.Join(" ", outcome.Refusals);
+            return;
+        }
+
+        declaredError = null;
+        if (outcome.Added.Count == 0)
+        {
+            _sampleNotes[owner] = "Nothing to add: every key in the sample is already a field.";
+            return;
+        }
+
+        UpdateFields(owner, _ => outcome.Fields.ToList());
+        _sampleNotes[owner] = $"Added {string.Join(", ", outcome.Added.Select(id => $"'{id}'"))} from the sample (optional, text unless the sample said otherwise).";
+        _sampleShown.Remove(owner);
+        _sampleText.Remove(owner);
+        await CommitDeclarationAsync();
+    }
 
     /// <summary>
     /// The path segment that descends into an array element (v10, #498). Never a

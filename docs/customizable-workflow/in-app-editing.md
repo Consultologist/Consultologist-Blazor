@@ -219,7 +219,9 @@ moved. The editor now authors the graph (nodes, bindings, aggregate sources,
 prompts, variables, collections) and, for **specVersion 7** packages, the two
 declared sections:
 
-- **Inputs** — one row per declared input: id, label, required. Renaming an input
+- **Inputs** — one row per declared input: id, label, required; an object's fields editor
+  can **derive the fields it lacks from a pasted sample** response (#991: optional, typed from
+  the sample, never an enum; a key that is not snake_case is refused by name). Renaming an input
   **cascades into every binding that read it**, because the alternative is
   publishing a package the validator rejects for an undeclared input while the
   author hunts down bindings the editor could already identify.

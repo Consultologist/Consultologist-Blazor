@@ -201,6 +201,28 @@ public class ProvenanceMirrorTests
     }
 
     [Fact]
+    public void AQuestionnaireFile_ReachesTheServer_UnderItsInputId()
+    {
+        // #991: the hand-duplicated wire mirror's newest trailing member — the
+        // bytes read back under the input id, and a request without one reads
+        // back null.
+        var bytes = System.Text.Encoding.UTF8.GetBytes("""{ "on_letrozole": true }""");
+        var request = new WebAI.ConsultGenerationRequest(
+            null,
+            InputFormFiles: new Dictionary<string, WebAI.InputFilePayload> { ["intake"] = new("application/json", bytes) });
+
+        var received = JsonSerializer.Deserialize<ApiModels.ConsultGenerationRequest>(
+            JsonSerializer.Serialize(request, Web), Web)!;
+
+        var file = Assert.Contains("intake", received.InputFormFiles!);
+        Assert.Equal("application/json", file.ContentType);
+        Assert.Equal(bytes, file.Content);
+
+        var bare = JsonSerializer.Serialize(new WebAI.ConsultGenerationRequest(null), Web);
+        Assert.Null(JsonSerializer.Deserialize<ApiModels.ConsultGenerationRequest>(bare, Web)!.InputFormFiles);
+    }
+
+    [Fact]
     public void TwoDocumentsForOneInput_ReachTheServerInOrder()
     {
         var request = new WebAI.ConsultGenerationRequest(
