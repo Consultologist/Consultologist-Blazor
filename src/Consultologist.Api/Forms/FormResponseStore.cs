@@ -14,9 +14,9 @@ namespace Consultologist.Api.Forms;
 /// (an "Other" answer is free text) and never logged. Inputs before any job:
 /// the same container family and the same account clock as the held job
 /// inputs. v25 (package-format-v25-design.md § 9, B6 #1005) — <b>version 2</b>:
-/// a value is any JSON value, keyed by slot id — a string as ever, or a
+/// a value is any JSON value, keyed by input id — a string as ever, or a
 /// number, a boolean, an array, or the JSON object that fills an object form
-/// slot member by member. A version-1 blob carries strings only, which bind
+/// input member by member. A version-1 blob carries strings only, which bind
 /// as string elements: read as written, never rewritten.
 /// </summary>
 public sealed record FormResponsePayload(

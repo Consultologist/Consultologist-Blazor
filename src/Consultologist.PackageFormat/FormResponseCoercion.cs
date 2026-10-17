@@ -94,7 +94,7 @@ public static class FormResponseCoercion
                     WorkflowInputTypes.Text or WorkflowInputTypes.Date => (ConsultInputValue.OfText(held.GetRawText()), null),
                     WorkflowInputTypes.Enum => Coerce(declaration, held.GetRawText()),
                     WorkflowInputTypes.Boolean => (null, "is not Yes, No, true or false"),
-                    _ => (null, $"is a JSON number; the slot is {An(declaration.Type)}"),
+                    _ => (null, $"is a JSON number; the input is {An(declaration.Type)}"),
                 };
 
             case JsonValueKind.True:
@@ -106,18 +106,18 @@ public static class FormResponseCoercion
                     WorkflowInputTypes.Text => (ConsultInputValue.OfText(flag ? "true" : "false"), null),
                     WorkflowInputTypes.Enum => Coerce(declaration, flag ? "true" : "false"),
                     WorkflowInputTypes.Number => (null, "is not a plain decimal number"),
-                    _ => (null, $"is a JSON boolean; the slot is {An(declaration.Type)}"),
+                    _ => (null, $"is a JSON boolean; the input is {An(declaration.Type)}"),
                 };
 
             case JsonValueKind.Array:
                 return declaration.Type == WorkflowInputTypes.Array
                     ? CoerceElements(declaration, held)
-                    : (null, $"is a JSON array; the slot is {An(declaration.Type)}");
+                    : (null, $"is a JSON array; the input is {An(declaration.Type)}");
 
             case JsonValueKind.Object:
                 return declaration.Type == WorkflowInputTypes.Object
                     ? CoerceObject(declaration, held)
-                    : (null, $"is a JSON object; the slot is {An(declaration.Type)}");
+                    : (null, $"is a JSON object; the input is {An(declaration.Type)}");
 
             default:
                 return (null, "cannot be filled from a form answer");
@@ -188,7 +188,7 @@ public static class FormResponseCoercion
 
     /// <summary>
     /// The object fill of design § 9: the response's members fill the declared
-    /// fields, each coerced to its field type; a member the slot does not
+    /// fields, each coerced to its field type; a member the input does not
     /// declare, a null member and a missing required field are named; a blank
     /// optional field is omitted. Fields land in declared order.
     /// </summary>

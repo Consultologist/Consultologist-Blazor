@@ -11,14 +11,14 @@ namespace Consultologist.Api.Tests;
 /// </summary>
 public class EmailAttachmentInputsTests
 {
-    private static readonly WorkflowInputSpec[] TwoSlots =
+    private static readonly WorkflowInputSpec[] TwoInputs =
     {
         new("consult_draft", "Consult draft"),
         new("prior_notes", "Prior notes", Required: false)
     };
 
-    // #428: the same two slots with prior_notes declared an array of text —
-    // the one kind of slot that takes several documents.
+    // #428: the same two inputs with prior_notes declared an array of text —
+    // the one kind of input that takes several documents.
     private static readonly WorkflowInputSpec[] NotesAsArray =
     {
         new("consult_draft", "Consult draft"),
@@ -31,15 +31,15 @@ public class EmailAttachmentInputsTests
         new(name, "text/plain", System.Text.Encoding.UTF8.GetBytes(text));
 
     private static EmailAttachmentInputs.Resolution Resolve(
-        IReadOnlyList<WorkflowInputSpec> slots,
+        IReadOnlyList<WorkflowInputSpec> inputs,
         string? body,
         params EmailInputAttachment[] attachments) =>
-        EmailAttachmentInputs.Resolve(slots, body, attachments);
+        EmailAttachmentInputs.Resolve(inputs, body, attachments);
 
     [Fact]
-    public void BodyOnly_FillsTheDraftSlot()
+    public void BodyOnly_FillsTheDraftInput()
     {
-        var result = Resolve(TwoSlots, "Referral body.");
+        var result = Resolve(TwoInputs, "Referral body.");
 
         Assert.Null(result.RejectReason);
         Assert.Equal(new Dictionary<string, string> { ["consult_draft"] = "Referral body." }, result.Inputs);
@@ -47,9 +47,9 @@ public class EmailAttachmentInputsTests
     }
 
     [Fact]
-    public void FilenameStem_ClaimsItsSlotRegardlessOfOrder()
+    public void FilenameStem_ClaimsItsInputRegardlessOfOrder()
     {
-        var result = Resolve(TwoSlots, "Referral body.", File("prior_notes.txt", "Old records."));
+        var result = Resolve(TwoInputs, "Referral body.", File("prior_notes.txt", "Old records."));
 
         Assert.Null(result.RejectReason);
         Assert.Equal(new Dictionary<string, string> { ["consult_draft"] = "Referral body." }, result.Inputs);
@@ -59,20 +59,20 @@ public class EmailAttachmentInputsTests
     [Fact]
     public void StemMatch_IsCaseInsensitiveAndIgnoresExtension()
     {
-        var result = Resolve(TwoSlots, "Body.", File("Prior_Notes.MD", "Records."));
+        var result = Resolve(TwoInputs, "Body.", File("Prior_Notes.MD", "Records."));
 
         Assert.Null(result.RejectReason);
         Assert.Equal("Prior_Notes.MD", result.Files!["prior_notes"].Single().FileName);
     }
 
     [Fact]
-    public void NamedAttachment_OutranksTheBodyForItsSlot()
+    public void NamedAttachment_OutranksTheBodyForItsInput()
     {
         // Most mail clients append a signature, so a sender who types nothing
         // still produces a body. It must not compete with a file they
         // deliberately named — this combination used to reject outright.
         var result = Resolve(
-            TwoSlots,
+            TwoInputs,
             "Dr. Lee | Oncology | Clinic",
             File("consult_draft.txt", "The referral."),
             File("prior_notes.txt", "Old records."));
@@ -80,14 +80,14 @@ public class EmailAttachmentInputsTests
         Assert.Null(result.RejectReason);
         Assert.Equal("consult_draft.txt", result.Files!["consult_draft"].Single().FileName);
         Assert.Equal("prior_notes.txt", result.Files["prior_notes"].Single().FileName);
-        // The body lost the slot it would otherwise have taken.
+        // The body lost the input it would otherwise have taken.
         Assert.Empty(result.Inputs!);
     }
 
     [Fact]
     public void NamedDraftAttachment_WinsEvenWhenItIsTheOnlyFile()
     {
-        var result = Resolve(TwoSlots, "Please see the attached referral.", File("consult_draft.md", "The referral."));
+        var result = Resolve(TwoInputs, "Please see the attached referral.", File("consult_draft.md", "The referral."));
 
         Assert.Null(result.RejectReason);
         Assert.Equal("consult_draft.md", result.Files!["consult_draft"].Single().FileName);
@@ -96,11 +96,11 @@ public class EmailAttachmentInputsTests
     }
 
     [Fact]
-    public void OneUnnamedAttachment_FillsTheOneFreeSlot()
+    public void OneUnnamedAttachment_FillsTheOneFreeInput()
     {
         // The ordinary case: body is the referral, the file is whatever else
         // the package asked for.
-        var result = Resolve(TwoSlots, "Referral body.", File("scan001.txt", "Old records."));
+        var result = Resolve(TwoInputs, "Referral body.", File("scan001.txt", "Old records."));
 
         Assert.Null(result.RejectReason);
         Assert.Equal("scan001.txt", result.Files!["prior_notes"].Single().FileName);
@@ -112,7 +112,7 @@ public class EmailAttachmentInputsTests
     {
         // The referral-as-attachment shape, and what a fax bridge will look
         // like once PDFs are readable.
-        var result = Resolve(TwoSlots, "   ", File("fax_20260728.txt", "The referral."));
+        var result = Resolve(TwoInputs, "   ", File("fax_20260728.txt", "The referral."));
 
         Assert.Null(result.RejectReason);
         Assert.Equal("fax_20260728.txt", result.Files!["consult_draft"].Single().FileName);
@@ -122,19 +122,19 @@ public class EmailAttachmentInputsTests
     [Fact]
     public void TwoUnnamedAttachments_AreRefusedRatherThanGuessed()
     {
-        // Two files, two free slots, and no way to confirm the assignment back
+        // Two files, two free inputs, and no way to confirm the assignment back
         // to the sender — a swap here would be silent wrong data.
-        var result = Resolve(TwoSlots, null, File("a.txt", "One."), File("b.txt", "Two."));
+        var result = Resolve(TwoInputs, null, File("a.txt", "One."), File("b.txt", "Two."));
 
         Assert.Null(result.Inputs);
         Assert.Contains("Name each file", result.RejectReason);
     }
 
     [Fact]
-    public void MoreAttachmentsThanSlots_AreRefused()
+    public void MoreAttachmentsThanInputs_AreRefused()
     {
         var result = Resolve(
-            TwoSlots,
+            TwoInputs,
             "Referral body.",
             File("a.txt", "One."),
             File("b.txt", "Two."));
@@ -144,10 +144,10 @@ public class EmailAttachmentInputsTests
     }
 
     [Fact]
-    public void TwoFilesForOneSlot_AreRefused()
+    public void TwoFilesForOneInput_AreRefused()
     {
         var result = Resolve(
-            TwoSlots,
+            TwoInputs,
             "Body.",
             File("prior_notes.txt", "One."),
             File("prior_notes.md", "Two."));
@@ -156,10 +156,10 @@ public class EmailAttachmentInputsTests
         Assert.Contains("More than one input", result.RejectReason);
     }
 
-    // ----- #428: numbered stems for a slot that takes several ---------------
+    // ----- #428: numbered stems for an input that takes several ---------------
 
     [Fact]
-    public void NumberedStems_FillTheArraySlotInNumericOrder()
+    public void NumberedStems_FillTheArrayInputInNumericOrder()
     {
         // Ten files supplied in reverse, named -10 down to -1: the sender's
         // numbers are the order, read as numbers — "10" after "2", not
@@ -177,7 +177,7 @@ public class EmailAttachmentInputsTests
     }
 
     [Fact]
-    public void APlainStemForAnArraySlot_IsAOneElementList()
+    public void APlainStemForAnArrayInput_IsAOneElementList()
     {
         var result = Resolve(NotesAsArray, "Referral body.", File("prior_notes.txt", "One."));
 
@@ -186,7 +186,7 @@ public class EmailAttachmentInputsTests
     }
 
     [Fact]
-    public void ANumberedStemForATextSlot_IsRefused()
+    public void ANumberedStemForATextInput_IsRefused()
     {
         var result = Resolve(NotesAsArray, null, File("consult_draft-1.docx", "Referral."));
 
@@ -201,14 +201,14 @@ public class EmailAttachmentInputsTests
     {
         // v10 (#497): the door names the top-level array of text only; a
         // spec-form element that is itself an array is not one.
-        var slots = new[]
+        var inputs = new[]
         {
             new WorkflowInputSpec("consult_draft", "Consult draft"),
             new WorkflowInputSpec("grid", "Grid", Required: false,
                 Type: WorkflowInputTypes.Array, Items: new WorkflowElementSpec(WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text))
         };
 
-        var result = Resolve(slots, "Referral body.", File("grid-1.txt", "1, 2."));
+        var result = Resolve(inputs, "Referral body.", File("grid-1.txt", "1, 2."));
 
         Assert.Contains("'grid' takes one document and cannot be numbered", result.RejectReason);
     }
@@ -216,7 +216,7 @@ public class EmailAttachmentInputsTests
     [Fact]
     public void ANumberedStemForAnArrayOfSomethingElse_IsRefused()
     {
-        var slots = new[]
+        var inputs = new[]
         {
             new WorkflowInputSpec("consult_draft", "Consult draft"),
             new WorkflowInputSpec("medications", "Medications", Required: false,
@@ -224,7 +224,7 @@ public class EmailAttachmentInputsTests
                 Fields: new List<WorkflowFieldSpec> { new("name", "Drug") })
         };
 
-        var result = Resolve(slots, "Referral body.", File("medications-1.txt", "Aspirin."));
+        var result = Resolve(inputs, "Referral body.", File("medications-1.txt", "Aspirin."));
 
         Assert.Contains("'medications' takes one document and cannot be numbered", result.RejectReason);
     }
@@ -256,10 +256,10 @@ public class EmailAttachmentInputsTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void PlainAndNumbered_ForTheSameSlot_IsRefused(bool plainFirst)
+    public void PlainAndNumbered_ForTheSameInput_IsRefused(bool plainFirst)
     {
         // Whichever arrives first: "prior_notes.pdf" beside "prior_notes-1.pdf"
-        // is two readings of one slot.
+        // is two readings of one input.
         var plain = File("prior_notes.pdf", "One.");
         var numbered = File("prior_notes-1.pdf", "Two.");
 
@@ -273,7 +273,7 @@ public class EmailAttachmentInputsTests
     }
 
     [Fact]
-    public void TwoPlainStemsForAnArraySlot_AreStillRefusedWithTodaysSentence()
+    public void TwoPlainStemsForAnArrayInput_AreStillRefusedWithTodaysSentence()
     {
         // Unnumbered, their order is not something a no-PHI reply can confirm.
         var result = Resolve(NotesAsArray, "Body.", File("prior_notes.txt", "One."), File("prior_notes.md", "Two."));
@@ -284,9 +284,9 @@ public class EmailAttachmentInputsTests
     [Fact]
     public void ANumberedStemForAnUndeclaredName_IsJustAnUnmatchedFile()
     {
-        // "fax-2.pdf" is not numbering; alone, it fills the one free slot as
+        // "fax-2.pdf" is not numbering; alone, it fills the one free input as
         // it always did.
-        var result = Resolve(TwoSlots, null, File("fax-2.pdf", "Referral."));
+        var result = Resolve(TwoInputs, null, File("fax-2.pdf", "Referral."));
 
         Assert.Null(result.RejectReason);
         Assert.Equal("fax-2.pdf", result.Files!["consult_draft"].Single().FileName);
@@ -316,7 +316,7 @@ public class EmailAttachmentInputsTests
     [Fact]
     public void NothingUsable_IsRefused()
     {
-        var result = Resolve(TwoSlots, "  ");
+        var result = Resolve(TwoInputs, "  ");
 
         Assert.Null(result.Inputs);
         Assert.Contains("neither a usable body nor an attachment", result.RejectReason);
@@ -325,7 +325,7 @@ public class EmailAttachmentInputsTests
     [Fact]
     public void LegacyPackage_RefusesAnAttachment()
     {
-        // v5/v6 declare no slots, so one implicit slot and nowhere for a file
+        // v5/v6 declare no inputs, so one implicit input and nowhere for a file
         // to go. This used to concatenate the attachment into the body, which
         // only worked while email decoded files itself (#237).
         var result = Resolve(Array.Empty<WorkflowInputSpec>(), "Referral body.", File("extra.txt", "Old records."));
@@ -344,7 +344,7 @@ public class EmailAttachmentInputsTests
     }
 
     // #294 — the body is dropped whenever a named attachment already claimed
-    // the slot it could have filled. Correct, and silent until now. A dropped
+    // the input it could have filled. Correct, and silent until now. A dropped
     // body carrying a cloud link is the one case that is evidence rather than
     // noise: it produced a clinically detailed consult whose Medications
     // section read "not documented" while reading as complete.
@@ -358,7 +358,7 @@ public class EmailAttachmentInputsTests
         // The exact #294 reproduction: consult_draft.docx attached directly,
         // prior_notes.docx "attached" as a OneDrive link in the body.
         var result = Resolve(
-            TwoSlots,
+            TwoInputs,
             $"Hi, referral attached, prior notes here: {OneDriveLink} Regards, Dr X",
             File("consult_draft.docx", "The referral."));
 
@@ -375,7 +375,7 @@ public class EmailAttachmentInputsTests
         // legitimate thing to drop.
         const string note = "Thanks — referral attached. She is anxious about the scan.";
 
-        var result = Resolve(TwoSlots, note, File("consult_draft.docx", "The referral."));
+        var result = Resolve(TwoInputs, note, File("consult_draft.docx", "The referral."));
 
         Assert.Null(result.RejectReason);
         Assert.Equal(note.Length, result.DiscardedBodyCharacters);
@@ -388,7 +388,7 @@ public class EmailAttachmentInputsTests
         // a body that is *used* is #291's case at job start, not this one --
         // refusing here too would double-refuse and confuse the reason.
         var result = Resolve(
-            TwoSlots,
+            TwoInputs,
             $"Referral text. See also {OneDriveLink}",
             File("prior_notes.docx", "Old notes."));
 
@@ -401,7 +401,7 @@ public class EmailAttachmentInputsTests
     public void AGuidelineLinkInADiscardedBody_IsNotACloudFile()
     {
         var result = Resolve(
-            TwoSlots,
+            TwoInputs,
             "Referral attached. Per https://www.nccn.org/guidelines/category_1",
             File("consult_draft.docx", "The referral."));
 
@@ -412,7 +412,7 @@ public class EmailAttachmentInputsTests
     [Fact]
     public void NoBodyAtAll_DiscardsNothing()
     {
-        var result = Resolve(TwoSlots, null, File("consult_draft.docx", "The referral."));
+        var result = Resolve(TwoInputs, null, File("consult_draft.docx", "The referral."));
 
         Assert.Null(result.RejectReason);
         Assert.Equal(0, result.DiscardedBodyCharacters);

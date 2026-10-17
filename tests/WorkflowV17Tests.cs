@@ -3,10 +3,10 @@ using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
 
 /// <summary>
-/// v17 (#673): a slot may declare `expectedContent: ambient-note` — it expects
+/// v17 (#673): an input may declare `expectedContent: ambient-note` — it expects
 /// an uploaded clinical note produced by an ambient scribe (Dragon Copilot).
 /// Like `transcript`, ambient-note is a text channel and a submitter assertion:
-/// only a text slot or an array of text can be filled from it. The baseline is
+/// only a text input or an array of text can be filled from it. The baseline is
 /// v16's plus the version line.
 /// </summary>
 public static class V17Fixtures
@@ -30,7 +30,7 @@ public class WorkflowV17AmbientNoteContentTests
     private static IReadOnlyList<string> Errors(WorkflowPackageManifest manifest) => V17Fixtures.Validate(manifest).Errors;
 
     [Fact]
-    public void AnAmbientNoteSlot_OnAText_IsValid()
+    public void AnAmbientNoteInput_OnAText_IsValid()
     {
         var manifest = V17Fixtures.WithInput(new WorkflowInputSpec(
             "encounter_note", "Encounter note", Required: false,
@@ -40,7 +40,7 @@ public class WorkflowV17AmbientNoteContentTests
     }
 
     [Fact]
-    public void AnAmbientNoteSlot_OnAnArrayOfText_IsValid()
+    public void AnAmbientNoteInput_OnAnArrayOfText_IsValid()
     {
         var manifest = V17Fixtures.WithInput(new WorkflowInputSpec(
             "encounter_notes", "Encounter notes", Required: false,
@@ -72,7 +72,7 @@ public class WorkflowV17AmbientNoteContentTests
             Type: WorkflowInputTypes.Number, ExpectedContent: WorkflowExpectedContent.AmbientNote));
 
         Assert.Contains(
-            "Input 'length_of_stay' declares expectedContent 'ambient-note', which is only for a text slot or an array of text.",
+            "Input 'length_of_stay' declares expectedContent 'ambient-note', which is only for a text input or an array of text.",
             Errors(manifest));
     }
 

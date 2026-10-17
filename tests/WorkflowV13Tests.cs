@@ -3,7 +3,7 @@ using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
 
 /// <summary>
-/// v13 (#728): a slot may declare the content channel it expects —
+/// v13 (#728): an input may declare the content channel it expects —
 /// `expectedContent: transcript` or `form` — beside its value type. The
 /// baseline is v12's plus the version line; the fixtures add one declared
 /// channel at a time so a refusal names exactly one rule.
@@ -29,7 +29,7 @@ public class WorkflowV13ExpectedContentTests
     private static IReadOnlyList<string> Errors(WorkflowPackageManifest manifest) => V13Fixtures.Validate(manifest).Errors;
 
     [Fact]
-    public void ATranscriptSlot_OnAText_IsValid()
+    public void ATranscriptInput_OnAText_IsValid()
     {
         var manifest = V13Fixtures.WithInput(new WorkflowInputSpec(
             "meeting_transcript", "Meeting transcript", Required: false,
@@ -39,7 +39,7 @@ public class WorkflowV13ExpectedContentTests
     }
 
     [Fact]
-    public void ATranscriptSlot_OnAnArrayOfText_IsValid()
+    public void ATranscriptInput_OnAnArrayOfText_IsValid()
     {
         var manifest = V13Fixtures.WithInput(new WorkflowInputSpec(
             "transcripts", "Transcripts", Required: false,
@@ -50,7 +50,7 @@ public class WorkflowV13ExpectedContentTests
     }
 
     [Fact]
-    public void AFormSlot_OnAScalar_IsValid()
+    public void AFormInput_OnAScalar_IsValid()
     {
         var manifest = V13Fixtures.WithInput(new WorkflowInputSpec(
             "encounter_kind", "Encounter kind",
@@ -92,7 +92,7 @@ public class WorkflowV13ExpectedContentTests
             Type: WorkflowInputTypes.Number, ExpectedContent: WorkflowExpectedContent.Transcript));
 
         Assert.Contains(
-            "Input 'length_of_stay' declares expectedContent 'transcript', which is only for a text slot or an array of text.",
+            "Input 'length_of_stay' declares expectedContent 'transcript', which is only for a text input or an array of text.",
             Errors(manifest));
     }
 
@@ -105,7 +105,7 @@ public class WorkflowV13ExpectedContentTests
             ExpectedContent: WorkflowExpectedContent.Form));
 
         Assert.Contains(
-            "Input 'patient' declares expectedContent 'form', which a slot of type 'object' cannot be filled from.",
+            "Input 'patient' declares expectedContent 'form', which an input of type 'object' cannot be filled from.",
             Errors(manifest));
     }
 }

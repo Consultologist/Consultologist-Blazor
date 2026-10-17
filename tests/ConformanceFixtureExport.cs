@@ -819,14 +819,14 @@ public partial class ConformanceFixtureExport
         WorkflowPackageManifest V13(WorkflowInputSpec input) => V13Fixtures.WithInput(input);
 
         cases.Add(new Case("v13-transcript-slot", 13,
-            "A text slot the package declares a transcript: its uploaded document stamps the transcript origin, no caller assertion needed.",
+            "A text input the package declares a transcript: its uploaded document stamps the transcript origin, no caller assertion needed.",
             V13(new("meeting_transcript", "Meeting transcript", Required: false,
                 Type: WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.Transcript)),
             V6Fixtures.Files(V13(new("meeting_transcript", "Meeting transcript", Required: false,
                 Type: WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.Transcript)))));
 
         cases.Add(new Case("v13-form-slot", 13,
-            "An enum slot the package declares a form: its value is filled from a held form response, coerced to the declared type.",
+            "An enum input the package declares a form: its value is filled from a held form response, coerced to the declared type.",
             V13(new("encounter_kind", "Encounter kind",
                 Type: WorkflowInputTypes.Enum, Values: new List<string> { "new_patient", "follow_up" },
                 ExpectedContent: WorkflowExpectedContent.Form)),
@@ -846,17 +846,17 @@ public partial class ConformanceFixtureExport
                 Type: WorkflowInputTypes.Text, ExpectedContent: "voicemail")));
 
         Invalid("invalid-expected-content-transcript-on-number", 13,
-            "expectedContent 'transcript' on a number slot. A transcript is a document read into a text slot.",
+            "expectedContent 'transcript' on a number input. A transcript is a document read into a text input.",
             V13(new("length_of_stay", "Length of stay", Required: false,
                 Type: WorkflowInputTypes.Number, ExpectedContent: WorkflowExpectedContent.Transcript)));
 
         Invalid("invalid-expected-content-form-on-object", 13,
-            "expectedContent 'form' on an object slot. A form answer coerces to a value, never to an object.",
+            "expectedContent 'form' on an object input. A form answer coerces to a value, never to an object.",
             V13(new("patient", "Patient", Required: false, Type: WorkflowInputTypes.Object,
                 Fields: new List<WorkflowFieldSpec> { new("age", "Age") },
                 ExpectedContent: WorkflowExpectedContent.Form)));
 
-        // ----- v14 (#729): union input types — a slot accepts one of several
+        // ----- v14 (#729): union input types — an input accepts one of several
         // value types. Generated with the gate flipped; published with the v14 prose. -----
 
         var v13Minimal = V13Fixtures.Minimal();
@@ -869,7 +869,7 @@ public partial class ConformanceFixtureExport
         WorkflowPackageManifest V14(WorkflowInputSpec input) => V14Fixtures.WithInput(input);
 
         cases.Add(new Case("v14-union-text-or-array", 14,
-            "A slot accepting a text OR an array of text — the one-or-many union; the slot's items serves the array arm.",
+            "An input accepting a text OR an array of text — the one-or-many union; the input's items serves the array arm.",
             V14(new("notes", "Notes", Required: false,
                 Type: V14Fixtures.Union(WorkflowInputTypes.Text, WorkflowInputTypes.Array),
                 Items: WorkflowInputTypes.Text)),
@@ -920,7 +920,7 @@ public partial class ConformanceFixtureExport
             "A raw prompt declaring variables. A verbatim prompt interpolates nothing, so it declares none.",
             V15Fixtures.WithRawTemplateNode(variables: new List<string> { "seen_on" }));
 
-        // ----- v16 (#730): an `image` content channel — a slot expecting an
+        // ----- v16 (#730): an `image` content channel — an input expecting an
         // uploaded raw image (PNG/JPEG/TIFF) read into text by OCR. Like
         // transcript, image is a text channel. Generated with the gate flipped;
         // published with the v16 prose. -----
@@ -935,7 +935,7 @@ public partial class ConformanceFixtureExport
         WorkflowPackageManifest V16(WorkflowInputSpec input) => V16Fixtures.WithInput(input);
 
         cases.Add(new Case("v16-image-slot", 16,
-            "A slot expecting an uploaded image; its OCR'd text fills the text slot, and the engine stamps the image origin.",
+            "An input expecting an uploaded image; its OCR'd text fills the text input, and the engine stamps the image origin.",
             V16(new("referral_letter", "Referral letter", Required: false,
                 Type: WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.Image)),
             V6Fixtures.Files(V16(new("referral_letter", "Referral letter", Required: false,
@@ -947,11 +947,11 @@ public partial class ConformanceFixtureExport
                 Type: WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.Image)) with { SpecVersion = 15 });
 
         Invalid("invalid-expected-content-image-on-number", 16,
-            "expectedContent 'image' on a number slot. An image is OCR'd into a text slot, never a scalar.",
+            "expectedContent 'image' on a number input. An image is OCR'd into a text input, never a scalar.",
             V16(new("length_of_stay", "Length of stay", Required: false,
                 Type: WorkflowInputTypes.Number, ExpectedContent: WorkflowExpectedContent.Image)));
 
-        // ----- v17 (#673): an `ambient-note` content channel — a slot expecting
+        // ----- v17 (#673): an `ambient-note` content channel — an input expecting
         // an ambient-scribe clinical note (Dragon Copilot). Like transcript, a
         // text channel and a submitter assertion; a distinct kind so the
         // SaMD/anti-ambient boundary stays legible. Generated with the gate
@@ -967,7 +967,7 @@ public partial class ConformanceFixtureExport
         WorkflowPackageManifest V17(WorkflowInputSpec input) => V17Fixtures.WithInput(input);
 
         cases.Add(new Case("v17-ambient-note-slot", 17,
-            "A slot expecting an ambient-scribe clinical note; its text fills the text slot, and the engine stamps the ambient-note origin.",
+            "An input expecting an ambient-scribe clinical note; its text fills the text input, and the engine stamps the ambient-note origin.",
             V17(new("encounter_note", "Encounter note", Required: false,
                 Type: WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.AmbientNote)),
             V6Fixtures.Files(V17(new("encounter_note", "Encounter note", Required: false,
@@ -979,7 +979,7 @@ public partial class ConformanceFixtureExport
                 Type: WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.AmbientNote)) with { SpecVersion = 16 });
 
         Invalid("invalid-expected-content-ambient-note-on-number", 17,
-            "expectedContent 'ambient-note' on a number slot. An ambient note is read into a text slot, never a scalar.",
+            "expectedContent 'ambient-note' on a number input. An ambient note is read into a text input, never a scalar.",
             V17(new("length_of_stay", "Length of stay", Required: false,
                 Type: WorkflowInputTypes.Number, ExpectedContent: WorkflowExpectedContent.AmbientNote)));
 

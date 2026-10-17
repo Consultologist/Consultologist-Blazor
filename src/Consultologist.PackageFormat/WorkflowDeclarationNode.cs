@@ -34,8 +34,8 @@ public sealed record WorkflowDeclarationNode(
             return null;
         }
 
-        // An element is never "required" in the slot's sense: a nested empty
-        // array is present and empty (v9 § 4), and only the input slot carries
+        // An element is never "required" in the input's sense: a nested empty
+        // array is present and empty (v9 § 4), and only the input carries
         // the required-and-empty refusal.
         return items.IsBare
             ? new WorkflowDeclarationNode(items.Type, label, false, null, FieldsOf(arrayFields), items.Type == WorkflowInputTypes.Enum ? arrayValues : null)

@@ -414,7 +414,7 @@ internal static class DocumentExtraction
         var text = CanonicalText.Normalize(result.Text);
 
         // A document of nothing but whitespace is empty, not extracted —
-        // otherwise it would fill a required input slot with a blank string
+        // otherwise it would fill a required input with a blank string
         // and the job would reject it later with a worse message.
         return text.Length == 0
             ? DocumentExtractionResult.Refused(DocumentExtractionOutcomes.Empty)

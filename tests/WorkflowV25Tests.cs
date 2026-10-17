@@ -661,7 +661,7 @@ public class WorkflowV25TemplateTests
     }
 
     [Fact]
-    public void AnObjectFormSlot_IsAccepted_At25_WhenItDeclaresFields()
+    public void AnObjectFormInput_IsAccepted_At25_WhenItDeclaresFields()
     {
         // B6 #1005 (design § 9): the v13 refusal lifts at 25 for an object
         // with declared fields; an object with none, and an array of
@@ -680,7 +680,7 @@ public class WorkflowV25TemplateTests
         var arrayOfObjects = WithIntake(new WorkflowInputSpec("visits", "Visits", Required: false, Type: new WorkflowTypeSet(new[] { WorkflowInputTypes.Array }),
             Items: new WorkflowElementSpec("object"), Fields: new List<WorkflowFieldSpec> { new("on", "On", Type: "date") },
             ExpectedContent: WorkflowExpectedContent.Form));
-        Assert.Contains("Input 'visits' declares expectedContent 'form', which a slot of type 'array' cannot be filled from.", V25Package.Errors((arrayOfObjects, files)));
+        Assert.Contains("Input 'visits' declares expectedContent 'form', which an input of type 'array' cannot be filled from.", V25Package.Errors((arrayOfObjects, files)));
     }
 
     [Fact]

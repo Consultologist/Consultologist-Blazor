@@ -24,7 +24,7 @@ public class ConsultGenerationStateOriginsTests
     [Fact]
     public void ARecordWithTheSingleOrigin_ProjectsAOneElementList()
     {
-        // A job recorded before #428 read one document into the slot; the
+        // A job recorded before #428 read one document into the input; the
         // reader sees it as a list of one, not as nothing.
         var state = CreateState();
         state.InputOrigins = new Dictionary<string, ConsultInputOrigin> { ["consult_draft"] = Pdf };

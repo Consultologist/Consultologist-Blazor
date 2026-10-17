@@ -42,7 +42,7 @@ public sealed class ConsultGenerationJobs
     // as MaxInputLength — refused, never truncated — and bounding allocation
     // before the starter sees the request. The text cap applies to every text
     // scalar wherever it sits, so the worst case is 256 elements of 256 KB; a
-    // slot filled by documents is bounded as a whole by MaxInputLength at the
+    // input filled by documents is bounded as a whole by MaxInputLength at the
     // starter, after extraction (#428), where the total is first known.
     internal const int MaxArrayElements = 256;
     internal const int MaxObjectFields = 64;
@@ -522,7 +522,7 @@ public sealed class ConsultGenerationJobs
     /// Supplied half under the record's exact package ref, never a
     /// re-resolved pin. The blob and only the blob: the orchestration
     /// instance is purged by retention, and #547 made the blob the durable
-    /// copy. Every effective slot of the new job carries a rerun origin
+    /// copy. Every effective input of the new job carries a rerun origin
     /// naming this source. A rerun is a new consult: it passes the start
     /// door's account gate and spends a rate-limit unit like any other run.
     /// </summary>
@@ -1168,7 +1168,7 @@ public sealed class ConsultGenerationJobs
     /// cap, as always. Structure: the counts, and the cap on every text
     /// scalar inside — a boolean and a number have no length to run away
     /// with. An empty array passes: it is present and empty (v9 § 4), and
-    /// whether that satisfies the slot is the starter's 422.
+    /// whether that satisfies the input is the starter's 422.
     /// </summary>
     private static string? ValidateInputValue(string id, ConsultInputValue value)
     {
@@ -1284,7 +1284,7 @@ public sealed class ConsultGenerationJobs
                 // ExtractInputFilesAsync), exactly as #872 moved the text+file
                 // one — only there is a declared array<text> id (which combines
                 // typed rows, documents and previous-run references into one
-                // slot) distinguishable from a scalar one (which still refuses
+                // input) distinguishable from a scalar one (which still refuses
                 // both, by name, from that layer). This door has no manifest,
                 // so it can no longer refuse either shape by itself.
 
@@ -1382,8 +1382,8 @@ public sealed class ConsultGenerationJobs
                 // both maps is the mixed feature's combine, not an ambiguity;
                 // this wire door has no manifest to tell the two apart.
 
-                // v9 (#428): a slot lists its documents. An empty list says
-                // nothing about the slot; it is refused rather than read as
+                // v9 (#428): an input lists its documents. An empty list says
+                // nothing about the input; it is refused rather than read as
                 // absent, the way an empty file is.
                 if (documents is not { Count: > 0 })
                 {
@@ -1430,7 +1430,7 @@ public sealed class ConsultGenerationJobs
 
         // #613/#671: a transcript marker is an assertion BESIDE a file in
         // InputFiles — it names which supplied documents are transcripts, so
-        // every id must be a file slot. A blank or unmatched id is refused the
+        // every id must be a file input. A blank or unmatched id is refused the
         // way a form reference without a value is; the id is an authored input
         // id, never a filename, so it is safe to name.
         if (request.TranscriptInputs is { Count: > 0 })
@@ -1450,7 +1450,7 @@ public sealed class ConsultGenerationJobs
         }
 
         // #673: the ambient-note marker is the transcript marker's twin — an
-        // assertion beside a file in InputFiles, so every id must be a file slot.
+        // assertion beside a file in InputFiles, so every id must be a file input.
         if (request.AmbientNoteInputs is { Count: > 0 })
         {
             foreach (var id in request.AmbientNoteInputs)
@@ -1470,7 +1470,7 @@ public sealed class ConsultGenerationJobs
         // #802: an acknowledgement waives the content floor for a required input,
         // whichever way it was filled (typed, file, loaded), so — unlike the
         // transcript/ambient markers — it is not tied to InputFiles. Only a blank
-        // id is refused; an id that matches no below-floor slot simply overrides
+        // id is refused; an id that matches no below-floor input simply overrides
         // nothing (the floor never applied to it), so it needs no rejection here.
         if (request.AcknowledgedShortInputs is { Count: > 0 })
         {

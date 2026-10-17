@@ -1127,8 +1127,8 @@ public sealed record ConsultGenerationJobInitialize(
     // The terminology server's release tag, beside TerminologyServerRef. Null
     // when the server carried no tag. Appended last, same rule.
     string? TerminologyServerRelease = null,
-    // #729: for each union slot, the arm the supplied value matched. Null when
-    // no slot is a union. Appended last — the engine calls Initialize positionally.
+    // #729: for each union input, the arm the supplied value matched. Null when
+    // no input is a union. Appended last — the engine calls Initialize positionally.
     IReadOnlyDictionary<string, string>? ResolvedInputTypes = null,
     // #802: the required ids overridden by the submitter's short-input
     // acknowledgement. Null when none. Appended last, same positional rule.
@@ -1431,7 +1431,7 @@ public sealed class ConsultGenerationJobState
     public string? WorkflowPackage { get; set; }
     public string? EffectiveInputHash { get; set; }
 
-    // #238: per-slot record of where the input text came from. Null for every
+    // #238: per-input record of where the input text came from. Null for every
     // job whose inputs were typed, and for every job predating this field.
     public Dictionary<string, ConsultInputOrigin>? InputOrigins { get; set; }
     // v9 (#428): the same record per document, positionally. Added beside
@@ -1440,8 +1440,8 @@ public sealed class ConsultGenerationJobState
     // second field. A record has one or the other, never both; ToResponse
     // projects either into the one response map.
     public Dictionary<string, List<ConsultInputOrigin>>? InputDocumentOrigins { get; set; }
-    // #729: for each union slot, the arm the supplied value matched. Null for
-    // every job with no union slot and every job predating this field.
+    // #729: for each union input, the arm the supplied value matched. Null for
+    // every job with no union input and every job predating this field.
     public Dictionary<string, string>? ResolvedInputTypes { get; set; }
     // #802: the required ids the submitter acknowledged as short, overriding the
     // content floor. Null for every job that overrode none and every job predating this.

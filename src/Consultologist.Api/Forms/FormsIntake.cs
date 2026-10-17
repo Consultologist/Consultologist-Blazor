@@ -66,7 +66,7 @@ public sealed class FormsIntake
     /// The wire body. ResponseId rides as JSON so 17 and "17" both land (the
     /// flow sends a number). v25 (B6 #1005): an input's value is any JSON
     /// value — a string as ever, or a number, a boolean, an array, or the
-    /// object that fills an object form slot (payload version 2).
+    /// object that fills an object form input (payload version 2).
     /// </summary>
     public sealed record FormResponseSubmission(
         string? FormId,
@@ -297,7 +297,7 @@ public sealed class FormsIntake
             }
 
             // v25 (B6 #1005): the one coercion the starter's verification
-            // makes too — union-aware, a JSON object filling an object slot's
+            // makes too — union-aware, a JSON object filling an object input's
             // declared fields with a missing required field named.
             var (value, misfit) = FormResponseCoercion.CoerceDeclared(declaration, held);
             if (misfit != null)

@@ -319,7 +319,7 @@ public class PromptTemplateRendererTests
 /// {{ for }} and {{ patient.age }} behave alike on absence and on emptiness.
 /// Scriban's own rule — only null, EmptyScriptObject and false are falsy —
 /// would have made the format's prescribed idiom throw on the one job where
-/// the slot was left empty.
+/// the input was left empty.
 /// </summary>
 public class StructuredRenderingTests
 {
@@ -439,7 +439,7 @@ public class StructuredRenderingTests
     {
         // Absent renders as empty rather than null, because Scriban refuses a
         // member of null: the prescribed {{ if notes.size > 0 }} would have
-        // thrown on exactly the job where the slot was left empty.
+        // thrown on exactly the job where the input was left empty.
         Assert.Equal(expected, Render(template, "notes", "", WorkflowInputTypes.Array));
     }
 

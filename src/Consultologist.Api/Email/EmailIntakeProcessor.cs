@@ -292,7 +292,7 @@ public sealed class EmailIntakeProcessor
                 ? EmailIntakeOutcomes.RejectedAttachments
                 : EmailIntakeOutcomes.RejectedEmpty;
             // The resolver's reasons are already written for the sender and
-            // name only slot ids, which are authored package content rather
+            // name only input ids, which are authored package content rather
             // than patient data — the precedent #217 set for labels in replies.
             return attachments.Count > 0
                 ? await RejectWithReplyAsync(
@@ -300,7 +300,7 @@ public sealed class EmailIntakeProcessor
                 : await RejectAsync(mailbox, message, claimKey, now, slug, cancellationToken);
         }
 
-        // #294: a named attachment outranks the body for the slot it names, so
+        // #294: a named attachment outranks the body for the input it names, so
         // a body can be dropped entirely. That is correct, and a covering note
         // is a legitimate thing to drop — but we had no idea how often a body
         // carrying real prose goes with it. The length only: a discarded body
@@ -308,7 +308,7 @@ public sealed class EmailIntakeProcessor
         if (resolution.DiscardedBodyCharacters > 0)
         {
             _logger.LogInformation(
-                "Email intake discarded the message body: an attachment already filled its slot. InternetMessageId={InternetMessageId}, DiscardedBodyCharacters={DiscardedBodyCharacters}",
+                "Email intake discarded the message body: an attachment already filled its input. InternetMessageId={InternetMessageId}, DiscardedBodyCharacters={DiscardedBodyCharacters}",
                 claimKey,
                 resolution.DiscardedBodyCharacters);
         }
@@ -483,7 +483,7 @@ public sealed class EmailIntakeProcessor
             var packageRef = await _pinResolver.ResolvePinAsync(appUserId, cancellationToken);
             var package = await _packageStore.ResolveAsync(packageRef, cancellationToken);
 
-            // #428: the declarations themselves, not just the ids — which slot
+            // #428: the declarations themselves, not just the ids — which input
             // takes several documents is a question about its type.
             return package.Manifest.Inputs ?? (IReadOnlyList<WorkflowInputSpec>)Array.Empty<WorkflowInputSpec>();
         }
@@ -514,7 +514,7 @@ public sealed class EmailIntakeProcessor
         // message rather than proceeding on the part that did arrive — we
         // cannot know whether the unread part was the referral, and a consult
         // built from half of one and presented as whole is the failure this
-        // is about. The same reasoning makes an ambiguous slot assignment a
+        // is about. The same reasoning makes an ambiguous input assignment a
         // rejection in #210 rather than a guess.
         if (listing.UnreadableKinds.Count > 0)
         {

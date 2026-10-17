@@ -187,7 +187,7 @@ public class FormsRunAtOnceTests
         Assert.Equal(new[] { "consult_draft" }, request.InputFormRefs!.Keys);
     }
 
-    // ----- v25 (B6 #1005): an object form slot filled from its held JSON object -----
+    // ----- v25 (B6 #1005): an object form input filled from its held JSON object -----
 
     private static List<WorkflowInputSpec> DeclarationsWithIntake()
     {
@@ -203,7 +203,7 @@ public class FormsRunAtOnceTests
     }
 
     [Fact]
-    public void TheBuilder_FillsAnObjectSlot_FromItsHeldJsonObject()
+    public void TheBuilder_FillsAnObjectInput_FromItsHeldJsonObject()
     {
         var (request, refusal) = FormsIntake.BuildRunRequest(
             DeclarationsWithIntake(),

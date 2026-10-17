@@ -511,7 +511,7 @@ public class WorkflowV9DeclarationTests
     public void ARequiredArrayOfText_WarnsNothing()
     {
         // Per the record (§ 4, § 7): attachments fill an array of text, so the
-        // email door can reach it — once #428 lets a slot hold several.
+        // email door can reach it — once #428 lets an input hold several.
         var result = V9Fixtures.Validate(V9Fixtures.WithInput(new("prior_notes", "Prior notes",
             Required: true, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text)));
 

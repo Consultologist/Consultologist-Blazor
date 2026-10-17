@@ -199,7 +199,7 @@ public class WorkflowNodeBindingSourceParserTests
     [InlineData("item:name")]
     [InlineData("item:content")]
     [InlineData("item:title")] // any field name parses; vocabulary closures are validator rules
-    [InlineData("input:patient_age")] // any input name parses; the declaration (v7) or fixed slot (v5/v6) closes it in the validator
+    [InlineData("input:patient_age")] // any input name parses; the declaration (v7) or fixed input (v5/v6) closes it in the validator
     [InlineData("input:sections")]
     [InlineData("node:extract-patient-concepts")]
     [InlineData("data:standards")]
